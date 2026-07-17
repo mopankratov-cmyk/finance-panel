@@ -6,7 +6,7 @@ import {
   type PerfProductReportResumeState,
 } from "@/lib/ozon/performance";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { rotatingSyncTargets } from "@/lib/sync/rotation";
+import { buildOzonAdSyncWarningNotes, selectOzonAdSyncCabinets } from "@/lib/ozon/adSyncPlan";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 
 export const maxDuration = 300;
@@ -19,6 +19,15 @@ type OzonCabinet = {
   perf_secret: string | null;
 };
 
+type OzonAdSyncResult = {
+  cabinet: string;
+  ok: boolean;
+  rows: number;
+  partial: boolean;
+  deferred: boolean;
+  error: string | null;
+};
+
 interface OzonAdvertSyncState extends Record<string, unknown> {
   report?: PerfProductReportResumeState;
   lastSyncedAt?: string;
@@ -27,8 +36,8 @@ interface OzonAdvertSyncState extends Record<string, unknown> {
 
 // Ozon analytics/stocks читаются из почасовых снимков. Эта задача каждый час
 // обновляет Performance-рекламу. Один async-отчёт Ozon может занимать до 45с,
-// поэтому почасовой cron обрабатывает кабинеты по кругу; ручной ?all=1 оставлен
-// для окружений с увеличенным лимитом функции.
+// поэтому почасовой cron берёт самый старый/отсутствующий кеш; ручной ?all=1
+// оставлен для окружений с увеличенным лимитом функции.
 export async function GET(request: NextRequest) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
@@ -49,16 +58,40 @@ export async function GET(request: NextRequest) {
 
   const allCabinets = (data ?? []) as OzonCabinet[];
   const requestedId = request.nextUrl.searchParams.get("cabinet");
-  const cabinets = rotatingSyncTargets(allCabinets, {
-    requestedId,
-    runAll: request.nextUrl.searchParams.get("all") === "1",
-  });
-  if (requestedId && !cabinets.length) {
+  const runAll = request.nextUrl.searchParams.get("all") === "1";
+  const eligibleCabinets = requestedId
+    ? allCabinets.filter((cabinet) => cabinet.id === requestedId || cabinet.client_id === requestedId)
+    : allCabinets;
+  if (requestedId && !eligibleCabinets.length) {
     return NextResponse.json({ ok: false, error: "Ozon-кабинет не найден" }, { status: 404 });
   }
+
+  const cacheUpdated = new Map<string, string | null>();
+  if (eligibleCabinets.length) {
+    const { data: cacheRows } = await db
+      .from("ozon_ad_cache")
+      .select("client_id, updated_at")
+      .in("client_id", eligibleCabinets.map((cabinet) => cabinet.client_id))
+      .order("updated_at", { ascending: false });
+    for (const row of cacheRows ?? []) {
+      const clientId = String(row.client_id ?? "");
+      if (clientId && !cacheUpdated.has(clientId)) cacheUpdated.set(clientId, String(row.updated_at ?? "") || null);
+    }
+  }
+
+  const requestedLimit = Number(request.nextUrl.searchParams.get("limit"));
+  const runLimit = requestedId || runAll
+    ? eligibleCabinets.length
+    : Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? requestedLimit
+      : 1;
+  const cabinets = selectOzonAdSyncCabinets(eligibleCabinets, cacheUpdated, runLimit);
+  const plannedIds = new Set(cabinets.map((cabinet) => cabinet.id));
+  const skipped = eligibleCabinets.filter((cabinet) => !plannedIds.has(cabinet.id)).map((cabinet) => cabinet.name);
+
   const to = new Date().toISOString();
   const from = new Date(Date.now() - 14 * 86_400_000).toISOString();
-  const results = await Promise.all(cabinets.map(async (cabinet) => {
+  const results: OzonAdSyncResult[] = await Promise.all(cabinets.map(async (cabinet) => {
     const saved = await readWbSyncState<OzonAdvertSyncState>(db, cabinet.id, "ozon-adverts");
     try {
       if (!cabinet.client_id || !cabinet.perf_client_id || !cabinet.perf_secret) {
@@ -162,16 +195,19 @@ export async function GET(request: NextRequest) {
   const failures = results.filter((result) => !result.ok && !result.deferred);
   const total = results.reduce((sum, result) => sum + result.rows, 0);
   const partial = results.filter((result) => result.partial).map((result) => result.cabinet);
-  const notes = [
-    ...failures.map((result) => `${result.cabinet}: ${result.error ?? "Ozon API error"}`),
-    ...deferred.map((result) => `${result.cabinet}: Ozon Performance готовит отчёт или ограничил частоту, повторим автоматически (${result.error ?? "retry later"})`),
-    ...results.filter((result) => result.ok && result.error).map((result) => `${result.cabinet}: ${result.error}`),
-    ...(partial.length ? [`Частичный Performance-отчёт: ${partial.join(", ")}`] : []),
-  ];
+  const notes = buildOzonAdSyncWarningNotes(results);
   const ok = failures.length === 0;
   await writeSyncLog("ozon-adverts", ok ? "ok" : "error", total, notes.join("; ") || null, startedAt);
   return NextResponse.json(
-    { ok, rows: total, cabinets: cabinets.length, availableCabinets: allCabinets.length, results, warnings: [...partial, ...deferred.map((result) => result.cabinet)] },
+    {
+      ok,
+      rows: total,
+      cabinets: cabinets.length,
+      availableCabinets: allCabinets.length,
+      skipped,
+      results,
+      warnings: [...partial, ...deferred.map((result) => result.cabinet)],
+    },
     { status: ok ? 200 : 502 },
   );
 }

@@ -154,9 +154,10 @@ export function WbSklejkiPage() {
   const [data, setData] = useState<SklejkiData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [shop, setShop] = useDashboardFilter<string>("shop", "");
   const requestId = useRef(0);
+  const forceRefreshRef = useRef(false);
   const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
@@ -170,7 +171,9 @@ export function WbSklejkiPage() {
     const current = ++requestId.current;
     setLoading(true);
     setError(null);
-    fetch(`/api/sklejki?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
+    const mode = forceRefreshRef.current ? "refresh=1" : "background=1";
+    forceRefreshRef.current = false;
+    fetch(`/api/sklejki?cabinet=${encodeURIComponent(cabinetId || "all")}&${mode}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = (await response.json()) as SklejkiData;
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
@@ -188,7 +191,7 @@ export function WbSklejkiPage() {
         if (current === requestId.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, retryKey]);
+  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, reloadKey]);
 
   const shops = useMemo(() => Array.from(new Set([...(data?.groups_multi ?? []), ...(data?.groups_solo ?? [])].map((group) => group.shop_label))).filter(Boolean), [data]);
   useEffect(() => {
@@ -214,7 +217,7 @@ export function WbSklejkiPage() {
                 ))}
               </div>
             ) : null}
-            <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-slate-500 hover:text-teal-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> обновить</button>
+            <button type="button" onClick={() => { forceRefreshRef.current = true; setReloadKey((value) => value + 1); }} disabled={loading} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-slate-500 hover:text-teal-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> обновить</button>
           </>
         }
       />
@@ -226,7 +229,7 @@ export function WbSklejkiPage() {
             <SkeletonTableRows rows={8} cols={7} />
           </>
         ) : error ? (
-          <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} />
+          <WbErrorState message={error} onRetry={() => setReloadKey((value) => value + 1)} />
         ) : !data ? null : data.total_sku === 0 ? (
           <WbEmptyState>В выбранном кабинете нет карточек WB.</WbEmptyState>
         ) : (

@@ -131,6 +131,7 @@ export async function GET() {
           stateLastError: state?.last_error ?? null,
           stale,
           hasLastSyncedAt: Boolean(lastSyncedAt),
+          coveragePct: Number(state?.state?.coveragePct ?? (source.lastSyncedAt ? 100 : 0)),
         });
         return {
           ...source,
