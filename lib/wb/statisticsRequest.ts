@@ -8,12 +8,13 @@ export interface WbStatisticsRequestOptions {
   deadline: number;
   reserveMs?: number;
   fallbackWaitMs?: number;
+  transientWaitMs?: number;
   fetchImpl?: FetchLike;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
 }
 
-/** One budget-aware retry for the shared WB statistics global limiter. */
+/** One budget-aware retry for the WB limiter and transient provider 5xx. */
 export async function fetchWbStatistics(options: WbStatisticsRequestOptions): Promise<Response> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -26,9 +27,13 @@ export async function fetchWbStatistics(options: WbStatisticsRequestOptions): Pr
   };
 
   let response = await fetchImpl(options.url, init);
-  if (response.status !== 429) return response;
+  const rateLimited = response.status === 429;
+  const transientProviderFailure = [500, 502, 503, 504].includes(response.status);
+  if (!rateLimited && !transientProviderFailure) return response;
 
-  const waitMs = retryAfterMs(response, fallbackWaitMs, now());
+  const waitMs = rateLimited
+    ? retryAfterMs(response, fallbackWaitMs, now())
+    : Math.max(0, options.transientWaitMs ?? 2_000);
   if (now() + waitMs + reserveMs > options.deadline) return response;
   await sleep(waitMs);
   response = await fetchImpl(options.url, init);

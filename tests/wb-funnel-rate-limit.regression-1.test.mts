@@ -101,3 +101,25 @@ test("WB statistics retries one global-limiter 429 using Retry-After", async () 
   assert.equal(calls, 2);
   assert.deepEqual(waits, [2_000]);
 });
+
+test("WB statistics retries one transient provider 500 within the function budget", async () => {
+  let calls = 0;
+  const waits: number[] = [];
+  const response = await fetchWbStatistics({
+    url: "https://advert-api.wildberries.ru/adv/v3/fullstats",
+    token: "test-token",
+    deadline: 10_000,
+    fetchImpl: async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("repository.GetAtbsDailyNmStats failed", { status: 500 })
+        : Response.json([]);
+    },
+    sleep: async (ms) => { waits.push(ms); },
+    now: () => 1_000,
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [2_000]);
+});
