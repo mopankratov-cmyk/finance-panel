@@ -10,6 +10,7 @@ import {
   type SalesPlanDocument,
   type SalesPlanRow,
 } from "@/lib/planning/salesPlan";
+import { wbCardImageUrl } from "@/lib/wb/cardImage";
 
 export interface SalesPlanCellPosition {
   rowId: string;
@@ -22,7 +23,24 @@ export interface SalesPlanFillState extends SalesPlanCellPosition {
 }
 
 const number = (value: number) => Math.round(value || 0).toLocaleString("ru-RU");
-const money = (value: number) => `${number(value)} ₽`;
+const STICKY_WIDTHS = {
+  product: 196,
+  price: 50,
+  buyout: 42,
+  ads: 42,
+} as const;
+const STICKY_LEFT = {
+  product: 0,
+  price: STICKY_WIDTHS.product,
+  buyout: STICKY_WIDTHS.product + STICKY_WIDTHS.price,
+  ads: STICKY_WIDTHS.product + STICKY_WIDTHS.price + STICKY_WIDTHS.buyout,
+} as const;
+const DAY_WIDTH = 32;
+const END_WIDTH = 62;
+const stickyWidth = (width: number) => ({ minWidth: width, width });
+const stickyOffset = (left: number, width?: number) => ({ left, ...(width ? stickyWidth(width) : {}) });
+const dayCellClass = "min-w-8 w-8";
+const endCellClass = "min-w-[62px] w-[62px]";
 const compactMoney = (value: number) => {
   if (!value) return "—";
   if (Math.abs(value) < 10_000) return number(value);
@@ -42,6 +60,38 @@ function grouped(rows: SalesPlanRow[]) {
   const groups = new Map<string, SalesPlanRow[]>();
   for (const row of rows) groups.set(row.model, [...(groups.get(row.model) ?? []), row]);
   return [...groups.entries()];
+}
+
+function productImage(row: SalesPlanRow, marketplace: "wb" | "ozon") {
+  const direct = String(row.image ?? "").trim();
+  if (direct) return direct;
+  if (marketplace !== "wb") return null;
+  const nmId = Number(row.externalId);
+  return Number.isInteger(nmId) && nmId > 0 ? wbCardImageUrl(nmId, "c246x328") : null;
+}
+
+function ProductThumb({ row, marketplace }: { row: SalesPlanRow; marketplace: "wb" | "ozon" }) {
+  const src = productImage(row, marketplace);
+  const initials = (row.color || row.variant).slice(0, 2).toUpperCase();
+  return (
+    <span className="relative grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 bg-gradient-to-br from-slate-100 to-slate-200 text-[8px] font-bold text-slate-400">
+      <span aria-hidden="true">{initials}</span>
+      {src ? (
+        // Динамические миниатюры WB/Ozon идут с разных CDN; держим обычный lazy img без правки next.config.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={`Фото ${row.variant}`}
+          width={28}
+          height={28}
+          loading="lazy"
+          decoding="async"
+          onError={(event) => { event.currentTarget.style.display = "none"; }}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : null}
+    </span>
+  );
 }
 
 export function SalesPlanTable({
@@ -91,6 +141,7 @@ export function SalesPlanTable({
   const handleClass = accent === "violet" ? "bg-violet-600" : "bg-sky-600";
   const fillClass = accent === "violet" ? "bg-violet-100/80" : "bg-sky-100/80";
   const totalColumns = 4 + days + 5;
+  const tableWidth = STICKY_LEFT.ads + STICKY_WIDTHS.ads + days * DAY_WIDTH + 5 * END_WIDTH;
 
   if (visibleRows.length === 0) {
     return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">По заданному фильтру SKU не найдены.</div>;
@@ -98,20 +149,28 @@ export function SalesPlanTable({
 
   return (
     <div className="overflow-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <table className="w-max min-w-full border-separate border-spacing-0 text-[12px] leading-4 text-slate-700">
+      <table style={{ width: tableWidth, minWidth: tableWidth }} className="table-fixed border-separate border-spacing-0 text-[10px] leading-4 text-slate-700">
+        <colgroup>
+          <col style={{ width: STICKY_WIDTHS.product }} />
+          <col style={{ width: STICKY_WIDTHS.price }} />
+          <col style={{ width: STICKY_WIDTHS.buyout }} />
+          <col style={{ width: STICKY_WIDTHS.ads }} />
+          {dayIndexes.map((day) => <col key={`day-${day}`} style={{ width: DAY_WIDTH }} />)}
+          {Array.from({ length: 5 }, (_, index) => <col key={`end-${index}`} style={{ width: END_WIDTH }} />)}
+        </colgroup>
         <thead>
-          <tr className="h-10 text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-            <th className="sticky left-0 top-0 z-40 min-w-[220px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left">Товар · цвет</th>
-            <th className="sticky left-[220px] top-0 z-40 min-w-[78px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Цена ₽</th>
-            <th className="sticky left-[298px] top-0 z-40 min-w-[62px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">{marketplace === "wb" ? "Вык %" : "Зав %"}</th>
-            <th className="sticky left-[360px] top-0 z-40 min-w-[64px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right shadow-[6px_0_10px_rgba(15,23,42,0.05)]">Рек %</th>
+          <tr className="h-8 text-[8px] font-bold uppercase tracking-[0.04em] text-slate-400">
+            <th style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-2 text-left">Товар</th>
+            <th style={stickyOffset(STICKY_LEFT.price, STICKY_WIDTHS.price)} className="sticky top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-1 text-right">Цена</th>
+            <th style={stickyOffset(STICKY_LEFT.buyout, STICKY_WIDTHS.buyout)} className="sticky top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-1 text-right">{marketplace === "wb" ? "Вык %" : "Зав %"}</th>
+            <th style={stickyOffset(STICKY_LEFT.ads, STICKY_WIDTHS.ads)} className="sticky top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-1 text-right shadow-[6px_0_10px_rgba(15,23,42,0.05)]">Рек %</th>
             {dayIndexes.map((day) => (
-              <th key={day} className={`sticky top-0 z-30 min-w-[54px] border-b border-r border-slate-200 px-1.5 py-1.5 text-center ${isWeekend(plan.year, monthKey, day + 1) ? "bg-sky-50" : "bg-slate-50"}`}>
-                <span className="block text-[11px] font-semibold text-slate-600">{String(day + 1).padStart(2, "0")}</span>
+              <th key={day} className={`sticky top-0 z-30 ${dayCellClass} border-b border-r border-slate-200 px-0.5 py-1 text-center ${isWeekend(plan.year, monthKey, day + 1) ? "bg-sky-50" : "bg-slate-50"}`}>
+                <span className="block text-[10px] font-semibold text-slate-600">{String(day + 1).padStart(2, "0")}</span>
                 <span className="block text-[9px] font-medium text-slate-400">{weekday(plan.year, monthKey, day + 1)}</span>
               </th>
             ))}
-            <EndHead>Заказы</EndHead><EndHead>Выкуп</EndHead><EndHead>Реклама ₽</EndHead><EndHead>Выручка ₽</EndHead><EndHead>ДРР %</EndHead>
+            <EndHead>Заказы</EndHead><EndHead>Выкуп</EndHead><EndHead>Рек ₽</EndHead><EndHead>Выруч ₽</EndHead><EndHead>ДРР</EndHead>
           </tr>
         </thead>
         <tbody>
@@ -146,14 +205,14 @@ export function SalesPlanTable({
               />
             );
           })}
-          <tr className="h-9 bg-slate-100 font-semibold text-slate-800">
-            <td className="sticky left-0 z-20 border-t border-r border-slate-200 bg-slate-100 px-3">ИТОГО · {salesPlanMonthLabel(plan.year, monthKey, false)}</td>
-            <StickyTotal left={220}>—</StickyTotal><StickyTotal left={298}>—</StickyTotal><StickyTotal left={360} shadow>—</StickyTotal>
-            {dayOrderTotals.map((value, day) => <td key={day} className="border-t border-r border-slate-200 px-2 text-right font-semibold tabular-nums">{value ? number(value) : "—"}</td>)}
-            <EndCell strong>{number(summary.orders)}</EndCell><EndCell strong>{number(summary.buyouts)}</EndCell><EndCell strong>{money(summary.ads)}</EndCell><EndCell strong>{money(summary.revenue)}</EndCell><EndCell strong>{summary.drr.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%</EndCell>
+          <tr className="h-8 bg-slate-100 font-semibold text-slate-800">
+            <td style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky z-20 border-t border-r border-slate-200 bg-slate-100 px-2.5">ИТОГО · {salesPlanMonthLabel(plan.year, monthKey, false)}</td>
+            <StickyTotal left={STICKY_LEFT.price} width={STICKY_WIDTHS.price}>—</StickyTotal><StickyTotal left={STICKY_LEFT.buyout} width={STICKY_WIDTHS.buyout}>—</StickyTotal><StickyTotal left={STICKY_LEFT.ads} width={STICKY_WIDTHS.ads} shadow>—</StickyTotal>
+            {dayOrderTotals.map((value, day) => <td key={day} className={`${dayCellClass} border-t border-r border-slate-200 px-1 text-right font-semibold tabular-nums`}>{value ? number(value) : "—"}</td>)}
+            <EndCell strong>{number(summary.orders)}</EndCell><EndCell strong>{number(summary.buyouts)}</EndCell><EndCell strong>{compactMoney(summary.ads)}</EndCell><EndCell strong>{compactMoney(summary.revenue)}</EndCell><EndCell strong>{summary.drr.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%</EndCell>
           </tr>
-          <ExtraTotal label={`ИТОГО заказы ₽ · ${salesPlanMonthLabel(plan.year, monthKey, false)}`} values={dayGrossTotals} days={days} end={["—", "—", "—", money(summary.gross), "—"]} />
-          <ExtraTotal label={`ИТОГО реклама ₽ · ${salesPlanMonthLabel(plan.year, monthKey, false)}`} values={dayAdTotals} days={days} end={["—", "—", money(summary.ads), "—", `${summary.adPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`]} />
+          <ExtraTotal label={`ИТОГО заказы ₽ · ${salesPlanMonthLabel(plan.year, monthKey, false)}`} values={dayGrossTotals} days={days} end={["—", "—", "—", compactMoney(summary.gross), "—"]} />
+          <ExtraTotal label={`ИТОГО реклама ₽ · ${salesPlanMonthLabel(plan.year, monthKey, false)}`} values={dayAdTotals} days={days} end={["—", "—", compactMoney(summary.ads), "—", `${summary.adPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`]} />
         </tbody>
       </table>
     </div>
@@ -189,8 +248,8 @@ function ModelRows(props: {
   return (
     <>
       <tr>
-        <td colSpan={totalColumns} className="border-b border-slate-200 bg-violet-50/70 px-3 py-2 text-left text-xs text-slate-700">
-          <div className="flex items-center justify-between gap-4"><strong>{model} · {rows[0]?.modelName}</strong><span className="text-[11px] text-slate-500">{rows.length} {rows.length === 1 ? "цвет" : "цвета"} · {number(modelTotals)} заказов</span></div>
+        <td colSpan={totalColumns} className="border-b border-slate-200 bg-violet-50/70 px-2 py-1 text-left text-[10px] text-slate-700">
+          <div className="flex items-center justify-between gap-4"><strong>{model} · {rows[0]?.modelName}</strong><span className="text-[10px] text-slate-500">{rows.length} {rows.length === 1 ? "цвет" : "цвета"} · {number(modelTotals)} заказов</span></div>
         </td>
       </tr>
       {rows.map((row) => <SkuRows key={row.id} row={row} {...props} />)}
@@ -206,32 +265,32 @@ function SkuRows({
   const opened = expanded.has(row.id);
   const fillMin = fill?.rowId === row.id ? Math.min(fill.day, fill.endDay) : -1;
   const fillMax = fill?.rowId === row.id ? Math.max(fill.day, fill.endDay) : -1;
-  const fixedCell = "border-b border-r border-slate-200 bg-[#fdf7ef] px-1.5";
+  const fixedCell = "border-b border-r border-slate-200 bg-[#fdf7ef] px-1";
   return (
     <>
-      <tr className="group h-12 hover:bg-slate-50/60">
-        <td className="sticky left-0 z-20 min-w-[220px] border-b border-r border-slate-200 bg-white px-2.5 py-1.5">
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => onToggleExpand(row.id)} aria-label={opened ? `Свернуть ${row.color}` : `Раскрыть ${row.color}`} aria-expanded={opened} className="grid h-9 w-7 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
+      <tr className="group h-9 hover:bg-slate-50/60">
+        <td style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky z-20 border-b border-r border-slate-200 bg-white px-1.5 py-0.5">
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => onToggleExpand(row.id)} aria-label={opened ? `Свернуть ${row.color}` : `Раскрыть ${row.color}`} aria-expanded={opened} className="grid h-7 w-5 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
               <ChevronDown className={`h-3.5 w-3.5 transition-transform ${opened ? "rotate-180" : "-rotate-90"}`} />
             </button>
-            <span className="grid h-8 w-7 shrink-0 place-items-center rounded-md bg-gradient-to-br from-slate-100 to-slate-200 text-[9px] font-bold text-slate-400">{row.color.slice(0, 2).toUpperCase()}</span>
+            <ProductThumb row={row} marketplace={marketplace} />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-semibold text-slate-800">{row.color}{row.isNew ? " · Новый" : ""}</span>
-              <span className="block truncate text-[10px] text-slate-400">{row.variant} · {marketplace === "wb" ? "WB" : "SKU"}: {row.externalId || "не привязан"} · остаток {number(row.stock)}</span>
+              <span className="block truncate text-[10px] font-semibold text-slate-800">{row.color}{row.isNew ? " · Новый" : ""}</span>
+              <span className="block truncate text-[9px] text-slate-400">{row.variant} · {marketplace === "wb" ? "WB" : "SKU"} {row.externalId || "—"} · ост. {number(row.stock)}</span>
             </span>
-            {!readOnly ? <button type="button" onClick={() => onRemove(row.id)} aria-label={`Удалить ${row.color} из плана`} title="Удалить из плана" className="grid h-9 w-8 shrink-0 place-items-center rounded-md text-slate-300 opacity-0 hover:bg-rose-50 hover:text-rose-600 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button> : null}
+            {!readOnly ? <button type="button" onClick={() => onRemove(row.id)} aria-label={`Удалить ${row.color} из плана`} title="Удалить из плана" className="grid h-7 w-6 shrink-0 place-items-center rounded-md text-slate-300 opacity-0 hover:bg-rose-50 hover:text-rose-600 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button> : null}
           </div>
         </td>
-        <td className={`sticky left-[220px] z-20 min-w-[78px] ${fixedCell}`}><FixedInput label={`${row.variant}, цена`} value={row.price} disabled={readOnly} focusClass={focusClass} onChange={(value) => onRowChange(row.id, { price: value })} /></td>
-        <td className={`sticky left-[298px] z-20 min-w-[62px] ${fixedCell}`}><FixedInput label={`${row.variant}, ${marketplace === "wb" ? "выкуп" : "завершение"}`} value={row.buyout} disabled={readOnly} focusClass={focusClass} onChange={(value) => onRowChange(row.id, { buyout: value })} /></td>
-        <td className={`sticky left-[360px] z-20 min-w-[64px] ${fixedCell} shadow-[6px_0_10px_rgba(15,23,42,0.05)]`}><FixedInput label={`${row.variant}, реклама`} value={row.adPct} disabled={readOnly} focusClass={focusClass} onChange={(value) => onRowChange(row.id, { adPct: value })} /></td>
+        <td style={stickyOffset(STICKY_LEFT.price, STICKY_WIDTHS.price)} className={`sticky z-20 ${fixedCell}`}><FixedInput label={`${row.variant}, цена`} value={row.price} disabled={readOnly} focusClass={focusClass} onChange={(value) => onRowChange(row.id, { price: value })} /></td>
+        <td style={stickyOffset(STICKY_LEFT.buyout, STICKY_WIDTHS.buyout)} className={`sticky z-20 ${fixedCell}`}><FixedInput label={`${row.variant}, ${marketplace === "wb" ? "выкуп" : "завершение"}`} value={row.buyout} disabled={readOnly} focusClass={focusClass} onChange={(value) => onRowChange(row.id, { buyout: value })} /></td>
+        <td style={stickyOffset(STICKY_LEFT.ads, STICKY_WIDTHS.ads)} className={`sticky z-20 ${fixedCell} shadow-[6px_0_10px_rgba(15,23,42,0.05)]`}><FixedInput label={`${row.variant}, реклама`} value={row.adPct} disabled={readOnly} focusClass={focusClass} onChange={(value) => onRowChange(row.id, { adPct: value })} /></td>
         {days.map((day) => {
           const orders = row.months[monthKey]?.[day] ?? 0;
           const selected = selectedCell?.rowId === row.id && selectedCell.day === day;
           const inFill = day >= fillMin && day <= fillMax;
           return (
-            <td key={day} onMouseEnter={() => onFillEnter({ rowId: row.id, day })} className={`relative min-w-[54px] border-b border-r border-slate-200 p-0.5 ${isWeekend(plan.year, monthKey, day + 1) ? "bg-sky-50/70" : "bg-white"} ${inFill ? fillClass : ""}`}>
+            <td key={day} onMouseEnter={() => onFillEnter({ rowId: row.id, day })} className={`relative ${dayCellClass} border-b border-r border-slate-200 p-0.5 ${isWeekend(plan.year, monthKey, day + 1) ? "bg-sky-50/70" : "bg-white"} ${inFill ? fillClass : ""}`}>
               <input
                 type="number"
                 min={0}
@@ -242,13 +301,13 @@ function SkuRows({
                 aria-label={`${row.variant}, ${day + 1} ${salesPlanMonthLabel(plan.year, monthKey)}`}
                 onFocus={() => onSelectCell({ rowId: row.id, day })}
                 onChange={(event) => onDayChange(row.id, day, Math.max(0, Math.round(Number(event.target.value) || 0)))}
-                className={`h-10 w-full rounded-md border border-transparent bg-transparent px-1 text-right text-xs font-semibold tabular-nums text-slate-700 outline-none transition placeholder:text-slate-300 hover:border-slate-200 focus:bg-white focus:ring-2 disabled:cursor-default disabled:text-slate-500 sm:h-8 ${focusClass} ${selected ? selectedClass : ""}`}
+                className={`h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-right text-[10px] font-semibold tabular-nums text-slate-700 outline-none transition placeholder:text-slate-300 hover:border-slate-200 focus:bg-white focus:ring-2 disabled:cursor-default disabled:text-slate-500 ${focusClass} ${selected ? selectedClass : ""}`}
               />
               {selected && !readOnly ? <button type="button" tabIndex={-1} aria-label="Протянуть значение" onMouseDown={(event) => { event.preventDefault(); onFillStart({ rowId: row.id, day, endDay: day, value: orders }); }} className={`absolute bottom-0.5 right-0.5 h-2.5 w-2.5 cursor-crosshair rounded-[2px] border border-white ${handleClass}`} /> : null}
             </td>
           );
         })}
-        <EndCell strong>{number(totals.orders)}</EndCell><EndCell>{number(totals.buyouts)}</EndCell><EndCell>{money(totals.ads)}</EndCell><EndCell>{money(totals.revenue)}</EndCell><EndCell>{totals.drr.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%</EndCell>
+        <EndCell strong>{number(totals.orders)}</EndCell><EndCell>{number(totals.buyouts)}</EndCell><EndCell>{compactMoney(totals.ads)}</EndCell><EndCell>{compactMoney(totals.revenue)}</EndCell><EndCell>{totals.drr.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%</EndCell>
       </tr>
       {opened ? <ExpandedRows row={row} monthKey={monthKey} days={days} year={plan.year} /> : null}
     </>
@@ -256,7 +315,7 @@ function SkuRows({
 }
 
 function FixedInput({ label, value, disabled, onChange, focusClass }: { label: string; value: number; disabled: boolean; onChange: (value: number) => void; focusClass: string }) {
-  return <input type="number" min={0} value={value || ""} placeholder="—" disabled={disabled} aria-label={label} onChange={(event) => onChange(Number(event.target.value) || 0)} className={`h-10 w-full rounded-md border border-transparent bg-transparent px-1 text-right text-xs font-semibold tabular-nums text-slate-700 outline-none transition hover:border-[#eadcc8] focus:bg-white focus:ring-2 disabled:cursor-default disabled:text-slate-500 sm:h-8 ${focusClass}`} />;
+  return <input type="number" min={0} value={value || ""} placeholder="—" disabled={disabled} aria-label={label} onChange={(event) => onChange(Number(event.target.value) || 0)} className={`h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-right text-[10px] font-semibold tabular-nums text-slate-700 outline-none transition hover:border-[#eadcc8] focus:bg-white focus:ring-2 disabled:cursor-default disabled:text-slate-500 ${focusClass}`} />;
 }
 
 function ExpandedRows({ row, monthKey, days }: { row: SalesPlanRow; monthKey: string; days: number[]; year: number }) {
@@ -267,17 +326,17 @@ function ExpandedRows({ row, monthKey, days }: { row: SalesPlanRow; monthKey: st
     { label: "ДРР, %", color: "bg-rose-500", read: (day: number) => calculateSalesPlanDaily(row, row.months[monthKey]?.[day] ?? 0).drr, total: calculateSalesPlanRowMonth(row, monthKey).drr, kind: "pct" },
   ];
   return <>{definitions.map((definition) => (
-    <tr key={definition.label} className="h-8 bg-slate-50/50 text-[10px] text-slate-500">
-      <td className="sticky left-0 z-20 border-b border-r border-slate-200 bg-slate-50 px-3"><span className="flex items-center gap-2 pl-7"><span className={`h-2 w-2 rounded-full ${definition.color}`} />{definition.label}</span></td>
-      <td className="sticky left-[220px] z-20 border-b border-r border-slate-200 bg-slate-50" /><td className="sticky left-[298px] z-20 border-b border-r border-slate-200 bg-slate-50" /><td className="sticky left-[360px] z-20 border-b border-r border-slate-200 bg-slate-50 shadow-[6px_0_10px_rgba(15,23,42,0.05)]" />
-      {days.map((day) => { const value = definition.read(day); return <td key={day} className="border-b border-r border-slate-200 px-1 text-right tabular-nums">{definition.kind === "money" ? compactMoney(value) : definition.kind === "pct" ? `${value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%` : value ? number(value) : "—"}</td>; })}
-      <td className="border-b border-r border-slate-200 bg-slate-50 px-2 text-right font-semibold tabular-nums">{definition.kind === "money" ? money(definition.total) : definition.kind === "pct" ? `${definition.total.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%` : number(definition.total)}</td>
+    <tr key={definition.label} className="h-7 bg-slate-50/50 text-[10px] text-slate-500">
+      <td style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 px-2"><span className="flex items-center gap-1.5 pl-5"><span className={`h-2 w-2 rounded-full ${definition.color}`} />{definition.label}</span></td>
+      <td style={stickyOffset(STICKY_LEFT.price, STICKY_WIDTHS.price)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.buyout, STICKY_WIDTHS.buyout)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.ads, STICKY_WIDTHS.ads)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 shadow-[6px_0_10px_rgba(15,23,42,0.05)]" />
+      {days.map((day) => { const value = definition.read(day); return <td key={day} className={`${dayCellClass} border-b border-r border-slate-200 px-1 text-right tabular-nums`}>{definition.kind === "money" ? compactMoney(value) : definition.kind === "pct" ? `${value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%` : value ? number(value) : "—"}</td>; })}
+      <td className={`${endCellClass} border-b border-r border-slate-200 bg-slate-50 px-1 text-right font-semibold tabular-nums`}>{definition.kind === "money" ? compactMoney(definition.total) : definition.kind === "pct" ? `${definition.total.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%` : number(definition.total)}</td>
       <td className="border-b border-r border-slate-200 bg-slate-50" /><td className="border-b border-r border-slate-200 bg-slate-50" /><td className="border-b border-r border-slate-200 bg-slate-50" /><td className="border-b border-r border-slate-200 bg-slate-50" />
     </tr>
   ))}</>;
 }
 
-function EndHead({ children }: { children: React.ReactNode }) { return <th className="sticky top-0 z-30 min-w-[96px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right last:border-r-0">{children}</th>; }
-function EndCell({ children, strong = false }: { children: React.ReactNode; strong?: boolean }) { return <td className={`min-w-[96px] border-b border-r border-slate-200 bg-white px-2 text-right tabular-nums last:border-r-0 ${strong ? "font-semibold text-slate-800" : ""}`}>{children}</td>; }
-function StickyTotal({ children, left, shadow = false }: { children: React.ReactNode; left: number; shadow?: boolean }) { return <td style={{ left }} className={`sticky z-20 border-t border-r border-slate-200 bg-slate-100 px-2 text-right ${shadow ? "shadow-[6px_0_10px_rgba(15,23,42,0.05)]" : ""}`}>{children}</td>; }
-function ExtraTotal({ label, values, days, end }: { label: string; values: number[]; days: number; end: string[] }) { return <tr className="h-8 bg-slate-50 text-[10px] font-semibold text-slate-600"><td className="sticky left-0 z-20 border-b border-r border-slate-200 bg-slate-50 px-3">{label}</td><td className="sticky left-[220px] z-20 border-b border-r border-slate-200 bg-slate-50" /><td className="sticky left-[298px] z-20 border-b border-r border-slate-200 bg-slate-50" /><td className="sticky left-[360px] z-20 border-b border-r border-slate-200 bg-slate-50 shadow-[6px_0_10px_rgba(15,23,42,0.05)]" />{Array.from({ length: days }, (_, day) => <td key={day} className="border-b border-r border-slate-200 px-1 text-right tabular-nums">{compactMoney(values[day] ?? 0)}</td>)}{end.map((value, index) => <td key={index} className="border-b border-r border-slate-200 px-2 text-right tabular-nums last:border-r-0">{value}</td>)}</tr>; }
+function EndHead({ children }: { children: React.ReactNode }) { return <th className={`sticky top-0 z-30 ${endCellClass} border-b border-r border-slate-200 bg-slate-50 px-1 text-right last:border-r-0`}>{children}</th>; }
+function EndCell({ children, strong = false }: { children: React.ReactNode; strong?: boolean }) { return <td className={`${endCellClass} border-b border-r border-slate-200 bg-white px-1 text-right text-[10px] tabular-nums last:border-r-0 ${strong ? "font-semibold text-slate-800" : ""}`}>{children}</td>; }
+function StickyTotal({ children, left, width, shadow = false }: { children: React.ReactNode; left: number; width: number; shadow?: boolean }) { return <td style={stickyOffset(left, width)} className={`sticky z-20 border-t border-r border-slate-200 bg-slate-100 px-1.5 text-right ${shadow ? "shadow-[6px_0_10px_rgba(15,23,42,0.05)]" : ""}`}>{children}</td>; }
+function ExtraTotal({ label, values, days, end }: { label: string; values: number[]; days: number; end: string[] }) { return <tr className="h-7 bg-slate-50 text-[10px] font-semibold text-slate-600"><td style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 px-2">{label}</td><td style={stickyOffset(STICKY_LEFT.price, STICKY_WIDTHS.price)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.buyout, STICKY_WIDTHS.buyout)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.ads, STICKY_WIDTHS.ads)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 shadow-[6px_0_10px_rgba(15,23,42,0.05)]" />{Array.from({ length: days }, (_, day) => <td key={day} className={`${dayCellClass} border-b border-r border-slate-200 px-0.5 text-right tabular-nums`}>{compactMoney(values[day] ?? 0)}</td>)}{end.map((value, index) => <td key={index} className={`${endCellClass} border-b border-r border-slate-200 px-1 text-right text-[10px] tabular-nums last:border-r-0`}>{value}</td>)}</tr>; }

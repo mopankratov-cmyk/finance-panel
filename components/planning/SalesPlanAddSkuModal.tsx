@@ -21,6 +21,29 @@ function rowId() {
   return globalThis.crypto?.randomUUID?.() ?? `sales-plan-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function CatalogThumb({ sku }: { sku: SalesPlanCatalogSku }) {
+  const initials = (sku.variant || sku.name).slice(0, 2).toUpperCase();
+  return (
+    <span className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-br from-slate-100 to-slate-200 text-[10px] font-bold text-slate-400">
+      <span aria-hidden="true">{initials}</span>
+      {sku.image ? (
+        // Динамические миниатюры WB/Ozon идут с разных CDN; держим обычный lazy img без правки next.config.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={sku.image}
+          alt={`Фото ${sku.variant}`}
+          width={40}
+          height={40}
+          loading="lazy"
+          decoding="async"
+          onError={(event) => { event.currentTarget.style.display = "none"; }}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : null}
+    </span>
+  );
+}
+
 export function SalesPlanAddSkuModal({
   marketplace,
   year,
@@ -173,6 +196,7 @@ export function SalesPlanAddSkuModal({
                           className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-55"
                         >
                           <span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${checked ? `${primary} border-transparent text-white` : "border-slate-300 bg-white"}`}>{checked ? <Check className="h-3.5 w-3.5" /> : null}</span>
+                          <CatalogThumb sku={sku} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-semibold text-slate-800">{sku.name}</span>
                             <span className="mt-0.5 block truncate text-[11px] text-slate-400">{sku.variant} · ID {sku.externalId || "не привязан"}</span>

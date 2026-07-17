@@ -27,6 +27,7 @@ import {
   validateSalesPlan,
   visibleSalesPlanMonths,
 } from "@/lib/planning/salesPlan";
+import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { SalesPlanAddSkuModal, type SalesPlanCatalogSku } from "./SalesPlanAddSkuModal";
 import { SalesPlanFactView } from "./SalesPlanFactView";
 import { SalesPlanTable, type SalesPlanCellPosition, type SalesPlanFillState } from "./SalesPlanTable";
@@ -214,7 +215,16 @@ export function SalesPlanPage({
         };
         if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
         return marketplace === "wb"
-          ? (body.skus ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || String(sku.nm_id ?? ""), variant: sku.art, name: sku.name, stock: Number(sku.wb_stock ?? 0), image: null }))
+          ? (body.skus ?? []).map((sku): SalesPlanCatalogSku => {
+            const nmId = Number(sku.nm_id ?? sku.external_id ?? 0);
+            return {
+              externalId: sku.external_id || String(sku.nm_id ?? ""),
+              variant: sku.art,
+              name: sku.name,
+              stock: Number(sku.wb_stock ?? 0),
+              image: Number.isInteger(nmId) && nmId > 0 ? wbCardImageUrl(nmId, "c246x328") : null,
+            };
+          })
           : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null }));
       })
       .then(setCatalog)
@@ -361,14 +371,14 @@ export function SalesPlanPage({
           : loadError ? <PageError message={loadError} onRetry={() => setReloadKey((value) => value + 1)} />
             : mode === "rnp" ? <>
               {approvedPlan ? <section className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Период план-факт">
-                <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
-                  <div className="grid w-full min-w-[780px] grid-cols-6 gap-2" role="tablist" aria-label="Месяц план-факт">
-                    {visibleMonths.map((monthKey) => {
-                      const monthTotal = calculateSalesPlanSummary(approvedPlan, [monthKey]).orders;
-                      return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 min-w-0 whitespace-nowrap rounded-lg border px-2 text-xs font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey)} <span className={`ml-1 rounded-md px-1.5 py-0.5 text-[10px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)} шт.</span></button>;
-                    })}
+                  <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
+                    <div className="flex w-max min-w-full gap-1" role="tablist" aria-label="Месяц план-факт">
+                      {visibleMonths.map((monthKey) => {
+                        const monthTotal = calculateSalesPlanSummary(approvedPlan, [monthKey]).orders;
+                        return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-8 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)}</span></button>;
+                      })}
+                    </div>
                   </div>
-                </div>
               </section> : null}
               <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={approvedPlan} />
             </>
@@ -384,10 +394,10 @@ export function SalesPlanPage({
                   <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3">
                     <div className="flex flex-col gap-3">
                       <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
-                        <div className="grid w-full min-w-[780px] grid-cols-6 gap-2" role="tablist" aria-label="Месяц плана">
+                        <div className="flex w-max min-w-full gap-1" role="tablist" aria-label="Месяц плана">
                           {visibleMonths.map((monthKey) => {
                             const monthTotal = calculateSalesPlanSummary(displayPlan, [monthKey]).orders;
-                            return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 min-w-0 whitespace-nowrap rounded-lg border px-2 text-xs font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey)} <span className={`ml-1 rounded-md px-1.5 py-0.5 text-[10px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)} шт.</span></button>;
+                            return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-8 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)}</span></button>;
                           })}
                         </div>
                       </div>
