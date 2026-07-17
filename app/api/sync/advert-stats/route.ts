@@ -236,7 +236,9 @@ export async function GET(request: NextRequest) {
         const nextBatch = nextBatchOnFailure ?? startB;
         if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
           cursor: String(nextBatch),
-          status: failedMessage ? "error" : "running",
+          // Запрос этого кабинета уже завершён: pending сохраняет курсор, но
+          // освобождает lease для немедленного cron/ручного продолжения.
+          status: failedMessage ? "error" : "pending",
           attempts: failedMessage ? (previous?.attempts ?? 0) + 1 : 0,
           lastError: failedMessage,
           state: {
@@ -287,7 +289,7 @@ export async function GET(request: NextRequest) {
       if (t.cabinetId) {
         const stateError = await writeWbSyncState(db, t.cabinetId, "advert-stats", {
           cursor: String(nextBatch),
-          status: failedMessage ? "error" : nextBatch === 0 ? "caught_up" : "running",
+          status: failedMessage ? "error" : nextBatch === 0 ? "caught_up" : "pending",
           attempts: failedMessage ? (previous?.attempts ?? 0) + 1 : 0,
           lastError: failedMessage,
           state: {
@@ -304,7 +306,7 @@ export async function GET(request: NextRequest) {
       }
       progress.push({
         cabinet: t.name,
-        status: failedMessage ? "error" : deferredMessage ? "rate_limited" : nextBatch === 0 ? "caught_up" : "running",
+        status: failedMessage ? "error" : deferredMessage ? "rate_limited" : nextBatch === 0 ? "caught_up" : "pending",
         batch: startB + 1,
         batches: idBatches.length,
         batchesProcessed: processedBatches.length,

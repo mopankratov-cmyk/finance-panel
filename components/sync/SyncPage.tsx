@@ -3,7 +3,7 @@
 import { AlertTriangle, CheckCircle2, Play, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber, formatTime } from "@/lib/analytics/format";
-import { asSyncPayload, syncErrorMessage, syncPayloadOk } from "@/lib/sync/result";
+import { asSyncPayload, syncDeferredMessage, syncErrorMessage, syncPayloadOk } from "@/lib/sync/result";
 import type { SyncLogRow } from "@/app/api/sync-log/route";
 import { syncFreshness } from "@/lib/sync/freshness";
 
@@ -51,6 +51,7 @@ export function SyncPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [cabinetHealth, setCabinetHealth] = useState<CabinetHealth[]>([]);
   const [healthWarnings, setHealthWarnings] = useState<string[]>([]);
   const [backfillFrom, setBackfillFrom] = useState("2026-03-01");
@@ -88,14 +89,17 @@ export function SyncPage() {
     if (!syncPayloadOk(res.ok, body)) {
       throw new Error(syncErrorMessage(body, `HTTP ${res.status}`));
     }
+    return body;
   };
 
   const runJob = async (job: string, cabinetId?: string) => {
     const runningKey = cabinetId ? `${job}:${cabinetId}` : job;
     setRunning(runningKey);
     setError(null);
+    setNotice(null);
     try {
-      await requestSync(`/api/sync/trigger?job=${job}${cabinetId ? `&cabinet=${encodeURIComponent(cabinetId)}` : ""}`);
+      const result = await requestSync(`/api/sync/trigger?job=${job}${cabinetId ? `&cabinet=${encodeURIComponent(cabinetId)}` : ""}`);
+      setNotice(syncDeferredMessage(result));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка запуска синхронизации");
     } finally {
@@ -164,6 +168,9 @@ export function SyncPage() {
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+      )}
+      {notice && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{notice}</div>
       )}
 
       <section className="space-y-3">

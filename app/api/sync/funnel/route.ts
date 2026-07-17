@@ -175,7 +175,8 @@ export async function GET(request: NextRequest) {
         if (isWbGlobalRateLimit(res.status, message)) {
           rotated.push(`${t.name}: лимит WB funnel, повторим срез ${startB + 1}/${batches.length || 1}`);
           if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "funnel", {
-            cursor: String(startB), status: "running", attempts: 0, lastError: null,
+            // Батч закончен и курсор сохранён: не держим ложный активный lease.
+            cursor: String(startB), status: "pending", attempts: 0, lastError: null,
             state: {
               ...(previous?.state ?? {}),
               nextBatch: startB,
@@ -234,7 +235,7 @@ export async function GET(request: NextRequest) {
       if (t.cabinetId) {
         const stateError = await writeWbSyncState(db, t.cabinetId, "funnel", {
           cursor: String(nextBatch),
-          status: nextBatch === 0 ? "caught_up" : "running",
+          status: nextBatch === 0 ? "caught_up" : "pending",
           attempts: 0,
           lastError: null,
           state: {

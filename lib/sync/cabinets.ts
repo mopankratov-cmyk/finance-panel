@@ -238,7 +238,9 @@ export async function discoverCabinetProducts(
     if (db && !result.caughtUp) {
       await writeWbSyncState(db, target.cabinetId, "product-scope", {
         cursor: JSON.stringify(result.cursor),
-        status: "running",
+        // Пагинация безопасно остановилась и сохранила курсор; следующий
+        // запуск может продолжить сразу, не ожидая истечения watchdog lease.
+        status: "pending",
         attempts: 0,
         lastError: null,
         state: { totalScanned, allowedCount, norviaCount, rioBoxCount, lastRunAt: new Date().toISOString(), caughtUp: false },

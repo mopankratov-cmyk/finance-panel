@@ -55,7 +55,7 @@ test("funnel route defers WB 429 without writing a fatal sync error", () => {
   const source = readFileSync(new URL("../app/api/sync/funnel/route.ts", import.meta.url), "utf8");
   assert.match(source, /isWbGlobalRateLimit\(res\.status, message\)/);
   assert.match(source, /status: "rate_limited"/);
-  assert.match(source, /status: "running"/);
+  assert.match(source, /cursor: String\(startB\), status: "pending"/);
   assert.match(source, /errors\.length \? \(errors\.join\("; "\) \+ note\)\.trim\(\) : null/);
 });
 

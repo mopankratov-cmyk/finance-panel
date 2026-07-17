@@ -31,6 +31,29 @@ export function syncErrorMessage(payload: unknown, fallback = "Ошибка си
   return fallback;
 }
 
+export function syncDeferredMessage(payload: unknown): string | null {
+  const body = asSyncPayload(payload);
+  const candidates = [body, asSyncPayload(body.result)];
+
+  for (const candidate of candidates) {
+    const rotated = Array.isArray(candidate.rotated)
+      ? candidate.rotated.filter((value): value is string => typeof value === "string" && !!value)
+      : [];
+    const alreadyRunning = rotated.filter((value) => value.includes("уже выполняется"));
+    if (alreadyRunning.length) {
+      return `Синхронизация уже выполняется: ${alreadyRunning.join(" · ")}. Повторите через несколько минут — блокировка снимется автоматически.`;
+    }
+
+    const progress = Array.isArray(candidate.progress) ? candidate.progress : [];
+    const rateLimited = progress.some((value) => asSyncPayload(value).status === "rate_limited");
+    if (rateLimited) {
+      return "WB временно ограничил частоту запросов. Данные автоматически продолжат догружаться в следующем цикле.";
+    }
+  }
+
+  return null;
+}
+
 function hasErrorList(body: SyncPayload): boolean {
   return Array.isArray(body.errors) && body.errors.some((value) => typeof value === "string" && !!value);
 }
