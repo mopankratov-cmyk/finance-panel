@@ -34,7 +34,7 @@ const r1 = (v: number) => Math.round(v * 10) / 10;
 async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions) {
   return loadHourlyDashboard(
     "wb-sklejki",
-    { cabinetId, schema: 4 },
+    { cabinetId, schema: 5 },
     async () => {
   // 1) Один общий часовой снимок карточек для PIM, поставок и склеек.
   //    У scoped-кабинетов он ищет только разрешённые nmID, не обходит весь чужой каталог.
@@ -183,6 +183,7 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
       img_url: wbCardImageUrl(c.nmID),
       shop: c._shop || "Магазин",
       shows_7d: views,
+      orders_count_7d: oc,
       orders_sum_7d: Math.round(os),
       adv_spend_7d: Math.round(spent),
       adv_spend_14d: Math.round(spent14.get(c.nmID) ?? 0),

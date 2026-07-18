@@ -104,9 +104,10 @@ function SkuCard({ group, sku, verdictVisible = true }: { group: SklejkiGroup; s
 
       {sku.signal === "Без трафика" ? <div className="mt-1.5"><span className="inline-block rounded bg-red-200 px-1.5 py-0.5 text-[10px] font-bold text-red-800">⚠ Нет трафика</span></div> : null}
 
-      <div className="mt-2 grid grid-cols-3 gap-x-2 gap-y-2">
+      <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-4">
         <Metric label="Показы" value={sku.shows_7d ? fmt(sku.shows_7d) : "—"} />
-        <Metric label="Заказы" value={sku.orders_sum_7d ? money(sku.orders_sum_7d) : "—"} />
+        <Metric label="Заказы, шт" value={sku.orders_count_7d ? fmt(sku.orders_count_7d) : "—"} />
+        <Metric label="Заказы, ₽" value={sku.orders_sum_7d ? money(sku.orders_sum_7d) : "—"} />
         <Metric label="Расход" value={money(sku.adv_spend_7d)} tone={sku.adv_spend_7d > 0 && !sku.orders_sum_7d ? "text-red-600" : undefined} />
         <Metric label="ДРР" value={percent(sku.drr_7d)} tone={sku.drr_7d == null || sku.drr_7d > 10 ? "text-red-600" : undefined} />
         <Metric label="Маржа" title="Маржа до ДРР" value={sku.margin_before_drr == null ? "—" : `${sku.margin_before_drr}%`} tone={sku.margin_before_drr != null && sku.margin_before_drr < 0 ? "text-red-600" : sku.margin_before_drr != null && sku.margin_before_drr < 15 ? "text-amber-600" : undefined} />
@@ -122,7 +123,7 @@ function GroupCard({ group }: { group: SklejkiGroup }) {
   const totals = glueTotals(group);
   const summary = glueSummary(group);
   return (
-    <article className="w-[340px] shrink-0 rounded-lg border border-purple-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+    <article className="w-[380px] max-w-[calc(100vw-2rem)] shrink-0 rounded-lg border border-purple-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-base font-bold text-slate-900">{group.shop_label || "—"}</span>
         {group.category_label ? <><span className="text-base font-bold text-slate-900">·</span><span className="min-w-0 truncate text-base font-bold text-slate-900">{group.category_label}</span></> : null}
@@ -132,11 +133,12 @@ function GroupCard({ group }: { group: SklejkiGroup }) {
         {group.feedback_count && !group.hide_group_rating ? <span className="ml-auto text-xs"><span className="text-amber-500">★</span> <b>{group.valuation}</b> <span className="text-slate-500">({group.feedback_count} общих)</span></span> : null}
       </div>
 
-      <div className="mb-2 grid grid-cols-4 divide-x divide-slate-100 border-b-2 border-slate-200 pb-2">
-        <div className="pr-1.5"><Metric label="Показы" value={totals.shows ? fmt(totals.shows) : "—"} /></div>
-        <div className="px-1.5"><Metric label="Заказы" value={money(totals.orders, true)} /></div>
-        <div className="px-1.5"><Metric label="Расход" value={money(totals.spend, true)} tone={totals.spend > 0 && !totals.orders ? "text-red-600" : undefined} /></div>
-        <div className="pl-1.5"><Metric label="ДРР" value={percent(totals.drr)} tone={totals.drr == null || totals.drr > 10 ? "text-red-600" : undefined} /></div>
+      <div className="mb-2 grid grid-cols-2 gap-x-3 gap-y-2 border-b-2 border-slate-200 pb-2 sm:grid-cols-3">
+        <Metric label="Показы" value={totals.shows ? fmt(totals.shows) : "—"} />
+        <Metric label="Заказы, шт" value={totals.orders_count ? fmt(totals.orders_count) : "—"} />
+        <Metric label="Заказы, ₽" value={money(totals.orders_sum, true)} />
+        <Metric label="Расход" value={money(totals.spend, true)} tone={totals.spend > 0 && !totals.orders_sum ? "text-red-600" : undefined} />
+        <Metric label="ДРР" value={percent(totals.drr)} tone={totals.drr == null || totals.drr > 10 ? "text-red-600" : undefined} />
       </div>
 
       <div className="space-y-1">{glueSortedSkus(group).map((sku) => <SkuCard key={sku.nm} group={group} sku={sku} />)}</div>

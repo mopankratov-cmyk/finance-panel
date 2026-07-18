@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { calculateMarginBeforeDrrPct, closedMoscowDates, glueSortedGroups, glueTotals, glueVerdict, loadSklejkiCommissionForCabinet, mapSklejkiMarginBeforeDrr, sklejkiPeriod, type SklejkiGroup, type SklejkiSkuMetrics } from "../lib/wb/sklejki";
 import type { WbCommission } from "../lib/wb/commissions";
@@ -10,6 +11,7 @@ const sku = (patch: Partial<SklejkiSkuMetrics>): SklejkiSkuMetrics => ({
   img_url: "",
   shop: "Оптима",
   shows_7d: 0,
+  orders_count_7d: 0,
   orders_sum_7d: 0,
   adv_spend_7d: 0,
   adv_spend_14d: 0,
@@ -156,9 +158,15 @@ test("Inferno glue verdict separates budget drain, expensive ads and ballast", (
 
 test("glue totals calculate DRR from the whole group", () => {
   assert.deepEqual(glueTotals(group(
-    sku({ shows_7d: 100, orders_sum_7d: 1_000, adv_spend_7d: 100 }),
-    sku({ nm: 2, shows_7d: 200, orders_sum_7d: 3_000, adv_spend_7d: 300 }),
-  )), { shows: 300, orders: 4_000, spend: 400, sales: 0, drr: 10 });
+    sku({ shows_7d: 100, orders_count_7d: 2, orders_sum_7d: 1_000, adv_spend_7d: 100 }),
+    sku({ nm: 2, shows_7d: 200, orders_count_7d: 3, orders_sum_7d: 3_000, adv_spend_7d: 300 }),
+  )), { shows: 300, orders_count: 5, orders_sum: 4_000, spend: 400, sales: 0, drr: 10 });
+});
+
+test("glue totals use sales before order sum as the monetary DRR denominator", () => {
+  assert.equal(glueTotals(group(
+    sku({ orders_count_7d: 2, orders_sum_7d: 1_000, sales_calc_7d: 500, adv_spend_7d: 100 }),
+  )).drr, 20);
 });
 
 test("active glue groups are sorted before inactive groups", () => {
@@ -173,4 +181,9 @@ test("sklejki period contains seven closed Moscow days", () => {
   const now = Date.parse("2026-07-14T00:30:00.000Z");
   assert.deepEqual(closedMoscowDates(7, now), ["2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13"]);
   assert.equal(sklejkiPeriod(now), "07.07–13.07");
+});
+
+test("sklejki cache schema invalidates snapshots without order counts", async () => {
+  const route = await readFile(new URL("../app/api/sklejki/route.ts", import.meta.url), "utf8");
+  assert.match(route, /\{ cabinetId, schema: 5 \}/);
 });

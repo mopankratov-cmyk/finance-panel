@@ -14,6 +14,7 @@ export interface SklejkiSkuMetrics {
   img_url: string;
   shop: string;
   shows_7d: number;
+  orders_count_7d: number;
   orders_sum_7d: number;
   adv_spend_7d: number;
   adv_spend_14d: number;
@@ -174,11 +175,12 @@ export function glueSummary(group: SklejkiGroup) {
 export function glueTotals(group: SklejkiGroup) {
   const totals = group.skus.reduce((result, sku) => ({
     shows: result.shows + number(sku.shows_7d),
-    orders: result.orders + number(sku.orders_sum_7d),
+    orders_count: result.orders_count + number(sku.orders_count_7d),
+    orders_sum: result.orders_sum + number(sku.orders_sum_7d),
     spend: result.spend + number(sku.adv_spend_7d),
     sales: result.sales + number(sku.sales_calc_7d),
-  }), { shows: 0, orders: 0, spend: 0, sales: 0 });
-  const denominator = totals.sales || totals.orders;
+  }), { shows: 0, orders_count: 0, orders_sum: 0, spend: 0, sales: 0 });
+  const denominator = totals.sales || totals.orders_sum;
   return {
     ...totals,
     drr: denominator > 0 ? Math.round((totals.spend / denominator) * 1_000) / 10 : totals.spend > 0 ? null : 0,
@@ -200,7 +202,7 @@ function glueGroupSortKey(group: SklejkiGroup) {
   ).length;
   const activityRank = summary.carry > 0
     ? 3
-    : totals.orders > 0
+    : totals.orders_sum > 0
       ? 2
       : totals.shows > 0 || totals.spend > 0
         ? 1
@@ -209,7 +211,7 @@ function glueGroupSortKey(group: SklejkiGroup) {
     activityRank,
     carry: summary.carry,
     activeSkuCount,
-    orders: totals.orders,
+    orders_sum: totals.orders_sum,
     shows: totals.shows,
     spend: totals.spend,
     skuCount: group.skus.length,
@@ -223,7 +225,7 @@ export function glueSortedGroups(groups: SklejkiGroup[]) {
     .sort((a, b) =>
       b.key.activityRank - a.key.activityRank
       || b.key.carry - a.key.carry
-      || b.key.orders - a.key.orders
+      || b.key.orders_sum - a.key.orders_sum
       || b.key.shows - a.key.shows
       || b.key.spend - a.key.spend
       || b.key.activeSkuCount - a.key.activeSkuCount
