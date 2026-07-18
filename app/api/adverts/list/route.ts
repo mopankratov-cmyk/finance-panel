@@ -8,11 +8,15 @@ import { getActiveWbCabinets, getWbCabinet, resolveWbToken } from "@/lib/wb/cabi
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadScopedAdvertReportRows } from "@/lib/adverts/scopedReport";
+import { aggregateClosedAdvertMetrics, getClosedMoscowPeriod } from "@/lib/adverts/closedPeriodMetrics";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const ADV_BASE = "https://advert-api.wildberries.ru";
+const CAMPAIGN_PAGE_SIZE = 1000;
+const CAMPAIGN_MAX_PAGES = 30;
 
 interface RpcRow {
   nm_id: number;
@@ -31,6 +35,12 @@ interface StatRow {
   clicks: number;
   sum_orders: number;
 }
+interface NmDailyRow {
+  cabinet_id: string | null;
+  nm_id: number;
+  date: string;
+  spent: number;
+}
 interface ChangeRow {
   advert_id: number;
   old_bid: number | null;
@@ -47,6 +57,46 @@ interface AdvertRow {
   bid_cpm_rub?: number | null;
   last_stats_synced_at?: string | null;
   nm_ids: number[] | null;
+}
+
+interface CampaignPageError {
+  message: string;
+  code?: string;
+}
+
+interface CampaignPage<Row> {
+  data: Row[] | null;
+  error: CampaignPageError | null;
+}
+
+function createCampaignPageError(error: CampaignPageError, label: string): Error & { code?: string } {
+  return Object.assign(new Error(`${label}: ${error.message}`), error.code ? { code: error.code } : {});
+}
+
+function campaignPageErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+  return typeof error.code === "string" ? error.code : undefined;
+}
+
+async function loadAllCampaignPages<Row>(
+  fetchPage: (from: number, to: number) => PromiseLike<CampaignPage<Row>>,
+  label: string,
+): Promise<Row[]> {
+  const pageSize = CAMPAIGN_PAGE_SIZE;
+  const maxPages = CAMPAIGN_MAX_PAGES;
+  const rows: Row[] = [];
+
+  for (let page = 0; page < maxPages; page++) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const result = await fetchPage(from, to);
+    if (result.error) throw createCampaignPageError(result.error, label);
+    const batch = result.data ?? [];
+    rows.push(...batch);
+    if (batch.length < pageSize) return rows;
+  }
+
+  throw new Error(`${label} превысил безопасный лимит ${pageSize * maxPages} строк`);
 }
 
 // Контракт inferno: {ok, articles:[{nm,art,photo,spend,campaigns:[{...}]}], balance, count, spend_today_total, spend_yest_total, today, yest, cap_rub}
@@ -67,10 +117,63 @@ export async function GET(request: NextRequest) {
     .filter((cabinet) => cabinet.allowed_nm_ids !== null)
     .map((cabinet) => [cabinet.id, new Set(cabinet.allowed_nm_ids ?? [])]));
 
-  let advQ = db.from("wb_adverts").select("advert_id, cabinet_id, name, status, daily_budget, bid_cpm_rub, last_stats_synced_at, nm_ids").in("status", [9, 11]);
-  let statQ = db.from("wb_advert_stats").select("advert_id, date, sum_spent, views, clicks, sum_orders").gte("date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)).limit(5000);
+  const metricsPeriod7Closed = getClosedMoscowPeriod();
+  const legacyStatsDateFrom = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+  const statsDateFrom = legacyStatsDateFrom < metricsPeriod7Closed.dateFrom ? legacyStatsDateFrom : metricsPeriod7Closed.dateFrom;
   let changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
-  if (cabinetId) { advQ = advQ.eq("cabinet_id", cabinetId); statQ = statQ.eq("cabinet_id", cabinetId); changesQ = changesQ.eq("cabinet_id", cabinetId); }
+  if (cabinetId) changesQ = changesQ.eq("cabinet_id", cabinetId);
+
+  const advertRowsPromise = (async (): Promise<AdvertRow[]> => {
+    try {
+      return await loadAllCampaignPages<AdvertRow>((from, to) => {
+        let query = db
+          .from("wb_adverts")
+          .select("advert_id, cabinet_id, name, status, daily_budget, bid_cpm_rub, last_stats_synced_at, nm_ids")
+          .in("status", [7, 9, 11])
+          .order("advert_id", { ascending: true })
+          .range(from, to);
+        if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+        return query;
+      }, "Рекламные кампании WB");
+    } catch (error) {
+      if (campaignPageErrorCode(error) !== "42703") throw error;
+      return loadAllCampaignPages<AdvertRow>((from, to) => {
+        let query = db
+          .from("wb_adverts")
+          .select("advert_id, cabinet_id, name, status, daily_budget, nm_ids")
+          .in("status", [7, 9, 11])
+          .order("advert_id", { ascending: true })
+          .range(from, to);
+        if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+        return query;
+      }, "Рекламные кампании WB (legacy)");
+    }
+  })();
+
+  const statRowsPromise = loadAllSupabasePages<StatRow>((from, to) => {
+    let query = db
+      .from("wb_advert_stats")
+      .select("advert_id, date, sum_spent, views, clicks, sum_orders")
+      .gte("date", statsDateFrom)
+      .order("date", { ascending: true })
+      .order("advert_id", { ascending: true })
+      .range(from, to);
+    if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+    return query;
+  }, { maxPages: 100, label: "Статистика рекламных кампаний WB" });
+
+  const nmDailyRowsPromise = loadAllSupabasePages<NmDailyRow>((from, to) => {
+    let query = db
+      .from("wb_advert_nm_daily")
+      .select("cabinet_id, nm_id, date, spent")
+      .gte("date", metricsPeriod7Closed.dateFrom)
+      .lte("date", metricsPeriod7Closed.dateTo)
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to);
+    if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+    return query;
+  }, { maxPages: 100, label: "Расход рекламы WB по SKU" });
 
   // Баланс продвижения зависит только от cabinetId — считаем его цепочку параллельно
   // с тяжёлыми БД-запросами, а не после них (иначе латентность складывается).
@@ -102,8 +205,9 @@ export async function GET(request: NextRequest) {
       })();
 
   let queryResults: [
-    Awaited<typeof advQ>,
-    Awaited<typeof statQ>,
+    AdvertRow[],
+    StatRow[],
+    NmDailyRow[],
     RpcRow[],
     Awaited<typeof changesQ>,
     Awaited<ReturnType<typeof getWbCommissionForCabinet>>,
@@ -111,8 +215,9 @@ export async function GET(request: NextRequest) {
   ] | null = null;
   try {
     queryResults = await Promise.all([
-      advQ,
-      statQ,
+      advertRowsPromise,
+      statRowsPromise,
+      nmDailyRowsPromise,
       reportPromise,
       changesQ,
       getWbCommissionForCabinet(cabinetId, 30, { allowLiveFallback: false }),
@@ -124,17 +229,7 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
-  const [advRes, statRes, reportRows, changesRes, commission, balance] = queryResults;
-  let advertRows = (advRes.data ?? []) as AdvertRow[];
-  let advertError = advRes.error;
-  if (advRes.error?.code === "42703") {
-    let legacy = db.from("wb_adverts").select("advert_id, cabinet_id, name, status, daily_budget, nm_ids").in("status", [9, 11]);
-    if (cabinetId) legacy = legacy.eq("cabinet_id", cabinetId);
-    const legacyRes = await legacy;
-    advertRows = (legacyRes.data ?? []) as AdvertRow[];
-    advertError = legacyRes.error;
-  }
-  if (advertError) return NextResponse.json({ ok: false, error: advertError.message });
+  const [advertRows, statRows, nmDailyRows, reportRows, changesRes, commission, balance] = queryResults;
 
   // «Сегодня/вчера» — календарные даты, а не последняя синканная. Если сегодняшний
   // синк рекламы ещё не прошёл — покажем 0 за реальное сегодня, а не подменим его вчерашним днём.
@@ -143,7 +238,12 @@ export async function GET(request: NextRequest) {
 
   // агрегаты по кампании за 14д + spend today/yest
   const byAdv = new Map<number, { spent14: number; views: number; clicks: number; ordSum: number; today: number; yest: number }>();
-  for (const s of (statRes.data ?? []) as StatRow[]) {
+  const statRowsByAdvert = new Map<number, StatRow[]>();
+  const daysByAdv = new Map<number, { ts: string; spend: number; clicks: number; views: number; orders: number }[]>();
+  for (const s of statRows) {
+    const groupedRows = statRowsByAdvert.get(s.advert_id) ?? [];
+    groupedRows.push(s);
+    statRowsByAdvert.set(s.advert_id, groupedRows);
     const a = byAdv.get(s.advert_id) ?? { spent14: 0, views: 0, clicks: 0, ordSum: 0, today: 0, yest: 0 };
     a.spent14 += Number(s.sum_spent ?? 0);
     a.views += Number(s.views ?? 0);
@@ -153,11 +253,6 @@ export async function GET(request: NextRequest) {
     if (d === today) a.today += Number(s.sum_spent ?? 0);
     if (d === yest) a.yest += Number(s.sum_spent ?? 0);
     byAdv.set(s.advert_id, a);
-  }
-
-  // посуточные ряды по кампании для панели статистики (adverts.sel.days)
-  const daysByAdv = new Map<number, { ts: string; spend: number; clicks: number; views: number; orders: number }[]>();
-  for (const s of (statRes.data ?? []) as StatRow[]) {
     const arr = daysByAdv.get(s.advert_id) ?? [];
     arr.push({
       ts: String(s.date).slice(0, 10),
@@ -169,6 +264,20 @@ export async function GET(request: NextRequest) {
     daysByAdv.set(s.advert_id, arr);
   }
   for (const arr of daysByAdv.values()) arr.sort((a, b) => a.ts.localeCompare(b.ts));
+
+  const closedMetricsByAdv = new Map<number, ReturnType<typeof aggregateClosedAdvertMetrics>>();
+  for (const [advertId, rows] of statRowsByAdvert) {
+    closedMetricsByAdv.set(advertId, aggregateClosedAdvertMetrics(rows, metricsPeriod7Closed));
+  }
+
+  const skuSpend7ClosedByNm = new Map<number, number>();
+  for (const row of nmDailyRows) {
+    const rowAllowedNmIds = cabinetId
+      ? allowedNmIds
+      : (allowedByCabinet.get(String(row.cabinet_id ?? "")) ?? null);
+    if (!requestAllowsNm(rowAllowedNmIds, row.nm_id)) continue;
+    skuSpend7ClosedByNm.set(row.nm_id, (skuSpend7ClosedByNm.get(row.nm_id) ?? 0) + Number(row.spent ?? 0));
+  }
 
   const artByNm = new Map<number, string>();
   const reportByNm = new Map<number, RpcRow>();
@@ -190,7 +299,7 @@ export async function GET(request: NextRequest) {
   // группируем кампании по основному nm → article. spendYestTotal считаем в ТОМ ЖЕ
   // проходе и над той же популяцией (только кампании с nm), что и spendTodayTotal —
   // иначе «% к вчера» сравнивает разные множества кампаний.
-  const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; campaigns: Record<string, unknown>[] }>();
+  const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; spent_sku_7_closed: number; campaigns: Record<string, unknown>[] }>();
   let spendYestTotal = 0;
   for (const a of advertRows) {
     const nmIds = (a.nm_ids as number[]) ?? [];
@@ -200,6 +309,7 @@ export async function GET(request: NextRequest) {
       : (allowedByCabinet.get(String(a.cabinet_id ?? "")) ?? null);
     if (!nm || !requestAllowsNm(rowAllowedNmIds, nm)) continue;
     const st = byAdv.get(a.advert_id) ?? { spent14: 0, views: 0, clicks: 0, ordSum: 0, today: 0, yest: 0 };
+    const closed = closedMetricsByAdv.get(a.advert_id) ?? aggregateClosedAdvertMetrics([], metricsPeriod7Closed);
     spendYestTotal += st.yest;
     const report = reportByNm.get(nm);
     const rate = commission.byNm.get(nm);
@@ -248,6 +358,14 @@ export async function GET(request: NextRequest) {
       spent_14: Math.round(st.spent14),
       ad_revenue_14: Math.round(st.ordSum),
       drr: economics.currentDrr,
+      spent_7_closed: Math.round(closed.spent),
+      ad_revenue_7_closed: Math.round(closed.attributedRevenue),
+      drr_attributed_7_closed: closed.attributedDrr,
+      drr_attributed_7_status: closed.status,
+      metrics_period_7_closed: {
+        date_from: metricsPeriod7Closed.dateFrom,
+        date_to: metricsPeriod7Closed.dateTo,
+      },
       photo: wbCardImageUrl(nm),
       category: "",
       hours: [],
@@ -269,7 +387,7 @@ export async function GET(request: NextRequest) {
     };
     let g = artMap.get(nm);
     if (!g) {
-      g = { nm, art: artByNm.get(nm) || String(nm), photo: wbCardImageUrl(nm), spend: 0, campaigns: [] };
+      g = { nm, art: artByNm.get(nm) || String(nm), photo: wbCardImageUrl(nm), spend: 0, spent_sku_7_closed: Math.round(skuSpend7ClosedByNm.get(nm) ?? 0), campaigns: [] };
       artMap.set(nm, g);
     }
     g.spend += Math.round(st.today);

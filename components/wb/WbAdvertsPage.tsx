@@ -56,6 +56,11 @@ interface Campaign {
   spent_14: number;
   ad_revenue_14: number;
   drr: number | null;
+  spent_7_closed: number;
+  ad_revenue_7_closed: number;
+  drr_attributed_7_closed: number | null;
+  drr_attributed_7_status: "ready" | "no_attributed_orders" | "no_spend";
+  metrics_period_7_closed: { date_from: string; date_to: string };
   bid_type?: string;
   payment?: string;
   days: DayPoint[];
@@ -70,6 +75,7 @@ interface Article {
   art: string;
   photo: string;
   spend: number;
+  spent_sku_7_closed: number;
   campaigns: Campaign[];
 }
 
@@ -90,12 +96,29 @@ interface CampaignRow {
   campaign: Campaign;
 }
 
-const ROW_HEIGHT = 64;
+const ROW_HEIGHT = 76;
 const rub = (value: number | null) => value == null ? "—" : `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 const pct = (value: number | null) => value == null ? "—" : `${Math.round(value * 10) / 10}%`;
 
 function drrTone(value: number | null) {
   return METRIC_BADGE_TONE[marketplaceMetricStatus("drrAttributed", value)];
+}
+
+function closedDrrLabel(campaign: Campaign) {
+  if (campaign.drr_attributed_7_status === "no_attributed_orders") return "∞";
+  return pct(campaign.drr_attributed_7_closed);
+}
+
+function closedDrrTitle(campaign: Campaign) {
+  if (campaign.drr_attributed_7_status === "no_attributed_orders") return "Нет атрибутированных заказов: расход есть, выручка с рекламы равна нулю";
+  if (campaign.drr_attributed_7_status === "no_spend") return "За 7 закрытых дней расхода не было";
+  return `${MARKETPLACE_METRICS.drrAttributed.definition}. ДРР рекламы не равно ДРР к заказам во Воронке: здесь знаменатель — только атрибутированная рекламой выручка.`;
+}
+
+function closedDrrTone(campaign: Campaign) {
+  if (campaign.drr_attributed_7_status === "no_attributed_orders") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (campaign.drr_attributed_7_status === "no_spend") return "border-slate-200 bg-slate-50 text-slate-500";
+  return drrTone(campaign.drr_attributed_7_closed);
 }
 
 function actionLabel(economics: AdvertEconomics) {
@@ -256,13 +279,13 @@ export function WbAdvertsPage() {
               {rows.slice(rowWindow.start, rowWindow.end).map(({ article, campaign }) => {
                 const active = selectedId === campaign.id;
                 return (
-                  <button type="button" key={campaign.id} onClick={() => setSelectedId(campaign.id)} className={`flex h-[64px] w-full items-center gap-2 border-b border-slate-100 px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}>
+                  <button type="button" key={campaign.id} onClick={() => setSelectedId(campaign.id)} className={`flex h-[76px] w-full items-center gap-2 border-b border-slate-100 px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}>
                     <WbProductImage nm={article.nm} src={article.photo} loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${campaign.enabled ? "bg-emerald-400" : "bg-amber-400"}`} /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
                       <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">CPM</span><span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">единая</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
                     </div>
-                    <div className="shrink-0 text-right"><div className="text-[10px] font-semibold tabular-nums text-slate-700">{rub(campaign.spend_today)}</div><div title={MARKETPLACE_METRICS.drrAttributed.definition} className={`mt-1 rounded px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${drrTone(campaign.drr)}`}>ДРР рекламы {pct(campaign.drr)}</div></div>
+                    <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-violet-700">Расход SKU 7д {rub(article.spent_sku_7_closed)}</div><div title={closedDrrTitle(campaign)} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                   </button>
                 );
@@ -285,9 +308,9 @@ export function WbAdvertsPage() {
 
               <div className="grid grid-cols-2 gap-2 py-4 sm:grid-cols-4">
                 {[
-                  ["Расход 14 дней", rub(selected.campaign.spent_14)],
-                  ["Выручка с рекламы", rub(selected.campaign.ad_revenue_14)],
-                  ["ДРР рекламы / break-even", `${pct(selected.campaign.economics.currentDrr)} / ${pct(selected.campaign.economics.breakEvenDrr)}`],
+                  ["Расход · 14 дней, атрибуция WB", rub(selected.campaign.spent_14)],
+                  ["Выручка · 14 дней, атрибуция WB", rub(selected.campaign.ad_revenue_14)],
+                  ["ДРР / break-even · 14 дней, атрибуция WB", `${pct(selected.campaign.economics.currentDrr)} / ${pct(selected.campaign.economics.breakEvenDrr)}`],
                   ["Прибыль после рекламы", rub(selected.campaign.economics.profitAfterAds)],
                   ["ROAS / break-even", `${selected.campaign.economics.currentRoas ?? "—"}× / ${selected.campaign.economics.breakEvenRoas ?? "—"}×`],
                   ["Запас", selected.campaign.economics.daysCover == null ? "—" : `${selected.campaign.economics.daysCover} дн.`],
@@ -295,6 +318,8 @@ export function WbAdvertsPage() {
                   ["Уверенность", `${selected.campaign.economics.confidencePct}%`],
                 ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-sm font-semibold tabular-nums text-slate-700">{value}</div></div>)}
               </div>
+
+              <p className="mb-3 text-[10px] leading-4 text-slate-500">ДРР рекламы не равно ДРР к заказам во Воронке: в Рекламе знаменатель — только выручка, атрибутированная рекламой WB.</p>
 
               <section className={`mb-3 rounded-xl border p-3 ${actionTone(selected.campaign.economics.action)}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
