@@ -18,6 +18,7 @@ import { useSort, sortGlyph } from "@/lib/useSort";
 import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
+import { formatUnitPeriod, getDefaultUnitPeriod, parseUnitPeriodQuery } from "@/lib/unit/period";
 
 interface UnitData {
   headers: string[];
@@ -89,6 +90,9 @@ export function WbUnitPage() {
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
   const { categories, byArticle } = useCategoryMap();
+  const [appliedPeriod, setAppliedPeriod] = useState(getDefaultUnitPeriod);
+  const [draftPeriod, setDraftPeriod] = useState(getDefaultUnitPeriod);
+  const [periodError, setPeriodError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ready || cabinetsLoading) return;
@@ -109,7 +113,7 @@ export function WbUnitPage() {
     setLoading(true);
     setError(null);
     const refreshParam = retryKey > 0 ? "&refresh=1" : "";
-    fetch(`/api/unit/table?cabinet=${encodeURIComponent(cabinetId || "all")}${refreshParam}`, { cache: "no-store", signal: controller.signal })
+    fetch(`/api/unit/table?cabinet=${encodeURIComponent(cabinetId || "all")}&from=${encodeURIComponent(appliedPeriod.from)}&to=${encodeURIComponent(appliedPeriod.to)}${refreshParam}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = (await response.json()) as UnitData;
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
@@ -133,7 +137,17 @@ export function WbUnitPage() {
       window.clearTimeout(deadline);
       controller.abort();
     };
-  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, retryKey]);
+  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, retryKey, appliedPeriod.from, appliedPeriod.to]);
+
+  const applyPeriod = () => {
+    try {
+      const next = parseUnitPeriodQuery(new URLSearchParams({ from: draftPeriod.from, to: draftPeriod.to }));
+      setAppliedPeriod(next);
+      setPeriodError(null);
+    } catch (cause) {
+      setPeriodError(cause instanceof Error ? cause.message : "Некорректный период");
+    }
+  };
 
   const filteredIndices = useMemo(() => (data?.rows ?? []).map((_, index) => index).filter((index) => {
     if (!category) return true;
@@ -234,7 +248,7 @@ export function WbUnitPage() {
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Gem}
-        title="Unit fact неделя"
+        title="Unit fact"
         description={data?.meta_text || "Цена до СПП − себестоимость − комиссия − эквайринг − ДРР − налог"}
         actions={
           <>
@@ -256,6 +270,17 @@ export function WbUnitPage() {
       />
 
       <div className="px-2 py-3 sm:px-6">
+        <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3">
+          <label className="text-[11px] font-medium text-slate-600">С
+            <input type="date" value={draftPeriod.from} onChange={(event) => setDraftPeriod((current) => ({ ...current, from: event.target.value }))} className="mt-1 block min-h-10 rounded-lg border border-slate-200 px-2 text-xs" />
+          </label>
+          <label className="text-[11px] font-medium text-slate-600">По
+            <input type="date" value={draftPeriod.to} onChange={(event) => setDraftPeriod((current) => ({ ...current, to: event.target.value }))} className="mt-1 block min-h-10 rounded-lg border border-slate-200 px-2 text-xs" />
+          </label>
+          <button type="button" onClick={applyPeriod} className="min-h-10 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-700">Применить</button>
+          <span className="pb-2 text-xs text-slate-500">{formatUnitPeriod(appliedPeriod)}</span>
+          {periodError ? <span role="alert" className="w-full text-xs text-rose-600">{periodError}</span> : null}
+        </div>
         {message ? <div role="status" className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{message}</div> : null}
         {loading ? (
           <div className="rounded-xl border border-slate-200 bg-white p-3">

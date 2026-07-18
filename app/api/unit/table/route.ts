@@ -6,6 +6,7 @@ import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commiss
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
+import { formatUnitPeriod, parseUnitPeriodQuery, UNIT_PERIOD_TIMEZONE, unitPeriodCacheIdentity } from "@/lib/unit/period";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -27,10 +28,15 @@ interface RpcRow {
 // Целевые цены и маржу не публикуем, пока нет себестоимости и фактических ставок WB.
 // СПП %/Цена после СПП НЕ считаем — в БД нет (discount_percent ≠ СПП).
 export async function GET(req: NextRequest) {
+  const sp = new URL(req.url).searchParams;
+  let period;
+  try {
+    period = parseUnitPeriodQuery(sp);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Некорректный период" }, { status: 400 });
+  }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ headers: [], rows: [], img_urls: [] });
-
-  const sp = new URL(req.url).searchParams;
   const num = (k: string, def: number) => { const v = Number(sp.get(k)); return Number.isFinite(v) && sp.get(k) !== null ? v : def; };
   const taxPct = num("tax", 7);        // налог
   const ff = num("ff", 0);             // фулфилмент ₽/ед (нет per-SKU данных)
@@ -46,10 +52,10 @@ export async function GET(req: NextRequest) {
   try {
     const payload = await loadHourlyDashboard(
     "wb-unit-table",
-    { cabinetId: p_cabinet, taxPct, ff, targetMargin },
+    unitPeriodCacheIdentity({ cabinetId: p_cabinet, from: period.from, to: period.to, taxPct, ff, targetMargin }),
     async () => {
       const [rpcRes, costsRes, comm] = await Promise.all([
-        db.rpc("rnp_report", { p_cabinet }),
+        db.rpc("unit_report_period", { p_cabinet, p_from: period.from, p_to: period.to }),
         db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
         getWbCommissionForCabinet(p_cabinet, 30),
       ]);
@@ -108,7 +114,7 @@ export async function GET(req: NextRequest) {
       stock,                                // 5 Остаток + в пути
       blank(costKnown ? r0(cost) : null),   // 6 Себес ₽
       blank(price > 0 ? r0(price) : null),  // 7 Цена до СПП ₽
-      orders,                               // 8 Заказы/мес
+      orders,                               // 8 Заказы
       r0(rev),                              // 9 Выручка ₽
       buyoutPct != null ? r1(buyoutPct) : "", // 10 Выкуп %
       blank(rates.factual ? r1(rates.marketplacePct) : null), // 11 комиссия + логистика/хранение/прочие WB
@@ -132,7 +138,7 @@ export async function GET(req: NextRequest) {
   return {
     headers: [
       "", "", "Артикул", "Юрлицо", "SKU",
-      "Остаток + в пути", "Себес ₽", "Цена до СПП ₽", "Заказы/мес", "Выручка ₽",
+      "Остаток + в пути", "Себес ₽", "Цена до СПП ₽", "Заказы", "Выручка ₽",
       "Выкуп %", "Удержания WB %", "Удержания WB ₽", "Эквайринг ₽", "Реклама ₽",
       "ДРР %", "Налог ₽", "Маржа/ед ₽", "Маржа % до ДРР", "Вал % ПОСЛЕ ДРР",
       `Цена до СПП для ${targetMargin}% маржи`, "Дельта %",
@@ -142,7 +148,10 @@ export async function GET(req: NextRequest) {
     names,
     source_url: null,
     coverage: { total: totalRows, costsKnown, factualRatesKnown, complete: completeRows },
-    meta_text: `Юнит по ${totalRows} SKU · полный факт ${completeRows}/${totalRows} · себестоимость ${costsKnown}/${totalRows} · ставки WB ${factualRatesKnown}/${totalRows} · налог ${taxPct}% · за 30 дней`,
+    meta_text: `Юнит по ${totalRows} SKU · полный факт ${completeRows}/${totalRows} · себестоимость ${costsKnown}/${totalRows} · ставки WB ${factualRatesKnown}/${totalRows} · налог ${taxPct}% · ${formatUnitPeriod(period)}`,
+    periodFrom: period.from,
+    periodTo: period.to,
+    timezone: UNIT_PERIOD_TIMEZONE,
   };
     },
     { forceRefresh, backgroundRefresh },
