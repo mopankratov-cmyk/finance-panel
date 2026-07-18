@@ -7,6 +7,7 @@ import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductSco
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
+import { percentRatio } from "@/lib/wb/funnelMetrics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -59,7 +60,8 @@ export async function GET(request: NextRequest) {
 
   const payload = await loadHourlyDashboard(
     "wb-seo-skus",
-    { cabinetId, start: period.start, end: period.end, days, schema: 3 },
+    // Cache schema: 3 used advertising clicks as a fallback conversion denominator.
+    { cabinetId, start: period.start, end: period.end, days, schema: 4 },
     async () => {
       const [funnel, ad, totals, costs, dailySku] = await Promise.all([
         loadAllSupabasePages<FunnelRow>((from, to) => {
@@ -187,13 +189,13 @@ export async function GET(request: NextRequest) {
       name: nameByArt.get(art) || art,
       // окно 7 дней
       shows_7d: w.views, opens_7d: w.clicks || w.open, clicks_7d: w.clicks, ctr_7d: pct(w.clicks, w.views), cart_7d: w.cart,
-      cv_cart_7d: pct(w.cart, w.clicks || w.open), cv_order_7d: pct(w.oc, w.cart),
+      cv_cart_7d: percentRatio(w.cart, w.open), cv_order_7d: pct(w.oc, w.cart),
       orders_count_7d: w.oc, orders_sum_7d: Math.round(w.os),
       margin_before_drr_7d: mb7, drr_7d: drr7,
       // выбранное окно из ?window=1|7|30
       shows_window: w.views, opens_window: w.clicks || w.open, clicks_window: w.clicks, ctr_window: pct(w.clicks, w.views), cart_window: w.cart,
       open_card_window: w.open,
-      cv_cart_window: pct(w.cart, w.clicks || w.open), cv_order_window: pct(w.oc, w.cart),
+      cv_cart_window: percentRatio(w.cart, w.open), cv_order_window: pct(w.oc, w.cart),
       orders_count_window: w.oc, orders_sum_window: Math.round(w.os),
       margin_before_drr_window: mb7, drr_window: drr7,
       // окно вчера
