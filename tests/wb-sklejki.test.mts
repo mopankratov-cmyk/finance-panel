@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { closedMoscowDates, glueSortedGroups, glueTotals, glueVerdict, sklejkiPeriod, type SklejkiGroup, type SklejkiSkuMetrics } from "../lib/wb/sklejki";
+import { calculateMarginBeforeDrrPct, closedMoscowDates, glueSortedGroups, glueTotals, glueVerdict, loadSklejkiCommissionForCabinet, mapSklejkiMarginBeforeDrr, sklejkiPeriod, type SklejkiGroup, type SklejkiSkuMetrics } from "../lib/wb/sklejki";
+import type { WbCommission } from "../lib/wb/commissions";
 
 const sku = (patch: Partial<SklejkiSkuMetrics>): SklejkiSkuMetrics => ({
   nm: 1,
@@ -22,6 +23,114 @@ const sku = (patch: Partial<SklejkiSkuMetrics>): SklejkiSkuMetrics => ({
 });
 
 const group = (...skus: SklejkiSkuMetrics[]): SklejkiGroup => ({ imt_id: 10, shop_label: "Оптима", category_label: "Кремы", skus });
+
+test("margin before DRR includes factual WB rates, tax and warehouse expenses", () => {
+  const margin = calculateMarginBeforeDrrPct({
+    price: 322.70,
+    cost: 34.88,
+    warehouseExpenses: 9.57,
+    marketplacePct: 50.2,
+    acquiringPct: 2.5,
+    ratesFactual: true,
+  });
+  assert.ok(margin != null && Math.abs(margin - 26.55) < 0.05);
+});
+
+test("margin before DRR does not accept advertising and supports zero warehouse expenses", () => {
+  const input = {
+    price: 200,
+    cost: 50,
+    warehouseExpenses: 0,
+    marketplacePct: 20,
+    acquiringPct: 2,
+    ratesFactual: true,
+  };
+  assert.equal(calculateMarginBeforeDrrPct(input), 46);
+  assert.equal(calculateMarginBeforeDrrPct({ ...input, warehouseExpenses: Number.NaN }), 46);
+  assert.equal("advertisingPct" in input, false);
+});
+
+test("margin before DRR stays unknown for invalid economics or non-factual rates", () => {
+  const valid = {
+    price: 200,
+    cost: 50,
+    warehouseExpenses: 10,
+    marketplacePct: 20,
+    acquiringPct: 2,
+    ratesFactual: true,
+  };
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, price: 0 }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, cost: null }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, cost: 0 }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, warehouseExpenses: -10 }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, ratesFactual: false }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, marketplacePct: -1 }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, marketplacePct: Number.POSITIVE_INFINITY }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, acquiringPct: -1 }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, acquiringPct: Number.NaN }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, taxPct: -1 }), null);
+  assert.equal(calculateMarginBeforeDrrPct({ ...valid, taxPct: Number.POSITIVE_INFINITY }), null);
+});
+
+test("production sklejki margin mapper resolves warehouse and factual WB rate fallbacks", () => {
+  const warehouseExpensesByArticle = new Map([["EXACT", 10]]);
+  const commission: WbCommission = {
+    byNm: new Map([[101, { pct: 20, acqPct: 2, extraPct: 3, rev: 1_000 }]]),
+    avgPct: 18,
+    avgAcqPct: 1.5,
+    avgExtraPct: 2,
+    overheadPct: 1,
+  };
+  const base = { price: 200, cost: 50, warehouseExpensesByArticle, commission };
+
+  const perNm = mapSklejkiMarginBeforeDrr({ ...base, nmId: 101, article: "EXACT" });
+  assert.equal(perNm.warehouseExpenses, 10);
+  assert.equal(typeof perNm.marginBeforeDrrPct, "number");
+
+  const cabinetFallback = mapSklejkiMarginBeforeDrr({ ...base, nmId: 202, article: "EXACT" });
+  assert.equal(typeof cabinetFallback.marginBeforeDrrPct, "number");
+
+  const unknownArticle = mapSklejkiMarginBeforeDrr({ ...base, nmId: 101, article: "UNKNOWN" });
+  assert.equal(unknownArticle.warehouseExpenses, 0);
+  assert.equal(typeof unknownArticle.marginBeforeDrrPct, "number");
+
+  const missingRates = mapSklejkiMarginBeforeDrr({
+    ...base,
+    nmId: 303,
+    article: "EXACT",
+    commission: { byNm: new Map(), avgPct: 0, avgAcqPct: 0, avgExtraPct: 0, overheadPct: 0 },
+  });
+  assert.equal(missingRates.marginBeforeDrrPct, null);
+
+  for (const result of [perNm, cabinetFallback, unknownArticle, missingRates]) {
+    assert.ok(result.marginBeforeDrrPct === null || typeof result.marginBeforeDrrPct === "number");
+  }
+});
+
+test("interactive sklejki commission loader only uses cached cabinet rates", async () => {
+  const emptyCommission: WbCommission = {
+    byNm: new Map(),
+    avgPct: 0,
+    avgAcqPct: 0,
+    avgExtraPct: 0,
+    overheadPct: 0,
+  };
+  const calls: unknown[][] = [];
+  const commission = await loadSklejkiCommissionForCabinet("cabinet-15", async (...args) => {
+    calls.push(args);
+    return emptyCommission;
+  });
+
+  assert.deepEqual(calls, [["cabinet-15", 30, { allowLiveFallback: false }]]);
+  assert.equal(mapSklejkiMarginBeforeDrr({
+    nmId: 101,
+    article: "SKU-101",
+    price: 200,
+    cost: 50,
+    warehouseExpensesByArticle: new Map(),
+    commission,
+  }).marginBeforeDrrPct, null);
+});
 
 test("Inferno glue verdict keeps the traffic carrier on ads", () => {
   const carrier = sku({ shows_7d: 700, orders_sum_7d: 20_000, adv_spend_14d: 1_000, drr_7d: 5 });

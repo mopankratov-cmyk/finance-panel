@@ -1,3 +1,12 @@
+import { getWbCommissionForCabinet, resolveWbRatesForNm, type WbCommission } from "./commissions";
+
+export async function loadSklejkiCommissionForCabinet(
+  cabinetId: string,
+  loader: typeof getWbCommissionForCabinet = getWbCommissionForCabinet,
+): Promise<WbCommission> {
+  return loader(cabinetId, 30, { allowLiveFallback: false });
+}
+
 export interface SklejkiSkuMetrics {
   nm: number;
   art: string;
@@ -34,6 +43,58 @@ export interface SklejkiPayload {
   multi_groups: number;
   solo_skus: number;
   covered: number;
+}
+
+export function calculateMarginBeforeDrrPct(input: {
+  price: number;
+  cost: number | null | undefined;
+  warehouseExpenses: number | null | undefined;
+  marketplacePct: number;
+  acquiringPct: number;
+  ratesFactual: boolean;
+  taxPct?: number;
+}): number | null {
+  const { price, cost, marketplacePct, acquiringPct, ratesFactual } = input;
+  const taxPct = input.taxPct ?? 7;
+  if (!Number.isFinite(price) || price <= 0
+    || cost == null || !Number.isFinite(cost) || cost <= 0
+    || !ratesFactual
+    || !Number.isFinite(marketplacePct) || marketplacePct < 0
+    || !Number.isFinite(acquiringPct) || acquiringPct < 0
+    || !Number.isFinite(taxPct) || taxPct < 0
+    || (input.warehouseExpenses != null && Number.isFinite(input.warehouseExpenses) && input.warehouseExpenses < 0)) {
+    return null;
+  }
+  const warehouseExpenses = input.warehouseExpenses == null || !Number.isFinite(input.warehouseExpenses)
+    ? 0
+    : input.warehouseExpenses;
+  return 100 * (price - cost - warehouseExpenses) / price
+    - marketplacePct
+    - acquiringPct
+    - taxPct;
+}
+
+export function mapSklejkiMarginBeforeDrr(input: {
+  nmId: number;
+  article: string;
+  price: number;
+  cost: number | null | undefined;
+  warehouseExpensesByArticle: ReadonlyMap<string, number>;
+  commission: WbCommission;
+}): { warehouseExpenses: number; marginBeforeDrrPct: number | null } {
+  const warehouseExpenses = input.warehouseExpensesByArticle.get(input.article) ?? 0;
+  const rates = resolveWbRatesForNm(input.commission, input.nmId);
+  return {
+    warehouseExpenses,
+    marginBeforeDrrPct: calculateMarginBeforeDrrPct({
+      price: input.price,
+      cost: input.cost,
+      warehouseExpenses,
+      marketplacePct: rates.marketplacePct,
+      acquiringPct: rates.acquiringPct,
+      ratesFactual: rates.factual,
+    }),
+  };
 }
 
 export function mergeSklejkiPayloads(payloads: SklejkiPayload[]): SklejkiPayload {

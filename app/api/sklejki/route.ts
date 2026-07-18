@@ -3,7 +3,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { closedMoscowDates, mergeSklejkiPayloads, type SklejkiPayload } from "@/lib/wb/sklejki";
+import { closedMoscowDates, loadSklejkiCommissionForCabinet, mapSklejkiMarginBeforeDrr, mergeSklejkiPayloads, type SklejkiPayload } from "@/lib/wb/sklejki";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
@@ -34,7 +34,7 @@ const r1 = (v: number) => Math.round(v * 10) / 10;
 async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions) {
   return loadHourlyDashboard(
     "wb-sklejki",
-    { cabinetId, schema: 3 },
+    { cabinetId, schema: 4 },
     async () => {
   // 1) Один общий часовой снимок карточек для PIM, поставок и склеек.
   //    У scoped-кабинетов он ищет только разрешённые nmID, не обходит весь чужой каталог.
@@ -96,6 +96,8 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
     loadFunnelRows(),
     loadAdRows(),
     db.rpc("rnp_report", { p_cabinet: cabinetId }),
+    db.from("product_costs").select("article, warehouse_expenses"),
+    loadSklejkiCommissionForCabinet(cabinetId),
   ]);
 
   const [cards, metricsRes] = await Promise.all([
@@ -152,12 +154,28 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
     for (const t of (tRes.data ?? []) as RpcTotal[]) totals.set(t.nm_id, t);
   }
 
+  const warehouseExpensesByArticle = new Map<string, number>();
+  const costsRes = metricsRes[3];
+  if (costsRes.error) throw new Error(`Себестоимость WB: ${costsRes.error.message}`);
+  for (const row of costsRes.data ?? []) {
+    const warehouseExpenses = Number(row.warehouse_expenses);
+    warehouseExpensesByArticle.set(String(row.article), Number.isFinite(warehouseExpenses) ? warehouseExpenses : 0);
+  }
+  const comm = metricsRes[4];
+
   const enrich = (c: WbCard) => {
     const a = m7.get(c.nmID);
     const t = totals.get(c.nmID);
-    const cost = Number(t?.cost ?? 0);
     const os = a?.os ?? 0, oc = a?.oc ?? 0, views = a?.views ?? 0, spent = a?.spent ?? 0;
     const price = oc > 0 ? os / oc : 0;
+    const { marginBeforeDrrPct } = mapSklejkiMarginBeforeDrr({
+      nmId: c.nmID,
+      article: c.vendorCode,
+      price,
+      cost: t?.cost,
+      warehouseExpensesByArticle,
+      commission: comm,
+    });
     return {
       nm: c.nmID,
       art: c.vendorCode || String(c.nmID),
@@ -169,7 +187,7 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
       adv_spend_7d: Math.round(spent),
       adv_spend_14d: Math.round(spent14.get(c.nmID) ?? 0),
       drr_7d: os > 0 ? r1((spent / os) * 100) : (spent > 0 ? null : 0),
-      margin_before_drr: price > 0 && cost > 0 ? r1(((price - cost) / price) * 100) : null,
+      margin_before_drr: marginBeforeDrrPct == null ? null : r1(marginBeforeDrrPct),
       stock: Number(t?.stock ?? 0),
       nm_rating: ratingAgg.get(c.nmID) ? Math.round((ratingAgg.get(c.nmID)!.sum / ratingAgg.get(c.nmID)!.count) * 10) / 10 : null,
       nm_feedbacks: ratingAgg.get(c.nmID)?.count ?? null,
