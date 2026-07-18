@@ -122,7 +122,7 @@ function GroupCard({ group }: { group: SklejkiGroup }) {
   const totals = glueTotals(group);
   const summary = glueSummary(group);
   return (
-    <article className="w-[340px] shrink-0 rounded-lg border border-purple-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" style={{ contentVisibility: "auto", containIntrinsicSize: "340px 620px" }}>
+    <article className="w-[340px] shrink-0 rounded-lg border border-purple-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-base font-bold text-slate-900">{group.shop_label || "—"}</span>
         {group.category_label ? <><span className="text-base font-bold text-slate-900">·</span><span className="min-w-0 truncate text-base font-bold text-slate-900">{group.category_label}</span></> : null}
