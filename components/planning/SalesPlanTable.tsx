@@ -35,12 +35,29 @@ const STICKY_LEFT = {
   buyout: STICKY_WIDTHS.product + STICKY_WIDTHS.price,
   ads: STICKY_WIDTHS.product + STICKY_WIDTHS.price + STICKY_WIDTHS.buyout,
 } as const;
-const DAY_WIDTH = 32;
+const DAY_WIDTH = 48;
 const END_WIDTH = 62;
 const stickyWidth = (width: number) => ({ minWidth: width, width });
 const stickyOffset = (left: number, width?: number) => ({ left, ...(width ? stickyWidth(width) : {}) });
-const dayCellClass = "min-w-8 w-8";
+const dayCellClass = "min-w-12 w-12";
+const dayNumericClass = "tabular-nums tracking-[-0.02em]";
 const endCellClass = "min-w-[62px] w-[62px]";
+const parseNonNegativeNumber = (value: string) => {
+  const parsed = Number(value.replace(/\s+/g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+const parseNonNegativeInteger = (value: string) => Math.max(0, Math.round(parseNonNegativeNumber(value)));
+const compactInteger = (value: number) => {
+  if (!value) return "—";
+  if (Math.abs(value) < 10_000) return number(value);
+  return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(value).replace(/тыс\./, "к");
+};
+const compactDayMoney = (value: number) => {
+  if (!value) return "—";
+  if (Math.abs(value) < 10_000) return number(value);
+  if (Math.abs(value) < 1_000_000) return `${Math.round(value / 1000).toLocaleString("ru-RU")}к`;
+  return `${(value / 1_000_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}м`;
+};
 const compactMoney = (value: number) => {
   if (!value) return "—";
   if (Math.abs(value) < 10_000) return number(value);
@@ -208,7 +225,7 @@ export function SalesPlanTable({
           <tr className="h-8 bg-slate-100 font-semibold text-slate-800">
             <td style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky z-20 border-t border-r border-slate-200 bg-slate-100 px-2.5">ИТОГО · {salesPlanMonthLabel(plan.year, monthKey, false)}</td>
             <StickyTotal left={STICKY_LEFT.price} width={STICKY_WIDTHS.price}>—</StickyTotal><StickyTotal left={STICKY_LEFT.buyout} width={STICKY_WIDTHS.buyout}>—</StickyTotal><StickyTotal left={STICKY_LEFT.ads} width={STICKY_WIDTHS.ads} shadow>—</StickyTotal>
-            {dayOrderTotals.map((value, day) => <td key={day} className={`${dayCellClass} border-t border-r border-slate-200 px-1 text-right font-semibold tabular-nums`}>{value ? number(value) : "—"}</td>)}
+            {dayOrderTotals.map((value, day) => <td key={day} title={value ? number(value) : undefined} className={`${dayCellClass} border-t border-r border-slate-200 px-1 text-center text-[11px] font-semibold ${dayNumericClass}`}>{compactInteger(value)}</td>)}
             <EndCell strong>{number(summary.orders)}</EndCell><EndCell strong>{number(summary.buyouts)}</EndCell><EndCell strong>{compactMoney(summary.ads)}</EndCell><EndCell strong>{compactMoney(summary.revenue)}</EndCell><EndCell strong>{summary.drr.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%</EndCell>
           </tr>
           <ExtraTotal label={`ИТОГО заказы ₽ · ${salesPlanMonthLabel(plan.year, monthKey, false)}`} values={dayGrossTotals} days={days} end={["—", "—", "—", compactMoney(summary.gross), "—"]} />
@@ -292,16 +309,16 @@ function SkuRows({
           return (
             <td key={day} onMouseEnter={() => onFillEnter({ rowId: row.id, day })} className={`relative ${dayCellClass} border-b border-r border-slate-200 p-0.5 ${isWeekend(plan.year, monthKey, day + 1) ? "bg-sky-50/70" : "bg-white"} ${inFill ? fillClass : ""}`}>
               <input
-                type="number"
-                min={0}
-                step={1}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={orders || ""}
                 placeholder="—"
                 disabled={readOnly}
                 aria-label={`${row.variant}, ${day + 1} ${salesPlanMonthLabel(plan.year, monthKey)}`}
                 onFocus={() => onSelectCell({ rowId: row.id, day })}
-                onChange={(event) => onDayChange(row.id, day, Math.max(0, Math.round(Number(event.target.value) || 0)))}
-                className={`h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-right text-[10px] font-semibold tabular-nums text-slate-700 outline-none transition placeholder:text-slate-300 hover:border-slate-200 focus:bg-white focus:ring-2 disabled:cursor-default disabled:text-slate-500 ${focusClass} ${selected ? selectedClass : ""}`}
+                onChange={(event) => onDayChange(row.id, day, parseNonNegativeInteger(event.target.value))}
+                className={`h-7 w-full rounded-md border border-transparent bg-transparent px-0.5 text-center text-[11px] font-semibold ${dayNumericClass} text-slate-700 outline-none transition placeholder:text-slate-300 hover:border-slate-200 focus:bg-white focus:ring-2 disabled:cursor-default disabled:text-slate-500 ${focusClass} ${selected ? selectedClass : ""}`}
               />
               {selected && !readOnly ? <button type="button" tabIndex={-1} aria-label="Протянуть значение" onMouseDown={(event) => { event.preventDefault(); onFillStart({ rowId: row.id, day, endDay: day, value: orders }); }} className={`absolute bottom-0.5 right-0.5 h-2.5 w-2.5 cursor-crosshair rounded-[2px] border border-white ${handleClass}`} /> : null}
             </td>
@@ -315,7 +332,7 @@ function SkuRows({
 }
 
 function FixedInput({ label, value, disabled, onChange, focusClass }: { label: string; value: number; disabled: boolean; onChange: (value: number) => void; focusClass: string }) {
-  return <input type="number" min={0} value={value || ""} placeholder="—" disabled={disabled} aria-label={label} onChange={(event) => onChange(Number(event.target.value) || 0)} className={`h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-right text-[10px] font-semibold tabular-nums text-slate-700 outline-none transition hover:border-[#eadcc8] focus:bg-white focus:ring-2 disabled:cursor-default disabled:text-slate-500 ${focusClass}`} />;
+  return <input type="text" inputMode="decimal" value={value || ""} placeholder="—" disabled={disabled} aria-label={label} onChange={(event) => onChange(parseNonNegativeNumber(event.target.value))} className={`h-7 w-full rounded-md border border-transparent bg-transparent px-0.5 text-right text-[10px] font-semibold tabular-nums text-slate-700 outline-none transition hover:border-[#eadcc8] focus:bg-white focus:ring-2 disabled:cursor-default disabled:text-slate-500 ${focusClass}`} />;
 }
 
 function ExpandedRows({ row, monthKey, days }: { row: SalesPlanRow; monthKey: string; days: number[]; year: number }) {
@@ -329,7 +346,11 @@ function ExpandedRows({ row, monthKey, days }: { row: SalesPlanRow; monthKey: st
     <tr key={definition.label} className="h-7 bg-slate-50/50 text-[10px] text-slate-500">
       <td style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 px-2"><span className="flex items-center gap-1.5 pl-5"><span className={`h-2 w-2 rounded-full ${definition.color}`} />{definition.label}</span></td>
       <td style={stickyOffset(STICKY_LEFT.price, STICKY_WIDTHS.price)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.buyout, STICKY_WIDTHS.buyout)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.ads, STICKY_WIDTHS.ads)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 shadow-[6px_0_10px_rgba(15,23,42,0.05)]" />
-      {days.map((day) => { const value = definition.read(day); return <td key={day} className={`${dayCellClass} border-b border-r border-slate-200 px-1 text-right tabular-nums`}>{definition.kind === "money" ? compactMoney(value) : definition.kind === "pct" ? `${value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%` : value ? number(value) : "—"}</td>; })}
+      {days.map((day) => {
+        const value = definition.read(day);
+        const fullValue = definition.kind === "money" ? `${number(value)} ₽` : definition.kind === "pct" ? `${value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%` : number(value);
+        return <td key={day} title={value ? fullValue : undefined} className={`${dayCellClass} border-b border-r border-slate-200 px-1 text-center ${dayNumericClass}`}>{definition.kind === "money" ? compactDayMoney(value) : definition.kind === "pct" ? `${value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%` : value ? number(value) : "—"}</td>;
+      })}
       <td className={`${endCellClass} border-b border-r border-slate-200 bg-slate-50 px-1 text-right font-semibold tabular-nums`}>{definition.kind === "money" ? compactMoney(definition.total) : definition.kind === "pct" ? `${definition.total.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%` : number(definition.total)}</td>
       <td className="border-b border-r border-slate-200 bg-slate-50" /><td className="border-b border-r border-slate-200 bg-slate-50" /><td className="border-b border-r border-slate-200 bg-slate-50" /><td className="border-b border-r border-slate-200 bg-slate-50" />
     </tr>
@@ -339,4 +360,4 @@ function ExpandedRows({ row, monthKey, days }: { row: SalesPlanRow; monthKey: st
 function EndHead({ children }: { children: React.ReactNode }) { return <th className={`sticky top-0 z-30 ${endCellClass} border-b border-r border-slate-200 bg-slate-50 px-1 text-right last:border-r-0`}>{children}</th>; }
 function EndCell({ children, strong = false }: { children: React.ReactNode; strong?: boolean }) { return <td className={`${endCellClass} border-b border-r border-slate-200 bg-white px-1 text-right text-[10px] tabular-nums last:border-r-0 ${strong ? "font-semibold text-slate-800" : ""}`}>{children}</td>; }
 function StickyTotal({ children, left, width, shadow = false }: { children: React.ReactNode; left: number; width: number; shadow?: boolean }) { return <td style={stickyOffset(left, width)} className={`sticky z-20 border-t border-r border-slate-200 bg-slate-100 px-1.5 text-right ${shadow ? "shadow-[6px_0_10px_rgba(15,23,42,0.05)]" : ""}`}>{children}</td>; }
-function ExtraTotal({ label, values, days, end }: { label: string; values: number[]; days: number; end: string[] }) { return <tr className="h-7 bg-slate-50 text-[10px] font-semibold text-slate-600"><td style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 px-2">{label}</td><td style={stickyOffset(STICKY_LEFT.price, STICKY_WIDTHS.price)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.buyout, STICKY_WIDTHS.buyout)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.ads, STICKY_WIDTHS.ads)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 shadow-[6px_0_10px_rgba(15,23,42,0.05)]" />{Array.from({ length: days }, (_, day) => <td key={day} className={`${dayCellClass} border-b border-r border-slate-200 px-0.5 text-right tabular-nums`}>{compactMoney(values[day] ?? 0)}</td>)}{end.map((value, index) => <td key={index} className={`${endCellClass} border-b border-r border-slate-200 px-1 text-right text-[10px] tabular-nums last:border-r-0`}>{value}</td>)}</tr>; }
+function ExtraTotal({ label, values, days, end }: { label: string; values: number[]; days: number; end: string[] }) { return <tr className="h-7 bg-slate-50 text-[10px] font-semibold text-slate-600"><td style={stickyOffset(STICKY_LEFT.product, STICKY_WIDTHS.product)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 px-2">{label}</td><td style={stickyOffset(STICKY_LEFT.price, STICKY_WIDTHS.price)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.buyout, STICKY_WIDTHS.buyout)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50" /><td style={stickyOffset(STICKY_LEFT.ads, STICKY_WIDTHS.ads)} className="sticky z-20 border-b border-r border-slate-200 bg-slate-50 shadow-[6px_0_10px_rgba(15,23,42,0.05)]" />{Array.from({ length: days }, (_, day) => { const value = values[day] ?? 0; return <td key={day} title={value ? `${number(value)} ₽` : undefined} className={`${dayCellClass} border-b border-r border-slate-200 px-0.5 text-center ${dayNumericClass}`}>{compactDayMoney(value)}</td>; })}{end.map((value, index) => <td key={index} className={`${endCellClass} border-b border-r border-slate-200 px-1 text-right text-[10px] tabular-nums last:border-r-0`}>{value}</td>)}</tr>; }
