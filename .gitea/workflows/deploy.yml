@@ -48,15 +48,19 @@ jobs:
           url=$(printf '%s\n' "$deploy_output" | grep -Eo 'https://[^ ]+\.vercel\.app' | tail -n 1)
           test -n "$url"
 
+          # Сначала промоутим публичный alias, потом проверяем именно его.
+          # Технический *.vercel.app URL деплоя может быть закрыт Vercel SSO и отдавать 302,
+          # хотя публичный production alias уже доступен пользователям.
+          vercel alias set "$url" finance-panel-two.vercel.app --token="$VERCEL_TOKEN"
+
           # Canary: /api/auth/status всегда доступен без сессии и не требует БД-состояния.
           # 404 значит, что промоутнулась чужая/устаревшая сборка — не должна владеть прод-алиасом.
           code=$(curl -sS -o /tmp/auth-status-canary.json -w "%{http_code}" \
-            "$url/api/auth/status")
+            "https://finance-panel-two.vercel.app/api/auth/status")
           if [ "$code" != "200" ]; then
             echo "Auth-status canary failed: HTTP $code"
             cat /tmp/auth-status-canary.json || true
             exit 1
           fi
 
-          vercel alias set "$url" finance-panel-two.vercel.app --token="$VERCEL_TOKEN"
           echo "Прод задеплоен и canary пройден: $url"
