@@ -1,13 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { hourlyDashboardTag } from "@/lib/cache/hourlyDashboard";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 
-// Триггер обновления юнит-данных (inferno кнопка). Источник держится свежим по Vercel cron,
-// поэтому здесь подтверждаем актуальность; глубокий on-demand ре-синк цен/себеса (МойСклад) — отложен.
 export async function POST(request: NextRequest) {
-  const { cabinetId } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+  const rawCabinet = new URL(request.url).searchParams.get("cabinet");
+  const allCabinets = rawCabinet === null || rawCabinet === "all";
+  const { cabinetId } = await resolveShopCabinet(allCabinets ? undefined : rawCabinet);
+  if (!allCabinets && cabinetId === null) {
+    return NextResponse.json({ error: "Кабинет не найден" }, { status: 404 });
+  }
   if (!(await hasCabinetAccess(cabinetId))) return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
-  return NextResponse.json({ ok: true });
+
+  revalidateTag(hourlyDashboardTag("wb-unit-table", {
+    cabinetId,
+    taxPct: 7,
+    ff: 0,
+    targetMargin: 25,
+  }), { expire: 0 });
+
+  return NextResponse.json({
+    ok: true,
+    rows: 0,
+    message: "Кэш юнит-экономики сброшен. Себестоимость перечитана из product_costs; автоматического источника в WB API нет.",
+  });
 }
