@@ -75,7 +75,7 @@ export async function fetchWbCardsByNmIds<Row extends { nmID: number }>(
   const rows = new Map<number, Row>();
   let requestsMade = 0;
 
-  for (const nmId of nmIds) {
+  const fetchExactCard = async (nmId: number): Promise<Row | undefined> => {
     if (requestsMade > 0 && minIntervalMs > 0) await sleep(minIntervalMs);
     const body = JSON.stringify({
       settings: {
@@ -99,11 +99,28 @@ export async function fetchWbCardsByNmIds<Row extends { nmID: number }>(
       requestsMade++;
     }
     const payload = await readCardPayload<Row>(response);
-    const exact = (Array.isArray(payload.cards) ? payload.cards : []).find((card) => card.nmID === nmId);
+    return (Array.isArray(payload.cards) ? payload.cards : []).find((card) => card.nmID === nmId);
+  };
+
+  for (const nmId of nmIds) {
+    const exact = await fetchExactCard(nmId);
     if (exact) rows.set(nmId, exact);
   }
 
-  return [...rows.values()];
+  const missing = nmIds.filter((nmId) => !rows.has(nmId));
+  for (const nmId of missing) {
+    const exact = await fetchExactCard(nmId);
+    if (exact) rows.set(nmId, exact);
+  }
+
+  const stillMissing = missing.filter((nmId) => !rows.has(nmId));
+  if (stillMissing.length > 0) {
+    throw new Error(`WB Content API не вернул карточки для nmID: ${stillMissing.join(", ")}`);
+  }
+
+  return nmIds
+    .map((nmId) => rows.get(nmId))
+    .filter((row): row is Row => row !== undefined);
 }
 
 /** Полный курсорный обход Content API без прежнего ограничения в 3 000 карточек. */
