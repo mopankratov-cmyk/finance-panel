@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       }
       const rows = [...agg.values()];
 
-      const upsertError = await chunkedUpsert("wb_stocks", rows, "nm_id,warehouse");
+      const upsertError = await chunkedUpsert("wb_stocks", rows, "cabinet_id,nm_id,warehouse");
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);
         continue;

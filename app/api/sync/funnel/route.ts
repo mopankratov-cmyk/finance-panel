@@ -216,7 +216,7 @@ export async function GET(request: NextRequest) {
           });
         }
       }
-      const upsertError = rows.length ? await chunkedUpsert("wb_funnel_daily", rows, "nm_id,date") : null;
+      const upsertError = rows.length ? await chunkedUpsert("wb_funnel_daily", rows, "cabinet_id,nm_id,date") : null;
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);
         if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "funnel", {

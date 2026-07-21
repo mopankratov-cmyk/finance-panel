@@ -73,13 +73,13 @@ export async function GET(request: NextRequest) {
 
       if (!rows.length) continue;
 
-      let upsertError = await chunkedUpsert("wb_adverts", rows, "advert_id");
+      let upsertError = await chunkedUpsert("wb_adverts", rows, "cabinet_id,advert_id");
       if (upsertError && /bid_cpm_rub|schema cache|column/i.test(upsertError)) {
         // Короткое окно совместимости, пока SQL-миграция ещё не применена.
         upsertError = await chunkedUpsert("wb_adverts", rows.map(({ bid_cpm_rub, ...row }) => ({
           ...row,
           daily_budget: bid_cpm_rub,
-        })), "advert_id");
+        })), "cabinet_id,advert_id");
       }
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);

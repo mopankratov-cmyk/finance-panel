@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
 
       const nmRows = [...nmDaily.values()].map((r) => ({ ...r, synced_at: new Date().toISOString() }));
 
-      const e1 = await chunkedUpsert("wb_advert_stats", dayRows, "advert_id,date");
+      const e1 = await chunkedUpsert("wb_advert_stats", dayRows, "cabinet_id,advert_id,date");
       if (e1) {
         errors.push(`${t.name}: ${e1}`);
         if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
@@ -264,7 +264,7 @@ export async function GET(request: NextRequest) {
         });
         continue;
       }
-      const e2 = await chunkedUpsert("wb_advert_nm_daily", nmRows, "nm_id,date");
+      const e2 = await chunkedUpsert("wb_advert_nm_daily", nmRows, "cabinet_id,nm_id,date");
       if (e2) {
         errors.push(`${t.name}: ${e2}`);
         if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {

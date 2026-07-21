@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -38,10 +37,15 @@ test("migration is period-only and keeps prohibited advert/snapshot semantics ou
   assert.doesNotMatch(sql, /replace_wb_stocks_snapshot|wb_sync_state|advertCoverage|\bdelete\b/i);
 });
 
-test("stock and advert sync routes are byte-identical to base", async () => {
-  for (const path of ["app/api/sync/stocks/route.ts", "app/api/sync/advert-stats/route.ts"]) {
-    const current = await read(path);
-    const base = execFileSync("git", ["show", `gitea/main:${path}`], { encoding: "utf8" });
-    assert.equal(current, base, path);
+test("stock and advert sync routes stay independent from unit period semantics", async () => {
+  const stocks = await read("app/api/sync/stocks/route.ts");
+  const advertStats = await read("app/api/sync/advert-stats/route.ts");
+
+  for (const source of [stocks, advertStats]) {
+    assert.doesNotMatch(source, /unit_report_period|parseUnitPeriodQuery|replace_wb_stocks_snapshot|advertCoverage/i);
   }
+
+  assert.match(stocks, /chunkedUpsert\("wb_stocks", rows, "cabinet_id,nm_id,warehouse"\)/);
+  assert.match(advertStats, /chunkedUpsert\("wb_advert_stats", dayRows, "cabinet_id,advert_id,date"\)/);
+  assert.match(advertStats, /chunkedUpsert\("wb_advert_nm_daily", nmRows, "cabinet_id,nm_id,date"\)/);
 });

@@ -403,7 +403,7 @@ export async function runWbHistoryRecovery(now = new Date()): Promise<WbHistoryR
         .flatMap(parseHistoryCsv)
         .filter((row) => allowed.has(row.nm_id))
         .map((row) => ({ ...row, cabinet_id: cabinetId }));
-      const upsertError = await chunkedUpsert("wb_funnel_daily", rows, "nm_id,date", 100_000);
+      const upsertError = await chunkedUpsert("wb_funnel_daily", rows, "cabinet_id,nm_id,date", 100_000);
       if (upsertError) throw new Error(`запись истории: ${upsertError}`);
 
       totalRows += rows.length;
