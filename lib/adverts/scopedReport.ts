@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import {
+  applyFunnelOrdersOverlay,
   buildScopedBaseFactsFromRows,
   loadAllPages,
   type ScopedOrderSourceRow,
@@ -13,6 +14,13 @@ interface ProductCostRow {
   article: string;
   name: string | null;
   cost_rub?: number | null;
+}
+
+interface ScopedFunnelOrderSourceRow {
+  nm_id: number;
+  date: string;
+  orders: number | null;
+  orders_sum: number | null;
 }
 
 export interface ScopedAdvertReportRow {
@@ -32,6 +40,7 @@ export function advertMonthStart(now = new Date()): string {
 export function buildScopedAdvertReportRowsFromFacts(input: {
   allowedNmIds: number[];
   orders: ScopedOrderSourceRow[];
+  funnelOrders?: ScopedFunnelOrderSourceRow[];
   stocks: ScopedStockSourceRow[];
   products: ScopedProductSourceRow[];
   costs: ProductCostRow[];
@@ -45,8 +54,16 @@ export function buildScopedAdvertReportRowsFromFacts(input: {
     products: input.products,
     costs: input.costs,
   });
+  const skuRows = applyFunnelOrdersOverlay(
+    baseFacts.skuRows,
+    (input.funnelOrders ?? []).map((row) => ({
+      ...row,
+      open_card: null,
+      add_to_cart: null,
+    })),
+  );
   const monthByNm = new Map<number, { orders: number; sum: number }>();
-  for (const row of baseFacts.skuRows) {
+  for (const row of skuRows) {
     const nmId = Number(row.nm_id);
     const current = monthByNm.get(nmId) ?? { orders: 0, sum: 0 };
     current.orders += Number(row.orders_count ?? 0);
@@ -81,12 +98,22 @@ export async function loadScopedAdvertReportRows(
   allowedNmIds: number[],
 ): Promise<ScopedAdvertReportRow[]> {
   if (!allowedNmIds.length) return [];
-  const monthStart = `${advertMonthStart()}T00:00:00.000Z`;
+  const monthStart = advertMonthStart();
+  const monthStartTs = `${monthStart}T00:00:00.000Z`;
 
-  const [orders, stocks, products] = await Promise.all([
+  const [orders, funnelOrders, stocks, products] = await Promise.all([
     loadAllPages<ScopedOrderSourceRow>((from, to) => db
       .from("wb_orders")
       .select("nm_id, supplier_article, date, total_price, discount_percent, is_cancel")
+      .eq("cabinet_id", cabinetId)
+      .gte("date", monthStartTs)
+      .in("nm_id", allowedNmIds)
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to)),
+    loadAllPages<ScopedFunnelOrderSourceRow>((from, to) => db
+      .from("wb_funnel_daily")
+      .select("nm_id, date, orders, orders_sum")
       .eq("cabinet_id", cabinetId)
       .gte("date", monthStart)
       .in("nm_id", allowedNmIds)
@@ -122,5 +149,5 @@ export async function loadScopedAdvertReportRows(
       .range(from, to))
     : [];
 
-  return buildScopedAdvertReportRowsFromFacts({ allowedNmIds, orders, stocks, products, costs });
+  return buildScopedAdvertReportRowsFromFacts({ allowedNmIds, orders, funnelOrders, stocks, products, costs });
 }
