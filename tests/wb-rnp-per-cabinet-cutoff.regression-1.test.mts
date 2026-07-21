@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyRnpScopeCutoff, applyRnpSourceCutoffs } from "../lib/rnp/buildTable";
+import { applyFunnelOrdersOverlay, applyRnpScopeCutoff, applyRnpSourceCutoffs } from "../lib/rnp/buildTable";
 
 type Row = {
   nm_id: number;
@@ -63,5 +63,39 @@ test("WB RNP keeps fresh orders when sales source lags behind", () => {
     buyouts_count: 0,
     buyouts_sum: 0,
     ad_spent: 3_000,
+  });
+});
+
+test("WB RNP prefers WB funnel order totals over supplier order events", () => {
+  const [row] = applyFunnelOrdersOverlay([
+    { nm_id: 7, d: "2026-07-20", orders_count: 218, orders_sum: 151_079, buyouts_count: 12, buyouts_sum: 8_000, ad_spent: 3_000 },
+  ], [
+    { nm_id: 7, date: "2026-07-20", open_card: 0, add_to_cart: 0, orders: 451, orders_sum: 298_742 },
+  ]);
+
+  assert.deepEqual(row, {
+    nm_id: 7,
+    d: "2026-07-20",
+    orders_count: 451,
+    orders_sum: 298_742,
+    buyouts_count: 12,
+    buyouts_sum: 8_000,
+    ad_spent: 3_000,
+  });
+});
+
+test("WB RNP creates a daily order row from WB funnel when supplier events are missing", () => {
+  const [row] = applyFunnelOrdersOverlay([], [
+    { nm_id: 8, date: "2026-07-20", open_card: 0, add_to_cart: 0, orders: 37, orders_sum: 21_990 },
+  ]);
+
+  assert.deepEqual(row, {
+    nm_id: 8,
+    d: "2026-07-20",
+    orders_count: 37,
+    orders_sum: 21_990,
+    buyouts_count: 0,
+    buyouts_sum: 0,
+    ad_spent: 0,
   });
 });

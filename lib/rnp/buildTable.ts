@@ -33,7 +33,14 @@ interface RpcTotal {
   cost: number | null;
 }
 interface AdNmRow { nm_id: number; date: string; views: number | null; clicks: number | null }
-interface FunnelRow { nm_id: number; date: string; open_card: number | null; add_to_cart: number | null }
+interface FunnelRow {
+  nm_id: number;
+  date: string;
+  open_card: number | null;
+  add_to_cart: number | null;
+  orders: number | null;
+  orders_sum: number | null;
+}
 interface ProductCostRow { article: string; name: string | null; cost_rub?: number | null }
 interface CabinetScope { cabinetId: string | null; label: string; allowedNmIds: Set<number> | null }
 interface MetricCutoffs { orders: string | null; sales: string | null; adverts: string | null }
@@ -355,8 +362,8 @@ function buildMetrics(
   const totalBuyoutsSum = knownSum(buyoutsSum);
   const totalAdSpend = knownSum(adSpend);
   const out: Metric[] = [
-    { field: "orders_count", label: "Заказы, шт", kind: "int", daily: ordersCount, total: totalOrdersCount, forecast: null, source: "WB Статистика", group_start: true },
-    { field: "orders_sum", label: "Заказы, ₽", kind: "money", daily: ordersSum, total: totalOrdersSum == null ? null : Math.round(totalOrdersSum), forecast: null, source: "WB Статистика" },
+    { field: "orders_count", label: "Заказы, шт", kind: "int", daily: ordersCount, total: totalOrdersCount, forecast: null, source: "WB Воронка/Статистика", note: "WB Analytics → Этапы воронки продаж; WB Статистика используется как fallback, если воронка ещё не загрузилась.", group_start: true },
+    { field: "orders_sum", label: "Заказы, ₽", kind: "money", daily: ordersSum, total: totalOrdersSum == null ? null : Math.round(totalOrdersSum), forecast: null, source: "WB Воронка/Статистика", note: "WB Analytics → Этапы воронки продаж; WB Статистика используется как fallback, если воронка ещё не загрузилась." },
     { field: "buyouts_count", label: "Выкупы, шт", kind: "int", daily: buyoutsCount, total: totalBuyoutsCount, forecast: null, source: "WB Статистика", group_start: true },
     { field: "buyouts_sum", label: "Выкупы, ₽", kind: "money", daily: buyoutsSum, total: totalBuyoutsSum == null ? null : Math.round(totalBuyoutsSum), forecast: null, source: "WB Статистика" },
     {
@@ -366,11 +373,11 @@ function buildMetrics(
       daily: buyoutPct,
       total: totalOrdersCount != null && totalBuyoutsCount != null && totalOrdersCount > 0 ? r1((totalBuyoutsCount / totalOrdersCount) * 100) : null,
       forecast: null,
-      source: "WB Статистика",
+      source: "WB Воронка + WB Статистика",
       note: "Календарные заказы и выкупы относятся к разным когортам, поэтому дневное значение может превышать 100%.",
     },
     { field: "ad_spent", label: "Реклама, ₽", kind: "money", daily: adSpend, total: totalAdSpend == null ? null : Math.round(totalAdSpend), forecast: null, source: "WB Реклама", group_start: true },
-    { field: "drr", label: "ДРР к заказам, %", kind: "pct", daily: drr, total: totalOrdersSum != null && totalAdSpend != null && totalOrdersSum > 0 ? r1((totalAdSpend / totalOrdersSum) * 100) : null, forecast: null, source: "WB Реклама + WB Статистика", note: "Рекламный расход / сумма заказов календарного периода." },
+    { field: "drr", label: "ДРР к заказам, %", kind: "pct", daily: drr, total: totalOrdersSum != null && totalAdSpend != null && totalOrdersSum > 0 ? r1((totalAdSpend / totalOrdersSum) * 100) : null, forecast: null, source: "WB Реклама + WB Воронка/Статистика", note: "Рекламный расход / сумма заказов календарного периода." },
   ];
   let grossTotalForGmroi: number | null = null;
   if (cost > 0 && wbCostPct != null) {
@@ -461,6 +468,76 @@ function scopedDailyKey(nmId: number, date: string) {
 
 function readDate(value: unknown) {
   return String(value ?? "").slice(0, 10);
+}
+
+export function applyFunnelOrdersOverlay(rows: SkuDailyRow[], funnelRows: FunnelRow[]): SkuDailyRow[] {
+  const dailyRows = new Map<string, SkuDailyRow>();
+  for (const row of rows) {
+    const nmId = Number(row.nm_id);
+    const date = readDate(row.d);
+    if (!Number.isFinite(nmId) || !date) continue;
+    dailyRows.set(scopedDailyKey(nmId, date), {
+      d: date,
+      nm_id: nmId,
+      orders_count: Number(row.orders_count ?? 0),
+      orders_sum: Number(row.orders_sum ?? 0),
+      buyouts_count: Number(row.buyouts_count ?? 0),
+      buyouts_sum: Number(row.buyouts_sum ?? 0),
+      ad_spent: Number(row.ad_spent ?? 0),
+    });
+  }
+
+  const funnelOrders = new Map<string, {
+    nmId: number;
+    date: string;
+    orders_count: number;
+    orders_sum: number;
+    hasOrdersCount: boolean;
+    hasOrdersSum: boolean;
+  }>();
+  for (const row of funnelRows) {
+    const nmId = Number(row.nm_id);
+    const date = readDate(row.date);
+    if (!Number.isFinite(nmId) || !date) continue;
+    const key = scopedDailyKey(nmId, date);
+    const current = funnelOrders.get(key) ?? {
+      nmId,
+      date,
+      orders_count: 0,
+      orders_sum: 0,
+      hasOrdersCount: false,
+      hasOrdersSum: false,
+    };
+    if (row.orders != null && Number.isFinite(Number(row.orders))) {
+      current.orders_count += Number(row.orders);
+      current.hasOrdersCount = true;
+    }
+    if (row.orders_sum != null && Number.isFinite(Number(row.orders_sum))) {
+      current.orders_sum += Number(row.orders_sum);
+      current.hasOrdersSum = true;
+    }
+    funnelOrders.set(key, current);
+  }
+
+  for (const [key, overlay] of funnelOrders) {
+    if (!overlay.hasOrdersCount && !overlay.hasOrdersSum) continue;
+    const current = dailyRows.get(key) ?? {
+      d: overlay.date,
+      nm_id: overlay.nmId,
+      orders_count: 0,
+      orders_sum: 0,
+      buyouts_count: 0,
+      buyouts_sum: 0,
+      ad_spent: 0,
+    };
+    dailyRows.set(key, {
+      ...current,
+      orders_count: overlay.hasOrdersCount ? overlay.orders_count : current.orders_count,
+      orders_sum: overlay.hasOrdersSum ? overlay.orders_sum : current.orders_sum,
+    });
+  }
+
+  return [...dailyRows.values()].sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id);
 }
 
 function touchScopedDailyRow(rows: Map<string, SkuDailyRow>, nmId: number, date: string) {
@@ -738,7 +815,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           loadAllPages<FunnelRow>((start, end) => {
             let query = db
               .from("wb_funnel_daily")
-              .select("nm_id, date, open_card, add_to_cart")
+              .select("nm_id, date, open_card, add_to_cart, orders, orders_sum")
               .gte("date", from)
               .lte("date", to)
               .order("date", { ascending: true })
@@ -763,7 +840,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           advertsCutoff,
           funnelCutoff,
           scope,
-          asOf: earliestKnownDate([ordersCutoff, salesCutoff], periodEnd),
+          asOf: earliestKnownDate([latestKnownDate([funnelCutoff, ordersCutoff]), salesCutoff], periodEnd),
         };
       })),
       loadAllPages<ProductCostRow>((start, end) => db
@@ -774,23 +851,26 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
       getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false }),
     ]);
 
-    const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(item.skuRows, {
-      orders: item.ordersCutoff,
-      sales: item.salesCutoff,
-      adverts: item.advertsCutoff,
-    }));
+    const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(
+      applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
+      {
+        orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]),
+        sales: item.salesCutoff,
+        adverts: item.advertsCutoff,
+      },
+    ));
     const totals = scopeData.flatMap((item) => item.totals);
     const adRows = scopeData.flatMap((item) => item.adRows.filter((row) => !item.advertsCutoff || String(row.date).slice(0, 10) <= item.advertsCutoff));
     const funnelRows = scopeData.flatMap((item) => item.funnelRows.filter((row) => !item.funnelCutoff || String(row.date).slice(0, 10) <= item.funnelCutoff));
     // У каждого источника своя свежесть. Раньше весь РНП обрезался по min(orders, sales),
     // из-за чего задержка выкупов могла занижать уже загруженные заказы Optima.
-    const ordersCutoff = latestKnownDate(scopeData.map((item) => item.ordersCutoff));
+    const ordersCutoff = latestKnownDate(scopeData.map((item) => latestKnownDate([item.funnelCutoff, item.ordersCutoff])));
     const salesCutoff = latestKnownDate(scopeData.map((item) => item.salesCutoff));
     const advertsCutoff = latestKnownDate(scopeData.map((item) => item.advertsCutoff));
     const funnelCutoff = latestKnownDate(scopeData.map((item) => item.funnelCutoff));
     const cutoffsByNm = new Map<number, MetricCutoffs>();
     for (const item of scopeData) {
-      const cutoffs = { orders: item.ordersCutoff, sales: item.salesCutoff, adverts: item.advertsCutoff };
+      const cutoffs = { orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]), sales: item.salesCutoff, adverts: item.advertsCutoff };
       for (const total of item.totals) cutoffsByNm.set(Number(total.nm_id), cutoffs);
     }
 
@@ -979,10 +1059,10 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
         cabinet_id: item.scope.cabinetId,
         label: item.scope.label,
         as_of: item.asOf,
-        orders_as_of: item.ordersCutoff,
+        orders_as_of: latestKnownDate([item.funnelCutoff, item.ordersCutoff]),
         sales_as_of: item.salesCutoff,
       })),
-      forecast_note: "Прогноз использует факт каждого кабинета только до его последней полной даты, профиль дня недели и краткосрочный тренд. Календарь акций WB пока не подключён.",
+      forecast_note: "Прогноз использует факт каждого кабинета только до его последней полной даты, профиль дня недели и краткосрочный тренд. Заказы сверяются с WB Analytics → Этапы воронки продаж, WB Статистика остаётся fallback. Календарь акций WB пока не подключён.",
       period,
       summary,
       skus,
