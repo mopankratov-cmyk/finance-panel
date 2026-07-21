@@ -12,7 +12,7 @@ function authorized(request: Request) {
   return secrets.some((secret) => supplied === `Bearer ${secret}`);
 }
 
-export async function POST(request: Request) {
+async function runFinancialMonitor(request: Request) {
   if (!authorized(request)) return NextResponse.json({ error: "Нет доступа" }, { status: 401 });
   try {
     const now = new Date();
@@ -51,4 +51,12 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+export async function POST(request: Request) {
+  return runFinancialMonitor(request);
+}
+
+export async function GET(request: Request) {
+  return runFinancialMonitor(request);
 }

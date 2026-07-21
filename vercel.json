@@ -18,6 +18,7 @@
     { "path": "/api/sync/dashboard-cache?view=health", "schedule": "55 * * * *" },
     { "path": "/api/sync/commissions", "schedule": "15 * * * *" },
     { "path": "/api/sync/token-health", "schedule": "15 6 * * *" },
+    { "path": "/api/opiu/monitor", "schedule": "0 5 * * *" },
     { "path": "/api/repricer/run/cron", "schedule": "30 6 * * *" },
     { "path": "/api/signals?persist=1", "schedule": "40 6 * * *" }
   ]

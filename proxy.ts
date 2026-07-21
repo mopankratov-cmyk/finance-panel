@@ -25,6 +25,7 @@ const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
   { prefix: "/api/lab/model-avatar" }, // аватар модели (<img> + внешний рендер)
   { prefix: "/api/lab/model-photos" }, // список фото модели (отдаёт yandex-img URL)
   { prefix: "/api/lab/product-image" }, // резолвер WB-картинки товара
+  { prefix: "/api/opiu/telegram", methods: ["POST"] }, // Telegram webhook: сам роут проверяет secret-token
 ];
 
 function isPublicApi(pathname: string, method: string): boolean {
