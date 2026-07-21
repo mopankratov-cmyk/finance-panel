@@ -39,7 +39,10 @@ export async function GET(request: NextRequest) {
   const upsertError = rows.length ? await chunkedUpsert("wb_token_health", rows, "cabinet_id,scope") : null;
   const networkErrors = rows.filter((row) => row.available === null).length;
   const missingScopes = rows.filter((row) => row.available === false).length;
-  const ok = !upsertError && networkErrors === 0;
-  await writeSyncLog("token-health", ok ? "ok" : "error", rows.length, upsertError || (networkErrors ? `Не проверено категорий: ${networkErrors}` : null), startedAt);
+  const ok = !upsertError && networkErrors === 0 && missingScopes === 0;
+  const logError = upsertError
+    || (networkErrors ? `Не проверено категорий: ${networkErrors}` : null)
+    || (missingScopes ? `Нет доступа к категориям WB API: ${missingScopes}` : null);
+  await writeSyncLog("token-health", ok ? "ok" : "error", rows.length, logError, startedAt);
   return NextResponse.json({ ok, cabinets: cabinets.length, checked: rows.length, missingScopes, networkErrors, error: upsertError }, { status: ok ? 200 : 502 });
 }

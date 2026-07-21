@@ -10,12 +10,13 @@ export async function GET(req: NextRequest) {
   if (!art) return NextResponse.json({ error: "нужен ?art=" }, { status: 400 });
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+    const { loadRnpReportRows } = await import("@/lib/rnp/rpcLoaders");
     const { getWbCardImage } = await import("@/lib/wb/cardImage");
     const db = getSupabaseAdmin();
     if (!db) return NextResponse.json({ error: "supabase нет" }, { status: 500 });
-    const { data } = await db.rpc("rnp_report");
+    const data = await loadRnpReportRows<any>(db, null, { label: "Фото товара WB: товары" });
 
-    const row = (data as any[] | null)?.find((r) => r.article === art);
+    const row = data.find((r) => r.article === art);
     if (!row?.nm_id) return NextResponse.json({ image_url: "" });
     const img = await getWbCardImage(Number(row.nm_id));
     return NextResponse.json({ image_url: img || "", nm_id: row.nm_id });

@@ -6,7 +6,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
-import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -45,10 +45,11 @@ async function loadNiches(request: NextRequest) {
 
   for (const c of cabs) {
     const productScope = cabinetProductScope(c);
-    const reportRows = await loadAllSupabasePages<{ nm_id: number; orders_sum_month: number }>((from, to) => db
-      .rpc("rnp_report", { p_cabinet: c.id })
-      .order("nm_id", { ascending: true })
-      .range(from, to), { label: `${c.name}: товары WB` });
+    const reportRows = await loadRnpReportRows<{ nm_id: number; orders_sum_month: number }>(
+      db,
+      c.id,
+      { label: `${c.name}: товары WB` },
+    );
     const top = reportRows
       .filter((row) => allowsProduct(productScope, row.nm_id))
       .slice()

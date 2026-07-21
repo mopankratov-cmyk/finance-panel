@@ -20,12 +20,13 @@ export async function POST(req: NextRequest) {
   if (!baseImage && body.sku_art) {
     try {
       const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+      const { loadRnpReportRows } = await import("@/lib/rnp/rpcLoaders");
       const { wbCardImageUrl } = await import("@/lib/wb/cardImage");
       const db = getSupabaseAdmin();
       if (db) {
-        const { data } = await db.rpc("rnp_report");
+        const data = await loadRnpReportRows<any>(db, null, { label: "Видео-сториборд: товары WB" });
 
-        const row = (data as any[] | null)?.find((r) => r.article === body.sku_art);
+        const row = data.find((r) => r.article === body.sku_art);
         if (row?.nm_id) baseImage = wbCardImageUrl(Number(row.nm_id));
       }
     } catch { /* без фото — ошибка ниже */ }

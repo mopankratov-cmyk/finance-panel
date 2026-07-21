@@ -12,6 +12,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
+import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
@@ -789,15 +790,13 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           allowed
             ? loadScopedBaseFacts(db, scope, allowed, from, to)
             : Promise.all([
-              loadAllPages<SkuDailyRow>((start, end) => db
-                .rpc("rnp_daily_sku", { p_from: from, p_to: to, p_cabinet: scope.cabinetId })
-                .order("d", { ascending: true })
-                .order("nm_id", { ascending: true })
-                .range(start, end)),
-              loadAllPages<RpcTotal>((start, end) => db
-                .rpc("rnp_report", { p_cabinet: scope.cabinetId })
-                .order("nm_id", { ascending: true })
-                .range(start, end)),
+              loadRnpDailySkuRows<SkuDailyRow>(db, {
+                from,
+                to,
+                cabinetId: scope.cabinetId,
+                label: `${scope.label}: RNP по дням`,
+              }),
+              loadRnpReportRows<RpcTotal>(db, scope.cabinetId, { label: `${scope.label}: RNP товары` }),
             ]).then(([skuRows, totals]) => ({ skuRows, totals })),
           loadAllPages<AdNmRow>((start, end) => {
             let query = db

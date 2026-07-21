@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 
@@ -25,11 +26,21 @@ export async function GET(req: NextRequest) {
   const from = new Date(Date.now() - (win * 2 - 1) * 86400000);
   const fromStr = from.toISOString().slice(0, 10);
   const toStr = to.toISOString().slice(0, 10);
-  const { data, error } = await db.rpc("rnp_daily_sku", { p_from: fromStr, p_to: toStr, p_cabinet });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  let data: DailySkuRow[];
+  try {
+    data = await loadRnpDailySkuRows<DailySkuRow>(db, {
+      from: fromStr,
+      to: toStr,
+      cabinetId: p_cabinet,
+      allowedNmIds,
+      label: "Динамика WB: заказы по SKU",
+    });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось загрузить динамику WB" }, { status: 500 });
+  }
 
   const byDate = new Map<string, DailyRow>();
-  for (const r of (data ?? []) as DailySkuRow[]) {
+  for (const r of data) {
     if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const date = String(r.d).slice(0, 10);
     const current = byDate.get(date) ?? { d: date, orders_count: 0, orders_sum: 0, buyouts_count: 0, buyouts_sum: 0, ad_spent: 0 };

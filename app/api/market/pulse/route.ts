@@ -5,7 +5,7 @@ import { hasMpstats, subjectByDate, subjectKeywords, subjectByDateId, subjectKey
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
-import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
 
 export const dynamic = "force-dynamic";
@@ -66,15 +66,13 @@ async function loadPulse(request: NextRequest) {
       ? [subjectByDateId(subjectId, d1, d2), subjectKeywordsId(subjectId, d1, d2, 300)]
       : [subjectByDate(subject, d1, d2), subjectKeywords(subject, d1, d2, 300)],
   );
-  const ourDailyRows = await loadAllSupabasePages<{ d: string; nm_id: number; orders_sum: number }>((from, to) => {
-    let query = db
-      .rpc("rnp_daily_sku", { p_from: d1, p_to: d2, p_cabinet: cabinetId })
-      .order("d", { ascending: true })
-      .order("nm_id", { ascending: true })
-      .range(from, to);
-    if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
-    return query;
-  }, { label: "Пульс рынка: заказы WB" });
+  const ourDailyRows = await loadRnpDailySkuRows<{ d: string; nm_id: number; orders_sum: number }>(db, {
+    from: d1,
+    to: d2,
+    cabinetId,
+    allowedNmIds,
+    label: "Пульс рынка: заказы WB",
+  });
 
   // бакетизация: день = сама дата, неделя = понедельник недели
   const bkt = (s: string) => (gran === "day" ? s.slice(0, 10) : isoWeek(s.slice(0, 10)));
@@ -113,14 +111,11 @@ async function loadPulse(request: NextRequest) {
   const sharePct = nicheRevWin > 0 ? Math.round((ourRevWin / nicheRevWin) * 1000) / 10 : null;
 
   // — топ-запросы ниши + наши позиции по топ-SKU кабинета —
-  const reportRows = await loadAllSupabasePages<{ nm_id: number; orders_sum_month: number }>((from, to) => {
-    let query = db
-      .rpc("rnp_report", { p_cabinet: cabinetId })
-      .order("nm_id", { ascending: true })
-      .range(from, to);
-    if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
-    return query;
-  }, { label: "Пульс рынка: товары WB" });
+  const reportRows = await loadRnpReportRows<{ nm_id: number; orders_sum_month: number }>(
+    db,
+    cabinetId,
+    { allowedNmIds, label: "Пульс рынка: товары WB" },
+  );
   const ourSkus = reportRows
     .filter((row) => requestAllowsNm(allowedNmIds, row.nm_id))
     .slice()

@@ -5,6 +5,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
 import { percentRatio } from "@/lib/wb/funnelMetrics";
@@ -90,25 +91,19 @@ export async function GET(request: NextRequest) {
           if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
           return query;
         }, { label: "SEO: реклама WB" }),
-        loadAllSupabasePages<RpcTotal>((from, to) => {
-          let query = db.rpc("rnp_report", { p_cabinet: cabinetId }).order("nm_id", { ascending: true }).range(from, to);
-          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
-          return query;
-        }, { label: "SEO: товары WB" }),
+        loadRnpReportRows<RpcTotal>(db, cabinetId, { allowedNmIds, label: "SEO: товары WB" }),
         loadAllSupabasePages<ProductCostRow>((from, to) => db
           .from("product_costs")
           .select("article, name")
           .order("article", { ascending: true })
           .range(from, to), { label: "SEO: себестоимость" }),
-        loadAllSupabasePages<DailySkuRow>((from, to) => {
-          let query = db
-            .rpc("rnp_daily_sku", { p_from: period.start, p_to: period.end, p_cabinet: cabinetId })
-            .order("d", { ascending: true })
-            .order("nm_id", { ascending: true })
-            .range(from, to);
-          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
-          return query;
-        }, { label: "SEO: заказы WB" }),
+        loadRnpDailySkuRows<DailySkuRow>(db, {
+          from: period.start,
+          to: period.end,
+          cabinetId,
+          allowedNmIds,
+          label: "SEO: заказы WB",
+        }),
       ]);
 
   // Заказы по nm/день для выручки ДО СПП — через server-side агрегат rnp_daily_sku

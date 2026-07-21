@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 interface SaleRow {
   cabinet_id: string | null;
@@ -148,14 +149,7 @@ export async function loadWbCachedFinance(options: {
     costsPromise,
   ]);
 
-  const products = await loadAllSupabasePages<ProductRow>(async (from, to) => {
-    const result = await db
-      .rpc("rnp_report", { p_cabinet: cabinetId })
-      .select("nm_id, article")
-      .order("nm_id", { ascending: true })
-      .range(from, to);
-    return { data: (result.data ?? []) as unknown as ProductRow[], error: result.error };
-  }, { maxPages: 100, label: "Финансы WB: товары" });
+  const products = await loadRnpReportRows<ProductRow>(db, cabinetId, { label: "Финансы WB: товары" });
 
   const costByArticle = new Map(costs.map((row) => [String(row.article || "").trim().toUpperCase(), num(row.cost_rub)]));
   const articleByNm = new Map<number, string>();

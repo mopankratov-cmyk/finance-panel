@@ -7,6 +7,7 @@ import { closedMoscowDates, loadSklejkiCommissionForCabinet, mapSklejkiMarginBef
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 // Холодный all-cabinet снимок может впервые обойти несколько больших Content API
@@ -95,7 +96,9 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
   const metricsPromise = Promise.all([
     loadFunnelRows(),
     loadAdRows(),
-    db.rpc("rnp_report", { p_cabinet: cabinetId }),
+    loadRnpReportRows<RpcTotal>(db, cabinetId, {
+      label: "Склейки WB: товары",
+    }),
     db.from("product_costs").select("article, warehouse_expenses"),
     loadSklejkiCommissionForCabinet(cabinetId),
   ]);
@@ -140,8 +143,7 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
   const spent14 = new Map<number, number>();
   const totals = new Map<number, RpcTotal>();
   if (metricsRes) {
-    const [funnelRows, adRows, tRes] = metricsRes;
-    if (tRes.error) throw new Error(`РНП WB: ${tRes.error.message}`);
+    const [funnelRows, adRows, totalRows] = metricsRes;
     const g7 = (nm: number) => { let x = m7.get(nm); if (!x) { x = { views: 0, spent: 0, cart: 0, oc: 0, os: 0 }; m7.set(nm, x); } return x; };
     for (const f of funnelRows) {
       if (week.has(String(f.date).slice(0, 10))) { const x = g7(f.nm_id); x.cart += f.add_to_cart || 0; x.oc += f.orders || 0; x.os += Number(f.orders_sum || 0); }
@@ -151,7 +153,7 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
       spent14.set(a.nm_id, (spent14.get(a.nm_id) ?? 0) + Number(a.spent || 0));
       if (week.has(iso)) { const x = g7(a.nm_id); x.views += a.views || 0; x.spent += Number(a.spent || 0); }
     }
-    for (const t of (tRes.data ?? []) as RpcTotal[]) totals.set(t.nm_id, t);
+    for (const t of totalRows) totals.set(t.nm_id, t);
   }
 
   const warehouseExpensesByArticle = new Map<string, number>();

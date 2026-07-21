@@ -7,6 +7,7 @@ import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductSco
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { buildSupplyVolumeCoverage } from "@/lib/supplies/volumeCoverage";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 
@@ -74,21 +75,25 @@ async function fetchAllStocks(db: SupabaseClient, single: string | null, members
 // без пересчёта долей/ставок, поэтому merge безопасен).
 async function fetchRpcRows(db: SupabaseClient, single: string | null, members: string[] | null): Promise<RpcRow[]> {
   if (!members) {
-    const res = await db.rpc("rnp_report", { p_cabinet: single });
-    if (res.error) throw new Error(res.error.message);
     const allowedNmIds = await requestAllowedNmIds(single);
-    return ((res.data ?? []) as RpcRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
+    return loadRnpReportRows<RpcRow>(db, single, {
+      allowedNmIds,
+      label: "Поставки WB: товары",
+    });
   }
-  const results = await Promise.all(members.map(async (member) => ({
-    member,
-    result: await db.rpc("rnp_report", { p_cabinet: member }),
-    allowedNmIds: await requestAllowedNmIds(member),
-  })));
-  const bad = results.find(({ result }) => result.error);
-  if (bad?.result.error) throw new Error(bad.result.error.message);
+  const results = await Promise.all(members.map(async (member) => {
+    const allowedNmIds = await requestAllowedNmIds(member);
+    return {
+      rows: await loadRnpReportRows<RpcRow>(db, member, {
+        allowedNmIds,
+        label: "Поставки WB: товары участника группы",
+      }),
+      allowedNmIds,
+    };
+  }));
   const merged = new Map<number, RpcRow>();
-  for (const { result, allowedNmIds } of results) {
-    for (const r of (result.data ?? []) as RpcRow[]) {
+  for (const { rows, allowedNmIds } of results) {
+    for (const r of rows) {
       if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
       const cur = merged.get(r.nm_id);
       if (!cur) { merged.set(r.nm_id, { ...r }); continue; }

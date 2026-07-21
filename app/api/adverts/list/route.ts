@@ -10,6 +10,7 @@ import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductSco
 import { loadScopedAdvertReportRows } from "@/lib/adverts/scopedReport";
 import { aggregateClosedAdvertMetrics, getClosedMoscowPeriod } from "@/lib/adverts/closedPeriodMetrics";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -198,11 +199,9 @@ export async function GET(request: NextRequest) {
 
   const reportPromise: Promise<RpcRow[]> = cabinetId && allowedNmIds
     ? loadScopedAdvertReportRows(db, cabinetId, [...allowedNmIds])
-    : (async () => {
-        const res = await db.rpc("rnp_report", { p_cabinet: cabinetId });
-        if (res.error) throw new Error(res.error.message);
-        return (res.data ?? []) as RpcRow[];
-      })();
+    : loadRnpReportRows<RpcRow>(db, cabinetId, {
+        label: "Реклама WB: товары",
+      });
 
   let queryResults: [
     AdvertRow[],

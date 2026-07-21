@@ -1,4 +1,5 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import type { WbAdStat, WbOrder, WbReportRow } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -16,10 +17,10 @@ export async function fetchOrders(
   const client = getSupabaseAdmin() ?? supabase;
   const rows = await loadAllSupabasePages<{
     nm_id: number; supplier_article: string | null; date: string; total_price: number | null;
-    discount_percent: number | null; finished_price: number | null; is_cancel: boolean | null; warehouse: string | null;
+    discount_percent: number | null; finished_price: number | null; is_cancel: boolean | null; warehouse: string | null; region: string | null;
   }>((from, to) => client
     .from("wb_orders")
-    .select("nm_id, supplier_article, date, total_price, discount_percent, finished_price, is_cancel, warehouse")
+    .select("nm_id, supplier_article, date, total_price, discount_percent, finished_price, is_cancel, warehouse, region")
     .eq("cabinet_id", OPIU_WB_CABINET_ID)
     .gte("date", dateFrom)
     .lte("date", `${dateTo}T23:59:59.999Z`)
@@ -34,6 +35,7 @@ export async function fetchOrders(
     finishedPrice: row.finished_price ?? undefined,
     isCancel: Boolean(row.is_cancel),
     warehouseName: row.warehouse ?? undefined,
+    regionName: row.region ?? undefined,
   }));
 }
 
@@ -52,17 +54,7 @@ export async function fetchSalesFromCache(dateFrom: string, dateTo: string): Pro
       .order("date", { ascending: true })
       .order("sale_id", { ascending: true })
       .range(from, to), { maxPages: 300, label: "ОПиУ: продажи WB" }),
-    loadAllSupabasePages<{ nm_id: number; article: string | null }>(async (from, to) => {
-      const result = await client
-        .rpc("rnp_report", { p_cabinet: OPIU_WB_CABINET_ID })
-        .select("nm_id, article")
-        .order("nm_id", { ascending: true })
-        .range(from, to);
-      return {
-        data: (result.data ?? []) as unknown as Array<{ nm_id: number; article: string | null }>,
-        error: result.error,
-      };
-    }, { maxPages: 100, label: "ОПиУ: товары WB" }),
+    loadRnpReportRows<{ nm_id: number; article: string | null }>(client, OPIU_WB_CABINET_ID, { label: "ОПиУ: товары WB" }),
     getWbCommissionForCabinet(OPIU_WB_CABINET_ID, 30, { allowLiveFallback: false }),
   ]);
   const articleByNm = new Map<number, string>();

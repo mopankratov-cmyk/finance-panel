@@ -5,6 +5,7 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { cabinetProductScope, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { getWbCommission, getWbCommissionMerged } from "@/lib/wb/commissions";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +29,10 @@ export async function GET(request: NextRequest) {
   const commToken = cab ? resolveWbToken(cab, "statistics") : undefined;
 
   const [rpcRes, costsRes, comm] = await Promise.all([
-    db.rpc("rnp_report", { p_cabinet: cabinetId }),
+    loadRnpReportRows<RpcRow>(db, cabinetId, {
+      allowedNmIds,
+      label: "Калькулятор WB: товары",
+    }),
     db.from("product_costs").select("article, name"),
     // конкретный кабинет → его финотчёт; «Все» → мердж по всем кабинетам (ENV пуст)
     cabinetId ? getWbCommission(30, {
@@ -41,7 +45,7 @@ export async function GET(request: NextRequest) {
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
 
   const shopLabel = label || "Все кабинеты";
-  const skus = ((rpcRes.data ?? []) as RpcRow[]).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id)).map((r) => {
+  const skus = rpcRes.filter((row) => requestAllowsNm(allowedNmIds, row.nm_id)).map((r) => {
     const orders = r.orders_month || 0;
     const rev = Number(r.orders_sum_month || 0);
     const factPct = comm.byNm.get(r.nm_id)?.pct ?? (comm.avgPct > 0 ? comm.avgPct : null);

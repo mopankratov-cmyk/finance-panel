@@ -4,6 +4,7 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,7 +47,14 @@ export async function GET(request: NextRequest) {
     adQ = adQ.in("nm_id", nmIds);
     funnelQ = funnelQ.in("nm_id", nmIds);
   }
-  const [adRes, funnelRes, totalsRes] = await Promise.all([adQ, funnelQ, db.rpc("rnp_report", { p_cabinet: cabinetId })]);
+  const [adRes, funnelRes, totals] = await Promise.all([
+    adQ,
+    funnelQ,
+    loadRnpReportRows<RpcTotal>(db, cabinetId, {
+      allowedNmIds,
+      label: "CTR-тест: товары WB",
+    }),
+  ]);
 
   const acc = new Map<number, { views: number; clicks: number; spent: number; os: number }>();
   const get = (nm: number) => { let a = acc.get(nm); if (!a) { a = { views: 0, clicks: 0, spent: 0, os: 0 }; acc.set(nm, a); } return a; };
@@ -54,7 +62,7 @@ export async function GET(request: NextRequest) {
   for (const f of (funnelRes.data ?? []) as FunnelRow[]) { if (!requestAllowsNm(allowedNmIds, f.nm_id)) continue; const x = get(f.nm_id); x.os += Number(f.orders_sum || 0); }
 
   const meta = new Map<number, RpcTotal>();
-  for (const t of (totalsRes.data ?? []) as RpcTotal[]) if (requestAllowsNm(allowedNmIds, t.nm_id)) meta.set(t.nm_id, t);
+  for (const t of totals) if (requestAllowsNm(allowedNmIds, t.nm_id)) meta.set(t.nm_id, t);
 
   const items = [...acc.entries()].map(([nm, a]) => {
     const t = meta.get(nm);

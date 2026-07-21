@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,9 +21,12 @@ export async function GET(_request: Request, ctx: { params: Promise<{ shop: stri
     return NextResponse.json({ error: "Нет доступа к выбранному WB-кабинету" }, { status: 403 });
   }
   const allowedNmIds = await requestAllowedNmIds(cabinetId);
-  const { data } = await db.rpc("rnp_report", { p_cabinet: cabinetId });
+  const data = await loadRnpReportRows<RpcRow>(db, cabinetId, {
+    allowedNmIds,
+    label: "РНП планирование: юнит-экономика",
+  });
   const econ: Record<string, { cost: number; price: number; margin: number | null }> = {};
-  for (const r of (data ?? []) as RpcRow[]) {
+  for (const r of data) {
     if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const orders = r.orders_month || 0;
     const price = orders > 0 ? Math.round(Number(r.orders_sum_month || 0) / orders) : 0;

@@ -3,6 +3,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,10 @@ export async function GET(request: NextRequest) {
   const allowedNmIds = await requestAllowedNmIds(cabinetId);
 
   const [rpcRes, costsRes] = await Promise.all([
-    db.rpc("rnp_report", { p_cabinet: cabinetId }),
+    loadRnpReportRows<RpcRow>(db, cabinetId, {
+      allowedNmIds,
+      label: "Планирование WB: товары",
+    }),
     db.from("product_costs").select("article, name, brand"),
   ]);
 
@@ -32,7 +36,7 @@ export async function GET(request: NextRequest) {
     meta.set(c.article as string, { name: (c.name as string) ?? "", cat: (c.brand as string) || "Без категории" });
   }
 
-  const skus = ((rpcRes.data ?? []) as RpcRow[])
+  const skus = rpcRes
     .filter((row) => requestAllowsNm(allowedNmIds, row.nm_id))
     .map((r) => {
       const m = meta.get(r.article);

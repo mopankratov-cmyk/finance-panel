@@ -42,14 +42,23 @@ interface HistoryItem {
 
 interface FunnelCoverageRow { nm_id: number; date: string }
 
-// nm_id, по которым тянем воронку, в разрезе кабинета (остатки + заказы за 30 дней).
+// nm_id, по которым тянем воронку, в разрезе кабинета
+// (товарный контур + остатки + заказы за 30 дней).
 async function nmIdsForCabinet(db: SupabaseClient, cabinetId: string | null): Promise<number[]> {
-  const stockRows = await loadAllSupabasePages<{ nm_id: number }>((from, to) => {
+  const productRowsPromise = cabinetId
+    ? loadAllSupabasePages<{ nm_id: number }>((from, to) => db
+      .from("wb_cabinet_product_scope")
+      .select("nm_id")
+      .eq("cabinet_id", cabinetId)
+      .order("nm_id", { ascending: true })
+      .range(from, to), { maxPages: 1_000, label: "SKU товарного контура для воронки" })
+    : Promise.resolve([]);
+  const stockRowsPromise = loadAllSupabasePages<{ nm_id: number }>((from, to) => {
     let query = db.from("wb_stocks").select("nm_id").order("nm_id", { ascending: true }).range(from, to);
     query = cabinetId === null ? query.is("cabinet_id", null) : query.eq("cabinet_id", cabinetId);
     return query;
   }, { maxPages: 1_000, label: "SKU остатков для воронки" });
-  const orderRows = await loadAllSupabasePages<{ nm_id: number }>((from, to) => {
+  const orderRowsPromise = loadAllSupabasePages<{ nm_id: number }>((from, to) => {
     let query = db
       .from("wb_orders")
       .select("nm_id")
@@ -59,9 +68,15 @@ async function nmIdsForCabinet(db: SupabaseClient, cabinetId: string | null): Pr
     query = cabinetId === null ? query.is("cabinet_id", null) : query.eq("cabinet_id", cabinetId);
     return query;
   }, { maxPages: 1_000, label: "SKU заказов для воронки" });
+  const [productRows, stockRows, orderRows] = await Promise.all([
+    productRowsPromise,
+    stockRowsPromise,
+    orderRowsPromise,
+  ]);
 
   return [
     ...new Set([
+      ...productRows.map((r) => r.nm_id as number),
       ...stockRows.map((r) => r.nm_id as number),
       ...orderRows.map((r) => r.nm_id as number),
     ]),

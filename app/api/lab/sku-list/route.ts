@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { SKU_YANDEX_FOLDER } from "@/lib/lab/skuFolders";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,13 +17,13 @@ export async function GET() {
   if (!db) return NextResponse.json({ items: [] });
 
   const [totalsRes, costsRes] = await Promise.all([
-    db.rpc("rnp_report"),
+    loadRnpReportRows<RpcTotal>(db, null, { label: "Контент-лаб: товары WB" }),
     db.from("product_costs").select("article, name"),
   ]);
   const nameByArt = new Map<string, string>();
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
 
-  const items = ((totalsRes.data ?? []) as RpcTotal[]).map((t) => {
+  const items = totalsRes.map((t) => {
     const art = t.article || String(t.nm_id);
     const yp = SKU_YANDEX_FOLDER[art];
     return { nm: t.nm_id, art, name: nameByArt.get(t.article) || art, shop: "JC", img_url: wbCardImageUrl(t.nm_id), folder_id: yp ? b64(yp) : null, has_content: !!yp };
