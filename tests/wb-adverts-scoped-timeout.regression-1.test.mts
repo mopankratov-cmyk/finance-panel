@@ -25,7 +25,12 @@ test("WB adverts scoped report aggregates only allowlisted SKU", () => {
     orders: [
       { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T10:00:00.000Z", total_price: 1000, discount_percent: 10, is_cancel: false },
       { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T11:00:00.000Z", total_price: 500, discount_percent: 0, is_cancel: true },
+      { nm_id: 202, supplier_article: "RIO-202", date: "2026-07-14T12:00:00.000Z", total_price: 700, discount_percent: 0, is_cancel: false },
       { nm_id: 999, supplier_article: "OTHER-999", date: "2026-07-14T12:00:00.000Z", total_price: 9999, discount_percent: 0, is_cancel: false },
+    ],
+    funnelOrders: [
+      { nm_id: 101, date: "2026-07-14", orders: 3, orders_sum: 2700 },
+      { nm_id: 999, date: "2026-07-14", orders: 99, orders_sum: 9999 },
     ],
   });
 
@@ -33,8 +38,8 @@ test("WB adverts scoped report aggregates only allowlisted SKU", () => {
     {
       nm_id: 101,
       article: "NOR-101",
-      orders_month: 1,
-      orders_sum_month: 900,
+      orders_month: 3,
+      orders_sum_month: 2700,
       stock: 5,
       in_way_to_client: 0,
       cost: 100,
@@ -42,8 +47,8 @@ test("WB adverts scoped report aggregates only allowlisted SKU", () => {
     {
       nm_id: 202,
       article: "RIO-202",
-      orders_month: 0,
-      orders_sum_month: 0,
+      orders_month: 1,
+      orders_sum_month: 700,
       stock: 0,
       in_way_to_client: 0,
       cost: 250,
@@ -59,6 +64,14 @@ test("WB adverts route does not let live WB balance hold the page for 45 seconds
   const source = readFileSync(new URL("../app/api/adverts/list/route.ts", import.meta.url), "utf8");
   assert.match(source, /signal:\s*AbortSignal\.timeout\(5_000\)/);
   assert.match(source, /loadScopedAdvertReportRows\(db,\s*cabinetId,\s*\[\.\.\.allowedNmIds\]\)/);
+});
+
+test("WB adverts scoped report reads funnel orders for the same allowlisted SKU set", () => {
+  const source = readFileSync(new URL("../lib/adverts/scopedReport.ts", import.meta.url), "utf8");
+  assert.match(source, /applyFunnelOrdersOverlay/);
+  assert.match(source, /\.from\("wb_funnel_daily"\)/);
+  assert.match(source, /\.select\("nm_id, date, orders, orders_sum"\)/);
+  assert.match(source, /funnelOrders/);
 });
 
 test("WB adverts route keeps selected-cabinet loads off slow global fallbacks", () => {
