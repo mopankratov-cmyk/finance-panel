@@ -7,6 +7,7 @@
 import { supabase } from "@/lib/supabase";
 import type { Account, Payment } from "@/lib/types";
 import type { DdsParseResult } from "./ddsCsv";
+import type { DdsCompany } from "./ddsCompanies";
 
 type AccountRow = { id: string; name: string; type: string; currency: string; balance: number };
 type PaymentRow = {
@@ -20,6 +21,7 @@ type PaymentRow = {
   status: string;
   counterparty: string;
   comment: string | null;
+  company_id: string | null;
 };
 
 export interface SuspectedRow {
@@ -33,6 +35,7 @@ export interface ImportPlan {
   accountRows: AccountRow[];
   newPaymentRows: PaymentRow[]; // точно новые — добавляются всегда
   suspectedRows: SuspectedRow[]; // совпали дата+сумма+кошелёк — спросить
+  companyUpdates: Array<{ paymentId: string; companyId: string }>;
   newAccounts: number;
   reusedAccounts: number;
   duplicatePayments: number; // точные дубли — пропущены
@@ -40,7 +43,13 @@ export interface ImportPlan {
 
 export interface ExistingData {
   accounts: Account[];
-  payments: Payment[];
+  payments: Array<Payment & { companyId?: string | null }>;
+}
+
+export interface CompanyAssignment {
+  companies: DdsCompany[];
+  // undefined = брать компанию из колонки файла; null = оставить без компании; id = назначить всему файлу
+  overrideCompanyId?: string | null;
 }
 
 function guessType(name: string): string {
@@ -51,12 +60,33 @@ function guessCurrency(name: string): string {
   return /usdt|usd/i.test(name) ? "USD" : "RUB";
 }
 
-const exactKey = (date: string, amount: number, category: string, wallet: string, name: string) =>
+const exactKey = (
+  date: string,
+  amount: number,
+  category: string,
+  wallet: string,
+  name: string,
+  companyId: string | null,
+) => `${date}|${amount}|${category}|${wallet}|${name}|${companyId ?? ""}`;
+const baseExactKey = (date: string, amount: number, category: string, wallet: string, name: string) =>
   `${date}|${amount}|${category}|${wallet}|${name}`;
 const looseKey = (date: string, amount: number, wallet: string) => `${date}|${amount}|${wallet}`;
 
+function companyIdForDraft(
+  companyName: string,
+  assignment: CompanyAssignment,
+): string | null {
+  if (assignment.overrideCompanyId !== undefined) return assignment.overrideCompanyId;
+  if (companyName === "Группа (общее)") return null;
+  return assignment.companies.find((company) => company.name === companyName)?.id ?? null;
+}
+
 // Строит план вставки против переданного снимка базы (без записи).
-export function buildImportPlan(result: DdsParseResult, existing: ExistingData): ImportPlan {
+export function buildImportPlan(
+  result: DdsParseResult,
+  existing: ExistingData,
+  assignment: CompanyAssignment,
+): ImportPlan {
   // --- Счета: переиспользуем существующие по названию ---
   const idByName = new Map(existing.accounts.map((a) => [a.name, a.id] as const));
   const idByWallet = new Map<string, string>();
@@ -79,11 +109,18 @@ export function buildImportPlan(result: DdsParseResult, existing: ExistingData):
   // --- Индексы по уже имеющимся платежам ---
   const accNameById = new Map(existing.accounts.map((a) => [a.id, a.name] as const));
   const exactRemaining = new Map<string, number>();
+  const unassignedExact = new Map<string, string[]>();
   const looseMatch = new Map<string, { date: string; amount: number; wallet: string; category: string; name: string }>();
   for (const p of existing.payments) {
     const wallet = accNameById.get(p.accountId) ?? "";
-    const ek = exactKey(p.date, p.amount, p.category, wallet, p.name);
+    const ek = exactKey(p.date, p.amount, p.category, wallet, p.name, p.companyId ?? null);
     exactRemaining.set(ek, (exactRemaining.get(ek) ?? 0) + 1);
+    if (!p.companyId && p.id) {
+      const bk = baseExactKey(p.date, p.amount, p.category, wallet, p.name);
+      const ids = unassignedExact.get(bk) ?? [];
+      ids.push(p.id);
+      unassignedExact.set(bk, ids);
+    }
     const lk = looseKey(p.date, p.amount, wallet);
     if (!looseMatch.has(lk))
       looseMatch.set(lk, { date: p.date, amount: p.amount, wallet, category: p.category, name: p.name });
@@ -91,15 +128,26 @@ export function buildImportPlan(result: DdsParseResult, existing: ExistingData):
 
   const newPaymentRows: PaymentRow[] = [];
   const suspectedRows: SuspectedRow[] = [];
+  const companyUpdates: Array<{ paymentId: string; companyId: string }> = [];
   let duplicatePayments = 0;
 
   for (const d of result.drafts) {
-    const ek = exactKey(d.date, d.amount, d.category, d.wallet, d.name);
+    const companyId = companyIdForDraft(d.company, assignment);
+    const ek = exactKey(d.date, d.amount, d.category, d.wallet, d.name, companyId);
     const rem = exactRemaining.get(ek) ?? 0;
     if (rem > 0) {
       exactRemaining.set(ek, rem - 1); // точный дубль — пропускаем
       duplicatePayments++;
       continue;
+    }
+    if (companyId) {
+      const bk = baseExactKey(d.date, d.amount, d.category, d.wallet, d.name);
+      const unassignedIds = unassignedExact.get(bk);
+      const paymentId = unassignedIds?.shift();
+      if (paymentId) {
+        companyUpdates.push({ paymentId, companyId });
+        continue;
+      }
     }
     const row: PaymentRow = {
       id: crypto.randomUUID(),
@@ -112,6 +160,7 @@ export function buildImportPlan(result: DdsParseResult, existing: ExistingData):
       status: "done",
       counterparty: d.counterparty,
       comment: null, // «Направление бизнеса» появится отдельным полем на Этапе 2
+      company_id: companyId,
     };
     const match = looseMatch.get(looseKey(d.date, d.amount, d.wallet));
     if (match) suspectedRows.push({ row, match, wallet: d.wallet });
@@ -122,6 +171,7 @@ export function buildImportPlan(result: DdsParseResult, existing: ExistingData):
     accountRows,
     newPaymentRows,
     suspectedRows,
+    companyUpdates,
     newAccounts: accountRows.length,
     reusedAccounts: idByWallet.size - accountRows.length,
     duplicatePayments,
@@ -130,36 +180,47 @@ export function buildImportPlan(result: DdsParseResult, existing: ExistingData):
 
 // Свежий снимок базы — чтобы проверка работала даже при повторном импорте без перезагрузки.
 async function fetchExisting(): Promise<ExistingData> {
-  const [accRes, payRes] = await Promise.all([
-    supabase.from("accounts").select("id,name"),
-    supabase.from("payments").select("name,amount,category,account_id,date"),
-  ]);
+  const accRes = await supabase.from("accounts").select("id,name");
   if (accRes.error) throw new Error(`Не удалось прочитать счета: ${accRes.error.message}`);
-  if (payRes.error) throw new Error(`Не удалось прочитать платежи: ${payRes.error.message}`);
 
   const accounts = (accRes.data ?? []).map(
     (a: { id: string; name: string }) =>
       ({ id: a.id, name: a.name, type: "bank", currency: "RUB", balance: 0 }) as Account,
   );
-  const payments = (payRes.data ?? []).map(
-    (p: { name: string; amount: number; category: string; account_id: string; date: string }) =>
-      ({
-        id: "",
-        name: p.name,
-        amount: Number(p.amount),
-        category: p.category,
-        accountId: p.account_id,
-        date: p.date,
-        status: "done",
-        counterparty: "",
-      }) as Payment,
-  );
+  const payments: Array<Payment & { companyId?: string | null }> = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const payRes = await supabase
+      .from("payments")
+      .select("id,name,amount,category,account_id,date,company_id")
+      .range(from, from + pageSize - 1);
+    if (payRes.error) throw new Error(`Не удалось прочитать платежи: ${payRes.error.message}`);
+    const page = (payRes.data ?? []).map(
+      (p) =>
+        ({
+          id: p.id,
+          name: p.name,
+          amount: Number(p.amount),
+          category: p.category,
+          accountId: p.account_id,
+          date: p.date,
+          status: "done",
+          counterparty: "",
+          companyId: p.company_id,
+        }) as Payment & { companyId?: string | null },
+    );
+    payments.push(...page);
+    if (page.length < pageSize) break;
+  }
   return { accounts, payments };
 }
 
 // Готовит план против СВЕЖИХ данных базы (для шага загрузки/проверки).
-export async function planImport(result: DdsParseResult): Promise<ImportPlan> {
-  return buildImportPlan(result, await fetchExisting());
+export async function planImport(
+  result: DdsParseResult,
+  assignment: CompanyAssignment,
+): Promise<ImportPlan> {
+  return buildImportPlan(result, await fetchExisting(), assignment);
 }
 
 async function insertChunked(table: string, rows: object[], size: number): Promise<number> {
@@ -181,15 +242,35 @@ async function insertChunked(table: string, rows: object[], size: number): Promi
 export async function commitImport(
   plan: ImportPlan,
   acceptedSuspectedIds: Set<string>,
-): Promise<{ accountsCreated: number; paymentsCreated: number; duplicatesSkipped: number; suspectedSkipped: number }> {
+): Promise<{
+  accountsCreated: number;
+  paymentsCreated: number;
+  companiesAssigned: number;
+  duplicatesSkipped: number;
+  suspectedSkipped: number;
+}> {
   const accepted = plan.suspectedRows.filter((s) => acceptedSuspectedIds.has(s.row.id)).map((s) => s.row);
   const payments = [...plan.newPaymentRows, ...accepted];
 
   const accountsCreated = await insertChunked("accounts", plan.accountRows, 100);
+  for (let i = 0; i < plan.companyUpdates.length; i += 100) {
+    const chunk = plan.companyUpdates.slice(i, i + 100);
+    const byCompany = new Map<string, string[]>();
+    for (const update of chunk) {
+      const ids = byCompany.get(update.companyId) ?? [];
+      ids.push(update.paymentId);
+      byCompany.set(update.companyId, ids);
+    }
+    for (const [companyId, ids] of byCompany) {
+      const { error } = await supabase.from("payments").update({ company_id: companyId }).in("id", ids);
+      if (error) throw new Error(`Не удалось назначить компанию платежам: ${error.message}`);
+    }
+  }
   const paymentsCreated = await insertChunked("payments", payments, 500);
   return {
     accountsCreated,
     paymentsCreated,
+    companiesAssigned: plan.companyUpdates.length,
     duplicatesSkipped: plan.duplicatePayments,
     suspectedSkipped: plan.suspectedRows.length - accepted.length,
   };

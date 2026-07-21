@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import type { DayInfo } from "@/lib/calculations";
 import { formatMoney } from "@/lib/format";
 import type { Payment } from "@/lib/types";
+import { getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
 
 interface CalendarDayCellProps {
   dateStr: string;
@@ -16,21 +17,8 @@ interface CalendarDayCellProps {
   onQuickAdd: () => void;
 }
 
-function formatPreviewAmount(amount: number): string {
-  const formatted = new Intl.NumberFormat("ru-RU", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.abs(amount));
-  const sign = amount >= 0 ? "+" : "−";
-  return `${sign}${formatted} ₽`;
-}
-
-function previewAmountClass(amount: number, onDark: boolean): string {
-  if (amount >= 0) {
-    return onDark ? "text-emerald-200" : "text-emerald-600";
-  }
-  return onDark ? "text-red-200" : "text-red-600";
-}
+const compactMoney = (amount: number) =>
+  new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.abs(amount));
 
 export function CalendarDayCell({
   dateStr,
@@ -43,96 +31,68 @@ export function CalendarDayCell({
   onQuickAdd,
 }: CalendarDayCellProps) {
   const paymentCount = dayPayments.length;
-  const previewPayments = dayPayments.slice(0, 2);
+  const activePayments = dayPayments.filter((payment) => payment.status !== "cancelled");
+  const income = activePayments.filter((payment) => payment.amount > 0).reduce((sum, payment) => sum + payment.amount, 0);
+  const expense = activePayments.filter((payment) => payment.amount < 0).reduce((sum, payment) => sum - payment.amount, 0);
+  const expenseRows = activePayments.filter((payment) => payment.amount < 0).sort((a, b) => priorityRank(a) - priorityRank(b) || a.amount - b.amount).slice(0, 3);
+  const hiddenExpenses = activePayments.filter((payment) => payment.amount < 0).length - expenseRows.length;
 
-  let bgClass = "bg-slate-50 border-slate-200";
-  if (info?.isNegative) {
-    bgClass = "bg-red-500 border-red-600 text-white";
-  } else if (info?.dayType === "income") {
-    bgClass = "bg-emerald-50 border-emerald-200";
-  } else if (info?.dayType === "expense") {
-    bgClass = "bg-red-50 border-red-200";
-  }
-
-  const onDark = info?.isNegative;
+  const negative = info?.isNegative;
 
   return (
     <div
-      className={`group relative min-h-[72px] rounded-lg border sm:min-h-[88px] ${
+      className={`group relative min-h-[210px] overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md ${
         isToday
-          ? "ring-2 ring-violet-600 ring-offset-1 ring-offset-white"
-          : ""
-      } ${isSelected ? "ring-2 ring-violet-400" : ""} ${bgClass}`}
+          ? "border-violet-400 ring-2 ring-violet-200"
+          : negative ? "border-rose-300 border-t-4" : "border-slate-200"
+      } ${isSelected ? "ring-2 ring-violet-500" : ""}`}
     >
       <button
         type="button"
         onClick={onSelect}
-        className="flex h-full w-full flex-col items-stretch rounded-lg p-1.5 text-left transition-colors hover:ring-2 hover:ring-violet-500/30 sm:p-2"
+        className="flex min-h-[210px] w-full flex-col items-stretch p-3 text-left"
       >
-        <div className="flex items-start justify-between gap-1">
-          <span
-            className={`text-xs font-semibold sm:text-sm ${
-              onDark ? "text-white" : "text-slate-700"
-            }`}
-          >
+        <div className="flex items-center justify-between gap-2">
+          <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isToday ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"}`}>
             {day}
           </span>
           {paymentCount > 0 && (
-            <span
-              className={`flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold leading-none ${
-                onDark
-                  ? "bg-white/20 text-white"
-                  : "bg-slate-700 text-white"
-              }`}
-            >
-              {paymentCount}
-            </span>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">{paymentCount} опер.</span>
           )}
         </div>
 
-        {previewPayments.length > 0 && (
-          <div className="mt-1 min-h-0 flex-1 space-y-0.5 overflow-hidden">
-            {previewPayments.map((payment) => (
-              <div
-                key={payment.id}
-                className="flex min-w-0 items-baseline gap-1 text-[8px] leading-tight sm:text-[9px]"
-              >
-                <span
-                  className={`shrink-0 font-bold tabular-nums ${previewAmountClass(payment.amount, onDark ?? false)}`}
-                >
-                  {formatPreviewAmount(payment.amount)}
-                </span>
-                <span
-                  className={`min-w-0 truncate ${
-                    onDark ? "text-white/80" : "text-slate-600"
-                  }`}
-                >
-                  {payment.name}
-                </span>
+        {(income > 0 || expense > 0) && (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-emerald-50 px-2 py-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-emerald-700">Поступления</p>
+              <p className="mt-0.5 truncate text-sm font-bold tabular-nums text-emerald-800">+{compactMoney(income)}</p>
+            </div>
+            <div className="rounded-lg bg-rose-50 px-2 py-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-rose-700">Расходы</p>
+              <p className="mt-0.5 truncate text-sm font-bold tabular-nums text-rose-800">−{compactMoney(expense)}</p>
+            </div>
+          </div>
+        )}
+
+        {expenseRows.length > 0 && (
+          <div className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Расходы за день</p>
+            {expenseRows.map((payment) => (
+              <div key={payment.id} title={payment.name} className="flex min-w-0 items-center gap-1.5 text-[11px] leading-tight text-slate-700">
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${payment.status === "done" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                <span className={`shrink-0 rounded border px-1 text-[9px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span>
+                <span className="min-w-0 flex-1 truncate font-medium">{payment.category}</span>
+                <span className="shrink-0 font-semibold tabular-nums">−{compactMoney(payment.amount)}</span>
               </div>
             ))}
-            {paymentCount > 2 && (
-              <p
-                className={`text-[8px] sm:text-[9px] ${onDark ? "text-white/60" : "text-slate-400"}`}
-              >
-                +{paymentCount - 2} ещё
-              </p>
-            )}
+            {hiddenExpenses > 0 && <p className="text-[10px] text-slate-400">Ещё расходов: {hiddenExpenses}</p>}
           </div>
         )}
 
         {info && (
-          <span
-            className={`mt-auto text-[9px] font-medium leading-tight sm:text-[10px] ${
-              onDark
-                ? "text-white/90"
-                : info.balance >= 0
-                  ? "text-slate-600"
-                  : "text-red-600"
-            }`}
-          >
-            {formatMoney(info.balance).replace(" ₽", "")}
-          </span>
+          <div className={`mt-auto border-t border-slate-100 pt-2 text-xs ${info.balance >= 0 ? "text-slate-600" : "text-rose-700"}`}>
+            Остаток: <b className="tabular-nums">{formatMoney(info.balance).replace(" ₽", "")}</b>
+          </div>
         )}
       </button>
 
@@ -142,14 +102,10 @@ export function CalendarDayCell({
           e.stopPropagation();
           onQuickAdd();
         }}
-        className={`absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full opacity-0 shadow-sm transition-opacity group-hover:opacity-100 ${
-          onDark
-            ? "bg-white/90 text-slate-800 hover:bg-white"
-            : "bg-violet-600 text-white hover:bg-violet-500"
-        }`}
+        className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-violet-700 focus:opacity-100"
         aria-label={`Быстро добавить платёж на ${dateStr}`}
       >
-        <Plus className="h-3 w-3" />
+        <Plus className="h-4 w-4" />
       </button>
     </div>
   );

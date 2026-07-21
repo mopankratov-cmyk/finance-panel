@@ -2,8 +2,15 @@
 
 import { AlertTriangle, FileUp, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { createDdsCompany, type DdsCompany } from "./ddsCompanies";
 import { parseDdsCsv, type DdsParseResult } from "./ddsCsv";
-import { buildImportPlan, commitImport, planImport, type ImportPlan } from "./ddsImport";
+import {
+  buildImportPlan,
+  commitImport,
+  planImport,
+  type CompanyAssignment,
+  type ImportPlan,
+} from "./ddsImport";
 import { buildDdsSummary } from "./ddsSummary";
 import { Modal } from "@/components/ui/Modal";
 import type { Account, Payment } from "@/lib/types";
@@ -15,10 +22,19 @@ interface Props {
   open: boolean;
   onClose: () => void;
   existingAccounts: Account[];
-  existingPayments: Payment[];
+  existingPayments: Array<Payment & { companyId?: string | null }>;
+  companies: DdsCompany[];
+  onCompanyCreated: (company: DdsCompany) => void;
 }
 
-export function ImportDdsModal({ open, onClose, existingAccounts, existingPayments }: Props) {
+export function ImportDdsModal({
+  open,
+  onClose,
+  existingAccounts,
+  existingPayments,
+  companies,
+  onCompanyCreated,
+}: Props) {
   const [result, setResult] = useState<DdsParseResult | null>(null);
   const [fileName, setFileName] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -29,10 +45,16 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
   const [done, setDone] = useState<{
     accountsCreated: number;
     paymentsCreated: number;
+    companiesAssigned: number;
     duplicatesSkipped: number;
     suspectedSkipped: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [companyMode, setCompanyMode] = useState("");
+  const [addingCompany, setAddingCompany] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [newCompanyGroup, setNewCompanyGroup] = useState("");
+  const [savingCompany, setSavingCompany] = useState(false);
 
   const reset = () => {
     setResult(null);
@@ -42,6 +64,10 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
     setReviewing(false);
     setDone(null);
     setError(null);
+    setCompanyMode("");
+    setAddingCompany(false);
+    setNewCompanyName("");
+    setNewCompanyGroup("");
   };
 
   const handleFile = async (file: File) => {
@@ -52,7 +78,10 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
     setPlan(null);
     try {
       const text = await file.text();
-      setResult(parseDdsCsv(text));
+      const parsed = parseDdsCsv(text);
+      setResult(parsed);
+      const hasNamedCompanies = parsed.drafts.some((draft) => draft.company !== "Группа (общее)");
+      setCompanyMode(hasNamedCompanies ? "from-file" : "");
       setFileName(file.name);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось прочитать файл");
@@ -63,13 +92,22 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
   };
 
   const summary = useMemo(() => (result ? buildDdsSummary(result.drafts) : null), [result]);
+  const assignment = useMemo<CompanyAssignment>(() => {
+    if (companyMode === "from-file") return { companies };
+    if (companyMode === "unassigned") return { companies, overrideCompanyId: null };
+    return { companies, overrideCompanyId: companyMode || null };
+  }, [companies, companyMode]);
   // оценка для превью — по данным в памяти
   const preview = useMemo(
     () =>
       result
-        ? buildImportPlan(result, { accounts: existingAccounts, payments: existingPayments })
+        ? buildImportPlan(
+            result,
+            { accounts: existingAccounts, payments: existingPayments },
+            assignment,
+          )
         : null,
-    [result, existingAccounts, existingPayments],
+    [result, existingAccounts, existingPayments, assignment],
   );
 
   const handleLoad = async () => {
@@ -77,7 +115,8 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
     setImporting(true);
     setError(null);
     try {
-      const fresh = await planImport(result); // сверка со свежей базой
+      if (!companyMode) throw new Error("Выберите, к какому юрлицу относится файл");
+      const fresh = await planImport(result, assignment); // сверка со свежей базой
       if (fresh.suspectedRows.length > 0) {
         setPlan(fresh);
         setAccepted(new Set());
@@ -89,6 +128,23 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
       setError(e instanceof Error ? e.message : "Ошибка импорта");
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleCreateCompany = async () => {
+    setSavingCompany(true);
+    setError(null);
+    try {
+      const company = await createDdsCompany(newCompanyName, newCompanyGroup);
+      onCompanyCreated(company);
+      setCompanyMode(company.id);
+      setAddingCompany(false);
+      setNewCompanyName("");
+      setNewCompanyGroup("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось добавить юрлицо");
+    } finally {
+      setSavingCompany(false);
     }
   };
 
@@ -119,7 +175,12 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
     onClose();
   };
 
-  const nothingNew = preview ? preview.newPaymentRows.length === 0 && preview.suspectedRows.length === 0 && preview.accountRows.length === 0 : false;
+  const nothingNew = preview
+    ? preview.newPaymentRows.length === 0 &&
+      preview.suspectedRows.length === 0 &&
+      preview.accountRows.length === 0 &&
+      preview.companyUpdates.length === 0
+    : false;
 
   return (
     <Modal open={open} onClose={close} title="Импорт ДДС из CSV">
@@ -127,6 +188,7 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
         <div className="space-y-4 text-sm">
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-emerald-800">
             Готово! Создано счетов: <b>{done.accountsCreated}</b>, платежей: <b>{done.paymentsCreated}</b>.
+            {done.companiesAssigned > 0 && <> Компания назначена существующим платежам: <b>{done.companiesAssigned}</b>.</>}
             {done.duplicatesSkipped > 0 && <> Точных дублей пропущено: <b>{done.duplicatesSkipped}</b>.</>}
             {done.suspectedSkipped > 0 && <> Под вопросом пропущено: <b>{done.suspectedSkipped}</b>.</>}
           </div>
@@ -220,13 +282,82 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
 
           {result && summary && preview && (
             <div className="space-y-3">
+              <div className="rounded-lg border border-slate-200 p-3">
+                <label htmlFor="dds-company" className="mb-1 block text-xs font-medium text-slate-600">
+                  К какому юрлицу относится файл
+                </label>
+                <select
+                  id="dds-company"
+                  value={companyMode}
+                  onChange={(e) => setCompanyMode(e.target.value)}
+                  className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="">Выберите юрлицо</option>
+                  <option value="from-file">Брать из колонки «Направление бизнеса»</option>
+                  <option value="unassigned">Общее по группе (без одного юрлица)</option>
+                  {companies.filter((company) => company.isActive).map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name} · {company.groupName}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-400">
+                  Для отдельного ДДС, например Коровкина, выберите одно юрлицо для всего файла.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAddingCompany((value) => !value)}
+                  className="mt-2 min-h-11 text-sm font-medium text-violet-700 hover:underline"
+                >
+                  {addingCompany ? "Отменить добавление" : "+ Добавить новое юрлицо"}
+                </button>
+                {addingCompany && (
+                  <div className="mt-2 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="new-company-name" className="mb-1 block text-xs text-slate-500">Название</label>
+                      <input
+                        id="new-company-name"
+                        value={newCompanyName}
+                        onChange={(e) => setNewCompanyName(e.target.value)}
+                        placeholder="Например, ООО Новое"
+                        className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="new-company-group" className="mb-1 block text-xs text-slate-500">Группа</label>
+                      <input
+                        id="new-company-group"
+                        value={newCompanyGroup}
+                        onChange={(e) => setNewCompanyGroup(e.target.value)}
+                        placeholder="Основная группа"
+                        className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCreateCompany}
+                      disabled={savingCompany || !newCompanyName.trim() || !newCompanyGroup.trim()}
+                      className="min-h-11 rounded-lg bg-slate-800 px-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
+                    >
+                      {savingCompany ? "Добавляю…" : "Добавить юрлицо"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <Stat label="Платежей в файле" value={fmt(result.drafts.length)} />
                 <Stat label="Чистый поток" value={`${fmt(summary.realNet)} ₽`} good={summary.realNet >= 0} bad={summary.realNet < 0} />
                 <Stat
                   label="Точно новых"
                   value={fmt(preview.newPaymentRows.length)}
-                  sub={preview.duplicatePayments > 0 ? `точных дублей: ${fmt(preview.duplicatePayments)}` : undefined}
+                  sub={
+                    preview.companyUpdates.length > 0
+                      ? `компания заполнится: ${fmt(preview.companyUpdates.length)}`
+                      : preview.duplicatePayments > 0
+                        ? `точных дублей: ${fmt(preview.duplicatePayments)}`
+                        : undefined
+                  }
                 />
                 <Stat
                   label="Под вопросом"
@@ -256,7 +387,7 @@ export function ImportDdsModal({ open, onClose, existingAccounts, existingPaymen
 
               <button
                 onClick={handleLoad}
-                disabled={importing || nothingNew}
+                disabled={importing || nothingNew || !companyMode}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 font-medium text-white hover:bg-violet-700 disabled:opacity-50"
               >
                 {importing && <Loader2 className="h-4 w-4 animate-spin" />}

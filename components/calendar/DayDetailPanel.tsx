@@ -1,31 +1,16 @@
 "use client";
 
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { InlinePaymentForm } from "./InlinePaymentForm";
+import { expandRecurringPayment, type RecurrenceRule } from "./recurringPayments";
 import { SlidePanel } from "@/components/ui/SlidePanel";
 import { sumActivePayments, type DayInfo } from "@/lib/calculations";
-import { formatDateLong, formatMoney, generateId, getDayNumber } from "@/lib/format";
-import type { Payment, PaymentStatus } from "@/lib/types";
+import { formatDateLong, formatMoney, getDayNumber } from "@/lib/format";
+import type { Payment } from "@/lib/types";
 import type { Account } from "@/lib/types";
-
-const STATUS_CONFIG: Record<
-  PaymentStatus,
-  { label: string; className: string }
-> = {
-  planned: {
-    label: "Запланировано",
-    className: "bg-slate-200 text-slate-600",
-  },
-  done: {
-    label: "Выполнено",
-    className: "bg-emerald-100 text-emerald-700",
-  },
-  cancelled: {
-    label: "Отменено",
-    className: "bg-red-100 text-red-600",
-  },
-};
+import type { DdsCompany } from "@/components/payments/ddsCompanies";
+import { getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
 
 function signedMoney(amount: number, forcePlus = false): string {
   const prefix = amount > 0 && forcePlus ? "+" : "";
@@ -36,10 +21,11 @@ interface DayDetailPanelProps {
   dayInfo: DayInfo | null;
   allPayments: Payment[];
   accounts: Account[];
+  companies: DdsCompany[];
+  companyByPayment: Map<string, string | null>;
   onClose: () => void;
-  onAddPayment: (payment: Payment) => void;
-  onUpdatePayment: (payment: Payment) => void;
-  onDeletePayment: (id: string) => void;
+  onAddPayment: (payment: Payment, companyId?: string | null) => void;
+  onUpdatePayment: (payment: Payment, companyId: string | null) => void;
   quickAddOpen?: boolean;
   onQuickAddConsumed?: () => void;
 }
@@ -51,11 +37,11 @@ interface PaymentRowData {
 
 interface PaymentRowProps {
   row: PaymentRowData;
+  companyName: string;
   onEdit: () => void;
-  onDelete: () => void;
 }
 
-function PaymentRow({ row, onEdit, onDelete }: PaymentRowProps) {
+function PaymentRow({ row, companyName, onEdit }: PaymentRowProps) {
   const { payment, runningBalance } = row;
   const isIncome = payment.amount > 0;
   const isCancelled = payment.status === "cancelled";
@@ -77,64 +63,22 @@ function PaymentRow({ row, onEdit, onDelete }: PaymentRowProps) {
       className="group relative border-b border-slate-200/80"
       style={rowStyle}
     >
-      <div className="flex min-h-[40px] items-center gap-1.5 px-2 py-1.5 sm:px-3">
+      <div className="grid min-h-[52px] grid-cols-[110px_170px_minmax(220px,1fr)_150px_110px] items-center gap-3 px-4 py-2">
         <button
           type="button"
           onClick={onEdit}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="contents text-left"
         >
           <span
-            className={`w-[72px] shrink-0 text-right text-xs font-bold tabular-nums sm:w-[80px] sm:text-sm ${amountClass}`}
+            className={`text-right text-sm font-bold tabular-nums ${amountClass}`}
           >
             {formatMoney(payment.amount)}
           </span>
-          <span
-            className={`min-w-0 flex-1 truncate text-xs font-medium sm:text-sm ${
-              isCancelled
-                ? "text-slate-400 line-through"
-                : "text-slate-900"
-            }`}
-          >
-            {payment.name}
-          </span>
-          {payment.counterparty && (
-            <span
-              className={`hidden max-w-[80px] truncate text-[10px] sm:inline sm:max-w-[100px] sm:text-xs ${
-                isCancelled ? "text-slate-400 line-through" : "text-slate-500"
-              }`}
-            >
-              {payment.counterparty}
-            </span>
-          )}
-          <span
-            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium sm:text-[10px] ${STATUS_CONFIG[payment.status].className}`}
-          >
-            {STATUS_CONFIG[payment.status].label}
-          </span>
+          <span className={`flex min-w-0 items-center gap-2 truncate text-sm font-semibold ${isCancelled ? "text-slate-400 line-through" : "text-slate-900"}`}><span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span><span className="truncate">{payment.category}</span></span>
+          <span className={`truncate text-sm ${isCancelled ? "text-slate-400 line-through" : "text-slate-600"}`} title={payment.name}>{payment.name}</span>
+          <span className={`truncate text-sm ${companyName === "Не назначена" ? "text-slate-400" : "text-slate-700"}`}>{companyName}</span>
+          <span className={`text-right text-sm font-semibold tabular-nums ${runningBalance < 0 ? "text-red-600" : "text-slate-700"}`}>{formatMoney(runningBalance)}</span>
         </button>
-
-        <span className="w-[56px] shrink-0 text-right text-[10px] tabular-nums text-slate-500 sm:w-[64px] sm:text-xs">
-          {formatMoney(runningBalance).replace(" ₽", "")}
-        </span>
-
-        <div className="flex w-14 shrink-0 justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="rounded p-1 text-slate-500 hover:bg-white/60 hover:text-slate-800"
-            aria-label="Изменить"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="rounded p-1 text-slate-500 hover:bg-white/60 hover:text-red-600"
-            aria-label="Удалить"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
       </div>
     </li>
   );
@@ -144,10 +88,11 @@ export function DayDetailPanel({
   dayInfo,
   allPayments,
   accounts,
+  companies,
+  companyByPayment,
   onClose,
   onAddPayment,
   onUpdatePayment,
-  onDeletePayment,
   quickAddOpen = false,
   onQuickAddConsumed,
 }: DayDetailPanelProps) {
@@ -167,7 +112,7 @@ export function DayDetailPanel({
             .sort((a, b) => {
               if (a.amount > 0 && b.amount < 0) return -1;
               if (a.amount < 0 && b.amount > 0) return 1;
-              return Math.abs(b.amount) - Math.abs(a.amount);
+              return priorityRank(a) - priorityRank(b) || Math.abs(b.amount) - Math.abs(a.amount);
             })
         : [],
     [allPayments, date],
@@ -201,43 +146,42 @@ export function DayDetailPanel({
   };
 
   useEffect(() => {
-    if (!open) resetForms();
+    if (!open) {
+      const timer = window.setTimeout(resetForms, 0);
+      return () => window.clearTimeout(timer);
+    }
   }, [open, date]);
 
   useEffect(() => {
     if (open && quickAddOpen) {
-      setShowQuickAddChooser(true);
-      setShowIncomeForm(false);
-      setShowExpenseForm(false);
-      setEditingPayment(null);
-      onQuickAddConsumed?.();
+      const timer = window.setTimeout(() => {
+        setShowQuickAddChooser(true);
+        setShowIncomeForm(false);
+        setShowExpenseForm(false);
+        setEditingPayment(null);
+        onQuickAddConsumed?.();
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [open, quickAddOpen, onQuickAddConsumed]);
 
   const handleAdd =
-    (flowType: "income" | "expense") => (data: Omit<Payment, "id">) => {
-      onAddPayment({ id: generateId("pay"), ...data });
+    (flowType: "income" | "expense") => (data: Omit<Payment, "id">, recurrence?: RecurrenceRule, companyId?: string | null) => {
+      for (const payment of expandRecurringPayment(data, recurrence)) onAddPayment(payment, companyId);
       if (flowType === "income") setShowIncomeForm(false);
       else setShowExpenseForm(false);
       setShowQuickAddChooser(false);
     };
 
-  const handleEditSubmit = (data: Omit<Payment, "id">) => {
+  const handleEditSubmit = (data: Omit<Payment, "id">, _recurrence?: RecurrenceRule, companyId?: string | null) => {
     if (!editingPayment) return;
-    onUpdatePayment({ ...editingPayment, ...data });
+    onUpdatePayment({ ...editingPayment, ...data }, companyId ?? null);
     setEditingPayment(null);
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm("Удалить этот платёж?")) {
-      onDeletePayment(id);
-      if (editingPayment?.id === id) setEditingPayment(null);
-    }
   };
 
   if (!dayInfo) {
     return (
-      <SlidePanel open={false} onClose={onClose} bare fixedWidth={480}>
+      <SlidePanel open={false} onClose={onClose} bare fixedWidth={980}>
         {null}
       </SlidePanel>
     );
@@ -273,7 +217,7 @@ export function DayDetailPanel({
       open={open}
       onClose={onClose}
       bare
-      fixedWidth={480}
+      fixedWidth={980}
       title={formatDateLong(dayInfo.date)}
     >
       <div className="flex h-full flex-col">
@@ -329,11 +273,12 @@ export function DayDetailPanel({
           </div>
         )}
 
-        <div className="flex items-center border-b border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium uppercase tracking-wide text-slate-500 sm:px-3 sm:text-[10px]">
-          <span className="w-[72px] shrink-0 text-right sm:w-[80px]">Сумма</span>
-          <span className="min-w-0 flex-1 pl-2">Название</span>
-          <span className="w-[56px] shrink-0 text-right sm:w-[64px]">Остаток</span>
-          <span className="w-14 shrink-0" />
+        <div className="grid grid-cols-[110px_170px_minmax(220px,1fr)_150px_110px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          <span className="text-right">Сумма</span>
+          <span>Название</span>
+          <span>Назначение платежа</span>
+          <span>Компания</span>
+          <span className="text-right">Остаток</span>
         </div>
 
         <ul className="flex-1 overflow-y-auto bg-white">
@@ -355,6 +300,8 @@ export function DayDetailPanel({
                     flowType={editingFlowType}
                     date={date}
                     accounts={accounts}
+                    companies={companies}
+                    companyId={companyByPayment.get(row.payment.id) ?? null}
                     payment={row.payment}
                     onSubmit={handleEditSubmit}
                     onCancel={() => setEditingPayment(null)}
@@ -364,13 +311,13 @@ export function DayDetailPanel({
                 <PaymentRow
                   key={row.payment.id}
                   row={row}
+                  companyName={companyByPayment.get(row.payment.id) ? companies.find((company) => company.id === companyByPayment.get(row.payment.id))?.name ?? "Неизвестная компания" : "Не назначена"}
                   onEdit={() => {
                     setShowIncomeForm(false);
                     setShowExpenseForm(false);
                     setShowQuickAddChooser(false);
                     setEditingPayment(row.payment);
                   }}
-                  onDelete={() => handleDelete(row.payment.id)}
                 />
               ),
             )

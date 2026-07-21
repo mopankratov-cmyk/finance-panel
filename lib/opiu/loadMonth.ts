@@ -8,9 +8,10 @@ import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { weeksInMonth, type MonthWeek } from "./weeks";
 import type { ProductCostRow } from "./metrics";
 
-async function fetchOrdersFromCache(
+export async function fetchOrders(
   dateFrom: string,
   dateTo: string,
+  _refresh = false,
 ): Promise<WbOrder[]> {
   const client = getSupabaseAdmin() ?? supabase;
   const rows = await loadAllSupabasePages<{
@@ -187,7 +188,7 @@ export async function loadOpiuMonth(
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
   const [sales, orders, adStats, costs, warehouseByWeek] = await Promise.all([
     fetchSalesFromCache(dateFrom, dateTo),
-    fetchOrdersFromCache(dateFrom, dateTo),
+    fetchOrders(dateFrom, dateTo, refresh),
     fetchAdStats(dateFrom, dateTo),
     fetchProductCosts(),
     fetchWarehouseCosts(month, weeks),

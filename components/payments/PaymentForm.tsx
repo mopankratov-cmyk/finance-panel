@@ -1,14 +1,17 @@
 "use client";
 
 import { PAYMENT_CATEGORIES } from "@/lib/constants";
-import type { Payment, PaymentStatus } from "@/lib/types";
+import type { Payment } from "@/lib/types";
 import type { Account } from "@/lib/types";
+import type { DdsCompany } from "./ddsCompanies";
 
 interface PaymentFormProps {
   payment?: Payment;
   accounts: Account[];
   counterparties?: string[];
-  onSubmit: (data: Omit<Payment, "id">) => void;
+  companies: DdsCompany[];
+  companyId?: string | null;
+  onSubmit: (data: Omit<Payment, "id">, companyId: string) => void;
   onCancel: () => void;
 }
 
@@ -16,6 +19,8 @@ export function PaymentForm({
   payment,
   accounts,
   counterparties = [],
+  companies,
+  companyId,
   onSubmit,
   onCancel,
 }: PaymentFormProps) {
@@ -32,9 +37,9 @@ export function PaymentForm({
       amount,
       category: fd.get("category") as string,
       accountId: fd.get("accountId") as string,
-      status: fd.get("status") as PaymentStatus,
+      status: "done",
       counterparty: fd.get("counterparty") as string,
-    });
+    }, fd.get("companyId") as string);
   };
 
   const defaultAmount = payment ? Math.abs(payment.amount) : 0;
@@ -100,6 +105,24 @@ export function PaymentForm({
 
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">
+          Компания
+        </label>
+        <select
+          name="companyId"
+          required
+          defaultValue={companyId ?? companies[0]?.id}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+        >
+          {companies.filter((company) => company.isActive).map((company) => (
+            <option key={company.id} value={company.id}>
+              {company.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">
           Категория
         </label>
         <select
@@ -116,39 +139,25 @@ export function PaymentForm({
         </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Счёт
-          </label>
-          <select
-            name="accountId"
-            required
-            defaultValue={payment?.accountId ?? accounts[0]?.id}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-          >
-            {accounts.map((acc) => (
-              <option key={acc.id} value={acc.id}>
-                {acc.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Статус
-          </label>
-          <select
-            name="status"
-            defaultValue={payment?.status ?? "done"}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-          >
-            <option value="planned">Запланирован</option>
-            <option value="done">Выполнен</option>
-            <option value="cancelled">Отменён</option>
-          </select>
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">
+          Счёт
+        </label>
+        <select
+          name="accountId"
+          required
+          defaultValue={payment?.accountId ?? accounts[0]?.id}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+        >
+          {accounts.map((acc) => (
+            <option key={acc.id} value={acc.id}>
+              {acc.name}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-slate-400">
+          Здесь сохраняются только фактические операции. Плановые добавляются в платёжном календаре.
+        </p>
       </div>
 
       <div>

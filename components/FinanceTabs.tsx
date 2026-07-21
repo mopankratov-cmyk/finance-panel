@@ -2,6 +2,35 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+
+const NON_FINANCE_MENU_LINKS = [
+  "/supplies",
+  "/cabinets",
+];
+
+/** Скрывает нефинансовые группы общего меню, пока открыта финансовая страница. */
+export function FinanceMenuScope() {
+  useEffect(() => {
+    const hiddenGroups = NON_FINANCE_MENU_LINKS.flatMap((href) => {
+      const link = document.querySelector<HTMLAnchorElement>(`aside a[href="${href}"]`);
+      const group = link?.closest<HTMLElement>("nav > div");
+      if (!group) return [];
+
+      const previousDisplay = group.style.display;
+      group.style.display = "none";
+      return [{ group, previousDisplay }];
+    });
+
+    return () => {
+      hiddenGroups.forEach(({ group, previousDisplay }) => {
+        group.style.display = previousDisplay;
+      });
+    };
+  }, []);
+
+  return null;
+}
 
 // Под-вкладки раздела «Финрезультат» — склеивает 4 денежные страницы в один логичный раздел.
 const TABS = [
@@ -15,6 +44,7 @@ export function FinanceTabs() {
   const pathname = usePathname();
   return (
     <div className="mb-5">
+      <FinanceMenuScope />
       <div className="mb-1 text-xs font-bold uppercase tracking-wider text-gray-400">Финрезультат</div>
       <div className="flex flex-wrap gap-1.5 border-b border-gray-200 pb-px">
         {TABS.map((t) => {
