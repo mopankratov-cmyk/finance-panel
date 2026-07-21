@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyRnpScopeCutoff } from "../lib/rnp/buildTable";
+import { applyRnpScopeCutoff, applyRnpSourceCutoffs } from "../lib/rnp/buildTable";
 
 type Row = {
   nm_id: number;
@@ -47,5 +47,21 @@ test("rows after a cabinet cutoff contribute neither orders nor downstream metri
     buyouts_count: 0,
     buyouts_sum: 0,
     ad_spent: 0,
+  });
+});
+
+test("WB RNP keeps fresh orders when sales source lags behind", () => {
+  const [row] = applyRnpSourceCutoffs<Row>([
+    { nm_id: 7, d: "2026-07-20", orders_count: 218, orders_sum: 151_079, buyouts_count: 12, buyouts_sum: 8_000, ad_spent: 3_000 },
+  ], { orders: "2026-07-20", sales: "2026-07-19", adverts: "2026-07-20" });
+
+  assert.deepEqual(row, {
+    nm_id: 7,
+    d: "2026-07-20",
+    orders_count: 218,
+    orders_sum: 151_079,
+    buyouts_count: 0,
+    buyouts_sum: 0,
+    ad_spent: 3_000,
   });
 });

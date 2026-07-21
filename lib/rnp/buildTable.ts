@@ -140,6 +140,22 @@ export function applyRnpScopeCutoff<Row extends DailyRow>(rows: Row[], asOf: str
   } as Row));
 }
 
+export function applyRnpSourceCutoffs<Row extends DailyRow>(
+  rows: Row[],
+  cutoffs: MetricCutoffs,
+): Row[] {
+  const isAfter = (date: string, cutoff: string | null) => !!cutoff && date > cutoff;
+  return rows.map((row) => {
+    const date = String(row.d).slice(0, 10);
+    return {
+      ...row,
+      ...(isAfter(date, cutoffs.orders) ? { orders_count: 0, orders_sum: 0 } : {}),
+      ...(isAfter(date, cutoffs.sales) ? { buyouts_count: 0, buyouts_sum: 0 } : {}),
+      ...(isAfter(date, cutoffs.adverts) ? { ad_spent: 0 } : {}),
+    };
+  });
+}
+
 // Рекламные показы/клики/CTR и товарные переходы/корзины по SKU по дням — отдельные
 // источники (wb_advert_nm_daily + wb_funnel_daily), не трогаем rnp_daily(_sku) RPC.
 // Вклеивается в начало metrics[] построчно, тем же способом, что gross/margin_pct — сводкой.
@@ -197,13 +213,20 @@ function applyForecast(metric: Metric, result: RnpMetricForecast | null, days: s
   metric.forecastMethod = result?.method ?? null;
 }
 
-function applyMetricForecasts(metrics: Metric[], days: string[], asOf: string) {
+type MetricAsOfMap = Partial<Record<string, string>>;
+
+function cutoffAsOf(cutoff: string | null, fallback: string) {
+  return cutoff && cutoff < fallback ? cutoff : fallback;
+}
+
+function applyMetricForecasts(metrics: Metric[], days: string[], asOf: string, metricAsOf: MetricAsOfMap = {}) {
   const results = new Map<string, RnpMetricForecast | null>();
   for (const metric of metrics) {
     if (!ADDITIVE_FORECAST_FIELDS.has(metric.field)) continue;
-    const result = forecastAdditiveMetric(days, metric.daily, asOf);
+    const sourceAsOf = metricAsOf[metric.field] ?? asOf;
+    const result = forecastAdditiveMetric(days, metric.daily, sourceAsOf);
     results.set(metric.field, result);
-    applyForecast(metric, result, days, asOf);
+    applyForecast(metric, result, days, sourceAsOf);
   }
   for (const metric of metrics) {
     const ratio = RATIO_FORECAST_FIELDS[metric.field];
@@ -293,7 +316,12 @@ export function buildFunnelMetrics(
     { field: "open_card", label: "Переходы в карточку", kind: "int", daily: openCard, total: knownSum(openCard), forecast: null, source: "WB Воронка", group_start: true },
     { field: "cart", label: "В корзину", kind: "int", daily: cart, total: knownSum(cart), forecast: null, source: "WB Воронка" },
   ];
-  return applyMetricForecasts(metrics, days, asOf);
+  return applyMetricForecasts(metrics, days, asOf, {
+    views: cutoffAsOf(cutoffs.adverts, asOf),
+    clicks: cutoffAsOf(cutoffs.adverts, asOf),
+    open_card: cutoffAsOf(cutoffs.funnel, asOf),
+    cart: cutoffAsOf(cutoffs.funnel, asOf),
+  });
 }
 
 // cost > 0 → добавляем прибыль и маржу после расходов МП. Для сводки эти метрики вклеиваются агрегатом по SKU.
@@ -388,7 +416,14 @@ function buildMetrics(
     { field: "turnover", label: "Оборачиваемость, дней", kind: "int", daily: pointInTimeMetricDaily(days, asOf, turnover), total: turnover, forecast: null, source: "WB Остатки + выкупы", note: snapshotNote, qualityReason: turnover == null ? "no_activity" : undefined },
     { field: "gmroi", label: "GMROI, %", kind: "pct", daily: pointInTimeMetricDaily(days, asOf, gmroi), total: gmroi, forecast: null, source: "Расчётная прибыль / деньги в остатках", note: snapshotNote, qualityReason: cost <= 0 && stock > 0 ? "missing_cost" : wbCostPct == null ? "missing_rates" : gmroi == null ? "no_activity" : undefined },
   );
-  return applyMetricForecasts(out, days, asOf);
+  return applyMetricForecasts(out, days, asOf, {
+    orders_count: cutoffAsOf(cutoffs.orders, asOf),
+    orders_sum: cutoffAsOf(cutoffs.orders, asOf),
+    buyouts_count: cutoffAsOf(cutoffs.sales, asOf),
+    buyouts_sum: cutoffAsOf(cutoffs.sales, asOf),
+    ad_spent: cutoffAsOf(cutoffs.adverts, asOf),
+    gross: cutoffAsOf(earliestKnownDate([cutoffs.sales, cutoffs.adverts], asOf), asOf),
+  });
 }
 
 export interface RnpTable {
@@ -666,6 +701,8 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
             funnelRows: [] as FunnelRow[],
             ordersCutoff: null as string | null,
             salesCutoff: null as string | null,
+            advertsCutoff: null as string | null,
+            funnelCutoff: null as string | null,
             scope,
             asOf: periodEnd,
           };
@@ -714,6 +751,8 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           latestSourceDate("wb_orders", scope),
           latestSourceDate("wb_sales", scope),
         ]);
+        const advertsCutoff = latestDate(adRows, (row) => row.date);
+        const funnelCutoff = latestDate(funnelRows, (row) => row.date);
         return {
           skuRows: baseFacts.skuRows,
           totals: baseFacts.totals,
@@ -721,6 +760,8 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           funnelRows,
           ordersCutoff,
           salesCutoff,
+          advertsCutoff,
+          funnelCutoff,
           scope,
           asOf: earliestKnownDate([ordersCutoff, salesCutoff], periodEnd),
         };
@@ -733,18 +774,25 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
       getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false }),
     ]);
 
-    const skuDailyRows = scopeData.flatMap((item) => applyRnpScopeCutoff(item.skuRows, item.asOf));
+    const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(item.skuRows, {
+      orders: item.ordersCutoff,
+      sales: item.salesCutoff,
+      adverts: item.advertsCutoff,
+    }));
     const totals = scopeData.flatMap((item) => item.totals);
-    const adRows = scopeData.flatMap((item) => item.adRows.filter((row) => String(row.date).slice(0, 10) <= item.asOf));
-    const funnelRows = scopeData.flatMap((item) => item.funnelRows.filter((row) => String(row.date).slice(0, 10) <= item.asOf));
-    // Отсутствие события в отдельном кабинете не означает, что его синк отстал:
-    // у магазина могло просто не быть заказов/выкупов в этот день. Берём последнюю
-    // дату источника по объединённому набору, а ниже asOf всё равно ограничит факт
-    // более ранним из двух обязательных источников (orders и sales).
+    const adRows = scopeData.flatMap((item) => item.adRows.filter((row) => !item.advertsCutoff || String(row.date).slice(0, 10) <= item.advertsCutoff));
+    const funnelRows = scopeData.flatMap((item) => item.funnelRows.filter((row) => !item.funnelCutoff || String(row.date).slice(0, 10) <= item.funnelCutoff));
+    // У каждого источника своя свежесть. Раньше весь РНП обрезался по min(orders, sales),
+    // из-за чего задержка выкупов могла занижать уже загруженные заказы Optima.
     const ordersCutoff = latestKnownDate(scopeData.map((item) => item.ordersCutoff));
     const salesCutoff = latestKnownDate(scopeData.map((item) => item.salesCutoff));
-    const advertsCutoff = latestKnownDate(scopeData.map((item) => latestDate(item.adRows, (row) => row.date)));
-    const funnelCutoff = latestKnownDate(scopeData.map((item) => latestDate(item.funnelRows, (row) => row.date)));
+    const advertsCutoff = latestKnownDate(scopeData.map((item) => item.advertsCutoff));
+    const funnelCutoff = latestKnownDate(scopeData.map((item) => item.funnelCutoff));
+    const cutoffsByNm = new Map<number, MetricCutoffs>();
+    for (const item of scopeData) {
+      const cutoffs = { orders: item.ordersCutoff, sales: item.salesCutoff, adverts: item.advertsCutoff };
+      for (const total of item.totals) cutoffsByNm.set(Number(total.nm_id), cutoffs);
+    }
 
     // рекламный и товарный трафик по (nm_id, date) — отдельно от rnp_daily(_sku) RPC
     const viewsByNm = new Map<number, Map<string, number>>();
@@ -788,7 +836,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     const days: string[] = [];
     const cur = new Date(from), end = new Date(to);
     while (cur <= end) { days.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
-    const asOf = earliestKnownDate([ordersCutoff, salesCutoff], periodEnd);
+    const asOf = cutoffAsOf(latestKnownDate([ordersCutoff, salesCutoff, advertsCutoff, funnelCutoff]), periodEnd);
     const metricCutoffs: MetricCutoffs = { orders: ordersCutoff, sales: salesCutoff, adverts: advertsCutoff };
     const funnelCutoffs: FunnelCutoffs = { adverts: advertsCutoff, funnel: funnelCutoff };
     const period = days.map((d) => { const dt = new Date(d); return { label: `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}`, period_type: WEEKDAY[dt.getDay()] }; });
@@ -836,7 +884,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     const skus = [...totalByNm.values()]
       .map((t) => {
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
-        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id));
+        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id));
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
         return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: orders };
