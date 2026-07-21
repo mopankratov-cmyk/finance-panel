@@ -37,7 +37,7 @@ export async function fetchOrders(
   }));
 }
 
-async function fetchSalesFromCache(dateFrom: string, dateTo: string): Promise<WbReportRow[]> {
+export async function fetchSalesFromCache(dateFrom: string, dateTo: string): Promise<WbReportRow[]> {
   const client = getSupabaseAdmin() ?? supabase;
   const [sales, stocks, commission] = await Promise.all([
     loadAllSupabasePages<{
