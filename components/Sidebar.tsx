@@ -254,6 +254,8 @@ export function Sidebar() {
         ? "bg-violet-600/20 text-violet-300"
         : "text-slate-300 hover:bg-white/10 hover:text-white"
     }`;
+  const financeHomeLinkClass =
+    "mb-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a2e]";
 
   const BrandIcon = systemOnly ? Settings2 : agentOnly ? Bot : BarChart3;
   const brandTitle = systemOnly ? "Настройки" : agentOnly ? "AI-агент" : "Финансы МП";
@@ -285,7 +287,17 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {!financeOnly ? (
+        {financeOnly ? (
+          <Link
+            href={DASHBOARD.href}
+            onClick={() => setMobileOpen(false)}
+            className={financeHomeLinkClass}
+            aria-label="Вернуться на главную страницу"
+          >
+            <DASHBOARD.icon className="h-5 w-5 shrink-0 text-violet-300" />
+            На главную
+          </Link>
+        ) : (
           <Link
             href={DASHBOARD.href}
             onClick={() => setMobileOpen(false)}
@@ -295,7 +307,7 @@ export function Sidebar() {
             <DASHBOARD.icon className="h-5 w-5 shrink-0" />
             {DASHBOARD.label}
           </Link>
-        ) : null}
+        )}
 
         {groups.map((group) => {
           const groupActive = group.items.some((item) =>
