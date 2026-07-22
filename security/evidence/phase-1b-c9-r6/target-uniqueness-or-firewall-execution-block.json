@@ -1,0 +1,63 @@
+{
+  "schema_version": "pankster.phase1b-c9-r6.target-uniqueness-or-firewall-execution-block.v1",
+  "recorded_at": "2026-07-22T19:07:00Z",
+  "result": "FIREWALL_EXECUTION_BLOCKED",
+  "verdict": "C9_R6_BLOCK_FIREWALL_EXECUTION_NO_PRE_NAT_VISIBILITY_PROOF",
+  "input_evidence": {
+    "c9_r2_execution_summary": "security/evidence/phase-1b-c9-r2/firewall-target-discovery-execution-summary.json",
+    "c9_r4_execution_summary": "security/evidence/phase-1b-c9-r4/host-network-observability-execution-summary.json",
+    "c9_r5_execution_block": "security/evidence/phase-1b-c9-r5/packet-visibility-execution-block.json",
+    "c9_r5_r2_approval_record": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_APPROVAL_RECORD.json",
+    "c9_r5_r2_operator_result": "security/evidence/phase-1b-c9-r5-r2/manual-packet-visibility-operator-result.json"
+  },
+  "confirmed_facts": {
+    "target_instance": "pc9r2",
+    "target_guest_ipv4": "192.168.5.15",
+    "target_guest_prefix": 24,
+    "candidate_host_interface": "utun4",
+    "manual_packet_capture_performed": true,
+    "raw_packet_output_persisted": false,
+    "tcpdump_packets_captured": 0,
+    "tcpdump_packets_received_by_filter": 4482,
+    "tcpdump_packets_dropped_by_kernel": 0,
+    "target_ipv4_observed": false,
+    "source_target_packet_count": 0,
+    "destination_target_packet_count": 0,
+    "pre_nat_guest_source_observed": false,
+    "pfctl_executed": false,
+    "host_firewall_changed": false,
+    "production_profiles_started": false,
+    "real_credentials_used": false,
+    "gateway_changed": false,
+    "canary_started": false
+  },
+  "r6_reasoning": {
+    "packet_visibility_probe_completed": true,
+    "pre_nat_guest_source_visibility_proven": false,
+    "target_uniqueness_sufficient_for_firewall_rule": false,
+    "firewall_execution_contract_ready": false,
+    "fail_closed": true,
+    "reason": "No sanitized direction count or boolean observation confirms that the host enforcement point sees 192.168.5.15 as a pre-NAT source. Firewall execution remains blocked."
+  },
+  "blocked_actions": {
+    "pfctl_execution": true,
+    "host_firewall_mutation": true,
+    "pf_config_edits": true,
+    "production_profiles": true,
+    "real_credentials": true,
+    "gateway_changes": true,
+    "canary": true,
+    "reclaim_delete_without_separate_owner_approval": true
+  },
+  "downstream_gates": {
+    "C9_HOST_FIREWALL_EXECUTION_CONTRACT": "blocked_no_pre_nat_visibility_proof",
+    "C10_CONTAINMENT_EGRESS_RETEST": "blocked_no_firewall_execution_contract",
+    "C11_RUNTIME_SECURITY_CONTEXT_CONTRACT_FOR_LIMA_PRODUCTION_MAPPING": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C12_PROFILE_WORKER_SANDBOX_PROTOTYPE": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C13_CREDENTIAL_ISOLATION_SYNTHETIC_TESTS": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C14_MCP_AND_TERMINAL_SANDBOX_TESTS": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C15_DEFAULT_PROFILE_COMPATIBILITY_REVIEW": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C16_ROLLBACK_AND_RECLAIM_FINALIZATION": "requires_separate_owner_approval"
+  },
+  "next_safe_state": "RECLAIM_ONLY_CLOSEOUT_OR_STOP"
+}

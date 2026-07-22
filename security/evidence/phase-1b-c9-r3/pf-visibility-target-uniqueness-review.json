@@ -1,0 +1,41 @@
+{
+  "schema_version": "pankster.phase1b-c9-r3.pf-visibility-target-uniqueness-review.v1",
+  "recorded_at": "2026-07-22T17:42:00Z",
+  "result": "PF_EXECUTION_BLOCKED",
+  "verdict": "C9_R3_BLOCK_PF_EXECUTION_PREPARE_C9_R4_OBSERVABILITY_DISCOVERY",
+  "input_evidence": {
+    "c9_r2_execution_summary": "security/evidence/phase-1b-c9-r2/firewall-target-discovery-execution-summary.json",
+    "c9_r2_target_instance": "pc9r2",
+    "c9_r2_target_guest_ipv4": "192.168.5.15",
+    "c9_r2_target_guest_prefix": 24,
+    "c9_r3_execution_precheck": "security/evidence/phase-1b-c9-r3/host-firewall-execution-precheck.json"
+  },
+  "confirmed_facts": {
+    "guest_side_target_ipv4_known": true,
+    "before_firewall_egress_observed": true,
+    "pf_rule_placeholders_resolved": true,
+    "pfctl_executed": false,
+    "host_firewall_changed": false,
+    "production_profiles_started": false,
+    "real_credentials_used": false
+  },
+  "unproven_host_side_requirements": {
+    "macos_pf_sees_lima_guest_private_source_before_nat": true,
+    "target_guest_ipv4_unique_to_pc9r2": true,
+    "host_interface_for_lima_guest_route_known": false,
+    "packet_capture_probe_scoped": false,
+    "rollback_semantics_approved": false
+  },
+  "blocked_actions": {
+    "pfctl_execution": true,
+    "host_firewall_mutation": true,
+    "packet_capture": true,
+    "guest_traffic_generation": true,
+    "production_profiles": true,
+    "real_credentials": true,
+    "gateway_changes": true,
+    "canary": true,
+    "reclaim_delete": true
+  },
+  "minimum_next_safe_gate": "PHASE_1B_C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY"
+}

@@ -1,0 +1,30 @@
+{
+  "approval_id": "p1b-20260722-limaobsc9r4",
+  "authorization_event_id": "hgate-20260722-limaobsc9r4",
+  "approved_at": "2026-07-22T17:56:00Z",
+  "approved_by": "owner",
+  "decision": "APPROVED",
+  "contract_path": "docs/program/PHASE_1B_C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY_CONTRACT.ready.json",
+  "contract_content_sha256": "5fdbb97f712a83c4de1b7321cf388c5255d870dbbfe9524dec96138ed5d8e8c9",
+  "owner_command_hash": "a55ad60c41129171f3fba67d5fbf1ed3e9ff08dcc6962c2bd030692563843350",
+  "host_network_observability_execution_allowed": true,
+  "tool_allowlist": [
+    "/sbin/ifconfig",
+    "/usr/sbin/netstat",
+    "/sbin/route"
+  ],
+  "pfctl_execution_allowed": false,
+  "packet_capture_allowed": false,
+  "guest_traffic_generation_allowed": false,
+  "host_firewall_changes_allowed": false,
+  "pf_config_edits_allowed": false,
+  "host_sync_allowed": false,
+  "real_credentials_allowed": false,
+  "production_profiles_allowed": false,
+  "gateway_changes_allowed": false,
+  "canary_allowed": false,
+  "reclaim_delete_allowed": false,
+  "synthetic_only": true,
+  "expires_at": "2026-07-23T17:46:00Z",
+  "record_sha256": "ccc92e592dbecae4cc990a60fd6b9c768e3d475ca1e1529cdb61a6abf65acc0b"
+}

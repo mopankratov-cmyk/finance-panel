@@ -1,0 +1,48 @@
+{
+  "schema_version": "pankster.phase1b-c9-r5.packet-visibility-execution-block.v1",
+  "recorded_at": "2026-07-22T18:18:00Z",
+  "result": "DENIED",
+  "mode": "execute-probe",
+  "reason": "PACKET_CAPTURE_PERMISSION_REQUIRED",
+  "detail": "manual_admin_command_required",
+  "approval": {
+    "approval_id": "p1b-20260722-limapktc9r5",
+    "approval_record_path": "docs/program/PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_APPROVAL_RECORD.json",
+    "approval_record_canonical_sha256": "30c0b6e5c4998c1b5c237b12ecc8ba3bf545c3c6aa53bc0b1b8e2c97273a27c6",
+    "contract_path": "docs/program/PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_CONTRACT.ready.json",
+    "contract_content_sha256": "697deae9aeec4518a6edcd6d5986c1ae6dfda1d2cad5b096c8b2c1851d7c5928"
+  },
+  "hard_gates": {
+    "pfctl_execution_allowed": false,
+    "pfctl_executed": false,
+    "host_firewall_changes_allowed": false,
+    "host_firewall_changes_performed": false,
+    "packet_capture_allowed": true,
+    "packet_capture_performed": false,
+    "packet_capture_raw_output_persisted": false,
+    "guest_traffic_generation_allowed": true,
+    "guest_traffic_generated": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false,
+    "reclaim_delete_allowed": false
+  },
+  "target": {
+    "instance_name": "pc9r2",
+    "guest_ipv4": "192.168.5.15",
+    "candidate_host_interface": "utun4"
+  },
+  "printed_manual_admin_command": {
+    "command": "sudo /usr/sbin/tcpdump -n -tt -q -i utun4 -c 8 'host 192.168.5.15 and tcp and port 443'",
+    "command_sha256": "3cd21e956f5c1f24301162e5c395b627b83f3698c615eea910b4e2fd0a114b90",
+    "raw_output_persistence_allowed": false
+  },
+  "c9_r6_implications": {
+    "pf_pre_nat_visibility_supported": false,
+    "target_uniqueness_proven": false,
+    "firewall_execution_contract_ready": false,
+    "reason": "The approved unprivileged probe could not capture packets. No conclusion about pf pre-NAT visibility can be drawn until a separately handled manual/admin packet visibility procedure succeeds."
+  },
+  "next_gate": "PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_OR_FAIL_CLOSED"
+}

@@ -1,0 +1,16 @@
+{
+  "approval_id": "p1b-20260722-kernelprovisionb3",
+  "contract_content_sha256": "cce75c7117000907305e9cd125502c4631554fe20e9f00789715e03a8d88d3cd",
+  "decision": "APPROVED",
+  "approved_by": "owner:maksimpankratov",
+  "authorization_event_id": "hgate-codex-20260722-b3",
+  "authorization_source": "pankster-human-gate",
+  "authn_context": "interactive-synthetic",
+  "approved_at": "2026-07-22T14:32:42Z",
+  "expires_at": "2026-07-25T12:06:00Z",
+  "owner_command_hash": "3eec9115a7c4f2205533f498f2e5a5f6b06f4a3ba3f7a19897c0076c7091da02",
+  "synthetic_only": true,
+  "real_credentials_allowed": false,
+  "production_profiles_allowed": false,
+  "record_sha256": "61832977d318d933ef407e2033f734e2728b322043c93118c92a595f7c5467a7"
+}

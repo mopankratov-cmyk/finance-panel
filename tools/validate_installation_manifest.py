@@ -25,7 +25,7 @@ DEFAULT_TRUST_ANCHORS_PATH = PROJECT_ROOT / TRUST_ANCHOR_REGISTRY_RELATIVE_PATH
 DEFAULT_ARTIFACT_PIN_REGISTRY_PATH = PROJECT_ROOT / ARTIFACT_PIN_REGISTRY_RELATIVE_PATH
 ALLOWED_STATES = {"TEMPLATE", "DRAFT", "READY_FOR_REVIEW", "APPROVED", "EXPIRED", "REVOKED"}
 REVIEW_STATE = "READY_FOR_REVIEW"
-APPROVABLE_BACKENDS = {"apple-container-cli"}
+APPROVABLE_BACKENDS = {"apple-container-cli", "lima-vz"}
 KNOWN_BACKENDS = {"apple-container-cli", "lima-vz"}
 FORBIDDEN_VERSION_WORDS = {"", "latest", "stable", "current", "nightly", "main", "master", "release"}
 ABSENCE_MARKERS = {
@@ -63,11 +63,14 @@ ALLOWED_DOWNLOAD_HOSTS = {
     "ghcr.io",
     "registry.k8s.io",
     "europe-west3-docker.pkg.dev",
+    "raw.githubusercontent.com",
+    "cloud-images.ubuntu.com",
 }
 ALLOWED_TRUST_ANCHOR_STATES = {"DRAFT", "PINNED", "REVOKED"}
 SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 OCI_DIGEST_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
 APPLE_SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+LIMA_SEMVER_RE = APPLE_SEMVER_RE
 APPLE_INSTALLER_SIGNER_RE = re.compile(r"^Developer ID Installer: .{1,180}$")
 APPLE_TEAM_ID_RE = re.compile(r"^[A-Z0-9]{10}$")
 APPROVED_BY_RE = re.compile(r"^owner:[A-Za-z0-9._-]{1,128}$")
@@ -146,14 +149,15 @@ APPROVAL_RECORD_FIELDS = {
 }
 
 APPLE_ROLES = {"backend-installer", "linux-kernel", "init-filesystem", "synthetic-oci-manifest"}
+LIMA_ROLES = {"backend-installer", "release-checksums", "lima-template", "guest-image"}
 BACKEND_ARTIFACT_POLICIES = {
     "apple-container-cli": {
         "required_roles": APPLE_ROLES,
         "allowed_roles": APPLE_ROLES,
     },
     "lima-vz": {
-        "required_roles": {"backend-installer", "guest-image", "lima-template", "synthetic-oci-manifest"},
-        "allowed_roles": {"backend-installer", "guest-image", "lima-template", "synthetic-oci-manifest"},
+        "required_roles": LIMA_ROLES,
+        "allowed_roles": LIMA_ROLES,
     },
 }
 
@@ -163,20 +167,32 @@ BACKEND_REPOSITORIES = {
         "repo": "container",
         "version_re": APPLE_SEMVER_RE,
     },
+    "lima-vz": {
+        "owner": "lima-vm",
+        "repo": "lima",
+        "version_re": LIMA_SEMVER_RE,
+    },
 }
 
 ROLE_SIGNATURE_POLICIES = {
-    "backend-installer": {"apple-signed-pkg"},
+    "backend-installer": {"apple-signed-pkg", "sha256-only"},
     "linux-kernel": {"sha256-only"},
     "init-filesystem": {"sha256-only"},
     "synthetic-oci-manifest": {"oci-digest"},
+    "release-checksums": {"sha256-only"},
+    "lima-template": {"git-tagged-source-sha256"},
+    "guest-image": {"sha256-only"},
 }
 
 ROLE_VERIFICATION_POLICIES = {
-    "backend-installer": "apple-container-installer-v1",
+    ("apple-container-cli", "backend-installer"): "apple-container-installer-v1",
+    ("lima-vz", "backend-installer"): "lima-release-asset-sha256-v1",
     "linux-kernel": "apple-container-release-asset-sha256-v1",
     "init-filesystem": "oci-manifest-sha256-v1",
     "synthetic-oci-manifest": "oci-digest-pinned-v1",
+    "release-checksums": "lima-sha256sums-sha256-v1",
+    "lima-template": "lima-release-tagged-template-sha256-v1",
+    "guest-image": "ubuntu-cloud-image-sha256-from-lima-template-v1",
 }
 
 APPLE_SIGNED_INSTALLER_ASSET_NAMES = {
@@ -190,12 +206,26 @@ APPLE_KERNEL_ARTIFACT = {
 }
 APPLE_INIT_MANIFEST_PREFIX = "/v2/apple/containerization/vminit/manifests/"
 SYNTHETIC_OCI_MANIFEST_PREFIX = "/v2/pause/manifests/"
+LIMA_RELEASE_TAG_PREFIX = "v"
+LIMA_INSTALLER_ASSET_TEMPLATE = "lima-{version}-Darwin-arm64.tar.gz"
+LIMA_CHECKSUMS_ASSET_NAME = "SHA256SUMS"
+LIMA_UBUNTU_TEMPLATE_PATH_TEMPLATE = "/lima-vm/lima/v{version}/templates/_images/ubuntu-24.04.yaml"
+LIMA_UBUNTU_TEMPLATE_NAME = "ubuntu-24.04.yaml"
+LIMA_GUEST_IMAGE_NAME = "ubuntu-24.04-minimal-cloudimg-arm64.img"
+LIMA_GUEST_IMAGE_VERSION = "24.04-noble-release-20260716"
+LIMA_GUEST_IMAGE_PATH = "/minimal/releases/noble/release-20260716/ubuntu-24.04-minimal-cloudimg-arm64.img"
 
 BACKEND_DISCLOSURE_POLICIES = {
     "apple-container-cli": {
         "disk_changes": {"allow_absence": False},
         "background_services": {"allow_absence": False},
         "required_permissions": {"allow_absence": False},
+        "network_changes": {"allow_absence": True},
+    },
+    "lima-vz": {
+        "disk_changes": {"allow_absence": False},
+        "background_services": {"allow_absence": True},
+        "required_permissions": {"allow_absence": True},
         "network_changes": {"allow_absence": True},
     },
 }
@@ -304,12 +334,18 @@ def content_sha256(content) -> str:
     return hashlib.sha256(canonical_json_bytes(content)).hexdigest()
 
 
-def expected_owner_command(approval_id: str, manifest_content_sha256: str) -> str:
-    return f"APPROVE_PRIMARY_BACKEND_INSTALL:{approval_id}:{manifest_content_sha256}"
+def approval_command_prefix(backend: str) -> str:
+    if backend == "lima-vz":
+        return "APPROVE_FALLBACK_BACKEND_INSTALL"
+    return "APPROVE_PRIMARY_BACKEND_INSTALL"
 
 
-def expected_owner_command_hash(approval_id: str, manifest_content_sha256: str) -> str:
-    return hashlib.sha256(expected_owner_command(approval_id, manifest_content_sha256).encode("utf-8")).hexdigest()
+def expected_owner_command(approval_id: str, manifest_content_sha256: str, backend: str = "apple-container-cli") -> str:
+    return f"{approval_command_prefix(backend)}:{approval_id}:{manifest_content_sha256}"
+
+
+def expected_owner_command_hash(approval_id: str, manifest_content_sha256: str, backend: str = "apple-container-cli") -> str:
+    return hashlib.sha256(expected_owner_command(approval_id, manifest_content_sha256, backend).encode("utf-8")).hexdigest()
 
 
 def is_placeholder(value: str) -> bool:
@@ -600,6 +636,64 @@ def validate_registry_manifest_url(
             raise ManifestError(f"unknown download host: {host}")
     if expected_host not in hosts:
         raise ManifestError("source host must be declared")
+
+
+def _validate_https_url_base(artifact: dict, source_url: str, *, expected_host: str) -> tuple:
+    parsed = urlparse(source_url)
+    if parsed.scheme != "https":
+        raise ManifestError("source_url: scheme must be https")
+    if parsed.username or parsed.password or "@" in parsed.netloc:
+        raise ManifestError("source_url: URL userinfo rejected")
+    try:
+        parsed_port = parsed.port
+    except ValueError as error:
+        raise ManifestError("source_url: explicit port rejected") from error
+    if parsed_port is not None:
+        raise ManifestError("source_url: explicit port rejected")
+    if parsed.hostname != expected_host or parsed.netloc != expected_host:
+        raise ManifestError("source_url: host not allowed")
+    if parsed.query or parsed.fragment:
+        raise ManifestError("source_url: URL query or fragment rejected")
+    if "//" in parsed.path:
+        raise ManifestError("source_url: repeated slashes rejected")
+    lowered_path = parsed.path.lower()
+    if "%2f" in lowered_path:
+        raise ManifestError("source_url: encoded slash rejected")
+    if "%5c" in lowered_path:
+        raise ManifestError("source_url: encoded backslash rejected")
+    if "%" in parsed.path:
+        raise ManifestError("source_url: percent-encoding rejected")
+    decoded_path_parts = [unquote(part) for part in parsed.path.split("/") if part]
+    if any(part in {".", ".."} for part in decoded_path_parts):
+        raise ManifestError("source_url: dot segment rejected")
+    if any(contains_forbidden_unicode(part) for part in decoded_path_parts):
+        raise ManifestError("source_url: forbidden unicode/control character rejected")
+    hosts = require_non_empty_string_list(artifact["resolved_download_hosts"], "resolved_download_hosts")
+    if len(hosts) != len(set(hosts)):
+        raise ManifestError("resolved_download_hosts: duplicate host")
+    for host in hosts:
+        if host not in ALLOWED_DOWNLOAD_HOSTS:
+            raise ManifestError(f"unknown download host: {host}")
+    if expected_host not in hosts:
+        raise ManifestError("source host must be declared")
+    return parsed
+
+
+def validate_raw_github_template_url(artifact: dict, backend_version: str) -> None:
+    source_url = require_non_empty_string(artifact["source_url"], "source_url")
+    parsed = _validate_https_url_base(artifact, source_url, expected_host="raw.githubusercontent.com")
+    expected_path = LIMA_UBUNTU_TEMPLATE_PATH_TEMPLATE.format(version=backend_version)
+    if parsed.path != expected_path:
+        raise ManifestError("source_url: Lima release-tagged template path mismatch")
+
+
+def validate_lima_guest_image_url(artifact: dict) -> None:
+    source_url = require_non_empty_string(artifact["source_url"], "source_url")
+    parsed = _validate_https_url_base(artifact, source_url, expected_host="cloud-images.ubuntu.com")
+    if parsed.path != LIMA_GUEST_IMAGE_PATH:
+        raise ManifestError("source_url: pinned Ubuntu guest image path mismatch")
+    if "/release/" in parsed.path or not re.search(r"/release-[0-9]{8}/", parsed.path):
+        raise ManifestError("source_url: mutable Ubuntu release path rejected")
 
 
 def validate_apple_signer_identity(value: str, field: str = "expected_signer_identity") -> str:
@@ -960,7 +1054,8 @@ def validate_artifact(
         f"artifact {role} verification_policy_id",
         max_length=MAX_IDENTIFIER_LENGTH,
     )
-    if verification_policy_id != ROLE_VERIFICATION_POLICIES[role]:
+    expected_policy = ROLE_VERIFICATION_POLICIES.get((backend, role), ROLE_VERIFICATION_POLICIES.get(role))
+    if verification_policy_id != expected_policy:
         raise ManifestError("unknown verification policy")
     expected_signer_identity = require_non_empty_string(
         artifact["expected_signer_identity"],
@@ -995,6 +1090,21 @@ def validate_artifact(
             validate_apple_signer_identity(expected_signer_identity)
             validate_apple_team_id(expected_signer_team_id)
             return validate_apple_installer_trust_anchor(artifact, backend, backend_version, registry_snapshot)
+        if backend == "lima-vz":
+            expected_name = LIMA_INSTALLER_ASSET_TEMPLATE.format(version=backend_version)
+            if name != expected_name:
+                raise ManifestError("Lima backend installer asset basename mismatch")
+            validate_github_release_url(
+                artifact,
+                backend,
+                backend_version,
+                expected_release_tag=f"{LIMA_RELEASE_TAG_PREFIX}{backend_version}",
+                expected_asset_name=expected_name,
+            )
+            if signature_type != "sha256-only":
+                raise ManifestError("Lima backend installer requires sha256-only signature")
+            if notarization != "not_applicable":
+                raise ManifestError("Lima backend installer notarization must be not_applicable")
     elif role == "linux-kernel":
         validate_github_release_url(
             artifact,
@@ -1023,6 +1133,36 @@ def validate_artifact(
             expected_path_prefix=SYNTHETIC_OCI_MANIFEST_PREFIX,
             expected_digest=digest,
         )
+    elif role == "release-checksums":
+        if backend != "lima-vz":
+            raise ManifestError(f"unknown artifact role: {role}")
+        if name != LIMA_CHECKSUMS_ASSET_NAME:
+            raise ManifestError("Lima checksums asset basename mismatch")
+        if artifact["version"] != backend_version:
+            raise ManifestError("Lima checksums version mismatch")
+        validate_github_release_url(
+            artifact,
+            backend,
+            backend_version,
+            expected_release_tag=f"{LIMA_RELEASE_TAG_PREFIX}{backend_version}",
+            expected_asset_name=LIMA_CHECKSUMS_ASSET_NAME,
+        )
+    elif role == "lima-template":
+        if backend != "lima-vz":
+            raise ManifestError(f"unknown artifact role: {role}")
+        if name != LIMA_UBUNTU_TEMPLATE_NAME:
+            raise ManifestError("Lima template basename mismatch")
+        if artifact["version"] != f"{LIMA_RELEASE_TAG_PREFIX}{backend_version}":
+            raise ManifestError("Lima template version mismatch")
+        validate_raw_github_template_url(artifact, backend_version)
+    elif role == "guest-image":
+        if backend != "lima-vz":
+            raise ManifestError(f"unknown artifact role: {role}")
+        if name != LIMA_GUEST_IMAGE_NAME:
+            raise ManifestError("Lima guest image basename mismatch")
+        if artifact["version"] != LIMA_GUEST_IMAGE_VERSION:
+            raise ManifestError("Lima guest image version mismatch")
+        validate_lima_guest_image_url(artifact)
 
     if role != "synthetic-oci-manifest" and "oci_digest" in artifact:
         raise ManifestError(f"unknown field: artifact.oci_digest for role {role}")
@@ -1143,7 +1283,7 @@ def _validate_review_manifest_core(
     version = content.get("backend_version")
     validate_version_string(version, "backend_version")
     if not BACKEND_REPOSITORIES[backend]["version_re"].fullmatch(version):
-        raise ManifestError("Apple backend_version must be strict semver")
+        raise ManifestError("backend_version must be strict semver")
 
     validate_sha256(content.get("rollback_plan_hash"), "rollback_plan_hash")
     validate_manifest_times(content, now)
@@ -1235,7 +1375,7 @@ def _validate_approval_record_common_core(
     if record_registry_hash != registry_snapshot.raw_sha256:
         raise ManifestError("TRUST_ANCHOR_REGISTRY_HASH_MISMATCH")
 
-    expected_hash = expected_owner_command_hash(record["approval_id"], manifest_hash)
+    expected_hash = expected_owner_command_hash(record["approval_id"], manifest_hash, content["backend"])
     if record.get("owner_command_hash") != expected_hash:
         raise ManifestError("owner command hash mismatch")
 

@@ -147,6 +147,65 @@ def _artifact(role: str) -> dict:
     return artifact
 
 
+def _lima_artifact(role: str) -> dict:
+    sha_by_role = {
+        "backend-installer": "bbdef91774885a0d05f7b048c4eb89ae2bcf3a0c252ae7ca7934e63df76d93c3",
+        "release-checksums": "7da5160ee9b22de8eec4222e581334ee6326881e20d5aa8eb29b22f897312a5f",
+        "lima-template": "abece69b9818b2b905d11bbeba84037dd6592d94fb3abdb58d01cb52c5e2f4e2",
+        "guest-image": "7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934",
+    }
+    artifact = {
+        "role": role,
+        "name": {
+            "backend-installer": "lima-2.2.0-Darwin-arm64.tar.gz",
+            "release-checksums": "SHA256SUMS",
+            "lima-template": "ubuntu-24.04.yaml",
+            "guest-image": "ubuntu-24.04-minimal-cloudimg-arm64.img",
+        }[role],
+        "version": {
+            "backend-installer": "2.2.0",
+            "release-checksums": "2.2.0",
+            "lima-template": "v2.2.0",
+            "guest-image": "24.04-noble-release-20260716",
+        }[role],
+        "source_url": {
+            "backend-installer": "https://github.com/lima-vm/lima/releases/download/v2.2.0/lima-2.2.0-Darwin-arm64.tar.gz",
+            "release-checksums": "https://github.com/lima-vm/lima/releases/download/v2.2.0/SHA256SUMS",
+            "lima-template": "https://raw.githubusercontent.com/lima-vm/lima/v2.2.0/templates/_images/ubuntu-24.04.yaml",
+            "guest-image": "https://cloud-images.ubuntu.com/minimal/releases/noble/release-20260716/ubuntu-24.04-minimal-cloudimg-arm64.img",
+        }[role],
+        "resolved_download_hosts": {
+            "backend-installer": ["github.com", "release-assets.githubusercontent.com"],
+            "release-checksums": ["github.com", "release-assets.githubusercontent.com"],
+            "lima-template": ["raw.githubusercontent.com"],
+            "guest-image": ["cloud-images.ubuntu.com"],
+        }[role],
+        "sha256": sha_by_role[role],
+        "size_bytes": {
+            "backend-installer": 37586365,
+            "release-checksums": 1396,
+            "lima-template": 3403,
+            "guest-image": 227737600,
+        }[role],
+        "signature_type": "git-tagged-source-sha256" if role == "lima-template" else "sha256-only",
+        "expected_signer_identity": {
+            "backend-installer": "GitHub release asset SHA-256",
+            "release-checksums": "GitHub release SHA256SUMS SHA-256",
+            "lima-template": "Release-tagged Lima source SHA-256",
+            "guest-image": "Ubuntu cloud image SHA-256 from Lima release-tagged template",
+        }[role],
+        "expected_signer_team_id": "not_applicable",
+        "notarization_requirement": "not_applicable",
+        "verification_policy_id": {
+            "backend-installer": "lima-release-asset-sha256-v1",
+            "release-checksums": "lima-sha256sums-sha256-v1",
+            "lima-template": "lima-release-tagged-template-sha256-v1",
+            "guest-image": "ubuntu-cloud-image-sha256-from-lima-template-v1",
+        }[role],
+    }
+    return artifact
+
+
 def _review_manifest() -> dict:
     content = {
         "approval_id": "p1b-20260722-validsynthetic",
@@ -165,6 +224,35 @@ def _review_manifest() -> dict:
         "rollback_plan_hash": _hash("rollback"),
         "created_at": "2026-07-22T00:00:00Z",
         "expires_at": "2026-07-29T00:00:00Z",
+    }
+    return {
+        "schema_version": "phase1b.installation-manifest.v2",
+        "manifest_state": "READY_FOR_REVIEW",
+        "manifest_content": content,
+        "content_sha256": content_sha256(content),
+    }
+
+
+def _lima_review_manifest() -> dict:
+    content = {
+        "approval_id": "p1b-20260722-limavzc1",
+        "backend": "lima-vz",
+        "backend_version": "2.2.0",
+        "artifacts": [
+            _lima_artifact("backend-installer"),
+            _lima_artifact("release-checksums"),
+            _lima_artifact("lima-template"),
+            _lima_artifact("guest-image"),
+        ],
+        "disk_changes": [
+            "Extracts Lima archive to /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0 only after explicit C1 approval"
+        ],
+        "background_services": ["NONE"],
+        "required_permissions": ["NONE"],
+        "network_changes": ["NONE"],
+        "rollback_plan_hash": _hash("lima rollback"),
+        "created_at": "2026-07-22T15:00:00Z",
+        "expires_at": "2026-07-25T15:00:00Z",
     }
     return {
         "schema_version": "phase1b.installation-manifest.v2",
@@ -204,6 +292,7 @@ def _approval_record(
         "owner_command_hash": expected_owner_command_hash(
             manifest["manifest_content"]["approval_id"],
             manifest["content_sha256"],
+            manifest["manifest_content"]["backend"],
         ),
         "synthetic_only": synthetic_only,
         "real_credentials_allowed": real_credentials_allowed,
@@ -361,11 +450,12 @@ class InstallationManifestTests(unittest.TestCase):
         _expect_error(lambda: validate_review_manifest(manifest, now=NOW), "duplicate artifact role")
 
     def test_manifest_022_incomplete_lima_manifest_rejected(self):
-        manifest = _review_manifest()
-        manifest["manifest_content"]["backend"] = "lima-vz"
-        manifest["manifest_content"]["backend_version"] = "v2.1.1"
+        manifest = _lima_review_manifest()
+        manifest["manifest_content"]["artifacts"] = [
+            artifact for artifact in manifest["manifest_content"]["artifacts"] if artifact["role"] != "guest-image"
+        ]
         _refresh(manifest)
-        _expect_error(lambda: validate_review_manifest(manifest, now=NOW), "approval contract not ready")
+        _expect_error(lambda: validate_review_manifest(manifest, now=NOW), "missing artifact role")
 
     def test_manifest_023_installer_version_mismatch_rejected(self):
         manifest = _review_manifest()
@@ -1167,6 +1257,57 @@ class InstallationManifestTests(unittest.TestCase):
             lambda: _result_from_core(core_result, attacker_snapshot, mode="review"),
             "NON_AUTHORITATIVE_TRUST_REGISTRY",
         )
+
+    def test_manifest_124_valid_lima_review_manifest_accepted(self):
+        result = validate_review_manifest(_lima_review_manifest(), now=NOW)
+        self.assertEqual(result["result"], "TEST_ONLY_PASS")
+        self.assertEqual(result["trust_anchor_status"], "NOT_APPLICABLE")
+
+    def test_manifest_125_lima_backend_version_rejects_v_prefix(self):
+        manifest = _lima_review_manifest()
+        manifest["manifest_content"]["backend_version"] = "v2.2.0"
+        _refresh(manifest)
+        _expect_error(lambda: validate_review_manifest(manifest, now=NOW), "strict semver")
+
+    def test_manifest_126_lima_installer_wrong_release_tag_rejected(self):
+        manifest = _lima_review_manifest()
+        manifest["manifest_content"]["artifacts"][0]["source_url"] = (
+            "https://github.com/lima-vm/lima/releases/download/v2.2.1/lima-2.2.0-Darwin-arm64.tar.gz"
+        )
+        _refresh(manifest)
+        _expect_error(lambda: validate_review_manifest(manifest, now=NOW), "wrong release tag")
+
+    def test_manifest_127_lima_guest_image_mutable_release_url_rejected(self):
+        manifest = _lima_review_manifest()
+        manifest["manifest_content"]["artifacts"][3]["source_url"] = (
+            "https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-arm64.img"
+        )
+        _refresh(manifest)
+        _expect_error(lambda: validate_review_manifest(manifest, now=NOW), "pinned Ubuntu guest image path mismatch")
+
+    def test_manifest_128_lima_additional_guestagents_not_allowed(self):
+        manifest = _lima_review_manifest()
+        guestagents = _lima_artifact("backend-installer")
+        guestagents["role"] = "additional-guestagents"
+        guestagents["name"] = "lima-additional-guestagents-2.2.0-Darwin-arm64.tar.gz"
+        guestagents["source_url"] = (
+            "https://github.com/lima-vm/lima/releases/download/v2.2.0/"
+            "lima-additional-guestagents-2.2.0-Darwin-arm64.tar.gz"
+        )
+        manifest["manifest_content"]["artifacts"].append(guestagents)
+        _refresh(manifest)
+        _expect_error(lambda: validate_review_manifest(manifest, now=NOW), "unknown artifact role")
+
+    def test_manifest_129_lima_synthetic_install_requires_fallback_owner_command(self):
+        manifest = _lima_review_manifest()
+        record = _approval_record(manifest, approved_at="2026-07-23T00:00:00Z", expires_at="2026-07-25T00:00:00Z")
+        validate_synthetic_install(record, manifest, now=NOW)
+        record["owner_command_hash"] = expected_owner_command_hash(
+            manifest["manifest_content"]["approval_id"],
+            manifest["content_sha256"],
+        )
+        _record_refresh(record)
+        _expect_error(lambda: validate_synthetic_install(record, manifest, now=NOW), "owner command hash mismatch")
 
 
 class Phase1BB0PinningTests(unittest.TestCase):

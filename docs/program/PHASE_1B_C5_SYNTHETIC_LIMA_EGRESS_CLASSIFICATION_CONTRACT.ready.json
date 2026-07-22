@@ -1,0 +1,91 @@
+{
+  "content_sha256": "7172db2bdc66461dfa5f0e2c49fd9134833889fffa53a80f546b239da38f7d1d",
+  "contract_content": {
+    "allowed_action": "run bounded synthetic network-egress classification probes against the existing pc3 VM via isolated LIMA_HOME",
+    "allowed_probe_commands": [
+      {
+        "argv": [
+          "limactl",
+          "list",
+          "--format",
+          "json",
+          "pc3"
+        ],
+        "purpose": "confirm isolated VM status and effective config before network classification",
+        "scope": "host"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/sh",
+          "-lc",
+          "(command -v ip >/dev/null && ip route || true); (command -v resolvectl >/dev/null && resolvectl dns || true)"
+        ],
+        "purpose": "inspect guest route and resolver configuration without changing state",
+        "scope": "guest"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/sh",
+          "-lc",
+          "timeout 5 getent hosts example.com >/dev/null && echo dns_example_com_available || echo dns_example_com_unavailable"
+        ],
+        "purpose": "classify DNS resolution availability for one public documentation domain",
+        "scope": "guest-network"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/sh",
+          "-lc",
+          "command -v bash >/dev/null && timeout 5 bash -lc ': >/dev/tcp/1.1.1.1/443' >/dev/null 2>&1 && echo tcp_1_1_1_1_443_open || echo tcp_1_1_1_1_443_closed_or_unavailable"
+        ],
+        "purpose": "classify outbound TCP reachability to one public IP on port 443 without sending HTTP credentials or payload",
+        "scope": "guest-network"
+      }
+    ],
+    "approval_id": "p1b-20260722-limaegressc5",
+    "backend": "lima-vz",
+    "backend_version": "2.2.0",
+    "c4_execution_evidence": "security/evidence/phase-1b-c4/poststart-probe-execution-summary.json",
+    "c4_execution_evidence_sha256": "fd723c2d94d76b3e5efb4c7f5b6b539f85d63e0f4ccc63afd53d2857f2af7679",
+    "canary_allowed": false,
+    "created_at": "2026-07-22T16:30:00Z",
+    "expires_at": "2026-07-23T16:30:00Z",
+    "gateway_changes_allowed": false,
+    "guest_writes_allowed": false,
+    "host_sync_allowed": false,
+    "instance_name": "pc3",
+    "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+    "limactl_binary_sha256": "f19a4fca3875e1017a5285672be4a62699c1e55918fb6a7afce86a14199e10d9",
+    "limactl_path": "/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl",
+    "network_probe_endpoints": [
+      "example.com DNS lookup",
+      "1.1.1.1:443 TCP connect"
+    ],
+    "network_probes_allowed": true,
+    "preserve_host_env_allowed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "required_instance_status": "Running",
+    "result_interpretation": {
+      "egress_not_observed": "This bounded probe did not observe egress, but production no-egress still requires an enforceable policy before profile use.",
+      "egress_observed": "Lima default guest egress is available; no-egress claim remains blocked until a containment design is implemented."
+    }
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1b-c5.synthetic-lima-egress-classification-contract.v1"
+}

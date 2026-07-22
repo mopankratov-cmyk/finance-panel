@@ -1,0 +1,71 @@
+{
+  "content_sha256": "315f08ddf8dd4220127b33e880074c49e012941bdc1365aad7db424a5daa473d",
+  "contract_content": {
+    "allowed_action": "prepare owner-approved reclaim-only closeout for synthetic Lima-vz Phase 1B instances only; do not execute reclaim without exact approval",
+    "approval_id": "p1b-20260722-reclaimonlyc16",
+    "auth_files_read_allowed": false,
+    "backend": "lima-vz",
+    "backend_version": "2.2.0",
+    "broad_path_delete_allowed": false,
+    "canary_allowed": false,
+    "codex_reclaim_execution_allowed_before_approval": false,
+    "created_at": "2026-07-22T19:30:00Z",
+    "default_lima_home_allowed": false,
+    "environment_value_dump_allowed": false,
+    "evidence_deletion_allowed": false,
+    "exact_command_sha256": {
+      "pc3_after_inventory": "5acdd3b54706ed718a14839c2afbc5dc5239332f23bd75fa1d0ec233fca83898",
+      "pc3_before_inventory": "cd48666234cdac0740140714aa84fe4b2b1ae44634087b1ca38c56c32c225e2f",
+      "pc3_delete": "d2d7d8d7f126f6bf374184112ef0735d198dcc479b1dd9bd1046b4674b3d6171",
+      "pc9r2_after_inventory": "5fc80fb52a4eff131658c81873d66db7a6a2af69363d94f24c2d6f321e61337a",
+      "pc9r2_before_inventory": "2740bf331b2053e70494285f42fb37d1aee0048243d8f3e974f3466abea66e7e",
+      "pc9r2_delete": "894108902dd4e3ab561ace24311a57ab3f5e56253720d385cb45645d1af2c6bf"
+    },
+    "exact_commands": {
+      "pc3_after_inventory": "env -i PATH=/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin:/usr/bin:/bin HOME=/Users/maksimpankratov LANG=C LIMA_HOME=/Users/maksimpankratov/.local/pankster/runtime/lc3 /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl list --format json",
+      "pc3_before_inventory": "env -i PATH=/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin:/usr/bin:/bin HOME=/Users/maksimpankratov LANG=C LIMA_HOME=/Users/maksimpankratov/.local/pankster/runtime/lc3 /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl list --format json pc3",
+      "pc3_delete": "env -i PATH=/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin:/usr/bin:/bin HOME=/Users/maksimpankratov LANG=C LIMA_HOME=/Users/maksimpankratov/.local/pankster/runtime/lc3 /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl delete --force pc3",
+      "pc9r2_after_inventory": "env -i PATH=/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin:/usr/bin:/bin HOME=/Users/maksimpankratov LANG=C LIMA_HOME=/Users/maksimpankratov/.local/pankster/runtime/lc9r2 /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl list --format json",
+      "pc9r2_before_inventory": "env -i PATH=/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin:/usr/bin:/bin HOME=/Users/maksimpankratov LANG=C LIMA_HOME=/Users/maksimpankratov/.local/pankster/runtime/lc9r2 /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl list --format json pc9r2",
+      "pc9r2_delete": "env -i PATH=/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin:/usr/bin:/bin HOME=/Users/maksimpankratov LANG=C LIMA_HOME=/Users/maksimpankratov/.local/pankster/runtime/lc9r2 /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl delete --force pc9r2"
+    },
+    "expires_at": "2026-07-23T19:30:00Z",
+    "gateway_changes_allowed": false,
+    "host_firewall_changes_allowed": false,
+    "keychain_read_allowed": false,
+    "manual_owner_approval_required": true,
+    "network_probe_allowed": false,
+    "pfctl_execution_allowed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "required_sequence_after_approval": [
+      "capture before inventory for pc3 using exact pc3_before_inventory command",
+      "capture before inventory for pc9r2 using exact pc9r2_before_inventory command",
+      "delete pc3 using exact pc3_delete command only if before inventory confirms target scope",
+      "delete pc9r2 using exact pc9r2_delete command only if before inventory confirms target scope",
+      "capture after inventory for both exact isolated LIMA_HOME values",
+      "record sanitized summary and preserve existing evidence artifacts"
+    ],
+    "rm_rf_allowed": false,
+    "source_evidence": {
+      "c9_r6_block_path": "security/evidence/phase-1b-c9-r6/target-uniqueness-or-firewall-execution-block.json",
+      "c9_r6_block_sha256": "9ad23975fa084eb8ee6bbc6fb72832bc96ed313a6481afc366a17131aa1ad916"
+    },
+    "synthetic_only": true,
+    "targets": [
+      {
+        "instance_name": "pc3",
+        "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+        "source_gate": "C3_R2"
+      },
+      {
+        "instance_name": "pc9r2",
+        "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc9r2",
+        "source_gate": "C9_R2"
+      }
+    ],
+    "wildcard_delete_allowed": false
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1b-c16.reclaim-only-closeout-contract.v1"
+}

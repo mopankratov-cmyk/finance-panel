@@ -1,0 +1,48 @@
+{
+  "schema_version": "pankster.phase1b-b2-r2.pre-start-evidence.v1",
+  "recorded_at": "2026-07-22T14:19:16Z",
+  "approval_id": "p1b-20260722-syntheticruntimeb2r2",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_runtime_start": "c891f5aa33ba7276f9c4a9835c15c5c6eb205e26",
+  "contract_path": "docs/program/PHASE_1B_B2_R2_SYNTHETIC_RUNTIME_START_CONTRACT.ready.json",
+  "contract_file_sha256": "da58f9f04c0b63e9d0ff6d57e6a9876513b6c63cc59b28ec61dd8ef35b77a92d",
+  "contract_content_sha256": "6df0398b0f1c0a78e37d23e8bd1b1d2a156e0d8c555b6f055c9366c2affe3769",
+  "approval_record_path": "docs/program/PHASE_1B_B2_R2_SYNTHETIC_RUNTIME_START_APPROVAL_RECORD.json",
+  "approval_record_canonical_sha256": "5a9bbf94393597a25b4fec2a75b4161e80fb2963c38f15af6dd81a22e09dba46",
+  "prior_failure_evidence_path": "security/evidence/phase-1b-b2/runtime-start-failure-01.json",
+  "prior_failure_evidence_sha256": "59d2417d93962d4201aa6410fa8f6bac3fab408a320516e8ce26f1bd8b865be7",
+  "preflight": {
+    "approval_command": "APPROVE_SYNTHETIC_RUNTIME_START:p1b-20260722-syntheticruntimeb2r2:6df0398b0f1c0a78e37d23e8bd1b1d2a156e0d8c555b6f055c9366c2affe3769",
+    "container_cli_version": "container CLI version 1.1.0 (build: release, commit: 5973b9c)",
+    "mode": "preflight",
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "result": "OWNER_APPROVAL_REQUIRED",
+    "runtime_start_command": [
+      "/usr/local/bin/container",
+      "system",
+      "start",
+      "--disable-kernel-install",
+      "--timeout",
+      "120"
+    ],
+    "runtime_start_executed": false,
+    "runtime_status": {
+      "returncode": 1,
+      "stderr": "",
+      "stdout": "apiserver is not running and not registered with launchd"
+    },
+    "workload_started": false
+  },
+  "forbidden_actions_not_performed_by_agent": {
+    "container_system_start": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "next_required_action": "OWNER_RUNS_PRINTED_R2_ADMIN_COMMAND"
+}

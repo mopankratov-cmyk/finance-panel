@@ -1,0 +1,57 @@
+{
+  "schema_version": "pankster.phase1b-c9-r5-r2.manual-packet-visibility-operator-result.v1",
+  "recorded_at": "2026-07-22T19:05:00Z",
+  "result": "OPERATOR_RESULT_RECEIVED_NO_TARGET_VISIBILITY_PROOF",
+  "sanitization": {
+    "raw_tcpdump_lines_included": false,
+    "raw_packet_output_persisted": false,
+    "packet_payloads_included": false,
+    "secrets_included": false,
+    "auth_files_read": false,
+    "keychain_read": false,
+    "environment_values_included": false
+  },
+  "approval": {
+    "approval_id": "p1b-20260722-limapktr2c9r5",
+    "approval_record_path": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_APPROVAL_RECORD.json",
+    "approval_record_canonical_sha256": "4e497efbbd9f78707ce7606b472d453d2284ecf9024520ab9ffc2ed059f1053e",
+    "contract_path": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_CONTRACT.ready.json",
+    "contract_content_sha256": "6c2a9e75d06ce1d43af1df2d3b0a581ef040ce71488c6d70d7705e0f89067a03"
+  },
+  "operator_return": {
+    "packet_capture_performed": true,
+    "candidate_host_interface": "utun4",
+    "target_ipv4_observed": false,
+    "source_target_packet_count": 0,
+    "destination_target_packet_count": 0,
+    "pre_nat_guest_source_observed": false,
+    "raw_packet_output_persisted": false,
+    "tcpdump_packets_captured": 0,
+    "tcpdump_packets_received_by_filter": 4482,
+    "tcpdump_packets_dropped_by_kernel": 0
+  },
+  "interpretation": {
+    "direction_counts_available": true,
+    "target_guest_ipv4": "192.168.5.15",
+    "target_guest_ipv4_visibility_confirmed": false,
+    "pre_nat_guest_source_visibility_confirmed": false,
+    "pf_visibility_proof_available": false,
+    "target_uniqueness_proof_available": false,
+    "firewall_execution_contract_ready": false,
+    "reason": "The manual packet capture returned sanitized summary only. No packet lines with 192.168.5.15 were observed by the operator, and tcpdump reported zero packets captured. The nonzero received-by-filter counter is not treated as direction or pre-NAT source proof."
+  },
+  "hard_gates": {
+    "codex_automatic_privileged_execution_allowed": false,
+    "codex_automatic_privileged_execution_performed": false,
+    "pfctl_execution_allowed": false,
+    "pfctl_executed": false,
+    "host_firewall_changes_allowed": false,
+    "host_firewall_changes_performed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false,
+    "reclaim_delete_allowed": false
+  },
+  "next_gate_after_operator_result": "PHASE_1B_C9_R6_TARGET_UNIQUENESS_OR_FIREWALL_EXECUTION_BLOCK"
+}

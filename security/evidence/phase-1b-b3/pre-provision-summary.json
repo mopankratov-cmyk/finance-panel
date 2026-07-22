@@ -1,0 +1,48 @@
+{
+  "schema_version": "pankster.phase1b-b3.pre-provision-evidence.v1",
+  "recorded_at": "2026-07-22T14:32:42Z",
+  "approval_id": "p1b-20260722-kernelprovisionb3",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_kernel_provision": "94ff27cafaa91e208cf9a8fd211a96ae35c7690b",
+  "contract_path": "docs/program/PHASE_1B_B3_KERNEL_PROVISIONING_CONTRACT.ready.json",
+  "contract_file_sha256": "746af3360565138b61a8efafd089fe5ca059b20d3763c26848ad04a369144845",
+  "contract_content_sha256": "cce75c7117000907305e9cd125502c4631554fe20e9f00789715e03a8d88d3cd",
+  "approval_record_path": "docs/program/PHASE_1B_B3_KERNEL_PROVISIONING_APPROVAL_RECORD.json",
+  "approval_record_canonical_sha256": "61832977d318d933ef407e2033f734e2728b322043c93118c92a595f7c5467a7",
+  "pre_approval_evidence_path": "security/evidence/phase-1b-b3/pre-approval-summary.json",
+  "pre_approval_evidence_sha256": "6fc5d599f51399b5bef7ec2e9c353acb2c8de3f55ae2c01d6a8bb7ba6fe7427c",
+  "local_artifact_discovery": {
+    "searched_paths": [
+      "~/Downloads",
+      "~/Desktop"
+    ],
+    "artifact_name": "kata-static-3.28.0-arm64.tar.zst",
+    "found": false
+  },
+  "preflight": {
+    "approval_command": "APPROVE_SYNTHETIC_KERNEL_PROVISION:p1b-20260722-kernelprovisionb3:cce75c7117000907305e9cd125502c4631554fe20e9f00789715e03a8d88d3cd",
+    "container_cli_version": "container CLI version 1.1.0 (build: release, commit: 5973b9c)",
+    "kernel_provision_executed": false,
+    "mode": "preflight",
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "result": "OWNER_APPROVAL_REQUIRED",
+    "runtime_start_executed": false,
+    "workload_started": false
+  },
+  "forbidden_actions_not_performed_by_agent": {
+    "kernel_provisioning": true,
+    "recommended_kernel_download": true,
+    "remote_tar_kernel_install": true,
+    "network_download_by_runner": true,
+    "container_system_start": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "next_required_action": "OWNER_PROVIDES_LOCAL_KATA_ARCHIVE_AND_RUNS_ARTIFACT_CHECK"
+}

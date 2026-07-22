@@ -1,0 +1,30 @@
+{
+  "schema_version": "pankster.phase1b-c9-r4.host-network-observability-approval-prep.v1",
+  "recorded_at": "2026-07-22T17:48:00Z",
+  "approval_id": "p1b-20260722-limaobsc9r4",
+  "contract_path": "docs/program/PHASE_1B_C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY_CONTRACT.ready.json",
+  "contract_file_sha256": "ce532fde373a206fbbe10396d794797107371ec05bab9cece7e88eea6582a043",
+  "contract_content_sha256": "5fdbb97f712a83c4de1b7321cf388c5255d870dbbfe9524dec96138ed5d8e8c9",
+  "owner_command_hash": "a55ad60c41129171f3fba67d5fbf1ed3e9ff08dcc6962c2bd030692563843350",
+  "required_owner_command": "APPROVE_SYNTHETIC_LIMA_HOST_NETWORK_OBSERVABILITY:p1b-20260722-limaobsc9r4:5fdbb97f712a83c4de1b7321cf388c5255d870dbbfe9524dec96138ed5d8e8c9",
+  "allowed_after_approval": {
+    "host_network_metadata_collection": true,
+    "tool_allowlist": [
+      "/sbin/ifconfig",
+      "/usr/sbin/netstat",
+      "/sbin/route"
+    ]
+  },
+  "forbidden_even_after_approval": {
+    "pfctl_execution": true,
+    "host_firewall_mutation": true,
+    "packet_capture": true,
+    "guest_traffic_generation": true,
+    "production_profiles": true,
+    "real_credentials": true,
+    "gateway_changes": true,
+    "canary": true,
+    "reclaim_delete": true
+  },
+  "next_gate_after_approval_and_execution": "PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_CONTRACT_OR_FAIL_CLOSED"
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": "pankster.phase1b-c9.host-firewall-research-approval-prep.v1",
+  "recorded_at": "2026-07-22T16:55:00Z",
+  "result": "OWNER_APPROVAL_REQUIRED",
+  "approval_id": "p1b-20260722-limapfc9",
+  "selected_path": "HOST_FIREWALL_RESEARCH",
+  "contract_path": "docs/program/PHASE_1B_C9_HOST_FIREWALL_RESEARCH_CONTRACT.ready.json",
+  "contract_content_sha256": "360d4f746e7ef7cb225b8da333b7dec739c5d8d6175c24a89150dd34f2ddd2c5",
+  "owner_command_hash": "e7ca5d2bd588c5d50d0596e97f9192da0d08f732290d8ee88f9510734ff9bb09",
+  "host_firewall_execution_authorized": false,
+  "host_firewall_changes_performed": false,
+  "pfctl_execution_performed": false,
+  "pf_main_config_modified": false,
+  "guest_writes_performed": false,
+  "new_vm_started": false,
+  "production_profiles_allowed": false,
+  "real_credentials_allowed": false,
+  "gateway_changes_allowed": false,
+  "canary_allowed": false,
+  "required_owner_command": "APPROVE_SYNTHETIC_LIMA_HOST_FIREWALL_RESEARCH:p1b-20260722-limapfc9:360d4f746e7ef7cb225b8da333b7dec739c5d8d6175c24a89150dd34f2ddd2c5",
+  "next_gate_after_approval": "PHASE_1B_C9_R2_HOST_FIREWALL_EXECUTION_CONTRACT"
+}

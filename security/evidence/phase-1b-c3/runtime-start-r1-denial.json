@@ -1,0 +1,26 @@
+{
+  "schema_version": "pankster.phase1b-c3.runtime-start-r1-denial.v1",
+  "recorded_at": "2026-07-22T15:55:21Z",
+  "branch": "phase/1b-b1-synthetic-install",
+  "runner_commit": "6abee57be024d6e12c94305ca8840dd2afe69cec",
+  "approval_id": "p1b-20260722-limaruntimec3",
+  "result": "DENIED",
+  "reason": "RUNTIME_START_FAILED",
+  "root_cause": "Lima rejected the approved instance path because the derived SSH socket path length exceeded macOS UNIX_PATH_MAX=104.",
+  "sanitized_error": "instance name `pankster-synthetic-c3` too long; derived ssh.sock path length 117 must be less than 104",
+  "state_after_denial": {
+    "isolated_lima_home_created": false,
+    "default_lima_home_created": false,
+    "vm_created": false,
+    "guest_image_download_confirmed": false,
+    "gateway_changed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false
+  },
+  "r2_contract_required": true,
+  "r2_change": {
+    "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+    "instance_name": "pc3",
+    "max_socket_path_length_estimate": 80
+  }
+}

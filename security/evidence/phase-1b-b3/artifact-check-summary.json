@@ -1,0 +1,35 @@
+{
+  "schema_version": "pankster.phase1b-b3.artifact-check-evidence.v1",
+  "recorded_at": "2026-07-22T14:36:15Z",
+  "approval_id": "p1b-20260722-kernelprovisionb3",
+  "branch": "phase/1b-b1-synthetic-install",
+  "local_artifact": {
+    "path_sanitized": "<owner-downloads>/kata-static-3.28.0-arm64.tar.zst",
+    "path_retained": false,
+    "archive_sha256": "f63d54507d1f18635d94475077e4c2330de4d8e05cedf25f7c38f063b0e66a91",
+    "archive_size_bytes": 596775193,
+    "kernel_member": {
+      "member_path": "opt/kata/share/kata-containers/vmlinux-6.18.15-186",
+      "sha256": "2fe4a58d2885d623bcb4d705900ac8c1d4f02371152da8126b3b00c8c47fc3a1",
+      "size_bytes": 16151040
+    }
+  },
+  "runner_result": {
+    "mode": "artifact-check",
+    "result": "PASS"
+  },
+  "forbidden_actions_not_performed_by_agent": {
+    "kernel_provisioning": true,
+    "recommended_kernel_download": true,
+    "remote_tar_kernel_install": true,
+    "container_system_start": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "next_required_action": "OWNER_RUNS_PRINTED_B3_ADMIN_COMMAND"
+}

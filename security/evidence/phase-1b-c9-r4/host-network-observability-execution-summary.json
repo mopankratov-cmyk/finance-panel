@@ -1,0 +1,245 @@
+{
+  "schema_version": "pankster.phase1b-c9-r4.host-network-observability-execution-summary.v1",
+  "recorded_at": "2026-07-22T18:01:00Z",
+  "result": "PASS",
+  "mode": "execute-discovery",
+  "approval": {
+    "approval_id": "p1b-20260722-limaobsc9r4",
+    "approval_record_path": "docs/program/PHASE_1B_C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY_APPROVAL_RECORD.json",
+    "approval_record_file_sha256": "071f2de6ae630b498a9e2db7728a4c7202f752dd4e54b0d594bb1916e7a145ff",
+    "approval_record_canonical_sha256": "ccc92e592dbecae4cc990a60fd6b9c768e3d475ca1e1529cdb61a6abf65acc0b",
+    "contract_path": "docs/program/PHASE_1B_C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY_CONTRACT.ready.json",
+    "contract_file_sha256": "ce532fde373a206fbbe10396d794797107371ec05bab9cece7e88eea6582a043",
+    "contract_content_sha256": "5fdbb97f712a83c4de1b7321cf388c5255d870dbbfe9524dec96138ed5d8e8c9"
+  },
+  "hard_gates": {
+    "pfctl_execution_allowed": false,
+    "pfctl_executed": false,
+    "host_firewall_changes_allowed": false,
+    "host_firewall_changes_performed": false,
+    "packet_capture_allowed": false,
+    "packet_capture_performed": false,
+    "guest_traffic_generation_allowed": false,
+    "guest_traffic_generated": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false,
+    "reclaim_delete_allowed": false
+  },
+  "target": {
+    "instance_name": "pc9r2",
+    "guest_ipv4": "192.168.5.15"
+  },
+  "host_observability": {
+    "ifconfig": {
+      "interface_count": 24,
+      "interfaces": [
+        {
+          "name": "lo0",
+          "mtu": 16384,
+          "status": "unknown",
+          "ipv4_scopes": [
+            "loopback"
+          ],
+          "ipv4_count": 1
+        },
+        {
+          "name": "gif0",
+          "mtu": 1280,
+          "status": "unknown",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "stf0",
+          "mtu": 1280,
+          "status": "unknown",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "anpi2",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "anpi1",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "anpi0",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "en4",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "en5",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "en6",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "en1",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "en2",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "en3",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "bridge0",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "utun0",
+          "mtu": 1500,
+          "status": "unknown",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "utun1",
+          "mtu": 1380,
+          "status": "unknown",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "ap1",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "en0",
+          "mtu": 1500,
+          "status": "active",
+          "ipv4_scopes": [
+            "private"
+          ],
+          "ipv4_count": 1
+        },
+        {
+          "name": "awdl0",
+          "mtu": 1500,
+          "status": "active",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "llw0",
+          "mtu": 1500,
+          "status": "inactive",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "utun2",
+          "mtu": 2000,
+          "status": "unknown",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "utun3",
+          "mtu": 1000,
+          "status": "unknown",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "utun5",
+          "mtu": 1380,
+          "status": "unknown",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "utun6",
+          "mtu": 1380,
+          "status": "unknown",
+          "ipv4_scopes": [],
+          "ipv4_count": 0
+        },
+        {
+          "name": "utun4",
+          "mtu": 9000,
+          "status": "unknown",
+          "ipv4_scopes": [
+            "private"
+          ],
+          "ipv4_count": 1
+        }
+      ],
+      "raw_output_persisted": false
+    },
+    "netstat_inet": {
+      "default_routes_count": 1,
+      "route_interface_count": 3,
+      "route_interfaces": [
+        "en0",
+        "lo0",
+        "utun4"
+      ],
+      "target_subnet_routes": [],
+      "raw_output_persisted": false
+    },
+    "route_get_target": {
+      "target": "192.168.5.15",
+      "route_interface": "utun4",
+      "gateway_scope": "private",
+      "source_scope": "absent",
+      "has_interface": true,
+      "raw_output_persisted": false
+    }
+  },
+  "c9_r5_implications": {
+    "single_host_interface_candidate": true,
+    "candidate_interface": "utun4",
+    "pf_visibility_proven": false,
+    "target_uniqueness_proven": false,
+    "packet_visibility_probe_contract_ready": true,
+    "reason": "Host route metadata can identify an observation candidate, but it cannot prove pf pre-NAT visibility or target uniqueness without a separate owner-approved packet-visibility probe."
+  },
+  "raw_command_outputs_persisted": false,
+  "next_gate": "PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_CONTRACT_OR_FAIL_CLOSED"
+}

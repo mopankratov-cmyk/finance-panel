@@ -1,0 +1,42 @@
+{
+  "schema_version": "pankster.phase1b-b2.runtime-start-failure.v1",
+  "recorded_at": "2026-07-22T14:25:00Z",
+  "approval_id": "p1b-20260722-syntheticruntimeb2",
+  "owner_reported_runner_result": {
+    "detail": "rc=1",
+    "mode": "execute-start",
+    "reason": "RUNTIME_START_FAILED",
+    "result": "DENIED"
+  },
+  "read_only_post_failure_checks": {
+    "container_system_status": {
+      "returncode": 1,
+      "stdout": "apiserver is not running and not registered with launchd",
+      "stderr": ""
+    },
+    "container_system_version": {
+      "container": {
+        "version": "1.1.0",
+        "build": "release",
+        "commit": "5973b9cc626a3e7a499bb316a958237ebe14e2ed"
+      }
+    },
+    "launchd_observation": {
+      "system_com_apple_container_apiserver": "Could not find service in system domain",
+      "gui_501_com_apple_container_apiserver": "Could not find service in user domain"
+    },
+    "runtime_process_scan_matches": 0
+  },
+  "probable_cause": "container system start has an implicit kernel install policy prompt by default; the B2-R1 runner captured subprocess output without a TTY and did not bind an explicit kernel install policy in the contract.",
+  "resolution": "Prepare B2-R2 with an explicit contract-bound runtime_start_command using --disable-kernel-install and include bounded command output in future failure JSON.",
+  "forbidden_actions_not_performed_by_agent": {
+    "container_system_start_retry": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  }
+}

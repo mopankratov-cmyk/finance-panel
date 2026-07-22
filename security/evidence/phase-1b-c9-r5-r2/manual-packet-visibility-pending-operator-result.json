@@ -1,0 +1,42 @@
+{
+  "schema_version": "pankster.phase1b-c9-r5-r2.manual-packet-visibility-pending-operator-result.v1",
+  "recorded_at": "2026-07-22T18:44:00Z",
+  "result": "PENDING_OPERATOR_RESULT",
+  "approval": {
+    "approval_id": "p1b-20260722-limapktr2c9r5",
+    "approval_record_path": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_APPROVAL_RECORD.json",
+    "approval_record_canonical_sha256": "4e497efbbd9f78707ce7606b472d453d2284ecf9024520ab9ffc2ed059f1053e",
+    "contract_path": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_CONTRACT.ready.json",
+    "contract_content_sha256": "6c2a9e75d06ce1d43af1df2d3b0a581ef040ce71488c6d70d7705e0f89067a03"
+  },
+  "hard_gates": {
+    "codex_automatic_privileged_execution_allowed": false,
+    "codex_automatic_privileged_execution_performed": false,
+    "pfctl_execution_allowed": false,
+    "pfctl_executed": false,
+    "host_firewall_changes_allowed": false,
+    "host_firewall_changes_performed": false,
+    "raw_packet_output_persistence_allowed": false,
+    "raw_packet_output_persisted": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false,
+    "reclaim_delete_allowed": false
+  },
+  "manual_commands": {
+    "packet_capture_command_sha256": "3cd21e956f5c1f24301162e5c395b627b83f3698c615eea910b4e2fd0a114b90",
+    "synthetic_guest_trigger_command_sha256": "cff4d31c6fb090b1b100aef2a6a447aab92f369e6f0652666da909ad53550f3f"
+  },
+  "required_operator_return": {
+    "packet_capture_performed": "boolean",
+    "candidate_host_interface": "utun4",
+    "target_ipv4_observed": "boolean",
+    "source_target_packet_count": "integer",
+    "destination_target_packet_count": "integer",
+    "pre_nat_guest_source_observed": "boolean",
+    "raw_packet_output_persisted": false
+  },
+  "operator_result_received": false,
+  "next_gate_after_operator_result": "PHASE_1B_C9_R6_TARGET_UNIQUENESS_OR_FIREWALL_EXECUTION_BLOCK"
+}

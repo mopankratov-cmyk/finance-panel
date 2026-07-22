@@ -1,0 +1,31 @@
+{
+  "schema_version": "pankster.phase1b-c9-r5.packet-visibility-approval-prep.v1",
+  "recorded_at": "2026-07-22T18:08:00Z",
+  "approval_id": "p1b-20260722-limapktc9r5",
+  "contract_path": "docs/program/PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_CONTRACT.ready.json",
+  "contract_file_sha256": "22076ed3da419e7ed4901f0d0ea0aca25cff34d63c6073c649a9bd3420269026",
+  "contract_content_sha256": "697deae9aeec4518a6edcd6d5986c1ae6dfda1d2cad5b096c8b2c1851d7c5928",
+  "owner_command_hash": "dda685c043396aef54cc560aee15dfc2859c6d47c41cbaee74ed5a5bc24543f6",
+  "required_owner_command": "APPROVE_SYNTHETIC_LIMA_PACKET_VISIBILITY_PROBE:p1b-20260722-limapktc9r5:697deae9aeec4518a6edcd6d5986c1ae6dfda1d2cad5b096c8b2c1851d7c5928",
+  "allowed_after_approval": {
+    "packet_capture_metadata": true,
+    "packet_capture_interface": "utun4",
+    "packet_capture_filter": "host 192.168.5.15 and tcp and port 443",
+    "packet_capture_max_packets": 8,
+    "packet_capture_max_seconds": 12,
+    "one_synthetic_tcp_connect_to_1_1_1_1_443": true
+  },
+  "forbidden_even_after_approval": {
+    "pfctl_execution": true,
+    "host_firewall_mutation": true,
+    "pf_config_edits": true,
+    "dns_probe": true,
+    "raw_packet_payload_persistence": true,
+    "production_profiles": true,
+    "real_credentials": true,
+    "gateway_changes": true,
+    "canary": true,
+    "reclaim_delete": true
+  },
+  "next_gate_after_approval_and_execution": "PHASE_1B_C9_R6_TARGET_UNIQUENESS_OR_FIREWALL_EXECUTION_BLOCK"
+}

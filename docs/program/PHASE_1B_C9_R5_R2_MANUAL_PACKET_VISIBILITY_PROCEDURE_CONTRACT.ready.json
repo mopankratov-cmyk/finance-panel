@@ -1,0 +1,73 @@
+{
+  "content_sha256": "6c2a9e75d06ce1d43af1df2d3b0a581ef040ce71488c6d70d7705e0f89067a03",
+  "contract_content": {
+    "allowed_action": "prepare owner-approved manual packet visibility procedure for the synthetic Lima-vz target only; Codex must not execute privileged commands",
+    "approval_id": "p1b-20260722-limapktr2c9r5",
+    "backend": "lima-vz",
+    "backend_version": "2.2.0",
+    "candidate_host_interface": "utun4",
+    "canary_allowed": false,
+    "codex_automatic_privileged_execution_allowed": false,
+    "created_at": "2026-07-22T18:32:00Z",
+    "expires_at": "2026-07-23T18:32:00Z",
+    "gateway_changes_allowed": false,
+    "guest_command_allowed": true,
+    "guest_command_limit": "one synthetic TCP connect attempt from pc9r2 to 1.1.1.1:443 only, solely to generate observable packet metadata",
+    "guest_dns_query_allowed": false,
+    "guest_payload_capture_allowed": false,
+    "guest_traffic_generation_allowed": true,
+    "host_firewall_changes_allowed": false,
+    "host_sync_allowed": false,
+    "instance_name": "pc9r2",
+    "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc9r2",
+    "manual_operator_action_required": true,
+    "operator_must_not_paste_raw_packet_lines": true,
+    "operator_return_format": {
+      "candidate_host_interface": "utun4",
+      "destination_target_packet_count": "integer",
+      "packet_capture_performed": "boolean",
+      "pre_nat_guest_source_observed": "boolean",
+      "raw_packet_output_persisted": false,
+      "source_target_packet_count": "integer",
+      "target_ipv4_observed": "boolean"
+    },
+    "packet_capture_allowed": true,
+    "packet_capture_command": "sudo /usr/sbin/tcpdump -n -tt -q -i utun4 -c 8 'host 192.168.5.15 and tcp and port 443'",
+    "packet_capture_command_sha256": "3cd21e956f5c1f24301162e5c395b627b83f3698c615eea910b4e2fd0a114b90",
+    "packet_capture_filter": "host 192.168.5.15 and tcp and port 443",
+    "packet_capture_interface": "utun4",
+    "packet_capture_max_packets": 8,
+    "packet_capture_max_seconds": 12,
+    "packet_capture_payload_persistence_allowed": false,
+    "packet_capture_raw_output_persistence_allowed": false,
+    "packet_capture_summary_only": true,
+    "pf_config_edits_allowed": false,
+    "pfctl_execution_allowed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "reclaim_delete_allowed": false,
+    "required_manual_sequence": [
+      "operator starts the exact packet_capture_command in an administrator-authenticated terminal",
+      "operator runs the exact synthetic_guest_trigger_command once while capture is active",
+      "operator records only sanitized packet direction counts and booleans",
+      "operator does not paste or persist raw tcpdump output"
+    ],
+    "source_evidence": {
+      "c9_r5_contract_content_sha256": "697deae9aeec4518a6edcd6d5986c1ae6dfda1d2cad5b096c8b2c1851d7c5928",
+      "c9_r5_execution_block_sha256": "c3e98625dc3b86cb1aef490bc064fff6e04bd5d51cdc49c1b75bde65f2493036"
+    },
+    "synthetic_guest_trigger_command": "env -i PATH=/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin:/usr/bin:/bin HOME=/Users/maksimpankratov LANG=C LIMA_HOME=/Users/maksimpankratov/.local/pankster/runtime/lc9r2 /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl shell --tty=false pc9r2 -- /bin/sh -lc \"timeout 5 bash -lc 'exec 3<>/dev/tcp/1.1.1.1/443; exec 3>&-; exec 3<&-'\"",
+    "synthetic_guest_trigger_command_sha256": "cff4d31c6fb090b1b100aef2a6a447aab92f369e6f0652666da909ad53550f3f",
+    "target_guest_ipv4": "192.168.5.15",
+    "target_guest_prefix": 24,
+    "tool_denylist_even_after_approval": [
+      "/sbin/pfctl",
+      "/usr/bin/curl",
+      "/usr/bin/ssh",
+      "/usr/bin/scp",
+      "/usr/bin/rsync"
+    ]
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1b-c9-r5-r2.synthetic-lima-manual-packet-visibility-procedure-contract.v1"
+}

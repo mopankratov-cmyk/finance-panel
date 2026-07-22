@@ -1,0 +1,17 @@
+{
+  "approval_id": "p1b-20260722-limavzc1",
+  "approved_at": "2026-07-22T14:55:00Z",
+  "approved_by": "owner:maksimpankratov",
+  "authn_context": "interactive-synthetic",
+  "authorization_event_id": "hgate-20260722-limavzc1",
+  "authorization_source": "pankster-human-gate",
+  "decision": "APPROVED",
+  "expires_at": "2026-07-25T14:45:10Z",
+  "manifest_content_sha256": "c06a8aa4c7738ccb1bdea97ebf60f0037a426d5ca0a00ac43bf7c730556be0d9",
+  "owner_command_hash": "274a0617ff2628509a490b98f579fe8dedf76b6dda3df1fe015d7fc77cdc9e88",
+  "production_profiles_allowed": false,
+  "real_credentials_allowed": false,
+  "record_sha256": "f3e376c3ba01398adbe3d582c28fa53df43dc62ea99d9a8425126076d92b84ed",
+  "synthetic_only": true,
+  "trust_anchor_registry_sha256": "44d3f97eb272524f4bc8d5ef0ae9c92c883553387889a0d5d0e4b7d476b7e82b"
+}

@@ -1,0 +1,62 @@
+{
+  "schema_version": "pankster.phase1b-b3.kernel-provision-failure.v1",
+  "recorded_at": "2026-07-22T14:38:00Z",
+  "approval_id": "p1b-20260722-kernelprovisionb3",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_kernel_provision": "73e8442df4423706a6ad22edec0d36b23d2d0d08",
+  "contract_path": "docs/program/PHASE_1B_B3_KERNEL_PROVISIONING_CONTRACT.ready.json",
+  "contract_file_sha256": "746af3360565138b61a8efafd089fe5ca059b20d3763c26848ad04a369144845",
+  "approval_record_path": "docs/program/PHASE_1B_B3_KERNEL_PROVISIONING_APPROVAL_RECORD.json",
+  "approval_record_file_sha256": "a41007c69d8ff7704b32ae723989020a96c6ced56e5012de49235582b6473feb",
+  "artifact_check_evidence_path": "security/evidence/phase-1b-b3/artifact-check-summary.json",
+  "artifact_check_evidence_sha256": "62a407ea056420a5b45910177d7fa1e6f8e3252905aa4e279d997e255149af23",
+  "owner_reported_runner_result": {
+    "command_result": {
+      "returncode": 1,
+      "stderr": "Error: interrupted: \"XPC connection error: Connection invalid\"\nEnsure container system service has been started with `container system start`.",
+      "stdout": ""
+    },
+    "mode": "execute-provision",
+    "reason": "KERNEL_PROVISION_FAILED",
+    "result": "DENIED"
+  },
+  "read_only_post_failure_checks": {
+    "container_system_status": {
+      "returncode": 1,
+      "stdout": "apiserver is not running and not registered with launchd",
+      "stderr": ""
+    },
+    "container_system_version": {
+      "container": {
+        "version": "1.1.0",
+        "build": "release",
+        "commit": "5973b9cc626a3e7a499bb316a958237ebe14e2ed"
+      }
+    },
+    "launchd_observation": {
+      "system_com_apple_container_apiserver": "Could not find service in system domain",
+      "gui_501_com_apple_container_apiserver": "Could not find service in user domain"
+    },
+    "runtime_process_scan_matches": 0,
+    "kernel_command_help_observation": {
+      "kernel_set_command_exists": true,
+      "kernel_set_requires_apiserver_in_practice": true,
+      "observed_error": "XPC connection error: Connection invalid"
+    }
+  },
+  "assessment": "B3 local-tar kernel provisioning failed because the kernel set CLI path also requires the Apple Container apiserver XPC service, which is not registered. This invalidates the assumption that kernel provisioning can be completed independently after B2-R2 start failure.",
+  "next_required_gate": "PHASE_1B_B4_VENDOR_BEHAVIOR_OR_BACKEND_REVIEW",
+  "forbidden_actions_not_performed_by_agent": {
+    "kernel_provision_retry": true,
+    "recommended_kernel_download": true,
+    "remote_tar_kernel_install": true,
+    "container_system_start_retry": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  }
+}

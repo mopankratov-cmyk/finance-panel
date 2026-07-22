@@ -1,0 +1,59 @@
+{
+  "schema_version": "pankster.phase1b-c8.static-containment-review.v1",
+  "recorded_at": "2026-07-22T16:58:00Z",
+  "result": "CHANGES_REQUIRED_BEFORE_C9",
+  "verdict": "LIMA_VZ_REJECTED_AS_STANDALONE_PROFILE_RUNTIME_BACKEND",
+  "reviewed_inputs": {
+    "c5_egress_classification_evidence_sha256": "43e57edf2c6742340be025d99fbffddd22178de6581cd1565db12f929e7413fd",
+    "c6_decision": "PROCEED_TO_NETWORK_CONTAINMENT_DESIGN_BEFORE_PROFILE_RUNTIME_APPROVAL",
+    "c7_recommended_direction": "DO_NOT_IMPLEMENT_EXISTING_VM_CONTAINMENT"
+  },
+  "findings": [
+    {
+      "id": "C8-F1",
+      "severity": "BLOCKER",
+      "title": "Standalone Lima-vz does not meet network isolation requirements",
+      "status": "VERIFIED_BY_C5_EVIDENCE"
+    },
+    {
+      "id": "C8-F2",
+      "severity": "BLOCKER",
+      "title": "Existing VM must not be mutated into production candidate state",
+      "status": "STATIC_REVIEW"
+    },
+    {
+      "id": "C8-F3",
+      "severity": "HIGH",
+      "title": "Host firewall path needs a separate privileged approval contract",
+      "status": "STATIC_REVIEW"
+    },
+    {
+      "id": "C8-F4",
+      "severity": "HIGH",
+      "title": "Direct-egress bypass blocks proxy-only restricted egress",
+      "status": "VERIFIED_BY_C5_EVIDENCE"
+    }
+  ],
+  "blocked_gates": [
+    "C9_CONTAINMENT_IMPLEMENTATION_SYNTHETIC_ONLY",
+    "C10_CONTAINMENT_EGRESS_RETEST",
+    "C11_RUNTIME_SECURITY_CONTEXT_CONTRACT_FOR_LIMA_PRODUCTION_MAPPING",
+    "C12_PROFILE_WORKER_SANDBOX_PROTOTYPE",
+    "C13_CREDENTIAL_ISOLATION_SYNTHETIC_TESTS",
+    "C14_MCP_AND_TERMINAL_SANDBOX_TESTS",
+    "C15_DEFAULT_PROFILE_COMPATIBILITY_REVIEW",
+    "C16_ROLLBACK_AND_RECLAIM_FINALIZATION"
+  ],
+  "not_authorized": {
+    "host_firewall_changes": true,
+    "guest_writes": true,
+    "new_vm_start": true,
+    "vm_reclaim_or_delete": true,
+    "production_profiles": true,
+    "real_credentials": true,
+    "gateway_changes": true,
+    "canary": true
+  },
+  "next_allowed_step": "PHASE_1B_C17_FINAL_EVIDENCE_PACK_STATIC_CLOSEOUT",
+  "next_execution_step_requires_owner_approval": true
+}

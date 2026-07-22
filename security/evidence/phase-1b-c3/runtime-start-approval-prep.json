@@ -1,0 +1,33 @@
+{
+  "schema_version": "pankster.phase1b-c3.synthetic-lima-runtime-start-approval-prep.v1",
+  "recorded_at": "2026-07-22T15:13:52Z",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_c3_prep": "5c84c3e36f48380dcafd52b6b4da49c11dbeab2f",
+  "contract_path": "docs/program/PHASE_1B_C3_SYNTHETIC_LIMA_RUNTIME_START_CONTRACT.ready.json",
+  "approval_packet_path": "docs/program/PHASE_1B_C3_SYNTHETIC_LIMA_RUNTIME_START_APPROVAL_PACKET.md",
+  "approval_id": "p1b-20260722-limaruntimec3",
+  "contract_content_sha256": "a89e57eae079123ba540a47b440b29f2fd9d4496a26e5119d29729cb2d9404b2",
+  "owner_command_hash": "d21d99d83fff49143361b47241d8a532116fe2c503230c860b045c5b4724895c",
+  "network_risk_decision_required": "ACCEPT_DEFAULT_LIMA_NAT_EGRESS_FOR_SYNTHETIC_BOOT_ONLY",
+  "basis": {
+    "c2_config_forbids_explicit_networks": true,
+    "c2_config_forbids_port_forwards": true,
+    "c2_config_disables_proxy_env_propagation": true,
+    "c2_config_disables_host_resolver": true,
+    "installed_lima_default_template_mentions_builtin_slirp_network": true,
+    "no_egress_claim_supported": false
+  },
+  "forbidden_actions_not_performed": {
+    "limactl_start": true,
+    "limactl_create": true,
+    "guest_image_download": true,
+    "vm_creation": true,
+    "runtime_healthcheck": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "final_status": "OWNER_APPROVAL_REQUIRED_RUNTIME_NOT_STARTED"
+}

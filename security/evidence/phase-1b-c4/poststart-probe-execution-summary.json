@@ -1,0 +1,132 @@
+{
+  "schema_version": "pankster.phase1b-c4.synthetic-poststart-probe-execution-summary.v1",
+  "recorded_at": "2026-07-22T16:21:52Z",
+  "result": "PASS",
+  "mode": "execute-probes",
+  "runner_commit": "b528373127007cc4ca5812291d78d1aaf860a71d",
+  "runner_commit_pushed": false,
+  "remote_push_status": "FAILED_SSL_CONNECT_TO_GITEA",
+  "approval": {
+    "approval_id": "p1b-20260722-limaprobesc4",
+    "approval_record_path": "docs/program/PHASE_1B_C4_SYNTHETIC_LIMA_POSTSTART_PROBE_APPROVAL_RECORD.json",
+    "approval_record_file_sha256": "de5da8bc8eb4d974dd06af35b7833c0ae4933334c2809ddf48565872e0e26344",
+    "approval_record_canonical_sha256": "8056ee6818ad558eb82aeab385644b45f9f819ae3cc51993d2098e739695bbde",
+    "contract_path": "docs/program/PHASE_1B_C4_SYNTHETIC_LIMA_POSTSTART_PROBE_CONTRACT.ready.json",
+    "contract_file_sha256": "ee3210b2bad22a93141bf7059f03cc628115a85cf8187824b1f3eb459382aa24",
+    "contract_content_sha256": "32f674f863d88570c1ee55f49ac85cca2cd2779bcdd992f3f248813048a2f92a"
+  },
+  "hard_gates": {
+    "network_probes_allowed": false,
+    "preserve_host_env_allowed": false,
+    "guest_writes_allowed": false,
+    "host_sync_allowed": false,
+    "real_credentials_allowed": false,
+    "production_profiles_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false
+  },
+  "probe_result": {
+    "instance_name": "pc3",
+    "probe_count": 8,
+    "all_returncodes_zero": true,
+    "host_status": {
+      "name": "pc3",
+      "status": "Running",
+      "vmType": "vz",
+      "arch": "aarch64",
+      "limaHome": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+      "limaVersion": "v2.2.0",
+      "sshAddress": "127.0.0.1",
+      "sshLocalPort": 58234,
+      "config_mounts": [],
+      "containerd_system": false,
+      "containerd_user": false,
+      "propagateProxyEnv": false,
+      "hostResolver_enabled": false,
+      "portForwards": [],
+      "networks": []
+    },
+    "guest_identity": {
+      "kernel": "Linux lima-pc3 6.8.0-134-generic #134-Ubuntu SMP PREEMPT_DYNAMIC Fri Jun 26 18:28:11 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux",
+      "uid_gid_summary": "uid=501(maksimpankratov) gid=1000(maksimpankratov) groups=1000(maksimpankratov),999(systemd-journal)"
+    },
+    "guest_mounts": {
+      "mount_entries_observed": 25,
+      "host_users_mount_absent": true,
+      "host_sync_mounts_configured": false,
+      "unexpected_host_mounts_observed": false,
+      "observed_mount_types": [
+        "autofs",
+        "binfmt_misc",
+        "bpf",
+        "cgroup2",
+        "configfs",
+        "debugfs",
+        "devpts",
+        "devtmpfs",
+        "efivarfs",
+        "ext4",
+        "fusectl",
+        "hugetlbfs",
+        "iso9660",
+        "mqueue",
+        "proc",
+        "pstore",
+        "securityfs",
+        "sysfs",
+        "tmpfs",
+        "tracefs",
+        "vfat"
+      ]
+    },
+    "guest_environment": {
+      "values_redacted": true,
+      "variable_names_observed": [
+        "DBUS_SESSION_BUS_ADDRESS",
+        "HOME",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "LANG",
+        "LOGNAME",
+        "PATH",
+        "PWD",
+        "SHELL",
+        "SHLVL",
+        "SSH_CLIENT",
+        "SSH_CONNECTION",
+        "USER",
+        "XDG_DATA_DIRS",
+        "XDG_RUNTIME_DIR",
+        "XDG_SESSION_CLASS",
+        "XDG_SESSION_ID",
+        "XDG_SESSION_TYPE",
+        "_",
+        "http_proxy",
+        "https_proxy"
+      ],
+      "host_env_preserved_by_runner": false,
+      "credential_values_recorded": false
+    },
+    "guest_runtime_binaries": {
+      "containerd_in_path": false,
+      "nerdctl_in_path": false,
+      "docker_in_path": false
+    },
+    "host_integration_checks": {
+      "ssh_agent_socket_absent": true,
+      "macos_users_path_absent": true
+    }
+  },
+  "conclusion": {
+    "synthetic_lima_runtime_running": true,
+    "vm_isolated_lima_home_confirmed": true,
+    "no_network_probe_executed": true,
+    "no_guest_write_probe_executed": true,
+    "no_host_sync_observed": true,
+    "no_real_credentials_used_or_recorded": true,
+    "default_gateway_unchanged": true,
+    "production_profiles_not_started": true,
+    "ready_for_next_gate": true,
+    "next_gate_requires_separate_owner_approval": true
+  }
+}

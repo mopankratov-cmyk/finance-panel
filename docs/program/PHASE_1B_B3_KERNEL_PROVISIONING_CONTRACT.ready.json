@@ -1,0 +1,85 @@
+{
+  "content_sha256": "cce75c7117000907305e9cd125502c4631554fe20e9f00789715e03a8d88d3cd",
+  "contract_content": {
+    "allowed_actions": [
+      "validate local Kata archive path, size, and SHA-256",
+      "inspect expected kernel member from local Kata archive",
+      "validate extracted kernel SHA-256 and size",
+      "/usr/local/bin/container system kernel set --arch arm64 --tar <verified-local-kata-archive> --binary opt/kata/share/kata-containers/vmlinux-6.18.15-186"
+    ],
+    "approval_id": "p1b-20260722-kernelprovisionb3",
+    "backend": "apple-container-cli",
+    "backend_version": "1.1.0",
+    "created_at": "2026-07-22T14:35:00Z",
+    "denied_actions": [
+      "container system kernel set --recommended",
+      "remote URL passed to --tar",
+      "network download by the runner",
+      "container system start",
+      "container run/create/start workload commands",
+      "OCI image pull/build/push/login commands",
+      "production profiles",
+      "real credentials",
+      "Keychain credential creation",
+      "gateway restart or change",
+      "canary start",
+      "dependency changes",
+      "database migrations"
+    ],
+    "expires_at": "2026-07-25T12:06:00Z",
+    "installed_backend_receipt": {
+      "container_cli_version": "container CLI version 1.1.0 (build: release, commit: 5973b9c)",
+      "package_sha256": "0ca1c42a2269c2557efb1d82b1b38ac553e6a3a3da1b1179c439bcee1e7d6714",
+      "pkgid": "com.apple.container-installer",
+      "pkg_version": "1.1.0"
+    },
+    "kernel_artifact": {
+      "archive_name": "kata-static-3.28.0-arm64.tar.zst",
+      "archive_sha256": "f63d54507d1f18635d94475077e4c2330de4d8e05cedf25f7c38f063b0e66a91",
+      "archive_size_bytes": 596775193,
+      "expected_member_path": "opt/kata/share/kata-containers/vmlinux-6.18.15-186",
+      "inner_kernel_sha256": "2fe4a58d2885d623bcb4d705900ac8c1d4f02371152da8126b3b00c8c47fc3a1",
+      "inner_kernel_size_bytes": 16151040,
+      "source_url": "https://github.com/kata-containers/kata-containers/releases/download/3.28.0/kata-static-3.28.0-arm64.tar.zst",
+      "version": "3.28.0+vmlinux-6.18.15-186"
+    },
+    "phase_1b_b0_kata_archive_inspection_sha256": "e4163c4c90b99e1b2d3b7751632b26c4de95faa550a1ebd85d307730c7d156ca",
+    "phase_1b_b0_kata_download_evidence_sha256": "bd21d963e19c84c5546e56d600b3c3c3a57adf06e8164fec1507e16a21403022",
+    "phase_1b_b2_r2_failure_evidence_sha256": "d9ab959c332ab3d67fa9367a92dd844f5590a8c96aeba101b4bc13ee1e0509d8",
+    "preconditions": [
+      "Apple Container CLI exists at /usr/local/bin/container.",
+      "Apple Container CLI reports version 1.1.0.",
+      "B2-R2 runtime start failed and requires kernel provisioning.",
+      "A local Kata archive path is supplied by the owner/admin operator.",
+      "The local archive is not a symlink and has the pinned outer SHA-256.",
+      "The expected kernel member has the pinned inner SHA-256 and size."
+    ],
+    "required_state_after_provisioning": [
+      "Kernel provisioning command returns 0.",
+      "No Apple Container runtime services are started by this runner.",
+      "No workload container is created.",
+      "No production profile is started.",
+      "No gateway or canary process is changed by the runner."
+    ],
+    "rollback_boundary": [
+      "If kernel provisioning fails, do not retry by broadening scope.",
+      "Do not delete user data or production state.",
+      "Any runtime start after successful provisioning requires a separate B4 approval."
+    ],
+    "runtime_kernel_command_template": [
+      "/usr/local/bin/container",
+      "system",
+      "kernel",
+      "set",
+      "--arch",
+      "arm64",
+      "--tar",
+      "<verified-local-kata-archive>",
+      "--binary",
+      "opt/kata/share/kata-containers/vmlinux-6.18.15-186"
+    ],
+    "synthetic_only": true
+  },
+  "contract_state": "READY_FOR_OWNER_APPROVAL",
+  "schema_version": "pankster.phase1b-b3.kernel-provisioning-contract.v1"
+}

@@ -1,0 +1,93 @@
+{
+  "content_sha256": "c06a8aa4c7738ccb1bdea97ebf60f0037a426d5ca0a00ac43bf7c730556be0d9",
+  "manifest_content": {
+    "approval_id": "p1b-20260722-limavzc1",
+    "artifacts": [
+      {
+        "expected_signer_identity": "GitHub release asset SHA-256",
+        "expected_signer_team_id": "not_applicable",
+        "name": "lima-2.2.0-Darwin-arm64.tar.gz",
+        "notarization_requirement": "not_applicable",
+        "resolved_download_hosts": [
+          "github.com",
+          "release-assets.githubusercontent.com"
+        ],
+        "role": "backend-installer",
+        "sha256": "bbdef91774885a0d05f7b048c4eb89ae2bcf3a0c252ae7ca7934e63df76d93c3",
+        "signature_type": "sha256-only",
+        "size_bytes": 37586365,
+        "source_url": "https://github.com/lima-vm/lima/releases/download/v2.2.0/lima-2.2.0-Darwin-arm64.tar.gz",
+        "verification_policy_id": "lima-release-asset-sha256-v1",
+        "version": "2.2.0"
+      },
+      {
+        "expected_signer_identity": "GitHub release SHA256SUMS SHA-256",
+        "expected_signer_team_id": "not_applicable",
+        "name": "SHA256SUMS",
+        "notarization_requirement": "not_applicable",
+        "resolved_download_hosts": [
+          "github.com",
+          "release-assets.githubusercontent.com"
+        ],
+        "role": "release-checksums",
+        "sha256": "7da5160ee9b22de8eec4222e581334ee6326881e20d5aa8eb29b22f897312a5f",
+        "signature_type": "sha256-only",
+        "size_bytes": 1396,
+        "source_url": "https://github.com/lima-vm/lima/releases/download/v2.2.0/SHA256SUMS",
+        "verification_policy_id": "lima-sha256sums-sha256-v1",
+        "version": "2.2.0"
+      },
+      {
+        "expected_signer_identity": "Release-tagged Lima source SHA-256",
+        "expected_signer_team_id": "not_applicable",
+        "name": "ubuntu-24.04.yaml",
+        "notarization_requirement": "not_applicable",
+        "resolved_download_hosts": [
+          "raw.githubusercontent.com"
+        ],
+        "role": "lima-template",
+        "sha256": "abece69b9818b2b905d11bbeba84037dd6592d94fb3abdb58d01cb52c5e2f4e2",
+        "signature_type": "git-tagged-source-sha256",
+        "size_bytes": 3403,
+        "source_url": "https://raw.githubusercontent.com/lima-vm/lima/v2.2.0/templates/_images/ubuntu-24.04.yaml",
+        "verification_policy_id": "lima-release-tagged-template-sha256-v1",
+        "version": "v2.2.0"
+      },
+      {
+        "expected_signer_identity": "Ubuntu cloud image SHA-256 from Lima release-tagged template",
+        "expected_signer_team_id": "not_applicable",
+        "name": "ubuntu-24.04-minimal-cloudimg-arm64.img",
+        "notarization_requirement": "not_applicable",
+        "resolved_download_hosts": [
+          "cloud-images.ubuntu.com"
+        ],
+        "role": "guest-image",
+        "sha256": "7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934",
+        "signature_type": "sha256-only",
+        "size_bytes": 227737600,
+        "source_url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release-20260716/ubuntu-24.04-minimal-cloudimg-arm64.img",
+        "verification_policy_id": "ubuntu-cloud-image-sha256-from-lima-template-v1",
+        "version": "24.04-noble-release-20260716"
+      }
+    ],
+    "backend": "lima-vz",
+    "backend_version": "2.2.0",
+    "background_services": [
+      "NONE"
+    ],
+    "created_at": "2026-07-22T14:45:10Z",
+    "disk_changes": [
+      "After separate owner approval, extract Lima archive to /Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0 only; do not write /usr/local or package-manager state."
+    ],
+    "expires_at": "2026-07-25T14:45:10Z",
+    "network_changes": [
+      "NONE"
+    ],
+    "required_permissions": [
+      "NONE"
+    ],
+    "rollback_plan_hash": "411853bfb264f590b29109946206d6673e52e78b68914d5abde2f0bca82e3724"
+  },
+  "manifest_state": "READY_FOR_REVIEW",
+  "schema_version": "phase1b.installation-manifest.v2"
+}

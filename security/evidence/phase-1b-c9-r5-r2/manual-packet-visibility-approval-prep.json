@@ -1,0 +1,33 @@
+{
+  "schema_version": "pankster.phase1b-c9-r5-r2.manual-packet-visibility-approval-prep.v1",
+  "recorded_at": "2026-07-22T18:36:00Z",
+  "approval_id": "p1b-20260722-limapktr2c9r5",
+  "contract_path": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_CONTRACT.ready.json",
+  "contract_file_sha256": "2eda566cc6ac8d9ca6b2b81fc4d21a78cdf965d62aaebcd22ba528714c808238",
+  "contract_content_sha256": "6c2a9e75d06ce1d43af1df2d3b0a581ef040ce71488c6d70d7705e0f89067a03",
+  "owner_command_hash": "4b24070d3e9d0a313b077b18d0c5be002dde4b1ef80974ebabc47a52318ed281",
+  "required_owner_command": "APPROVE_SYNTHETIC_LIMA_MANUAL_PACKET_VISIBILITY_PROCEDURE:p1b-20260722-limapktr2c9r5:6c2a9e75d06ce1d43af1df2d3b0a581ef040ce71488c6d70d7705e0f89067a03",
+  "manual_commands": {
+    "packet_capture_command_sha256": "3cd21e956f5c1f24301162e5c395b627b83f3698c615eea910b4e2fd0a114b90",
+    "synthetic_guest_trigger_command_sha256": "cff4d31c6fb090b1b100aef2a6a447aab92f369e6f0652666da909ad53550f3f"
+  },
+  "allowed_after_approval": {
+    "manual_admin_packet_capture": true,
+    "one_synthetic_guest_tcp_connect": true,
+    "sanitized_result_only": true
+  },
+  "forbidden_even_after_approval": {
+    "codex_automatic_privileged_execution": true,
+    "pfctl_execution": true,
+    "host_firewall_mutation": true,
+    "pf_config_edits": true,
+    "raw_packet_output_persistence": true,
+    "dns_probe": true,
+    "production_profiles": true,
+    "real_credentials": true,
+    "gateway_changes": true,
+    "canary": true,
+    "reclaim_delete": true
+  },
+  "next_gate_after_manual_result": "PHASE_1B_C9_R6_TARGET_UNIQUENESS_OR_FIREWALL_EXECUTION_BLOCK"
+}
