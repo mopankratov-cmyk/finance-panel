@@ -1,0 +1,20 @@
+{
+  "artifact_id": "kata-static-3.28.0-arm64",
+  "authorization_headers_retained": false,
+  "cookies_retained": false,
+  "downloaded_bytes": 596775193,
+  "expected_sha256": "f63d54507d1f18635d94475077e4c2330de4d8e05cedf25f7c38f063b0e66a91",
+  "observed_at": "2026-07-22T13:26:45Z",
+  "range_chunk_size_bytes_initial": 16777216,
+  "range_chunk_size_bytes_resume": 4194304,
+  "redirect_headers_retained": false,
+  "requested_url": "https://github.com/kata-containers/kata-containers/releases/download/3.28.0/kata-static-3.28.0-arm64.tar.zst",
+  "retrieval_mode": "curl_http1.0_range_chunks_with_retry",
+  "retry_policy": "curl --retry with --retry-all-errors; transport retries only",
+  "schema_version": "pankster.phase1b-b0.kata-download-runtime-evidence.v1",
+  "sha256": "f63d54507d1f18635d94475077e4c2330de4d8e05cedf25f7c38f063b0e66a91",
+  "sha256_verified": true,
+  "signed_redirect_urls_retained": false,
+  "temp_artifact_retained_in_evidence_pack": false,
+  "transport_note": "Default/HTTP1.1 full GETs hit local LibreSSL SSL_ERROR_SYSCALL; HTTP/1.0 range retrieval completed and was verified by full archive SHA-256."
+}

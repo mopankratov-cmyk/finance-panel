@@ -1,0 +1,350 @@
+{
+  "blocked": 0,
+  "command": "cd security && PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v",
+  "errors": 0,
+  "failed": 0,
+  "harness_version": "0.1.0",
+  "passed": 66,
+  "schema_version": "phase1a.evidence.v1",
+  "scope": "synthetic-only",
+  "skipped": 0,
+  "test_ids": [
+    "SEC-BL-001..006",
+    "SEC-PROT-001..052",
+    "SEC-ISO-001..004"
+  ],
+  "test_results": [
+    {
+      "status": "PASS",
+      "test_identity": "test_baseline_env_inheritance.test_sec_bl_001_gateway_env_inheritance_characterizes_vulnerability",
+      "test_name": "test_sec_bl_001_gateway_env_inheritance_characterizes_vulnerability"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_context_propagation.test_sec_bl_004_contextvar_loss_in_unwrapped_thread",
+      "test_name": "test_sec_bl_004_contextvar_loss_in_unwrapped_thread"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_context_propagation.test_sec_prot_007_008_009_010_context_propagation_wrappers",
+      "test_name": "test_sec_prot_007_008_009_010_context_propagation_wrappers"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_context_propagation.test_sec_prot_016_no_context_bleed_across_reused_thread_workers",
+      "test_name": "test_sec_prot_016_no_context_bleed_across_reused_thread_workers"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_disabled_profile_gate.test_sec_bl_005_disabled_profile_without_runtime_gate_is_insufficient",
+      "test_name": "test_sec_bl_005_disabled_profile_without_runtime_gate_is_insufficient"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_disabled_profile_gate.test_sec_prot_003_runtime_enabled_fail_closed",
+      "test_name": "test_sec_prot_003_runtime_enabled_fail_closed"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_evidence_pack.test_sec_prot_022_evidence_pack_contains_no_values",
+      "test_name": "test_sec_prot_022_evidence_pack_contains_no_values"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_filesystem_isolation_probe.test_sec_iso_001_backend_inventory_lists_required_options",
+      "test_name": "test_sec_iso_001_backend_inventory_lists_required_options"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_filesystem_isolation_probe.test_sec_iso_002_filesystem_boundary_capability_is_not_claimed_from_presence_only",
+      "test_name": "test_sec_iso_002_filesystem_boundary_capability_is_not_claimed_from_presence_only"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_filesystem_isolation_probe.test_sec_iso_003_network_boundary_requires_explicit_policy",
+      "test_name": "test_sec_iso_003_network_boundary_requires_explicit_policy"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_filesystem_isolation_probe.test_sec_iso_004_separate_identity_capability_is_reported",
+      "test_name": "test_sec_iso_004_separate_identity_capability_is_reported"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_031_evidence_summary_matches_actual_test_run_shape",
+      "test_name": "test_sec_prot_031_evidence_summary_matches_actual_test_run_shape"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_032_evidence_check_detects_stale_count",
+      "test_name": "test_sec_prot_032_evidence_check_detects_stale_count"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_037_generator_rejects_failing_suite",
+      "test_name": "test_sec_prot_037_generator_rejects_failing_suite"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_038_generator_does_not_overwrite_evidence_on_failure",
+      "test_name": "test_sec_prot_038_generator_does_not_overwrite_evidence_on_failure"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_039_missing_required_test_id_fails_generation",
+      "test_name": "test_sec_prot_039_missing_required_test_id_fails_generation"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_040_duplicate_test_id_fails_generation",
+      "test_name": "test_sec_prot_040_duplicate_test_id_fails_generation"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_041_evidence_results_originate_from_actual_test_result",
+      "test_name": "test_sec_prot_041_evidence_results_originate_from_actual_test_result"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_042_duplicate_short_names_do_not_collide",
+      "test_name": "test_sec_prot_042_duplicate_short_names_do_not_collide"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_043_unsuccessful_suite_rejected_even_with_failed_count_zero",
+      "test_name": "test_sec_prot_043_unsuccessful_suite_rejected_even_with_failed_count_zero"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_044_observation_count_must_equal_tests_run",
+      "test_name": "test_sec_prot_044_observation_count_must_equal_tests_run"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_045_failure_cannot_be_overwritten_by_later_pass",
+      "test_name": "test_sec_prot_045_failure_cannot_be_overwritten_by_later_pass"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_046_cross_host_check_does_not_report_stale_evidence",
+      "test_name": "test_sec_prot_046_cross_host_check_does_not_report_stale_evidence"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_047_same_host_check_detects_changed_host_inventory",
+      "test_name": "test_sec_prot_047_same_host_check_detects_changed_host_inventory"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_048_recorded_host_inventory_decision_is_revalidated",
+      "test_name": "test_sec_prot_048_recorded_host_inventory_decision_is_revalidated"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_049_failure_before_generation_rename_preserves_old_current",
+      "test_name": "test_sec_prot_049_failure_before_generation_rename_preserves_old_current"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_050_failure_after_generation_creation_but_before_pointer_swap_preserves_old_current",
+      "test_name": "test_sec_prot_050_failure_after_generation_creation_but_before_pointer_swap_preserves_old_current"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_051_failure_during_pointer_creation_preserves_old_current",
+      "test_name": "test_sec_prot_051_failure_during_pointer_creation_preserves_old_current"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_generate_evidence.test_sec_prot_052_successful_pointer_swap_exposes_one_complete_generation",
+      "test_name": "test_sec_prot_052_successful_pointer_swap_exposes_one_complete_generation"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_redact_text_replaces_all_known_sentinel_values",
+      "test_name": "test_redact_text_replaces_all_known_sentinel_values"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_redaction_assertion_fails_if_raw_sentinel_remains",
+      "test_name": "test_redaction_assertion_fails_if_raw_sentinel_remains"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_011_log_and_evidence_redaction_removes_sentinel",
+      "test_name": "test_sec_prot_011_log_and_evidence_redaction_removes_sentinel"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_012_no_secret_in_argv_snapshot",
+      "test_name": "test_sec_prot_012_no_secret_in_argv_snapshot"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_021_generic_evidence_detector",
+      "test_name": "test_sec_prot_021_generic_evidence_detector"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_024_evidence_event_rejects_generic_secret_shape",
+      "test_name": "test_sec_prot_024_evidence_event_rejects_generic_secret_shape"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_025_argv_snapshot_rejects_generic_secret_shape",
+      "test_name": "test_sec_prot_025_argv_snapshot_rejects_generic_secret_shape"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_026_evidence_writer_rejects_generic_secret_shape",
+      "test_name": "test_sec_prot_026_evidence_writer_rejects_generic_secret_shape"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_033_raw_nested_sentinel_assertion",
+      "test_name": "test_sec_prot_033_raw_nested_sentinel_assertion"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_034_evidence_event_sanitizes_event_type",
+      "test_name": "test_sec_prot_034_evidence_event_sanitizes_event_type"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_035_evidence_event_nested_sentinel_redaction",
+      "test_name": "test_sec_prot_035_evidence_event_nested_sentinel_redaction"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_log_redaction.test_sec_prot_036_generic_secret_in_event_type_fails_closed",
+      "test_name": "test_sec_prot_036_generic_secret_in_event_type_fails_closed"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_no_proxy_preservation.test_sec_bl_006_no_proxy_allowlists_are_inconsistent",
+      "test_name": "test_sec_bl_006_no_proxy_allowlists_are_inconsistent"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_baseline_result_observed_contract",
+      "test_name": "test_baseline_result_observed_contract"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_profile_and_session_id_validation_rejects_unsafe_values",
+      "test_name": "test_profile_and_session_id_validation_rejects_unsafe_values"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_runtime_context_rejects_secret_material_in_grants",
+      "test_name": "test_runtime_context_rejects_secret_material_in_grants"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_runtime_context_validates_network_session_and_roots",
+      "test_name": "test_runtime_context_validates_network_session_and_roots"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_sec_prot_004_policy_version_validation",
+      "test_name": "test_sec_prot_004_policy_version_validation"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_sec_prot_005_cwd_root_enforcement",
+      "test_name": "test_sec_prot_005_cwd_root_enforcement"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_sec_prot_013_immutable_runtime_security_context",
+      "test_name": "test_sec_prot_013_immutable_runtime_security_context"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_sec_prot_014_sanitized_audit_event_contains_metadata_not_secrets",
+      "test_name": "test_sec_prot_014_sanitized_audit_event_contains_metadata_not_secrets"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_patch_contracts.test_sec_prot_020_strict_grant_references",
+      "test_name": "test_sec_prot_020_strict_grant_references"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_root_fallback_fixture.test_sec_bl_002_same_uid_can_read_synthetic_root_auth",
+      "test_name": "test_sec_bl_002_same_uid_can_read_synthetic_root_auth"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_root_fallback_fixture.test_sec_bl_003_root_credential_fallback_selects_root_provider",
+      "test_name": "test_sec_bl_003_root_credential_fallback_selects_root_provider"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_evidence_env_event_contains_no_values_helper",
+      "test_name": "test_evidence_env_event_contains_no_values_helper"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_001_allowlisted_environment_excludes_gateway_secret",
+      "test_name": "test_sec_prot_001_allowlisted_environment_excludes_gateway_secret"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_002_mandatory_denylist_applies_last_to_overrides",
+      "test_name": "test_sec_prot_002_mandatory_denylist_applies_last_to_overrides"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_006_no_proxy_and_lowercase_no_proxy_are_preserved",
+      "test_name": "test_sec_prot_006_no_proxy_and_lowercase_no_proxy_are_preserved"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_017_explicit_kanban_env_list_rejects_wildcard_names",
+      "test_name": "test_sec_prot_017_explicit_kanban_env_list_rejects_wildcard_names"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_018_profile_scoped_tmpdir_is_unique_per_profile_session",
+      "test_name": "test_sec_prot_018_profile_scoped_tmpdir_is_unique_per_profile_session"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_019_reject_symlink_escape_for_profile_tmpdir",
+      "test_name": "test_sec_prot_019_reject_symlink_escape_for_profile_tmpdir"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_023_reject_secret_shaped_allowed_env_value",
+      "test_name": "test_sec_prot_023_reject_secret_shaped_allowed_env_value"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_027_tmpdir_traversal_rejected_without_side_effect",
+      "test_name": "test_sec_prot_027_tmpdir_traversal_rejected_without_side_effect"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_028_context_can_deny_all_kanban_variables",
+      "test_name": "test_sec_prot_028_context_can_deny_all_kanban_variables"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_029_context_allows_only_selected_kanban_variables",
+      "test_name": "test_sec_prot_029_context_allows_only_selected_kanban_variables"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_env_policy.test_sec_prot_030_unknown_kanban_variable_denied",
+      "test_name": "test_sec_prot_030_unknown_kanban_variable_denied"
+    },
+    {
+      "status": "PASS",
+      "test_identity": "test_safe_spawn_happy_path.test_sec_prot_015_safe_fixture_subprocess_happy_path",
+      "test_name": "test_sec_prot_015_safe_fixture_subprocess_happy_path"
+    }
+  ],
+  "tests_run": 66,
+  "timestamp": "2026-07-21T21:06:40Z"
+}

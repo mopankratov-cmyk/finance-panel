@@ -1,0 +1,167 @@
+{
+  "schema_version": "phase1b-a.backend-matrix.v1",
+  "weights": {
+    "apple_compatibility": 0.1,
+    "credential_isolation": 0.2,
+    "headless_automation": 0.05,
+    "maintenance_complexity": 0.05,
+    "network_enforcement": 0.15,
+    "operational_reliability": 0.1,
+    "performance": 0.05,
+    "security_boundary_strength": 0.3
+  },
+  "backends": [
+    {
+      "name": "Apple Container",
+      "scores": {
+        "apple_compatibility": 5,
+        "credential_isolation": 3,
+        "headless_automation": 3,
+        "maintenance_complexity": 2,
+        "network_enforcement": 2,
+        "operational_reliability": 2,
+        "performance": 4,
+        "security_boundary_strength": 4
+      },
+      "weighted_score": 3.25,
+      "eligibility_constraints": [
+        "must prove no host home sharing",
+        "must prove network disabled mode",
+        "must prove no SSH agent or runtime socket mount",
+        "must pin installer, kernel, init filesystem and synthetic OCI digest"
+      ]
+    },
+    {
+      "name": "Lima VZ",
+      "scores": {
+        "apple_compatibility": 5,
+        "credential_isolation": 3,
+        "headless_automation": 4,
+        "maintenance_complexity": 3,
+        "network_enforcement": 2,
+        "operational_reliability": 3,
+        "performance": 3,
+        "security_boundary_strength": 3
+      },
+      "weighted_score": 3.1,
+      "eligibility_constraints": [
+        "must prove mount and network policy",
+        "must disable automatic writable home sharing",
+        "must pin guest image checksum"
+      ]
+    },
+    {
+      "name": "Docker Desktop + ECI",
+      "scores": {
+        "apple_compatibility": 4,
+        "credential_isolation": 3,
+        "headless_automation": 3,
+        "maintenance_complexity": 2,
+        "network_enforcement": 3,
+        "operational_reliability": 3,
+        "performance": 3,
+        "security_boundary_strength": 4
+      },
+      "weighted_score": 3.35,
+      "eligibility_constraints": [
+        "Docker Business required",
+        "administrator governance required",
+        "sign-in and organization dependency",
+        "heavier Docker Desktop control plane",
+        "higher licensing and operational burden"
+      ]
+    },
+    {
+      "name": "Colima",
+      "scores": {
+        "apple_compatibility": 4,
+        "credential_isolation": 2,
+        "headless_automation": 4,
+        "maintenance_complexity": 3,
+        "network_enforcement": 2,
+        "operational_reliability": 3,
+        "performance": 3,
+        "security_boundary_strength": 3
+      },
+      "weighted_score": 2.8,
+      "eligibility_constraints": [
+        "wrapper adds runtime indirection",
+        "Docker-compatible socket governance must be blocked",
+        "network enforcement still unproven"
+      ]
+    },
+    {
+      "name": "Podman Machine",
+      "scores": {
+        "apple_compatibility": 4,
+        "credential_isolation": 3,
+        "headless_automation": 3,
+        "maintenance_complexity": 3,
+        "network_enforcement": 2,
+        "operational_reliability": 3,
+        "performance": 3,
+        "security_boundary_strength": 3
+      },
+      "weighted_score": 2.95,
+      "eligibility_constraints": [
+        "machine lifecycle and socket exposure must be proven",
+        "network enforcement still unproven"
+      ]
+    },
+    {
+      "name": "macOS users + ACL",
+      "scores": {
+        "apple_compatibility": 5,
+        "credential_isolation": 2,
+        "headless_automation": 3,
+        "maintenance_complexity": 2,
+        "network_enforcement": 0,
+        "operational_reliability": 3,
+        "performance": 5,
+        "security_boundary_strength": 1
+      },
+      "weighted_score": 2.0,
+      "eligibility_constraints": [
+        "no separate root filesystem",
+        "no network boundary without additional controls",
+        "requires owner-approved user and launchd changes"
+      ]
+    },
+    {
+      "name": "Full lightweight VM",
+      "scores": {
+        "apple_compatibility": 4,
+        "credential_isolation": 3,
+        "headless_automation": 3,
+        "maintenance_complexity": 2,
+        "network_enforcement": 3,
+        "operational_reliability": 2,
+        "performance": 2,
+        "security_boundary_strength": 4
+      },
+      "weighted_score": 3.2,
+      "eligibility_constraints": [
+        "heavier lifecycle",
+        "guest image and network policy must be built and proven"
+      ]
+    },
+    {
+      "name": "Combined VM/container",
+      "scores": {
+        "apple_compatibility": 4,
+        "credential_isolation": 4,
+        "headless_automation": 3,
+        "maintenance_complexity": 2,
+        "network_enforcement": 3,
+        "operational_reliability": 2,
+        "performance": 3,
+        "security_boundary_strength": 4
+      },
+      "weighted_score": 3.45,
+      "eligibility_constraints": [
+        "target pattern, not installable product",
+        "requires backend-specific implementation after experiments"
+      ]
+    }
+  ]
+}

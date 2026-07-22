@@ -1,0 +1,25 @@
+phase: 1A
+name: synthetic-security-harness
+status: awaiting_review
+review_round: 5
+branch: phase/1a-security-harness
+live_runtime_modified: false
+real_credentials_accessed: false
+production_profiles_started: false
+network_model_calls: false
+dependencies_installed: false
+phase_1b_started: false
+safe_policy_prototype: ready_for_review
+production_isolation_gate: BLOCKED_ON_BACKEND_SELECTION
+policy_version: phase1a.v3
+evidence_generation: automated
+evidence_results_source: actual_unittest_observations
+security_test_registry: complete
+evidence_atomic_write: true
+evidence_publication_model: versioned-generation-pointer
+host_bound_isolation_evidence: true
+latest_test_count: 66
+phase_1a_result:
+  harness: HARNESS_READY
+  safe_policy_prototype: SAFE_POLICY_PROTOTYPE_READY
+  production_isolation_backend: PRODUCTION_ISOLATION_BACKEND_BLOCKED

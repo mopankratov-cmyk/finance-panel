@@ -1,0 +1,8 @@
+{
+  "artifact_id": "apple-container-cli-installer-1.1.0",
+  "assessment": "accepted",
+  "raw_output_retained": false,
+  "source": "Notarized Developer ID",
+  "spctl_exit_status": 0,
+  "verification_timestamp": "2026-07-22T12:06:00Z"
+}

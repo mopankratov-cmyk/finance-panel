@@ -1,0 +1,67 @@
+{
+  "artifacts": [
+    {
+      "artifact_id": "apple-container-cli-installer-1.1.0",
+      "expected_signer_identity": "Developer ID Installer: Apple Inc. - Containerization (UPBK2H6LZM)",
+      "expected_signer_team_id": "UPBK2H6LZM",
+      "name": "container-1.1.0-installer-signed.pkg",
+      "notarization_requirement": "required",
+      "role": "backend-installer",
+      "sha256": "0ca1c42a2269c2557efb1d82b1b38ac553e6a3a3da1b1179c439bcee1e7d6714",
+      "signature_type": "apple-signed-pkg",
+      "size_bytes": 89471042,
+      "source_url": "https://github.com/apple/container/releases/download/1.1.0/container-1.1.0-installer-signed.pkg",
+      "verification_policy_id": "apple-container-installer-v1",
+      "version": "1.1.0"
+    },
+    {
+      "artifact_id": "kata-static-3.28.0-arm64",
+      "kernel_binary_path": "opt/kata/share/kata-containers/vmlinux-6.18.15-186",
+      "name": "kata-static-3.28.0-arm64.tar.zst",
+      "role": "linux-kernel",
+      "sha256": "f63d54507d1f18635d94475077e4c2330de4d8e05cedf25f7c38f063b0e66a91",
+      "signature_or_attestation_model": "GitHub release asset SHA-256 pinned; no independent signature was provided by Apple Container source metadata",
+      "signature_type": "sha256-only",
+      "size_bytes": 596775193,
+      "source_url": "https://github.com/kata-containers/kata-containers/releases/download/3.28.0/kata-static-3.28.0-arm64.tar.zst",
+      "verification_policy_id": "apple-container-release-asset-sha256-v1",
+      "version": "3.28.0+vmlinux-6.18.15-186"
+    },
+    {
+      "artifact_id": "apple-containerization-vminit-0.35.0-linux-arm64",
+      "layer_digests": [
+        "sha256:e3b2b9d347c2e5834d9fe5b4d615f5c0632c485d785e64f5c6b4c9b179ac168f"
+      ],
+      "manifest_digest": "sha256:04cd14f8e6ec9617611429aaf2a91a841b27ff9eae847acaca48430f58c5e57d",
+      "name": "ghcr.io/apple/containerization/vminit@sha256:04cd14f8e6ec9617611429aaf2a91a841b27ff9eae847acaca48430f58c5e57d",
+      "role": "init-filesystem",
+      "sha256": "04cd14f8e6ec9617611429aaf2a91a841b27ff9eae847acaca48430f58c5e57d",
+      "signature_type": "sha256-only",
+      "size_bytes": 409,
+      "source_url": "https://ghcr.io/v2/apple/containerization/vminit/manifests/sha256:04cd14f8e6ec9617611429aaf2a91a841b27ff9eae847acaca48430f58c5e57d",
+      "verification_policy_id": "oci-manifest-sha256-v1",
+      "version": "0.35.0-linux-arm64"
+    },
+    {
+      "artifact_id": "registry-k8s-io-pause-3.10-linux-arm64",
+      "layer_digests": [
+        "sha256:75e060e453aa927883755f715daa02fb335ea7f148a8ab249f779be796d4bb7e"
+      ],
+      "name": "registry.k8s.io/pause@sha256:e50b7059b633caf3c1449b8da680d11845cda4506b513ee7a2de00725f0a34a7",
+      "oci_digest": "sha256:e50b7059b633caf3c1449b8da680d11845cda4506b513ee7a2de00725f0a34a7",
+      "role": "synthetic-oci-manifest",
+      "sha256": "e50b7059b633caf3c1449b8da680d11845cda4506b513ee7a2de00725f0a34a7",
+      "signature_type": "oci-digest",
+      "size_bytes": 501,
+      "source_url": "https://registry.k8s.io/v2/pause/manifests/sha256:e50b7059b633caf3c1449b8da680d11845cda4506b513ee7a2de00725f0a34a7",
+      "verification_policy_id": "oci-digest-pinned-v1",
+      "version": "3.10-linux-arm64"
+    }
+  ],
+  "observed_at": "2026-07-22T12:06:00Z",
+  "source_archive": {
+    "artifact_id": "apple-container-1.1.0-source-tarball",
+    "sha256": "beb7f2536d714de6863a056b677a2b51aa498bb7caec6011cfb01c0c95bcbe8c",
+    "size_bytes": 1001406
+  }
+}

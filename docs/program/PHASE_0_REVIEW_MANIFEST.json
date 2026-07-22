@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "review_round": 2,
+  "status": "awaiting_review",
+  "previous_review_verdict": "CHANGES_REQUESTED",
+  "agent_verdict": "COMPLETE_FOR_REVIEW",
+  "branch": "phase/0-architecture-baseline",
+  "base_commit": "17dc3debc6840fd2073caf24ab6980a047feef19",
+  "hermes_version": "0.18.2",
+  "hermes_commit": "97c67d585e3048c8b9a918d5382005566080903a",
+  "generated_at": "2026-07-21T19:46:37Z",
+  "hash_algorithm": "sha256",
+  "scope": {
+    "code_changes": false,
+    "secrets_accessed": false,
+    "next_phase_started": false,
+    "runtime_changed": false
+  },
+  "self_hash_excluded": true,
+  "self_hash_exclusion_reason": "A manifest cannot contain a stable hash of its own bytes. The bundle checksum file hashes this finalized manifest.",
+  "documents": [
+    {"path": "docs/adr/ADR-001-hermes-ceo-vs-workflow-engine.md", "sha256": "90aee2b392d2c819f4af82fe9149ef6f8029eb0fc6b386246dd418327b3b8dac"},
+    {"path": "docs/adr/ADR-002-persistent-profiles-vs-temporary-subagents.md", "sha256": "ba6f5a896b8afd362d547952d28950f84e27a8cd735722f9d6acbb1ece39cb59"},
+    {"path": "docs/adr/ADR-003-worker-reviewer-independence.md", "sha256": "58c29eb67ecfffa51ab68801cb6e944172d04bdbe5564adcf37a43104b61de85"},
+    {"path": "docs/adr/ADR-004-immutable-artifacts-and-hash-bound-reviews.md", "sha256": "a1d6d0aeeb32b9502b5c6d4779c3a1be14d3bdc4433983773848e6e1afc9c8f0"},
+    {"path": "docs/adr/ADR-005-human-authorization-gates.md", "sha256": "6cf81f8a8e108ad93184da311afbd8fa60a68ee1d899e07703115ed78777289f"},
+    {"path": "docs/adr/ADR-006-runtime-and-credential-isolation.md", "sha256": "67342078b3593ec54882a73ac8168fd80dd496c3b9f161e54904e9386176296d"},
+    {"path": "docs/adr/ADR-007-cockpit-as-read-model.md", "sha256": "6bee867618b0fbc3a4d0ee50379e87925920f9b56d75319ace8ed47bcc1b0ae5"},
+    {"path": "docs/adr/ADR-008-eval-driven-self-improvement.md", "sha256": "4d0685b3f33440a17078f1239586f1e3875f4680e4007e4cc6eb673f8e4b5507"},
+    {"path": "docs/adr/ADR-009-process-specific-workflow-templates.md", "sha256": "211c70c50403bbb4d9e71a0b2a77cb116f97634b7de5aca46e4820cdd8f8dfe6"},
+    {"path": "docs/architecture/CHANGE_PLACEMENT_MATRIX.md", "sha256": "ba5bba2b91ef4299dce58d258f82352d03127ab75c202cecc67dba7674f99b2e"},
+    {"path": "docs/architecture/CURRENT_STATE.md", "sha256": "ecfb60e34cd96f2e77df4af4c16ac5076aac650f07c24a495ed7d48a656bdea9"},
+    {"path": "docs/architecture/EVIDENCE_INDEX.md", "sha256": "360895621dab63ff0b4574964215fba604622a28d540c571dd0ef8e6d04d3115"},
+    {"path": "docs/architecture/PHASE_0_AUDIT.html", "sha256": "5ee16840dd4aab1a5293e30320840915506c1a10d71d9238986b845126e5970e"},
+    {"path": "docs/architecture/REPO_MAP.md", "sha256": "33b7fb5e4dfa28a3bd3c01eaf14de08100261b6ebffd9077e8b95843c4b41366"},
+    {"path": "docs/architecture/TARGET_ARCHITECTURE.md", "sha256": "9262cd5611105470ba8a6943754468f3516173b6604d27d768d398e902f86a24"},
+    {"path": "docs/architecture/TRUST_BOUNDARIES.md", "sha256": "95241d7ca40c7c98f0efa36b371c53abbfe4e9e5ec3b0d8512b1737182740e67"},
+    {"path": "docs/program/MASTER_PHASE_PLAN.md", "sha256": "ff1b7be31b9f53aab529110ebbd43a8a34ef7e288c801d423633860e1f932951"},
+    {"path": "docs/program/PHASE_STATUS.yaml", "sha256": "0cb6f1e06f33b8834616678da61712155f4b2bfa55d63cb8e450d58ded2a4b11"},
+    {"path": "docs/program/REVIEW_RESPONSE_01.md", "sha256": "c86824aaca0e4dd11e663233e8b923b172a3e29b4ceeb547683e8f6d221c91b8"},
+    {"path": "docs/security/AUDIT_FINDINGS_VERIFICATION.md", "sha256": "8c9172d0baa9d873210df8f456d71ec09bda964225d1885a4dae7ca1446ac243"},
+    {"path": "docs/security/SECURITY_ACCEPTANCE_MATRIX.md", "sha256": "fb273aa4e4ca34af7486176e742e82f85b9b9b4e7d6441bb2accc49d8c803a08"}
+  ],
+  "bundle_root_artifacts": [
+    "phase-0-round-2.patch",
+    "phase-0-round-2.diffstat",
+    "phase-0-round-2-git-status.txt",
+    "phase-0-round-2-report.txt",
+    "review-bundle-sha256.txt"
+  ],
+  "archive": "PANKSTER_PHASE_0_REVIEW_ROUND_2.zip"
+}

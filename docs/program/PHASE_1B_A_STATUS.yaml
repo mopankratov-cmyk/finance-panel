@@ -1,0 +1,37 @@
+phase: 1B-A
+name: isolation-backend-selection
+status: awaiting_review
+branch: phase/1b-a-isolation-backend-selection
+installation_performed: false
+sudo_used: false
+live_runtime_modified: false
+real_credentials_accessed: false
+production_profiles_started: false
+network_model_calls_from_hermes: false
+phase_1b_b_started: false
+owner_installation_approval: pending
+owner_approval_manifest: OWNER_APPROVAL_MANIFEST_NOT_READY
+synthetic_install_approval_contract: READY
+production_install_authorization: BLOCKED_AUTHENTICATION_BACKEND_PENDING
+manifest_parser_finalization: COMPLETE
+installation_manifest_schema_version: phase1b.installation-manifest.v2
+release_trust_anchor_registry: DRAFT
+apple_container_release_trust_anchor: DRAFT
+trust_anchor_registry_root: COMMITTED_VALIDATOR_RELATIVE_ROOT
+trust_anchor_registry_digest_binding: REQUIRED_FOR_SYNTHETIC_INSTALL
+trust_anchor_registry_cwd_override: FORBIDDEN
+public_registry_injection: FORBIDDEN
+test_fixture_authorization: TEST_ONLY_NON_AUTHORITATIVE
+approval_record_required: true
+approval_record_trust: DESIGN_COMPLETE_BUT_AUTHENTICATION_BACKEND_PENDING
+primary_experiment_candidate: apple-container-cli
+fallback_experiment_candidate: lima-vz
+fallback_approval_contract: APPROVAL_CONTRACT_NOT_READY
+production_isolation_ready: false
+decision_result:
+  backend: PRIMARY_EXPERIMENT_CANDIDATE_SELECTED
+  disposable_prototype_plan: DISPOSABLE_PROTOTYPE_PLAN_READY
+  synthetic_install_approval_contract: SYNTHETIC_INSTALL_APPROVAL_CONTRACT_READY
+  production_install_authorization: PRODUCTION_INSTALL_AUTHORIZATION_BLOCKED
+  approval_authentication_backend: APPROVAL_AUTHENTICATION_BACKEND_PENDING
+  owner_approval_manifest: OWNER_APPROVAL_MANIFEST_NOT_READY

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PANKSTER Agent Platform — Phase 0 Audit</title>
+  <style>
+    :root{--ink:#17211b;--muted:#66736a;--paper:#f5f2e9;--card:#fffdf7;--line:#d8d3c4;--ok:#1c6b45;--warn:#9a650c;--bad:#a1362f;--blue:#245f78;--violet:#695280}
+    *{box-sizing:border-box} body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    main{max-width:1180px;margin:auto;padding:42px 24px 80px} h1{font-size:clamp(30px,5vw,58px);line-height:1.02;letter-spacing:-.045em;margin:8px 0 18px;max-width:900px}
+    h2{margin:46px 0 18px;font-size:26px;letter-spacing:-.025em} h3{margin:0 0 8px;font-size:17px} p{max-width:850px}
+    .eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.16em;color:var(--muted);font-weight:700}.lead{font-size:19px;color:#39463e;max-width:900px}
+    .banner{display:flex;gap:18px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);background:var(--card);padding:18px 20px;border-radius:16px;margin:26px 0}
+    .verdict{font-weight:800;color:var(--warn);font-size:18px}.pill{padding:5px 10px;border-radius:999px;background:#e7e1d0;font-size:12px;font-weight:700}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{grid-column:span 4;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}.card.wide{grid-column:span 6}.card.full{grid-column:1/-1}
+    .metric{font-size:27px;font-weight:800;letter-spacing:-.03em}.muted{color:var(--muted)}.bad{color:var(--bad)}.warn{color:var(--warn)}.ok{color:var(--ok)}
+    .flow{display:flex;align-items:stretch;gap:8px;overflow:auto;padding:6px 0 14px}.node{min-width:150px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;font-weight:700}.arrow{align-self:center;color:var(--muted);font-size:22px}.zone{font-size:11px;color:var(--muted);display:block;margin-top:7px;font-weight:500}
+    table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}th,td{text-align:left;vertical-align:top;padding:11px 13px;border-bottom:1px solid var(--line)}th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;background:#ece8dc}tr:last-child td{border-bottom:0}
+    code{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:#ece8dc;padding:2px 5px;border-radius:5px;overflow-wrap:anywhere}.status{font-weight:800;font-size:12px}.confirmed{color:var(--bad)}.partial{color:var(--warn)}
+    ol,ul{padding-left:20px}.foot{margin-top:54px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+    @media(max-width:800px){.card,.card.wide{grid-column:1/-1}table{display:block;overflow:auto}main{padding:28px 16px 60px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">PANKSTER Agent Platform · Phase 0 · Sanitized Review</div>
+  <h1>Architecture baseline and security boundaries</h1>
+  <p class="lead">Независимая read-mostly фиксация установленного Hermes v0.18.2, профилей, Kanban, delegation, child-process paths и двух Cockpit-компонентов. Секреты и credential values не читались.</p>
+
+  <div class="banner">
+    <span class="pill">Status: awaiting_review · round 2</span>
+    <span class="verdict">COMPLETE_FOR_REVIEW</span>
+    <span class="muted">Architecture is proposed, not approved. No implementation phase started.</span>
+  </div>
+
+  <section class="grid">
+    <article class="card"><div class="eyebrow">Hermes</div><div class="metric">0.18.2</div><div class="muted">commit <code>97c67d585e30</code></div></article>
+    <article class="card"><div class="eyebrow">Runtime isolation</div><div class="metric bad">Same UID</div><div class="muted">No active container tool detected</div></article>
+    <article class="card"><div class="eyebrow">Named profiles</div><div class="metric">2</div><div class="muted">content-director, dev-director; conventionally disabled</div></article>
+    <article class="card wide"><h3>Primary conclusion</h3><p>Profile <code>HERMES_HOME</code>, ContextVars, env filters and file-tool guards are useful scoping controls, but they do not create a security principal. Same UID, real HOME, root-auth fallback, gateway-env inheritance and divergent spawn policies leave cross-profile paths structurally open.</p><p>Kanban SQLite является durable source of truth для задач,<br>запусков, событий и recovery metadata. Полноценного business<br>workflow source of truth сейчас нет.</p></article>
+    <article class="card wide"><h3>Required architectural response</h3><p>Deterministic Workflow Engine, Agent Registry, OS-isolated profile runtimes, one RuntimeSecurityContext/spawn factory, brokered owner-scoped credentials, immutable artifacts, independent review and durable Human Gates.</p></article>
+  </section>
+
+  <h2>Current execution chain</h2>
+  <div class="flow" aria-label="Current architecture flow">
+    <div class="node">User / Telegram<span class="zone">untrusted input</span></div><div class="arrow">→</div>
+    <div class="node">Gateway / Dashboard<span class="zone">same-UID control plane</span></div><div class="arrow">→</div>
+    <div class="node">Kanban Dispatcher<span class="zone">SQLite state + spawn</span></div><div class="arrow">→</div>
+    <div class="node">Profile Worker<span class="zone">same UID, profile HERMES_HOME</span></div><div class="arrow">→</div>
+    <div class="node">Terminal / Code / MCP / Delegate<span class="zone">multiple env policies</span></div><div class="arrow">→</div>
+    <div class="node">Host FS / External Systems<span class="zone">shared trust boundary</span></div>
+  </div>
+
+  <h2>Audit finding dispositions</h2>
+  <table>
+    <thead><tr><th>ID</th><th>Status</th><th>Finding</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td>AUD-01</td><td class="status confirmed">CONFIRMED</td><td>Profile home is a namespace, not an OS boundary.</td><td><code>profiles.py:39-53</code>, <code>hermes_constants.py:770-832</code></td></tr>
+      <tr><td>AUD-02</td><td class="status confirmed">CONFIRMED</td><td>Kanban worker begins with a full copy of gateway process environment.</td><td><code>kanban_db.py:8195-8342</code></td></tr>
+      <tr><td>AUD-03</td><td class="status confirmed">CONFIRMED</td><td>Named profiles can read per-provider root auth fallback.</td><td><code>auth.py:916-980, 1205-1278, 1403-1447</code></td></tr>
+      <tr><td>AUD-04</td><td class="status confirmed">CONFIRMED</td><td>Same-UID terminal can bypass file-tool blocks and reach host HOME paths.</td><td><code>file_safety.py:191-296</code></td></tr>
+      <tr><td>AUD-05</td><td class="status confirmed">CONFIRMED</td><td>OAuth rotation can write through to a root-owned shared grant.</td><td><code>credential_pool.py:527-579, 966-1079</code></td></tr>
+      <tr><td>AUD-06</td><td class="status confirmed">CONFIRMED</td><td>Kanban, terminal, code, MCP and delegation do not share one spawn policy.</td><td>Current-state spawn matrix</td></tr>
+      <tr><td>AUD-07</td><td class="status partial">PARTIALLY_CONFIRMED</td><td>Outer background delegation copies context, but inner child and batch executor hops are unwrapped; runtime effect was not executed.</td><td><code>delegate_tool.py:1971-2013, 2602-2635</code></td></tr>
+      <tr><td>AUD-08</td><td class="status confirmed">CONFIRMED</td><td>No authoritative runtime-enabled gate exists immediately before spawn.</td><td><code>profiles.py:815-870, 949-987</code>; <code>kanban_db.py:7439-7904</code></td></tr>
+      <tr><td>AUD-09</td><td class="status partial">PARTIALLY_CONFIRMED</td><td>Root pool materialization path is statically confirmed; runtime execution is unverified.</td><td><code>credential_pool.py:2538-2600</code>; <code>auth.py:1403-1498</code></td></tr>
+      <tr><td>AUD-10</td><td class="status partial">PARTIALLY_CONFIRMED</td><td>Gateway-env inheritance can structurally expose a Telegram token to the worker; presence was not inspected.</td><td><code>kanban_db.py:8195-8342</code></td></tr>
+      <tr><td>AUD-11</td><td class="status partial">PARTIALLY_CONFIRMED</td><td>content-director has structural paths to model and host credentials; credential presence and execution were not inspected.</td><td>Credential and spawn paths</td></tr>
+      <tr><td>AUD-12</td><td class="status confirmed">CONFIRMED</td><td>execute_code and MCP safe baselines omit both NO_PROXY spellings.</td><td><code>code_execution_tool.py:135-169</code>; <code>mcp_tool.py:351-386</code></td></tr>
+      <tr><td>AUD-13</td><td class="status confirmed">CONFIRMED</td><td>MCP explicit environment is applied after the safe baseline without a final mandatory denylist.</td><td><code>mcp_tool.py:426-446, 3933-4017</code></td></tr>
+      <tr><td>AUD-14</td><td class="status confirmed">CONFIRMED</td><td>No unified spawn factory covers all named-profile child paths.</td><td>Current-state spawn matrix</td></tr>
+      <tr><td>AUD-15</td><td class="status confirmed">CONFIRMED</td><td>Current Kanban review assigns the producing task profile; reviewer independence is missing.</td><td><code>kanban_db.py:7824-7895</code></td></tr>
+      <tr><td>AUD-16</td><td class="status confirmed">CONFIRMED</td><td>Live Cockpit is an active proxy/control surface with direct WS/PTY paths, not a read model.</td><td><code>serve.py:53-105</code>; <code>live.js:226-471</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Current vs target responsibility</h2>
+  <section class="grid">
+    <article class="card"><h3>Hermes CEO</h3><p class="muted">Goal intake, workflow choice, decomposition, Evidence Pack consumption, final verdict. No state-machine ownership or protected executor access.</p></article>
+    <article class="card"><h3>Workflow Engine</h3><p class="muted">Target owner for versioned process-specific sequences/DAGs, transitions, retry/reclaim, artifacts, reviews, gates and audit events.</p></article>
+    <article class="card"><h3>Security Runtime</h3><p class="muted">RuntimeSecurityContext, one spawn factory, profile OS isolation, env policy, brokered credentials and owner-only refresh.</p></article>
+    <article class="card"><h3>Persistent profiles</h3><p class="muted">Registered durable employees with isolated HOME/UID/container/ACL and explicit grants. Work exchange through workflow/artifacts.</p></article>
+    <article class="card"><h3>Temporary subagents</h3><p class="muted">Short-lived children with subset capabilities. Not durable workers, independent reviewers or security boundaries.</p></article>
+    <article class="card"><h3>Cockpit</h3><p class="muted">Read model and human decisions through a narrow BFF. No browser-held model/dashboard token and no direct LLM or PTY.</p></article>
+  </section>
+
+  <h2>Implementation admission criteria</h2>
+  <ol>
+    <li>Approve all nine ADRs and assign component owners.</li>
+    <li>Approve process-specific template contracts and dynamic Cockpit rendering; no hard-coded business workflow.</li>
+    <li>Select workflow datastore, OS isolation mechanism, credential backend, human identity and artifact storage.</li>
+    <li>Demonstrate a fail-closed runtime-enabled gate on start, retry, reclaim, reconnect and restart.</li>
+    <li>Pass synthetic sentinel tests across terminal, background process, execute_code, MCP and every delegation variant.</li>
+    <li>Prove named profiles cannot read root auth/HOME or receive gateway-only credentials.</li>
+    <li>Prove OAuth refresh changes only the owning versioned record.</li>
+    <li>Preserve <code>PATH</code>, isolated <code>HOME</code>, <code>TMPDIR</code>, <code>LANG</code>, <code>SHELL</code>, <code>NO_PROXY</code>, <code>no_proxy</code> and exact task-scoped Hermes fields.</li>
+    <li>Bind reviews and Human Gates to immutable artifact manifest hashes.</li>
+    <li>Keep the default gateway unchanged until isolated offline tests and an explicitly authorized rollout pass.</li>
+  </ol>
+
+  <h2>Document set</h2>
+  <p>The full evidence, line-level paths, spawn matrix, target diagrams, placement matrix, acceptance tests, phase plan and Proposed ADRs are in adjacent <code>docs/architecture</code>, <code>docs/security</code>, <code>docs/program</code> and <code>docs/adr</code> files.</p>
+
+  <div class="foot">Generated 2026-07-21T19:02:01Z · branch <code>phase/0-architecture-baseline</code> · documentation only · no secrets accessed · no runtime changed · no next phase started.</div>
+</main>
+</body>
+</html>

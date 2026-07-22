@@ -1,0 +1,192 @@
+{
+  "blocker": "NONE",
+  "entries": [
+    {
+      "evidence_type": "artifact-hashes",
+      "line_count": 67,
+      "path": "security/evidence/phase-1b-b0/artifact-hashes.json",
+      "sha256": "5fd0b7a10b9f7c3550cd93507e65b6dcd44da96868e3300e6893750c8f85f4fb",
+      "size_bytes": 3443,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/command/cmd-7zz-command-v.json",
+      "sha256": "c9dd25b011412488faf43b756353c03818047cccc0469cf4b6b5cee815b32680",
+      "size_bytes": 784,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 20,
+      "path": "security/evidence/phase-1b-b0/command/cmd-bsdtar-version.json",
+      "sha256": "fd3a847d4c413efbba8c5d413f006b2aad29934cd89396f8aefe0b92393abc0d",
+      "size_bytes": 805,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 20,
+      "path": "security/evidence/phase-1b-b0/command/cmd-ditto-help.json",
+      "sha256": "2286bb342041480a263688e38b9fceb7fce11df52686dba9e18f6cc45441c260",
+      "size_bytes": 6148,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 20,
+      "path": "security/evidence/phase-1b-b0/command/cmd-existing-zstd-version.json",
+      "sha256": "92b4371c334f3905564b773db9b0f478ec7e84a8e24f27bc319db226d1e8783a",
+      "size_bytes": 903,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/command/cmd-kata-archive-list-target.json",
+      "sha256": "0c8f2725c3a405b4e0b6c00aa4908b543c8accd0fdadf61ca17e56a7bfa6084e",
+      "size_bytes": 1006,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/command/cmd-kata-kernel-sha256.json",
+      "sha256": "bafcfaeaf5f0259a7f953bea48bafede4a2938dbe94590aa873f336193564a04",
+      "size_bytes": 1032,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/command/cmd-kata-kernel-size.json",
+      "sha256": "67a9570a18795ea10573d07d953f62a6e08d6b1aec19738ec8a22908580b6675",
+      "size_bytes": 964,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/command/cmd-python-zstandard-import.json",
+      "sha256": "44c1ee12a95a4c2389bd7f96df4bc9f321347357417ff512a83fc2b27ec9557a",
+      "size_bytes": 963,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 20,
+      "path": "security/evidence/phase-1b-b0/command/cmd-tar-version.json",
+      "sha256": "d927b73ea47bc57647749eb0961b074c87d77832d3cecd5dc011fa1d04173b66",
+      "size_bytes": 799,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/command/cmd-unzstd-command-v.json",
+      "sha256": "70f4035778a2b70859905ca59dfe053a58d645160d0fd899ce0ffac430267f86",
+      "size_bytes": 790,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 20,
+      "path": "security/evidence/phase-1b-b0/command/cmd-xar-version.json",
+      "sha256": "f2d3ce57376d423c46c4fdfeb1ca599eb6b6cd1b788df75e70f644ae90c4fe37",
+      "size_bytes": 677,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/command/cmd-zstd-command-v.json",
+      "sha256": "8ab98aaab3c2c80b813a908d2a3fd5054c6b8e9070fdaf7f6f2e41ba74fd8bab",
+      "size_bytes": 786,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "command",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/command/cmd-zstdcat-command-v.json",
+      "sha256": "372b7760df4028aab7f324feb9fc7ca429a6937f1e6beb43ac7e5547415eafb5",
+      "size_bytes": 792,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "download-evidence",
+      "line_count": 49,
+      "path": "security/evidence/phase-1b-b0/download-evidence.json",
+      "sha256": "c6cce2466d89dd15385eae9b7e7b41ce41f34efcc3b5cebc52b965bdd113461f",
+      "size_bytes": 1835,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "kata-archive-inspection",
+      "line_count": 38,
+      "path": "security/evidence/phase-1b-b0/kata-archive-inspection.json",
+      "sha256": "e4163c4c90b99e1b2d3b7751632b26c4de95faa550a1ebd85d307730c7d156ca",
+      "size_bytes": 1609,
+      "subject_artifact_id": "kata-static-3.28.0-arm64"
+    },
+    {
+      "evidence_type": "kata-download-runtime-evidence",
+      "line_count": 20,
+      "path": "security/evidence/phase-1b-b0/kata-download-runtime-evidence.json",
+      "sha256": "bd21d963e19c84c5546e56d600b3c3c3a57adf06e8164fec1507e16a21403022",
+      "size_bytes": 1126,
+      "subject_artifact_id": "kata-static-3.28.0-arm64"
+    },
+    {
+      "evidence_type": "manifest-validation",
+      "line_count": 11,
+      "path": "security/evidence/phase-1b-b0/manifest-validation.json",
+      "sha256": "3da74401c52156430bdf6bc060716424d502f2ec270f71886b246f027d292116",
+      "size_bytes": 520,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "package-notarization-evidence",
+      "line_count": 8,
+      "path": "security/evidence/phase-1b-b0/package-notarization-evidence.json",
+      "sha256": "b060838b9afecc6fcf6a21392f7e29d54abf3a3281aa5720486b286bb1b4a69e",
+      "size_bytes": 235,
+      "subject_artifact_id": "apple-container-cli-installer-1.1.0"
+    },
+    {
+      "evidence_type": "package-signature-evidence",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/package-signature-evidence.json",
+      "sha256": "4eb916ba5dbe44adc80459d6a1013a5591488af087b504daa7b7f14b20d8ade9",
+      "size_bytes": 858,
+      "subject_artifact_id": "apple-container-cli-installer-1.1.0"
+    },
+    {
+      "evidence_type": "quarantine-cleanup",
+      "line_count": 134,
+      "path": "security/evidence/phase-1b-b0/quarantine-cleanup.json",
+      "sha256": "6bba7d448e4919f2d7437b846987a7f7e55737c40cd2c2fd5cbf1d769bbba6e7",
+      "size_bytes": 3694,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "release-metadata",
+      "line_count": 21,
+      "path": "security/evidence/phase-1b-b0/release-metadata.json",
+      "sha256": "f6d6d032c6ffb466f32b363c75afbeb59e2f829b4eeb0c3fd3d38a032df7df7f",
+      "size_bytes": 729,
+      "subject_artifact_id": "not_applicable"
+    },
+    {
+      "evidence_type": "trust-anchor-validation",
+      "line_count": 23,
+      "path": "security/evidence/phase-1b-b0/trust-anchor-validation.json",
+      "sha256": "7cc21bea64138088209ced0abc7eeec1af9527f14a89827d7d6a6ea339bafd94",
+      "size_bytes": 956,
+      "subject_artifact_id": "not_applicable"
+    }
+  ],
+  "generated_at": "2026-07-22T13:30:47Z",
+  "pack_status": "PASS",
+  "schema_version": "pankster.phase1b-b0.evidence-pack-manifest.v1"
+}

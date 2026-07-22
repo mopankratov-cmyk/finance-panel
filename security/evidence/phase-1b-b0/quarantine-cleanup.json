@@ -1,0 +1,134 @@
+{
+  "absolute_path_retained": false,
+  "container_command_present_after_b0": false,
+  "container_started": false,
+  "container_system_start_invoked": false,
+  "credentials_accessed_by_b0": false,
+  "firewall_modified_by_b0": false,
+  "hermes_modified_by_b0": false,
+  "installer_invoked": false,
+  "launchctl_container_lines_sanitized": [
+    "macOS containermanagerd observed; not Apple Container CLI and not started by B0"
+  ],
+  "launchd_modified_by_b0": false,
+  "network_settings_modified_by_b0": false,
+  "observed_at": "2026-07-22T12:06:00Z",
+  "partial_downloads_removed": true,
+  "pkgutil_receipt_present_after_b0": false,
+  "quarantine_exists_after_cleanup": false,
+  "quarantine_inventory_before_cleanup": {
+    "absolute_path_retained": false,
+    "directory_mode": "0700",
+    "inventory": [
+      {
+        "kind": "file",
+        "logical_name": "apple-container-1.1.0-source.tar.gz",
+        "permissions": "0o644",
+        "size_bytes": 1001406
+      },
+      {
+        "kind": "file",
+        "logical_name": "container-1.1.0-installer-signed.pkg",
+        "permissions": "0o644",
+        "size_bytes": 89471042
+      },
+      {
+        "kind": "file",
+        "logical_name": "github-release-1.1.0.json",
+        "permissions": "0o644",
+        "size_bytes": 12667
+      },
+      {
+        "kind": "file",
+        "logical_name": "github-tag-1.1.0.json",
+        "permissions": "0o644",
+        "size_bytes": 2552
+      },
+      {
+        "kind": "file",
+        "logical_name": "headers.txt",
+        "permissions": "0o644",
+        "size_bytes": 5933
+      },
+      {
+        "kind": "file",
+        "logical_name": "kata-headers.txt",
+        "permissions": "0o644",
+        "size_bytes": 5921
+      },
+      {
+        "kind": "file",
+        "logical_name": "kata-static-3.28.0-arm64.tar.zst",
+        "permissions": "0o644",
+        "size_bytes": 596775193
+      },
+      {
+        "kind": "file",
+        "logical_name": "pause-3.10-index.json",
+        "permissions": "0o644",
+        "size_bytes": 2405
+      },
+      {
+        "kind": "file",
+        "logical_name": "pause-3.10-linux-arm64-manifest.json",
+        "permissions": "0o644",
+        "size_bytes": 501
+      },
+      {
+        "kind": "file",
+        "logical_name": "pause-index-headers.txt",
+        "permissions": "0o644",
+        "size_bytes": 771
+      },
+      {
+        "kind": "file",
+        "logical_name": "pause-manifest-headers.txt",
+        "permissions": "0o644",
+        "size_bytes": 857
+      },
+      {
+        "kind": "file",
+        "logical_name": "pkgutil-signature.txt",
+        "permissions": "0o644",
+        "size_bytes": 1130
+      },
+      {
+        "kind": "file",
+        "logical_name": "spctl-assess.txt",
+        "permissions": "0o644",
+        "size_bytes": 116
+      },
+      {
+        "kind": "file",
+        "logical_name": "vminit-0.35.0-index.json",
+        "permissions": "0o644",
+        "size_bytes": 306
+      },
+      {
+        "kind": "file",
+        "logical_name": "vminit-0.35.0-linux-arm64-manifest.json",
+        "permissions": "0o644",
+        "size_bytes": 409
+      },
+      {
+        "kind": "file",
+        "logical_name": "vminit-index-headers.txt",
+        "permissions": "0o644",
+        "size_bytes": 483
+      },
+      {
+        "kind": "file",
+        "logical_name": "vminit-manifest-headers.txt",
+        "permissions": "0o644",
+        "size_bytes": 487
+      }
+    ],
+    "symlinks_detected": false
+  },
+  "retention_policy": "quarantine_removed_after_evidence",
+  "service_started_by_b0": false,
+  "sudo_invoked": false,
+  "usr_local_modified_by_b0": false,
+  "verified_artifacts_retained_in_quarantine": false,
+  "vm_started": false
+}

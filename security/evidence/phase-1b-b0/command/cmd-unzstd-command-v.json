@@ -1,0 +1,21 @@
+{
+  "command_id": "cmd-unzstd-command-v",
+  "exit_status": 1,
+  "finished_at": "2026-07-22T13:03:49Z",
+  "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "raw_stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "result": "BLOCKED_KATA_ARCHIVE_INSPECTION_CAPABILITY_UNAVAILABLE",
+  "sanitized_arguments": [
+    "<tool>",
+    "-c",
+    "command -v unzstd"
+  ],
+  "sanitized_stderr": "",
+  "sanitized_stdout": "",
+  "schema_version": "pankster.phase1b-b0.command-evidence.v1",
+  "started_at": "2026-07-22T13:03:49Z",
+  "subject_artifact_sha256": "not_applicable",
+  "subject_artifact_size_bytes": "not_applicable",
+  "tool": "/bin/sh",
+  "tool_version": "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin25)"
+}

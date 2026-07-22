@@ -1,0 +1,20 @@
+{
+  "command_id": "cmd-bsdtar-version",
+  "exit_status": 0,
+  "finished_at": "2026-07-22T13:03:49Z",
+  "raw_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "raw_stdout_sha256": "e7cce3d387120ee09a085cb3cafba70e9031c5f497229c6d60846a7b2c1e4241",
+  "result": "PASS",
+  "sanitized_arguments": [
+    "<tool>",
+    "--version"
+  ],
+  "sanitized_stderr": "",
+  "sanitized_stdout": "bsdtar 3.5.3 - libarchive 3.7.4 zlib/1.2.12 liblzma/5.4.3 bz2lib/1.0.8 \n",
+  "schema_version": "pankster.phase1b-b0.command-evidence.v1",
+  "started_at": "2026-07-22T13:03:49Z",
+  "subject_artifact_sha256": "not_applicable",
+  "subject_artifact_size_bytes": "not_applicable",
+  "tool": "bsdtar",
+  "tool_version": "bsdtar 3.5.3 - libarchive 3.7.4 zlib/1.2.12 liblzma/5.4.3 bz2lib/1.0.8 "
+}

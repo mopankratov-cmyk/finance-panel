@@ -1,0 +1,96 @@
+{
+  "content_sha256": "a8ead86888dc12d4ff3fa71845d751937011d663583bac250116063c71b16bf9",
+  "manifest_content": {
+    "approval_id": "p1b-20260722-template-example",
+    "artifacts": [
+      {
+        "expected_signer_identity": "TO_BE_PINNED",
+        "expected_signer_team_id": "TO_BE_PINNED",
+        "name": "container-installer-to-be-pinned.pkg",
+        "notarization_requirement": "required",
+        "resolved_download_hosts": [
+          "github.com",
+          "release-assets.githubusercontent.com"
+        ],
+        "role": "backend-installer",
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "signature_type": "apple-signed-pkg",
+        "size_bytes": 1,
+        "source_url": "https://github.com/apple/container/releases/download/TO_BE_PINNED/container-installer-to-be-pinned.pkg",
+        "verification_policy_id": "apple-container-installer-v1",
+        "version": "TO_BE_PINNED"
+      },
+      {
+        "expected_signer_identity": "TO_BE_PINNED",
+        "expected_signer_team_id": "not_applicable",
+        "name": "apple-container-linux-kernel-to-be-pinned",
+        "notarization_requirement": "not_applicable",
+        "resolved_download_hosts": [
+          "github.com",
+          "release-assets.githubusercontent.com"
+        ],
+        "role": "linux-kernel",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "signature_type": "sha256-only",
+        "size_bytes": 1,
+        "source_url": "https://github.com/apple/container/releases/download/TO_BE_PINNED/kernel-to-be-pinned",
+        "verification_policy_id": "apple-container-release-asset-sha256-v1",
+        "version": "TO_BE_PINNED"
+      },
+      {
+        "expected_signer_identity": "TO_BE_PINNED",
+        "expected_signer_team_id": "not_applicable",
+        "name": "apple-container-init-filesystem-to-be-pinned",
+        "notarization_requirement": "not_applicable",
+        "resolved_download_hosts": [
+          "github.com",
+          "ghcr.io"
+        ],
+        "role": "init-filesystem",
+        "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "signature_type": "sha256-only",
+        "size_bytes": 1,
+        "source_url": "https://github.com/apple/container/releases/download/TO_BE_PINNED/init-filesystem-to-be-pinned",
+        "verification_policy_id": "oci-manifest-sha256-v1",
+        "version": "TO_BE_PINNED"
+      },
+      {
+        "expected_signer_identity": "TO_BE_PINNED",
+        "expected_signer_team_id": "not_applicable",
+        "name": "synthetic-worker-to-be-pinned",
+        "notarization_requirement": "not_applicable",
+        "oci_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "resolved_download_hosts": [
+          "github.com",
+          "registry.k8s.io"
+        ],
+        "role": "synthetic-oci-manifest",
+        "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "signature_type": "oci-digest",
+        "size_bytes": 1,
+        "source_url": "https://github.com/apple/container/releases/download/TO_BE_PINNED/synthetic-oci-manifest-to-be-pinned.json",
+        "verification_policy_id": "oci-digest-pinned-v1",
+        "version": "TO_BE_PINNED"
+      }
+    ],
+    "backend": "apple-container-cli",
+    "backend_version": "TO_BE_PINNED",
+    "background_services": [
+      "TO_BE_PINNED"
+    ],
+    "created_at": "2026-07-22T00:00:00Z",
+    "disk_changes": [
+      "TO_BE_PINNED"
+    ],
+    "expires_at": "2026-07-29T00:00:00Z",
+    "network_changes": [
+      "TO_BE_PINNED"
+    ],
+    "required_permissions": [
+      "TO_BE_PINNED"
+    ],
+    "rollback_plan_hash": "5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "manifest_state": "TEMPLATE",
+  "schema_version": "phase1b.installation-manifest.v2"
+}
