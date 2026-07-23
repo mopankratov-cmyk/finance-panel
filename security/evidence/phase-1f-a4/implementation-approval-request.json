@@ -1,0 +1,102 @@
+{
+  "content_sha256": "b812cd16aa2f03a1e7c4e37b06581ec6520b576d979665befb146347020c2425",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_runtime_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "implementation_code_allowed": true,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_execution_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "pure_contract_layer_only_allowed": true,
+      "real_credentials_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "contract_artifact": {
+      "content_sha256": "9bb313bcd45c127d9ab46dbfadb6b5e6bfdb697578f6006cab99ce5b0813a491",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_IMPLEMENTATION",
+      "file_sha256": "3aa1c2338a5bbb0370dc8d750ed267bcd7f9016b0a91566fbf6bc402a103d3a3",
+      "path": "docs/program/PHASE_1F_A4_IMPLEMENTATION_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1f-a4.implementation-approval-request.v1"
+    },
+    "created_at": "2026-07-23T11:30:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_PHASE_1F_A5_PURE_CONTRACT_IMPLEMENTATION_NOT_IMPLEMENTED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/runtime_integration_contracts.py",
+      "tools/pankster_runtime_security/runtime_adapter_binding_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_integration_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_contracts.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "implementation_performed": false,
+    "integration_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A5_PURE_CONTRACT_IMPLEMENTATION_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1F_PURE_CONTRACT_IMPLEMENTATION:p1f-20260723-purecontracta4:9bb313bcd45c127d9ab46dbfadb6b5e6bfdb697578f6006cab99ce5b0813a491",
+      "approval_command_sha256": "33ba3199cb30290d25ec3ae66e186c290e729c3251136ea9b2f3feda9020c5b1",
+      "approval_id": "p1f-20260723-purecontracta4",
+      "approval_required_before_next_gate_implementation": true
+    },
+    "phase": "1F-A4",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a3_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "implementation_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1f_a4_approval_request_artifacts_and_return_to_phase_1f_a3_review_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1f_a3_content_sha256": "2b2f87a7b14714f7ecee3c200067100ed01871a810c60671b340536c18ea0b28",
+      "phase_1f_a3_file_sha256": "0036515b606704da9a3cca43e0e5fdac384e1d059d493481ea2512d59389ecb2",
+      "phase_1f_a3_path": "security/evidence/phase-1f-a3/independent-security-review-before-code.json",
+      "phase_1f_a3_verdict": "READY_FOR_PHASE_1F_A4_IMPLEMENTATION_APPROVAL_REQUEST_NOT_CODE"
+    },
+    "status": "PHASE_1F_A4_IMPLEMENTATION_APPROVAL_REQUEST_COMPLETE_NO_IMPLEMENTATION",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 775
+      },
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a4_implementation_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1f-a4.implementation-approval-request.v1"
+}
