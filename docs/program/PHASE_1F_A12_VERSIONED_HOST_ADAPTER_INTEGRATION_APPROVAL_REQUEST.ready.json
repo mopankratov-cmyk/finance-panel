@@ -1,0 +1,71 @@
+{
+  "approval_command": "APPROVE_PHASE_1F_VERSIONED_HOST_ADAPTER_INTEGRATION_CONTRACT:p1f-20260723-versionedhostadaptera12:d1d3f9ce41b8358dd8dc204e363c50016d4509782f3dfa0b150fad337cda12f6",
+  "approval_command_sha256": "bb620fda06f51261fec93d288ef8c09e6aad1c137057cd4eb0bc992ccd9211a6",
+  "content_sha256": "d1d3f9ce41b8358dd8dc204e363c50016d4509782f3dfa0b150fad337cda12f6",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "prepare Phase 1F-A13 versioned host adapter integration contract review artifacts only; A13 must not edit runtime contract code, gateway.py, web_server.py, app/lib runtime paths, Hermes core, dependencies, lockfiles, .env files, credentials, auth files, Keychain, OAuth refresh, provider/model clients, subprocess launch, sandbox launch, runtime process launch, profile starts, canary, deployment, or production profiles",
+    "approval_id": "p1f-20260723-versionedhostadaptera12",
+    "approval_scope": {
+      "app_or_lib_runtime_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "host_adapter_integration_contract_review_allowed": true,
+      "host_adapter_integration_performed_by_next_gate_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_execution_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_contract_code_changes_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "blocked_actions": [
+      "attempt_to_edit_runtime_contract_code_without_new_implementation_approval",
+      "attempt_to_integrate_host_adapter_or_bind_runtime",
+      "attempt_to_start_profile_runtime",
+      "attempt_to_launch_runtime_subprocess_sandbox_profile_or_canary",
+      "attempt_to_call_provider_model_api",
+      "attempt_to_read_or_materialize_real_credentials",
+      "attempt_to_read_auth_files_keychain_or_process_secret_environment",
+      "attempt_to_refresh_oauth_credentials",
+      "attempt_to_change_gateway_web_server_hermes_core_app_lib_dependencies_or_lockfiles",
+      "attempt_to_deploy_or_touch_production_profiles"
+    ],
+    "contract_state": "READY_FOR_OWNER_APPROVAL_NO_HOST_ADAPTER_INTEGRATION",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_PHASE_1F_A13_VERSIONED_HOST_ADAPTER_INTEGRATION_CONTRACT_REVIEW_ONLY",
+    "future_file_scope_allowlist": [
+      "docs/program/PHASE_1F_A13_VERSIONED_HOST_ADAPTER_INTEGRATION_CONTRACT_REVIEW.md",
+      "security/evidence/phase-1f-a13/versioned-host-adapter-integration-contract-review.json",
+      "tools/phase_1f_a13_versioned_host_adapter_integration_contract_review_validator.py",
+      "tools/tests/test_phase_1f_a13_versioned_host_adapter_integration_contract_review_validator.py"
+    ],
+    "next_gate": "PHASE_1F_A13_VERSIONED_HOST_ADAPTER_INTEGRATION_CONTRACT_REVIEW_AFTER_OWNER_APPROVAL",
+    "phase": "1F-A12",
+    "source_review": {
+      "phase_1f_a11_content_sha256": "1a20cd9ea4d7b08346318dfd4365f6524d74b68de467949da3975cfb1f16f4dc",
+      "phase_1f_a11_file_sha256": "919de7e5741ac9502c7c933d74d6554d3b9b1ffc66c2212651355d7fc61de1bc",
+      "phase_1f_a11_path": "security/evidence/phase-1f-a11/versioned-runtime-adapter-binding-contract-review.json",
+      "phase_1f_a11_verdict": "READY_FOR_PHASE_1F_A12_VERSIONED_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "PHASE_1F_A12_VERSIONED_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_READY_NO_INTEGRATION"
+  },
+  "contract_state": "READY_FOR_OWNER_APPROVAL_NO_HOST_ADAPTER_INTEGRATION",
+  "schema_version": "pankster.phase1f-a12.versioned-host-adapter-integration-approval-request.v1"
+}
