@@ -1,0 +1,106 @@
+{
+  "content_sha256": "1a20cd9ea4d7b08346318dfd4365f6524d74b68de467949da3975cfb1f16f4dc",
+  "decision_content": {
+    "binding_contract_review_performed": true,
+    "created_at": "2026-07-23T13:45:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1F_A6_A10_VERSIONED_RUNTIME_ADAPTER_BINDING_CONTRACT_REVIEWED_NO_RUNTIME_BINDING",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A12_VERSIONED_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1F-A11",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "versioned adapter binding remains unbound to Hermes gateway and profile workers",
+      "host adapter integration remains unimplemented and unapproved",
+      "runtime execution remains unimplemented and unapproved",
+      "real credential broker storage and model broker boundaries remain contract-level only",
+      "provider/model API calls remain unperformed and unapproved",
+      "OAuth refresh and root credential materialization remain explicitly unapproved",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/runtime_adapter_binding_phase1f_contracts.py",
+        "sha256": "26db685069202484fcfab5f11c2f89638382b66cacbc6e43752463e11f73ff6f"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_phase1f_contracts.py",
+        "sha256": "03ca5a43142d193bd69db8d26c0834a3cd2459bf43f2443a8f6897fa599e2c14"
+      }
+    ],
+    "reviewed_head": "478261c592e9112dd19a2507408dcf186a8a5277",
+    "reviewed_range": "0b4b793b238e507dd1c0a689ffd4227684e55d24..478261c592e9112dd19a2507408dcf186a8a5277",
+    "rollback": "remove_phase_1f_a11_review_artifacts_and_return_to_phase_1f_a10_approval_request_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "a10_exact_owner_approval_verified": true,
+      "a11_artifacts_match_a10_allowlist": true,
+      "adapter_identity_capability_validation_present": true,
+      "audit_and_broker_preconditions_required": true,
+      "base_disabled_contract_composition_preserved": true,
+      "binding_manifest_secret_free": true,
+      "binding_remains_disabled_by_default": true,
+      "contract_layer_only": true,
+      "expected_profile_backend_policy_revalidated": true,
+      "fail_closed_scope_attestation_present": true,
+      "gateway_core_and_runtime_launch_flags_denied": true,
+      "integration_fail_closed_reasons_propagated": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_credential_materialization": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_web_server_profile_worker_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls": true,
+      "no_provider_sdks": true,
+      "no_runtime_binding": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "phase_1e_hash_pinned_files_preserved": true,
+      "reviewed_files_match_versioned_adapter_binding_scope": true
+    },
+    "source_evidence": {
+      "phase_1f_a10_approval_command_sha256": "f263bc157e01f321a277e2b99edc28e222b7f286586466fa157b1fd9857cd12c",
+      "phase_1f_a10_content_sha256": "ea9cb6efb3e1fa96e112a827c0165d132b5b0a9f0d6934ca7d23b2c8c4f97300",
+      "phase_1f_a10_file_sha256": "ce5584d486900f36b4bb954ef6ceaa37682dc6a697b7346c567bdd788f389ec1",
+      "phase_1f_a10_path": "security/evidence/phase-1f-a10/versioned-runtime-adapter-binding-approval-request.json",
+      "phase_1f_a10_status": "PHASE_1F_A10_VERSIONED_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST_COMPLETE_NO_BINDING"
+    },
+    "status": "PHASE_1F_A11_VERSIONED_RUNTIME_ADAPTER_BINDING_CONTRACT_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 817
+      },
+      "phase_1f_a10_validator": {
+        "command": "python3 tools/phase_1f_a10_versioned_runtime_adapter_binding_approval_request_validator.py --mode validate-evidence",
+        "result": "PASS"
+      },
+      "targeted_1f_a11_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a11_versioned_runtime_adapter_binding_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_versioned_adapter_binding_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_runtime_adapter_binding_phase1f_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    },
+    "verdict": "READY_FOR_PHASE_1F_A12_VERSIONED_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1f-a11.versioned-runtime-adapter-binding-contract-review.v1"
+}
