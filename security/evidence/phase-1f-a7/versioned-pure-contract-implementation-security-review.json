@@ -1,0 +1,107 @@
+{
+  "content_sha256": "295f237c2672b11e7cc0078c9763ab097959ea63f9277c1defdf2404b2723400",
+  "decision_content": {
+    "created_at": "2026-07-23T12:20:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1F_A6_VERSIONED_PURE_CONTRACT_LAYER_REVIEWED_FOR_SECURITY_NO_RUNTIME_INTEGRATION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "implementation_performed": true,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A8_VERSIONED_RUNTIME_INTEGRATION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1F-A7",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "Phase 1F versioned contracts are not connected to Hermes gateway or profile workers",
+      "runtime execution remains unimplemented and unapproved",
+      "real credential broker and model broker boundaries remain contract-level only",
+      "no provider/model API call has been performed by this gate",
+      "OAuth refresh and root credential materialization remain explicitly unapproved",
+      "rollback and live process lifecycle remain contract-level until later approved integration gates"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/runtime_integration_phase1f_contracts.py",
+        "sha256": "4ecefc1019b6655b0e076478e52ffb46e19d202ed17de38dcf91311469cfeb1c"
+      },
+      {
+        "path": "tools/pankster_runtime_security/runtime_adapter_binding_phase1f_contracts.py",
+        "sha256": "26db685069202484fcfab5f11c2f89638382b66cacbc6e43752463e11f73ff6f"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_runtime_integration_phase1f_contracts.py",
+        "sha256": "5c08ddc6e40152c2c1d03671f97ad73013940b49c681f34683cd6cfac1bc809b"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_phase1f_contracts.py",
+        "sha256": "03ca5a43142d193bd69db8d26c0834a3cd2459bf43f2443a8f6897fa599e2c14"
+      }
+    ],
+    "reviewed_head": "478261c592e9112dd19a2507408dcf186a8a5277",
+    "reviewed_range": "0b4b793b238e507dd1c0a689ffd4227684e55d24..478261c592e9112dd19a2507408dcf186a8a5277",
+    "rollback": "revert_commit_478261c5_to_remove_phase_1f_versioned_pure_contract_layer",
+    "runtime_execution_approved": false,
+    "runtime_integration_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "a5r_source_approval_validated": true,
+      "changed_files_match_a5r_versioned_allowlist": true,
+      "contract_layer_only": true,
+      "disabled_by_default_present": true,
+      "fail_closed_scope_attestation_present": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_credential_materialization": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_web_server_profile_worker_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls": true,
+      "no_provider_sdks": true,
+      "no_runtime_launch": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "phase_1e_hash_pinned_files_preserved": true,
+      "runtime_binding_composes_existing_disabled_contract_only": true,
+      "secret_free_manifest_only": true,
+      "versioned_phase_1f_modules_added": true
+    },
+    "source_evidence": {
+      "phase_1f_a5r_approval_command_sha256": "51ee3b2dee1694ffada7ee9bd20391251f3b73a5fda6d79724b2f16c7bfd9ec4",
+      "phase_1f_a5r_content_sha256": "17e0419c8707cdecce06243702fa3a83c51714625a71fc6c35ae497f30c31a62",
+      "phase_1f_a5r_file_sha256": "212fda7ba9e73c254027acd1a707e94509ceca34c16a72c631ac4c40a122abd9",
+      "phase_1f_a5r_path": "security/evidence/phase-1f-a5r/scope-correction-approval-request.json"
+    },
+    "status": "PHASE_1F_A7_VERSIONED_PURE_CONTRACT_IMPLEMENTATION_SECURITY_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 797
+      },
+      "phase_1f_a5r_validator": {
+        "command": "python3 tools/phase_1f_a5r_scope_correction_approval_request_validator.py --mode validate-evidence",
+        "result": "PASS"
+      },
+      "targeted_1f_a7_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a7_versioned_pure_contract_implementation_security_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_runtime_integration_phase1f_contracts tools.tests.test_pankster_runtime_security_runtime_adapter_binding_phase1f_contracts",
+        "result": "PASS",
+        "tests": 11
+      }
+    },
+    "verdict": "READY_FOR_PHASE_1F_A8_VERSIONED_RUNTIME_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1f-a7.versioned-pure-contract-implementation-security-review.v1"
+}
