@@ -1,0 +1,123 @@
+{
+  "content_sha256": "ba70a5eee8f53c97028e02a840fbe0f0c8e5af569e42d9e22c2ee4ecbc3ca1c3",
+  "decision_content": {
+    "auth_file_reads_approved": false,
+    "canary_approved": false,
+    "created_at": "2026-07-23T19:10:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_2_A1_SYNTHETIC_ONLY_MVP_IMPLEMENTATION_REVIEWED_AND_CLOSED_NO_PRODUCTION_ACTIVATION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "implementation_performed": true,
+    "keychain_reads_approved": false,
+    "model_api_calls_approved": false,
+    "network_calls_approved": false,
+    "next_gate": "PHASE_2_SYNTHETIC_MVP_COMPLETE_STOP_OR_SEPARATE_OWNER_APPROVAL_FOR_PRODUCTION_ARCHITECTURE",
+    "oauth_refresh_approved": false,
+    "phase": "2-A2",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "real_credentials_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "synthetic MVP is not bound to Hermes gateway or profile workers",
+      "production profile execution remains unimplemented and unapproved",
+      "real credential storage and OAuth refresh remain unimplemented and unapproved",
+      "provider/model API integration remains unimplemented and unapproved",
+      "network enforcement remains synthetic-contract level only",
+      "deployment and canary remain unapproved"
+    ],
+    "reviewed_commit": "711bd800ac89f7691f44343b2913eff3c471f0be",
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/synthetic_mvp_runner_contracts.py",
+        "sha256": "deba594d0ea819b3ba58e82d892fa1550f8d0d5b9f0f664b1f7fad813dc2427b"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_synthetic_mvp_runner_contracts.py",
+        "sha256": "fc6a1269e4fbb8c0219593be3751697f5d5356d330b6082449b300bc3ecaf979"
+      }
+    ],
+    "reviewed_head": "711bd800",
+    "reviewed_range": "5ea07c20..711bd800",
+    "rollback": "revert_commit_711bd800_to_remove_phase_2_a1_synthetic_mvp_runner_two_files",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "a0_exact_owner_approval_verified": true,
+      "changed_files_match_a0_allowlist": true,
+      "code_execution_surface_fake_or_fail_closed": true,
+      "delegate_task_surface_fake_or_fail_closed": true,
+      "disabled_by_default_present": true,
+      "exact_approval_token_required": true,
+      "fake_credentials_only": true,
+      "fake_model_broker_only": true,
+      "mandatory_sensitive_environment_denylist_enforced": true,
+      "mcp_surface_fake_or_fail_closed": true,
+      "model_allowlist_enforced": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_credential_materialization": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_web_server_profile_worker_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_oauth_refresh": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls": true,
+      "no_runtime_binding": true,
+      "no_runtime_execution": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "no_proxy_preserved": true,
+      "operation_allowlist_enforced": true,
+      "pure_in_memory_contract_layer_only": true,
+      "rollback_is_remove_a1_two_files": true,
+      "sanitized_environment_required": true,
+      "secret_shape_scan_on_request_manifest_and_sanitized_env": true,
+      "synthetic_mvp_runner_added": true,
+      "synthetic_mvp_tests_added": true,
+      "synthetic_profile_required": true,
+      "synthetic_runtime_backend_required": true,
+      "terminal_surface_fake_or_fail_closed": true
+    },
+    "source_evidence": {
+      "phase_2_a0_approval_command_sha256": "8c559fd59bca0e3f0f499df142bf17ad548b54d9b7059ef02b5a25a4704c19ef",
+      "phase_2_a0_content_sha256": "548a1179562ac808727d047b8847ca8b90a60cf6291df78306647461356caf2c",
+      "phase_2_a0_contract_content_sha256": "4f8794c9ca615e2d301c70cb30004fc08ae1fdc8e5ebe3a4cf5cdc48c9f82b96",
+      "phase_2_a0_contract_file_sha256": "5043662bef7a4a653c2ebb68851b54d51f592c1668731ebcbae8f3244f951efd",
+      "phase_2_a0_contract_path": "docs/program/PHASE_2_A0_SYNTHETIC_MVP_SCOPE_APPROVAL_REQUEST.ready.json",
+      "phase_2_a0_file_sha256": "9528d9e1cb976d0a406872b80eacccbb2fff3b9ccdd6af74196fd028905392d7",
+      "phase_2_a0_path": "security/evidence/phase-2-a0/synthetic-mvp-scope-approval-request.json",
+      "phase_2_a0_status": "PHASE_2_A0_SYNTHETIC_MVP_SCOPE_APPROVAL_REQUEST_COMPLETE_NO_IMPLEMENTATION"
+    },
+    "status": "PHASE_2_A2_SYNTHETIC_MVP_SECURITY_REVIEW_COMPLETE_NOT_PRODUCTION_READY",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 927
+      },
+      "phase_2_a0_validator": {
+        "command": "python3 tools/phase_2_a0_synthetic_mvp_scope_approval_request_validator.py --mode validate-evidence",
+        "result": "PASS"
+      },
+      "targeted_2a2_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_2_a2_synthetic_mvp_security_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_synthetic_mvp_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_synthetic_mvp_runner_contracts",
+        "result": "PASS",
+        "tests": 13
+      }
+    },
+    "verdict": "PHASE_2_SYNTHETIC_MVP_COMPLETE_NOT_PRODUCTION_READY"
+  },
+  "schema_version": "pankster.phase2-a2.synthetic-mvp-security-review.v1"
+}
