@@ -1,0 +1,109 @@
+{
+  "content_sha256": "78d220339440da834459b365d302f4eb6f84e50365a2e721c9f5be189a9d6a26",
+  "decision_content": {
+    "created_at": "2026-07-23T14:25:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1F_A13_VERSIONED_HOST_ADAPTER_INTEGRATION_REVIEWED_FAIL_CLOSED_VERSIONED_LAYER_MISSING",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "host_adapter_contract_review_performed": true,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A14_VERSIONED_HOST_ADAPTER_IMPLEMENTATION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1F-A13",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [
+      "create a separate owner approval request before adding any Phase 1F versioned host adapter integration contract code",
+      "do not advance to runtime execution, gateway binding, profile start, canary, or production until versioned host adapter contract implementation and review gates pass"
+    ],
+    "residual_risks": [
+      "Phase 1F versioned host adapter integration module is not implemented",
+      "Phase 1F versioned host adapter integration tests are not implemented",
+      "base Phase 1E host adapter contract remains safe but is not a Phase 1F versioned layer",
+      "host adapter integration remains unbound to Hermes gateway and profile workers",
+      "runtime execution remains unimplemented and unapproved",
+      "real credential broker storage and model broker boundaries remain contract-level only",
+      "provider/model API calls remain unperformed and unapproved",
+      "OAuth refresh and root credential materialization remain explicitly unapproved",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/host_adapter_integration_contracts.py",
+        "sha256": "2137033ad7521e4650e55b2e1f98d4fb4e248dd057a14a87f96e0c4a2854c9d7"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_host_adapter_integration_contracts.py",
+        "sha256": "1ca51d9762d6aa872521e5126125a44a6de45a1926f68712a5c7d4aa18bc3d47"
+      }
+    ],
+    "reviewed_head": "bbcb0b2326ff8483d4da373d0af5eb97f77e1aac",
+    "reviewed_range": "a1a795d33801359f1091f4e8460a4b4ef9c4ab4d..bbcb0b2326ff8483d4da373d0af5eb97f77e1aac",
+    "rollback": "remove_phase_1f_a13_review_artifacts_and_return_to_phase_1f_a12_approval_request_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "a12_exact_owner_approval_verified": true,
+      "a13_artifacts_match_a12_allowlist": true,
+      "base_adapter_binding_fail_closed_reasons_propagated": true,
+      "base_expected_profile_backend_policy_revalidated": true,
+      "base_gateway_core_and_runtime_launch_flags_denied": true,
+      "base_host_adapter_contract_disabled_by_default": true,
+      "base_host_adapter_contract_reviewed": true,
+      "base_host_identity_capability_validation_present": true,
+      "base_host_manifest_secret_free": true,
+      "base_rollback_policy_required": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_credential_materialization": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_web_server_profile_worker_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls": true,
+      "no_provider_sdks": true,
+      "no_runtime_integration": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "phase_1f_versioned_host_adapter_module_absent": true,
+      "phase_1f_versioned_host_adapter_tests_absent": true
+    },
+    "source_evidence": {
+      "phase_1f_a12_approval_command_sha256": "bb620fda06f51261fec93d288ef8c09e6aad1c137057cd4eb0bc992ccd9211a6",
+      "phase_1f_a12_content_sha256": "0702ab66ffa88d3c5ef589e454fb74b41ea9da9e972e1cb7376b59b577216ea7",
+      "phase_1f_a12_file_sha256": "3d44789579d905a4b21ecc41804eb41abeee9cc845e07518f762114702804b93",
+      "phase_1f_a12_path": "security/evidence/phase-1f-a12/versioned-host-adapter-integration-approval-request.json",
+      "phase_1f_a12_status": "PHASE_1F_A12_VERSIONED_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_COMPLETE_NO_INTEGRATION"
+    },
+    "status": "PHASE_1F_A13_VERSIONED_HOST_ADAPTER_INTEGRATION_CONTRACT_REVIEW_COMPLETE_FAIL_CLOSED_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 827
+      },
+      "phase_1f_a12_validator": {
+        "command": "python3 tools/phase_1f_a12_versioned_host_adapter_integration_approval_request_validator.py --mode validate-evidence",
+        "result": "PASS"
+      },
+      "targeted_1f_a13_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a13_versioned_host_adapter_integration_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_base_host_adapter_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_host_adapter_integration_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    },
+    "verdict": "REVISION_REQUIRED_BEFORE_PHASE_1F_HOST_RUNTIME_EXECUTION_VERSIONED_HOST_ADAPTER_LAYER_MISSING"
+  },
+  "schema_version": "pankster.phase1f-a13.versioned-host-adapter-integration-contract-review.v1"
+}
