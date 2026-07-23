@@ -5,6 +5,13 @@ import { gatherAgentContext } from "@/lib/agent/gatherContext";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import {
+  callMvpAgent,
+  isMvpAgentEnabled,
+  mvpAgentRouteError,
+  mvpAgentSafeError,
+  resolveMvpAgentConfig,
+} from "@/lib/agent/mvpBroker";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -54,6 +61,49 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const mode: "analyze" | "chat" = body.mode === "chat" ? "chat" : "analyze";
   const question: string = typeof body.question === "string" ? body.question : "";
+
+  if (isMvpAgentEnabled()) {
+    const config = resolveMvpAgentConfig();
+    if (!config.enabled) {
+      return NextResponse.json({ error: mvpAgentSafeError(config.reason), profile: "dev-director" }, { status: 503 });
+    }
+
+    try {
+      const context = await gatherAgentContext(cabinetIdFromParam(typeof body.cabinet === "string" ? body.cabinet : null));
+      const completion = await callMvpAgent({ config, mode, context, question });
+
+      if (mode === "chat") {
+        return NextResponse.json({ answer: completion.text, mvp: true, audit: completion.audit });
+      }
+
+      let insights: Insight[] = [];
+      try {
+        insights = (JSON.parse(completion.text).insights ?? []) as Insight[];
+      } catch {
+        return NextResponse.json({ error: "MVP агент: не удалось разобрать JSON ответ модели", mvp: true }, { status: 502 });
+      }
+
+      const db = getSupabaseAdmin();
+      if (db && insights.length) {
+        await db
+          .from("agent_insights")
+          .insert(
+            insights.map((i) => ({
+              module: i.module,
+              severity: i.severity,
+              title: i.title,
+              body: i.body,
+              data: null,
+            })),
+          );
+      }
+
+      return NextResponse.json({ insights, count: insights.length, mvp: true, audit: completion.audit });
+    } catch (err) {
+      const mapped = mvpAgentRouteError(err);
+      return NextResponse.json({ error: mapped.message, mvp: true }, { status: mapped.status });
+    }
+  }
 
   const client = await createClaudeClient();
   if (!client) {
