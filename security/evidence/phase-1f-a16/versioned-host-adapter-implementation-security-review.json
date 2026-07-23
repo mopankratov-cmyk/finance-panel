@@ -1,0 +1,107 @@
+{
+  "content_sha256": "673235b74a66348a6211e1a367e99994c80bd32bce10ee25ce3c5103c23b5c92",
+  "decision_content": {
+    "created_at": "2026-07-23T15:05:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1F_A15_VERSIONED_HOST_ADAPTER_PURE_CONTRACT_IMPLEMENTATION_REVIEWED_NO_RUNTIME_INTEGRATION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "implementation_performed": true,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A17_VERSIONED_HOST_RUNTIME_EXECUTION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1F-A16",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "versioned host adapter contract remains unbound to Hermes gateway and profile workers",
+      "runtime execution remains unimplemented and unapproved",
+      "real credential broker storage and model broker boundaries remain contract-level only",
+      "provider/model API calls remain unperformed and unapproved",
+      "OAuth refresh and root credential materialization remain explicitly unapproved",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/host_adapter_integration_phase1f_contracts.py",
+        "sha256": "e6fcb4dacf796a6911d1bbcbdc45f020c9b8b3ea0ad4837e63ddbb60296e2a31"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_host_adapter_integration_phase1f_contracts.py",
+        "sha256": "bd0d74d6796679032799fa80379af1ac957f3bffd0202c24e6df889aa1df41aa"
+      }
+    ],
+    "reviewed_head": "98f93b15",
+    "reviewed_range": "7fde389c..98f93b15",
+    "rollback": "revert_commit_98f93b15_to_remove_phase_1f_versioned_host_adapter_contracts",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "a14_exact_owner_approval_verified": true,
+      "audit_and_broker_preconditions_required": true,
+      "base_disabled_host_contract_composition_preserved": true,
+      "changed_files_match_a14_allowlist": true,
+      "disabled_by_default_present": true,
+      "expected_profile_backend_policy_revalidated": true,
+      "host_manifest_secret_free": true,
+      "host_manifest_secret_scan_present": true,
+      "implementation_scope_guard_present": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_credential_materialization": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_web_server_profile_worker_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls": true,
+      "no_provider_sdks": true,
+      "no_runtime_binding": true,
+      "no_runtime_execution": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "phase_1e_hash_pinned_host_adapter_files_preserved": true,
+      "pure_contract_layer_only": true,
+      "rollback_policy_preserved": true,
+      "versioned_adapter_binding_composition_preserved": true,
+      "versioned_host_adapter_module_added": true,
+      "versioned_host_adapter_tests_added": true
+    },
+    "source_evidence": {
+      "phase_1f_a14_approval_command_sha256": "e8a8bbe6043092f59c515a3064f9019a1f1ee50932b3e3258763d3f0737688fb",
+      "phase_1f_a14_content_sha256": "d155016a973e1501160420f1ee09da29937042487549c3cd0b33fee8762b5724",
+      "phase_1f_a14_file_sha256": "6f0c209c8d5b6ca6a4845e7301bcf7cf9612965c16e474b7db7a2001b769e7e3",
+      "phase_1f_a14_path": "security/evidence/phase-1f-a14/versioned-host-adapter-implementation-approval-request.json",
+      "phase_1f_a14_status": "PHASE_1F_A14_VERSIONED_HOST_ADAPTER_IMPLEMENTATION_APPROVAL_REQUEST_COMPLETE_NO_IMPLEMENTATION"
+    },
+    "status": "PHASE_1F_A16_VERSIONED_HOST_ADAPTER_IMPLEMENTATION_SECURITY_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 845
+      },
+      "phase_1f_a14_validator": {
+        "command": "python3 tools/phase_1f_a14_versioned_host_adapter_implementation_approval_request_validator.py --mode validate-evidence",
+        "result": "PASS"
+      },
+      "targeted_1f_a16_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a16_versioned_host_adapter_implementation_security_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_versioned_host_adapter_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_host_adapter_integration_phase1f_contracts",
+        "result": "PASS",
+        "tests": 8
+      }
+    },
+    "verdict": "READY_FOR_PHASE_1F_A17_VERSIONED_HOST_RUNTIME_EXECUTION_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1f-a16.versioned-host-adapter-implementation-security-review.v1"
+}
