@@ -1,0 +1,68 @@
+{
+  "approval_command": "APPROVE_PHASE_1F_VERSIONED_RUNTIME_INTEGRATION_CONTRACT:p1f-20260723-versionedruntimea8:774472c086ae4f81d7bddcb5eea14c441a4e33917d352d3d50cec5670e244978",
+  "approval_command_sha256": "2ab0c7343832484e45e0ed2879dda99c940fe46111146ff20c31e47fe35ecf8a",
+  "content_sha256": "774472c086ae4f81d7bddcb5eea14c441a4e33917d352d3d50cec5670e244978",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "prepare Phase 1F-A9 versioned runtime integration contract review artifacts only; A9 must not edit runtime contract code, gateway.py, web_server.py, app/lib runtime paths, Hermes core, dependencies, lockfiles, .env files, credentials, auth files, Keychain, OAuth refresh, provider/model clients, subprocess launch, sandbox launch, runtime process launch, profile starts, canary, deployment, or production profiles",
+    "approval_id": "p1f-20260723-versionedruntimea8",
+    "approval_scope": {
+      "app_or_lib_runtime_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_execution_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_contract_code_changes_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true,
+      "versioned_runtime_integration_contract_review_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "blocked_actions": [
+      "attempt_to_edit_runtime_contract_code_without_new_implementation_approval",
+      "attempt_to_start_profile_runtime",
+      "attempt_to_launch_runtime_subprocess_sandbox_profile_or_canary",
+      "attempt_to_call_provider_model_api",
+      "attempt_to_read_or_materialize_real_credentials",
+      "attempt_to_read_auth_files_keychain_or_process_secret_environment",
+      "attempt_to_refresh_oauth_credentials",
+      "attempt_to_change_gateway_web_server_hermes_core_app_lib_dependencies_or_lockfiles",
+      "attempt_to_deploy_or_touch_production_profiles"
+    ],
+    "contract_state": "READY_FOR_OWNER_APPROVAL_NO_RUNTIME_INTEGRATION",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_PHASE_1F_A9_VERSIONED_RUNTIME_INTEGRATION_CONTRACT_REVIEW_ONLY",
+    "future_file_scope_allowlist": [
+      "docs/program/PHASE_1F_A9_VERSIONED_RUNTIME_INTEGRATION_CONTRACT_REVIEW.md",
+      "security/evidence/phase-1f-a9/versioned-runtime-integration-contract-review.json",
+      "tools/phase_1f_a9_versioned_runtime_integration_contract_review_validator.py",
+      "tools/tests/test_phase_1f_a9_versioned_runtime_integration_contract_review_validator.py"
+    ],
+    "next_gate": "PHASE_1F_A9_VERSIONED_RUNTIME_INTEGRATION_CONTRACT_REVIEW_AFTER_OWNER_APPROVAL",
+    "phase": "1F-A8",
+    "source_review": {
+      "phase_1f_a7_content_sha256": "295f237c2672b11e7cc0078c9763ab097959ea63f9277c1defdf2404b2723400",
+      "phase_1f_a7_file_sha256": "c4f1d7999b6f07584d94a1bd86e172ddb990a9e9b925f48603666c58807ebdbf",
+      "phase_1f_a7_path": "security/evidence/phase-1f-a7/versioned-pure-contract-implementation-security-review.json",
+      "phase_1f_a7_verdict": "READY_FOR_PHASE_1F_A8_VERSIONED_RUNTIME_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "PHASE_1F_A8_VERSIONED_RUNTIME_INTEGRATION_APPROVAL_REQUEST_READY_NO_INTEGRATION"
+  },
+  "schema_version": "pankster.phase1f-a8.versioned-runtime-integration-approval-request.v1"
+}
