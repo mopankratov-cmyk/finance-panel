@@ -1,0 +1,108 @@
+{
+  "content_sha256": "41a2792e649683d4aae3b17e622c40a9a5253fd1fd504f7bafb55a2e15fcafb0",
+  "decision_content": {
+    "created_at": "2026-07-23T16:25:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1F_A18_VERSIONED_HOST_RUNTIME_EXECUTION_CONTRACT_REVIEWED_NO_RUNTIME_STARTED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "implementation_performed": true,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A20_VERSIONED_HOST_RUNTIME_WIRING_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1F-A19",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "versioned host runtime execution contract remains unbound to Hermes gateway and profile workers",
+      "runtime process launch remains unimplemented and unapproved",
+      "profile runtime execution remains unimplemented and unapproved",
+      "real credential broker storage and model broker boundaries remain contract-level only",
+      "provider/model API calls remain unperformed and unapproved",
+      "OAuth refresh and root credential materialization remain explicitly unapproved",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/host_runtime_execution_phase1f_contracts.py",
+        "sha256": "bf81d6b03020227abbe8b70bee674610cebc07345a74c0f4c2a684cae4bcabff"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_host_runtime_execution_phase1f_contracts.py",
+        "sha256": "8a76bd42234f474dcc6f236423793405d0d16eca8f0bfb24429c3f64180f5a11"
+      }
+    ],
+    "reviewed_head": "eaa30915",
+    "reviewed_range": "dd158f2a..eaa30915",
+    "rollback": "revert_commit_eaa30915_to_remove_phase_1f_versioned_host_runtime_execution_contracts",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "a17_exact_owner_approval_verified": true,
+      "audit_and_broker_preconditions_required": true,
+      "base_disabled_host_runtime_contract_composition_preserved": true,
+      "changed_files_match_a17_allowlist": true,
+      "disabled_by_default_present": true,
+      "expected_profile_backend_policy_rollback_revalidated": true,
+      "host_runtime_manifest_secret_free": true,
+      "host_runtime_manifest_secret_scan_present": true,
+      "implementation_scope_guard_present": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_credential_materialization": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_web_server_profile_worker_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls": true,
+      "no_provider_sdks": true,
+      "no_runtime_binding": true,
+      "no_runtime_execution": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "phase_1e_hash_pinned_host_runtime_files_preserved": true,
+      "pure_contract_layer_only": true,
+      "rollback_policy_preserved": true,
+      "versioned_host_adapter_composition_preserved": true,
+      "versioned_host_runtime_module_added": true,
+      "versioned_host_runtime_tests_added": true
+    },
+    "source_evidence": {
+      "phase_1f_a17_approval_command_sha256": "9d3bb163ea13f7f6dea71c7755a586685652cab2b034452ce1bbcf229c351755",
+      "phase_1f_a17_content_sha256": "9d49e27af9b111e912df0ceb9eb56cbde4aef6139d8201c70a2cf1d252c393c2",
+      "phase_1f_a17_file_sha256": "a95c5f71560a880391f9ab2cd616d22df612c5268bb176c537c9f2bed3f63ca7",
+      "phase_1f_a17_path": "security/evidence/phase-1f-a17/versioned-host-runtime-execution-approval-request.json",
+      "phase_1f_a17_status": "PHASE_1F_A17_VERSIONED_HOST_RUNTIME_EXECUTION_APPROVAL_REQUEST_COMPLETE_NO_IMPLEMENTATION"
+    },
+    "status": "PHASE_1F_A19_VERSIONED_HOST_RUNTIME_EXECUTION_CONTRACT_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 863
+      },
+      "phase_1f_a17_validator": {
+        "command": "python3 tools/phase_1f_a17_versioned_host_runtime_execution_approval_request_validator.py --mode validate-evidence",
+        "result": "PASS"
+      },
+      "targeted_1f_a19_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a19_versioned_host_runtime_execution_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_versioned_host_runtime_execution_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_host_runtime_execution_phase1f_contracts",
+        "result": "PASS",
+        "tests": 8
+      }
+    },
+    "verdict": "READY_FOR_PHASE_1F_A20_VERSIONED_HOST_RUNTIME_WIRING_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1f-a19.versioned-host-runtime-execution-contract-review.v1"
+}
