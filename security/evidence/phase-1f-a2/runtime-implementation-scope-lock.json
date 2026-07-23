@@ -1,0 +1,117 @@
+{
+  "content_sha256": "7514aa9559a12d89793b9037922281e61d5233b88f94fd6d8b8852ac64ac485f",
+  "decision_content": {
+    "approval_consumed": {
+      "approval_command": "APPROVE_PHASE_1F_RUNTIME_IMPLEMENTATION_SCOPE_LOCK:p1f-20260723-scopea1:082bc5f87eba718898e979b3e3b031f6792b248b321891d74a27c908b712a304",
+      "approval_command_sha256": "cbf30907ee949ca05f46b54b99e4f8dc827d1c60ee8c5a4e5a5900f23f116e6f",
+      "approval_id": "p1f-20260723-scopea1",
+      "approval_scope_respected": true
+    },
+    "created_at": "2026-07-23T11:05:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1F_RUNTIME_IMPLEMENTATION_SCOPE_LOCKED_FOR_INDEPENDENT_SECURITY_REVIEW_NOT_IMPLEMENTATION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "forbidden_file_scope": [
+      "app/",
+      "components/",
+      "lib/",
+      "middleware.ts",
+      "proxy.ts",
+      "next.config.js",
+      "next.config.mjs",
+      "package.json",
+      "lockfiles",
+      ".env*",
+      ".gitea/",
+      ".github/",
+      "gateway.py",
+      "web_server.py",
+      "agent/conversation_loop.py",
+      "Hermes core runtime files outside this repository"
+    ],
+    "future_code_allowlist_after_separate_a4_owner_approval": [
+      "tools/pankster_runtime_security/runtime_integration_contracts.py",
+      "tools/pankster_runtime_security/runtime_adapter_binding_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_integration_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_contracts.py"
+    ],
+    "future_code_constraints": {
+      "disabled_by_default_required": true,
+      "fail_closed_required": true,
+      "full_tools_tests_required": true,
+      "independent_security_review_before_code_required": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_credential_materialization": true,
+      "no_dependency_changes": true,
+      "no_gateway_integration": true,
+      "no_network_clients": true,
+      "no_process_env_secret_reads": true,
+      "no_provider_sdks": true,
+      "no_runtime_process_launch": true,
+      "no_runtime_side_effects": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "no_web_server_integration": true,
+      "pure_contract_layer_only": true,
+      "secret_scan_required": true
+    },
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "implementation_code_approved": false,
+    "integration_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A3_INDEPENDENT_SECURITY_REVIEW_BEFORE_CODE",
+    "oauth_refresh_approved": false,
+    "phase": "1F-A2",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a1_dependency_satisfied": true,
+      "approved_a1_scope_only_used": true,
+      "implementation_ready": false,
+      "implementation_scope_locked": true,
+      "production_ready": false,
+      "ready_for_independent_security_review": true,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1f_a2_scope_lock_artifacts_and_return_to_phase_1f_a1_approval_request_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "separate_approval_required_for": [
+      "any implementation code after A3 independent security review",
+      "any dependency or lockfile change",
+      "any provider SDK use",
+      "any network or provider/model API call",
+      "any sandbox or subprocess launch",
+      "any real credential read or OAuth refresh",
+      "any gateway/web_server/profile/canary change",
+      "any production deployment"
+    ],
+    "source_evidence": {
+      "phase_1f_a1_contract_content_sha256": "082bc5f87eba718898e979b3e3b031f6792b248b321891d74a27c908b712a304",
+      "phase_1f_a1_contract_file_sha256": "5d17961e68f4b63f444d2b44f338a92149c429a5ca1e5241b42d6bdcd5424783",
+      "phase_1f_a1_content_sha256": "555723638ab7600a4b42001c0009c5154c0312c66d56891187449ef0d0a58f93",
+      "phase_1f_a1_file_sha256": "b0b4769653371a239d678c8bb879a13281ab10484e87628697b56c19d93752cc",
+      "phase_1f_a1_path": "security/evidence/phase-1f-a1/runtime-integration-owner-approval-request.json",
+      "phase_1f_a1_status": "PHASE_1F_A1_RUNTIME_INTEGRATION_OWNER_APPROVAL_REQUEST_COMPLETE_NO_SCOPE_LOCK"
+    },
+    "status": "PHASE_1F_A2_RUNTIME_IMPLEMENTATION_SCOPE_LOCK_COMPLETE_NO_CODE",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 765
+      },
+      "targeted_1f_a2_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a2_runtime_implementation_scope_lock_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "verdict": "READY_FOR_PHASE_1F_A3_INDEPENDENT_SECURITY_REVIEW_BEFORE_CODE_NOT_IMPLEMENTATION"
+  },
+  "schema_version": "pankster.phase1f-a2.runtime-implementation-scope-lock.v1"
+}
