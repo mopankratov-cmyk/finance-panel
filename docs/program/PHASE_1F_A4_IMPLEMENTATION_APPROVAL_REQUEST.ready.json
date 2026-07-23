@@ -1,0 +1,68 @@
+{
+  "approval_command": "APPROVE_PHASE_1F_PURE_CONTRACT_IMPLEMENTATION:p1f-20260723-purecontracta4:9bb313bcd45c127d9ab46dbfadb6b5e6bfdb697578f6006cab99ce5b0813a491",
+  "approval_command_sha256": "33ba3199cb30290d25ec3ae66e186c290e729c3251136ea9b2f3feda9020c5b1",
+  "content_sha256": "9bb313bcd45c127d9ab46dbfadb6b5e6bfdb697578f6006cab99ce5b0813a491",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "implement Phase 1F-A5 pure contract-layer updates and unit tests only in the A2 allowlisted files; A5 must not edit gateway.py, web_server.py, app/lib runtime paths, Hermes core, dependencies, lockfiles, .env files, credentials, auth files, Keychain, OAuth refresh, provider/model clients, subprocess launch, sandbox launch, runtime process launch, profile starts, canary, deployment, or production profiles",
+    "approval_id": "p1f-20260723-purecontracta4",
+    "approval_scope": {
+      "app_or_lib_runtime_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "implementation_code_allowed": true,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_execution_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "pure_contract_layer_only_allowed": true,
+      "real_credentials_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "blocked_actions": [
+      "attempt_to_edit_files_outside_a2_allowlist",
+      "attempt_to_start_profile_runtime",
+      "attempt_to_launch_runtime_subprocess_sandbox_profile_or_canary",
+      "attempt_to_call_provider_model_api",
+      "attempt_to_read_or_materialize_real_credentials",
+      "attempt_to_read_auth_files_keychain_or_process_secret_environment",
+      "attempt_to_refresh_oauth_credentials",
+      "attempt_to_change_gateway_web_server_hermes_core_app_lib_dependencies_or_lockfiles",
+      "attempt_to_deploy_or_touch_production_profiles"
+    ],
+    "contract_state": "READY_FOR_OWNER_APPROVAL_NO_IMPLEMENTATION",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_PHASE_1F_A5_PURE_CONTRACT_IMPLEMENTATION_ONLY",
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/runtime_integration_contracts.py",
+      "tools/pankster_runtime_security/runtime_adapter_binding_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_integration_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_contracts.py"
+    ],
+    "next_gate": "PHASE_1F_A5_PURE_CONTRACT_IMPLEMENTATION_AFTER_OWNER_APPROVAL",
+    "phase": "1F-A4",
+    "source_review": {
+      "phase_1f_a3_content_sha256": "2b2f87a7b14714f7ecee3c200067100ed01871a810c60671b340536c18ea0b28",
+      "phase_1f_a3_file_sha256": "0036515b606704da9a3cca43e0e5fdac384e1d059d493481ea2512d59389ecb2",
+      "phase_1f_a3_path": "security/evidence/phase-1f-a3/independent-security-review-before-code.json",
+      "phase_1f_a3_verdict": "READY_FOR_PHASE_1F_A4_IMPLEMENTATION_APPROVAL_REQUEST_NOT_CODE"
+    },
+    "status": "PHASE_1F_A4_IMPLEMENTATION_APPROVAL_REQUEST_READY_NO_IMPLEMENTATION"
+  },
+  "schema_version": "pankster.phase1f-a4.implementation-approval-request.v1"
+}
