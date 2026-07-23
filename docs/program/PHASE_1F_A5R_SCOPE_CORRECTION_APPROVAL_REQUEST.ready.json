@@ -1,0 +1,71 @@
+{
+  "approval_command": "APPROVE_PHASE_1F_VERSIONED_PURE_CONTRACT_IMPLEMENTATION:p1f-20260723-versionedpurecontracta5r:e9624de2171e8b7c624ac3dd4ec40d46d79d80d81cb21085f35933176ce8cb14",
+  "approval_command_sha256": "51ee3b2dee1694ffada7ee9bd20391251f3b73a5fda6d79724b2f16c7bfd9ec4",
+  "content_sha256": "e9624de2171e8b7c624ac3dd4ec40d46d79d80d81cb21085f35933176ce8cb14",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "implement Phase 1F versioned pure contract-layer modules and unit tests only; do not modify Phase 1E hash-pinned runtime contract modules or tests; do not edit gateway.py, web_server.py, app/lib runtime paths, Hermes core, dependencies, lockfiles, .env files, credentials, auth files, Keychain, OAuth refresh, provider/model clients, subprocess launch, sandbox launch, runtime process launch, profile starts, canary, deployment, or production profiles",
+    "approval_id": "p1f-20260723-versionedpurecontracta5r",
+    "approval_scope": {
+      "app_or_lib_runtime_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "implementation_code_allowed": true,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "phase_1e_hash_pinned_files_changes_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_execution_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "pure_contract_layer_only_allowed": true,
+      "real_credentials_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true,
+      "versioned_phase_1f_modules_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "blocked_actions": [
+      "attempt_to_modify_phase_1e_hash_pinned_runtime_contract_files",
+      "attempt_to_edit_files_outside_versioned_phase_1f_allowlist",
+      "attempt_to_start_profile_runtime",
+      "attempt_to_launch_runtime_subprocess_sandbox_profile_or_canary",
+      "attempt_to_call_provider_model_api",
+      "attempt_to_read_or_materialize_real_credentials",
+      "attempt_to_read_auth_files_keychain_or_process_secret_environment",
+      "attempt_to_refresh_oauth_credentials",
+      "attempt_to_change_gateway_web_server_hermes_core_app_lib_dependencies_or_lockfiles",
+      "attempt_to_deploy_or_touch_production_profiles"
+    ],
+    "contract_state": "READY_FOR_OWNER_APPROVAL_NO_VERSIONED_IMPLEMENTATION",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_PHASE_1F_VERSIONED_PURE_CONTRACT_IMPLEMENTATION_ONLY",
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/runtime_integration_phase1f_contracts.py",
+      "tools/pankster_runtime_security/runtime_adapter_binding_phase1f_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_integration_phase1f_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_phase1f_contracts.py"
+    ],
+    "next_gate": "PHASE_1F_A6_VERSIONED_PURE_CONTRACT_IMPLEMENTATION_AFTER_OWNER_APPROVAL",
+    "phase": "1F-A5R",
+    "source_review": {
+      "phase_1f_a4_content_sha256": "b812cd16aa2f03a1e7c4e37b06581ec6520b576d979665befb146347020c2425",
+      "phase_1f_a4_file_sha256": "31bf23ea7019809bd6cc0db3dc85e01c5ea2e70b62dd6a2cbe1ed50ac9fed7ed",
+      "phase_1f_a4_path": "security/evidence/phase-1f-a4/implementation-approval-request.json",
+      "phase_1f_a4_status": "PHASE_1F_A4_IMPLEMENTATION_APPROVAL_REQUEST_COMPLETE_NO_IMPLEMENTATION"
+    },
+    "status": "PHASE_1F_A5R_SCOPE_CORRECTION_APPROVAL_REQUEST_READY_NO_IMPLEMENTATION"
+  },
+  "schema_version": "pankster.phase1f-a5r.scope-correction-approval-request.v1"
+}
