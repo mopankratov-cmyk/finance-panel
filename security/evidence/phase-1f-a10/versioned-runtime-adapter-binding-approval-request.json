@@ -1,0 +1,103 @@
+{
+  "content_sha256": "ea9cb6efb3e1fa96e112a827c0165d132b5b0a9f0d6934ca7d23b2c8c4f97300",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_runtime_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "binding_performed_by_next_gate_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_execution_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_adapter_binding_contract_review_allowed": true,
+      "runtime_contract_code_changes_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "binding_performed": false,
+    "contract_artifact": {
+      "content_sha256": "e26e2bf740fed79f90c56f4fbe13fe4efcab861c2b8faf2546877094bda000dc",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_RUNTIME_BINDING",
+      "file_sha256": "bb5cda5caa1eb4b6ac2a0875b399f98b8b06b2c02eeab38ac8c68c949ebac5b9",
+      "path": "docs/program/PHASE_1F_A10_VERSIONED_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1f-a10.versioned-runtime-adapter-binding-approval-request.v1"
+    },
+    "created_at": "2026-07-23T13:25:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_PHASE_1F_A11_VERSIONED_RUNTIME_ADAPTER_BINDING_CONTRACT_REVIEW_NOT_BOUND",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "docs/program/PHASE_1F_A11_VERSIONED_RUNTIME_ADAPTER_BINDING_CONTRACT_REVIEW.md",
+      "security/evidence/phase-1f-a11/versioned-runtime-adapter-binding-contract-review.json",
+      "tools/phase_1f_a11_versioned_runtime_adapter_binding_contract_review_validator.py",
+      "tools/tests/test_phase_1f_a11_versioned_runtime_adapter_binding_contract_review_validator.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A11_VERSIONED_RUNTIME_ADAPTER_BINDING_CONTRACT_REVIEW_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1F_VERSIONED_RUNTIME_ADAPTER_BINDING_CONTRACT:p1f-20260723-versionedadapterbindinga10:e26e2bf740fed79f90c56f4fbe13fe4efcab861c2b8faf2546877094bda000dc",
+      "approval_command_sha256": "f263bc157e01f321a277e2b99edc28e222b7f286586466fa157b1fd9857cd12c",
+      "approval_id": "p1f-20260723-versionedadapterbindinga10",
+      "approval_required_before_next_gate_binding_review": true
+    },
+    "phase": "1F-A10",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a9_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "binding_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false,
+      "versioned_adapter_binding_contract_review_only": true
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1f_a10_approval_request_artifacts_and_return_to_phase_1f_a9_review_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1f_a9_content_sha256": "2a153514b127dc2262abaf85fa9a3e24dd5a9df4ff983ec19d89217883af8d64",
+      "phase_1f_a9_file_sha256": "a24e4bf7c91ceda7bcb6240173d0e42118f309d121cca813e5755767b7ee1ea2",
+      "phase_1f_a9_path": "security/evidence/phase-1f-a9/versioned-runtime-integration-contract-review.json",
+      "phase_1f_a9_verdict": "READY_FOR_PHASE_1F_A10_VERSIONED_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "PHASE_1F_A10_VERSIONED_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST_COMPLETE_NO_BINDING",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 812
+      },
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a10_versioned_runtime_adapter_binding_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1f-a10.versioned-runtime-adapter-binding-approval-request.v1"
+}
