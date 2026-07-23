@@ -1,0 +1,73 @@
+{
+  "approval_command": "APPROVE_PHASE_1E_PROFILE_RUNTIME_LOCAL_PRECHECK_EXECUTION_CONTRACT:p1e-20260723-localprecheckexecutiona50:e344eaa6dd12963e094d993c7a9d47427aefd3b11f58052c5c65b0973cbb0fbb",
+  "approval_command_sha256": "7e69f298e39e513b01e876843641863a792b5852f1f639ec822fded1cfeaf32c",
+  "content_sha256": "e344eaa6dd12963e094d993c7a9d47427aefd3b11f58052c5c65b0973cbb0fbb",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "implement disabled-by-default profile runtime local-precheck execution contract and tests under tools/pankster_runtime_security only; execution remains disabled by default and must not edit Hermes core, gateway.py, web_server.py, app/lib, dependencies, subprocess, sandbox, provider/model APIs, real credentials, auth files, Keychain, OAuth refresh, start profiles, canary, deployment, or runtime process launch",
+    "approval_id": "p1e-20260723-localprecheckexecutiona50",
+    "approval_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_profile_runtime_local_precheck_execution_contract_allowed": true,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_activation_allowed": false,
+      "profile_runtime_activation_execution_allowed": false,
+      "profile_runtime_invocation_allowed": false,
+      "profile_runtime_local_precheck_allowed": false,
+      "profile_runtime_local_precheck_execution_allowed": false,
+      "profile_runtime_synthetic_dry_run_allowed": false,
+      "profile_runtime_synthetic_invocation_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "blocked_actions": [
+      "attempt_to_run_profile_runtime_local_precheck",
+      "attempt_to_run_profile_runtime_local_precheck_execution",
+      "attempt_to_start_profile_runtime",
+      "attempt_to_launch_runtime_subprocess_sandbox_profile_or_canary",
+      "attempt_to_call_provider_model_api",
+      "attempt_to_read_or_materialize_real_credentials",
+      "attempt_to_read_auth_files_keychain_or_process_secret_environment",
+      "attempt_to_refresh_oauth_credentials",
+      "attempt_to_change_gateway_web_server_hermes_core_app_lib_dependencies_or_lockfiles",
+      "attempt_to_deploy_or_touch_production_profiles"
+    ],
+    "contract_state": "READY_FOR_OWNER_APPROVAL_NO_PROFILE_RUNTIME_LOCAL_PRECHECK_EXECUTION",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_LOCAL_PROFILE_RUNTIME_LOCAL_PRECHECK_EXECUTION_CONTRACT_ONLY",
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/profile_runtime_local_precheck_execution_contracts.py",
+      "tools/tests/test_pankster_runtime_security_profile_runtime_local_precheck_execution_contracts.py"
+    ],
+    "next_gate": "PHASE_1E_A51_PROFILE_RUNTIME_LOCAL_PRECHECK_EXECUTION_CONTRACT_AFTER_OWNER_APPROVAL",
+    "phase": "1E-A50",
+    "source_review": {
+      "phase_1e_a49_content_sha256": "a2736536c50a48c492886a309dda6ff19705d2ef1de320bbcdf369ac4cd53e0b",
+      "phase_1e_a49_file_sha256": "807eb76242f752f9526c2c2744b6c41ed1896d9e19355343e3b1e3c629954891",
+      "phase_1e_a49_path": "security/evidence/phase-1e-a49/profile-runtime-local-precheck-contract-review.json",
+      "phase_1e_a49_verdict": "READY_FOR_PROFILE_RUNTIME_LOCAL_PRECHECK_EXECUTION_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "PROFILE_RUNTIME_LOCAL_PRECHECK_EXECUTION_APPROVAL_REQUEST_READY_NO_EXECUTION"
+  },
+  "schema_version": "pankster.phase1e-a50.profile-runtime-local-precheck-execution-approval-request.v1"
+}

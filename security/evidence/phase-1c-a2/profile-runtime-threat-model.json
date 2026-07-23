@@ -1,0 +1,58 @@
+{
+  "schema_version": "pankster.phase1c-a2.profile-runtime-threat-model.v1",
+  "recorded_at": "2026-07-22T19:50:00Z",
+  "result": "THREAT_MODEL_COMPLETE_NO_RUNTIME_APPROVED",
+  "a1_input": {
+    "recommendation": "SHORTLIST_REMOTE_SANDBOXES_FOR_A2_THREAT_MODEL",
+    "shortlist": [
+      "modal_sandbox",
+      "e2b_sandbox"
+    ]
+  },
+  "protected_assets": {
+    "root_default_profile_credentials": true,
+    "non_profile_service_credentials": true,
+    "per_profile_model_auth": true,
+    "user_task_payloads_and_files": true,
+    "terminal_code_mcp_delegation_payloads": true,
+    "logs_journals_argv_evidence": true,
+    "gateway_process_state": true
+  },
+  "required_boundaries": {
+    "sandbox_receives_root_auth": false,
+    "sandbox_receives_non_profile_service_credentials": false,
+    "sandbox_receives_raw_host_environment": false,
+    "sandbox_receives_unrestricted_filesystem_mount": false,
+    "deny_by_default_network_before_worker_code": true,
+    "host_side_model_broker_preferred": true,
+    "in_sandbox_model_auth_requires_per_profile_minimal_token": true,
+    "host_side_capability_broker_required_for_external_services": true,
+    "sanitized_environment_inherited_by_children": true,
+    "fail_closed_before_user_code_on_policy_failure": true,
+    "sanitized_evidence_only": true
+  },
+  "adversary_goals_blocked_by_design": {
+    "prompt_exfiltrates_root_credentials": true,
+    "worker_reads_host_auth_files": true,
+    "tool_child_inherits_secret_environment": true,
+    "mcp_child_bypasses_profile_policy": true,
+    "retry_reclaim_reintroduces_unsanitized_environment": true,
+    "provider_default_internet_leaks_payload": true
+  },
+  "decision": "REMOTE_SANDBOX_REQUIRES_HOST_SIDE_CREDENTIAL_AND_MODEL_BROKERS",
+  "runtime_approved": false,
+  "implementation_ready": false,
+  "forbidden_in_a2": {
+    "provider_api_calls_performed": false,
+    "real_credentials_used": false,
+    "production_profiles_started": false,
+    "gateway_changed": false,
+    "canary_started": false,
+    "host_firewall_changed": false,
+    "auth_files_read": false,
+    "keychain_read": false,
+    "environment_values_dumped": false,
+    "hermes_runtime_changes_implemented": false
+  },
+  "next_gate": "PHASE_1C_A3_ISOLATION_PROOF_CONTRACT"
+}

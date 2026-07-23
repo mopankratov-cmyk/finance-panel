@@ -1,0 +1,74 @@
+{
+  "content_sha256": "d67533a02d14e2fd91c2145882b1fe42c94b265b695759d4a9d256661753aeb1",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "implement local host adapter integration contract and tests under tools/pankster_runtime_security only; integration remains disabled by default and must not touch Hermes core, gateway, app/lib, dependencies, subprocess, sandbox, provider/model APIs, real credentials, auth files, Keychain, OAuth refresh, profiles, canary, or deployment",
+    "approval_id": "p1e-20260723-hostadaptera17",
+    "approval_mode": "request_only_no_host_adapter_integration",
+    "created_at": "2026-07-23T00:55:00Z",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_LOCAL_HOST_ADAPTER_INTEGRATION_CONTRACT_ONLY",
+    "fail_closed_cases": [
+      "missing_exact_owner_approval",
+      "approval_hash_mismatch",
+      "a16_dependency_missing_or_hash_mismatch",
+      "attempt_to_edit_hermes_core_gateway_app_lib_or_dependencies",
+      "attempt_to_read_real_credentials_auth_json_or_keychain",
+      "attempt_to_read_unallowlisted_process_environment_secrets",
+      "attempt_to_launch_subprocess_sandbox_profile_or_canary",
+      "attempt_to_call_provider_model_api_or_network_client",
+      "attempt_to_enable_host_integration_by_default",
+      "secret_scan_failed",
+      "unit_tests_failed"
+    ],
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/host_adapter_integration_contracts.py",
+      "tools/tests/test_pankster_runtime_security_host_adapter_integration_contracts.py"
+    ],
+    "future_integration_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_host_adapter_contract_allowed": true,
+      "gateway_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true
+    },
+    "integration_performed_by_this_gate": false,
+    "next_gate": "PHASE_1E_A18_HOST_ADAPTER_INTEGRATION_CONTRACT_AFTER_OWNER_APPROVAL",
+    "phase": "1E-A17",
+    "required_future_integration_evidence": {
+      "a16_evidence_hash_verified": true,
+      "full_tools_tests_pass": true,
+      "host_integration_disabled_by_default": true,
+      "modified_files_within_a17_allowlist": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_runtime_processes_started": true,
+      "sanitized_evidence_only": true,
+      "secret_scan_pass_before_commit": true,
+      "targeted_host_adapter_contract_tests_pass": true
+    },
+    "source_evidence": {
+      "phase_1e_a16_content_sha256": "b828543b31fa892db67fc302eb7d5c3bb6ea7d8f14dbd326d65663540f876d1b",
+      "phase_1e_a16_file_sha256": "0bc08b6682b5c4e2446e5fb9827e2afc33a15f4c54e62232891f1647f6eafdef",
+      "phase_1e_a16_path": "security/evidence/phase-1e-a16/runtime-adapter-binding-contract-review.json",
+      "phase_1e_a16_verdict": "READY_FOR_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_READY_NO_INTEGRATION"
+  },
+  "contract_state": "READY_FOR_OWNER_APPROVAL_NO_HOST_ADAPTER_INTEGRATION",
+  "schema_version": "pankster.phase1e-a17.host-adapter-integration-approval-request.v1"
+}

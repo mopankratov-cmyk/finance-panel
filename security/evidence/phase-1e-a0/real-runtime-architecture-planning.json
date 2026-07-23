@@ -1,0 +1,94 @@
+{
+  "content_sha256": "884ad39df8a0de0fe51ebd1deabf2bfb5c8a38ab9ff16d62553f7d16ede0a143",
+  "decision_content": {
+    "architecture_components": [
+      "host-side policy engine",
+      "host-side credential broker",
+      "host-side grant registry",
+      "host-side model broker",
+      "runtime adapter boundary",
+      "sandbox/process launch controller",
+      "audit sink",
+      "rollback controller",
+      "secret scanner",
+      "profile policy store"
+    ],
+    "created_at": "2026-07-23T05:25:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1E_REAL_RUNTIME_ARCHITECTURE_SCOPE_DEFINED_FOR_THREAT_MODEL_NOT_CODE_OR_EXECUTION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "forbidden_in_phase_1e_a0": [
+      "implementation code",
+      "sandbox or subprocess launch",
+      "provider/model API call",
+      "real credential read",
+      "auth.json or Keychain read",
+      "gateway/profile/canary start",
+      "dependency or lockfile change",
+      "credential migration",
+      "OAuth refresh",
+      "production deployment"
+    ],
+    "gateway_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A1_REAL_RUNTIME_THREAT_MODEL",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A0",
+    "planned_gate_sequence": [
+      "PHASE_1E_A1_REAL_RUNTIME_THREAT_MODEL",
+      "PHASE_1E_A2_CREDENTIAL_BROKER_DETAILED_SPEC",
+      "PHASE_1E_A3_MODEL_BROKER_DETAILED_SPEC",
+      "PHASE_1E_A4_RUNTIME_ADAPTER_LAUNCH_CONTROLLER_SPEC",
+      "PHASE_1E_A5_AUDIT_AND_ROLLBACK_SPEC",
+      "PHASE_1E_A6_IMPLEMENTATION_SCOPE_LOCK",
+      "PHASE_1E_A7_INDEPENDENT_SECURITY_REVIEW_BEFORE_CODE"
+    ],
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "architecture_scope_defined": true,
+      "implementation_ready": false,
+      "phase_1d_dependency_satisfied": true,
+      "production_ready": false,
+      "ready_for_threat_model": true,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "required_invariants": {
+      "audit_unavailable_fails_closed_before_grant_or_provider_call": true,
+      "missing_policy_fails_closed": true,
+      "no_proxy_preserved_in_sanitized_environment": true,
+      "oauth_refresh_owner_only_compare_and_swap_future_design": true,
+      "profile_worker_receives_no_provider_secret_values": true,
+      "root_auth_fallback_disabled_for_named_profiles": true,
+      "root_credential_pool_materialization_forbidden": true,
+      "terminal_mcp_delegation_children_receive_sanitized_environment": true
+    },
+    "rollback": "remove_phase_1e_a0_planning_artifacts_and_return_to_phase_1d_closeout_state",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a13_content_sha256": "df1a30a56cd6cdd07cff13bd34422367968a00afc552ea54bd3296beb70d5418",
+      "phase_1d_a13_file_sha256": "415a65e12669ea132eb122138e7a1a8372be6feacb34ec06d4491f3e0117024e",
+      "phase_1d_a13_path": "security/evidence/phase-1d-a13/phase-1d-closeout-package.json",
+      "phase_1d_a13_verdict": "PHASE_1D_SYNTHETIC_BASELINE_COMPLETE_NOT_PRODUCTION_READY"
+    },
+    "status": "REAL_RUNTIME_ARCHITECTURE_PLANNING_COMPLETE_NO_IMPLEMENTATION_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_1e_a0_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a0_real_runtime_architecture_planning_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "trust_boundaries": {
+      "audit_boundary": "audit records are secret-free and fail-closed if unavailable",
+      "broker_boundary": "all model/provider operations cross host-side policy and grant validation",
+      "host_owner_credential_boundary": "real credentials remain host-only and owner-scoped",
+      "profile_boundary": "named profiles remain disabled until explicit future approval",
+      "sandbox_boundary": "sandbox receives only sanitized env and non-secret grant references"
+    }
+  },
+  "schema_version": "pankster.phase1e-a0.real-runtime-architecture-planning.v1"
+}

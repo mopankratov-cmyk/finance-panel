@@ -1,0 +1,96 @@
+{
+  "content_sha256": "0362ebaa610596dbd9e01db0f4cf20270c08a3543434b907e3d60496fd5cd453",
+  "decision_content": {
+    "approval": {
+      "approval_command_sha256": "61daffefbea0b290e9c6cf693786fc8b295649086ea009b13414747ec84a4d79",
+      "approval_content_sha256": "3a8b46a0703110942ce1733961c945746abb8ada04c1bde206f8a070c5182932",
+      "approval_verified": true
+    },
+    "created_at": "2026-07-23T04:20:00Z",
+    "decision": "APPROVED_LOCAL_SYNTHETIC_PREFLIGHT_EXECUTED_WITHOUT_RUNTIME_SIDE_EFFECTS",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "execution_manifest": {
+      "content_sha256": "868e77cd88444906f014b36d258066999fb1f1f1e135149e7fcb4d1583b84c2e",
+      "file_sha256": "9fbd66435832ffbd3d054d69f06505bbcef381ae7f7778629be716270baac5f0",
+      "mode": "execute-preflight",
+      "path": "security/evidence/phase-1d-a10/synthetic-runner-preflight-execution.json",
+      "result": "PASS",
+      "schema_version": "pankster.phase1d-a10.synthetic-runner-preflight-execution.v1"
+    },
+    "execution_scope": {
+      "auth_files_read": false,
+      "canary_started": false,
+      "dependency_changes_performed": false,
+      "gateway_changed": false,
+      "keychain_read": false,
+      "local_dry_run_only": true,
+      "model_api_calls_performed": false,
+      "oauth_refresh_performed": false,
+      "profile_started": false,
+      "provider_api_calls_performed": false,
+      "provider_credential_value_printed": false,
+      "real_credentials_used": false,
+      "sandbox_created": false,
+      "sanitized": true,
+      "subprocess_launch_performed": false,
+      "synthetic_only": true
+    },
+    "gateway_changes_approved": false,
+    "implemented_files": {
+      "tools/phase_1d_a10_synthetic_runner_preflight_executor.py": "81b627aee44778859d01eae1f0ad25de5e6b8ac41f0c7b12a2f2f3341f4039f9",
+      "tools/tests/test_phase_1d_a10_synthetic_runner_preflight_executor.py": "04ebc121ff3be1df40ed6ab2171d66c9353318c75553e44ebb8ed8a310060569"
+    },
+    "next_gate": "1D-A11_SYNTHETIC_PREFLIGHT_EXECUTION_REVIEW",
+    "phase": "1D-A10",
+    "production_profiles_approved": false,
+    "proofs_verified": {
+      "a9_evidence_verified": true,
+      "approval_command_verified": true,
+      "broker_channel_stub_denied": true,
+      "default_runtime_adapter_denied": true,
+      "direct_sanitizer_denied_sensitive_keys": true,
+      "enabled_runtime_adapter_denied_sensitive_keys": true,
+      "enabled_runtime_adapter_preserved_no_proxy": true,
+      "enabled_runtime_adapter_sanitized_environment": true,
+      "fake_grant_issued_without_secret": true,
+      "fake_model_broker_completed_synthetic_response": true,
+      "fake_model_broker_replay_denied": true,
+      "no_broker_channel_started": true,
+      "no_sandbox_started": true,
+      "synthetic_policy_validated": true,
+      "unbound_grant_denied_before_broker_stub": true
+    },
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a9_dependency_satisfied": true,
+      "approved_synthetic_dry_run_executed": true,
+      "manifest_sanitized": true,
+      "production_ready": false,
+      "runtime_side_effects_observed": false
+    },
+    "required_changes": [],
+    "rollback": "remove_a10_executor_and_execution_evidence_to_return_to_a9_approval_request_state",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a9_content_sha256": "ddaa61a507ffec2412fbe6cd1dc5bff5e326fd0f4a6b39664964b23f032d366d",
+      "phase_1d_a9_file_sha256": "d0c76b2b174a8aa717496345f4038f90178803c4a61155c882fafd638a2921a4",
+      "phase_1d_a9_path": "security/evidence/phase-1d-a9/synthetic-runner-execution-approval-request.json",
+      "phase_1d_a9_status": "SYNTHETIC_RUNNER_EXECUTION_APPROVAL_REQUEST_COMPLETE_NO_EXECUTION"
+    },
+    "status": "SYNTHETIC_RUNNER_PREFLIGHT_EXECUTION_COMPLETE_SYNTHETIC_DRY_RUN_ONLY",
+    "test_results": {
+      "targeted_a10_executor_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1d_a10_synthetic_runner_preflight_executor",
+        "result": "PASS",
+        "tests": 6
+      },
+      "targeted_a10_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1d_a10_synthetic_runner_preflight_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1d-a10.synthetic-runner-preflight-evidence.v1"
+}

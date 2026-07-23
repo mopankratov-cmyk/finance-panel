@@ -1,0 +1,22 @@
+{
+  "approval_command_sha256": "898e885f11486daf94ead0382967d2f3515c507c2e750e061a815664ba153827",
+  "approval_id": "p1c-20260722-e2bsdklocka5",
+  "blocked_reason_from_a4": "E2B_SDK_NOT_AVAILABLE",
+  "contract_content_sha256": "46c9ab5e52e015ddda80c7bfdcdac316cc1ca80140846b38e728a221e2972382",
+  "contract_path": "docs/program/PHASE_1C_A5_E2B_SDK_WHEELHOUSE_LOCK_CONTRACT.ready.json",
+  "dependency_download_approved": false,
+  "dependency_import_allowed": false,
+  "dependency_install_allowed": false,
+  "evidence_state": "PREPARED_FOR_OWNER_REVIEW",
+  "mode": "approval-prep",
+  "next_gate": "PHASE_1C_A5_OWNER_APPROVAL_REQUIRED",
+  "owner_approval_command": "APPROVE_PHASE_1C_E2B_SDK_WHEELHOUSE_LOCK:p1c-20260722-e2bsdklocka5:46c9ab5e52e015ddda80c7bfdcdac316cc1ca80140846b38e728a221e2972382",
+  "package": "e2b==2.34.0",
+  "primary_wheel_sha256": "873323571d18bf633be45e59fc6271410b30dfbc81e8df85e711f4f184c03fea",
+  "provider_api_calls_allowed": false,
+  "provider_api_calls_performed": false,
+  "result": "PASS",
+  "sandbox_creation_allowed": false,
+  "sandbox_created": false,
+  "sanitized": true
+}

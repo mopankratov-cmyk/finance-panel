@@ -1,0 +1,70 @@
+{
+  "content_sha256": "5b5daecd9c659a0f9292d8b0af828b017cfc3a266ee28487c2d03430c2b8efe8",
+  "contract_content": {
+    "allowed_action": "prepare future synthetic runner preflight approval terms only; do not execute runner, sandbox, gateway, profiles, canary, provider, or model calls",
+    "approval_id": "p1d-20260723-syntheticpreflighta7",
+    "contract_mode": "preflight_contract_only",
+    "created_at": "2026-07-23T03:20:00Z",
+    "decision": "SYNTHETIC_PREFLIGHT_CONTRACT_READY_FOR_SECURITY_REVIEW_NOT_RUNTIME",
+    "execution_approval_issued": false,
+    "fail_closed_cases": [
+      "a6_dependency_missing_or_hash_mismatch",
+      "contract_content_hash_mismatch",
+      "execution_requested_in_a7",
+      "sandbox_creation_requested_in_a7",
+      "provider_api_call_requested_in_a7",
+      "real_credentials_requested_in_a7",
+      "gateway_or_profile_start_requested_in_a7",
+      "secret_scan_failed"
+    ],
+    "future_execution_gate_requirements": [
+      "exact_owner_approval_string_must_include_contract_content_sha256",
+      "must_run_after_1d_a8_implementation_security_review",
+      "must_remain_synthetic_only",
+      "must_not_use_real_credentials_or_provider_api_calls",
+      "must_not_start_gateway_profiles_canary_or_default_runtime",
+      "must_emit_sanitized_evidence_only"
+    ],
+    "future_execution_requires_new_owner_approval": true,
+    "next_gate": "1D-A8_IMPLEMENTATION_SECURITY_REVIEW",
+    "phase": "1D-A7",
+    "preflight_scope": {
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "default_gateway_changes_allowed": false,
+      "dependency_changes_allowed": false,
+      "gateway_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "synthetic_only": true
+    },
+    "required_preflight_checks": {
+      "a6_validator_passes": true,
+      "environment_sanitizer_denies_sensitive_keys": true,
+      "environment_sanitizer_preserves_no_proxy": true,
+      "evidence_secret_scan_required": true,
+      "fake_grant_registry_secret_free": true,
+      "fake_model_broker_secret_free": true,
+      "no_runtime_processes_started": true,
+      "runtime_adapter_defaults_disabled": true,
+      "runtime_adapter_stub_denies_broker_forward": true,
+      "runtime_adapter_stub_denies_launch": true
+    },
+    "source_evidence": {
+      "phase_1d_a6_content_sha256": "c4a6e7ed09e7964bac9c057a86dc0a2d6a413ff971deeab3609bf905edcda1c0",
+      "phase_1d_a6_file_sha256": "06ea35078937d094ed10072a52a8940d45df89c0047c428741a846ca7174a1e3",
+      "phase_1d_a6_path": "security/evidence/phase-1d-a6/runtime-adapter-interface-stubs.json",
+      "phase_1d_a6_status": "RUNTIME_ADAPTER_INTERFACE_STUBS_IMPLEMENTED_SYNTHETIC_ONLY"
+    },
+    "status": "SYNTHETIC_RUNNER_PREFLIGHT_CONTRACT_READY_NO_EXECUTION_APPROVAL"
+  },
+  "contract_state": "READY_FOR_SECURITY_REVIEW_NO_EXECUTION_APPROVAL",
+  "schema_version": "pankster.phase1d-a7.synthetic-runner-preflight-contract.v1"
+}

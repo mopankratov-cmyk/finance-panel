@@ -1,0 +1,84 @@
+{
+  "content_sha256": "672d87fd9546879dcff960d7b6cc8f074ac35b5da20d314c96cc394545750bfb",
+  "decision_content": {
+    "approved_capabilities": {
+      "offline_sdk_install_from_locked_wheelhouse": true,
+      "remote_synthetic_sandbox_execution_with_e2b": true,
+      "synthetic_deny_all_network_proof": true
+    },
+    "basis": {
+      "a7_evidence_path": "security/evidence/phase-1c-a7/e2b-synthetic-proof-with-sdk-execution.json",
+      "a7_evidence_sha256": "affbe7a3fa065330b720736ba803fb781b7257b2d2ca305703278f0dec15ad89",
+      "a7_execution_result": "PASS",
+      "allow_internet_access_false_proved": true,
+      "application_level_outbound_denial_observed": true,
+      "code_execution_child_environment_sanitized": true,
+      "mcp_delegation_fail_closed_or_sanitized": true,
+      "provider_credential_value_printed": false,
+      "root_auth_unreadable_from_sandbox": true,
+      "sandbox_created": true,
+      "sandbox_destroyed": true,
+      "sandbox_environment_allowlisted": true,
+      "terminal_child_environment_sanitized": true
+    },
+    "created_at": "2026-07-22T22:45:00Z",
+    "decision": "SYNTHETIC_E2B_ISOLATION_PROOF_PASSED_PRODUCTION_NOT_APPROVED",
+    "final_status": "READY_FOR_ARCHITECTURE_DESIGN_NEXT_NOT_PRODUCTION_DEPLOYMENT",
+    "minimum_next_design_points": [
+      "host_side_model_broker_with_per_profile_policy",
+      "profile_specific_credential_broker_without_root_fallback",
+      "runtime_adapter_that_invokes_e2b_with_allowlisted_env",
+      "terminal_code_execution_mcp_delegation_child_env_sanitization",
+      "fail_closed_policy_for_missing_invalid_network_policy_or_credentials",
+      "sandbox_destroy_reclaim_retry_idempotency",
+      "cost_caps_timeouts_and_provider_error_budget",
+      "sanitized_evidence_pack_with_no_secret_values"
+    ],
+    "not_approved_capabilities": {
+      "background_terminal_runtime_children": true,
+      "canary_or_prod_rollout": true,
+      "default_gateway_change": true,
+      "delegate_task_runtime_children": true,
+      "gateway_runtime_change": true,
+      "mcp_external_server_execution": true,
+      "oauth_refresh_or_credential_write": true,
+      "production_profile_execution": true,
+      "real_model_credentials_in_sandbox": true,
+      "root_auth_json_fallback": true,
+      "root_credential_pool_materialization": true
+    },
+    "phase": "1C-A8",
+    "production_blockers": [
+      "host_side_model_broker_not_implemented",
+      "profile_credential_broker_not_implemented",
+      "hermes_runtime_adapter_not_implemented",
+      "production_profile_policy_mapping_not_implemented",
+      "cost_rate_timeout_controls_not_implemented",
+      "operator_runbook_and_rollback_not_implemented",
+      "evidence_retention_and_secret_redaction_gate_not_integrated",
+      "reclaim_retry_restart_semantics_not_integrated"
+    ],
+    "read_only_runtime_confirmation": {
+      "canary_started": false,
+      "gateway_restarted": false,
+      "hermes_core_modified": false,
+      "production_credentials_used": false,
+      "profiles_started": false
+    },
+    "required_next_gates": [
+      "A9_HOST_SIDE_MODEL_AND_CREDENTIAL_BROKER_SPEC",
+      "A10_RUNTIME_ADAPTER_DESIGN_REVIEW",
+      "A11_PRODUCTION_PROFILE_POLICY_CONTRACT",
+      "A12_INTEGRATION_TEST_PLAN_WITH_SYNTHETIC_ONLY_FIXTURES",
+      "A13_ROLLBACK_AND_OPERATOR_RUNBOOK",
+      "A14_FINAL_IMPLEMENTATION_READINESS_REVIEW"
+    ],
+    "rollback": {
+      "a5_wheelhouse_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0",
+      "a6_venv_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-venvs/2.34.0",
+      "production_runtime_unchanged": true,
+      "repo_changes_reversible_by_reverting_phase_1c_branch_commits": true
+    }
+  },
+  "schema_version": "pankster.phase1c-a8.production-readiness-static-closeout.v1"
+}

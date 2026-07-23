@@ -1,0 +1,126 @@
+{
+  "content_sha256": "2c9629a6389d94098fcb8e8938af4a377277ef3cd34f795f5fbbe6f5d882839b",
+  "decision_content": {
+    "attacker_models": [
+      "malicious or compromised profile worker",
+      "prompt-injected tool call attempting credential access",
+      "compromised MCP/delegation/terminal child",
+      "replay attacker with stale grant reference",
+      "operator error enabling named profile too early",
+      "network egress bypass from sandbox or process"
+    ],
+    "created_at": "2026-07-23T05:45:00Z",
+    "credential_migration_approved": false,
+    "decision": "REAL_RUNTIME_THREAT_MODEL_READY_FOR_CREDENTIAL_BROKER_SPEC_NOT_CODE_OR_EXECUTION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A2_CREDENTIAL_BROKER_DETAILED_SPEC",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A1",
+    "production_profiles_approved": false,
+    "protected_assets": [
+      "owner-scoped provider credentials",
+      "root auth store and credential pools",
+      "profile policy store",
+      "grant registry state",
+      "broker audit log",
+      "runtime identity",
+      "sanitized environment contract",
+      "NO_PROXY/no_proxy behavior",
+      "Evidence Packs and logs"
+    ],
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a0_dependency_satisfied": true,
+      "implementation_ready": false,
+      "production_ready": false,
+      "ready_for_credential_broker_spec": true,
+      "runtime_execution_ready": false,
+      "threat_model_complete": true
+    },
+    "required_changes": [],
+    "required_tests_before_code": [
+      "credential exfiltration path tests for env argv logs journal evidence",
+      "terminal MCP delegation code_execution background env sanitizer tests",
+      "root auth fallback disabled tests",
+      "root credential pool materialization forbidden tests",
+      "OAuth refresh owner-only CAS tests",
+      "grant replay/cross-attempt denial tests",
+      "broker unavailable/audit unavailable fail-closed tests",
+      "retry reclaim restart lifecycle preservation tests"
+    ],
+    "rollback": "remove_phase_1e_a1_threat_model_artifacts_and_return_to_phase_1e_a0_planning_state",
+    "sandbox_execution_approved": false,
+    "security_requirements": {
+      "audit_required_before_grant_or_provider_call": true,
+      "argv_logs_journal_evidence_secret_free": true,
+      "child_process_env_sanitized": true,
+      "fail_closed_default": true,
+      "grant_references_non_bearer_secret": true,
+      "provider_call_requires_policy_and_grant_validation": true,
+      "real_credentials_host_only": true,
+      "rollback_must_disable_runtime_without_gateway_change": true,
+      "sandbox_receives_no_provider_secrets": true
+    },
+    "source_evidence": {
+      "phase_1e_a0_content_sha256": "884ad39df8a0de0fe51ebd1deabf2bfb5c8a38ab9ff16d62553f7d16ede0a143",
+      "phase_1e_a0_file_sha256": "0f6053cf7f754f2dc11f4eab9190da4e49cfca24440193dd0b78042a64a71bf6",
+      "phase_1e_a0_path": "security/evidence/phase-1e-a0/real-runtime-architecture-planning.json",
+      "phase_1e_a0_status": "REAL_RUNTIME_ARCHITECTURE_PLANNING_COMPLETE_NO_IMPLEMENTATION_APPROVAL"
+    },
+    "status": "REAL_RUNTIME_THREAT_MODEL_COMPLETE_NO_IMPLEMENTATION_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_1e_a1_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a1_real_runtime_threat_model_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "threats": [
+      {
+        "id": "T1",
+        "name": "credential_exfiltration_via_environment_or_child_process",
+        "required_mitigation": "mandatory denylist plus profile-specific allowlist for terminal MCP delegation code_execution background retry reclaim paths"
+      },
+      {
+        "id": "T2",
+        "name": "root_auth_fallback_or_pool_materialization",
+        "required_mitigation": "named profiles disable root auth fallback and forbid root credential pool materialization"
+      },
+      {
+        "id": "T3",
+        "name": "oauth_refresh_materializes_profile_or_root_credentials",
+        "required_mitigation": "owner-only host-side compare-and-swap refresh with no worker-visible secret output"
+      },
+      {
+        "id": "T4",
+        "name": "grant_replay_or_cross_attempt_use",
+        "required_mitigation": "grant binding to profile task attempt runtime identity policy version budget TTL and sequence"
+      },
+      {
+        "id": "T5",
+        "name": "broker_bypass_direct_provider_call",
+        "required_mitigation": "sandbox/process receives no provider secrets and network policy denies direct egress until separate approval"
+      },
+      {
+        "id": "T6",
+        "name": "audit_or_evidence_secret_leak",
+        "required_mitigation": "secret-free audit schema and scanner before evidence write"
+      },
+      {
+        "id": "T7",
+        "name": "retry_reclaim_restart_scope_expansion",
+        "required_mitigation": "preserve sanitized environment and attempt-bound grant semantics across lifecycle transitions"
+      },
+      {
+        "id": "T8",
+        "name": "policy_missing_or_ambiguous_allows_runtime",
+        "required_mitigation": "fail closed on missing stale malformed disabled or ambiguous policy"
+      }
+    ]
+  },
+  "schema_version": "pankster.phase1e-a1.real-runtime-threat-model.v1"
+}

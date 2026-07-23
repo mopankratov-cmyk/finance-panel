@@ -1,0 +1,77 @@
+{
+  "content_sha256": "dbf93a979138eec47f2c842c2b71be201ad124a31e6995a0fe486cd1f253f104",
+  "decision_content": {
+    "accepted_phase_1d_artifacts": [
+      "policy schema validator",
+      "environment sanitizer",
+      "fake grant registry",
+      "fake model broker",
+      "fail-closed runtime adapter stubs",
+      "synthetic preflight approval contract",
+      "approved local synthetic dry-run evidence",
+      "synthetic execution review"
+    ],
+    "blocked_until_phase_1e": [
+      "sandbox runtime integration",
+      "host-side real credential broker",
+      "real model broker provider calls",
+      "profile runtime enablement",
+      "gateway integration",
+      "OAuth refresh integration",
+      "production deployment"
+    ],
+    "created_at": "2026-07-23T04:50:00Z",
+    "decision": "CLOSE_PHASE_1D_AT_SYNTHETIC_BASELINE_REAL_RUNTIME_REQUIRES_PHASE_1E_ARCHITECTURE_GATE",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "next_gate": "1D-A13_PHASE_1D_CLOSEOUT_PACKAGE",
+    "phase": "1D-A12",
+    "phase_1e_entry_requirements": [
+      "authoritative architecture spec for real host-side credential broker",
+      "threat model update for real runtime integration",
+      "owner approval for any sandbox/process launch",
+      "owner approval for any dependency or provider SDK use",
+      "root auth fallback and credential materialization review before real credentials",
+      "rollback plan before gateway or profile integration",
+      "independent security review before production"
+    ],
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a11_dependency_satisfied": true,
+      "phase_1d_synthetic_baseline_complete": true,
+      "production_ready": false,
+      "runtime_integration_requires_new_phase": true
+    },
+    "required_changes": [],
+    "rollback": "remove_a12_scope_decision_artifacts_and_return_to_a11_synthetic_preflight_review_state",
+    "sandbox_execution_approved": false,
+    "scope_decision": {
+      "gateway_or_hermes_core_changes_in_phase_1d": false,
+      "named_profile_enablement_in_phase_1d": false,
+      "new_owner_approval_required": true,
+      "new_phase_required_for_runtime_integration": true,
+      "phase_1d_deliverable": "synthetic_runtime_security_baseline_only",
+      "production_deployment_in_phase_1d": false,
+      "real_credential_broker_in_phase_1d": false,
+      "real_model_broker_provider_calls_in_phase_1d": false,
+      "real_runtime_integration_in_phase_1d": false
+    },
+    "source_evidence": {
+      "phase_1d_a11_content_sha256": "df6e642748e5e09e8835ade9b805e2de6709a82137be1616cbce4e9653f09186",
+      "phase_1d_a11_file_sha256": "1abc4f8c84c0ceb84c464202307a6137737937f62962f3a00bfdece4c9b1523c",
+      "phase_1d_a11_path": "security/evidence/phase-1d-a11/synthetic-preflight-execution-review.json",
+      "phase_1d_a11_verdict": "PASS_SYNTHETIC_DRY_RUN_REVIEW_NOT_PRODUCTION_READY"
+    },
+    "status": "RUNTIME_INTEGRATION_SCOPE_DECISION_COMPLETE",
+    "test_results": {
+      "targeted_a12_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1d_a12_runtime_integration_scope_decision_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1d-a12.runtime-integration-scope-decision.v1"
+}

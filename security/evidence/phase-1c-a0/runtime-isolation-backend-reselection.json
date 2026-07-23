@@ -1,0 +1,52 @@
+{
+  "schema_version": "pankster.phase1c-a0.runtime-isolation-backend-reselection.v1",
+  "recorded_at": "2026-07-22T19:20:00Z",
+  "result": "START_NEW_ARCHITECTURE_PATH_NOT_IMPLEMENTATION_READY",
+  "phase_1b_inputs": {
+    "lima_vz_standalone_backend_rejected": true,
+    "c5_egress_observed": true,
+    "c9_r6_firewall_execution_blocked": true,
+    "c16_reclaim_only_closeout_complete": true,
+    "synthetic_vms_reclaimed": true
+  },
+  "hard_requirements": {
+    "native_or_directly_enforceable_deny_by_default_egress_required": true,
+    "per_profile_network_allowlist_required": true,
+    "packet_capture_visibility_not_sufficient": true,
+    "macos_pf_pre_nat_visibility_not_assumed": true,
+    "per_profile_filesystem_boundary_required": true,
+    "separate_profile_auth_store_required": true,
+    "root_auth_fallback_for_non_default_profiles_allowed": false,
+    "root_credential_pool_materialization_allowed": false,
+    "sanitized_subprocess_environment_required": true,
+    "fail_closed_required": true,
+    "default_profile_compatibility_required": true,
+    "secret_free_evidence_required": true
+  },
+  "candidate_classes": {
+    "remote_sandbox_with_provider_side_network_policy": "RESEARCH_REQUIRED",
+    "local_vm_with_explicit_virtual_network_policy": "RESEARCH_REQUIRED",
+    "local_os_sandbox_plus_network_extension_or_firewall_api": "ARCHITECTURE_CHANGE_REQUIRED",
+    "macos_container_runtime_with_opaque_nat": "REJECT_UNLESS_NATIVE_POLICY_PROVEN",
+    "lima_vz_standalone_backend": "REJECTED_FOR_PROFILE_RUNTIME"
+  },
+  "forbidden_in_a0": {
+    "production_profiles_started": false,
+    "real_credentials_used": false,
+    "gateway_changed": false,
+    "canary_started": false,
+    "pfctl_executed": false,
+    "host_firewall_changed": false,
+    "phase_1b_synthetic_vms_revived": false,
+    "auth_files_read": false,
+    "keychain_read": false,
+    "environment_values_dumped": false,
+    "worker_runtime_changes_implemented": false
+  },
+  "next_gates": [
+    "PHASE_1C_A1_BACKEND_CAPABILITY_MATRIX",
+    "PHASE_1C_A2_PROFILE_RUNTIME_THREAT_MODEL",
+    "PHASE_1C_A3_ISOLATION_PROOF_CONTRACT",
+    "PHASE_1C_A4_OWNER_APPROVAL_PACKET"
+  ]
+}

@@ -1,0 +1,134 @@
+{
+  "content_sha256": "bfdcab7a00170ee6b84d88906e1e7257f678dfe821e62aca75ad520f502477c4",
+  "decision_content": {
+    "created_at": "2026-07-22T21:09:14Z",
+    "credential_migration_approved": false,
+    "decision": "REAL_RUNTIME_SPEC_CHAIN_A0_A6_REVIEWED_FOR_SECURITY_SCOPE_READY_FOR_APPROVAL_REQUEST_NOT_IMPLEMENTATION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "implementation_code_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A8_IMPLEMENTATION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A7",
+    "pre_code_required_controls": [
+      "implement only files in the 1E-A6 future code allowlist unless a new approval expands scope",
+      "start with pure contract modules and unit tests before runtime integration",
+      "add secret-scan coverage before any audit/evidence writer can persist data",
+      "keep credential broker outputs as opaque references or per-attempt grants, never raw root credential pools",
+      "keep model access mediated by profile-scoped allowlists and budget policy",
+      "preserve PATH, HOME, TMPDIR, LANG, SHELL, NO_PROXY, no_proxy, and required HERMES_KANBAN_* keys only through explicit sanitized environment construction",
+      "fail closed on missing policy, missing audit writer, denied credential reference, missing backend, or rollback state",
+      "require a separate exact owner approval before provider SDK use, real network call, sandbox launch, subprocess launch, OAuth refresh, or production profile execution"
+    ],
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "production integration code is not implemented yet",
+      "real credential broker behavior is still specified but not proven against live credentials",
+      "provider SDK and network behavior remain unapproved and untested in production mode",
+      "runtime adapter launch and destruction behavior remain unimplemented for production",
+      "OAuth refresh must be separately reviewed to prevent root credential materialization",
+      "rollback effectiveness remains contract-level until implementation tests exist"
+    ],
+    "reviewed_head": "70a006586d20d9958cc6f9051477517cc792ef38",
+    "reviewed_range": "596941fb264eae76bd9949c3052e53e53a9bc2b7..70a006586d20d9958cc6f9051477517cc792ef38",
+    "rollback": "remove_phase_1e_a7_review_artifacts_and_return_to_phase_1e_a6_scope_lock_state",
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "audit_contract_requires_secret_free_fail_closed_events": true,
+      "credential_broker_requires_references_not_secret_values": true,
+      "fail_closed_behavior_required": true,
+      "implementation_scope_lock_present": true,
+      "model_broker_requires_profile_allowlist_and_budget": true,
+      "no_app_components_lib_changes": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_network_clients_added": true,
+      "no_process_env_auth_json_or_keychain_reads_added": true,
+      "no_provider_or_model_api_calls_performed": true,
+      "no_sandbox_profile_or_canary_started": true,
+      "no_subprocess_launch_artifacts_added": true,
+      "oauth_refresh_materialization_not_approved": true,
+      "root_auth_fallback_not_approved": true,
+      "runtime_launch_requires_sanitized_environment_and_no_proxy_preservation": true,
+      "scope_limited_to_docs_evidence_tools_and_tests": true,
+      "source_evidence_integrity_passed": true,
+      "validated_gate_chain_passed": true
+    },
+    "source_evidence": {
+      "phase_1e_a6_content_sha256": "818a7334cf6694e04d0823206d159cd7e34117cab95f1dd9fc910bf39c421ad1",
+      "phase_1e_a6_file_sha256": "c92f9915f57169302c3dd35909bae5de6f9daa051fec3a529924bf5a44d74f3a",
+      "phase_1e_a6_path": "security/evidence/phase-1e-a6/implementation-scope-lock.json",
+      "phase_1e_a6_status": "IMPLEMENTATION_SCOPE_LOCK_COMPLETE_NO_CODE_APPROVAL"
+    },
+    "status": "INDEPENDENT_SECURITY_REVIEW_BEFORE_CODE_COMPLETE_NO_IMPLEMENTATION_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 459
+      },
+      "phase_1e_validator_chain": {
+        "command": "python3 tools/phase_1e_a0_real_runtime_architecture_planning_validator.py --mode validate-evidence && python3 tools/phase_1e_a1_real_runtime_threat_model_validator.py --mode validate-evidence && python3 tools/phase_1e_a2_credential_broker_detailed_spec_validator.py --mode validate-evidence && python3 tools/phase_1e_a3_model_broker_detailed_spec_validator.py --mode validate-evidence && python3 tools/phase_1e_a4_runtime_adapter_launch_controller_spec_validator.py --mode validate-evidence && python3 tools/phase_1e_a5_audit_and_rollback_spec_validator.py --mode validate-evidence && python3 tools/phase_1e_a6_implementation_scope_lock_validator.py --mode validate-evidence",
+        "result": "PASS",
+        "validators": 7
+      },
+      "targeted_1e_a7_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a7_independent_security_review_before_code_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "validated_gate_chain": [
+      {
+        "content_sha256": "884ad39df8a0de0fe51ebd1deabf2bfb5c8a38ab9ff16d62553f7d16ede0a143",
+        "gate": "1E-A0",
+        "result": "PASS",
+        "validator": "tools/phase_1e_a0_real_runtime_architecture_planning_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "2c9629a6389d94098fcb8e8938af4a377277ef3cd34f795f5fbbe6f5d882839b",
+        "gate": "1E-A1",
+        "result": "PASS",
+        "validator": "tools/phase_1e_a1_real_runtime_threat_model_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "f750f0ead6313a0c89ed7edd0c908c7c43b3c11324ec5c013171e919874159df",
+        "gate": "1E-A2",
+        "result": "PASS",
+        "validator": "tools/phase_1e_a2_credential_broker_detailed_spec_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "0200b623f0e232f3261515127924c0ecc2868c7e90b22aec4dce30efb5dc7db5",
+        "gate": "1E-A3",
+        "result": "PASS",
+        "validator": "tools/phase_1e_a3_model_broker_detailed_spec_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "4946bd1cfb55e85e5e3afac7cbd8ccbb1f118430cdc5910e737418197c6385a7",
+        "gate": "1E-A4",
+        "result": "PASS",
+        "validator": "tools/phase_1e_a4_runtime_adapter_launch_controller_spec_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "9d24699742c36b8adb5daf8fe0b0f9b8a581eddb973279760c10a59ec085764d",
+        "gate": "1E-A5",
+        "result": "PASS",
+        "validator": "tools/phase_1e_a5_audit_and_rollback_spec_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "818a7334cf6694e04d0823206d159cd7e34117cab95f1dd9fc910bf39c421ad1",
+        "gate": "1E-A6",
+        "result": "PASS",
+        "validator": "tools/phase_1e_a6_implementation_scope_lock_validator.py --mode validate-evidence"
+      }
+    ],
+    "verdict": "READY_FOR_IMPLEMENTATION_APPROVAL_REQUEST_NOT_CODE"
+  },
+  "schema_version": "pankster.phase1e-a7.independent-security-review-before-code.v1"
+}

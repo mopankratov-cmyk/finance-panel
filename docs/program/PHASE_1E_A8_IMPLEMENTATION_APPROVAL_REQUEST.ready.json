@@ -1,0 +1,82 @@
+{
+  "content_sha256": "75760670f82163aae3a7dbc9d977865e629cf37b1c3912dc03a053a955738ab5",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "implement pure local contract modules and unit tests in the Phase 1E-A6 allowlist only; no runtime integration, subprocess launch, sandbox launch, provider/model API calls, real credentials, auth files, Keychain, gateway, profiles, canary, dependency changes, OAuth refresh, or production deployment",
+    "approval_id": "p1e-20260722-purecontracta8",
+    "approval_mode": "request_only_no_implementation",
+    "created_at": "2026-07-22T21:20:00Z",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_PURE_CONTRACT_IMPLEMENTATION_ONLY",
+    "fail_closed_cases": [
+      "missing_exact_owner_approval",
+      "approval_hash_mismatch",
+      "a7_dependency_missing_or_hash_mismatch",
+      "attempt_to_edit_forbidden_file_scope",
+      "attempt_to_read_real_credentials_auth_json_or_keychain",
+      "attempt_to_read_unallowlisted_process_environment_secrets",
+      "attempt_to_launch_subprocess_sandbox_gateway_profile_or_canary",
+      "attempt_to_call_provider_model_api_or_network_client",
+      "attempt_to_change_dependencies_or_lockfiles",
+      "secret_scan_failed",
+      "unit_tests_failed"
+    ],
+    "future_code_allowlist": [
+      "tools/pankster_runtime_security/credential_broker_contracts.py",
+      "tools/pankster_runtime_security/model_broker_contracts.py",
+      "tools/pankster_runtime_security/audit_contracts.py",
+      "tools/pankster_runtime_security/runtime_launch_contracts.py",
+      "tools/pankster_runtime_security/rollback_contracts.py",
+      "tools/pankster_runtime_security/secret_scan.py",
+      "tools/tests/test_pankster_runtime_security_credential_broker_contracts.py",
+      "tools/tests/test_pankster_runtime_security_model_broker_contracts.py",
+      "tools/tests/test_pankster_runtime_security_audit_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_launch_contracts.py",
+      "tools/tests/test_pankster_runtime_security_rollback_contracts.py",
+      "tools/tests/test_pankster_runtime_security_secret_scan.py"
+    ],
+    "future_implementation_scope": {
+      "allowlisted_tools_files_only": true,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "pure_contract_code_allowed": true,
+      "real_credentials_allowed": false,
+      "runtime_integration_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true
+    },
+    "implementation_performed_by_this_gate": false,
+    "next_gate": "PHASE_1E_A9_PURE_CONTRACT_IMPLEMENTATION_AFTER_OWNER_APPROVAL",
+    "phase": "1E-A8",
+    "required_future_implementation_evidence": {
+      "a6_scope_lock_hash_verified": true,
+      "a7_evidence_hash_verified": true,
+      "full_tools_tests_pass": true,
+      "modified_files_within_a6_allowlist": true,
+      "no_runtime_processes_started": true,
+      "sanitized_evidence_only": true,
+      "secret_scan_pass_before_commit": true,
+      "targeted_contract_tests_pass": true
+    },
+    "source_evidence": {
+      "phase_1e_a7_content_sha256": "bfdcab7a00170ee6b84d88906e1e7257f678dfe821e62aca75ad520f502477c4",
+      "phase_1e_a7_file_sha256": "2646786520c866f32dfb5167164e6fa58731e3ec3747aeac994e6d7cff2bdd94",
+      "phase_1e_a7_path": "security/evidence/phase-1e-a7/independent-security-review-before-code.json",
+      "phase_1e_a7_verdict": "READY_FOR_IMPLEMENTATION_APPROVAL_REQUEST_NOT_CODE"
+    },
+    "status": "PURE_CONTRACT_IMPLEMENTATION_APPROVAL_REQUEST_READY_NO_IMPLEMENTATION"
+  },
+  "contract_state": "READY_FOR_OWNER_APPROVAL_NO_IMPLEMENTATION",
+  "schema_version": "pankster.phase1e-a8.pure-contract-implementation-approval-request.v1"
+}

@@ -1,0 +1,23 @@
+{
+  "approval_command_sha256": "abc50729f3ed6c6c302d2ef2d78882474d2d3ca74d09ae9a0cf246a74a386f22",
+  "approval_id": "p1c-20260722-e2bproofa7",
+  "contract_content_sha256": "2537f7550e839bfdfc60ffa158de755185cb1e545e7311cb828439a207791d79",
+  "contract_path": "docs/program/PHASE_1C_A7_E2B_SYNTHETIC_PROOF_WITH_SDK_CONTRACT.ready.json",
+  "dependency_download_allowed": false,
+  "dependency_install_allowed": false,
+  "e2b_control_plane_credential_allowed_after_approval": true,
+  "evidence_state": "PREPARED_FOR_OWNER_REVIEW",
+  "gateway_changes_allowed": false,
+  "mode": "approval-prep",
+  "model_credentials_allowed": false,
+  "next_gate": "PHASE_1C_A7_OWNER_APPROVAL_REQUIRED",
+  "owner_approval_command": "APPROVE_PHASE_1C_E2B_SYNTHETIC_PROOF_WITH_SDK:p1c-20260722-e2bproofa7:2537f7550e839bfdfc60ffa158de755185cb1e545e7311cb828439a207791d79",
+  "production_profiles_allowed": false,
+  "provider_api_calls_approved": false,
+  "provider_credential_value_printed": false,
+  "result": "PASS",
+  "sandbox_creation_approved": false,
+  "sandbox_created": false,
+  "sanitized": true,
+  "venv_python": "/Users/maksimpankratov/.local/pankster/e2b-sdk-venvs/2.34.0/bin/python"
+}

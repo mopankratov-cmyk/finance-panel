@@ -1,0 +1,167 @@
+{
+  "content_sha256": "ebc4f0879a72b106d610b48b252f661de8749053bbc6307c803ced9300f32afc",
+  "decision_content": {
+    "created_at": "2026-07-23T00:32:00Z",
+    "decision": "OPERATOR_RUNBOOK_READY_FOR_FINAL_IMPLEMENTATION_READINESS_REVIEW_NOT_DEPLOYMENT",
+    "deployment_approved": false,
+    "design_review_findings": {
+      "a12_dependency_satisfied": true,
+      "deployment_ready": false,
+      "operator_runbook_ready": true,
+      "production_runtime_ready": false,
+      "requires_a14_final_implementation_readiness_review": true,
+      "rollback_path_defined": true
+    },
+    "emergency_stop_conditions": [
+      "provider_secret_detected_in_env_argv_logs_or_evidence",
+      "root_auth_json_read_detected",
+      "root_credential_pool_materialization_detected",
+      "oauth_refresh_by_worker_or_adapter_detected",
+      "gateway_restart_attempt_detected",
+      "production_profile_launch_without_owner_approval",
+      "direct_provider_egress_from_sandbox_detected",
+      "broker_audit_unavailable",
+      "sandbox_destroy_failure",
+      "unknown_runtime_identity_on_reclaim"
+    ],
+    "evidence_pack_requirements": [
+      "commit_sha",
+      "branch_name",
+      "feature_flag_state",
+      "profile_state",
+      "policy_version",
+      "grant_ids_hashed_or_opaque_only",
+      "runtime_identity_hash",
+      "network_policy_id",
+      "sanitized_env_key_list_only",
+      "denylist_check_result",
+      "secret_scan_result",
+      "rollback_verification_result"
+    ],
+    "fail_closed_cases": [
+      "preflight_state_uncertain",
+      "feature_flag_state_unknown",
+      "named_profile_state_unknown",
+      "evidence_sink_unavailable",
+      "secret_scan_unavailable_or_failed",
+      "rollback_verification_failed",
+      "gateway_state_changed_unexpectedly",
+      "default_profile_behavior_changed",
+      "unrevoked_grants_detected",
+      "sandbox_destroy_or_reclaim_uncertain"
+    ],
+    "feature_flags": {
+      "credential_broker_enabled_default": false,
+      "host_model_broker_enabled_default": false,
+      "named_profile_runtime_enabled_default": false,
+      "production_profiles_enabled_default": false,
+      "runtime_adapter_enabled_default": false,
+      "synthetic_runner_enabled_default": false
+    },
+    "future_enablement_sequence": [
+      "obtain_explicit_owner_approval_for_synthetic_execution",
+      "enable_synthetic_runner_only",
+      "run_synthetic_fixture_plan_in_isolated_home",
+      "collect_sanitized_evidence_pack",
+      "review_fail_closed_denials",
+      "disable_synthetic_runner",
+      "perform_independent_security_review",
+      "only_then_consider_implementation_gate"
+    ],
+    "gateway_changes_approved": false,
+    "implementation_approved": false,
+    "next_gate": "A14_FINAL_IMPLEMENTATION_READINESS_REVIEW",
+    "operator_commands_policy": {
+      "commands_in_a13_executable": false,
+      "commands_must_not_call_providers": true,
+      "commands_must_not_print_secrets": true,
+      "commands_must_not_read_auth_json": true,
+      "commands_must_not_read_keychain": true,
+      "commands_must_not_restart_gateway": true,
+      "commands_must_not_start_profiles": true,
+      "commands_must_use_explicit_paths": true
+    },
+    "operator_preflight_checks": [
+      "confirm_branch_and_commit",
+      "confirm_gateway_not_targeted",
+      "confirm_default_profile_unchanged",
+      "confirm_named_profiles_disabled",
+      "confirm_no_real_credentials_in_plan",
+      "confirm_no_provider_api_calls_approved",
+      "confirm_no_auth_json_or_keychain_access",
+      "confirm_no_pending_unreviewed_diff",
+      "confirm_evidence_directory_sanitized",
+      "confirm_secret_scan_passed"
+    ],
+    "phase": "1C-A13",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_tests": {
+      "integration_synthetic": [
+        "synthetic_rollback_disables_named_profile_runtime",
+        "synthetic_rollback_revokes_grants",
+        "synthetic_rollback_preserves_default_profile_state",
+        "synthetic_evidence_pack_contains_no_secret_values",
+        "synthetic_uncertain_state_fails_closed"
+      ],
+      "security": [
+        "operator_runbook_contains_no_secret_values",
+        "rollback_commands_do_not_include_auth_json_keychain_or_provider_calls",
+        "evidence_pack_secret_scan_required",
+        "manual_approval_required_before_execution_steps"
+      ],
+      "unit": [
+        "runbook_feature_flags_default_disabled",
+        "rollback_sequence_disables_all_runtime_flags",
+        "operator_commands_policy_forbids_secret_auth_keychain_gateway_profile_provider_actions",
+        "evidence_pack_requires_sanitized_env_key_list_only",
+        "emergency_stop_conditions_cover_secret_root_oauth_gateway_provider_destroy"
+      ]
+    },
+    "rollback": "use_runbook_rollback_sequence_and_keep_all_runtime_feature_flags_disabled",
+    "rollback_sequence": [
+      "stop_accepting_new_named_profile_launches",
+      "disable_named_profile_runtime_feature_flag",
+      "disable_runtime_adapter_feature_flag",
+      "disable_host_model_broker_feature_flag",
+      "disable_credential_broker_feature_flag",
+      "revoke_unexpired_grants",
+      "destroy_or_mark_sandboxes_reclaim_required",
+      "preserve_sanitized_evidence",
+      "verify_default_gateway_still_serving",
+      "verify_default_profile_behavior_unchanged",
+      "record_rollback_decision"
+    ],
+    "rollback_verification_checks": [
+      "named_profile_runtime_disabled",
+      "runtime_adapter_disabled",
+      "host_model_broker_disabled",
+      "credential_broker_disabled",
+      "no_unexpired_runtime_grants",
+      "no_running_production_sandboxes",
+      "gateway_not_restarted_by_runbook",
+      "default_profile_smoke_check_unchanged",
+      "evidence_secret_scan_passed"
+    ],
+    "runbook_principles": [
+      "feature_flags_default_disabled",
+      "named_profiles_remain_disabled_until_explicit_owner_approval",
+      "rollback_must_not_restart_gateway",
+      "rollback_must_preserve_default_profile_behavior",
+      "no_secret_values_in_operator_commands",
+      "fail_closed_on_uncertain_state",
+      "evidence_required_before_and_after_each_state_change",
+      "manual_approval_required_for_execution_steps"
+    ],
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "a12_content_sha256": "267dc67342d617abc79c7736e9b08e29b4fbd8c69a9e0615a9627be02dd167de",
+      "a12_plan_file_sha256": "d275ee7d47304545793debf12ce0b5820df1bf04705f15073518e83f872a33cf",
+      "a12_plan_path": "security/evidence/phase-1c-a12/synthetic-integration-test-plan.json",
+      "a12_status": "SYNTHETIC_INTEGRATION_TEST_PLAN_COMPLETE_NO_EXECUTION_APPROVAL"
+    },
+    "status": "ROLLBACK_AND_OPERATOR_RUNBOOK_COMPLETE_NO_DEPLOYMENT_APPROVAL",
+    "test_execution_approved": false
+  },
+  "schema_version": "pankster.phase1c-a13.rollback-operator-runbook.v1"
+}

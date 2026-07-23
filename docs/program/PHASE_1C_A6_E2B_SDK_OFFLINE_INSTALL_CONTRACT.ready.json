@@ -1,0 +1,76 @@
+{
+  "content_sha256": "e1f79f661e639380d66a7148d973ee6983cf21f3b9c7d467c4fe9592ca724000",
+  "contract_content": {
+    "allowed_action": "after exact owner approval, create an isolated user-local virtualenv and install e2b==2.34.0 from the locked A5 wheelhouse only; allow offline import verification only; do not call provider APIs or create sandboxes",
+    "approval_id": "p1c-20260722-e2bsdkinstalla6",
+    "backend": "e2b_sandbox",
+    "created_at": "2026-07-22T21:45:00Z",
+    "expires_at": "2026-07-23T21:45:00Z",
+    "forbidden_actions": {
+      "auth_file_reads": true,
+      "canary": true,
+      "environment_value_dump": true,
+      "gateway_changes": true,
+      "global_pip_install": true,
+      "host_firewall_changes": true,
+      "keychain_reads": true,
+      "production_profiles": true,
+      "provider_api_calls": true,
+      "pypi_or_network_dependency_resolution": true,
+      "real_credentials": true,
+      "sandbox_creation": true
+    },
+    "install_scope": {
+      "allowed_command_prefix": [
+        "python3",
+        "-m",
+        "venv"
+      ],
+      "dependency_import_allowed_for_offline_verification": true,
+      "global_site_packages_allowed": false,
+      "mode": "offline-wheelhouse-only",
+      "network_allowed": false,
+      "package_manager_state_mutation_allowed": false,
+      "pip_install_args_required": [
+        "--no-index",
+        "--find-links",
+        "/Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0",
+        "e2b==2.34.0"
+      ],
+      "pypi_allowed": false,
+      "system_python_mutation_allowed": false,
+      "venv_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-venvs/2.34.0",
+      "wheelhouse_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0"
+    },
+    "next_gate": "PHASE_1C_A7_RERUN_E2B_SYNTHETIC_PROOF_WITH_INSTALLED_SDK",
+    "package": "e2b==2.34.0",
+    "required_outputs": {
+      "installed_e2b_version_verified": true,
+      "offline_import_verification_passed": true,
+      "pip_install_used_locked_wheelhouse": true,
+      "pip_install_used_no_index": true,
+      "provider_api_calls_performed": false,
+      "provider_credential_presence_checked": false,
+      "provider_credential_value_printed": false,
+      "rollback_plan_recorded": true,
+      "sandbox_created": false,
+      "sanitized_evidence_only": true,
+      "venv_created_under_allowed_path": true
+    },
+    "rollback": {
+      "hash": "54c77b53387fd2f135b6645fa52e17db90758f4c3f7dc759123cd7d459e95781",
+      "path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-venvs/2.34.0",
+      "scope": "delete A6 venv only"
+    },
+    "source_evidence": {
+      "a5_contract_file_sha256": "1694062cae68654f636cf7ee2fa7fe04c829ed4f24f62aed4ba579888aad8819",
+      "a5_contract_path": "docs/program/PHASE_1C_A5_E2B_SDK_WHEELHOUSE_LOCK_CONTRACT.ready.json",
+      "a5_runner_path": "tools/phase_1c_a5_e2b_sdk_wheelhouse_runner.py",
+      "a5_runner_sha256": "87bb7340e6acd42db6644638e6fb6a6161ea960e6c47335efa845a524669ec24",
+      "a5_wheelhouse_manifest_path": "security/evidence/phase-1c-a5/e2b-sdk-wheelhouse-manifest.json",
+      "a5_wheelhouse_manifest_sha256": "bc505cb6c572a8455a3a4b7260aee6c422a8d31eec714e8a67d5fc0da7e63077"
+    }
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1c-a6.e2b-sdk-offline-install-contract.v1"
+}

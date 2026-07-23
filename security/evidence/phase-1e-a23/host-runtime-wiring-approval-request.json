@@ -1,0 +1,89 @@
+{
+  "content_sha256": "0271a44bf472079aba1d2f3161552460d66c7df120de4203573814a993583aef",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_host_runtime_wiring_contract_allowed": true,
+      "gateway_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true
+    },
+    "contract_artifact": {
+      "content_sha256": "70a5eb1df08cd45cd86b042dd6fc7feaa3a061ad9608d4ef038efbda14548aa5",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_HOST_RUNTIME_WIRING",
+      "file_sha256": "5cbd81ff5dbaf39542325283ec2efbd6f990349487567326bff88ce03d33188a",
+      "path": "docs/program/PHASE_1E_A23_HOST_RUNTIME_WIRING_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1e-a23.host-runtime-wiring-approval-request.v1"
+    },
+    "created_at": "2026-07-23T02:30:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_HOST_RUNTIME_WIRING_CONTRACT_NOT_WIRED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/host_runtime_wiring_contracts.py",
+      "tools/tests/test_pankster_runtime_security_host_runtime_wiring_contracts.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "integration_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A24_HOST_RUNTIME_WIRING_CONTRACT_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1E_HOST_RUNTIME_WIRING_CONTRACT:p1e-20260723-hostwiringa23:70a5eb1df08cd45cd86b042dd6fc7feaa3a061ad9608d4ef038efbda14548aa5",
+      "approval_command_sha256": "4c56d258d260ab1ca9115e70c96a9d4fc136bb6372d0c5631ee11b968d8956ca",
+      "approval_id": "p1e-20260723-hostwiringa23",
+      "approval_required_before_next_gate_integration": true
+    },
+    "phase": "1E-A23",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a22_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "integration_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1e_a23_approval_request_artifacts_and_return_to_phase_1e_a22_review_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a22_content_sha256": "801b7ce138d8ab22b7a42abcb71653528dfb05faab69c55749246b718da4f169",
+      "phase_1e_a22_file_sha256": "9914a36da9b40ae95fbfb5245a6094b6cf280d869f0bd35a949021149bb04e8e",
+      "phase_1e_a22_path": "security/evidence/phase-1e-a22/host-runtime-execution-contract-review.json",
+      "phase_1e_a22_verdict": "READY_FOR_HOST_RUNTIME_WIRING_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "HOST_RUNTIME_WIRING_APPROVAL_REQUEST_COMPLETE_NO_WIRING",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a23_host_runtime_wiring_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a23.host-runtime-wiring-approval-request.v1"
+}

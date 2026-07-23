@@ -1,0 +1,105 @@
+{
+  "content_sha256": "9d24699742c36b8adb5daf8fe0b0f9b8a581eddb973279760c10a59ec085764d",
+  "decision_content": {
+    "audit_contract": {
+      "audit_events_secret_free": true,
+      "audit_ids_correlate_attempt_grant_runtime_policy": true,
+      "audit_records_key_names_not_values": true,
+      "audit_required_before_grant_issue": true,
+      "audit_required_before_provider_call": true,
+      "audit_unavailable_fails_closed": true,
+      "audit_write_failure_blocks_runtime_progress": true,
+      "evidence_secret_scan_required_before_write": true
+    },
+    "created_at": "2026-07-23T07:05:00Z",
+    "credential_migration_approved": false,
+    "decision": "AUDIT_ROLLBACK_CONTRACT_READY_FOR_IMPLEMENTATION_SCOPE_LOCK_NOT_CODE_OR_EXECUTION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "forbidden_audit_fields": [
+      "api_key",
+      "access_token",
+      "refresh_token",
+      "authorization_header",
+      "raw_request_headers",
+      "raw_response_headers",
+      "provider_secret_value",
+      "environment_value",
+      "root_auth_json_content",
+      "credential_pool"
+    ],
+    "gateway_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A6_IMPLEMENTATION_SCOPE_LOCK",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A5",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a4_dependency_satisfied": true,
+      "audit_rollback_spec_complete": true,
+      "implementation_ready": false,
+      "production_ready": false,
+      "ready_for_implementation_scope_lock": true,
+      "runtime_execution_ready": false
+    },
+    "required_audit_events": [
+      "policy.checked",
+      "grant.requested",
+      "grant.issued",
+      "grant.denied",
+      "grant.used",
+      "model.requested",
+      "model.denied",
+      "model.completed",
+      "model.failed",
+      "runtime.launch.requested",
+      "runtime.launch.denied",
+      "runtime.launch.started",
+      "runtime.destroy.requested",
+      "runtime.destroyed",
+      "rollback.requested",
+      "rollback.completed",
+      "credential.refresh.requested",
+      "credential.refresh.denied",
+      "credential.refresh.completed"
+    ],
+    "required_changes": [],
+    "required_tests_before_code": [
+      "audit unavailable blocks grant issue and provider call",
+      "audit event schema rejects forbidden secret fields",
+      "evidence writer scans before write",
+      "rollback denies new grants immediately",
+      "rollback revokes attempt grants",
+      "rollback does not require gateway change",
+      "rollback audit is secret-free"
+    ],
+    "rollback": "remove_phase_1e_a5_audit_rollback_spec_artifacts_and_return_to_phase_1e_a4_runtime_adapter_spec_state",
+    "rollback_contract": {
+      "deny_new_grants_immediately": true,
+      "destroy_or_reclaim_runtime_if_started": true,
+      "disable_named_profile_runtime_without_gateway_change": true,
+      "preserve_no_proxy_behavior": true,
+      "revoke_attempt_grants": true,
+      "rollback_unavailable_fails_closed_for_new_runtime": true,
+      "write_secret_free_rollback_audit": true
+    },
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a4_content_sha256": "4946bd1cfb55e85e5e3afac7cbd8ccbb1f118430cdc5910e737418197c6385a7",
+      "phase_1e_a4_file_sha256": "e4fc45b4def139997504998ff0b64cb85877a8d1199016c0f9e7abc0ae046781",
+      "phase_1e_a4_path": "security/evidence/phase-1e-a4/runtime-adapter-launch-controller-spec.json",
+      "phase_1e_a4_status": "RUNTIME_ADAPTER_LAUNCH_CONTROLLER_SPEC_COMPLETE_NO_IMPLEMENTATION_APPROVAL"
+    },
+    "status": "AUDIT_AND_ROLLBACK_SPEC_COMPLETE_NO_IMPLEMENTATION_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_1e_a5_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a5_audit_and_rollback_spec_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a5.audit-and-rollback-spec.v1"
+}

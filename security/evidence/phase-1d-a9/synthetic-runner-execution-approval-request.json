@@ -1,0 +1,71 @@
+{
+  "content_sha256": "ddaa61a507ffec2412fbe6cd1dc5bff5e326fd0f4a6b39664964b23f032d366d",
+  "decision_content": {
+    "approval_scope": {
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "gateway_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_dry_run_only": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "synthetic_only": true
+    },
+    "contract_artifact": {
+      "content_sha256": "3a8b46a0703110942ce1733961c945746abb8ada04c1bde206f8a070c5182932",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_EXECUTION",
+      "file_sha256": "13b1636f08475183ba52b623d4d09981a53eb799f8d1bb93cd7c0a1755b9cc88",
+      "path": "docs/program/PHASE_1D_A9_SYNTHETIC_RUNNER_EXECUTION_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1d-a9.synthetic-runner-execution-approval-request.v1"
+    },
+    "created_at": "2026-07-23T04:00:00Z",
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_SYNTHETIC_PREFLIGHT_EXECUTION_NOT_EXECUTED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "execution_performed": false,
+    "gateway_changes_approved": false,
+    "next_gate": "1D-A10_SYNTHETIC_RUNNER_PREFLIGHT_EXECUTION_AFTER_OWNER_APPROVAL",
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1D_SYNTHETIC_RUNNER_PREFLIGHT_EXECUTION:p1d-20260723-syntheticpreflighta9:3a8b46a0703110942ce1733961c945746abb8ada04c1bde206f8a070c5182932",
+      "approval_command_sha256": "61daffefbea0b290e9c6cf693786fc8b295649086ea009b13414747ec84a4d79",
+      "approval_id": "p1d-20260723-syntheticpreflighta9",
+      "approval_required_before_next_gate_execution": true
+    },
+    "phase": "1D-A9",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a8_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "execution_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_a9_approval_request_artifacts_and_return_to_a8_security_review_state",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a8_content_sha256": "3d48c143bbcb2ee6ec9d1a2e048986ace293b6963971109cb356ef05d3c7e334",
+      "phase_1d_a8_file_sha256": "5a93d2d085864f0fdeae4f99d48da3353e7c711b8d006daff73ce7c0c8785422",
+      "phase_1d_a8_path": "security/evidence/phase-1d-a8/implementation-security-review.json",
+      "phase_1d_a8_verdict": "READY_FOR_SYNTHETIC_EXECUTION_APPROVAL_REQUEST_NOT_EXECUTION"
+    },
+    "status": "SYNTHETIC_RUNNER_EXECUTION_APPROVAL_REQUEST_COMPLETE_NO_EXECUTION",
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1d_a9_synthetic_runner_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1d-a9.synthetic-runner-execution-approval-request.v1"
+}

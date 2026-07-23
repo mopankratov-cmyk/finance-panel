@@ -1,0 +1,71 @@
+{
+  "a9_content_sha256": "ddaa61a507ffec2412fbe6cd1dc5bff5e326fd0f4a6b39664964b23f032d366d",
+  "approval_command_sha256": "61daffefbea0b290e9c6cf693786fc8b295649086ea009b13414747ec84a4d79",
+  "auth_files_read": false,
+  "canary_started": false,
+  "contract_content_sha256": "3a8b46a0703110942ce1733961c945746abb8ada04c1bde206f8a070c5182932",
+  "dependency_changes_performed": false,
+  "gateway_changed": false,
+  "keychain_read": false,
+  "local_dry_run_only": true,
+  "mode": "execute-preflight",
+  "model_api_calls_performed": false,
+  "oauth_refresh_performed": false,
+  "profile_started": false,
+  "proofs": {
+    "a9_evidence_verified": true,
+    "approval_command_verified": true,
+    "broker_channel_stub_denied": true,
+    "default_runtime_adapter_denied": true,
+    "direct_sanitizer_denied_sensitive_keys": true,
+    "enabled_runtime_adapter_denied_sensitive_keys": true,
+    "enabled_runtime_adapter_preserved_no_proxy": true,
+    "enabled_runtime_adapter_sanitized_environment": true,
+    "fake_grant_issued_without_secret": true,
+    "fake_model_broker_completed_synthetic_response": true,
+    "fake_model_broker_replay_denied": true,
+    "no_broker_channel_started": true,
+    "no_sandbox_started": true,
+    "synthetic_policy_validated": true,
+    "unbound_grant_denied_before_broker_stub": true
+  },
+  "provider_api_calls_performed": false,
+  "provider_credential_value_printed": false,
+  "real_credentials_used": false,
+  "result": "PASS",
+  "sandbox_created": false,
+  "sanitized": true,
+  "sanitized_result": {
+    "broker_channel_denial_reason": "BROKER_CHANNEL_NOT_IMPLEMENTED",
+    "broker_result_reason": "FAKE_MODEL_COMPLETED",
+    "default_adapter_denial_reason": "RUNTIME_ADAPTER_DISABLED",
+    "denied_key_names": [
+      "OPENAI_API_KEY",
+      "TELEGRAM_BOT_TOKEN"
+    ],
+    "enabled_adapter_denial_reason": "SANDBOX_LAUNCH_NOT_IMPLEMENTED",
+    "grant_id_length": 45,
+    "grant_id_prefix": "grant_opaque_",
+    "ignored_key_names": [
+      "UNDECLARED"
+    ],
+    "replay_denial_reason": "GRANT_REPLAY_DETECTED",
+    "sanitized_env_keys": [
+      "NO_PROXY",
+      "PANKSTER_ATTEMPT_ID",
+      "PANKSTER_BROKER_MODE",
+      "PANKSTER_GRANT_IDS",
+      "PANKSTER_NETWORK_POLICY",
+      "PANKSTER_POLICY_VERSION",
+      "PANKSTER_PROFILE_ID",
+      "PANKSTER_TASK_ID",
+      "PANKSTER_WORKFLOW_ID",
+      "PATH",
+      "no_proxy"
+    ],
+    "unbound_grant_denial_reason": "GRANT_NOT_BOUND_TO_CONTEXT"
+  },
+  "schema_version": "pankster.phase1d-a10.synthetic-runner-preflight-execution.v1",
+  "subprocess_launch_performed": false,
+  "synthetic_only": true
+}

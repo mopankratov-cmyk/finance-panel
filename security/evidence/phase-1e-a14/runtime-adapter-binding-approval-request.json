@@ -1,0 +1,88 @@
+{
+  "content_sha256": "ab0a8855cfdd9c266ee08aac400b10eabb26f195f63ffd8c403ca46b82a34081",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_binding_contract_allowed": true,
+      "gateway_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true
+    },
+    "binding_performed": false,
+    "contract_artifact": {
+      "content_sha256": "5b69e04525a5594d050a8ee08cbb29ac1b7be738c174fe3ae6f042b99ed2db5d",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_RUNTIME_BINDING",
+      "file_sha256": "414caaa9f2bb116e0d75a26400ceaafa3134269c4be3797b42536fb59aecc122",
+      "path": "docs/program/PHASE_1E_A14_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1e-a14.runtime-adapter-binding-approval-request.v1"
+    },
+    "created_at": "2026-07-23T00:20:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_RUNTIME_ADAPTER_BINDING_CONTRACT_NOT_BOUND",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/runtime_adapter_binding_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_contracts.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A15_RUNTIME_ADAPTER_BINDING_CONTRACT_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1E_RUNTIME_ADAPTER_BINDING_CONTRACT:p1e-20260723-adapterbindinga14:5b69e04525a5594d050a8ee08cbb29ac1b7be738c174fe3ae6f042b99ed2db5d",
+      "approval_command_sha256": "f83335808208105b33a4b3cc6cea52a94dd1939d8c063c086b493f1a33314e3b",
+      "approval_id": "p1e-20260723-adapterbindinga14",
+      "approval_required_before_next_gate_binding": true
+    },
+    "phase": "1E-A14",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a13_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "binding_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1e_a14_approval_request_artifacts_and_return_to_phase_1e_a13_review_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a13_content_sha256": "dc6458b62972a8075bf9394bf9a2755d7f4ebe6f86a13e839eb6c512ccea57b5",
+      "phase_1e_a13_file_sha256": "03fda5314c88ccf73185d460bc384aa5627698031f7ff83bebb0e2f7a60fc458",
+      "phase_1e_a13_path": "security/evidence/phase-1e-a13/disabled-runtime-integration-contract-review.json",
+      "phase_1e_a13_verdict": "READY_FOR_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST_COMPLETE_NO_BINDING",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a14_runtime_adapter_binding_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a14.runtime-adapter-binding-approval-request.v1"
+}

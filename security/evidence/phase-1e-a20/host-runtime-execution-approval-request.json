@@ -1,0 +1,89 @@
+{
+  "content_sha256": "0a54581af0afd4d2abe19b39d5060a71f1c309a74ae017cfe8d51cab0277ed72",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_host_runtime_execution_contract_allowed": true,
+      "gateway_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true
+    },
+    "contract_artifact": {
+      "content_sha256": "38fbfb9eb6246d3f7440f2816342e3aced5a04ba083c7c8353e4499cf522825e",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_HOST_RUNTIME_EXECUTION",
+      "file_sha256": "38e38a2423d4a019a46e87679ba21932569c1ea4e002d9d88e2d24aaa9aac5bf",
+      "path": "docs/program/PHASE_1E_A20_HOST_RUNTIME_EXECUTION_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1e-a20.host-runtime-execution-approval-request.v1"
+    },
+    "created_at": "2026-07-23T01:50:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_HOST_RUNTIME_EXECUTION_CONTRACT_NOT_EXECUTED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/host_runtime_execution_contracts.py",
+      "tools/tests/test_pankster_runtime_security_host_runtime_execution_contracts.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "integration_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A21_HOST_RUNTIME_EXECUTION_CONTRACT_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1E_HOST_RUNTIME_EXECUTION_CONTRACT:p1e-20260723-hostruntimea20:38fbfb9eb6246d3f7440f2816342e3aced5a04ba083c7c8353e4499cf522825e",
+      "approval_command_sha256": "002d8c364423947c91cac45ac732d7826a906d7370c90358741ef5bc70515962",
+      "approval_id": "p1e-20260723-hostruntimea20",
+      "approval_required_before_next_gate_integration": true
+    },
+    "phase": "1E-A20",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a19_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "integration_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1e_a20_approval_request_artifacts_and_return_to_phase_1e_a19_review_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a19_content_sha256": "4f3e871aaba8271da08f954421747f3bff6b7eb5f235dbdac74363d237766fb4",
+      "phase_1e_a19_file_sha256": "d8167418a852297c5c06d68273a9e01a6bbf4b522df9aa8223011ab1bd1cb812",
+      "phase_1e_a19_path": "security/evidence/phase-1e-a19/host-adapter-integration-contract-review.json",
+      "phase_1e_a19_verdict": "READY_FOR_HOST_RUNTIME_EXECUTION_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "HOST_RUNTIME_EXECUTION_APPROVAL_REQUEST_COMPLETE_NO_EXECUTION",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a20_host_runtime_execution_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a20.host-runtime-execution-approval-request.v1"
+}

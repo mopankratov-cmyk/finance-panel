@@ -1,0 +1,301 @@
+{
+  "content_sha256": "2861465540563590d895cb99d2d1b40ce8e45512133102687c03c62c294d21cd",
+  "decision_content": {
+    "audit_policy": {
+      "audit_unavailable_behavior": "deny",
+      "events": [
+        "policy.loaded",
+        "policy.denied",
+        "grant.requested",
+        "grant.issued",
+        "grant.denied",
+        "model.requested",
+        "model.denied",
+        "model.completed",
+        "budget.denied",
+        "runtime.launch.denied",
+        "runtime.destroyed"
+      ],
+      "required": true,
+      "secret_values_allowed": false
+    },
+    "budget_policy": {
+      "budget_exceeded_behavior": "deny_before_provider_call",
+      "dimensions": [
+        "max_usd_per_attempt",
+        "max_tokens_per_attempt",
+        "max_requests_per_attempt",
+        "max_wall_clock_seconds",
+        "max_retries"
+      ],
+      "required": true,
+      "usage_record_required": true
+    },
+    "created_at": "2026-07-22T23:58:00Z",
+    "credential_policy": {
+      "credential_reference_allowlist_required": true,
+      "credential_value_logging_allowed": false,
+      "oauth_refresh_by_profile_worker_allowed": false,
+      "oauth_refresh_by_runtime_adapter_allowed": false,
+      "oauth_refresh_owner_only_cas_required": true,
+      "profile_auth_store_may_contain_provider_secret_values": false,
+      "profile_auth_store_required_for_named_profiles": true,
+      "root_auth_json_fallback_allowed_for_named_profiles": false,
+      "root_credential_pool_materialization_allowed": false
+    },
+    "decision": "PRODUCTION_PROFILE_POLICY_CONTRACT_READY_FOR_SYNTHETIC_TEST_PLANNING_NOT_RUNTIME",
+    "design_review_findings": {
+      "a10_dependency_satisfied": true,
+      "content_director_remains_created_but_disabled": true,
+      "default_gateway_unchanged": true,
+      "dev_director_remains_created_but_disabled": true,
+      "production_runtime_ready": false,
+      "profile_policy_contract_ready": true,
+      "requires_a12_synthetic_integration_test_plan": true,
+      "requires_a13_operator_runbook": true,
+      "requires_a14_final_implementation_readiness_review": true
+    },
+    "environment_policy": {
+      "allowed_runtime_keys": [
+        "PANKSTER_PROFILE_ID",
+        "PANKSTER_WORKFLOW_ID",
+        "PANKSTER_TASK_ID",
+        "PANKSTER_ATTEMPT_ID",
+        "PANKSTER_POLICY_VERSION",
+        "PANKSTER_GRANT_IDS",
+        "PANKSTER_BROKER_MODE",
+        "PANKSTER_NETWORK_POLICY"
+      ],
+      "applies_to": [
+        "sandbox_launch",
+        "terminal",
+        "code_execution",
+        "delegate_task",
+        "mcp",
+        "background_process",
+        "retry",
+        "reclaim",
+        "restart"
+      ],
+      "denylist_precedence_over_allowlist": true,
+      "mandatory_denylist": [
+        "*_KEY",
+        "*_TOKEN",
+        "*_SECRET",
+        "*_PASSWORD",
+        "AUTHORIZATION",
+        "ANTHROPIC_*",
+        "OPENAI_*",
+        "GLM_*",
+        "GITEA_*",
+        "SUPABASE_*",
+        "TELEGRAM_*",
+        "E2B_API_KEY"
+      ],
+      "preserve_keys": [
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "SHELL",
+        "NO_PROXY",
+        "no_proxy"
+      ]
+    },
+    "fail_closed_cases": [
+      "missing_profile_policy",
+      "disabled_profile",
+      "unknown_profile",
+      "ambiguous_default_profile_inheritance",
+      "missing_model_allowlist",
+      "model_not_allowlisted",
+      "missing_provider_family_allowlist",
+      "provider_family_not_allowlisted",
+      "operation_not_allowlisted",
+      "missing_budget",
+      "budget_exceeded",
+      "missing_network_policy",
+      "credential_reference_not_allowlisted",
+      "root_auth_fallback_requested",
+      "root_pool_materialization_requested",
+      "oauth_refresh_requested_by_worker_or_adapter",
+      "environment_denylist_violation",
+      "audit_unavailable"
+    ],
+    "gateway_changes_approved": false,
+    "implementation_approved": false,
+    "minimal_model_auth_contract": {
+      "delivery_mechanism": "host_side_broker_grant_reference_only",
+      "forbidden_material": [
+        "provider_api_key",
+        "provider_access_token",
+        "provider_refresh_token",
+        "authorization_header",
+        "root_auth_json",
+        "root_credential_pool",
+        "owner_keychain_reference",
+        "credential_store_path"
+      ],
+      "grant_expiry_behavior": "deny",
+      "grant_owner_mismatch_behavior": "deny",
+      "grant_reference_secret": false,
+      "grant_replay_behavior": "deny",
+      "permitted_scope_fields": [
+        "profile_id",
+        "workflow_id",
+        "task_id",
+        "attempt_id",
+        "purpose",
+        "provider_family",
+        "model",
+        "operation",
+        "ttl_seconds",
+        "budget",
+        "policy_version",
+        "runtime_identity_hash",
+        "network_policy_id"
+      ]
+    },
+    "network_policy": {
+      "broker_channel_requires_policy": true,
+      "default": "deny_all",
+      "direct_provider_egress_from_sandbox_allowed": false,
+      "missing_network_policy_behavior": "deny",
+      "profile_specific_policy_required": true
+    },
+    "next_gate": "A12_INTEGRATION_TEST_PLAN_WITH_SYNTHETIC_ONLY_FIXTURES",
+    "phase": "1C-A11",
+    "policy_contract_principles": [
+      "named_profiles_are_explicitly_declared",
+      "default_profile_backward_compatibility_is_explicit_and_not_inherited",
+      "profile_policy_required_before_any_runtime_launch",
+      "model_allowlist_required_per_profile",
+      "provider_family_allowlist_required_per_profile",
+      "operation_allowlist_required_per_profile",
+      "budget_and_rate_limits_required_per_profile",
+      "grant_scope_is_profile_task_attempt_and_purpose_bound",
+      "no_root_auth_fallback_for_named_profiles",
+      "no_root_credential_pool_materialization",
+      "fail_closed_on_missing_or_ambiguous_policy"
+    ],
+    "production_profiles_approved": false,
+    "profile_policy_schema": {
+      "ambiguous_policy_behavior": "deny",
+      "enabled_default": false,
+      "forbidden_fields": [
+        "api_key",
+        "access_token",
+        "refresh_token",
+        "authorization_header",
+        "provider_secret_value",
+        "root_auth_json_path",
+        "root_credential_pool",
+        "plaintext_credential",
+        "environment_secret_value"
+      ],
+      "grant_ttl_seconds_max_upper_bound": 900,
+      "missing_policy_behavior": "deny",
+      "required_fields": [
+        "profile_id",
+        "enabled",
+        "owner_principal_id",
+        "policy_version",
+        "runtime_backend",
+        "network_policy_id",
+        "model_provider_allowlist",
+        "model_allowlist",
+        "operation_allowlist",
+        "grant_ttl_seconds_max",
+        "budget",
+        "rate_limits",
+        "credential_reference_allowlist",
+        "environment_policy_id",
+        "artifact_policy_id",
+        "audit_policy_id",
+        "rollback_policy_id"
+      ],
+      "versioning": "monotonic_policy_version_required_for_grants"
+    },
+    "profiles": {
+      "content-director": {
+        "approval_required_to_enable": true,
+        "enabled": false,
+        "minimal_model_auth_required": true,
+        "models": [],
+        "operations": [],
+        "profile_auth_store_required": true,
+        "provider_families": [],
+        "root_auth_fallback_allowed": false,
+        "root_credential_pool_materialization_allowed": false,
+        "runtime_isolation_required": true,
+        "state": "CREATED_BUT_DISABLED"
+      },
+      "default": {
+        "allowed_to_use_existing_default_gateway_behavior": true,
+        "compatibility_mode": true,
+        "inherits_named_profile_credentials": false,
+        "named_profile_policy_required": false,
+        "production_runtime_approval_in_a11": false,
+        "runtime_isolation_enabled": false
+      },
+      "dev-director": {
+        "approval_required_to_enable": true,
+        "enabled": false,
+        "minimal_model_auth_required": true,
+        "models": [],
+        "operations": [],
+        "profile_auth_store_required": true,
+        "provider_families": [],
+        "root_auth_fallback_allowed": false,
+        "root_credential_pool_materialization_allowed": false,
+        "runtime_isolation_required": true,
+        "state": "CREATED_BUT_DISABLED"
+      }
+    },
+    "provider_api_calls_approved": false,
+    "required_tests": {
+      "integration_synthetic": [
+        "dev_director_created_but_disabled_denies_runtime_launch",
+        "content_director_created_but_disabled_denies_runtime_launch",
+        "synthetic_profile_receives_grant_reference_without_provider_secret",
+        "synthetic_default_profile_compatibility_does_not_enable_named_profiles",
+        "synthetic_budget_denial_records_secret_free_audit",
+        "synthetic_oauth_refresh_attempt_by_worker_fails_closed"
+      ],
+      "security": [
+        "named_profiles_cannot_read_root_auth_json",
+        "named_profiles_cannot_materialize_root_credential_pool",
+        "provider_secret_never_in_env_argv_artifacts_evidence",
+        "telegram_gitea_supabase_anthropic_glm_env_keys_denied",
+        "terminal_code_execution_delegate_mcp_background_children_sanitized",
+        "retry_reclaim_restart_preserve_policy_and_attempt_binding"
+      ],
+      "unit": [
+        "profile_policy_schema_rejects_secret_fields",
+        "missing_profile_policy_denies_launch",
+        "disabled_profile_denies_launch",
+        "default_profile_does_not_inherit_named_policy",
+        "model_allowlist_required_and_enforced",
+        "provider_family_allowlist_required_and_enforced",
+        "operation_allowlist_required_and_enforced",
+        "budget_required_and_enforced_before_provider_call",
+        "credential_reference_allowlist_required",
+        "environment_denylist_precedence_over_allowlist"
+      ]
+    },
+    "rollback": "keep_named_profiles_disabled_remove_policy_enablement_flags_preserve_default_gateway_behavior",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "a10_content_sha256": "9a69b9d6c9d9cdc8b7a9100b06fd1546038396b353181073e2abfe101a1bf7b2",
+      "a10_review_file_sha256": "fd3aea723a55e95ca7abb5e4ca8f4d29a7d6f7983573613bc0663464f04ca9be",
+      "a10_review_path": "security/evidence/phase-1c-a10/runtime-adapter-design-review.json",
+      "a10_status": "DESIGN_REVIEW_COMPLETE_NO_IMPLEMENTATION_APPROVED"
+    },
+    "status": "PROFILE_POLICY_CONTRACT_COMPLETE_NO_PRODUCTION_APPROVAL"
+  },
+  "schema_version": "pankster.phase1c-a11.production-profile-policy-contract.v1"
+}

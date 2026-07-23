@@ -1,0 +1,184 @@
+{
+  "all_downloaded_files_sha256": true,
+  "all_packages_pinned_exact_versions": true,
+  "approval_command_sha256": "898e885f11486daf94ead0382967d2f3515c507c2e750e061a815664ba153827",
+  "contract_content_sha256": "46c9ab5e52e015ddda80c7bfdcdac316cc1ca80140846b38e728a221e2972382",
+  "dependency_import_allowed": false,
+  "dependency_install_allowed": false,
+  "mode": "execute-download",
+  "no_package_installed_or_imported": true,
+  "no_sdist_downloaded": true,
+  "package": "e2b==2.34.0",
+  "pip_returncode": 0,
+  "pip_stderr_sanitized": "WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1081)')': /simple/e2b/\n  WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1081)')': /packages/6d/ec/b2f9297afc25de7c27ab5a85db4060783680e2b132285e2498fdbad484cf/e2b-2.34.0-py3-none-any.whl.metadata",
+  "pip_stdout_sanitized": "Collecting e2b==2.34.0\n  Downloading e2b-2.34.0-py3-none-any.whl.metadata (3.1 kB)\nCollecting python-dateutil>=2.8.2 (from e2b==2.34.0)\n  Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)\nCollecting wcmatch<11,>=10.1 (from e2b==2.34.0)\n  Downloading wcmatch-10.2.1-py3-none-any.whl.metadata (4.8 kB)\nCollecting protobuf>=4.21.0 (from e2b==2.34.0)\n  Downloading protobuf-7.35.1-cp310-abi3-macosx_10_9_universal2.whl.metadata (595 bytes)\nCollecting httpcore<2,>=1.0.5 (from e2b==2.34.0)\n  Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)\nCollecting httpx<1.0.0,>=0.27.0 (from e2b==2.34.0)\n  Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)\nCollecting h2<5,>=4 (from e2b==2.34.0)\n  Downloading h2-4.3.0-py3-none-any.whl.metadata (5.1 kB)\nCollecting attrs>=23.2.0 (from e2b==2.34.0)\n  Downloading attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)\nCollecting packaging>=24.1 (from e2b==2.34.0)\n  Downloading packaging-26.2-py3-none-any.whl.metadata (3.5 kB)\nCollecting typing-extensions>=4.1.0 (from e2b==2.34.0)\n  Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)\nCollecting dockerfile-parse<3,>=2.0.1 (from e2b==2.34.0)\n  Downloading dockerfile_parse-2.0.1-py2.py3-none-any.whl.metadata (3.3 kB)\nCollecting rich>=14.0.0 (from e2b==2.34.0)\n  Downloading rich-15.0.0-py3-none-any.whl.metadata (18 kB)\nCollecting hyperframe<7,>=6.1 (from h2<5,>=4->e2b==2.34.0)\n  Downloading hyperframe-6.1.0-py3-none-any.whl.metadata (4.3 kB)\nCollecting hpack<5,>=4.1 (from h2<5,>=4->e2b==2.34.0)\n  Downloading hpack-4.2.0-py3-none-any.whl.metadata (3.3 kB)\nCollecting certifi (from httpcore<2,>=1.0.5->e2b==2.34.0)\n  Downloading certifi-2026.7.22-py3-none-any.whl.metadata (2.5 kB)\nCollecting h11>=0.16 (from httpcore<2,>=1.0.5->e2b==2.34.0)\n  Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)\nCollecting anyio (from httpx<1.0.0,>=0.27.0->e2b==2.34.0)\n  Downloading anyio-4.14.2-py3-none-any.whl.metadata (4.6 kB)\nCollecting idna (from httpx<1.0.0,>=0.27.0->e2b==2.34.0)\n  Downloading idna-3.18-py3-none-any.whl.metadata (6.1 kB)\nCollecting bracex>=3.0 (from wcmatch<11,>=10.1->e2b==2.34.0)\n  Downloading bracex-3.0.1-py3-none-any.whl.metadata (3.3 kB)\nCollecting six>=1.5 (from python-dateutil>=2.8.2->e2b==2.34.0)\n  Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)\nCollecting markdown-it-py>=2.2.0 (from rich>=14.0.0->e2b==2.34.0)\n  Downloading markdown_it_py-4.2.0-py3-none-any.whl.metadata (7.4 kB)\nCollecting pygments<3.0.0,>=2.13.0 (from rich>=14.0.0->e2b==2.34.0)\n  Downloading pygments-2.20.0-py3-none-any.whl.metadata (2.5 kB)\nCollecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=14.0.0->e2b==2.34.0)\n  Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)\nDownloading e2b-2.34.0-py3-none-any.whl (343 kB)\nDownloading dockerfile_parse-2.0.1-py2.py3-none-any.whl (14 kB)\nDownloading h2-4.3.0-py3-none-any.whl (61 kB)\nDownloading hpack-4.2.0-py3-none-any.whl (34 kB)\nDownloading httpcore-1.0.9-py3-none-any.whl (78 kB)\nDownloading httpx-0.28.1-py3-none-any.whl (73 kB)\nDownloading hyperframe-6.1.0-py3-none-any.whl (13 kB)\nDownloading wcmatch-10.2.1-py3-none-any.whl (39 kB)\nDownloading attrs-26.1.0-py3-none-any.whl (67 kB)\nDownloading bracex-3.0.1-py3-none-any.whl (11 kB)\nDownloading h11-0.16.0-py3-none-any.whl (37 kB)\nDownloading packaging-26.2-py3-none-any.whl (100 kB)\nDownloading protobuf-7.35.1-cp310-abi3-macosx_10_9_universal2.whl (433 kB)\nDownloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)\nDownloading rich-15.0.0-py3-none-any.whl (310 kB)\nDownloading pygments-2.20.0-py3-none-any.whl (1.2 MB)\n   \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 1.2/1.2 MB 15.3 MB/s  0:00:00\nDownloading markdown_it_py-4.2.0-py3-none-any.whl (91 kB)\nDownloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)\nDownloading six-1.17.0-py2.py3-none-any.whl (11 kB)\nDownloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)\nDownloading anyio-4.14.2-py3-none-any.whl (125 kB)\nDownloading idna-3.18-py3-none-any.whl ",
+  "primary_wheel_sha_verified": true,
+  "provider_api_calls_performed": false,
+  "result": "PASS",
+  "sandbox_created": false,
+  "schema_version": "pankster.phase1c-a5.e2b-sdk-wheelhouse-manifest.v1",
+  "wheelhouse_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0",
+  "wheels": [
+    {
+      "filename": "anyio-4.14.2-py3-none-any.whl",
+      "package": "anyio",
+      "sha256": "9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494",
+      "size_bytes": 125813,
+      "version": "4.14.2"
+    },
+    {
+      "filename": "attrs-26.1.0-py3-none-any.whl",
+      "package": "attrs",
+      "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+      "size_bytes": 67548,
+      "version": "26.1.0"
+    },
+    {
+      "filename": "bracex-3.0.1-py3-none-any.whl",
+      "package": "bracex",
+      "sha256": "6523ad83aeb5098a4ee597cff0f964442ff74e460bd3fafaffab6a013ff2288c",
+      "size_bytes": 11940,
+      "version": "3.0.1"
+    },
+    {
+      "filename": "certifi-2026.7.22-py3-none-any.whl",
+      "package": "certifi",
+      "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+      "size_bytes": 136983,
+      "version": "2026.7.22"
+    },
+    {
+      "filename": "dockerfile_parse-2.0.1-py2.py3-none-any.whl",
+      "package": "dockerfile-parse",
+      "sha256": "bdffd126d2eb26acf1066acb54cb2e336682e1d72b974a40894fac76a4df17f6",
+      "size_bytes": 14845,
+      "version": "2.0.1"
+    },
+    {
+      "filename": "e2b-2.34.0-py3-none-any.whl",
+      "package": "e2b",
+      "sha256": "873323571d18bf633be45e59fc6271410b30dfbc81e8df85e711f4f184c03fea",
+      "size_bytes": 343447,
+      "version": "2.34.0"
+    },
+    {
+      "filename": "h11-0.16.0-py3-none-any.whl",
+      "package": "h11",
+      "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+      "size_bytes": 37515,
+      "version": "0.16.0"
+    },
+    {
+      "filename": "h2-4.3.0-py3-none-any.whl",
+      "package": "h2",
+      "sha256": "c438f029a25f7945c69e0ccf0fb951dc3f73a5f6412981daee861431b70e2bdd",
+      "size_bytes": 61779,
+      "version": "4.3.0"
+    },
+    {
+      "filename": "hpack-4.2.0-py3-none-any.whl",
+      "package": "hpack",
+      "sha256": "858ac0b02280fa582b5080d68db0899c62a80375e0e5413a74970c5e518b6986",
+      "size_bytes": 34246,
+      "version": "4.2.0"
+    },
+    {
+      "filename": "httpcore-1.0.9-py3-none-any.whl",
+      "package": "httpcore",
+      "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+      "size_bytes": 78784,
+      "version": "1.0.9"
+    },
+    {
+      "filename": "httpx-0.28.1-py3-none-any.whl",
+      "package": "httpx",
+      "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+      "size_bytes": 73517,
+      "version": "0.28.1"
+    },
+    {
+      "filename": "hyperframe-6.1.0-py3-none-any.whl",
+      "package": "hyperframe",
+      "sha256": "b03380493a519fce58ea5af42e4a42317bf9bd425596f7a0835ffce80f1a42e5",
+      "size_bytes": 13007,
+      "version": "6.1.0"
+    },
+    {
+      "filename": "idna-3.18-py3-none-any.whl",
+      "package": "idna",
+      "sha256": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",
+      "size_bytes": 65455,
+      "version": "3.18"
+    },
+    {
+      "filename": "markdown_it_py-4.2.0-py3-none-any.whl",
+      "package": "markdown-it-py",
+      "sha256": "9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a",
+      "size_bytes": 91687,
+      "version": "4.2.0"
+    },
+    {
+      "filename": "mdurl-0.1.2-py3-none-any.whl",
+      "package": "mdurl",
+      "sha256": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8",
+      "size_bytes": 9979,
+      "version": "0.1.2"
+    },
+    {
+      "filename": "packaging-26.2-py3-none-any.whl",
+      "package": "packaging",
+      "sha256": "5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e",
+      "size_bytes": 100195,
+      "version": "26.2"
+    },
+    {
+      "filename": "protobuf-7.35.1-cp310-abi3-macosx_10_9_universal2.whl",
+      "package": "protobuf",
+      "sha256": "24f857477359a85c0c235261b8ba905fd51b2562f4a64ca1df5473f29850cbf6",
+      "size_bytes": 433226,
+      "version": "7.35.1"
+    },
+    {
+      "filename": "pygments-2.20.0-py3-none-any.whl",
+      "package": "pygments",
+      "sha256": "81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176",
+      "size_bytes": 1231151,
+      "version": "2.20.0"
+    },
+    {
+      "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+      "package": "python-dateutil",
+      "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
+      "size_bytes": 229892,
+      "version": "2.9.0.post0"
+    },
+    {
+      "filename": "rich-15.0.0-py3-none-any.whl",
+      "package": "rich",
+      "sha256": "33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb",
+      "size_bytes": 310654,
+      "version": "15.0.0"
+    },
+    {
+      "filename": "six-1.17.0-py2.py3-none-any.whl",
+      "package": "six",
+      "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+      "size_bytes": 11050,
+      "version": "1.17.0"
+    },
+    {
+      "filename": "typing_extensions-4.16.0-py3-none-any.whl",
+      "package": "typing-extensions",
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+      "size_bytes": 45571,
+      "version": "4.16.0"
+    },
+    {
+      "filename": "wcmatch-10.2.1-py3-none-any.whl",
+      "package": "wcmatch",
+      "sha256": "2d775395b93f233af66690f62cb9d52b084ec159a31cc4084f4069d72f437acd",
+      "size_bytes": 39763,
+      "version": "10.2.1"
+    }
+  ]
+}

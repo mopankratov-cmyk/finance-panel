@@ -1,0 +1,174 @@
+{
+  "content_sha256": "80c77343c615d5e3a4cb7dc48569e8aa40a24254e4689032d72471f3c82e1035",
+  "decision_content": {
+    "branch_contract": {
+      "branch_reuse_allowed": true,
+      "commit_each_gate": true,
+      "current_branch": "phase/1c-runtime-isolation-architecture",
+      "dirty_worktree_allowed_before_gate": false,
+      "force_push_allowed": false,
+      "main_push_allowed": false,
+      "new_worktree_required": false,
+      "push_after_each_gate": true
+    },
+    "created_at": "2026-07-23T01:22:00Z",
+    "decision": "PHASE_1D_EXACT_SCOPE_LOCKED_FOR_FUTURE_PURE_IMPLEMENTATION_GATES",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "fail_closed_cases": [
+      "a0_dependency_missing_or_hash_mismatch",
+      "current_branch_unknown",
+      "attempt_to_push_main",
+      "dirty_worktree_before_gate",
+      "future_file_outside_allowlist",
+      "forbidden_file_changed",
+      "dependency_or_lockfile_changed",
+      "env_file_changed",
+      "feature_flag_default_true",
+      "runtime_side_effect_detected",
+      "network_client_added",
+      "credential_read_path_added",
+      "secret_scan_failed"
+    ],
+    "forbidden_planning_scope": [
+      "app/",
+      "components/",
+      "lib/",
+      "middleware.ts",
+      "proxy.ts",
+      "next.config.js",
+      "next.config.mjs",
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lockb",
+      ".env",
+      ".env.local",
+      ".gitea/",
+      ".github/",
+      "gateway.py",
+      "web_server.py",
+      "agent/conversation_loop.py",
+      "Hermes core runtime files outside this repository"
+    ],
+    "future_code_scope_allowed": {
+      "docs_and_evidence_prefixes": [
+        "docs/program/PHASE_1D_",
+        "security/evidence/phase-1d-",
+        "tools/phase_1d_",
+        "tools/tests/test_phase_1d_"
+      ],
+      "new_package_root": "tools/pankster_runtime_security/",
+      "package_files": [
+        "tools/pankster_runtime_security/__init__.py",
+        "tools/pankster_runtime_security/feature_flags.py",
+        "tools/pankster_runtime_security/policy_schema.py",
+        "tools/pankster_runtime_security/environment_sanitizer.py",
+        "tools/pankster_runtime_security/fake_grants.py",
+        "tools/pankster_runtime_security/fake_model_broker.py",
+        "tools/pankster_runtime_security/runtime_adapter_contracts.py",
+        "tools/pankster_runtime_security/secret_scan.py"
+      ],
+      "test_files": [
+        "tools/tests/test_pankster_runtime_security_feature_flags.py",
+        "tools/tests/test_pankster_runtime_security_policy_schema.py",
+        "tools/tests/test_pankster_runtime_security_environment_sanitizer.py",
+        "tools/tests/test_pankster_runtime_security_fake_grants.py",
+        "tools/tests/test_pankster_runtime_security_fake_model_broker.py",
+        "tools/tests/test_pankster_runtime_security_runtime_adapter_contracts.py",
+        "tools/tests/test_pankster_runtime_security_secret_scan.py"
+      ]
+    },
+    "gateway_changes_approved": false,
+    "implementation_code_approved_by_a1": false,
+    "module_permission_matrix": {
+      "environment_sanitizer": {
+        "allows_code": true,
+        "credential_reads_allowed": false,
+        "first_gate": "1D-A4",
+        "network_allowed": false,
+        "runtime_side_effects_allowed": false
+      },
+      "fake_grants_and_broker": {
+        "allows_code": true,
+        "credential_reads_allowed": false,
+        "first_gate": "1D-A5",
+        "network_allowed": false,
+        "runtime_side_effects_allowed": false
+      },
+      "feature_flags": {
+        "allows_code": false,
+        "first_gate": "1D-A2",
+        "purpose": "spec flag names and disabled defaults before implementation"
+      },
+      "policy_schema": {
+        "allows_code": true,
+        "credential_reads_allowed": false,
+        "first_gate": "1D-A3",
+        "network_allowed": false,
+        "runtime_side_effects_allowed": false
+      },
+      "runtime_adapter_contracts": {
+        "allows_code": true,
+        "first_gate": "1D-A6",
+        "gateway_integration_allowed": false,
+        "runtime_side_effects_allowed": false,
+        "sandbox_launch_allowed": false
+      }
+    },
+    "next_gate": "1D-A2_FEATURE_FLAG_AND_CONFIG_SCAFFOLD_SPEC",
+    "phase": "1D-A1",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a0_dependency_satisfied": true,
+      "exact_scope_locked": true,
+      "future_code_gates_can_start_after_a2": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_pre_code_checks": [
+      "a1_contract_validator_passes",
+      "working_tree_clean",
+      "exact_files_match_allowlist",
+      "forbidden_files_unchanged",
+      "no_dependency_lockfile_changes",
+      "no_env_files_changed",
+      "no_secret_shaped_values_in_new_files",
+      "full_tools_tests_pass"
+    ],
+    "required_tests": {
+      "future_gate_tests": [
+        "a3_creates_only_policy_schema_files",
+        "a4_creates_only_environment_sanitizer_files",
+        "a5_creates_only_fake_grants_and_broker_files",
+        "a6_creates_only_runtime_adapter_contract_files",
+        "all_future_gates_keep_forbidden_files_unchanged"
+      ],
+      "security": [
+        "no_secret_values_in_scope_contract",
+        "no_provider_network_clients_in_scope_contract",
+        "no_auth_json_or_keychain_paths_as_read_targets",
+        "no_gateway_or_profile_start_commands"
+      ],
+      "validator_unit": [
+        "a1_requires_a0_dependency_hash",
+        "a1_current_branch_contract_matches",
+        "a1_future_code_scope_exact_files_only",
+        "a1_forbidden_scope_blocks_app_lib_deps_env_gateway_hermes_core",
+        "a1_module_permission_matrix_blocks_side_effects_network_credentials_sandbox"
+      ]
+    },
+    "rollback": "revert_a1_scope_contract_and_remain_at_1d_a0_planning_only",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a0_content_sha256": "346de53f0268a98d52dbd9805c1a1b8e9c7851f5dce92b122ec0879c10f109d9",
+      "phase_1d_a0_file_sha256": "5be6986909ef8213e65c2f42e5841a377af2caf2087ce79fa1a4855378d012b6",
+      "phase_1d_a0_path": "security/evidence/phase-1d-a0/controlled-implementation-planning.json",
+      "phase_1d_a0_status": "CONTROLLED_IMPLEMENTATION_PLANNING_COMPLETE_NO_RUNTIME_APPROVAL"
+    },
+    "status": "IMPLEMENTATION_SCOPE_AND_BRANCH_CONTRACT_COMPLETE_NO_CODE_APPROVAL"
+  },
+  "schema_version": "pankster.phase1d-a1.implementation-scope-and-branch-contract.v1"
+}

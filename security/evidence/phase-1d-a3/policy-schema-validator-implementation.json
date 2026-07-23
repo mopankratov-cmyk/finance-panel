@@ -1,0 +1,128 @@
+{
+  "content_sha256": "ea8b47a50ee02033172440fddfef1c8810bd45e177b73b49b5ed09bc27abd24b",
+  "decision_content": {
+    "created_at": "2026-07-23T01:58:00Z",
+    "decision": "PURE_POLICY_SCHEMA_VALIDATOR_READY_FOR_ENVIRONMENT_SANITIZER_GATE_NOT_RUNTIME",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "fail_closed_cases": [
+      "missing_policy_mapping",
+      "missing_required_field",
+      "disabled_profile",
+      "forbidden_secret_field_present",
+      "empty_allowlist",
+      "grant_ttl_exceeds_900",
+      "invalid_budget_field",
+      "invalid_string_field"
+    ],
+    "gateway_changes_approved": false,
+    "implementation_scope": "pure_policy_schema_validator_only",
+    "implemented_files": {
+      "tools/pankster_runtime_security/__init__.py": "34c5af6f6325d803e9533955f0a60d081452a3162fa6bd0057792dad4d4f885c",
+      "tools/pankster_runtime_security/policy_schema.py": "6aba57790acbd05ed1b89f621bee79bf24786f9d2b76769a22f65fd993372fd5",
+      "tools/tests/test_pankster_runtime_security_policy_schema.py": "a756fa887937ad7bd4b2a98d4ca929e55ca35359659a6d0b10a1e8d589d6367e"
+    },
+    "next_gate": "1D-A4_ENVIRONMENT_SANITIZER_IMPLEMENTATION",
+    "phase": "1D-A3",
+    "policy_schema_contract": {
+      "budget_fields": [
+        "max_usd_per_attempt",
+        "max_tokens_per_attempt",
+        "max_requests_per_attempt",
+        "max_wall_clock_seconds",
+        "max_retries"
+      ],
+      "disabled_profile_behavior": "deny_by_default",
+      "forbidden_fields": [
+        "api_key",
+        "access_token",
+        "refresh_token",
+        "authorization_header",
+        "provider_secret_value",
+        "root_auth_json_path",
+        "root_credential_pool",
+        "plaintext_credential",
+        "environment_secret_value"
+      ],
+      "grant_ttl_seconds_max": 900,
+      "required_fields": [
+        "profile_id",
+        "enabled",
+        "owner_principal_id",
+        "policy_version",
+        "runtime_backend",
+        "network_policy_id",
+        "model_provider_allowlist",
+        "model_allowlist",
+        "operation_allowlist",
+        "grant_ttl_seconds_max",
+        "budget",
+        "rate_limits",
+        "credential_reference_allowlist",
+        "environment_policy_id",
+        "artifact_policy_id",
+        "audit_policy_id",
+        "rollback_policy_id"
+      ],
+      "result_is_secret_free": true
+    },
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "purity_contract": {
+      "filesystem_writes": false,
+      "gateway_integration": false,
+      "network_calls": false,
+      "provider_sdks_used": false,
+      "reads_auth_json": false,
+      "reads_env_files": false,
+      "reads_keychain": false,
+      "reads_process_environment": false,
+      "sandbox_launch": false
+    },
+    "readiness_findings": {
+      "a2_dependency_satisfied": true,
+      "policy_schema_validator_implemented": true,
+      "production_ready": false,
+      "runtime_execution_ready": false,
+      "targeted_tests_passed": true
+    },
+    "required_tests": {
+      "security": [
+        "policy_validator_reasons_are_secret_free",
+        "policy_validator_does_not_read_auth_json_or_keychain",
+        "policy_validator_has_no_network_or_provider_imports"
+      ],
+      "unit": [
+        "valid_synthetic_policy_allowed",
+        "missing_required_field_denies_without_values",
+        "disabled_profile_denies_launch_by_default",
+        "forbidden_secret_fields_rejected_recursively",
+        "empty_allowlists_ttl_overflow_and_bad_budget_deny"
+      ],
+      "validator_unit": [
+        "a3_requires_a2_dependency_hash",
+        "a3_implemented_files_match_hashes",
+        "a3_policy_contract_matches_a11_required_fields",
+        "a3_purity_contract_blocks_env_auth_keychain_network_gateway_sandbox",
+        "a3_test_results_record_targeted_pass"
+      ]
+    },
+    "rollback": "remove_tools_pankster_runtime_security_policy_schema_files_and_return_to_a2_spec_only",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a2_content_sha256": "d40eab7a1fa78f004f07b8c81da83f140e39462c2b03b7a1c1f6dcfca28ddc66",
+      "phase_1d_a2_file_sha256": "7835aaeb3a6370745e759306f2308f83fecbe980b4512b0230889a041cddec59",
+      "phase_1d_a2_path": "security/evidence/phase-1d-a2/feature-flag-and-config-scaffold-spec.json",
+      "phase_1d_a2_status": "FEATURE_FLAG_AND_CONFIG_SCAFFOLD_SPEC_COMPLETE_NO_CODE_APPROVAL"
+    },
+    "status": "POLICY_SCHEMA_VALIDATOR_IMPLEMENTED_SYNTHETIC_ONLY",
+    "test_results": {
+      "targeted_policy_schema_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_policy_schema",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1d-a3.policy-schema-validator-implementation.v1"
+}

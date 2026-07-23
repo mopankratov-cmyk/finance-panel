@@ -1,0 +1,58 @@
+{
+  "content_sha256": "3a8b46a0703110942ce1733961c945746abb8ada04c1bde206f8a070c5182932",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "execute one local synthetic runner preflight in fail-closed dry-run mode only; no sandbox, provider/model API, real credentials, gateway, profiles, canary, dependency changes, or OAuth refresh",
+    "approval_id": "p1d-20260723-syntheticpreflighta9",
+    "approval_mode": "request_only_no_execution",
+    "created_at": "2026-07-23T03:55:00Z",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_SYNTHETIC_PREFLIGHT_EXECUTION_ONLY",
+    "execution_performed_by_this_gate": false,
+    "fail_closed_cases": [
+      "missing_exact_owner_approval",
+      "approval_hash_mismatch",
+      "a8_dependency_missing_or_hash_mismatch",
+      "attempt_to_start_sandbox_or_subprocess",
+      "attempt_to_call_provider_or_model_api",
+      "attempt_to_read_real_credentials_auth_json_or_keychain",
+      "attempt_to_change_gateway_profile_canary_or_dependencies",
+      "secret_scan_failed"
+    ],
+    "future_execution_scope": {
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "gateway_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_dry_run_only": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "synthetic_only": true
+    },
+    "next_gate": "1D-A10_SYNTHETIC_RUNNER_PREFLIGHT_EXECUTION_AFTER_OWNER_APPROVAL",
+    "phase": "1D-A9",
+    "required_future_execution_evidence": {
+      "a7_contract_hash_verified": true,
+      "a8_evidence_hash_verified": true,
+      "all_phase_1d_validators_pass_before_execution": true,
+      "full_tools_tests_pass_before_execution": true,
+      "no_runtime_processes_started": true,
+      "sanitized_evidence_only": true,
+      "secret_scan_pass_before_execution": true
+    },
+    "source_evidence": {
+      "phase_1d_a8_content_sha256": "3d48c143bbcb2ee6ec9d1a2e048986ace293b6963971109cb356ef05d3c7e334",
+      "phase_1d_a8_file_sha256": "5a93d2d085864f0fdeae4f99d48da3353e7c711b8d006daff73ce7c0c8785422",
+      "phase_1d_a8_path": "security/evidence/phase-1d-a8/implementation-security-review.json",
+      "phase_1d_a8_verdict": "READY_FOR_SYNTHETIC_EXECUTION_APPROVAL_REQUEST_NOT_EXECUTION"
+    },
+    "status": "SYNTHETIC_RUNNER_EXECUTION_APPROVAL_REQUEST_READY_NO_EXECUTION"
+  },
+  "contract_state": "READY_FOR_OWNER_APPROVAL_NO_EXECUTION",
+  "schema_version": "pankster.phase1d-a9.synthetic-runner-execution-approval-request.v1"
+}

@@ -1,0 +1,120 @@
+{
+  "content_sha256": "2537f7550e839bfdfc60ffa158de755185cb1e545e7311cb828439a207791d79",
+  "contract_content": {
+    "allowed_action": "after exact owner approval, run one synthetic E2B isolation proof using the A6 isolated venv and the A4 proof runner; allow E2B control-plane API credential only for sandbox creation; do not expose model, production, or root credentials",
+    "approval_id": "p1c-20260722-e2bproofa7",
+    "backend": "e2b_sandbox",
+    "created_at": "2026-07-22T22:15:00Z",
+    "e2b_control_plane_credential": {
+      "allowed_after_approval": true,
+      "env_name": "E2B_API_KEY",
+      "passed_to_sandbox": false,
+      "presence_check_allowed_after_approval": true,
+      "used_for_model_auth": false,
+      "value_printed": false
+    },
+    "execution": {
+      "a4_approval_command": "APPROVE_PHASE_1C_E2B_SYNTHETIC_ISOLATION_PROOF:p1c-20260722-e2bproofa4:0764a641d0e2b9dfea863eb3ce28703706ba5688d38328b7c06e6fcb85574314",
+      "runner_mode": "execute-synthetic-proof",
+      "runner_path": "tools/phase_1c_a4_e2b_synthetic_proof_runner.py",
+      "runner_process_environment_allowlist": [
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "SHELL",
+        "NO_PROXY",
+        "no_proxy",
+        "E2B_API_KEY"
+      ],
+      "sandbox_create_policy": {
+        "allow_internet_access": false,
+        "envs": {
+          "PANKSTER_NETWORK_POLICY": "deny_all",
+          "PANKSTER_PROFILE_ID": "synthetic-e2b-proof",
+          "PANKSTER_SYNTHETIC_MODEL_TOKEN": "fake-profile-model-token"
+        },
+        "metadata": {
+          "pankster_approval_id": "p1c-20260722-e2bproofa4",
+          "pankster_phase": "1c-a4",
+          "pankster_synthetic_only": "true"
+        },
+        "timeout_seconds": 120
+      }
+    },
+    "expires_at": "2026-07-23T22:15:00Z",
+    "failure_policy": {
+      "missing_e2b_api_key": "FAIL_CLOSED_BEFORE_SANDBOX_CREATION",
+      "proof_failure": "FAIL_CLOSED_AND_DESTROY_SANDBOX",
+      "sandbox_create_failure": "FAIL_CLOSED_WITH_SANITIZED_ERROR",
+      "sandbox_destroy_failure": "BLOCK_DEPLOYMENT_REVIEW",
+      "sdk_version_mismatch": "FAIL_CLOSED_BEFORE_PROVIDER_CALL"
+    },
+    "forbidden_actions": {
+      "canary": true,
+      "delegation_to_unsanitized_child": true,
+      "dependency_download": true,
+      "dependency_install": true,
+      "gateway_changes": true,
+      "host_firewall_changes": true,
+      "mcp_external_servers": true,
+      "production_profiles": true
+    },
+    "forbidden_credentials": {
+      "anthropic_openai_glm_credentials": true,
+      "auth_file_reads": true,
+      "environment_value_dump": true,
+      "gitea_credentials": true,
+      "keychain_reads": true,
+      "model_provider_credentials": true,
+      "root_auth_json": true,
+      "root_credential_pool": true,
+      "supabase_credentials": true,
+      "telegram_credentials": true
+    },
+    "next_gate": "PHASE_1C_A7_OWNER_APPROVAL_REQUIRED_TO_EXECUTE_SYNTHETIC_PROVIDER_PROOF",
+    "required_proofs": {
+      "a6_venv_e2b_version_verified_before_run": true,
+      "application_level_outbound_denial_observed": true,
+      "code_execution_child_environment_sanitized": true,
+      "delegation_child_environment_sanitized_or_not_available_fail_closed": true,
+      "logs_evidence_secret_free": true,
+      "mcp_child_environment_sanitized_or_not_available_fail_closed": true,
+      "provider_credential_value_not_printed": true,
+      "runner_process_env_allowlisted": true,
+      "sandbox_cannot_read_root_auth_json": true,
+      "sandbox_created_with_allow_internet_access_false": true,
+      "sandbox_destroyed_after_probe": true,
+      "sandbox_environment_contains_only_allowlisted_synthetic_keys": true,
+      "terminal_child_environment_sanitized": true
+    },
+    "sdk": {
+      "package": "e2b",
+      "sandbox_create_signature_contains": [
+        "allow_internet_access: bool = True",
+        "envs: Dict[str, str] | None = None",
+        "metadata: Dict[str, str] | None = None"
+      ],
+      "venv_python": "/Users/maksimpankratov/.local/pankster/e2b-sdk-venvs/2.34.0/bin/python",
+      "version": "2.34.0"
+    },
+    "source_evidence": {
+      "a4_contract_file_sha256": "3b00addc890b280acf441a1ee5d7b37226cc23414f7648a7095c917c05dc547e",
+      "a4_contract_path": "docs/program/PHASE_1C_A4_E2B_SYNTHETIC_ISOLATION_PROOF_CONTRACT.ready.json",
+      "a4_runner_path": "tools/phase_1c_a4_e2b_synthetic_proof_runner.py",
+      "a4_runner_sha256": "4663fdfae07f700a13e58e686a380ad7ca5c1fceb75416c472c1bc5cfb20a221",
+      "a6_contract_file_sha256": "1b9f479736f324eebd2e912aefd99d413cebe4f1171e815c8671e02d8f0f2a9a",
+      "a6_contract_path": "docs/program/PHASE_1C_A6_E2B_SDK_OFFLINE_INSTALL_CONTRACT.ready.json",
+      "a6_install_manifest_path": "security/evidence/phase-1c-a6/e2b-sdk-offline-install-manifest.json",
+      "a6_install_manifest_sha256": "0737dcec1e4743d9f9af95b04007a5865d5cdb8781be313a9a6252057289f53b",
+      "a6_runner_path": "tools/phase_1c_a6_e2b_sdk_offline_install_runner.py",
+      "a6_runner_sha256": "2deea8cffcd61538626f6b1687d3bd26ab703056a48045a3a7f0330a452b8ebc"
+    }
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1c-a7.e2b-synthetic-proof-with-sdk-contract.v1"
+}

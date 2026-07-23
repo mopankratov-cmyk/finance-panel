@@ -1,0 +1,93 @@
+{
+  "content_sha256": "46c9ab5e52e015ddda80c7bfdcdac316cc1ca80140846b38e728a221e2972382",
+  "contract_content": {
+    "allowed_action": "after exact owner approval, resolve and download a hash-locked E2B Python SDK wheelhouse for synthetic proof tooling only; do not install, import, create sandboxes, or call provider APIs",
+    "approval_id": "p1c-20260722-e2bsdklocka5",
+    "backend": "e2b_sandbox",
+    "blocked_reason_from_a4": "E2B_SDK_NOT_AVAILABLE",
+    "created_at": "2026-07-22T21:10:00Z",
+    "download_scope": {
+      "allow_sdists": false,
+      "allow_yanked": false,
+      "allowed_hosts": [
+        "pypi.org",
+        "files.pythonhosted.org"
+      ],
+      "dependency_import_allowed": false,
+      "dependency_install_allowed": false,
+      "require_hash_manifest": true,
+      "require_only_binary": true,
+      "wheelhouse_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0"
+    },
+    "expires_at": "2026-07-23T21:10:00Z",
+    "forbidden_actions": {
+      "auth_file_reads": true,
+      "canary": true,
+      "dependency_import": true,
+      "environment_value_dump": true,
+      "gateway_changes": true,
+      "host_firewall_changes": true,
+      "keychain_reads": true,
+      "pip_install": true,
+      "production_profiles": true,
+      "provider_api_calls": true,
+      "real_credentials": true,
+      "sandbox_creation": true
+    },
+    "known_runtime_dependencies": [
+      "python-dateutil>=2.8.2",
+      "wcmatch<11,>=10.1",
+      "protobuf>=4.21.0",
+      "httpcore<2,>=1.0.5",
+      "httpx<1.0.0,>=0.27.0",
+      "h2<5,>=4",
+      "attrs>=23.2.0",
+      "packaging>=24.1",
+      "typing-extensions>=4.1.0",
+      "dockerfile-parse<3,>=2.0.1",
+      "rich>=14.0.0"
+    ],
+    "next_gate": "PHASE_1C_A6_INSTALL_FROM_LOCKED_WHEELHOUSE",
+    "package_manager": "pip-download-only",
+    "primary_artifacts": [
+      {
+        "filename": "e2b-2.34.0-py3-none-any.whl",
+        "packagetype": "bdist_wheel",
+        "python_version": "py3",
+        "sha256": "873323571d18bf633be45e59fc6271410b30dfbc81e8df85e711f4f184c03fea",
+        "size_bytes": 343447,
+        "upload_time_iso_8601": "2026-07-17T09:59:22.553283Z",
+        "url": "https://files.pythonhosted.org/packages/6d/ec/b2f9297afc25de7c27ab5a85db4060783680e2b132285e2498fdbad484cf/e2b-2.34.0-py3-none-any.whl",
+        "yanked": false
+      }
+    ],
+    "python_package": {
+      "license": "MIT",
+      "name": "e2b",
+      "pypi_json_url": "https://pypi.org/pypi/e2b/2.34.0/json",
+      "pypi_project_url": "https://pypi.org/project/e2b/",
+      "repository": "https://github.com/e2b-dev/e2b/tree/main/packages/python-sdk",
+      "requires_python": ">=3.10",
+      "version": "2.34.0"
+    },
+    "required_outputs": {
+      "all_downloaded_files_sha256": true,
+      "all_packages_pinned_exact_versions": true,
+      "no_package_installed_or_imported": true,
+      "no_sdist_downloaded": true,
+      "primary_wheel_sha_verified": true,
+      "sanitized_evidence_only": true,
+      "wheelhouse_manifest_json": true
+    },
+    "source_evidence": {
+      "a4_contract_file_sha256": "3b00addc890b280acf441a1ee5d7b37226cc23414f7648a7095c917c05dc547e",
+      "a4_contract_path": "docs/program/PHASE_1C_A4_E2B_SYNTHETIC_ISOLATION_PROOF_CONTRACT.ready.json",
+      "a4_execution_attempt_path": "security/evidence/phase-1c-a4/e2b-synthetic-isolation-proof-execution-attempt.json",
+      "a4_execution_attempt_sha256": "671ebb7c2e2e97b68b50641b952d773a5b64f7bbe0fa3305ae923538a4e410e7",
+      "a4_runner_path": "tools/phase_1c_a4_e2b_synthetic_proof_runner.py",
+      "a4_runner_sha256": "4663fdfae07f700a13e58e686a380ad7ca5c1fceb75416c472c1bc5cfb20a221"
+    }
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1c-a5.e2b-sdk-wheelhouse-lock-contract.v1"
+}
