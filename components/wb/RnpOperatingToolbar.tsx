@@ -4,15 +4,13 @@ import {
   Activity,
   ArrowDown,
   ArrowUp,
+  Building2,
   Check,
   ChevronDown,
-  Eye,
-  Flame,
   GripVertical,
   ListFilter,
   Search,
   SlidersHorizontal,
-  Sparkles,
   Tag,
   X,
 } from "lucide-react";
@@ -26,6 +24,7 @@ import {
   type RnpMetricField,
   type RnpViewId,
 } from "@/lib/rnp/operatingMatrix";
+import type { WbCabinet } from "./WbCabinetContext";
 
 interface MetricDefinition {
   field: string;
@@ -48,6 +47,7 @@ interface Props {
   deltaMode: RnpDeltaMode;
   heatmapEnabled: boolean;
   sparklinesEnabled: boolean;
+  compactNumbers: boolean;
   anomalyMode: "off" | RnpAnomalyDirection;
   anomalyThreshold: number;
   anomalyCount: number;
@@ -59,6 +59,10 @@ interface Props {
   sortField: string;
   sortDirection: 1 | -1;
   sortOptions: ReadonlyArray<{ field: string; label: string }>;
+  cabinetId: string;
+  cabinets: WbCabinet[];
+  category: string;
+  categories: string[];
   busy?: boolean;
   onViewChange: (viewId: Exclude<RnpViewId, "custom">) => void;
   onMetricFieldsChange: (fields: RnpMetricField[]) => void;
@@ -68,6 +72,7 @@ interface Props {
   onDeltaModeChange: (value: RnpDeltaMode) => void;
   onHeatmapChange: (value: boolean) => void;
   onSparklinesChange: (value: boolean) => void;
+  onCompactNumbersChange: (value: boolean) => void;
   onAnomalyModeChange: (value: "off" | RnpAnomalyDirection) => void;
   onAnomalyThresholdChange: (value: number) => void;
   onTurnoverWindowChange: (value: number) => void;
@@ -77,6 +82,8 @@ interface Props {
   onCreateTag: (name: string, color: string) => Promise<boolean>;
   onBulkTag: (tagId: string) => void;
   onClearSelection: () => void;
+  onCabinetChange: (cabinetId: string) => void;
+  onCategoryChange: (category: string) => void;
 }
 
 const METRIC_GROUPS: Array<{ label: string; fields: RnpMetricField[] }> = [
@@ -105,6 +112,7 @@ const CONTROL_CLASS =
 
 export function RnpOperatingToolbar(props: Props) {
   const [tagsOpen, setTagsOpen] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [tagComposerOpen, setTagComposerOpen] = useState(false);
   const [tagName, setTagName] = useState("");
@@ -143,7 +151,41 @@ export function RnpOperatingToolbar(props: Props) {
 
   return (
     <div className="relative">
-      <div className="grid gap-3 border-t border-slate-100 pt-3 lg:grid-cols-[auto_260px_minmax(280px,1fr)_auto]">
+      <div className="mt-2.5 grid gap-2.5 border-t border-slate-100 pt-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(118px,0.8fr)_minmax(118px,0.8fr)_88px_minmax(170px,1fr)_minmax(230px,1.4fr)_175px]">
+        <label>
+          <span className="mb-1 block text-[10px] font-medium text-slate-500">Бренд</span>
+          <span className="relative block">
+            <Building2 className="pointer-events-none absolute bottom-[11px] left-3 h-3.5 w-3.5 text-violet-500" />
+            <select
+              value={props.cabinetId}
+              onChange={(event) => props.onCabinetChange(event.target.value)}
+              className={`${CONTROL_CLASS} w-full appearance-none pl-9 pr-7`}
+              aria-label="Бренд или кабинет"
+            >
+              {props.cabinets.length > 1 ? <option value="all">Все</option> : null}
+              {props.cabinets.map((cabinet) => <option key={cabinet.id} value={cabinet.id}>{cabinet.trade_mark || cabinet.name}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute bottom-[11px] right-2.5 h-3.5 w-3.5 text-slate-400" />
+          </span>
+        </label>
+
+        <label>
+          <span className="mb-1 block text-[10px] font-medium text-slate-500">Категория</span>
+          <span className="relative block">
+            <select
+              value={props.category}
+              onChange={(event) => props.onCategoryChange(event.target.value)}
+              className={`${CONTROL_CLASS} w-full appearance-none pr-7`}
+              aria-label="Категория"
+            >
+              <option value="">Все</option>
+              {props.categories.map((category) => <option key={category} value={category}>{category}</option>)}
+              <option value="__none">Остальное</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute bottom-[11px] right-2.5 h-3.5 w-3.5 text-slate-400" />
+          </span>
+        </label>
+
         <div className="relative">
           <span className="mb-1 block text-[10px] font-medium text-slate-500">Теги</span>
           <button
@@ -153,8 +195,7 @@ export function RnpOperatingToolbar(props: Props) {
             className={`${CONTROL_CLASS} inline-flex w-full items-center gap-2`}
           >
             <Tag className="h-3.5 w-3.5 text-slate-500" />
-            {props.activeTagIds.length ? `Выбрано ${props.activeTagIds.length}` : "Теги"}
-            <ChevronDown className="ml-auto h-3.5 w-3.5 text-slate-400" />
+            {props.activeTagIds.length ? props.activeTagIds.length : "Теги"}
           </button>
         </div>
 
@@ -291,17 +332,22 @@ export function RnpOperatingToolbar(props: Props) {
         <div className="relative ml-auto flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setViewOpen((open) => !open)}
+            onClick={() => {
+              setDisplayOpen((open) => !open);
+              setViewOpen(false);
+            }}
             className={`${CONTROL_CLASS} inline-flex items-center gap-2`}
           >
-            <Eye className="h-3.5 w-3.5 text-slate-500" />
             <span className="text-slate-400">Отображение:</span>
             <span>{activeView?.label ?? "Свой вариант"}</span>
             <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
           </button>
           <button
             type="button"
-            onClick={() => setViewOpen((open) => !open)}
+            onClick={() => {
+              setViewOpen((open) => !open);
+              setDisplayOpen(false);
+            }}
             className={`${CONTROL_CLASS} inline-flex items-center gap-2`}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" /> Вид
@@ -316,8 +362,8 @@ export function RnpOperatingToolbar(props: Props) {
             Показатели {props.metricFields.length}/{RNP_METRIC_FIELDS.length}
           </button>
 
-          {viewOpen ? (
-            <div className="absolute right-36 top-11 z-50 w-[270px] rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+          {displayOpen ? (
+            <div className="absolute right-[220px] top-11 z-50 w-[270px] rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
               <div className="px-2 pb-1.5 pt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">Готовые представления</div>
               {RNP_VIEW_PRESETS.map((view) => (
                 <button
@@ -325,7 +371,7 @@ export function RnpOperatingToolbar(props: Props) {
                   type="button"
                   onClick={() => {
                     props.onViewChange(view.id);
-                    setViewOpen(false);
+                    setDisplayOpen(false);
                   }}
                   className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-violet-50"
                 >
@@ -340,25 +386,47 @@ export function RnpOperatingToolbar(props: Props) {
                   </span>
                 </button>
               ))}
-              <div className="mt-1 grid grid-cols-2 gap-1 border-t border-slate-100 pt-2">
-                <button
-                  type="button"
-                  onClick={() => props.onHeatmapChange(!props.heatmapEnabled)}
-                  className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-[9px] font-semibold ${
-                    props.heatmapEnabled ? "bg-violet-50 text-violet-700" : "bg-slate-50 text-slate-500"
-                  }`}
-                >
-                  <Flame className="h-3 w-3" /> Теплокарта
-                </button>
-                <button
-                  type="button"
-                  onClick={() => props.onSparklinesChange(!props.sparklinesEnabled)}
-                  className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-[9px] font-semibold ${
-                    props.sparklinesEnabled ? "bg-violet-50 text-violet-700" : "bg-slate-50 text-slate-500"
-                  }`}
-                >
-                  <Sparkles className="h-3 w-3" /> Мини-график
-                </button>
+            </div>
+          ) : null}
+
+          {viewOpen ? (
+            <div className="absolute right-[122px] top-11 z-50 w-[230px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+              <div className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">Настройки отображения</div>
+              <div className="mt-2 space-y-1">
+                <ViewCheck
+                  label="Теплокарта"
+                  checked={props.heatmapEnabled}
+                  onChange={() => props.onHeatmapChange(!props.heatmapEnabled)}
+                />
+                <ViewCheck
+                  label="Мини-графики"
+                  checked={props.sparklinesEnabled}
+                  onChange={() => props.onSparklinesChange(!props.sparklinesEnabled)}
+                />
+                <ViewCheck
+                  label="Дельты"
+                  checked={props.showDeltas}
+                  onChange={() => props.onShowDeltasChange(!props.showDeltas)}
+                />
+              </div>
+              <div className="mt-3 border-t border-slate-100 pt-2">
+                <div className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">Формат чисел</div>
+                <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => props.onCompactNumbersChange(false)}
+                    className={`h-8 rounded-md text-[10px] font-semibold ${!props.compactNumbers ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
+                  >
+                    Полный
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => props.onCompactNumbersChange(true)}
+                    className={`h-8 rounded-md text-[10px] font-semibold ${props.compactNumbers ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
+                  >
+                    Короткий
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
@@ -445,7 +513,7 @@ export function RnpOperatingToolbar(props: Props) {
       ) : null}
 
       {props.metricsOpen ? (
-        <div className="absolute right-0 top-[132px] z-50 max-h-[570px] w-[330px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.2)]">
+        <div className="absolute right-0 top-[132px] z-50 max-h-[470px] w-[270px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.2)]">
           <div className="sticky top-0 z-10 -mx-1 -mt-1 flex items-start justify-between bg-white px-1 pb-2 pt-1">
             <div>
               <h3 className="text-[10px] font-bold text-slate-800">Показатели · тяните ⠿ для порядка</h3>
@@ -526,5 +594,20 @@ export function RnpOperatingToolbar(props: Props) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ViewCheck({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className="flex h-8 w-full items-center justify-between rounded-md px-1.5 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
+    >
+      {label}
+      <span className={`grid h-4 w-4 place-items-center rounded border ${checked ? "border-violet-600 bg-violet-600 text-white" : "border-slate-300 bg-white text-transparent"}`}>
+        <Check className="h-2.5 w-2.5" />
+      </span>
+    </button>
   );
 }

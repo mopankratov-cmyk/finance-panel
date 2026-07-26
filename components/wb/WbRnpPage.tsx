@@ -9,11 +9,10 @@ import {
   Loader2,
   Pencil,
   RefreshCw,
-  Store,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { filterByCategory } from "@/components/ui/CategoryFilter";
 import { ActionableError } from "@/components/ui/ActionableError";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
@@ -140,6 +139,7 @@ interface RnpMatrixPreferences {
   deltaMode: RnpDeltaMode;
   heatmapEnabled: boolean;
   sparklinesEnabled: boolean;
+  compactNumbers: boolean;
   anomalyThreshold: number;
   turnoverWindowDays: number;
 }
@@ -212,8 +212,16 @@ const PRESETS = [
   { value: "quarter", label: "Квартал" },
 ] as const;
 
+const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: readonly RnpMetricField[]; expanded: boolean }> = [
+  { id: "main", label: "Основное", fields: ["orders_count", "buyout_pct", "buyouts_count", "ad_spent", "drr"], expanded: true },
+  { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "buyouts_sum"], expanded: false },
+  { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart"], expanded: false },
+  { id: "economy", label: "Экономика", fields: ["gross", "margin_pct", "gmroi"], expanded: false },
+  { id: "stock", label: "Остатки", fields: ["stock", "turnover", "money"], expanded: false },
+];
+
 const RNP_FILTER_PRESETS_STORAGE_KEY = "finance-panel:wb-rnp-filter-presets:v1";
-const RNP_MATRIX_STORAGE_KEY = "finance-panel:wb-rnp-operating-matrix:v1";
+const RNP_MATRIX_STORAGE_KEY = "finance-panel:wb-rnp-operating-matrix:v2";
 const MAX_USER_FILTER_PRESETS = 8;
 const SHOW_RNP_ASSISTANT_BLOCKS = false;
 
@@ -357,6 +365,7 @@ function readMatrixPreferences(): RnpMatrixPreferences {
     deltaMode: "percent",
     heatmapEnabled: true,
     sparklinesEnabled: true,
+    compactNumbers: false,
     anomalyThreshold: 30,
     turnoverWindowDays: 7,
   };
@@ -370,6 +379,7 @@ function readMatrixPreferences(): RnpMatrixPreferences {
       deltaMode: value.deltaMode === "absolute" ? "absolute" : "percent",
       heatmapEnabled: value.heatmapEnabled !== false,
       sparklinesEnabled: value.sparklinesEnabled !== false,
+      compactNumbers: value.compactNumbers === true,
       anomalyThreshold: Math.max(10, Math.min(100, Number(value.anomalyThreshold) || 30)),
       turnoverWindowDays: [7, 14, 30, 60, 90].includes(Number(value.turnoverWindowDays)) ? Number(value.turnoverWindowDays) : 7,
     };
@@ -416,6 +426,10 @@ function denseFmt(value: number | null | undefined, kind: string) {
   if (kind === "money" && Math.abs(value) >= 100_000) return `${compactFmt(value, kind)} ₽`;
   if (kind !== "money" && Math.abs(value) >= 1_000_000) return compactFmt(value, kind);
   return fmt(value, kind);
+}
+
+function matrixFmt(value: number | null | undefined, kind: string, compactNumbers: boolean) {
+  return compactNumbers ? denseFmt(value, kind) : fmt(value, kind);
 }
 
 function formatChartValue(value: number | null | undefined, kind: string) {
@@ -504,7 +518,7 @@ function toneClass(metric: Metric, value: number | null) {
 
 export function WbRnpPage() {
   const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, canWrite, setCabinetId } = useWbCabinet();
-  const [range, setRange] = useState<DateRange>(() => rangeFor("month"));
+  const [range, setRange] = useState<DateRange>(() => rangeFor("week"));
   const [data, setData] = useState<RnpTable | null>(null);
   const [previousData, setPreviousData] = useState<RnpTable | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
@@ -534,6 +548,7 @@ export function WbRnpPage() {
   const [deltaMode, setDeltaMode] = useState<RnpDeltaMode>("percent");
   const [heatmapEnabled, setHeatmapEnabled] = useState(true);
   const [sparklinesEnabled, setSparklinesEnabled] = useState(true);
+  const [compactNumbers, setCompactNumbers] = useState(false);
   const [anomalyMode, setAnomalyMode] = useState<"off" | RnpAnomalyDirection>("off");
   const [anomalyThreshold, setAnomalyThreshold] = useState(30);
   const [turnoverWindowDays, setTurnoverWindowDays] = useState(7);
@@ -566,6 +581,7 @@ export function WbRnpPage() {
     setDeltaMode(preferences.deltaMode);
     setHeatmapEnabled(preferences.heatmapEnabled);
     setSparklinesEnabled(preferences.sparklinesEnabled);
+    setCompactNumbers(preferences.compactNumbers);
     setAnomalyThreshold(preferences.anomalyThreshold);
     setTurnoverWindowDays(preferences.turnoverWindowDays);
     const preset = RNP_VIEW_PRESETS.find((view) =>
@@ -583,10 +599,11 @@ export function WbRnpPage() {
       deltaMode,
       heatmapEnabled,
       sparklinesEnabled,
+      compactNumbers,
       anomalyThreshold,
       turnoverWindowDays,
     });
-  }, [anomalyThreshold, deltaMode, heatmapEnabled, matrixReady, metricFields, showDeltas, sparklinesEnabled, turnoverWindowDays]);
+  }, [anomalyThreshold, compactNumbers, deltaMode, heatmapEnabled, matrixReady, metricFields, showDeltas, sparklinesEnabled, turnoverWindowDays]);
 
   useEffect(() => {
     setPlanning(false);
@@ -1122,11 +1139,9 @@ export function WbRnpPage() {
     URL.revokeObjectURL(url);
   };
 
-  const totalColumns = 7 + (sparklinesEnabled ? 1 : 0) + (activeData?.period.length ?? 0);
-
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f7f7fb] px-3 pb-20 pt-4 md:px-6 md:pb-8 lg:px-7">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-medium text-slate-400">Аналитика</div>
           <div className="mt-0.5 flex items-center gap-2">
@@ -1159,9 +1174,9 @@ export function WbRnpPage() {
       </header>
 
       <section className="relative z-30 mb-4 rounded-[14px] border border-[#e5e7ef] bg-white p-3.5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]" aria-label="Фильтры РНП">
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[140px_140px_minmax(0,1fr)] 2xl:grid-cols-[150px_150px_auto_minmax(110px,1fr)_170px_170px]">
+        <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[140px_140px_minmax(440px,1fr)_76px_170px]">
           <label>
-            <span className="mb-1 block text-[10px] font-medium text-slate-500">С</span>
+            <span className="mb-1 block text-[10px] font-medium text-slate-500">С даты</span>
             <input
               type="date"
               value={range.from}
@@ -1171,7 +1186,7 @@ export function WbRnpPage() {
             />
           </label>
           <label>
-            <span className="mb-1 block text-[10px] font-medium text-slate-500">По</span>
+            <span className="mb-1 block text-[10px] font-medium text-slate-500">По дату</span>
             <input
               type="date"
               value={range.to}
@@ -1180,7 +1195,7 @@ export function WbRnpPage() {
               className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             />
           </label>
-          <div className="flex flex-wrap items-end gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-end gap-1.5">
             <button
               type="button"
               onClick={downloadTable}
@@ -1188,6 +1203,17 @@ export function WbRnpPage() {
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-40"
             >
               <Download className="h-3.5 w-3.5" /> Скачать
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset("today")}
+              className={`h-9 whitespace-nowrap rounded-lg border px-2.5 text-[10px] font-medium transition ${
+                range.preset === "today"
+                  ? "border-violet-200 bg-violet-50 text-violet-700"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              }`}
+            >
+              Сегодня
             </button>
             {PRESETS.map((preset) => (
               <button
@@ -1216,14 +1242,9 @@ export function WbRnpPage() {
             />
           </label>
           <div>
-            <span className="mb-1 block text-[10px] font-medium text-slate-500">Категория</span>
-            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
-          </div>
-          <div>
-            <span className="mb-1 block text-[10px] font-medium text-slate-500">Бренд / кабинет</span>
-            <span className="flex h-9 min-w-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-medium text-slate-700">
-              <Store className="h-3.5 w-3.5 shrink-0 text-violet-600" />
-              <span className="truncate">{activeData?.shop_label || activeCabinet?.name || "Все"}</span>
+            <span className="mb-1 block text-[10px] font-medium text-slate-500">Остатки</span>
+            <span className="flex h-9 items-center justify-center rounded-lg border border-violet-300 bg-violet-50 px-2 text-center text-[9px] font-semibold leading-3 text-violet-700" title="Используются актуальные остатки WB">
+              Актуальные WB
             </span>
           </div>
         </div>
@@ -1238,6 +1259,7 @@ export function WbRnpPage() {
           deltaMode={deltaMode}
           heatmapEnabled={heatmapEnabled}
           sparklinesEnabled={sparklinesEnabled}
+          compactNumbers={compactNumbers}
           anomalyMode={anomalyMode}
           anomalyThreshold={anomalyThreshold}
           anomalyCount={anomalyCount}
@@ -1258,6 +1280,7 @@ export function WbRnpPage() {
           onDeltaModeChange={setDeltaMode}
           onHeatmapChange={setHeatmapEnabled}
           onSparklinesChange={setSparklinesEnabled}
+          onCompactNumbersChange={setCompactNumbers}
           onAnomalyModeChange={setAnomalyMode}
           onAnomalyThresholdChange={setAnomalyThreshold}
           onTurnoverWindowChange={setTurnoverWindowDays}
@@ -1267,6 +1290,12 @@ export function WbRnpPage() {
           onCreateTag={createTag}
           onBulkTag={bulkTag}
           onClearSelection={() => setSelectedOperationNms([])}
+          cabinetId={cabinetId}
+          cabinets={cabinets}
+          category={category}
+          categories={categories}
+          onCabinetChange={setCabinetId}
+          onCategoryChange={setCategory}
         />
       </section>
 
@@ -1629,6 +1658,7 @@ export function WbRnpPage() {
               deltaMode={deltaMode}
               heatmapEnabled={heatmapEnabled}
               sparklinesEnabled={sparklinesEnabled}
+              compactNumbers={compactNumbers}
               onHideMetric={(field) => updateMetricFields(metricFields.filter((item) => item !== field))}
             />
 
@@ -1663,6 +1693,7 @@ export function WbRnpPage() {
                   deltaMode={deltaMode}
                   heatmapEnabled={heatmapEnabled}
                   sparklinesEnabled={sparklinesEnabled}
+                  compactNumbers={compactNumbers}
                   plan={plan[String(sku.nm)] ?? {}}
                   drafts={drafts}
                   saving={saving}
@@ -1783,6 +1814,7 @@ function OptimaMatrixCard({
   deltaMode,
   heatmapEnabled,
   sparklinesEnabled,
+  compactNumbers,
   onHideMetric,
 }: {
   title: string;
@@ -1794,17 +1826,18 @@ function OptimaMatrixCard({
   deltaMode: RnpDeltaMode;
   heatmapEnabled: boolean;
   sparklinesEnabled: boolean;
+  compactNumbers: boolean;
   onHideMetric: (field: RnpMetricField) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-[14px] border border-[#e5e7ef] bg-white shadow-[0_2px_10px_rgba(15,23,42,0.035)]">
-      <header className="flex min-h-[58px] items-center gap-3 border-b border-[#eceef4] px-4 py-3">
+      <header className="flex min-h-[62px] items-center gap-3 border-b border-[#eceef4] px-4 py-3">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#f2f0ff] text-[#7567e8]">
           <BarChart3Icon bare />
         </span>
         <div className="min-w-0">
-          <h2 className="text-[13px] font-bold text-slate-900">{title}</h2>
-          <p className="mt-0.5 truncate text-[10px] text-slate-500">{subtitle}</p>
+          <h2 className="text-sm font-bold text-slate-900">{title}</h2>
+          <p className="mt-0.5 truncate text-[11px] text-slate-500">{subtitle}</p>
         </div>
       </header>
       <OptimaMatrixTable
@@ -1815,6 +1848,7 @@ function OptimaMatrixCard({
         deltaMode={deltaMode}
         heatmapEnabled={heatmapEnabled}
         sparklinesEnabled={sparklinesEnabled}
+        compactNumbers={compactNumbers}
         onHideMetric={onHideMetric}
       />
     </section>
@@ -1836,6 +1870,7 @@ function OptimaProductCard({
   deltaMode,
   heatmapEnabled,
   sparklinesEnabled,
+  compactNumbers,
   plan,
   drafts,
   saving,
@@ -1861,6 +1896,7 @@ function OptimaProductCard({
   deltaMode: RnpDeltaMode;
   heatmapEnabled: boolean;
   sparklinesEnabled: boolean;
+  compactNumbers: boolean;
   plan: Record<string, number>;
   drafts: Record<string, string>;
   saving: string | null;
@@ -1877,9 +1913,9 @@ function OptimaProductCard({
   return (
     <article
       className="overflow-hidden rounded-[14px] border border-[#e5e7ef] bg-white shadow-[0_2px_10px_rgba(15,23,42,0.035)]"
-      style={{ contentVisibility: "auto", containIntrinsicSize: "760px" }}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "620px" }}
     >
-      <header className="flex min-h-[70px] flex-wrap items-center gap-3 border-b border-[#eceef4] px-4 py-3">
+      <header className="flex min-h-[76px] flex-wrap items-center gap-3 border-b border-[#eceef4] px-4 py-3">
         <input
           type="checkbox"
           checked={selected}
@@ -1888,33 +1924,33 @@ function OptimaProductCard({
           className="h-4 w-4 shrink-0 accent-violet-600 disabled:opacity-30"
           aria-label={`Выбрать артикул ${sku.art}`}
         />
-        <WbProductImage nm={sku.nm} src={sku.img_url} className="h-12 w-12 shrink-0 rounded-lg bg-slate-100 object-cover" />
+        <WbProductImage nm={sku.nm} src={sku.img_url} className="h-11 w-11 shrink-0 rounded-lg bg-slate-100 object-cover" />
         <div className="min-w-[220px] flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <a
               href={`https://www.wildberries.ru/catalog/${sku.nm}/detail.aspx`}
               target="_blank"
               rel="noreferrer"
-              className="text-[12px] font-bold text-slate-900 hover:text-violet-700"
+              className="text-[13px] font-bold text-slate-900 hover:text-violet-700"
             >
               {sku.art}
             </a>
             {risks ? <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[8px] font-bold text-rose-600">↓ риск {risks}</span> : null}
             {growth ? <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[8px] font-bold text-emerald-600">↑ рост {growth}</span> : null}
           </div>
-          <p className="mt-0.5 max-w-[680px] truncate text-[10px] text-slate-500">{sku.name}</p>
+          <p className="mt-0.5 max-w-[680px] truncate text-[11px] text-slate-500">{sku.name}</p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="grid h-5 min-w-5 place-items-center rounded-md bg-[#f1f2f7] px-1 text-[8px] font-bold text-slate-500">{sku.art.slice(0, 1).toUpperCase()}</span>
-            <a href={`https://www.wildberries.ru/catalog/${sku.nm}/detail.aspx`} target="_blank" rel="noreferrer" className="rounded-md bg-[#f7f7fa] px-1.5 py-1 text-[8px] font-medium text-slate-500 hover:text-violet-700">
+            <span className="grid h-5 min-w-5 place-items-center rounded-md bg-[#f1f2f7] px-1 text-[9px] font-bold text-slate-500">{sku.art.slice(0, 1).toUpperCase()}</span>
+            <a href={`https://www.wildberries.ru/catalog/${sku.nm}/detail.aspx`} target="_blank" rel="noreferrer" className="rounded-md bg-[#f7f7fa] px-1.5 py-1 text-[9px] font-medium text-slate-500 hover:text-violet-700">
               WB {sku.nm}
             </a>
             {tags.map((tag) => (
-              <span key={tag.id} className="inline-flex items-center gap-1 rounded-md bg-[#f7f7fa] px-1.5 py-1 text-[8px] font-medium text-slate-500">
+              <span key={tag.id} className="inline-flex items-center gap-1 rounded-md bg-[#f7f7fa] px-1.5 py-1 text-[9px] font-medium text-slate-500">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tag.color }} />{tag.name}
               </span>
             ))}
             {canWrite ? (
-              <button type="button" onClick={onOpenOperations} className="rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[8px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700">
+              <button type="button" onClick={onOpenOperations} className="rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700">
                 + тег
               </button>
             ) : null}
@@ -1938,6 +1974,7 @@ function OptimaProductCard({
         deltaMode={deltaMode}
         heatmapEnabled={heatmapEnabled}
         sparklinesEnabled={sparklinesEnabled}
+        compactNumbers={compactNumbers}
         journal={journal}
         onJournalDate={canWrite ? onOpenJournalDate : undefined}
         onHideMetric={onHideMetric}
@@ -1961,6 +1998,7 @@ function OptimaMatrixTable({
   deltaMode,
   heatmapEnabled,
   sparklinesEnabled,
+  compactNumbers,
   journal = [],
   onJournalDate,
   onHideMetric,
@@ -1979,6 +2017,7 @@ function OptimaMatrixTable({
   deltaMode: RnpDeltaMode;
   heatmapEnabled: boolean;
   sparklinesEnabled: boolean;
+  compactNumbers: boolean;
   journal?: RnpJournalEntry[];
   onJournalDate?: (dateLabel: string) => void;
   onHideMetric: (field: RnpMetricField) => void;
@@ -1991,18 +2030,28 @@ function OptimaMatrixTable({
   onSave?: (metric: Metric) => void;
 }) {
   const previousByField = new Map(previousMetrics.map((metric) => [metric.field, metric]));
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(OPTIMA_TABLE_GROUPS.filter((group) => group.expanded).map((group) => group.id)),
+  );
+  const groupedMetrics = OPTIMA_TABLE_GROUPS
+    .map((group) => ({
+      ...group,
+      metrics: metrics.filter((metric) => group.fields.includes(metric.field as RnpMetricField)),
+    }))
+    .filter((group) => group.metrics.length > 0);
+  const totalColumns = 2 + (sparklinesEnabled ? 1 : 0) + period.length;
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-max border-separate border-spacing-0 text-[10px] leading-[1.15] text-slate-600">
+      <table className="w-full min-w-max border-separate border-spacing-0 text-[11px] leading-[1.15] text-slate-600">
         <thead>
           <tr>
-            <th className="sticky left-0 z-20 h-11 w-[210px] min-w-[210px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">Показатель</th>
-            <th className="h-11 w-[116px] min-w-[116px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-right text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">За период</th>
-            {sparklinesEnabled ? <th className="h-11 w-[108px] min-w-[108px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-2 text-center text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">Мини-график</th> : null}
+            <th className="sticky left-0 z-20 h-11 w-[205px] min-w-[205px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500">Показатель</th>
+            <th className="h-11 w-[110px] min-w-[110px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-right text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500">За период</th>
+            {sparklinesEnabled ? <th className="h-11 w-[108px] min-w-[108px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-2 text-center text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500">Мини-график</th> : null}
             {period.map((day, index) => (
-              <th key={`${day.label}-${index}`} className="h-11 w-[78px] min-w-[78px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-2 text-center font-semibold text-slate-600">
+              <th key={`${day.label}-${index}`} className="h-11 w-[78px] min-w-[78px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-2 text-center text-[10px] font-semibold text-slate-600">
                 <span className="block">{day.label}</span>
-                <span className="mt-0.5 block text-[8px] font-normal lowercase text-slate-400">{day.period_type}</span>
+                <span className="mt-0.5 block text-[9px] font-normal lowercase text-slate-400">{day.period_type}</span>
               </th>
             ))}
           </tr>
@@ -2034,32 +2083,54 @@ function OptimaMatrixTable({
               })}
             </tr>
           ) : null}
-          <tr>
-            <td colSpan={2 + (sparklinesEnabled ? 1 : 0) + period.length} className="h-8 border-b border-[#eceef4] bg-white px-3 text-[9px] font-bold text-slate-600">
-              <span className="mr-1 text-slate-400">▼</span> Основное
-            </td>
-          </tr>
-          {metrics.map((metric) => {
-            const key = skuNm == null ? metric.field : `${skuNm}:${metric.field}`;
-            const savedPlan = plan[metric.field];
-            const draft = drafts[key] ?? (savedPlan == null ? "" : String(savedPlan));
+          {groupedMetrics.map((group) => {
+            const expanded = expandedGroups.has(group.id);
             return (
-              <OptimaMetricRow
-                key={metric.field}
-                metric={metric}
-                previousMetric={previousByField.get(metric.field)}
-                showDeltas={showDeltas}
-                deltaMode={deltaMode}
-                heatmapEnabled={heatmapEnabled}
-                sparklinesEnabled={sparklinesEnabled}
-                canHide={metrics.length > 1}
-                onHide={() => onHideMetric(metric.field as RnpMetricField)}
-                planning={planning}
-                draftValue={draft}
-                saving={saving === key}
-                onDraftChange={(value) => onDraftChange?.(metric.field, value)}
-                onSave={() => onSave?.(metric)}
-              />
+              <Fragment key={group.id}>
+                <tr>
+                  <td colSpan={totalColumns} className="h-8 border-b border-[#eceef4] bg-white px-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGroups((current) => {
+                        const next = new Set(current);
+                        if (next.has(group.id)) next.delete(group.id);
+                        else next.add(group.id);
+                        return next;
+                      })}
+                      className="flex h-full w-full items-center gap-1.5 text-left text-[10px] font-semibold text-slate-600 hover:text-violet-700"
+                      aria-expanded={expanded}
+                    >
+                      <span className="text-slate-400">{expanded ? "▼" : "▶"}</span>
+                      {group.label}
+                      {!expanded ? <span className="ml-1 text-[9px] font-normal text-slate-400">{group.metrics.length}</span> : null}
+                    </button>
+                  </td>
+                </tr>
+                {expanded ? group.metrics.map((metric) => {
+                  const key = skuNm == null ? metric.field : `${skuNm}:${metric.field}`;
+                  const savedPlan = plan[metric.field];
+                  const draft = drafts[key] ?? (savedPlan == null ? "" : String(savedPlan));
+                  return (
+                    <OptimaMetricRow
+                      key={metric.field}
+                      metric={metric}
+                      previousMetric={previousByField.get(metric.field)}
+                      showDeltas={showDeltas}
+                      deltaMode={deltaMode}
+                      heatmapEnabled={heatmapEnabled}
+                      sparklinesEnabled={sparklinesEnabled}
+                      compactNumbers={compactNumbers}
+                      canHide={metrics.length > 1}
+                      onHide={() => onHideMetric(metric.field as RnpMetricField)}
+                      planning={planning}
+                      draftValue={draft}
+                      saving={saving === key}
+                      onDraftChange={(value) => onDraftChange?.(metric.field, value)}
+                      onSave={() => onSave?.(metric)}
+                    />
+                  );
+                }) : null}
+              </Fragment>
             );
           })}
         </tbody>
@@ -2075,6 +2146,7 @@ function OptimaMetricRow({
   deltaMode,
   heatmapEnabled,
   sparklinesEnabled,
+  compactNumbers,
   canHide,
   onHide,
   planning,
@@ -2089,6 +2161,7 @@ function OptimaMetricRow({
   deltaMode: RnpDeltaMode;
   heatmapEnabled: boolean;
   sparklinesEnabled: boolean;
+  compactNumbers: boolean;
   canHide: boolean;
   onHide: () => void;
   planning: boolean;
@@ -2101,7 +2174,7 @@ function OptimaMetricRow({
   const qualityTone = metric.status === "ready" ? "bg-[#7567e8]" : metric.status === "partial" ? "bg-amber-400" : "bg-slate-300";
   return (
     <tr className="group">
-      <td className="sticky left-0 z-10 h-[48px] w-[210px] min-w-[210px] border-b border-r border-[#eceef4] bg-white px-3 group-hover:bg-[#fbfaff]">
+      <td className="sticky left-0 z-10 h-[48px] w-[205px] min-w-[205px] border-b border-r border-[#eceef4] bg-white px-3 group-hover:bg-[#fbfaff]">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -2113,11 +2186,11 @@ function OptimaMetricRow({
             <span className="block h-3 w-3 translate-x-3 rounded-full bg-white shadow-sm" />
           </button>
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${qualityTone}`} />
-          <span className="min-w-0 truncate font-medium text-slate-700" title={metric.label}>{metric.label.replace(/, (₽|%|дней|шт)$/u, "")}</span>
-          <span className="ml-auto shrink-0 text-[8px] text-slate-400">{metricUnit(metric)}</span>
+          <span className="min-w-0 truncate text-[11px] font-medium text-slate-700" title={metric.label}>{metric.label.replace(/, (₽|%|дней|шт)$/u, "")}</span>
+          <span className="ml-auto shrink-0 text-[9px] text-slate-400">{metricUnit(metric)}</span>
         </div>
       </td>
-      <td className="h-[48px] w-[116px] min-w-[116px] border-b border-r border-[#eceef4] bg-white px-3 text-right tabular-nums">
+      <td className="h-[48px] w-[110px] min-w-[110px] border-b border-r border-[#eceef4] bg-white px-3 text-right tabular-nums">
         {planning ? (
           <div className="relative">
             <span className="mb-0.5 block text-[8px] text-slate-400">план месяца</span>
@@ -2136,7 +2209,7 @@ function OptimaMetricRow({
           </div>
         ) : (
           <>
-            <span className="block font-bold text-slate-800">{denseFmt(metric.total, metric.kind)}</span>
+            <span className="block text-[11px] font-bold text-slate-800">{matrixFmt(metric.total, metric.kind, compactNumbers)}</span>
             {totalDelta ? <DeltaMark delta={totalDelta} kind={metric.kind} mode={deltaMode} field={metric.field} /> : null}
           </>
         )}
@@ -2155,6 +2228,7 @@ function OptimaMetricRow({
           showDelta={showDeltas}
           deltaMode={deltaMode}
           heatmapEnabled={heatmapEnabled}
+          compactNumbers={compactNumbers}
         />
       ))}
     </tr>
@@ -2175,6 +2249,7 @@ function OptimaDayCell({
   showDelta,
   deltaMode,
   heatmapEnabled,
+  compactNumbers,
 }: {
   metric: Metric;
   value: number | null | undefined;
@@ -2182,6 +2257,7 @@ function OptimaDayCell({
   showDelta: boolean;
   deltaMode: RnpDeltaMode;
   heatmapEnabled: boolean;
+  compactNumbers: boolean;
 }) {
   const delta = showDelta ? metricDelta(value, previousValue) : null;
   const semantic = delta ? anomalyDirection(metric.field, delta) : null;
@@ -2198,7 +2274,7 @@ function OptimaDayCell({
       style={{ backgroundColor: background }}
       title={value == null ? "Нет данных" : fmt(value, metric.kind)}
     >
-      <span className={`block font-semibold ${toneClass(metric, value ?? null)}`}>{denseFmt(value, metric.kind)}</span>
+      <span className={`block text-[11px] font-semibold ${toneClass(metric, value ?? null)}`}>{matrixFmt(value, metric.kind, compactNumbers)}</span>
       {delta ? <DeltaMark delta={delta} kind={metric.kind} mode={deltaMode} field={metric.field} /> : null}
     </td>
   );
@@ -2215,6 +2291,7 @@ function OptimaSparkline({ values }: { values: Array<number | null> }) {
   const first = known[0];
   const last = known[known.length - 1];
   const change = first === 0 ? 0 : ((last - first) / Math.abs(first)) * 100;
+  const changePerDay = known.length > 1 ? change / (known.length - 1) : change;
   return (
     <div className="flex flex-col items-center">
       <svg viewBox={`0 0 ${width} ${height}`} className="h-6 w-[90px]" role="img" aria-label="Мини-график показателя">
@@ -2233,8 +2310,8 @@ function OptimaSparkline({ values }: { values: Array<number | null> }) {
           );
         })}
       </svg>
-      <span className={`mt-0.5 text-[7px] font-semibold ${change > 0 ? "text-emerald-600" : change < 0 ? "text-rose-600" : "text-slate-400"}`}>
-        {change > 0 ? "↑" : change < 0 ? "↓" : "→"} {Math.abs(Math.round(change))}%/период
+      <span className={`mt-0.5 text-[8px] font-semibold ${changePerDay > 0 ? "text-emerald-600" : changePerDay < 0 ? "text-rose-600" : "text-slate-400"}`}>
+        {changePerDay > 0 ? "↑" : changePerDay < 0 ? "↓" : "→"} {Math.abs(Math.round(changePerDay))}%/дн
       </span>
     </div>
   );
@@ -2648,7 +2725,7 @@ function DeltaMark({
 }) {
   const semantic = anomalyDirection(field, delta);
   const tone = semantic === "positive" ? "text-emerald-700" : semantic === "negative" ? "text-rose-700" : "text-slate-400";
-  if (delta.direction === "flat") return <span className="mt-0.5 block text-[8px] font-medium text-slate-400">→ без изм.</span>;
+  if (delta.direction === "flat") return <span className="mt-0.5 block text-[9px] font-medium text-slate-400">→ ровно</span>;
   const arrow = delta.direction === "up" ? "↑" : "↓";
   const sign = delta.absolute > 0 ? "+" : "";
   let label: string;
@@ -2659,5 +2736,5 @@ function DeltaMark({
   } else {
     label = `${sign}${denseFmt(delta.absolute, kind)}`;
   }
-  return <span className={`mt-0.5 block text-[8px] font-bold ${tone}`}>{arrow} {label}</span>;
+  return <span className={`mt-0.5 block text-[9px] font-bold ${tone}`}>{arrow} {label}</span>;
 }

@@ -57,6 +57,17 @@ test("WB RNP follows the Optima matrix composition for summary and every product
   assert.match(toolbar, /Показатели · тяните ⠿ для порядка/);
 });
 
+test("WB RNP mirrors the Optima default week, grouped matrix and display controls", () => {
+  assert.match(page, /useState<DateRange>\(\(\) => rangeFor\("week"\)\)/);
+  assert.match(page, /finance-panel:wb-rnp-operating-matrix:v2/);
+  assert.match(page, /OPTIMA_TABLE_GROUPS/);
+  assert.match(page, /Продажи и возвраты/);
+  assert.match(page, /groupedMetrics\.map/);
+  assert.match(toolbar, /Бренд или кабинет/);
+  assert.match(toolbar, /Настройки отображения/);
+  assert.match(toolbar, /Формат чисел/);
+});
+
 test("WB RNP shared tags and product journal stay scoped to one cabinet", () => {
   assert.match(drawer, /Общие для всех сотрудников кабинета/);
   assert.match(drawer, /Сохранить в журнал/);
