@@ -61,7 +61,7 @@ function alignDaily(payload: FactPayload, source: (number | null)[] | undefined,
   return values;
 }
 
-export function SalesPlanFactView({ marketplace, cabinetId, monthKey, approvedPlan }: { marketplace: SalesPlanMarketplace; cabinetId: string; monthKey: string; approvedPlan: SalesPlanDocument | null }) {
+export function SalesPlanFactView({ marketplace, cabinetId, monthKey, approvedPlan, onOpenPlan }: { marketplace: SalesPlanMarketplace; cabinetId: string; monthKey: string; approvedPlan: SalesPlanDocument | null; onOpenPlan: () => void }) {
   const [data, setData] = useState<FactPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +120,7 @@ export function SalesPlanFactView({ marketplace, cabinetId, monthKey, approvedPl
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-500"><TrendingUp className="h-6 w-6" /></div>
           <h2 className="mt-4 text-lg font-bold text-slate-900">Нет утверждённого плана</h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">План‑факт появляется только после согласования и утверждения версии для выбранного кабинета.</p>
+          <button type="button" onClick={onOpenPlan} className={`mt-5 min-h-11 rounded-lg px-5 text-sm font-semibold text-white ${marketplace === "wb" ? "bg-violet-600 hover:bg-violet-700" : "bg-sky-600 hover:bg-sky-700"}`}>Открыть план</button>
         </div>
       </div>
     );

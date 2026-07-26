@@ -35,10 +35,11 @@ import {
   type SalesPlanEvent,
   type SalesPlanMarketplace,
   type SalesPlanRow,
+  type SalesPlanStatus,
   type SalesPlanSuggestion,
   type SalesPlanSuggestionBasis,
   type SalesPlanValidationIssue,
-  validateSalesPlan,
+  validateSalesPlanMonth,
   visibleSalesPlanMonths,
 } from "@/lib/planning/salesPlan";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
@@ -111,7 +112,7 @@ export function SalesPlanPage({
   const [conflict, setConflict] = useState(false);
   const [query, setQuery] = useState("");
   const [stockRiskOnly, setStockRiskOnly] = useState(false);
-  const [basisOpen, setBasisOpen] = useState(true);
+  const [basisOpen, setBasisOpen] = useState(false);
   const [suggestionPreview, setSuggestionPreview] = useState<SalesPlanSuggestion | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedCell, setSelectedCell] = useState<SalesPlanCellPosition | null>(null);
@@ -343,7 +344,7 @@ export function SalesPlanPage({
       setActionError("Дождитесь успешного автосохранения перед отправкой на согласование");
       return;
     }
-    const nextIssues = validateSalesPlan(plan);
+    const nextIssues = validateSalesPlanMonth(plan, activeMonth);
     if (nextIssues.length) {
       setIssues(nextIssues);
       setActionError("Исправьте ошибки перед отправкой на согласование");
@@ -390,6 +391,8 @@ export function SalesPlanPage({
   const status = activeMonthState?.status ?? "empty";
   const statusLabel = status === "draft" ? "Черновик" : status === "review" ? "На согласовании" : status === "approved" ? "Утверждён" : "Не создан";
   const statusTone = status === "draft" ? "bg-amber-500" : status === "review" ? "bg-blue-500" : status === "approved" ? "bg-emerald-500" : "bg-slate-400";
+  const workflowStep = status === "review" ? 2 : status === "approved" ? 3 : 1;
+  const activeDraftIssues = plan && status === "draft" ? validateSalesPlanMonth(plan, activeMonth) : [];
   const primary = accent === "violet" ? "bg-violet-600 hover:bg-violet-700 focus-visible:ring-violet-500" : "bg-sky-600 hover:bg-sky-700 focus-visible:ring-sky-500";
   const selectedTab = accent === "violet" ? "bg-violet-600 text-white shadow-sm" : "bg-sky-600 text-white shadow-sm";
   const soft = accent === "violet" ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-sky-50 text-sky-700 border-sky-200";
@@ -467,17 +470,19 @@ export function SalesPlanPage({
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className={`h-2.5 w-2.5 rounded-full ${statusTone}`} />
             <strong className="text-slate-800">{statusLabel}{activeMonthState ? ` · ${salesPlanMonthLabel(year, activeMonth, false)} · v${activeMonthState.version}` : ""}</strong>
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">Шаг {workflowStep} из 3</span>
             {plan ? <span className="text-slate-400">Ответственный: {plan.responsible || user?.email || "—"}</span> : null}
+            {plan && status === "draft" ? <span className={`inline-flex items-center gap-1 font-medium ${activeDraftIssues.length > 0 ? "text-amber-700" : "text-emerald-700"}`}>{activeDraftIssues.length > 0 ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}{activeDraftIssues.length > 0 ? activeDraftIssues[0].message : "Можно отправлять на согласование"}</span> : null}
             {activeApprovedMonthState?.approvedAt && mode !== "edit" ? <span className="inline-flex items-center gap-1 text-emerald-700"><LockKeyhole className="h-3.5 w-3.5" /> {activeApprovedMonthState.approvedBy} · {new Date(activeApprovedMonthState.approvedAt).toLocaleString("ru-RU")}</span> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {plan ? <span aria-live="polite" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium ${saveError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : dirty ? <Clock3 className="h-3.5 w-3.5 text-amber-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}{saving ? "Сохраняем…" : saveError ? "Ошибка автосохранения" : dirty ? "Есть изменения" : "Сохранено автоматически"}</span> : null}
             {activeMonthState?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => void returnPlan()} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9">Вернуть</button> : null}
-            {!plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
+            {mode === "edit" ? !plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
               : activeMonthState?.status === "draft" ? <ActionButton primary={primary} disabled={submitDisabled} title={submitDisabledHint} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
                 : activeMonthState?.status === "review" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void approvePlan()} icon={FileCheck2}>Утвердить</ActionButton>
                   : activeMonthState?.status === "approved" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void newVersion()} icon={RefreshCw}>Новая версия</ActionButton>
-                    : null}
+                    : null : null}
           </div>
         </section>
 
@@ -500,9 +505,9 @@ export function SalesPlanPage({
                     </div>
                   </div>
               </section> : null}
-              <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={activeApprovedPlan} />
+              <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={activeApprovedPlan} onOpenPlan={() => setMode("edit")} />
             </>
-              : !displayPlan ? <EmptyPlan mode={mode} marketplace={marketplace} onCreate={() => void createPlan()} />
+              : !displayPlan ? <EmptyPlan mode={mode} marketplace={marketplace} workingStatus={activeMonthState?.status ?? null} onCreate={() => void createPlan()} onOpenEdit={() => setMode("edit")} />
                 : <>
                   {summary ? <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5" aria-label="Показатели плана">
                     <Metric label="План заказов" value={`${number(summary.orders)} шт.`} detail={`${summary.variants} цветов · ${visibleMonths.length} ${monthCountWord}`} />
@@ -744,15 +749,15 @@ function SalesPlanHistory({ events, activeMonth, year }: { events: SalesPlanEven
     .reverse();
   if (scoped.length === 0) return null;
   return (
-    <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" aria-label="История плана">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+    <details className="group rounded-xl border border-slate-200 bg-white" aria-label="История плана">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400">
+        <div className="min-w-0">
           <h2 className="text-sm font-bold text-slate-900">История месяца</h2>
           <p className="mt-0.5 text-xs text-slate-500">{salesPlanMonthLabel(year, activeMonth, false)} · последние события, сохранённые сервером</p>
         </div>
-        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{scoped.length} событий</span>
-      </div>
-      <ol className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <span className="flex items-center gap-2 text-[10px] font-bold text-slate-500"><span className="rounded-full bg-slate-100 px-2 py-1">{scoped.length} событий</span><ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" /></span>
+      </summary>
+      <ol className="grid gap-2 border-t border-slate-100 p-3 md:grid-cols-2 xl:grid-cols-4">
         {scoped.map((event) => (
           <li key={event.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
             <div className="flex items-center justify-between gap-2">
@@ -765,12 +770,21 @@ function SalesPlanHistory({ events, activeMonth, year }: { events: SalesPlanEven
           </li>
         ))}
       </ol>
-    </section>
+    </details>
   );
 }
 
-function EmptyPlan({ mode, marketplace, onCreate }: { mode: ViewMode; marketplace: SalesPlanMarketplace; onCreate: () => void }) {
-  return <div className="grid min-h-[430px] place-items-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 text-center"><div className="max-w-md"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-500"><CalendarRange className="h-6 w-6" /></div><h2 className="mt-4 text-lg font-bold text-slate-900">{mode === "approved" ? "Нет утверждённой версии" : "План не создан"}</h2><p className="mt-2 text-sm leading-6 text-slate-500">Создайте отдельный план для текущего кабинета {marketplace === "wb" ? "Wildberries" : "Ozon"} и добавьте цветовые вариации из каталога.</p>{mode === "edit" ? <button type="button" onClick={onCreate} className={`mt-5 min-h-11 rounded-lg px-5 text-sm font-semibold text-white ${marketplace === "wb" ? "bg-violet-600 hover:bg-violet-700" : "bg-sky-600 hover:bg-sky-700"}`}>Создать план</button> : null}</div></div>;
+function EmptyPlan({ mode, marketplace, workingStatus, onCreate, onOpenEdit }: { mode: ViewMode; marketplace: SalesPlanMarketplace; workingStatus: SalesPlanStatus | null; onCreate: () => void; onOpenEdit: () => void }) {
+  const hasWorkingPlan = workingStatus !== null;
+  const title = mode === "approved"
+    ? workingStatus === "review" ? "План на согласовании" : hasWorkingPlan ? "Версия ещё не утверждена" : "План не создан"
+    : "План не создан";
+  const description = mode === "approved" && hasWorkingPlan
+    ? workingStatus === "review"
+      ? "После утверждения руководителем зафиксированная версия появится здесь и станет доступна в план‑факте."
+      : "Черновик уже создан. Проверьте значения и отправьте выбранный месяц на согласование."
+    : `Создайте отдельный план для текущего кабинета ${marketplace === "wb" ? "Wildberries" : "Ozon"} и добавьте цветовые вариации из каталога.`;
+  return <div className="grid min-h-[360px] place-items-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 text-center"><div className="max-w-md"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-500"><CalendarRange className="h-6 w-6" /></div><h2 className="mt-4 text-lg font-bold text-slate-900">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>{mode === "edit" ? <button type="button" onClick={onCreate} className={`mt-5 min-h-11 rounded-lg px-5 text-sm font-semibold text-white ${marketplace === "wb" ? "bg-violet-600 hover:bg-violet-700" : "bg-sky-600 hover:bg-sky-700"}`}>Создать план</button> : <button type="button" onClick={onOpenEdit} className={`mt-5 min-h-11 rounded-lg px-5 text-sm font-semibold text-white ${marketplace === "wb" ? "bg-violet-600 hover:bg-violet-700" : "bg-sky-600 hover:bg-sky-700"}`}>{workingStatus === "review" ? "Открыть отправленный план" : hasWorkingPlan ? "Открыть черновик" : "Перейти к созданию"}</button>}</div></div>;
 }
 
 function CabinetRequired({ marketplace }: { marketplace: SalesPlanMarketplace }) {

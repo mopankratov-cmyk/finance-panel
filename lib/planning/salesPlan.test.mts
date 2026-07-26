@@ -20,6 +20,7 @@ import {
   setSalesPlanMonthState,
   type SalesPlanRow,
   validateSalesPlan,
+  validateSalesPlanMonth,
   visibleSalesPlanMonths,
 } from "./salesPlan";
 
@@ -121,6 +122,14 @@ test("утверждение блокируется при дубле цвета
   const issues = validateSalesPlan(plan);
   assert.ok(issues.some((issue) => issue.message.includes("Дубль вариации")));
   assert.ok(issues.some((issue) => issue.field === "price"));
+});
+
+test("пустой месяц нельзя отправить на согласование", () => {
+  const plan = createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026, responsible: "Анна" });
+  plan.rows = [row()];
+
+  assert.equal(validateSalesPlanMonth(plan, "07").length, 0);
+  assert.ok(validateSalesPlanMonth(plan, "08").some((issue) => issue.field === "08.orders"));
 });
 
 test("план показывает все месяцы от текущего до конца года", () => {

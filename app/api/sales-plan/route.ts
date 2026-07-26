@@ -17,7 +17,7 @@ import {
   type SalesPlanDocument,
   type SalesPlanEnvelope,
   summarizeSalesPlanStatus,
-  validateSalesPlan,
+  validateSalesPlanMonth,
   type SalesPlanMarketplace,
 } from "@/lib/planning/salesPlan";
 import {
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
     if (action === "approve") {
       if (!elevated) return NextResponse.json({ error: "Утверждение доступно руководителю или финотделу" }, { status: 403 });
       if (!current || getSalesPlanMonthState(current, monthKey).status !== "review") return NextResponse.json({ error: "На утверждение можно отправить только месяц на согласовании" }, { status: 409 });
-      const issues = validateSalesPlan(current);
+      const issues = validateSalesPlanMonth(current, monthKey);
       if (issues.length) return NextResponse.json({ error: "План содержит ошибки", issues }, { status: 422 });
       const monthState = getSalesPlanMonthState(current, monthKey);
       next = setSalesPlanMonthState(
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
       incoming.returnedBy = current?.returnedBy ?? incoming.returnedBy;
       incoming.returnComment = current?.returnComment ?? incoming.returnComment;
       incoming.rnpSyncedAt = null;
-      const issues = validateSalesPlan(incoming);
+      const issues = action === "submit" ? validateSalesPlanMonth(incoming, monthKey) : [];
       if (action === "submit" && issues.length) {
         return NextResponse.json({ error: "Исправьте ошибки перед согласованием", issues }, { status: 422 });
       }

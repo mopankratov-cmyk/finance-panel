@@ -709,3 +709,18 @@ export function validateSalesPlan(plan: SalesPlanDocument): SalesPlanValidationI
   }
   return issues;
 }
+
+export function validateSalesPlanMonth(plan: SalesPlanDocument, monthKey: string): SalesPlanValidationIssue[] {
+  const issues = validateSalesPlan(plan);
+  const normalizedMonth = normalizeSalesPlanMonthKey(monthKey);
+  if (!normalizedMonth) {
+    return [...issues, { field: "monthKey", message: "Не выбран месяц плана" }];
+  }
+  if (calculateSalesPlanSummary(plan, [normalizedMonth]).orders <= 0) {
+    issues.push({
+      field: `${normalizedMonth}.orders`,
+      message: `Заполните план заказов на ${salesPlanMonthLabel(plan.year, normalizedMonth, false)}`,
+    });
+  }
+  return issues;
+}
