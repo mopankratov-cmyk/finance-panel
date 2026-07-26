@@ -20,6 +20,7 @@ import {
   canModerateSalesPlan,
   calculateSalesPlanSummary,
   createEmptySalesPlan,
+  normalizeSalesPlanReturnComment,
   salesPlanMonthLabel,
   type SalesPlanDocument,
   type SalesPlanMarketplace,
@@ -142,7 +143,7 @@ export function SalesPlanPage({
     return () => controller.abort();
   }, [cabinetId, exactCabinet, marketplace, ready, reloadKey, year]);
 
-  const persist = useCallback(async (action: SaveAction, source: SalesPlanDocument | null, autosave = false) => {
+  const persist = useCallback(async (action: SaveAction, source: SalesPlanDocument | null, autosave = false, options?: { comment?: string }) => {
     if (!exactCabinet || saving) return null;
     const serial = editSerial.current;
     setSaving(true);
@@ -156,7 +157,7 @@ export function SalesPlanPage({
       const response = await fetch(`/api/sales-plan?${params.toString()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, expectedRevision: serverRevision.current, plan: source }),
+        body: JSON.stringify({ action, expectedRevision: serverRevision.current, plan: source, comment: options?.comment }),
       });
       const body = await response.json() as SalesPlanApiResponse;
       if (!response.ok || !body.plan) {
@@ -300,6 +301,17 @@ export function SalesPlanPage({
     if (saved) setMode("approved");
   };
 
+  const returnPlan = async () => {
+    if (!plan) return;
+    const rawComment = window.prompt("Почему возвращаем план? Укажите, что нужно исправить.");
+    const comment = normalizeSalesPlanReturnComment(rawComment);
+    if (!comment) {
+      setActionError("Укажите комментарий возврата: что исправить в плане");
+      return;
+    }
+    await persist("return", plan, false, { comment });
+  };
+
   const newVersion = async () => {
     const saved = await persist("new_version", plan);
     if (saved) setMode("edit");
@@ -356,7 +368,7 @@ export function SalesPlanPage({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {plan ? <span aria-live="polite" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium ${saveError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : dirty ? <Clock3 className="h-3.5 w-3.5 text-amber-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}{saving ? "Сохраняем…" : saveError ? "Ошибка автосохранения" : dirty ? "Есть изменения" : "Сохранено автоматически"}</span> : null}
-            {plan?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => void persist("return", plan)} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9">Вернуть</button> : null}
+            {plan?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => void returnPlan()} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9">Вернуть</button> : null}
             {!plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
               : plan.status === "draft" ? <ActionButton primary={primary} disabled={saving} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
                 : plan.status === "review" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void approvePlan()} icon={FileCheck2}>Утвердить</ActionButton>
@@ -365,6 +377,7 @@ export function SalesPlanPage({
           </div>
         </section>
 
+        {plan?.status === "draft" && plan.returnComment ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><span className="font-semibold">План возвращён на доработку</span>{plan.returnedBy ? ` · ${plan.returnedBy}` : ""}{plan.returnedAt ? ` · ${new Date(plan.returnedAt).toLocaleString("ru-RU")}` : ""}: {plan.returnComment}</div> : null}
         {saveError || actionError ? <div role="alert" className="flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"><span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{saveError || actionError}</span>{conflict ? <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="min-h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold hover:bg-rose-100">Загрузить серверную версию</button> : null}</div> : null}
         {issues.length > 0 ? <ValidationSummary issues={issues} /> : null}
 

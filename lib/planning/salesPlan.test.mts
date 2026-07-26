@@ -7,6 +7,7 @@ import {
   createEmptySalesPlan,
   emptySalesPlanMonths,
   normalizeSalesPlanAction,
+  normalizeSalesPlanReturnComment,
   type SalesPlanRow,
   validateSalesPlan,
   visibleSalesPlanMonths,
@@ -77,4 +78,11 @@ test("неизвестное действие плана не превращае
   assert.equal(normalizeSalesPlanAction("approve"), "approve");
   assert.equal(normalizeSalesPlanAction("approve-and-delete"), null);
   assert.equal(normalizeSalesPlanAction({ action: "approve" }), null);
+});
+
+test("комментарий возврата плана обязателен и нормализуется", () => {
+  assert.equal(normalizeSalesPlanReturnComment(undefined), "");
+  assert.equal(normalizeSalesPlanReturnComment("  "), "");
+  assert.equal(normalizeSalesPlanReturnComment("ок"), "");
+  assert.equal(normalizeSalesPlanReturnComment("  Цена   не заполнена  "), "Цена не заполнена");
 });
