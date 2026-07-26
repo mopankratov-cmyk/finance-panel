@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import {
+  canModerateSalesPlan,
   createEmptySalesPlan,
+  normalizeSalesPlanAction,
   normalizeSalesPlanDocument,
   type SalesPlanDocument,
   type SalesPlanEnvelope,
-  type SalesPlanMarketplace,
   validateSalesPlan,
+  type SalesPlanMarketplace,
 } from "@/lib/planning/salesPlan";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-type SalesPlanAction = "save" | "submit" | "approve" | "return" | "new_version";
 type StoredState = Record<string, unknown> & {
   sales_plan_v1?: Partial<Record<SalesPlanMarketplace, Record<string, unknown>>>;
 };
@@ -62,6 +63,9 @@ function mergeEnvelope(
 }
 
 async function resolveContext(request: NextRequest) {
+  const session = await getServerSession();
+  if (!session) return { error: "Не авторизовано", status: 401 } as const;
+
   const params = new URL(request.url).searchParams;
   const marketplace = params.get("marketplace");
   const cabinetId = params.get("cabinet")?.trim() ?? "";
@@ -70,7 +74,7 @@ async function resolveContext(request: NextRequest) {
   if (!cabinetId || cabinetId === "all" || cabinetId.startsWith("group:")) {
     return { error: "Для плана выберите один кабинет", status: 400 } as const;
   }
-  if (!(await hasCabinetAccess(cabinetId))) return { error: "Нет доступа к кабинету", status: 403 } as const;
+  if (!sessionHasCabinetAccess(session, cabinetId)) return { error: "Нет доступа к кабинету", status: 403 } as const;
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен", status: 500 } as const;
   const { data: cabinet, error } = await db
@@ -82,7 +86,12 @@ async function resolveContext(request: NextRequest) {
     .maybeSingle();
   if (error) return { error: error.message, status: 500 } as const;
   if (!cabinet) return { error: `Активный кабинет ${marketplace.toUpperCase()} не найден`, status: 404 } as const;
-  return { db, context: { marketplace, cabinetId, year }, cabinetName: String(cabinet.name || marketplace.toUpperCase()) } as const;
+  return {
+    db,
+    context: { marketplace, cabinetId, year },
+    cabinetName: String(cabinet.name || marketplace.toUpperCase()),
+    session,
+  } as const;
 }
 
 async function loadState(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, year: number) {
@@ -111,14 +120,15 @@ export async function POST(request: NextRequest) {
   const resolved = await resolveContext(request);
   if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
   const body = await request.json().catch(() => ({})) as {
-    action?: SalesPlanAction;
+    action?: unknown;
     expectedRevision?: number;
     plan?: unknown;
   };
-  const action: SalesPlanAction = body.action ?? "save";
-  const session = await getServerSession();
-  const elevated = !session || session.role === "director" || session.role === "finance";
-  const actor = session?.email ?? "Система";
+  const action = normalizeSalesPlanAction(body.action);
+  if (!action) return NextResponse.json({ error: "Неизвестное действие плана" }, { status: 400 });
+
+  const elevated = canModerateSalesPlan(resolved.session);
+  const actor = resolved.session.email;
 
   try {
     const state = await loadState(resolved.db, resolved.context.year);

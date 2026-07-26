@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  canModerateSalesPlan,
   calculateSalesPlanSummary,
   createEmptySalesPlan,
   salesPlanMonthLabel,
@@ -102,7 +103,7 @@ export function SalesPlanPage({
   const editSerial = useRef(0);
   const serverRevision = useRef(0);
   const exactCabinet = canWrite && Boolean(cabinetId) && cabinetId !== "all" && !cabinetId.startsWith("group:");
-  const elevated = !user || user.role === "director" || user.role === "finance";
+  const elevated = canModerateSalesPlan(user);
   const accent = marketplace === "wb" ? "violet" : "sky";
 
   useEffect(() => {

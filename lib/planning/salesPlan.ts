@@ -1,5 +1,7 @@
 export type SalesPlanMarketplace = "wb" | "ozon";
 export type SalesPlanStatus = "draft" | "review" | "approved";
+export const SALES_PLAN_ACTIONS = ["save", "submit", "approve", "return", "new_version"] as const;
+export type SalesPlanAction = (typeof SALES_PLAN_ACTIONS)[number];
 
 export interface SalesPlanRow {
   id: string;
@@ -75,6 +77,17 @@ function text(value: unknown, fallback = "") {
 function finite(value: unknown, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+export function canModerateSalesPlan(user: { role?: string } | null | undefined) {
+  return user?.role === "director" || user?.role === "finance";
+}
+
+export function normalizeSalesPlanAction(value: unknown, fallback: SalesPlanAction = "save"): SalesPlanAction | null {
+  if (value === undefined || value === null || value === "") return fallback;
+  return typeof value === "string" && SALES_PLAN_ACTIONS.includes(value as SalesPlanAction)
+    ? (value as SalesPlanAction)
+    : null;
 }
 
 export function daysInSalesPlanMonth(year: number, monthKey: string) {
