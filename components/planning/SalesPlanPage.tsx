@@ -287,6 +287,10 @@ export function SalesPlanPage({
 
   const submitPlan = async () => {
     if (!plan) return;
+    if (saving || dirty || saveError || conflict) {
+      setActionError("Дождитесь успешного автосохранения перед отправкой на согласование");
+      return;
+    }
     const nextIssues = validateSalesPlan(plan);
     if (nextIssues.length) {
       setIssues(nextIssues);
@@ -331,6 +335,14 @@ export function SalesPlanPage({
   const primary = accent === "violet" ? "bg-violet-600 hover:bg-violet-700 focus-visible:ring-violet-500" : "bg-sky-600 hover:bg-sky-700 focus-visible:ring-sky-500";
   const selectedTab = accent === "violet" ? "bg-violet-600 text-white shadow-sm" : "bg-sky-600 text-white shadow-sm";
   const soft = accent === "violet" ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-sky-50 text-sky-700 border-sky-200";
+  const submitDisabled = saving || dirty || Boolean(saveError) || conflict;
+  const submitDisabledHint = conflict
+    ? "Разрешите конфликт с серверной версией"
+    : saveError
+      ? "Исправьте ошибку автосохранения"
+      : dirty || saving
+        ? "Дождитесь успешного автосохранения"
+        : undefined;
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-20 md:pb-6">
@@ -370,7 +382,7 @@ export function SalesPlanPage({
             {plan ? <span aria-live="polite" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium ${saveError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : dirty ? <Clock3 className="h-3.5 w-3.5 text-amber-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}{saving ? "Сохраняем…" : saveError ? "Ошибка автосохранения" : dirty ? "Есть изменения" : "Сохранено автоматически"}</span> : null}
             {plan?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => void returnPlan()} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9">Вернуть</button> : null}
             {!plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
-              : plan.status === "draft" ? <ActionButton primary={primary} disabled={saving} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
+              : plan.status === "draft" ? <ActionButton primary={primary} disabled={submitDisabled} title={submitDisabledHint} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
                 : plan.status === "review" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void approvePlan()} icon={FileCheck2}>Утвердить</ActionButton>
                   : plan.status === "approved" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void newVersion()} icon={RefreshCw}>Новая версия</ActionButton>
                     : null}
@@ -452,8 +464,8 @@ function ModeButton({ active, selectedClass, onClick, children }: { active: bool
   return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`min-h-9 rounded-md px-2.5 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 sm:min-h-7 ${active ? selectedClass : "text-slate-500 hover:bg-white hover:text-slate-800"}`}>{children}</button>;
 }
 
-function ActionButton({ primary, disabled, onClick, icon: Icon, children }: { primary: string; disabled: boolean; onClick: () => void; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
-  return <button type="button" disabled={disabled} onClick={onClick} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-55 sm:min-h-9 ${primary}`}><Icon className="h-4 w-4" />{children}</button>;
+function ActionButton({ primary, disabled, title, onClick, icon: Icon, children }: { primary: string; disabled: boolean; title?: string; onClick: () => void; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
+  return <button type="button" disabled={disabled} title={title} onClick={onClick} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-55 sm:min-h-9 ${primary}`}><Icon className="h-4 w-4" />{children}</button>;
 }
 
 function Metric({ label, value, detail, tone = "slate" }: { label: string; value: string; detail: string; tone?: "slate" | "amber" }) {

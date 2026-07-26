@@ -40,3 +40,11 @@ test("sales-plan UI asks for a return comment before calling the API", () => {
   assert.match(source, /const comment = normalizeSalesPlanReturnComment\(rawComment\);/);
   assert.match(source, /persist\("return", plan, false, \{ comment \}\)/);
 });
+
+test("sales-plan UI submits only after autosave is clean", () => {
+  const source = readFileSync(new URL("../components/planning/SalesPlanPage.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /if \(saving \|\| dirty \|\| saveError \|\| conflict\) \{/);
+  assert.match(source, /const submitDisabled = saving \|\| dirty \|\| Boolean\(saveError\) \|\| conflict;/);
+  assert.match(source, /disabled=\{submitDisabled\} title=\{submitDisabledHint\}/);
+});
