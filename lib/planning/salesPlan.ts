@@ -111,6 +111,44 @@ export interface SalesPlanStockRiskSummary extends SalesPlanStockRisk {
   shortageRows: number;
 }
 
+export type SalesPlanSuggestionConfidence = "high" | "medium" | "low" | "unavailable";
+
+export interface SalesPlanSuggestionBasis {
+  stock: number;
+  ordersWeek: number;
+  revenueWeek: number;
+  ordersMonth: number;
+  revenueMonth: number;
+  seasonalityFactor?: number;
+  demandFactor?: number;
+}
+
+export interface SalesPlanSuggestionRow {
+  rowId: string;
+  variant: string;
+  currentOrders: number;
+  proposedOrders: number;
+  dailyOrders: number;
+  changedCells: number;
+  avgDaily7: number;
+  seasonalityFactor: number;
+  demandFactor: number;
+  endingStock: number;
+  confidence: SalesPlanSuggestionConfidence;
+  warnings: string[];
+  proposedDays: number[];
+}
+
+export interface SalesPlanSuggestion {
+  monthKey: string;
+  replaceFilled: boolean;
+  currentOrders: number;
+  proposedOrders: number;
+  deltaOrders: number;
+  changedCells: number;
+  rows: SalesPlanSuggestionRow[];
+}
+
 const MONTH_KEYS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
 
 function record(value: unknown): Record<string, unknown> {
@@ -557,6 +595,91 @@ export function calculateSalesPlanStockRiskSummary(
     { currentStock: 0, plannedOrders: 0, endingStock: 0, shortageDay: null, shortageQty: 0, shortageRows: 0 } as SalesPlanStockRiskSummary,
   );
   return summary;
+}
+
+function suggestionFactor(value: unknown) {
+  const number = finite(value, 1);
+  return number > 0 ? number : 1;
+}
+
+function suggestionConfidence(basis: SalesPlanSuggestionBasis | undefined): SalesPlanSuggestionConfidence {
+  if (!basis) return "unavailable";
+  if (basis.ordersWeek >= 14) return "high";
+  if (basis.ordersWeek >= 4) return "medium";
+  if (basis.ordersMonth > 0) return "low";
+  return "unavailable";
+}
+
+export function calculateSalesPlanSuggestedDailyOrders(basis: SalesPlanSuggestionBasis | undefined) {
+  if (!basis) return 0;
+  const avgDaily7 = Math.max(0, finite(basis.ordersWeek) / 7);
+  const proposed = avgDaily7 * suggestionFactor(basis.seasonalityFactor) * suggestionFactor(basis.demandFactor);
+  return Math.max(0, Math.round(proposed));
+}
+
+export function buildSalesPlanSuggestion(
+  plan: SalesPlanDocument,
+  monthKey: string,
+  basisByRowId: Record<string, SalesPlanSuggestionBasis | undefined>,
+  options: { replaceFilled?: boolean } = {},
+): SalesPlanSuggestion {
+  const days = daysInSalesPlanMonth(plan.year, monthKey);
+  const replaceFilled = Boolean(options.replaceFilled);
+  const rows = plan.rows.map((row): SalesPlanSuggestionRow => {
+    const basis = basisByRowId[row.id];
+    const currentDays = Array.from({ length: days }, (_, index) => Math.max(0, finite(row.months[monthKey]?.[index])));
+    const dailyOrders = calculateSalesPlanSuggestedDailyOrders(basis);
+    const proposedDays = currentDays.map((value) => replaceFilled || value <= 0 ? dailyOrders : value);
+    const currentOrders = Math.round(currentDays.reduce((sum, value) => sum + value, 0));
+    const proposedOrders = Math.round(proposedDays.reduce((sum, value) => sum + value, 0));
+    const changedCells = proposedDays.reduce((count, value, index) => count + (value !== currentDays[index] ? 1 : 0), 0);
+    const stock = Math.max(0, Math.round(finite(basis?.stock, row.stock)));
+    const endingStock = stock - proposedOrders;
+    const confidence = suggestionConfidence(basis);
+    const warnings: string[] = [];
+    if (!basis) warnings.push("нет фактической базы");
+    else if (basis.ordersWeek <= 0) warnings.push("нет заказов за 7 дней");
+    if (endingStock < 0) warnings.push(`дефицит ${Math.abs(endingStock).toLocaleString("ru-RU")} шт.`);
+    if (!replaceFilled && currentDays.some((value) => value > 0)) warnings.push("ручные ячейки сохранены");
+    return {
+      rowId: row.id,
+      variant: row.variant,
+      currentOrders,
+      proposedOrders,
+      dailyOrders,
+      changedCells,
+      avgDaily7: basis ? Math.max(0, finite(basis.ordersWeek) / 7) : 0,
+      seasonalityFactor: suggestionFactor(basis?.seasonalityFactor),
+      demandFactor: suggestionFactor(basis?.demandFactor),
+      endingStock,
+      confidence,
+      warnings,
+      proposedDays,
+    };
+  });
+  const currentOrders = rows.reduce((sum, row) => sum + row.currentOrders, 0);
+  const proposedOrders = rows.reduce((sum, row) => sum + row.proposedOrders, 0);
+  return {
+    monthKey,
+    replaceFilled,
+    currentOrders,
+    proposedOrders,
+    deltaOrders: proposedOrders - currentOrders,
+    changedCells: rows.reduce((sum, row) => sum + row.changedCells, 0),
+    rows,
+  };
+}
+
+export function applySalesPlanSuggestion(plan: SalesPlanDocument, suggestion: SalesPlanSuggestion): SalesPlanDocument {
+  const byRow = new Map(suggestion.rows.map((row) => [row.rowId, row.proposedDays]));
+  return {
+    ...plan,
+    rows: plan.rows.map((row) => {
+      const proposedDays = byRow.get(row.id);
+      if (!proposedDays) return row;
+      return { ...row, months: { ...row.months, [suggestion.monthKey]: proposedDays } };
+    }),
+  };
 }
 
 export function validateSalesPlan(plan: SalesPlanDocument): SalesPlanValidationIssue[] {

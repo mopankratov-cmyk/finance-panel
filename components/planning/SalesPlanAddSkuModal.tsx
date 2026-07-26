@@ -16,6 +16,15 @@ export interface SalesPlanCatalogSku {
   name: string;
   stock: number;
   image: string | null;
+  ordersWeek?: number;
+  revenueWeek?: number;
+  ordersMonth?: number;
+  revenueMonth?: number;
+  avgDaily7?: number;
+  avgPriceMonth?: number;
+  seasonalityFactor?: number;
+  demandFactor?: number;
+  stockAsOf?: string | null;
 }
 function rowId() {
   return globalThis.crypto?.randomUUID?.() ?? `sales-plan-${Date.now()}-${Math.random().toString(36).slice(2)}`;

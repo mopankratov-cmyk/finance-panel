@@ -10,6 +10,10 @@ export const dynamic = "force-dynamic";
 interface RpcRow {
   nm_id: number;
   article: string;
+  orders_week: number;
+  orders_sum_week: number;
+  orders_month: number;
+  orders_sum_month: number;
   stock: number;
 }
 
@@ -51,6 +55,14 @@ export async function GET(request: NextRequest) {
         wb_stock: wb,
         wb_own: wb,
         wb_jc: 0,
+        orders_week: Number(r.orders_week ?? 0),
+        orders_sum_week: Number(r.orders_sum_week ?? 0),
+        orders_month: Number(r.orders_month ?? 0),
+        orders_sum_month: Number(r.orders_sum_month ?? 0),
+        avg_daily_7: Number(r.orders_week ?? 0) / 7,
+        avg_price_month: Number(r.orders_month ?? 0) > 0 ? Number(r.orders_sum_month ?? 0) / Number(r.orders_month ?? 0) : 0,
+        seasonality_factor: 1,
+        demand_factor: 1,
       };
     })
     .sort((a, b) => a.art.localeCompare(b.art));

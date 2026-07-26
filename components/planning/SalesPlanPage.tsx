@@ -14,10 +14,14 @@ import {
   RefreshCw,
   Search,
   Send,
+  Wand2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  applySalesPlanSuggestion,
+  buildSalesPlanSuggestion,
   canModerateSalesPlan,
+  calculateSalesPlanSuggestedDailyOrders,
   calculateSalesPlanSummary,
   calculateSalesPlanStockRiskSummary,
   createEmptySalesPlan,
@@ -30,6 +34,8 @@ import {
   type SalesPlanEvent,
   type SalesPlanMarketplace,
   type SalesPlanRow,
+  type SalesPlanSuggestion,
+  type SalesPlanSuggestionBasis,
   type SalesPlanValidationIssue,
   validateSalesPlan,
   visibleSalesPlanMonths,
@@ -104,6 +110,8 @@ export function SalesPlanPage({
   const [conflict, setConflict] = useState(false);
   const [query, setQuery] = useState("");
   const [stockRiskOnly, setStockRiskOnly] = useState(false);
+  const [basisOpen, setBasisOpen] = useState(true);
+  const [suggestionPreview, setSuggestionPreview] = useState<SalesPlanSuggestion | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedCell, setSelectedCell] = useState<SalesPlanCellPosition | null>(null);
   const [fill, setFill] = useState<SalesPlanFillState | null>(null);
@@ -228,7 +236,21 @@ export function SalesPlanPage({
       .then(async (response) => {
         const body = await response.json() as {
           error?: string;
-          skus?: { external_id?: string; nm_id?: number; art: string; name: string; wb_stock?: number }[];
+          skus?: {
+            external_id?: string;
+            nm_id?: number;
+            art: string;
+            name: string;
+            wb_stock?: number;
+            orders_week?: number;
+            orders_sum_week?: number;
+            orders_month?: number;
+            orders_sum_month?: number;
+            avg_daily_7?: number;
+            avg_price_month?: number;
+            seasonality_factor?: number;
+            demand_factor?: number;
+          }[];
           rows?: { external_id?: string; art: string; name: string; free: number; img_url?: string | null }[];
         };
         if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
@@ -241,6 +263,15 @@ export function SalesPlanPage({
               name: sku.name,
               stock: Number(sku.wb_stock ?? 0),
               image: Number.isInteger(nmId) && nmId > 0 ? wbCardImageUrl(nmId, "c246x328") : null,
+              ordersWeek: Number(sku.orders_week ?? 0),
+              revenueWeek: Number(sku.orders_sum_week ?? 0),
+              ordersMonth: Number(sku.orders_month ?? 0),
+              revenueMonth: Number(sku.orders_sum_month ?? 0),
+              avgDaily7: Number(sku.avg_daily_7 ?? 0),
+              avgPriceMonth: Number(sku.avg_price_month ?? 0),
+              seasonalityFactor: Number(sku.seasonality_factor ?? 1),
+              demandFactor: Number(sku.demand_factor ?? 1),
+              stockAsOf: new Date().toISOString().slice(0, 10),
             };
           })
           : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null }));
@@ -253,6 +284,10 @@ export function SalesPlanPage({
   useEffect(() => {
     if (addOpen) loadCatalog();
   }, [addOpen, loadCatalog]);
+
+  useEffect(() => {
+    if (plan && exactCabinet && mode === "edit") loadCatalog();
+  }, [exactCabinet, loadCatalog, mode, plan]);
 
   useEffect(() => {
     setCatalog([]);
@@ -365,6 +400,40 @@ export function SalesPlanPage({
       : dirty || saving
         ? "Дождитесь успешного автосохранения"
         : undefined;
+  const catalogByExternalId = new Map(catalog.map((sku) => [sku.externalId, sku]));
+  const catalogByVariant = new Map(catalog.map((sku) => [sku.variant.toLocaleLowerCase("ru-RU"), sku]));
+  const basisByRowId = displayPlan?.rows.reduce<Record<string, SalesPlanSuggestionBasis | undefined>>((acc, row) => {
+    const sku = catalogByExternalId.get(row.externalId) ?? catalogByVariant.get(row.variant.toLocaleLowerCase("ru-RU"));
+    acc[row.id] = sku ? {
+      stock: sku.stock,
+      ordersWeek: Number(sku.ordersWeek ?? 0),
+      revenueWeek: Number(sku.revenueWeek ?? 0),
+      ordersMonth: Number(sku.ordersMonth ?? 0),
+      revenueMonth: Number(sku.revenueMonth ?? 0),
+      seasonalityFactor: Number(sku.seasonalityFactor ?? 1),
+      demandFactor: Number(sku.demandFactor ?? 1),
+    } : undefined;
+    return acc;
+  }, {}) ?? {};
+
+  const openSuggestionPreview = () => {
+    if (!plan) return;
+    if (catalogLoading) {
+      setActionError("Дождитесь загрузки основания плана");
+      return;
+    }
+    setActionError(null);
+    setSuggestionPreview(buildSalesPlanSuggestion(plan, activeMonth, basisByRowId));
+  };
+  const applySuggestion = (replaceFilled: boolean) => {
+    if (!plan) return;
+    if (replaceFilled && !window.confirm("Заменить все дневные ячейки выбранного месяца расчётным предложением? Ручные значения будут перезаписаны.")) return;
+    editPlan((current) => applySalesPlanSuggestion(
+      current,
+      buildSalesPlanSuggestion(current, activeMonth, basisByRowId, { replaceFilled }),
+    ));
+    setSuggestionPreview(null);
+  };
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-20 md:pb-6">
@@ -442,6 +511,16 @@ export function SalesPlanPage({
                     {stockRisk ? <Metric label="Остаток на конец" value={`${number(stockRisk.endingStock)} шт.`} detail={stockRisk.shortageRows > 0 ? `${stockRisk.shortageRows} SKU покажут дефицит с ${stockRisk.shortageDay} числа` : `сейчас ${number(stockRisk.currentStock)} шт.`} tone={stockRisk.shortageRows > 0 ? "rose" : "slate"} /> : null}
                   </section> : null}
 
+                  <SalesPlanBasisPanel
+                    open={basisOpen}
+                    onToggle={() => setBasisOpen((value) => !value)}
+                    plan={displayPlan}
+                    basisByRowId={basisByRowId}
+                    loading={catalogLoading}
+                    error={catalogError}
+                    onReload={loadCatalog}
+                  />
+
                   <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3">
                     <div className="flex flex-col gap-3">
                       <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
@@ -455,6 +534,7 @@ export function SalesPlanPage({
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                        {!readOnly ? <button type="button" onClick={openSuggestionPreview} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 sm:min-h-9 ${soft}`}><Wand2 className="h-4 w-4" /> Предложить план</button> : null}
                         {stockRisk ? <button type="button" aria-pressed={stockRiskOnly} onClick={() => setStockRiskOnly((value) => !value)} className={`inline-flex min-h-11 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition sm:min-h-9 ${stockRiskOnly ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>Покажет дефицит <span className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-[10px]">{stockRisk.shortageRows}</span></button> : null}
                         <label className="relative block min-w-[220px]"><span className="sr-only">Поиск в плане</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Артикул, цвет или ID" className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:h-9" /></label>
                         {!readOnly ? <button type="button" onClick={() => setAddOpen(true)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 sm:min-h-9 ${soft}`}><PackagePlus className="h-4 w-4" /> Добавить SKU</button> : null}
@@ -484,6 +564,7 @@ export function SalesPlanPage({
                 </>}
       </div>
 
+      {suggestionPreview && plan ? <SalesPlanSuggestionModal suggestion={suggestionPreview} onClose={() => setSuggestionPreview(null)} onApplyEmpty={() => applySuggestion(false)} onReplaceAll={() => applySuggestion(true)} /> : null}
       {addOpen && activeMonthState?.status === "draft" && plan ? <SalesPlanAddSkuModal marketplace={marketplace} year={year} catalog={catalog} catalogLoading={catalogLoading} catalogError={catalogError} existingVariants={plan.rows.map((row) => row.variant)} onClose={() => setAddOpen(false)} onAdd={addRows} /> : null}
     </div>
   );
@@ -500,6 +581,145 @@ function ActionButton({ primary, disabled, title, onClick, icon: Icon, children 
 function Metric({ label, value, detail, tone = "slate" }: { label: string; value: string; detail: string; tone?: "slate" | "amber" | "rose" }) {
   const toneClass = tone === "amber" ? "border-amber-200 bg-amber-50" : tone === "rose" ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white";
   return <div className={`rounded-xl border p-4 ${toneClass}`}><div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-xl font-bold tabular-nums text-slate-900">{value}</div><div className={`mt-1 text-[11px] ${tone === "rose" ? "text-rose-700" : "text-slate-500"}`}>{detail}</div></div>;
+}
+
+function SalesPlanBasisPanel({
+  open,
+  onToggle,
+  plan,
+  basisByRowId,
+  loading,
+  error,
+  onReload,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  plan: SalesPlanDocument;
+  basisByRowId: Record<string, SalesPlanSuggestionBasis | undefined>;
+  loading: boolean;
+  error: string | null;
+  onReload: () => void;
+}) {
+  const rows = plan.rows.map((row) => ({ row, basis: basisByRowId[row.id] }));
+  const known = rows.filter((item) => item.basis).length;
+  const ordersWeek = rows.reduce((sum, item) => sum + Number(item.basis?.ordersWeek ?? 0), 0);
+  const ordersMonth = rows.reduce((sum, item) => sum + Number(item.basis?.ordersMonth ?? 0), 0);
+  const stock = rows.reduce((sum, item) => sum + Number(item.basis?.stock ?? item.row.stock ?? 0), 0);
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
+        <span>
+          <span className="block text-sm font-bold text-slate-900">Основание плана</span>
+          <span className="mt-0.5 block text-xs text-slate-500">Факт RNP, средний темп 7 дней, остаток и расчётное предложение без расширения дневной сетки</span>
+        </span>
+        <span className="flex items-center gap-2 text-[11px] text-slate-500">
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
+          {known}/{plan.rows.length} SKU
+          <ChevronRight className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`} />
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-slate-100 p-3">
+          {error ? <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><span>{error}</span><button type="button" onClick={onReload} className="min-h-8 rounded-md border border-amber-200 bg-white px-2 font-semibold">Повторить</button></div> : null}
+          <div className="mb-3 grid gap-2 sm:grid-cols-3">
+            <MiniMetric label="Факт 7 дней" value={`${number(ordersWeek)} шт.`} detail={`${number(ordersWeek / 7)} шт./день`} />
+            <MiniMetric label="Факт 30 дней" value={`${number(ordersMonth)} шт.`} detail="по RNP-агрегату" />
+            <MiniMetric label="Остаток сейчас" value={`${number(stock)} шт.`} detail="по товарным строкам" />
+          </div>
+          <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
+            <table className="min-w-full text-[11px]">
+              <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
+                <tr><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">30д</th><th className="px-3 py-2 text-right">7д/день</th><th className="px-3 py-2 text-right">Остаток</th><th className="px-3 py-2 text-right">Предложение</th></tr>
+              </thead>
+              <tbody>
+                {rows.map(({ row, basis }) => {
+                  const suggested = calculateSalesPlanSuggestedDailyOrders(basis);
+                  return (
+                    <tr key={row.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2"><span className="block font-semibold text-slate-800">{row.variant}</span><span className="block text-[10px] text-slate-400">{row.color}</span></td>
+                      <td className="px-3 py-2 text-right tabular-nums">{basis ? `${number(basis.ordersMonth)} / ${money(basis.revenueMonth)}` : "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{basis ? `${number(basis.ordersWeek)} / ${number(basis.ordersWeek / 7)}` : "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{number(basis?.stock ?? row.stock)}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-violet-700">{suggested ? `${number(suggested)} шт./день` : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MiniMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-base font-bold tabular-nums text-slate-900">{value}</div><div className="text-[10px] text-slate-500">{detail}</div></div>;
+}
+
+const confidenceLabels: Record<SalesPlanSuggestion["rows"][number]["confidence"], string> = {
+  high: "высокая",
+  medium: "средняя",
+  low: "низкая",
+  unavailable: "нет базы",
+};
+
+function SalesPlanSuggestionModal({
+  suggestion,
+  onClose,
+  onApplyEmpty,
+  onReplaceAll,
+}: {
+  suggestion: SalesPlanSuggestion;
+  onClose: () => void;
+  onApplyEmpty: () => void;
+  onReplaceAll: () => void;
+}) {
+  const changedRows = suggestion.rows.filter((row) => row.changedCells > 0);
+  const previewRows = changedRows.length ? changedRows : suggestion.rows.slice(0, 8);
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="sales-plan-suggestion-title">
+      <button type="button" aria-label="Закрыть предложение плана" className="absolute inset-0 bg-slate-950/50" onClick={onClose} />
+      <div className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
+          <h2 id="sales-plan-suggestion-title" className="text-lg font-bold text-slate-900">Предложить план</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-500">Формула: средний факт 7 дней × коэффициент сезонности × коэффициент спроса. По умолчанию заполнит только пустые дневные ячейки.</p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <MiniMetric label="Текущий план" value={`${number(suggestion.currentOrders)} шт.`} detail="выбранный месяц" />
+            <MiniMetric label="Предложение" value={`${number(suggestion.proposedOrders)} шт.`} detail={`${suggestion.deltaOrders >= 0 ? "+" : ""}${number(suggestion.deltaOrders)} шт.`} />
+            <MiniMetric label="Изменится ячеек" value={number(suggestion.changedCells)} detail="ручные заполненные не трогаем" />
+            <MiniMetric label="SKU в расчёте" value={number(suggestion.rows.length)} detail={`${changedRows.length} с изменениями`} />
+          </div>
+          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+            <table className="min-w-full text-[11px]">
+              <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
+                <tr><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">База 7д</th><th className="px-3 py-2 text-right">Коэф.</th><th className="px-3 py-2 text-right">План</th><th className="px-3 py-2 text-left">Сигналы</th></tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row) => (
+                  <tr key={row.rowId} className="border-t border-slate-100">
+                    <td className="px-3 py-2 font-semibold text-slate-800">{row.variant}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{number(row.avgDaily7)} шт./день</td>
+                    <td className="px-3 py-2 text-right tabular-nums">сез. {row.seasonalityFactor.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} · спрос {row.demandFactor.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2 text-right tabular-nums"><span className="font-semibold">{number(row.currentOrders)} → {number(row.proposedOrders)}</span><span className="block text-[10px] text-slate-400">{number(row.dailyOrders)} шт./день</span></td>
+                    <td className="px-3 py-2"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{confidenceLabels[row.confidence]}</span>{row.warnings.length ? <span className="ml-1 text-amber-700">{row.warnings.join(" · ")}</span> : null}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {suggestion.changedCells === 0 ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Нет пустых ячеек для безопасного заполнения. Можно заменить все значения отдельным подтверждением.</p> : null}
+        </div>
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+          <button type="button" onClick={onClose} className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">Отмена</button>
+          <button type="button" onClick={onReplaceAll} className="min-h-11 rounded-lg border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-700 hover:bg-rose-50">Заменить все</button>
+          <button type="button" onClick={onApplyEmpty} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"><Wand2 className="h-4 w-4" /> Заполнить пустые</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ValidationSummary({ issues }: { issues: SalesPlanValidationIssue[] }) {

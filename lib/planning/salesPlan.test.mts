@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendSalesPlanEvent,
+  applySalesPlanSuggestion,
+  buildSalesPlanSuggestion,
   canModerateSalesPlan,
   calculateSalesPlanDaily,
   calculateSalesPlanRowStockRisk,
@@ -79,6 +81,36 @@ test("остаток плана показывает конец месяца и 
   assert.equal(summary.endingStock, 77);
   assert.equal(summary.shortageRows, 1);
   assert.equal(summary.shortageDay, 3);
+});
+
+test("предложение плана заполняет пустые дни по факту 7 дней и не трогает ручные ячейки", () => {
+  const current = row();
+  current.stock = 100;
+  current.months["07"] = [5, 0, 0, 2];
+  const plan = createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 });
+  plan.rows = [current];
+
+  const suggestion = buildSalesPlanSuggestion(plan, "07", {
+    [current.id]: {
+      stock: 100,
+      ordersWeek: 21,
+      revenueWeek: 21_000,
+      ordersMonth: 70,
+      revenueMonth: 70_000,
+      seasonalityFactor: 1,
+      demandFactor: 1,
+    },
+  });
+
+  assert.equal(suggestion.rows[0].dailyOrders, 3);
+  assert.equal(suggestion.rows[0].currentOrders, 7);
+  assert.equal(suggestion.rows[0].proposedDays[0], 5);
+  assert.equal(suggestion.rows[0].proposedDays[1], 3);
+  assert.equal(suggestion.rows[0].proposedDays[3], 2);
+  assert.ok(suggestion.rows[0].warnings.includes("ручные ячейки сохранены"));
+
+  const applied = applySalesPlanSuggestion(plan, suggestion);
+  assert.deepEqual(applied.rows[0].months["07"].slice(0, 4), [5, 3, 3, 2]);
 });
 
 test("утверждение блокируется при дубле цвета и нулевой цене", () => {

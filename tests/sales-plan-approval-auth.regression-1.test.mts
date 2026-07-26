@@ -100,3 +100,18 @@ test("sales-plan UI surfaces ending stock, shortage day and shortage filter", ()
   assert.match(table, /shortageDay !== null/);
   assert.match(table, /дефицит/);
 });
+
+test("sales-plan UI exposes basis panel and explainable suggestion preview", () => {
+  const page = readFileSync(new URL("../components/planning/SalesPlanPage.tsx", import.meta.url), "utf8");
+  const skusRoute = readFileSync(new URL("../app/api/planning/skus/route.ts", import.meta.url), "utf8");
+
+  assert.match(skusRoute, /orders_week/);
+  assert.match(skusRoute, /orders_month/);
+  assert.match(skusRoute, /avg_daily_7/);
+  assert.match(page, /Основание плана/);
+  assert.match(page, /Предложить план/);
+  assert.match(page, /buildSalesPlanSuggestion/);
+  assert.match(page, /applySalesPlanSuggestion/);
+  assert.match(page, /Заполнить пустые/);
+  assert.match(page, /Заменить все/);
+});
