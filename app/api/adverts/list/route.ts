@@ -7,6 +7,7 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getActiveWbCabinets, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { buildAdvertWorkingDaySummary, type AdvertDayPoint } from "@/lib/adverts/daySummary";
 import { loadScopedAdvertReportRows } from "@/lib/adverts/scopedReport";
 import { aggregateClosedAdvertMetrics, getClosedMoscowPeriod } from "@/lib/adverts/closedPeriodMetrics";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -41,6 +42,15 @@ interface NmDailyRow {
   nm_id: number;
   date: string;
   spent: number;
+}
+interface FunnelDayRow {
+  cabinet_id: string | null;
+  nm_id: number;
+  date: string;
+  open_card: number | null;
+  add_to_cart: number | null;
+  orders: number | null;
+  orders_sum: number | null;
 }
 interface ChangeRow {
   advert_id: number;
@@ -77,6 +87,12 @@ function createCampaignPageError(error: CampaignPageError, label: string): Error
 function campaignPageErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
   return typeof error.code === "string" ? error.code : undefined;
+}
+
+function addIsoDays(date: string, days: number) {
+  const next = new Date(`${date}T00:00:00.000Z`);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
 }
 
 async function loadAllCampaignPages<Row>(
@@ -119,6 +135,10 @@ export async function GET(request: NextRequest) {
     .map((cabinet) => [cabinet.id, new Set(cabinet.allowed_nm_ids ?? [])]));
 
   const metricsPeriod7Closed = getClosedMoscowPeriod();
+  // «Сегодня/вчера» считаем в московском календаре WB, а не по UTC.
+  // dateTo закрытого периода — вчерашний полный день.
+  const yest = metricsPeriod7Closed.dateTo;
+  const today = addIsoDays(yest, 1);
   const legacyStatsDateFrom = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
   const statsDateFrom = legacyStatsDateFrom < metricsPeriod7Closed.dateFrom ? legacyStatsDateFrom : metricsPeriod7Closed.dateFrom;
   let changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
@@ -176,6 +196,19 @@ export async function GET(request: NextRequest) {
     return query;
   }, { maxPages: 100, label: "Расход рекламы WB по SKU" });
 
+  const funnelRowsPromise = loadAllSupabasePages<FunnelDayRow>((from, to) => {
+    let query = db
+      .from("wb_funnel_daily")
+      .select("cabinet_id, nm_id, date, open_card, add_to_cart, orders, orders_sum")
+      .gte("date", yest)
+      .lte("date", today)
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to);
+    if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+    return query;
+  }, { maxPages: 100, label: "Воронка WB для сводки рекламы" });
+
   // Баланс продвижения зависит только от cabinetId — считаем его цепочку параллельно
   // с тяжёлыми БД-запросами, а не после них (иначе латентность складывается).
   const balancePromise: Promise<number | null> = cabinetId
@@ -207,6 +240,7 @@ export async function GET(request: NextRequest) {
     AdvertRow[],
     StatRow[],
     NmDailyRow[],
+    FunnelDayRow[],
     RpcRow[],
     Awaited<typeof changesQ>,
     Awaited<ReturnType<typeof getWbCommissionForCabinet>>,
@@ -217,6 +251,7 @@ export async function GET(request: NextRequest) {
       advertRowsPromise,
       statRowsPromise,
       nmDailyRowsPromise,
+      funnelRowsPromise,
       reportPromise,
       changesQ,
       getWbCommissionForCabinet(cabinetId, 30, { allowLiveFallback: false }),
@@ -228,17 +263,12 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
-  const [advertRows, statRows, nmDailyRows, reportRows, changesRes, commission, balance] = queryResults;
-
-  // «Сегодня/вчера» — календарные даты, а не последняя синканная. Если сегодняшний
-  // синк рекламы ещё не прошёл — покажем 0 за реальное сегодня, а не подменим его вчерашним днём.
-  const today = new Date().toISOString().slice(0, 10);
-  const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const [advertRows, statRows, nmDailyRows, funnelRows, reportRows, changesRes, commission, balance] = queryResults;
 
   // агрегаты по кампании за 14д + spend today/yest
   const byAdv = new Map<number, { spent14: number; views: number; clicks: number; ordSum: number; today: number; yest: number }>();
   const statRowsByAdvert = new Map<number, StatRow[]>();
-  const daysByAdv = new Map<number, { ts: string; spend: number; clicks: number; views: number; orders: number }[]>();
+  const daysByAdv = new Map<number, AdvertDayPoint[]>();
   for (const s of statRows) {
     const groupedRows = statRowsByAdvert.get(s.advert_id) ?? [];
     groupedRows.push(s);
@@ -276,6 +306,22 @@ export async function GET(request: NextRequest) {
       : (allowedByCabinet.get(String(row.cabinet_id ?? "")) ?? null);
     if (!requestAllowsNm(rowAllowedNmIds, row.nm_id)) continue;
     skuSpend7ClosedByNm.set(row.nm_id, (skuSpend7ClosedByNm.get(row.nm_id) ?? 0) + Number(row.spent ?? 0));
+  }
+
+  const funnelByNmDate = new Map<string, { openCard: number; carts: number; ordersCount: number; ordersSum: number }>();
+  for (const row of funnelRows) {
+    const rowAllowedNmIds = cabinetId
+      ? allowedNmIds
+      : (allowedByCabinet.get(String(row.cabinet_id ?? "")) ?? null);
+    if (!requestAllowsNm(rowAllowedNmIds, row.nm_id)) continue;
+    const date = String(row.date).slice(0, 10);
+    const key = `${row.nm_id}:${date}`;
+    const current = funnelByNmDate.get(key) ?? { openCard: 0, carts: 0, ordersCount: 0, ordersSum: 0 };
+    current.openCard += Number(row.open_card ?? 0);
+    current.carts += Number(row.add_to_cart ?? 0);
+    current.ordersCount += Number(row.orders ?? 0);
+    current.ordersSum += Number(row.orders_sum ?? 0);
+    funnelByNmDate.set(key, current);
   }
 
   const artByNm = new Map<number, string>();
@@ -320,6 +366,7 @@ export async function GET(request: NextRequest) {
     const dataAgeHours = statsSyncedAt
       ? Math.max(0, (Date.now() - new Date(statsSyncedAt).getTime()) / 3_600_000)
       : null;
+    const roundedDataAgeHours = dataAgeHours == null ? null : Math.round(dataAgeHours * 10) / 10;
     const attributionCompatible = nmIds.length === 1
       && st.ordSum <= Math.max(1, Number(report?.orders_sum_month ?? 0)) * 1.2;
     const economics = calculateAdvertProfitGuardrail({
@@ -338,9 +385,11 @@ export async function GET(request: NextRequest) {
       dataAgeHours,
     });
     const latestChange = latestChangeByAdvert.get(Number(a.advert_id)) ?? null;
+    const campaignDays = daysByAdv.get(a.advert_id) ?? [];
+    const campaignDaysByDate = new Map(campaignDays.map((day) => [day.ts, day]));
     const comparison = latestChange
       ? compareAdvertBeforeAfter(
-        (daysByAdv.get(a.advert_id) ?? []).map((day) => ({ date: day.ts, spent: day.spend, revenue: day.orders })),
+        campaignDays.map((day) => ({ date: day.ts, spent: day.spend, revenue: day.orders })),
         latestChange.created_at,
       )
       : null;
@@ -371,10 +420,26 @@ export async function GET(request: NextRequest) {
       payment: "cpm",
       bid_cpm_rub: a.bid_cpm_rub ?? a.daily_budget ?? null,
       stats_synced_at: statsSyncedAt,
-      stats_age_hours: dataAgeHours == null ? null : Math.round(dataAgeHours * 10) / 10,
+      stats_age_hours: roundedDataAgeHours,
       stats_stale: dataAgeHours == null || dataAgeHours > 3,
       cab: cabLabel,
-      days: daysByAdv.get(a.advert_id) ?? [],
+      yesterday: buildAdvertWorkingDaySummary({
+        date: yest,
+        adDay: campaignDaysByDate.get(yest),
+        funnel: funnelByNmDate.get(`${nm}:${yest}`),
+        statsSyncedAt,
+        statsAgeHours: roundedDataAgeHours,
+        isComplete: true,
+      }),
+      today_open: buildAdvertWorkingDaySummary({
+        date: today,
+        adDay: campaignDaysByDate.get(today),
+        funnel: funnelByNmDate.get(`${nm}:${today}`),
+        statsSyncedAt,
+        statsAgeHours: roundedDataAgeHours,
+        isComplete: false,
+      }),
+      days: campaignDays,
       economics,
       attribution_compatible: attributionCompatible,
       last_change: latestChange ? {

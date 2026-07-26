@@ -101,8 +101,10 @@ test("campaign and SKU facts use stable fail-closed pagination without a silent 
 
   assert.match(route, /loadAllSupabasePages<StatRow>/);
   assert.match(route, /loadAllSupabasePages<NmDailyRow>/);
+  assert.match(route, /loadAllSupabasePages<FunnelDayRow>/);
   assert.match(route, /from\("wb_advert_stats"\)[\s\S]*?order\("date", \{ ascending: true \}\)[\s\S]*?order\("advert_id", \{ ascending: true \}\)[\s\S]*?range\(from, to\)/);
   assert.match(route, /from\("wb_advert_nm_daily"\)[\s\S]*?order\("date", \{ ascending: true \}\)[\s\S]*?order\("nm_id", \{ ascending: true \}\)[\s\S]*?range\(from, to\)/);
+  assert.match(route, /from\("wb_funnel_daily"\)[\s\S]*?select\("cabinet_id, nm_id, date, open_card, add_to_cart, orders, orders_sum"\)[\s\S]*?gte\("date", yest\)[\s\S]*?lte\("date", today\)[\s\S]*?range\(from, to\)/);
   assert.doesNotMatch(route, /\.limit\(5000\)/);
 });
 
@@ -118,9 +120,16 @@ test("UI distinguishes campaign spend from comparable SKU spend and preserves DR
   const page = readFileSync(new URL("../components/wb/WbAdvertsPage.tsx", import.meta.url), "utf8");
 
   assert.match(route, /spent_sku_7_closed:/);
+  assert.match(route, /yesterday:\s*buildAdvertWorkingDaySummary/);
+  assert.match(route, /today_open:\s*buildAdvertWorkingDaySummary/);
   assert.match(page, /Расход РК 7д/);
   assert.match(page, /Расход SKU 7д/);
   assert.match(page, /ДРР РК 7д/);
+  assert.match(page, /Вчера · полный день/);
+  assert.match(page, /Корзины SKU/);
+  assert.match(page, /Заказы SKU, шт/);
+  assert.match(page, /Сегодня · незакрытый день/);
+  assert.match(page, /товарной воронки SKU/);
   assert.match(page, /no_attributed_orders[\s\S]*border-rose-200 bg-rose-50 text-rose-700/);
   assert.match(page, /no_spend[\s\S]*border-slate-200 bg-slate-50 text-slate-500/);
 });

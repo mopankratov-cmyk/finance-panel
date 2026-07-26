@@ -43,6 +43,23 @@ interface BeforeAfter {
   drrDelta: number | null;
 }
 
+interface CampaignDaySummary {
+  date: string;
+  is_complete: boolean;
+  views: number | null;
+  clicks: number | null;
+  ctr: number | null;
+  spend: number | null;
+  attributed_revenue: number | null;
+  attributed_drr: number | null;
+  open_card: number | null;
+  carts: number | null;
+  orders_count: number | null;
+  orders_sum: number | null;
+  stats_synced_at: string | null;
+  stats_age_hours: number | null;
+}
+
 interface Campaign {
   id: number;
   name: string;
@@ -64,6 +81,8 @@ interface Campaign {
   metrics_period_7_closed: { date_from: string; date_to: string };
   bid_type?: string;
   payment?: string;
+  yesterday?: CampaignDaySummary;
+  today_open?: CampaignDaySummary;
   days: DayPoint[];
   economics: AdvertEconomics;
   attribution_compatible: boolean;
@@ -90,6 +109,8 @@ interface AdvertsData {
   balance: number | null;
   spend_today_total: number;
   spend_yest_total: number;
+  today?: string;
+  yest?: string;
 }
 
 interface CampaignRow {
@@ -109,6 +130,32 @@ const STATUS_FILTERS = [
 const ROW_HEIGHT = 76;
 const rub = (value: number | null) => value == null ? "—" : `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 const pct = (value: number | null) => value == null ? "—" : `${Math.round(value * 10) / 10}%`;
+const int = (value: number | null) => value == null ? "—" : Math.round(value).toLocaleString("ru-RU");
+
+function emptyDaySummary(date: string | undefined, isComplete: boolean): CampaignDaySummary {
+  return {
+    date: date ?? "—",
+    is_complete: isComplete,
+    views: null,
+    clicks: null,
+    ctr: null,
+    spend: null,
+    attributed_revenue: null,
+    attributed_drr: null,
+    open_card: null,
+    carts: null,
+    orders_count: null,
+    orders_sum: null,
+    stats_synced_at: null,
+    stats_age_hours: null,
+  };
+}
+
+function syncLabel(summary: CampaignDaySummary) {
+  if (summary.stats_age_hours == null) return "синк не найден";
+  if (summary.stats_age_hours <= 1) return "синк свежий";
+  return `синк ${summary.stats_age_hours} ч назад`;
+}
 
 function campaignStatusKind(campaign: Campaign): Exclude<CampaignStatusFilter, "all"> {
   if (campaign.status === 9 || campaign.enabled) return "active";
@@ -266,6 +313,8 @@ export function WbAdvertsPage() {
 
   const selected = rows.find(({ campaign }) => campaign.id === selectedId) ?? null;
   const selectedStatus = selected ? campaignStatusMeta(selected.campaign) : null;
+  const selectedYesterday = selected?.campaign.yesterday ?? emptyDaySummary(activeData?.yest, true);
+  const selectedTodayOpen = selected?.campaign.today_open ?? emptyDaySummary(activeData?.today, false);
   const SelectedStatusIcon = selectedStatus?.Icon ?? Megaphone;
   const updateWindow = (element: HTMLDivElement) => {
     const first = Math.floor(element.scrollTop / ROW_HEIGHT);
@@ -370,6 +419,40 @@ export function WbAdvertsPage() {
 
               <p className="mb-3 text-[10px] leading-4 text-slate-500">ДРР рекламы не равно ДРР к заказам во Воронке: в Рекламе знаменатель — только выручка, атрибутированная рекламой WB.</p>
 
+              <section className="mb-3 rounded-xl border border-violet-100 bg-violet-50/40 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-xs font-bold text-slate-800">Вчера · полный день</h2>
+                    <p className="mt-1 text-[10px] leading-4 text-slate-500">{selectedYesterday.date} · реклама РК + товарная воронка SKU · {syncLabel(selectedYesterday)}</p>
+                  </div>
+                  <span className="rounded-full border border-emerald-200 bg-white px-2 py-1 text-[9px] font-semibold text-emerald-700">закрытый день</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                  {[
+                    ["Показы РК", int(selectedYesterday.views)],
+                    ["Клики РК", int(selectedYesterday.clicks)],
+                    ["CTR РК", pct(selectedYesterday.ctr)],
+                    ["Расход РК", rub(selectedYesterday.spend)],
+                    ["Корзины SKU", int(selectedYesterday.carts)],
+                    ["Заказы SKU, шт", int(selectedYesterday.orders_count)],
+                    ["Выручка РК", rub(selectedYesterday.attributed_revenue)],
+                    ["ДРР РК", pct(selectedYesterday.attributed_drr)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border border-white/80 bg-white p-2.5 shadow-[0_1px_2px_rgba(124,58,237,0.06)]">
+                      <div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div>
+                      <div className="mt-1 text-sm font-bold tabular-nums text-slate-800">{value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-white/75 p-2 text-[10px] leading-4 text-slate-500 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div>
+                    <span className="font-semibold text-slate-700">Сегодня · незакрытый день:</span> {selectedTodayOpen.date} · расход РК {rub(selectedTodayOpen.spend)} · клики {int(selectedTodayOpen.clicks)} · заказы SKU {int(selectedTodayOpen.orders_count)} · выручка РК {rub(selectedTodayOpen.attributed_revenue)}
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-500">не сравниваем с полным вчера</span>
+                </div>
+                <p className="mt-2 text-[10px] leading-4 text-slate-500">Корзины и заказы — из товарной воронки SKU. Расход, клики, показы, выручка и ДРР — из статистики рекламной кампании WB.</p>
+              </section>
+
               <section className={`mb-3 rounded-xl border p-3 ${actionTone(selected.campaign.economics.action)}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div><div className="text-[9px] font-semibold uppercase tracking-wide opacity-70">Рекомендация</div><div className="mt-1 text-sm font-bold">{actionLabel(selected.campaign.economics)}</div></div>
@@ -388,8 +471,8 @@ export function WbAdvertsPage() {
 
               <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
                 <table className="min-w-full border-collapse text-[10px]">
-                  <thead><tr className="h-8 bg-slate-50 text-slate-500"><th className="px-3 text-left">Дата</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">Клики</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Выручка с рекламы</th></tr></thead>
-                  <tbody>{selected.campaign.days.slice().reverse().map((day) => <tr key={day.ts} className="h-8 border-t border-slate-100"><td className="px-3 text-slate-500">{day.ts}</td><td className="px-3 text-right tabular-nums">{day.views.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{day.clicks.toLocaleString("ru-RU")}</td><td className="px-3 text-right font-medium tabular-nums">{rub(day.spend)}</td><td className="px-3 text-right tabular-nums">{rub(day.orders)}</td></tr>)}</tbody>
+                  <thead><tr className="h-8 bg-slate-50 text-slate-500"><th className="px-3 text-left">Дата</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">Клики</th><th className="px-3 text-right">CTR</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Атриб. выручка</th><th className="px-3 text-right">ДРР</th></tr></thead>
+                  <tbody>{selected.campaign.days.slice().reverse().map((day) => <tr key={day.ts} className="h-8 border-t border-slate-100"><td className="px-3 text-slate-500">{day.ts}</td><td className="px-3 text-right tabular-nums">{day.views.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{day.clicks.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{pct(day.views > 0 ? (day.clicks / day.views) * 100 : null)}</td><td className="px-3 text-right font-medium tabular-nums">{rub(day.spend)}</td><td className="px-3 text-right tabular-nums">{rub(day.orders)}</td><td className="px-3 text-right tabular-nums">{pct(day.orders > 0 ? (day.spend / day.orders) * 100 : null)}</td></tr>)}</tbody>
                 </table>
                 {selected.campaign.days.length === 0 ? <div className="border-t border-slate-100 px-3 py-8 text-center text-xs text-slate-400">Посуточная статистика ещё не синхронизирована.</div> : null}
               </div>
