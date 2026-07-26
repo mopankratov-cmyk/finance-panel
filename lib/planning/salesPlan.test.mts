@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canModerateSalesPlan,
   calculateSalesPlanDaily,
   calculateSalesPlanRowMonth,
   createEmptySalesPlan,
   emptySalesPlanMonths,
+  normalizeSalesPlanAction,
   type SalesPlanRow,
   validateSalesPlan,
   visibleSalesPlanMonths,
@@ -58,4 +60,21 @@ test("план показывает все месяцы от текущего д
   assert.deepEqual(visibleSalesPlanMonths(2026, 7), ["07", "08", "09", "10", "11", "12"]);
   assert.deepEqual(visibleSalesPlanMonths(2026, 11), ["11", "12"]);
   assert.deepEqual(visibleSalesPlanMonths(2026, 12), ["12"]);
+});
+
+test("права согласования плана работают fail-closed", () => {
+  assert.equal(canModerateSalesPlan(null), false);
+  assert.equal(canModerateSalesPlan(undefined), false);
+  assert.equal(canModerateSalesPlan({ role: "manager" }), false);
+  assert.equal(canModerateSalesPlan({ role: "director" }), true);
+  assert.equal(canModerateSalesPlan({ role: "finance" }), true);
+});
+
+test("неизвестное действие плана не превращается в сохранение", () => {
+  assert.equal(normalizeSalesPlanAction(undefined), "save");
+  assert.equal(normalizeSalesPlanAction(""), "save");
+  assert.equal(normalizeSalesPlanAction("submit"), "submit");
+  assert.equal(normalizeSalesPlanAction("approve"), "approve");
+  assert.equal(normalizeSalesPlanAction("approve-and-delete"), null);
+  assert.equal(normalizeSalesPlanAction({ action: "approve" }), null);
 });
