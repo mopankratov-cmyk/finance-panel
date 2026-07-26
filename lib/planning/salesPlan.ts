@@ -2,6 +2,7 @@ export type SalesPlanMarketplace = "wb" | "ozon";
 export type SalesPlanStatus = "draft" | "review" | "approved";
 export const SALES_PLAN_ACTIONS = ["save", "submit", "approve", "return", "new_version"] as const;
 export type SalesPlanAction = (typeof SALES_PLAN_ACTIONS)[number];
+export const SALES_PLAN_RETURN_COMMENT_MIN_LENGTH = 3;
 
 export interface SalesPlanRow {
   id: string;
@@ -32,6 +33,11 @@ export interface SalesPlanDocument {
   updatedAt: string;
   approvedAt: string | null;
   approvedBy: string | null;
+  submittedAt: string | null;
+  submittedBy: string | null;
+  returnedAt: string | null;
+  returnedBy: string | null;
+  returnComment: string | null;
   rnpSyncedAt: string | null;
 }
 
@@ -88,6 +94,11 @@ export function normalizeSalesPlanAction(value: unknown, fallback: SalesPlanActi
   return typeof value === "string" && SALES_PLAN_ACTIONS.includes(value as SalesPlanAction)
     ? (value as SalesPlanAction)
     : null;
+}
+
+export function normalizeSalesPlanReturnComment(value: unknown) {
+  const comment = text(value).replace(/\s+/g, " ");
+  return comment.length >= SALES_PLAN_RETURN_COMMENT_MIN_LENGTH ? comment.slice(0, 1000) : "";
 }
 
 export function daysInSalesPlanMonth(year: number, monthKey: string) {
@@ -162,6 +173,11 @@ export function normalizeSalesPlanDocument(
     updatedAt: text(source.updatedAt, now),
     approvedAt: text(source.approvedAt) || null,
     approvedBy: text(source.approvedBy) || null,
+    submittedAt: text(source.submittedAt) || null,
+    submittedBy: text(source.submittedBy) || null,
+    returnedAt: text(source.returnedAt) || null,
+    returnedBy: text(source.returnedBy) || null,
+    returnComment: normalizeSalesPlanReturnComment(source.returnComment) || null,
     rnpSyncedAt: text(source.rnpSyncedAt) || null,
   };
 }
@@ -187,6 +203,11 @@ export function createEmptySalesPlan(input: {
     updatedAt: now,
     approvedAt: null,
     approvedBy: null,
+    submittedAt: null,
+    submittedBy: null,
+    returnedAt: null,
+    returnedBy: null,
+    returnComment: null,
     rnpSyncedAt: null,
   };
 }

@@ -6,6 +6,7 @@ import {
   createEmptySalesPlan,
   normalizeSalesPlanAction,
   normalizeSalesPlanDocument,
+  normalizeSalesPlanReturnComment,
   type SalesPlanDocument,
   type SalesPlanEnvelope,
   validateSalesPlan,
@@ -122,6 +123,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({})) as {
     action?: unknown;
     expectedRevision?: number;
+    comment?: unknown;
     plan?: unknown;
   };
   const action = normalizeSalesPlanAction(body.action);
@@ -151,12 +153,14 @@ export async function POST(request: NextRequest) {
       if (!current || current.status !== "review") return NextResponse.json({ error: "На утверждение можно отправить только согласованный план" }, { status: 409 });
       const issues = validateSalesPlan(current);
       if (issues.length) return NextResponse.json({ error: "План содержит ошибки", issues }, { status: 422 });
-      next = { ...current, status: "approved", revision: current.revision + 1, updatedAt: now, approvedAt: now, approvedBy: actor, rnpSyncedAt: now };
+      next = { ...current, status: "approved", revision: current.revision + 1, updatedAt: now, approvedAt: now, approvedBy: actor, returnedAt: null, returnedBy: null, returnComment: null, rnpSyncedAt: now };
       approved = next;
     } else if (action === "return") {
       if (!elevated) return NextResponse.json({ error: "Возврат доступен руководителю или финотделу" }, { status: 403 });
       if (!current || current.status !== "review") return NextResponse.json({ error: "Вернуть можно только план на согласовании" }, { status: 409 });
-      next = { ...current, status: "draft", revision: current.revision + 1, updatedAt: now };
+      const returnComment = normalizeSalesPlanReturnComment(body.comment);
+      if (!returnComment) return NextResponse.json({ error: "Укажите комментарий возврата: что исправить в плане" }, { status: 422 });
+      next = { ...current, status: "draft", revision: current.revision + 1, updatedAt: now, returnedAt: now, returnedBy: actor, returnComment };
     } else if (action === "new_version") {
       if (!elevated) return NextResponse.json({ error: "Новая версия доступна руководителю или финотделу" }, { status: 403 });
       if (!currentEnvelope.approved) return NextResponse.json({ error: "Нет утверждённой версии для копирования" }, { status: 409 });
@@ -170,6 +174,11 @@ export async function POST(request: NextRequest) {
         updatedAt: now,
         approvedAt: null,
         approvedBy: null,
+        submittedAt: null,
+        submittedBy: null,
+        returnedAt: null,
+        returnedBy: null,
+        returnComment: null,
         rnpSyncedAt: null,
       };
     } else {
@@ -183,6 +192,11 @@ export async function POST(request: NextRequest) {
       incoming.createdAt = current?.createdAt ?? incoming.createdAt;
       incoming.approvedAt = null;
       incoming.approvedBy = null;
+      incoming.submittedAt = current?.submittedAt ?? incoming.submittedAt;
+      incoming.submittedBy = current?.submittedBy ?? incoming.submittedBy;
+      incoming.returnedAt = current?.returnedAt ?? incoming.returnedAt;
+      incoming.returnedBy = current?.returnedBy ?? incoming.returnedBy;
+      incoming.returnComment = current?.returnComment ?? incoming.returnComment;
       incoming.rnpSyncedAt = null;
       const issues = validateSalesPlan(incoming);
       if (action === "submit" && issues.length) {
@@ -193,6 +207,11 @@ export async function POST(request: NextRequest) {
         status: action === "submit" ? "review" : "draft",
         revision: (current?.revision ?? 0) + 1,
         updatedAt: now,
+        submittedAt: action === "submit" ? now : incoming.submittedAt,
+        submittedBy: action === "submit" ? actor : incoming.submittedBy,
+        returnedAt: action === "submit" ? null : incoming.returnedAt,
+        returnedBy: action === "submit" ? null : incoming.returnedBy,
+        returnComment: action === "submit" ? null : incoming.returnComment,
       };
     }
 
