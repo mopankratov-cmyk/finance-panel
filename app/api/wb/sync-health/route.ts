@@ -101,7 +101,7 @@ export async function GET() {
       acc[brand] = (acc[brand] ?? 0) + 1;
       return acc;
     }, {});
-    const [sources, ordersSppCoverage, salesSppCoverage] = await Promise.all([
+    const [sources, ordersPriceCoverage, ordersSppCoverage, salesPriceCoverage, salesSppCoverage] = await Promise.all([
       Promise.all([
         sourceSnapshot(db, cabinet.id, "wb_orders", "synced_at").then((value) => ({ job: "orders", ...value })),
         sourceSnapshot(db, cabinet.id, "wb_sales", "synced_at").then((value) => ({ job: "sales", ...value })),
@@ -112,14 +112,16 @@ export async function GET() {
         sourceSnapshot(db, cabinet.id, "wb_feedbacks", "synced_at").then((value) => ({ job: "feedbacks", ...value })),
         sourceSnapshot(db, cabinet.id, "wb_nm_commissions", "synced_at").then((value) => ({ job: "commissions", ...value })),
       ]),
-      fieldCoverageSnapshot(db, cabinet.id, "wb_orders", "spp", "СПП заказов"),
-      fieldCoverageSnapshot(db, cabinet.id, "wb_sales", "spp", "СПП продаж"),
+      fieldCoverageSnapshot(db, cabinet.id, "wb_orders", "price_with_disc", "Цена до СПП заказов"),
+      fieldCoverageSnapshot(db, cabinet.id, "wb_orders", "spp", "SPP% заказов"),
+      fieldCoverageSnapshot(db, cabinet.id, "wb_sales", "price_with_disc", "Цена до СПП продаж"),
+      fieldCoverageSnapshot(db, cabinet.id, "wb_sales", "spp", "SPP% продаж"),
     ]);
     const cabinetStates = states.filter((state) => state.cabinet_id === cabinet.id);
     const stateByJob = new Map(cabinetStates.map((state) => [state.job, state]));
     const fieldCoverageByJob = new Map<string, FieldCoverage[]>([
-      ["orders", [ordersSppCoverage]],
-      ["sales", [salesSppCoverage]],
+      ["orders", [ordersPriceCoverage, ordersSppCoverage]],
+      ["sales", [salesPriceCoverage, salesSppCoverage]],
     ]);
     return {
       id: cabinet.id,

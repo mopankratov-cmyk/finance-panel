@@ -24,12 +24,14 @@ test("WB SPP migration adds nullable columns without rewriting existing facts", 
   assert.doesNotMatch(migration, /default\s+0/i);
 });
 
-test("WB sync health exposes SPP coverage on the data quality screen", () => {
+test("WB sync health exposes price-before-SPP and nullable SPP coverage on the data quality screen", () => {
   const route = readFileSync(new URL("../app/api/wb/sync-health/route.ts", import.meta.url), "utf8");
   const page = readFileSync(new URL("../components/sync/SyncPage.tsx", import.meta.url), "utf8");
 
-  assert.match(route, /fieldCoverageSnapshot\(db, cabinet\.id, "wb_orders", "spp", "СПП заказов"\)/);
-  assert.match(route, /fieldCoverageSnapshot\(db, cabinet\.id, "wb_sales", "spp", "СПП продаж"\)/);
+  assert.match(route, /fieldCoverageSnapshot\(db, cabinet\.id, "wb_orders", "price_with_disc", "Цена до СПП заказов"\)/);
+  assert.match(route, /fieldCoverageSnapshot\(db, cabinet\.id, "wb_orders", "spp", "SPP% заказов"\)/);
+  assert.match(route, /fieldCoverageSnapshot\(db, cabinet\.id, "wb_sales", "price_with_disc", "Цена до СПП продаж"\)/);
+  assert.match(route, /fieldCoverageSnapshot\(db, cabinet\.id, "wb_sales", "spp", "SPP% продаж"\)/);
   assert.match(route, /fieldCoverage:\s*fieldCoverageByJob\.get\(source\.job\)/);
   assert.match(page, /fieldCoverage\?/);
   assert.match(page, /coverage\.label/);
