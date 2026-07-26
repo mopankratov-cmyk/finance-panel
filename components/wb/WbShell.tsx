@@ -42,6 +42,7 @@ interface NavItem {
 }
 
 const ITEM_ICONS: Record<string, IconComponent> = {
+  "/wb": Home,
   "/wb/rnp": BarChart3,
   "/wb/planning": CalendarRange,
   "/wb/funnel": Filter,
@@ -61,7 +62,7 @@ const WORK_NAV = WB_NAVIGATION_ITEMS.map((item) => ({ ...item, icon: ITEM_ICONS[
 const MOBILE_NAV = WB_MOBILE_NAVIGATION.map((item) => ({ ...item, icon: ITEM_ICONS[item.href] ?? BarChart3, target: true }));
 
 const SYSTEM_NAV: NavItem[] = [
-  { label: "Главная", href: "/", icon: Home },
+  { label: "Общая главная", href: "/", icon: Home },
   { label: "Кабинеты", href: "/cabinets", icon: Settings },
   { label: "Сотрудники", href: "/users", icon: Users },
 ];
@@ -130,7 +131,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
     <>
       <div className={`flex h-[54px] shrink-0 items-center border-b border-slate-200 ${expanded ? "gap-2.5 px-3" : "justify-center"}`}>
         <Link
-          href="/"
+          href={`/wb?cabinet=${encodeURIComponent(cabinetId || "all")}`}
           aria-label="Управление WB"
           className="grid h-7 w-7 place-items-center rounded-[9px] bg-gradient-to-br from-violet-500 to-violet-800 text-[10px] font-black text-white shadow-sm"
         >

@@ -6,6 +6,7 @@ export interface WbNavigationItem {
 // Рабочие экраны WB показываются напрямую: владелец должен видеть весь набор
 // инструментов без наведения на группы и без промежуточных раскрывающихся меню.
 export const WB_NAVIGATION_ITEMS: WbNavigationItem[] = [
+  { label: "Главная", href: "/wb" },
   { label: "РНП", href: "/wb/rnp" },
   { label: "План продаж", href: "/wb/planning" },
   { label: "Воронка / Репрайсер", href: "/wb/funnel" },
@@ -28,6 +29,6 @@ export const WB_MOBILE_NAVIGATION: WbNavigationItem[] = [
 ];
 
 export function isWbNavigationItemActive(pathname: string, href: string) {
-  if (href === "/wb/rnp") return pathname === "/wb" || pathname.startsWith("/wb/rnp");
+  if (href === "/wb") return pathname === "/wb";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
