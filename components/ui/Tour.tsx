@@ -73,7 +73,7 @@ export function Tour({ tourId, steps }: { tourId: string; steps: TourStep[] }) {
       <div className="absolute w-80 rounded-xl bg-white p-4 shadow-2xl" style={{ top: tooltipTop, left: tooltipLeft }}>
         <div className="mb-1 flex items-center justify-between">
           <p className="text-sm font-semibold text-slate-900">{step.title}</p>
-          <button onClick={close} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+          <button type="button" aria-label="Закрыть подсказку" onClick={close} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
         </div>
         <p className="text-sm text-slate-600">{step.text}</p>
         <div className="mt-3 flex items-center justify-between">

@@ -22,6 +22,7 @@ export interface FetchWbCardPagesOptions<Row> {
   maxPagesThisRun?: number;
   requestTimeoutMs?: number;
   fetchImpl?: FetchLike;
+  sleep?: (ms: number) => Promise<void>;
   onPage?: (page: WbCardPage<Row>) => Promise<void> | void;
 }
 
@@ -43,9 +44,15 @@ function compactText(value: string): string {
 }
 
 function retryDelayMs(response: Response, fallbackMs: number): number {
+  const wbRaw = response.headers.get("x-ratelimit-retry");
+  const wbSeconds = wbRaw ? Number(wbRaw) : Number.NaN;
+  if (Number.isFinite(wbSeconds)) return Math.max(0, wbSeconds * 1000);
+
   const raw = response.headers.get("retry-after");
   const seconds = raw ? Number(raw) : Number.NaN;
-  return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : fallbackMs;
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const retryAt = raw ? Date.parse(raw) : Number.NaN;
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : fallbackMs;
 }
 
 async function readCardPayload<Row>(response: Response): Promise<{ cards?: Row[]; cursor?: WbCardCursor }> {
@@ -126,6 +133,7 @@ export async function fetchWbCardsByNmIds<Row extends { nmID: number }>(
 /** Полный курсорный обход Content API без прежнего ограничения в 3 000 карточек. */
 export async function fetchWbCardPages<Row>(options: FetchWbCardPagesOptions<Row>): Promise<WbCardPage<Row>> {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const pageSize = options.pageSize ?? 100;
   const maxPages = options.maxPages ?? 1_000;
   const maxPagesThisRun = Math.min(options.maxPagesThisRun ?? maxPages, maxPages);
@@ -135,21 +143,27 @@ export async function fetchWbCardPages<Row>(options: FetchWbCardPagesOptions<Row
   const seenCursors = new Set<string>([cursorKey(cursor)]);
 
   for (let page = 0; page < maxPagesThisRun; page++) {
-    let response: Response;
-    try {
-      response = await fetchImpl(CARDS_URL, {
-        method: "POST",
-        headers: { Authorization: options.token, "Content-Type": "application/json" },
-        body: JSON.stringify({ settings: { cursor: { limit: pageSize, ...cursor }, filter: { withPhoto: -1 } } }),
-        cache: "no-store",
-        signal: AbortSignal.timeout(requestTimeoutMs),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (/timeout|timed out|aborted|abort/i.test(message)) {
-        throw new Error(`WB Content API не ответил за ${Math.round(requestTimeoutMs / 1000)} секунд`);
+    const requestPage = async () => {
+      try {
+        return await fetchImpl(CARDS_URL, {
+          method: "POST",
+          headers: { Authorization: options.token, "Content-Type": "application/json" },
+          body: JSON.stringify({ settings: { cursor: { limit: pageSize, ...cursor }, filter: { withPhoto: -1 } } }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(requestTimeoutMs),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (/timeout|timed out|aborted|abort/i.test(message)) {
+          throw new Error(`WB Content API не ответил за ${Math.round(requestTimeoutMs / 1000)} секунд`);
+        }
+        throw error;
       }
-      throw error;
+    };
+    let response = await requestPage();
+    if (response.status === 429) {
+      await sleep(Math.min(retryDelayMs(response, 1_000), 10_000));
+      response = await requestPage();
     }
     const payload = await readCardPayload<Row>(response);
     const batch = Array.isArray(payload.cards) ? payload.cards : [];
