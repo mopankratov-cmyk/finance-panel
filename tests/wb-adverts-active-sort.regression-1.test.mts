@@ -29,3 +29,16 @@ test("WB adverts page applies automatic active-first campaign sort after filteri
   const source = readFileSync(new URL("../components/wb/WbAdvertsPage.tsx", import.meta.url), "utf8");
   assert.match(source, /compareAdvertCampaigns\(left\.campaign, right\.campaign\)/);
 });
+
+test("WB adverts page defaults to active campaigns and exposes status counters", () => {
+  const source = readFileSync(new URL("../components/wb/WbAdvertsPage.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /type CampaignStatusFilter = "active" \| "paused" \| "archive" \| "all";/);
+  assert.match(source, /useDashboardFilter<CampaignStatusFilter>\("status", "active"/);
+  assert.match(source, /STATUS_FILTERS\.map\(\(\{ value, label, Icon \}\)/);
+  assert.match(source, /statusCounts\[value\]/);
+  assert.match(source, /campaignStatusKind\(campaign\) === statusFilter/);
+  assert.match(source, /Активные/);
+  assert.match(source, /Пауза/);
+  assert.match(source, /Архив/);
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Loader2, Megaphone, RefreshCw, Search, WalletCards } from "lucide-react";
+import { Archive, ChevronRight, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
@@ -46,6 +46,7 @@ interface BeforeAfter {
 interface Campaign {
   id: number;
   name: string;
+  status: number;
   enabled: boolean;
   budget: number;
   bid_cpm_rub: number | null;
@@ -96,9 +97,31 @@ interface CampaignRow {
   campaign: Campaign;
 }
 
+type CampaignStatusFilter = "active" | "paused" | "archive" | "all";
+
+const STATUS_FILTERS = [
+  { value: "active", label: "Активные", Icon: PlayCircle },
+  { value: "paused", label: "Пауза", Icon: PauseCircle },
+  { value: "archive", label: "Архив", Icon: Archive },
+  { value: "all", label: "Все", Icon: Megaphone },
+] as const;
+
 const ROW_HEIGHT = 76;
 const rub = (value: number | null) => value == null ? "—" : `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 const pct = (value: number | null) => value == null ? "—" : `${Math.round(value * 10) / 10}%`;
+
+function campaignStatusKind(campaign: Campaign): Exclude<CampaignStatusFilter, "all"> {
+  if (campaign.status === 9 || campaign.enabled) return "active";
+  if (campaign.status === 7) return "archive";
+  return "paused";
+}
+
+function campaignStatusMeta(campaign: Campaign) {
+  const kind = campaignStatusKind(campaign);
+  if (kind === "active") return { label: "Активна", Icon: PlayCircle, dot: "bg-emerald-400", tone: "bg-emerald-50 text-emerald-700" };
+  if (kind === "archive") return { label: "Архив", Icon: Archive, dot: "bg-slate-300", tone: "bg-slate-100 text-slate-600" };
+  return { label: "Пауза", Icon: PauseCircle, dot: "bg-amber-400", tone: "bg-amber-50 text-amber-700" };
+}
 
 function drrTone(value: number | null) {
   return METRIC_BADGE_TONE[marketplaceMetricStatus("drrAttributed", value)];
@@ -158,6 +181,7 @@ export function WbAdvertsPage() {
   const [retryKey, setRetryKey] = useState(0);
   const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
   const [kind, setKind] = useDashboardFilter<"all" | "cpc" | "unified">("kind", "all", ["all", "cpc", "unified"]);
+  const [statusFilter, setStatusFilter] = useDashboardFilter<CampaignStatusFilter>("status", "active", ["active", "paused", "archive", "all"]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 16 });
   const requestId = useRef(0);
@@ -212,7 +236,7 @@ export function WbAdvertsPage() {
     return () => { window.clearTimeout(deadline); controller.abort(); };
   }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, retryKey]);
 
-  const rows = useMemo<CampaignRow[]>(() => {
+  const baseRows = useMemo<CampaignRow[]>(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
     return (activeData?.articles ?? [])
       .flatMap((article) => article.campaigns.map((campaign) => ({ article, campaign })))
@@ -224,12 +248,25 @@ export function WbAdvertsPage() {
       .sort((left, right) => compareAdvertCampaigns(left.campaign, right.campaign));
   }, [activeData?.articles, kind, query]);
 
+  const statusCounts = useMemo(() => STATUS_FILTERS.reduce<Record<CampaignStatusFilter, number>>((acc, filter) => {
+    acc[filter.value] = filter.value === "all"
+      ? baseRows.length
+      : baseRows.filter(({ campaign }) => campaignStatusKind(campaign) === filter.value).length;
+    return acc;
+  }, { active: 0, paused: 0, archive: 0, all: 0 }), [baseRows]);
+
+  const rows = useMemo(() => statusFilter === "all"
+    ? baseRows
+    : baseRows.filter(({ campaign }) => campaignStatusKind(campaign) === statusFilter), [baseRows, statusFilter]);
+
   useEffect(() => {
     if (!rows.some(({ campaign }) => campaign.id === selectedId)) setSelectedId(rows[0]?.campaign.id ?? null);
     setRowWindow({ start: 0, end: Math.min(16, rows.length) });
   }, [rows, selectedId]);
 
   const selected = rows.find(({ campaign }) => campaign.id === selectedId) ?? null;
+  const selectedStatus = selected ? campaignStatusMeta(selected.campaign) : null;
+  const SelectedStatusIcon = selectedStatus?.Icon ?? Megaphone;
   const updateWindow = (element: HTMLDivElement) => {
     const first = Math.floor(element.scrollTop / ROW_HEIGHT);
     const visible = Math.ceil(element.clientHeight / ROW_HEIGHT);
@@ -263,7 +300,17 @@ export function WbAdvertsPage() {
               {([['all', 'Все'], ['cpc', 'CPC'], ['unified', 'Единая']] as const).map(([value, label]) => (
                 <button key={value} type="button" onClick={() => setKind(value)} className={`min-h-8 rounded-lg px-2.5 font-semibold transition-colors ${kind === value ? "bg-slate-800 text-white" : "bg-violet-50 text-violet-700 hover:bg-violet-100"}`}>{label}</button>
               ))}
-              <span className="ml-auto tabular-nums text-slate-400">{rows.length} РК</span>
+              <span className="ml-auto tabular-nums text-slate-400">{rows.length} из {baseRows.length} РК</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px]">
+              <span className="mr-1 text-slate-400">статус:</span>
+              {STATUS_FILTERS.map(({ value, label, Icon }) => (
+                <button key={value} type="button" onClick={() => setStatusFilter(value)} className={`inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold transition-colors ${statusFilter === value ? "bg-violet-600 text-white shadow-sm" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}>
+                  <Icon className="h-3 w-3" />
+                  {label}
+                  <span className={`rounded px-1.5 py-0.5 text-[9px] tabular-nums ${statusFilter === value ? "bg-white/20 text-white" : "bg-white text-slate-400"}`}>{statusCounts[value]}</span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -278,11 +325,13 @@ export function WbAdvertsPage() {
               {rowWindow.start > 0 ? <div aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }} /> : null}
               {rows.slice(rowWindow.start, rowWindow.end).map(({ article, campaign }) => {
                 const active = selectedId === campaign.id;
+                const status = campaignStatusMeta(campaign);
+                const StatusIcon = status.Icon;
                 return (
                   <button type="button" key={campaign.id} onClick={() => setSelectedId(campaign.id)} className={`flex h-[76px] w-full items-center gap-2 border-b border-slate-100 px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}>
                     <WbProductImage nm={article.nm} src={article.photo} loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${campaign.enabled ? "bg-emerald-400" : "bg-amber-400"}`} /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
+                      <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} /><StatusIcon className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
                       <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">CPM</span><span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">единая</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
                     </div>
                     <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-violet-700">Расход SKU 7д {rub(article.spent_sku_7_closed)}</div><div title={closedDrrTitle(campaign)} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
@@ -303,7 +352,7 @@ export function WbAdvertsPage() {
               <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
                 <WbProductImage nm={selected.article.nm} src={selected.article.photo} loading="eager" className="h-14 w-14 shrink-0 rounded-xl border border-slate-100 bg-slate-50 object-cover" />
                 <div className="min-w-0"><div className="text-sm font-bold text-slate-800">{selected.campaign.name}</div><div className="mt-1 text-[11px] text-slate-400">{selected.article.art} · nm {selected.article.nm} · РК #{selected.campaign.id}</div></div>
-                <div className="ml-auto flex flex-col items-end gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${selected.campaign.enabled ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{selected.campaign.enabled ? "Активна" : "Пауза"}</span>{selected.campaign.stats_stale ? <span className="rounded bg-rose-50 px-2 py-1 text-[9px] font-semibold text-rose-700">статистика устарела</span> : null}</div>
+                <div className="ml-auto flex flex-col items-end gap-1">{selectedStatus ? <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ${selectedStatus.tone}`}><SelectedStatusIcon className="h-3 w-3" />{selectedStatus.label}</span> : null}{selected.campaign.stats_stale ? <span className="rounded bg-rose-50 px-2 py-1 text-[9px] font-semibold text-rose-700">статистика устарела</span> : null}</div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 py-4 sm:grid-cols-4">
