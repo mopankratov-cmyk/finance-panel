@@ -71,6 +71,8 @@ test("WB warmup reuses per-cabinet PIM snapshots and does not wait for every lon
   ]);
 
   assert.match(cards, /loadCabinetPimRowsHourly\(cabinet\.id, options\)/);
+  assert.match(cards, /for \(const cabinet of cabinets\)/);
+  assert.doesNotMatch(cards, /Promise\.all\(cabinets\.map\(\(cabinet\) => loadCabinetPimRowsHourly/);
   assert.match(warmup, /const pim = await warmPimCards/);
   assert.doesNotMatch(warmup, /nichesResult, pim, unit/);
   assert.doesNotMatch(route, /if \(!readiness\.ready \|\| !progressReadiness\.ready\)/);

@@ -1,10 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Coins, Plus, Check, Search } from "lucide-react";
+import { Loader2, Coins, Plus, Check, Search, TriangleAlert } from "lucide-react";
 import { ActionableError } from "@/components/ui/ActionableError";
 
-interface Row { article: string; name: string; cost_rub: number; brand: string; category: string }
+interface Row {
+  article: string;
+  name: string;
+  cost_rub: number;
+  brand: string;
+  category: string;
+  source: string;
+  inherited_from: string | null;
+}
 
 export default function CostsPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -18,6 +26,7 @@ export default function CostsPage() {
   const [savedAt, setSavedAt] = useState<Record<string, number>>({});
   const [newArt, setNewArt] = useState("");
   const [newCost, setNewCost] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -27,6 +36,7 @@ export default function CostsPage() {
       const j = await r.json();
       if (!r.ok || j.error) throw new Error(j.error || `Ошибка ${r.status}`);
       setRows(j.rows ?? []);
+      setWarnings(Array.isArray(j.warnings) ? j.warnings : []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить себестоимость");
     }
@@ -46,7 +56,7 @@ export default function CostsPage() {
       setRows((rs) => {
         const ex = rs.find((x) => x.article === article);
         if (ex) { ex.cost_rub = Number(val) || 0; if (category !== undefined) ex.category = category; return [...rs]; }
-        return [{ article, name: name || article, cost_rub: Number(val) || 0, brand: "", category: category || "" }, ...rs];
+        return [{ article, name: name || article, cost_rub: Number(val) || 0, brand: "", category: category || "", source: "Справочник", inherited_from: null }, ...rs];
       });
       setSavedAt((s) => ({ ...s, [article]: Date.now() }));
       setEdits((e) => { const c = { ...e }; delete c[article]; return c; });
@@ -123,6 +133,15 @@ export default function CostsPage() {
 
         {error ? <ActionableError message={error} label="Себестоимость" onRetry={load} /> : null}
         {saveError ? <ActionableError message={saveError} label="Сохранение себестоимости" compact tone="amber" /> : null}
+        {warnings.length ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <div className="font-semibold">Не весь каталог удалось сверить</div>
+              <div className="mt-1 text-amber-800">{warnings.join(" · ")}</div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -146,11 +165,12 @@ export default function CostsPage() {
           : (
             <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1120px] table-fixed text-sm">
+              <table className="w-full min-w-[1240px] table-fixed text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-[240px] px-4 py-3 text-left">Артикул</th>
                     <th className="px-4 py-3 text-left">Название</th>
+                    <th className="w-[130px] px-4 py-3 text-left">Источник</th>
                     <th className="w-[260px] px-4 py-3 text-left">Категория</th>
                     <th className="w-[160px] px-4 py-3 text-right">Себес ₽</th>
                     <th className="w-[80px] px-3 py-3 text-center">Статус</th>
@@ -168,6 +188,11 @@ export default function CostsPage() {
                         </td>
                         <td className="px-4 py-3 align-middle text-slate-500">
                           <div className="truncate" title={r.name}>{r.name}</div>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-xs font-medium text-slate-500">
+                          <div className="truncate" title={r.inherited_from ? `${r.source} · ${r.inherited_from}` : r.source}>
+                            {r.source}
+                          </div>
                         </td>
                         <td className="px-4 py-3 align-middle">
                           <input value={catVal} onChange={(e) => setCatEdits((s) => ({ ...s, [r.article]: e.target.value }))}

@@ -138,7 +138,14 @@ export function loadCabinetPimRowsHourly(
       if (cabinetId === null) {
         const cabinets = await getActiveWbCabinets();
         if (cabinets.length) {
-          return (await Promise.all(cabinets.map((cabinet) => loadCabinetPimRowsHourly(cabinet.id, options)))).flat();
+          // Виртуальные кабинеты могут принадлежать одному продавцу и делить
+          // лимит Content API. Последовательный прогрев не создаёт «стадо»
+          // одновременных 429 и всё равно укладывается в 300-секундный cron.
+          const rows: PimRow[] = [];
+          for (const cabinet of cabinets) {
+            rows.push(...await loadCabinetPimRowsHourly(cabinet.id, options));
+          }
+          return rows;
         }
       }
       return fetchCabinetPimRows(cabinetId);

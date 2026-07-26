@@ -21,6 +21,7 @@ export interface FetchWbCardPagesOptions<Row> {
   maxPages?: number;
   maxPagesThisRun?: number;
   requestTimeoutMs?: number;
+  minIntervalMs?: number;
   fetchImpl?: FetchLike;
   sleep?: (ms: number) => Promise<void>;
   onPage?: (page: WbCardPage<Row>) => Promise<void> | void;
@@ -53,6 +54,22 @@ function retryDelayMs(response: Response, fallbackMs: number): number {
   if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
   const retryAt = raw ? Date.parse(raw) : Number.NaN;
   return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : fallbackMs;
+}
+
+async function requestWithRateLimitRetry(
+  request: () => Promise<Response>,
+  sleep: (ms: number) => Promise<void>,
+  fallbackMs: number,
+) {
+  let response = await request();
+  for (let retry = 0; response.status === 429 && retry < 2; retry += 1) {
+    // WB прямо требует ждать X-Ratelimit-Retry. Один повтор оказался
+    // недостаточным: несколько виртуальных кабинетов одного продавца могли
+    // одновременно повторить запрос и снова попасть в общий лимитер.
+    await sleep(Math.min(retryDelayMs(response, fallbackMs), 60_000));
+    response = await request();
+  }
+  return response;
 }
 
 async function readCardPayload<Row>(response: Response): Promise<{ cards?: Row[]; cursor?: WbCardCursor }> {
@@ -98,13 +115,10 @@ export async function fetchWbCardsByNmIds<Row extends { nmID: number }>(
       signal: AbortSignal.timeout(requestTimeoutMs),
     });
 
-    let response = await request();
-    requestsMade++;
-    if (response.status === 429) {
-      await sleep(retryDelayMs(response, Math.max(minIntervalMs, 1_000)));
-      response = await request();
+    const response = await requestWithRateLimitRetry(async () => {
       requestsMade++;
-    }
+      return request();
+    }, sleep, Math.max(minIntervalMs, 1_000));
     const payload = await readCardPayload<Row>(response);
     return (Array.isArray(payload.cards) ? payload.cards : []).find((card) => card.nmID === nmId);
   };
@@ -138,11 +152,15 @@ export async function fetchWbCardPages<Row>(options: FetchWbCardPagesOptions<Row
   const maxPages = options.maxPages ?? 1_000;
   const maxPagesThisRun = Math.min(options.maxPagesThisRun ?? maxPages, maxPages);
   const requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
+  // Боевой Content API разрешает один запрос каждые 600 мс. В unit-тестах с
+  // подменённым fetch задержка по умолчанию не нужна.
+  const minIntervalMs = options.minIntervalMs ?? (options.fetchImpl ? 0 : 600);
   let cursor = options.startCursor ?? {};
   const rows: Row[] = [];
   const seenCursors = new Set<string>([cursorKey(cursor)]);
 
   for (let page = 0; page < maxPagesThisRun; page++) {
+    if (page > 0 && minIntervalMs > 0) await sleep(minIntervalMs);
     const requestPage = async () => {
       try {
         return await fetchImpl(CARDS_URL, {
@@ -160,11 +178,7 @@ export async function fetchWbCardPages<Row>(options: FetchWbCardPagesOptions<Row
         throw error;
       }
     };
-    let response = await requestPage();
-    if (response.status === 429) {
-      await sleep(Math.min(retryDelayMs(response, 1_000), 10_000));
-      response = await requestPage();
-    }
+    const response = await requestWithRateLimitRetry(requestPage, sleep, Math.max(minIntervalMs, 1_000));
     const payload = await readCardPayload<Row>(response);
     const batch = Array.isArray(payload.cards) ? payload.cards : [];
     rows.push(...batch);
