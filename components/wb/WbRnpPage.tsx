@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { ActionableError } from "@/components/ui/ActionableError";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
@@ -337,6 +338,14 @@ function compactFmt(value: number | null | undefined, kind: string) {
   if (value == null || !Number.isFinite(value)) return "—";
   if (kind === "pct") return `${Math.round(value * 10) / 10}%`;
   return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(Math.round(value));
+}
+
+function denseFmt(value: number | null | undefined, kind: string) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (kind === "pct") return fmt(value, kind);
+  if (kind === "money" && Math.abs(value) >= 100_000) return `${compactFmt(value, kind)} ₽`;
+  if (kind !== "money" && Math.abs(value) >= 1_000_000) return compactFmt(value, kind);
+  return fmt(value, kind);
 }
 
 function formatChartValue(value: number | null | undefined, kind: string) {
@@ -875,15 +884,7 @@ export function WbRnpPage() {
         </div>
       )}
 
-      {activeData?.scope_freshness && new Set(activeData.scope_freshness.map((item) => item.as_of)).size > 1 && (
-        <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            Границы полного факта различаются: {activeData.scope_freshness.map((item) => `${item.label} — ${item.as_of}`).join(" · ")}.
-            Сводка складывает каждый кабинет только до указанной даты.
-          </span>
-        </div>
-      )}
+      {activeData?.scope_freshness?.length ? <RnpFreshnessNotice items={activeData.scope_freshness} /> : null}
 
       {activeData && focusSummary && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Фокус РНП">
@@ -1088,10 +1089,7 @@ export function WbRnpPage() {
       )}
 
       {error && activeData && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span>{error} Показан последний готовый снимок для этого кабинета и периода.</span>
-        </div>
+        <ActionableError message={`${error} Показан последний готовый снимок для этого кабинета и периода.`} label="РНП" onRetry={() => setRetryKey((key) => key + 1)} compact tone="amber" className="mb-2" />
       )}
 
       {loading && !activeData ? (
@@ -1100,18 +1098,7 @@ export function WbRnpPage() {
           <SkeletonTableRows rows={12} cols={11} />
         </>
       ) : error && !activeData ? (
-        <div className="rounded-xl border border-rose-200 bg-white p-6 text-center shadow-sm">
-          <AlertTriangle className="mx-auto h-7 w-7 text-rose-500" />
-          <h2 className="mt-2 text-sm font-semibold text-slate-800">Не удалось загрузить РНП</h2>
-          <p className="mx-auto mt-1 max-w-xl text-xs leading-5 text-slate-500">{error}</p>
-          <button
-            type="button"
-            onClick={() => setRetryKey((key) => key + 1)}
-            className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Повторить
-          </button>
-        </div>
+        <ActionableError message={error} title="Не удалось загрузить РНП" label="РНП" onRetry={() => setRetryKey((key) => key + 1)} />
       ) : activeData && activeData.skus.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
           <CalendarDays className="mx-auto h-7 w-7 text-slate-300" />
@@ -1136,7 +1123,7 @@ export function WbRnpPage() {
                   <PlanHeader>% плана</PlanHeader>
                   <PlanHeader strong>Факт мес.</PlanHeader>
                   {activeData.period.map((day, index) => (
-                    <th key={`${day.label}-${index}`} className="sticky top-0 z-30 h-[38px] w-[82px] min-w-[82px] border-b border-r border-slate-200 bg-[#fafbfc] px-2 text-center font-medium text-slate-500">
+                    <th key={`${day.label}-${index}`} className="sticky top-0 z-30 h-[38px] w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fafbfc] px-1.5 text-center font-medium text-slate-500">
                       <span className="block">{day.label}</span>
                       <span className="mt-0.5 block text-[9px] font-normal text-slate-400">{day.period_type}</span>
                     </th>
@@ -1268,6 +1255,46 @@ function FocusSignal({ signal }: { signal: RnpFocusSignal }) {
   );
 }
 
+function RnpFreshnessNotice({ items }: { items: NonNullable<RnpTable["scope_freshness"]> }) {
+  const asOfValues = new Set(items.map((item) => item.as_of).filter(Boolean));
+  const hasDifferentCutoffs = asOfValues.size > 1;
+  const tone = hasDifferentCutoffs
+    ? "border-amber-200 bg-amber-50 text-amber-950"
+    : "border-slate-200 bg-white text-slate-700";
+  const icon = hasDifferentCutoffs
+    ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+    : <CalendarDays className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />;
+  const sourceText = (label: string, value: string | null | undefined) => `${label}: ${value || "—"}`;
+
+  return (
+    <div className={`mb-2 rounded-lg border px-3 py-2 text-[11px] ${tone}`}>
+      <div className="flex items-start gap-2">
+        {icon}
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold">
+            {hasDifferentCutoffs ? "Границы полного факта различаются" : "Свежесть источников РНП"}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {items.map((item) => (
+              <span key={`${item.cabinet_id ?? item.label}-${item.as_of}`} className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border border-white/70 bg-white/70 px-2 py-1 text-[10px] leading-4 shadow-[0_1px_1px_rgba(15,23,42,0.04)]">
+                <b className="text-slate-800">{item.label}</b>
+                <span>{sourceText("общий факт", item.as_of)}</span>
+                <span>{sourceText("заказы", item.orders_as_of)}</span>
+                <span>{sourceText("выкупы", item.sales_as_of)}</span>
+                <span>{sourceText("реклама", item.adverts_as_of)}</span>
+                <span>{sourceText("воронка", item.funnel_as_of)}</span>
+              </span>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[10px] leading-4 opacity-75">
+            В таблице <b>0</b> означает фактический ноль, а <b>—</b> — источник ещё не вернул данные или день не закрыт. Сводка складывает каждый кабинет только до его доступной даты.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BarChart3Icon() {
   return (
     <span className="grid h-7 w-7 place-items-center rounded-lg bg-violet-50 text-violet-700">
@@ -1282,7 +1309,7 @@ function BarChart3Icon() {
 
 function PlanHeader({ children, strong = false }: { children: React.ReactNode; strong?: boolean }) {
   return (
-    <th className={`sticky top-0 z-30 h-[38px] w-[82px] min-w-[82px] border-b border-r border-slate-200 bg-[#fafbfc] px-2 text-right font-semibold text-slate-500 ${strong ? "border-l-2 border-l-slate-300 text-slate-700" : ""}`}>
+    <th className={`sticky top-0 z-30 h-[38px] w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fafbfc] px-1.5 text-right font-semibold text-slate-500 ${strong ? "border-l-2 border-l-slate-300 text-slate-700" : ""}`}>
       {children}
     </th>
   );
@@ -1375,7 +1402,7 @@ function MetricRow({
         <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${qualityTone}`} />{metric.label}</span>
       </td>
       <DataCell metric={metric} value={planDay} muted extraClass={groupBorder} />
-      <td className={`relative h-[34px] w-[82px] min-w-[82px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1 text-right tabular-nums ${groupBorder}`}>
+      <td className={`relative h-[34px] w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1 text-right tabular-nums ${groupBorder}`}>
         {planEditable ? (
           <div className="relative">
             <input
@@ -1392,7 +1419,7 @@ function MetricRow({
             {saving && <Loader2 className="absolute left-1 top-1 h-3 w-3 animate-spin text-violet-500" />}
           </div>
         ) : (
-          <span className={planValue == null ? "text-slate-400" : "text-slate-600"}>{fmt(planValue, metric.kind)}</span>
+          <span title={planValue == null ? undefined : fmt(planValue, metric.kind)} className={planValue == null ? "text-slate-400" : "text-slate-600"}>{denseFmt(planValue, metric.kind)}</span>
         )}
       </td>
       <ForecastCell metric={metric} extraClass={groupBorder} />
@@ -1408,13 +1435,14 @@ function MetricRow({
 function ForecastCell({ metric, extraClass = "" }: { metric: Metric; extraClass?: string }) {
   const hasRange = metric.forecastLow != null && metric.forecastHigh != null && metric.forecast != null;
   const title = [
+    metric.forecast != null ? `Прогноз: ${fmt(metric.forecast, metric.kind)}` : null,
     metric.forecastMethod,
     metric.forecastConfidencePct != null ? `Уверенность: ${metric.forecastConfidencePct}%` : null,
     metric.coveragePct != null ? `Покрытие: ${metric.coveragePct}%` : null,
   ].filter(Boolean).join(" · ");
   return (
-    <td className={`h-[34px] w-[82px] min-w-[82px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1.5 text-right tabular-nums ${toneClass(metric, metric.forecast ?? null)} ${extraClass}`} title={title || undefined}>
-      <span className="block font-medium">{fmt(metric.forecast, metric.kind)}</span>
+    <td className={`h-[34px] w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1.5 text-right tabular-nums ${toneClass(metric, metric.forecast ?? null)} ${extraClass}`} title={title || undefined}>
+      <span className="block whitespace-nowrap font-medium">{denseFmt(metric.forecast, metric.kind)}</span>
       {hasRange && <span className="mt-0.5 block text-[8px] text-slate-400">{compactFmt(metric.forecastLow, metric.kind)}–{compactFmt(metric.forecastHigh, metric.kind)}</span>}
     </td>
   );
@@ -1434,14 +1462,16 @@ function DataCell({
   extraClass?: string;
 }) {
   const background = cellBackground(metric, value ?? null);
+  const fullValue = value == null || !Number.isFinite(value) ? undefined : fmt(value, metric.kind);
   return (
     <td
-      className={`h-[34px] w-[82px] min-w-[82px] border-b border-r border-slate-200 px-2 text-right tabular-nums ${
+      title={fullValue}
+      className={`h-[34px] w-[78px] min-w-[78px] whitespace-nowrap border-b border-r border-slate-200 px-1.5 text-right tabular-nums ${
         strong ? "font-semibold" : "font-normal"
       } ${muted && value == null ? "bg-[#fbfcfd] text-slate-400" : toneClass(metric, value ?? null)} ${extraClass}`}
       style={background ? { backgroundColor: background } : undefined}
     >
-      {fmt(value, metric.kind)}
+      {denseFmt(value, metric.kind)}
     </td>
   );
 }

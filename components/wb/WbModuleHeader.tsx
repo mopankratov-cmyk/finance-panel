@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { ActionableError } from "@/components/ui/ActionableError";
 
 export function WbModuleHeader({
   icon: Icon,
@@ -26,20 +27,7 @@ export function WbModuleHeader({
 }
 
 export function WbErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-      <span>{message}</span>
-      {onRetry ? (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="ml-3 min-h-8 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
-        >
-          Повторить
-        </button>
-      ) : null}
-    </div>
-  );
+  return <ActionableError message={message} label="WB" onRetry={onRetry} />;
 }
 
 export function WbEmptyState({ children }: { children: React.ReactNode }) {

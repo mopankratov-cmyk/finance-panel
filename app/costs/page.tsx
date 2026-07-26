@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Coins, Plus, Check, Search } from "lucide-react";
+import { ActionableError } from "@/components/ui/ActionableError";
 
 interface Row { article: string; name: string; cost_rub: number; brand: string; category: string }
 
@@ -12,14 +13,23 @@ export default function CostsPage() {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [catEdits, setCatEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [savedAt, setSavedAt] = useState<Record<string, number>>({});
   const [newArt, setNewArt] = useState("");
   const [newCost, setNewCost] = useState("");
 
   const load = async () => {
     setLoading(true);
-    try { const r = await fetch("/api/costs", { cache: "no-store" }); const j = await r.json(); setRows(j.rows ?? []); }
-    catch { /* ignore */ }
+    setError("");
+    try {
+      const r = await fetch("/api/costs", { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok || j.error) throw new Error(j.error || `Ошибка ${r.status}`);
+      setRows(j.rows ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить себестоимость");
+    }
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -28,19 +38,22 @@ export default function CostsPage() {
 
   const save = async (article: string, val: string, name?: string, category?: string) => {
     setSaving(article);
+    setSaveError("");
     try {
       const r = await fetch("/api/costs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ article, cost_rub: Number(val) || 0, name, category }) });
-      if (r.ok) {
-        setRows((rs) => {
-          const ex = rs.find((x) => x.article === article);
-          if (ex) { ex.cost_rub = Number(val) || 0; if (category !== undefined) ex.category = category; return [...rs]; }
-          return [{ article, name: name || article, cost_rub: Number(val) || 0, brand: "", category: category || "" }, ...rs];
-        });
-        setSavedAt((s) => ({ ...s, [article]: Date.now() }));
-        setEdits((e) => { const c = { ...e }; delete c[article]; return c; });
-        setCatEdits((e) => { const c = { ...e }; delete c[article]; return c; });
-      }
-    } catch { /* ignore */ }
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error || `Ошибка ${r.status}`);
+      setRows((rs) => {
+        const ex = rs.find((x) => x.article === article);
+        if (ex) { ex.cost_rub = Number(val) || 0; if (category !== undefined) ex.category = category; return [...rs]; }
+        return [{ article, name: name || article, cost_rub: Number(val) || 0, brand: "", category: category || "" }, ...rs];
+      });
+      setSavedAt((s) => ({ ...s, [article]: Date.now() }));
+      setEdits((e) => { const c = { ...e }; delete c[article]; return c; });
+      setCatEdits((e) => { const c = { ...e }; delete c[article]; return c; });
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : "Не удалось сохранить себестоимость");
+    }
     setSaving(null);
   };
 
@@ -51,7 +64,7 @@ export default function CostsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-[1440px] space-y-5">
+      <div className="mx-0 w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
@@ -108,6 +121,9 @@ export default function CostsPage() {
           </div>
         </div>
 
+        {error ? <ActionableError message={error} label="Себестоимость" onRetry={load} /> : null}
+        {saveError ? <ActionableError message={saveError} label="Сохранение себестоимости" compact tone="amber" /> : null}
+
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
           <input
@@ -130,7 +146,7 @@ export default function CostsPage() {
           : (
             <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] table-fixed text-sm">
+              <table className="w-full min-w-[1120px] table-fixed text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-[240px] px-4 py-3 text-left">Артикул</th>

@@ -3,6 +3,7 @@
 import { BarChart3, CalendarPlus, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ActionableError } from "@/components/ui/ActionableError";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 
@@ -126,7 +127,7 @@ export function SalesForecastPanel({ year, month, accounts, onAddPayment }: {
       </div>
       <CardContent className="space-y-4 pt-5">
         {loading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Считаю по отчётам…</div>
-          : error ? <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>
+          : error ? <ActionableError message={error} label="Прогноз ОПиУ" />
           : data && <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Плановая выручка" value={data.planRevenue} />

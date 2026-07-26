@@ -1,7 +1,8 @@
 "use client";
 
-import { AlertTriangle, Loader2, RefreshCw, TrendingUp } from "lucide-react";
+import { Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActionableError } from "@/components/ui/ActionableError";
 import {
   calculateSalesPlanRowMonth,
   calculateSalesPlanSummary,
@@ -146,14 +147,14 @@ export function SalesPlanFactView({ marketplace, cabinetId, monthKey, approvedPl
         </div>
       </section>
 
-      {error ? <div role="alert" className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"><AlertTriangle className="h-4 w-4 shrink-0" /> {error}</div> : null}
+      {error ? <ActionableError message={error} label="План-факт" onRetry={load} /> : null}
       {loading && !data ? <div className="flex min-h-72 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" /> Загружаем фактические заказы…</div> : (
-        <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] text-slate-700">
+        <div className="max-w-full overflow-auto rounded-xl border border-slate-200 bg-white">
+          <table className="w-max min-w-full border-separate border-spacing-0 text-[10px] leading-4 text-slate-700">
             <thead><tr className="h-10 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-              <th className="sticky left-0 top-0 z-30 min-w-[220px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left shadow-[6px_0_10px_rgba(15,23,42,0.05)]">Цвет · факт / план</th>
-              {Array.from({ length: days }, (_, day) => <th key={day} className="sticky top-0 z-20 min-w-[64px] border-b border-r border-slate-200 bg-slate-50 px-1 text-center"><span className="block text-slate-600">{String(day + 1).padStart(2, "0")}</span><span className="text-[9px] font-medium normal-case text-slate-400">день</span></th>)}
-              <th className="sticky top-0 z-20 min-w-[96px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Заказы</th><th className="sticky top-0 z-20 min-w-[90px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Выполн.</th><th className="sticky top-0 z-20 min-w-[132px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Реклама ф/п</th><th className="sticky top-0 z-20 min-w-[112px] border-b border-slate-200 bg-slate-50 px-2 text-right">ДРР ф/п</th>
+              <th className="sticky left-0 top-0 z-30 w-[205px] min-w-[205px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left shadow-[6px_0_10px_rgba(15,23,42,0.05)]">Цвет · факт / план</th>
+              {Array.from({ length: days }, (_, day) => <th key={day} className="sticky top-0 z-20 w-14 min-w-14 border-b border-r border-slate-200 bg-slate-50 px-1 text-center"><span className="block text-slate-600">{String(day + 1).padStart(2, "0")}</span><span className="text-[9px] font-medium normal-case text-slate-400">день</span></th>)}
+              <th className="sticky top-0 z-20 w-[88px] min-w-[88px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Заказы</th><th className="sticky top-0 z-20 w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Выполн.</th><th className="sticky top-0 z-20 w-[118px] min-w-[118px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Реклама ф/п</th><th className="sticky top-0 z-20 w-[96px] min-w-[96px] border-b border-slate-200 bg-slate-50 px-2 text-right">ДРР ф/п</th>
             </tr></thead>
             <tbody>{rows.map((item) => <FactTableRow key={item.row.id} item={item} monthKey={monthKey} days={days} />)}</tbody>
           </table>
@@ -173,13 +174,14 @@ function FactTableRow({ item, monthKey, days }: { item: FactRow; monthKey: strin
   const execution = plan.orders > 0 && knownOrders ? (factOrders / plan.orders) * 100 : null;
   return (
     <tr className="h-12 hover:bg-slate-50/70">
-      <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-white px-3 shadow-[6px_0_10px_rgba(15,23,42,0.04)]"><span className="block font-semibold text-slate-800">{item.row.model} · {item.row.color}</span><span className="block text-[10px] text-slate-400">{item.row.variant}</span></td>
+      <td className="sticky left-0 z-10 w-[205px] min-w-[205px] border-b border-r border-slate-200 bg-white px-3 shadow-[6px_0_10px_rgba(15,23,42,0.04)]"><span className="block truncate font-semibold text-slate-800" title={`${item.row.model} · ${item.row.color}`}>{item.row.model} · {item.row.color}</span><span className="block truncate text-[10px] text-slate-400" title={item.row.variant}>{item.row.variant}</span></td>
       {Array.from({ length: days }, (_, day) => {
         const fact = item.orders[day];
         const planned = item.row.months[monthKey]?.[day] ?? 0;
         const delta = fact == null ? null : fact - planned;
         const tone = delta == null || delta === 0 ? "bg-white" : delta > 0 ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800";
-        return <td key={day} className={`border-b border-r border-slate-200 px-1 text-center tabular-nums ${tone}`}><span className="block font-semibold">{fact == null ? "—" : number(fact)} / {number(planned)}</span><span className="block text-[9px] opacity-70">{delta == null ? "" : delta > 0 ? `+${number(delta)}` : number(delta)}</span></td>;
+        const title = fact == null ? `План: ${number(planned)} шт.` : `Факт: ${number(fact)} шт. · План: ${number(planned)} шт.`;
+        return <td key={day} title={title} className={`w-14 min-w-14 border-b border-r border-slate-200 px-1 text-center tabular-nums ${tone}`}><span className="block whitespace-nowrap font-semibold">{fact == null ? "—" : number(fact)} / {number(planned)}</span><span className="block text-[9px] opacity-70">{delta == null ? "" : delta > 0 ? `+${number(delta)}` : number(delta)}</span></td>;
       })}
       <td className="border-b border-r border-slate-200 px-2 text-right font-semibold tabular-nums">{knownOrders ? number(factOrders) : "—"} / {number(plan.orders)}</td>
       <td className="border-b border-r border-slate-200 px-2 text-right font-semibold tabular-nums">{execution == null ? "—" : `${execution.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`}</td>

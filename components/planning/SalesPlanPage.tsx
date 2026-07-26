@@ -17,6 +17,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActionableError } from "@/components/ui/ActionableError";
 import {
   applySalesPlanSuggestion,
   buildSalesPlanSuggestion,
@@ -620,7 +621,7 @@ function SalesPlanBasisPanel({
       </button>
       {open ? (
         <div className="border-t border-slate-100 p-3">
-          {error ? <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><span>{error}</span><button type="button" onClick={onReload} className="min-h-8 rounded-md border border-amber-200 bg-white px-2 font-semibold">Повторить</button></div> : null}
+          {error ? <ActionableError message={error} label="Основание плана" onRetry={onReload} compact tone="amber" className="mb-3" /> : null}
           <div className="mb-3 grid gap-2 sm:grid-cols-3">
             <MiniMetric label="Факт 7 дней" value={`${number(ordersWeek)} шт.`} detail={`${number(ordersWeek / 7)} шт./день`} />
             <MiniMetric label="Факт 30 дней" value={`${number(ordersMonth)} шт.`} detail="по RNP-агрегату" />
@@ -777,4 +778,4 @@ function CabinetRequired({ marketplace }: { marketplace: SalesPlanMarketplace })
 }
 
 function PageLoading({ marketplace }: { marketplace: SalesPlanMarketplace }) { return <div className="flex min-h-[calc(100vh-54px)] items-center justify-center gap-2 bg-[#f6f7f9] text-sm text-slate-500"><Loader2 className={`h-5 w-5 animate-spin motion-reduce:animate-none ${marketplace === "wb" ? "text-violet-600" : "text-sky-600"}`} /> Загружаем кабинеты…</div>; }
-function PageError({ message, onRetry }: { message: string; onRetry: () => void }) { return <div role="alert" className="mx-3 my-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 sm:mx-6"><div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span className="flex-1">{message}</span><button type="button" onClick={onRetry} className="min-h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold hover:bg-rose-100">Повторить</button></div></div>; }
+function PageError({ message, onRetry }: { message: string; onRetry: () => void }) { return <ActionableError message={message} label="План продаж" onRetry={onRetry} className="mx-3 my-4 sm:mx-6" />; }
