@@ -8,6 +8,8 @@ import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } f
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
+import { readOkApiResponse } from "@/lib/http/readApiResponse";
 import { useSort, sortGlyph } from "@/lib/useSort";
 import { heat } from "@/lib/analytics/heat";
 import { WbProductImage } from "@/components/wb/WbProductImage";
@@ -63,8 +65,8 @@ export default function RnpPage() {
     const to = customTo || new Date().toISOString().slice(0, 10);
     const from = customFrom || new Date(Date.now() - (win - 1) * 86400000).toISOString().slice(0, 10);
     const shop = cabId || "all";
-    fetch(`/api/rnp/${shop}/table?date_from=${from}&date_to=${to}`, { cache: "no-store" })
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    deploymentPinnedFetch(`/api/rnp/${shop}/table?date_from=${from}&date_to=${to}`, { cache: "no-store" })
+      .then((r) => readOkApiResponse<RnpTable>(r, "РНП"))
       .then((d: RnpTable) => { if (ignore) return; if (d.error) setErr(d.error); else setData(d); })
       .catch((e) => { if (!ignore) setErr(String(e)); })
       .finally(() => { if (!ignore) setLoading(false); });

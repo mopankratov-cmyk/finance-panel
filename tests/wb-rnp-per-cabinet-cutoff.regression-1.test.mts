@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyFunnelOrdersOverlay, applyRnpScopeCutoff, applyRnpSourceCutoffs } from "../lib/rnp/buildTable";
+import {
+  applyFunnelOrdersOverlay,
+  applyRnpScopeCutoff,
+  applyRnpSourceCutoffs,
+  moscowDateFromIso,
+  sourceCutoffFromSyncState,
+} from "../lib/rnp/buildTable";
 
 type Row = {
   nm_id: number;
@@ -98,4 +104,35 @@ test("WB RNP creates a daily order row from WB funnel when supplier events are m
     buyouts_sum: 0,
     ad_spent: 0,
   });
+});
+
+test("WB RNP treats a caught-up sync as fresh even when a day has no activity rows", () => {
+  const state = {
+    cursor: null,
+    status: "caught_up",
+    attempts: 0,
+    lastError: null,
+    updatedAt: "2026-07-20T21:10:00.000Z",
+    state: { coveragePct: 100, lastSyncedAt: "2026-07-20T21:10:00.000Z" },
+  };
+
+  assert.equal(moscowDateFromIso(state.state.lastSyncedAt), "2026-07-21");
+  assert.equal(sourceCutoffFromSyncState(state, "2026-07-31"), "2026-07-21");
+});
+
+test("WB RNP uses funnel completed period instead of sync wall-clock time", () => {
+  const state = {
+    cursor: "0",
+    status: "caught_up",
+    attempts: 0,
+    lastError: null,
+    updatedAt: "2026-07-21T20:10:00.000Z",
+    state: {
+      coveragePct: 100,
+      lastSyncedAt: "2026-07-21T20:10:00.000Z",
+      lastPeriod: { begin: "2026-07-20", end: "2026-07-20", mode: "yesterday" },
+    },
+  };
+
+  assert.equal(sourceCutoffFromSyncState(state, "2026-07-31", { preferLastPeriodEnd: true }), "2026-07-20");
 });

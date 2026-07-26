@@ -36,3 +36,16 @@ test("WB sync health exposes price-before-SPP and nullable SPP coverage on the d
   assert.match(page, /fieldCoverage\?/);
   assert.match(page, /coverage\.label/);
 });
+
+test("WB RNP uses stored order price before SPP instead of recalculating it", () => {
+  const tableBuilder = readFileSync(new URL("../lib/rnp/buildTable.ts", import.meta.url), "utf8");
+  const migration = readFileSync(
+    new URL("../supabase/migrations/20260726_zz_wb_rnp_price_with_disc_consistency.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(tableBuilder, /\.select\("nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel"\)/);
+  assert.match(tableBuilder, /row\.orders_sum \+= orderPriceBeforeSpp\(order\)/);
+  assert.match(migration, /coalesce\(price_with_disc,\s*coalesce\(total_price,\s*0\)\s*\*\s*\(1\s*-\s*coalesce\(discount_percent,\s*0\)\s*\/\s*100\.0\),\s*0\)/i);
+  assert.match(migration, /now\(\) at time zone 'Europe\/Moscow'/i);
+});

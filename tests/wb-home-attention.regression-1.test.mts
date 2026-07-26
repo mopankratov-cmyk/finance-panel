@@ -13,7 +13,7 @@ test("WB root renders its own attention home instead of aliasing RNP", () => {
 
 test("WB home loads live signals safely and filters OK out of attention queue", () => {
   assert.match(homeSource, /\/api\/signals\?\$\{cabinetParam\(cabinetId\)\}&window=14&persist=0/);
-  assert.match(homeSource, /readApiResponse<SignalsData>\(response, "Сигналы WB"\)/);
+  assert.match(homeSource, /readOkApiResponse<SignalsData>\(response, "Сигналы WB"\)/);
   assert.match(homeSource, /\.filter\(\(item\) => item\.signal !== "OK"\)/);
   assert.match(homeSource, /SEVERITY_WEIGHT\[b\.severity\] - SEVERITY_WEIGHT\[a\.severity\]/);
 });

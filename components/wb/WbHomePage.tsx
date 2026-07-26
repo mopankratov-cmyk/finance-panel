@@ -17,7 +17,8 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
-import { readApiResponse } from "@/lib/http/readApiResponse";
+import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
+import { readOkApiResponse } from "@/lib/http/readApiResponse";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -161,14 +162,12 @@ export function WbHomePage() {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/signals?${cabinetParam(cabinetId)}&window=14&persist=0`, {
+    deploymentPinnedFetch(`/api/signals?${cabinetParam(cabinetId)}&window=14&persist=0`, {
       cache: "no-store",
       signal: controller.signal,
     })
       .then(async (response) => {
-        const body = await readApiResponse<SignalsData>(response, "Сигналы WB");
-        if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
-        return body;
+        return readOkApiResponse<SignalsData>(response, "Сигналы WB");
       })
       .then(setData)
       .catch((cause: unknown) => {

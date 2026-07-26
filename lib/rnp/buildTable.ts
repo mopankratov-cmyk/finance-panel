@@ -13,6 +13,7 @@ import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commiss
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
+import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 
 const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
@@ -54,6 +55,7 @@ export interface ScopedOrderSourceRow {
   date: string;
   total_price: number | null;
   discount_percent: number | null;
+  price_with_disc: number | null;
   is_cancel: boolean | null;
 }
 
@@ -445,6 +447,8 @@ export interface RnpTable {
     as_of: string;
     orders_as_of: string | null;
     sales_as_of: string | null;
+    adverts_as_of: string | null;
+    funnel_as_of: string | null;
   }>;
   forecast_note: string;
   period: { label: string; period_type: string }[];
@@ -463,12 +467,60 @@ export function latestKnownDate(values: Array<string | null | undefined>): strin
   return known.length ? known.reduce((latest, value) => value > latest ? value : latest) : null;
 }
 
+function clampDateToPeriodEnd(value: string | null, periodEnd: string) {
+  if (!value) return null;
+  return value > periodEnd ? periodEnd : value;
+}
+
+function dateOnly(value: unknown) {
+  const text = String(value ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
+export function moscowDateFromIso(value: unknown): string | null {
+  const date = new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const byType = new Map(parts.map((part) => [part.type, part.value]));
+  const year = byType.get("year");
+  const month = byType.get("month");
+  const day = byType.get("day");
+  return year && month && day ? `${year}-${month}-${day}` : null;
+}
+
+export function sourceCutoffFromSyncState(
+  state: WbSyncState | null,
+  periodEnd: string,
+  options: { preferLastPeriodEnd?: boolean } = {},
+): string | null {
+  if (!state || state.lastError) return null;
+  const coveragePct = Number(state.state.coveragePct);
+  const complete = state.status === "caught_up" || (Number.isFinite(coveragePct) && coveragePct >= 99.9);
+  if (!complete) return null;
+  const period = typeof state.state.lastPeriod === "object" && state.state.lastPeriod !== null
+    ? state.state.lastPeriod as { end?: unknown }
+    : null;
+  const periodEndDate = options.preferLastPeriodEnd ? dateOnly(period?.end) : null;
+  return clampDateToPeriodEnd(periodEndDate ?? moscowDateFromIso(state.state.lastSyncedAt ?? state.updatedAt), periodEnd);
+}
+
 function scopedDailyKey(nmId: number, date: string) {
   return `${nmId}:${date}`;
 }
 
 function readDate(value: unknown) {
   return String(value ?? "").slice(0, 10);
+}
+
+function orderPriceBeforeSpp(order: ScopedOrderSourceRow): number {
+  const stored = Number(order.price_with_disc);
+  if (Number.isFinite(stored)) return stored;
+  return Number(order.total_price ?? 0) * (1 - Number(order.discount_percent ?? 0) / 100);
 }
 
 export function applyFunnelOrdersOverlay(rows: SkuDailyRow[], funnelRows: FunnelRow[]): SkuDailyRow[] {
@@ -592,7 +644,7 @@ export function buildScopedBaseFactsFromRows(input: {
     writeArticle(articleByNm, nmId, order.supplier_article);
     const row = touchScopedDailyRow(dailyRows, nmId, date);
     row.orders_count += 1;
-    row.orders_sum += Number(order.total_price ?? 0) * (1 - Number(order.discount_percent ?? 0) / 100);
+    row.orders_sum += orderPriceBeforeSpp(order);
   }
   for (const sale of input.sales) {
     const nmId = Number(sale.nm_id);
@@ -646,7 +698,7 @@ async function loadScopedBaseFacts(
     loadAllPages<ScopedOrderSourceRow>((start, end) => {
       let query = db
         .from("wb_orders")
-        .select("nm_id, supplier_article, date, total_price, discount_percent, is_cancel")
+        .select("nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel")
         .gte("date", dateFrom)
         .lt("date", dateTo)
         .in("nm_id", allowed)
@@ -769,6 +821,14 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
 
   try {
     const periodEnd = to < currentMoscowDate() ? to : currentMoscowDate();
+    const latestSyncStateDate = async (
+      scope: CabinetScope,
+      job: "orders" | "sales" | "advert-stats" | "funnel",
+      options: { preferLastPeriodEnd?: boolean } = {},
+    ) => {
+      if (!scope.cabinetId || scope.allowedNmIds?.size === 0) return null;
+      return sourceCutoffFromSyncState(await readWbSyncState(db, scope.cabinetId, job), periodEnd, options);
+    };
     const [scopeData, costs, comm] = await Promise.all([
       Promise.all(scopes.map(async (scope) => {
         if (scope.allowedNmIds?.size === 0) {
@@ -786,7 +846,17 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           };
         }
         const allowed = scope.allowedNmIds ? [...scope.allowedNmIds] : null;
-        const [baseFacts, adRows, funnelRows, ordersCutoff, salesCutoff] = await Promise.all([
+        const [
+          baseFacts,
+          adRows,
+          funnelRows,
+          ordersRowCutoff,
+          salesRowCutoff,
+          ordersSyncCutoff,
+          salesSyncCutoff,
+          advertsSyncCutoff,
+          funnelSyncCutoff,
+        ] = await Promise.all([
           allowed
             ? loadScopedBaseFacts(db, scope, allowed, from, to)
             : Promise.all([
@@ -826,9 +896,15 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
           }),
           latestSourceDate("wb_orders", scope),
           latestSourceDate("wb_sales", scope),
+          latestSyncStateDate(scope, "orders"),
+          latestSyncStateDate(scope, "sales"),
+          latestSyncStateDate(scope, "advert-stats"),
+          latestSyncStateDate(scope, "funnel", { preferLastPeriodEnd: true }),
         ]);
-        const advertsCutoff = latestDate(adRows, (row) => row.date);
-        const funnelCutoff = latestDate(funnelRows, (row) => row.date);
+        const ordersCutoff = latestKnownDate([ordersRowCutoff, ordersSyncCutoff]);
+        const salesCutoff = latestKnownDate([salesRowCutoff, salesSyncCutoff]);
+        const advertsCutoff = latestKnownDate([latestDate(adRows, (row) => row.date), advertsSyncCutoff]);
+        const funnelCutoff = latestKnownDate([latestDate(funnelRows, (row) => row.date), funnelSyncCutoff]);
         return {
           skuRows: baseFacts.skuRows,
           totals: baseFacts.totals,
@@ -1060,6 +1136,8 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
         as_of: item.asOf,
         orders_as_of: latestKnownDate([item.funnelCutoff, item.ordersCutoff]),
         sales_as_of: item.salesCutoff,
+        adverts_as_of: item.advertsCutoff,
+        funnel_as_of: item.funnelCutoff,
       })),
       forecast_note: "Прогноз использует факт каждого кабинета только до его последней полной даты, профиль дня недели и краткосрочный тренд. Заказы сверяются с WB Analytics → Этапы воронки продаж, WB Статистика остаётся fallback. Календарь акций WB пока не подключён.",
       period,

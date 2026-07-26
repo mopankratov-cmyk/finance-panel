@@ -17,7 +17,8 @@ import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
-import { readApiResponse } from "@/lib/http/readApiResponse";
+import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
+import { readApiResponse, readOkApiResponse } from "@/lib/http/readApiResponse";
 import { buildRnpArticleCompare } from "@/lib/rnp/articleCompare";
 import { buildRnpFocusSummary, type RnpFocusSignal } from "@/lib/rnp/focusSummary";
 import { useCategoryMap } from "@/lib/useCategoryMap";
@@ -62,6 +63,8 @@ interface RnpTable {
     as_of: string;
     orders_as_of: string | null;
     sales_as_of: string | null;
+    adverts_as_of?: string | null;
+    funnel_as_of?: string | null;
   }>;
   forecast_note: string;
   period: { label: string; period_type: string }[];
@@ -498,14 +501,12 @@ export function WbRnpPage() {
     setError(null);
 
     const params = new URLSearchParams({ date_from: range.from, date_to: range.to });
-    fetch(`/api/rnp/${encodeURIComponent(cabinetId || "all")}/table?${params.toString()}`, {
+    deploymentPinnedFetch(`/api/rnp/${encodeURIComponent(cabinetId || "all")}/table?${params.toString()}`, {
       cache: "no-store",
       signal: controller.signal,
     })
       .then(async (response) => {
-        const body = await readApiResponse<RnpTable>(response, "РНП");
-        if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
-        return body;
+        return readOkApiResponse<RnpTable>(response, "РНП");
       })
       .then((body) => {
         if (currentRequest !== requestId.current) return;
@@ -703,12 +704,12 @@ export function WbRnpPage() {
 
     setSaving(key);
     setPlanMessage(null);
-    const response = await fetch(`/api/rnp/${encodeURIComponent(cabinetId)}/plan`, {
+    const response = await deploymentPinnedFetch(`/api/rnp/${encodeURIComponent(cabinetId)}/plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ month, nm: String(sku.nm), field: metric.field, value }),
     });
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    const body = await readApiResponse<{ error?: string }>(response, "Сохранение плана РНП");
     setSaving(null);
     if (!response.ok) {
       setPlanMessage(body.error || `Ошибка ${response.status}`);

@@ -28,8 +28,9 @@ test("RNP client still reads normal JSON API responses", async () => {
 
 test("WB RNP page does not parse table and plan responses with raw response.json", () => {
   const source = readFileSync(new URL("../components/wb/WbRnpPage.tsx", import.meta.url), "utf8");
-  assert.match(source, /readApiResponse<RnpTable>\(response, "РНП"\)/);
+  assert.match(source, /readOkApiResponse<RnpTable>\(response, "РНП"\)/);
   assert.match(source, /readApiResponse<\{ plan\?: Record<string, Record<string, number>>; error\?: string \}>\(response, "План РНП"\)/);
+  assert.match(source, /readApiResponse<\{ error\?: string \}>\(response, "Сохранение плана РНП"\)/);
   assert.doesNotMatch(source, /const body = \\(await response\\.json\\(\\)\\) as RnpTable/);
 });
 

@@ -104,7 +104,7 @@ export async function loadScopedAdvertReportRows(
   const [orders, funnelOrders, stocks, products] = await Promise.all([
     loadAllPages<ScopedOrderSourceRow>((from, to) => db
       .from("wb_orders")
-      .select("nm_id, supplier_article, date, total_price, discount_percent, is_cancel")
+      .select("nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel")
       .eq("cabinet_id", cabinetId)
       .gte("date", monthStartTs)
       .in("nm_id", allowedNmIds)

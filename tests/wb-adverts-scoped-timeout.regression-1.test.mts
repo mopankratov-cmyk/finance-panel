@@ -23,10 +23,10 @@ test("WB adverts scoped report aggregates only allowlisted SKU", () => {
       { nm_id: 999, quantity: 99 },
     ],
     orders: [
-      { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T10:00:00.000Z", total_price: 1000, discount_percent: 10, is_cancel: false },
-      { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T11:00:00.000Z", total_price: 500, discount_percent: 0, is_cancel: true },
-      { nm_id: 202, supplier_article: "RIO-202", date: "2026-07-14T12:00:00.000Z", total_price: 700, discount_percent: 0, is_cancel: false },
-      { nm_id: 999, supplier_article: "OTHER-999", date: "2026-07-14T12:00:00.000Z", total_price: 9999, discount_percent: 0, is_cancel: false },
+      { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T10:00:00.000Z", total_price: 1000, discount_percent: 10, price_with_disc: 900, is_cancel: false },
+      { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T11:00:00.000Z", total_price: 500, discount_percent: 0, price_with_disc: 500, is_cancel: true },
+      { nm_id: 202, supplier_article: "RIO-202", date: "2026-07-14T12:00:00.000Z", total_price: 700, discount_percent: 0, price_with_disc: 700, is_cancel: false },
+      { nm_id: 999, supplier_article: "OTHER-999", date: "2026-07-14T12:00:00.000Z", total_price: 9999, discount_percent: 0, price_with_disc: 9999, is_cancel: false },
     ],
     funnelOrders: [
       { nm_id: 101, date: "2026-07-14", orders: 3, orders_sum: 2700 },
@@ -69,6 +69,7 @@ test("WB adverts route does not let live WB balance hold the page for 45 seconds
 test("WB adverts scoped report reads funnel orders for the same allowlisted SKU set", () => {
   const source = readFileSync(new URL("../lib/adverts/scopedReport.ts", import.meta.url), "utf8");
   assert.match(source, /applyFunnelOrdersOverlay/);
+  assert.match(source, /\.select\("nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel"\)/);
   assert.match(source, /\.from\("wb_funnel_daily"\)/);
   assert.match(source, /\.select\("nm_id, date, orders, orders_sum"\)/);
   assert.match(source, /funnelOrders/);
@@ -92,7 +93,7 @@ test("WB advert stats filters scoped campaigns before rotating fullstats batches
 
 test("WB adverts page keeps the last-good list when a refresh times out", () => {
   const source = readFileSync(new URL("../components/wb/WbAdvertsPage.tsx", import.meta.url), "utf8");
-  assert.match(source, /readApiResponse<AdvertsData>\(response, "Реклама WB"\)/);
+  assert.match(source, /readOkApiResponse<AdvertsData>\(response, "Реклама WB"\)/);
   assert.match(source, /error && activeData/);
   assert.match(source, /Показан последний готовый список кампаний/);
   assert.doesNotMatch(source, /\(await response\.json\(\)\) as AdvertsData/);

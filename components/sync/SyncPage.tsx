@@ -3,6 +3,8 @@
 import { AlertTriangle, CheckCircle2, Play, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber, formatTime } from "@/lib/analytics/format";
+import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
+import { readApiResponse, readOkApiResponse } from "@/lib/http/readApiResponse";
 import { asSyncPayload, syncDeferredMessage, syncErrorMessage, syncPayloadOk } from "@/lib/sync/result";
 import type { SyncLogRow } from "@/app/api/sync-log/route";
 import { syncFreshness } from "@/lib/sync/freshness";
@@ -61,20 +63,20 @@ export function SyncPage() {
     setLoading(true);
     try {
       const [logResponse, healthResponse] = await Promise.all([
-        fetch("/api/sync-log", { cache: "no-store" }),
-        fetch("/api/wb/sync-health", { cache: "no-store" }),
+        deploymentPinnedFetch("/api/sync-log", { cache: "no-store" }),
+        deploymentPinnedFetch("/api/wb/sync-health", { cache: "no-store" }),
       ]);
-      const [json, health] = await Promise.all([logResponse.json(), healthResponse.json()]);
-      if (json.error) setError(json.error);
-      else setLog(json.data ?? []);
-      if (healthResponse.ok) {
+      const json = await readOkApiResponse<{ data?: SyncLogRow[]; error?: string }>(logResponse, "Журнал синхронизации");
+      setLog(json.data ?? []);
+      const health = await readApiResponse<{ cabinets?: CabinetHealth[]; warnings?: string[]; error?: string }>(healthResponse, "Диагностика WB");
+      if (!healthResponse.ok || health.error) {
+        setHealthWarnings([health.error || `Диагностика WB вернула HTTP ${healthResponse.status}`]);
+      } else {
         setCabinetHealth(health.cabinets ?? []);
         setHealthWarnings(health.warnings ?? []);
-      } else {
-        setHealthWarnings([health.error || "Диагностика WB недоступна"]);
       }
-    } catch {
-      setError("Не удалось загрузить журнал");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось загрузить журнал");
     } finally {
       setLoading(false);
     }
@@ -85,8 +87,9 @@ export function SyncPage() {
   }, [loadLog]);
 
   const requestSync = async (url: string) => {
-    const res = await fetch(url, { method: "POST" });
-    const body = asSyncPayload(await res.json().catch(() => ({})));
+    const res = await deploymentPinnedFetch(url, { method: "POST" });
+    const raw = await readApiResponse<{ error?: string } & Record<string, unknown>>(res, "Запуск синхронизации");
+    const body = asSyncPayload(raw);
     if (!syncPayloadOk(res.ok, body)) {
       throw new Error(syncErrorMessage(body, `HTTP ${res.status}`));
     }
@@ -115,8 +118,8 @@ export function SyncPage() {
     setRunning("backfill");
     setError(null);
     try {
-      const shopsRes = await fetch("/api/shops", { cache: "no-store" });
-      const shops: { key: string }[] = await shopsRes.json();
+      const shopsRes = await deploymentPinnedFetch("/api/shops", { cache: "no-store" });
+      const shops = await readOkApiResponse<Array<{ key: string }> & { error?: string }>(shopsRes, "Список кабинетов");
       const cabs = shops.map((s) => s.key).filter((k) => k && k !== "all");
       const from = encodeURIComponent(backfillFrom);
       for (const cab of cabs) {

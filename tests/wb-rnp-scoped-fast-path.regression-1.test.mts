@@ -21,9 +21,9 @@ test("scoped RNP base facts aggregate only allowlisted SKU without full-cabinet 
       { nm_id: 999, quantity: 99 },
     ],
     orders: [
-      { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T10:00:00.000Z", total_price: 1000, discount_percent: 10, is_cancel: false },
-      { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T11:00:00.000Z", total_price: 500, discount_percent: 0, is_cancel: true },
-      { nm_id: 999, supplier_article: "OTHER-999", date: "2026-07-14T12:00:00.000Z", total_price: 9999, discount_percent: 0, is_cancel: false },
+      { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T10:00:00.000Z", total_price: 1000, discount_percent: 10, price_with_disc: 910, is_cancel: false },
+      { nm_id: 101, supplier_article: "NOR-101", date: "2026-07-14T11:00:00.000Z", total_price: 500, discount_percent: 0, price_with_disc: 500, is_cancel: true },
+      { nm_id: 999, supplier_article: "OTHER-999", date: "2026-07-14T12:00:00.000Z", total_price: 9999, discount_percent: 0, price_with_disc: 9999, is_cancel: false },
     ],
     sales: [
       { nm_id: 101, date: "2026-07-14T15:00:00.000Z", price_with_disc: 880, finished_price: 700, sale_id: "S123" },
@@ -45,7 +45,7 @@ test("scoped RNP base facts aggregate only allowlisted SKU without full-cabinet 
     d: "2026-07-14",
     nm_id: 101,
     orders_count: 1,
-    orders_sum: 900,
+    orders_sum: 910,
     buyouts_count: 1,
     buyouts_sum: 880,
     ad_spent: 77,

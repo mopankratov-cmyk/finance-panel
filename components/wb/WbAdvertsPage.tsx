@@ -6,7 +6,7 @@ import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
-import { readApiResponse } from "@/lib/http/readApiResponse";
+import { readOkApiResponse } from "@/lib/http/readApiResponse";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -261,9 +261,7 @@ export function WbAdvertsPage() {
     setError(null);
     deploymentPinnedFetch(`/api/adverts/list?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body = await readApiResponse<AdvertsData>(response, "Реклама WB");
-        if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
-        return body;
+        return readOkApiResponse<AdvertsData>(response, "Реклама WB");
       })
       .then((body) => {
         if (current !== requestId.current) return;
