@@ -30,35 +30,54 @@ const SOURCE_SLA_MINUTES: Record<string, number> = {
 };
 
 async function sourceSnapshot(db: SupabaseClient, cabinetId: string, table: string, timestamp: string) {
-  const result = await db
-    .from(table)
-    .select(timestamp, { count: "exact" })
-    .eq("cabinet_id", cabinetId)
-    .order(timestamp, { ascending: false })
-    .limit(1);
-  return {
-    rows: result.count ?? 0,
-    lastSyncedAt: result.error ? null : String(((result.data?.[0] as unknown) as Record<string, unknown> | undefined)?.[timestamp] ?? "") || null,
-    error: result.error?.message ?? null,
-  };
+  try {
+    const result = await db
+      .from(table)
+      .select(timestamp, { count: "exact" })
+      .eq("cabinet_id", cabinetId)
+      .order(timestamp, { ascending: false })
+      .limit(1);
+    return {
+      rows: result.count ?? 0,
+      lastSyncedAt: result.error ? null : String(((result.data?.[0] as unknown) as Record<string, unknown> | undefined)?.[timestamp] ?? "") || null,
+      error: result.error?.message ?? null,
+    };
+  } catch (error) {
+    return {
+      rows: 0,
+      lastSyncedAt: null,
+      error: error instanceof Error ? error.message : `Не удалось прочитать ${table}`,
+    };
+  }
 }
 
 async function fieldCoverageSnapshot(db: SupabaseClient, cabinetId: string, table: string, field: string, label: string): Promise<FieldCoverage> {
-  const [totalResult, filledResult] = await Promise.all([
-    db.from(table).select("id", { count: "exact", head: true }).eq("cabinet_id", cabinetId),
-    db.from(table).select("id", { count: "exact", head: true }).eq("cabinet_id", cabinetId).not(field, "is", null),
-  ]);
-  const total = totalResult.count ?? 0;
-  const filled = filledResult.count ?? 0;
-  const error = totalResult.error?.message ?? filledResult.error?.message ?? null;
-  return {
-    field,
-    label,
-    filled,
-    total,
-    coveragePct: total > 0 ? Math.round((filled / total) * 1_000) / 10 : null,
-    error,
-  };
+  try {
+    const [totalResult, filledResult] = await Promise.all([
+      db.from(table).select("id", { count: "exact", head: true }).eq("cabinet_id", cabinetId),
+      db.from(table).select("id", { count: "exact", head: true }).eq("cabinet_id", cabinetId).not(field, "is", null),
+    ]);
+    const total = totalResult.count ?? 0;
+    const filled = filledResult.count ?? 0;
+    const error = totalResult.error?.message ?? filledResult.error?.message ?? null;
+    return {
+      field,
+      label,
+      filled,
+      total,
+      coveragePct: total > 0 ? Math.round((filled / total) * 1_000) / 10 : null,
+      error,
+    };
+  } catch (error) {
+    return {
+      field,
+      label,
+      filled: 0,
+      total: 0,
+      coveragePct: null,
+      error: error instanceof Error ? error.message : `Не удалось проверить ${label}`,
+    };
+  }
 }
 
 export async function GET() {
@@ -93,7 +112,13 @@ export async function GET() {
   const states = (statesResult.data ?? []) as StateRow[];
   const tokens = (tokensResult.data ?? []) as TokenRow[];
 
-  const result = await Promise.all(cabinets.map(async (cabinet) => {
+  const result = [];
+  // Один кабинет создаёт 12 коротких диагностических запросов. Параллельный
+  // fan-out по всем кабинетам давал около 50 одновременных обращений к
+  // PostgREST и изредка превращал полностью здоровый экран в HTTP 500.
+  // Последовательность по кабинетам сохраняет параллельность внутри одного
+  // кабинета, но убирает опасный всплеск соединений.
+  for (const cabinet of cabinets) {
     const cabinetScope = scopeRows.filter((row) => row.cabinet_id === cabinet.id);
     const uniqueNm = new Set(cabinetScope.map((row) => Number(row.nm_id)));
     const byBrand = cabinetScope.reduce<Record<string, number>>((acc, row) => {
@@ -123,7 +148,7 @@ export async function GET() {
       ["orders", [ordersPriceCoverage, ordersSppCoverage]],
       ["sales", [salesPriceCoverage, salesSppCoverage]],
     ]);
-    return {
+    result.push({
       id: cabinet.id,
       name: cabinet.name,
       brands: cabinet.brand_filters,
@@ -177,8 +202,8 @@ export async function GET() {
           lastError: health.lastError,
         };
       }),
-    };
-  }));
+    });
+  }
 
   return NextResponse.json({ generatedAt: new Date().toISOString(), cabinets: result, warnings: [...new Set(warnings)] });
 }
