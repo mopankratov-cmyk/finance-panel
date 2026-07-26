@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  dayOverDayBaseline,
   detectSkuAnomalies,
   matchesArticleList,
   metricDelta,
@@ -40,6 +41,15 @@ test("metric deltas preserve zero-base uncertainty", () => {
   assert.deepEqual(metricDelta(120, 100), { absolute: 20, percent: 20, direction: "up" });
   assert.deepEqual(metricDelta(20, 0), { absolute: 20, percent: null, direction: "up" });
   assert.equal(metricDelta(null, 10), null);
+});
+
+test("daily RNP deltas compare with the previous calendar day", () => {
+  const current = [120, 150, 90];
+  const previousPeriod = [70, 80, 100];
+  assert.equal(dayOverDayBaseline(current, previousPeriod, 0), 100);
+  assert.equal(dayOverDayBaseline(current, previousPeriod, 1), 120);
+  assert.equal(dayOverDayBaseline(current, previousPeriod, 2), 150);
+  assert.equal(dayOverDayBaseline(current, previousPeriod, 3), null);
 });
 
 test("anomaly detector understands beneficial and harmful directions", () => {

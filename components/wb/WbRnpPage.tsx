@@ -25,6 +25,7 @@ import {
   RNP_METRIC_FIELDS,
   RNP_VIEW_PRESETS,
   anomalyDirection,
+  dayOverDayBaseline,
   detectSkuAnomalies,
   filterAnomalies,
   matchesArticleList,
@@ -2235,7 +2236,7 @@ function OptimaMetricRow({
           key={index}
           metric={metric}
           value={value}
-          previousValue={previousMetric?.daily[index]}
+          previousValue={dayOverDayBaseline(metric.daily, previousMetric?.daily, index)}
           showDelta={showDeltas}
           deltaMode={deltaMode}
           heatmapEnabled={heatmapEnabled}
@@ -2617,7 +2618,7 @@ function MetricRow({
           key={index}
           metric={metric}
           value={value}
-          previousValue={previousMetric?.daily[index]}
+          previousValue={dayOverDayBaseline(metric.daily, previousMetric?.daily, index)}
           showDelta={showDeltas}
           deltaMode={deltaMode}
           tall={showDeltas}

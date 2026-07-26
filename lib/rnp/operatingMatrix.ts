@@ -193,6 +193,16 @@ export function metricDelta(current: number | null | undefined, previous: number
   };
 }
 
+export function dayOverDayBaseline(
+  currentDaily: Array<number | null | undefined>,
+  previousPeriodDaily: Array<number | null | undefined> | undefined,
+  index: number,
+) {
+  if (!Number.isSafeInteger(index) || index < 0 || index >= currentDaily.length) return null;
+  if (index > 0) return currentDaily[index - 1] ?? null;
+  return previousPeriodDaily?.at(-1) ?? null;
+}
+
 export function anomalyDirection(field: string, delta: RnpMetricDelta): "positive" | "negative" | null {
   if (delta.direction === "flat" || field === "ad_spent" || field === "money") return null;
   if (POSITIVE_WHEN_DOWN.has(field)) return delta.direction === "down" ? "positive" : "negative";

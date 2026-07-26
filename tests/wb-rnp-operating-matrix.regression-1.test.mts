@@ -23,7 +23,7 @@ test("WB RNP exposes five configurable metric views and persists a custom order"
 test("WB RNP renders previous-period deltas, heatmap and sparklines in the operating table", () => {
   assert.match(page, /previousEqualRange/);
   assert.match(page, /previousController/);
-  assert.match(page, /previousValue=\{previousMetric\?\.daily\[index\]\}/);
+  assert.match(page, /previousValue=\{dayOverDayBaseline\(metric\.daily, previousMetric\?\.daily, index\)\}/);
   assert.match(page, /<DeltaMark/);
   assert.match(page, /<Sparkline values=\{metric\.daily\}/);
   assert.match(page, /heatmapEnabled/);
@@ -39,7 +39,7 @@ test("WB RNP supports article-list filtering and anomaly direction filters", () 
 });
 
 test("WB RNP turnover window reaches the cached table calculation", () => {
-  assert.match(page, /Окно оборач\., дн/);
+  assert.match(page, /Окно оборота, дн/);
   assert.match(toolbar, /окно оборачиваемости \{props\.turnoverWindowDays\} дней/);
   assert.match(page, /turnover_days: String\(turnoverWindowDays\)/);
   assert.match(tableRoute, /sp\.get\("turnover_days"\)/);
@@ -75,6 +75,7 @@ test("WB RNP shared tags and product journal stay scoped to one cabinet", () => 
   assert.match(page, /setOperationsSkuNm\(null\)/);
   assert.match(operationsRoute, /Для тегов и журнала выберите один WB-кабинет/);
   assert.match(operationsRoute, /requestAllowedNmIds/);
+  assert.match(operationsRoute, /nmParam == null \|\| nmParam\.trim\(\) === "" \? null : Number\(nmParam\)/);
   assert.match(operationsRoute, /\.range\(from, from \+ pageSize - 1\)/);
   assert.match(operationsRoute, /action === "set_tag"/);
   assert.match(operationsRoute, /action === "add_journal"/);

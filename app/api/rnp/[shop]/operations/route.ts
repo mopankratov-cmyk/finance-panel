@@ -97,8 +97,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sho
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
-  const nmId = Number(new URL(request.url).searchParams.get("nm"));
-  if (Number.isFinite(nmId) && !(await allowedProducts(scoped.cabinetId, [nmId]))) {
+  const nmParam = new URL(request.url).searchParams.get("nm");
+  const nmId = nmParam == null || nmParam.trim() === "" ? null : Number(nmParam);
+  if (nmId != null && Number.isFinite(nmId) && !(await allowedProducts(scoped.cabinetId, [nmId]))) {
     return NextResponse.json({ error: "Товар вне контура выбранного кабинета" }, { status: 403 });
   }
 
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sho
       .eq("cabinet_id", scoped.cabinetId)
       .order("name", { ascending: true }),
     loadTagAssignments(db, scoped.cabinetId),
-    Number.isSafeInteger(nmId) && nmId > 0
+    nmId != null && Number.isSafeInteger(nmId) && nmId > 0
       ? db.from("wb_rnp_journal")
         .select("id, nm_id, event_date, event_type, comment, created_by, created_at")
         .eq("cabinet_id", scoped.cabinetId)
