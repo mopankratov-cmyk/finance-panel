@@ -17,10 +17,10 @@ export async function fetchOrders(
   const client = getSupabaseAdmin() ?? supabase;
   const rows = await loadAllSupabasePages<{
     nm_id: number; supplier_article: string | null; date: string; total_price: number | null;
-    discount_percent: number | null; finished_price: number | null; is_cancel: boolean | null; warehouse: string | null; region: string | null;
+    discount_percent: number | null; finished_price: number | null; price_with_disc: number | null; spp: number | null; is_cancel: boolean | null; warehouse: string | null; region: string | null;
   }>((from, to) => client
     .from("wb_orders")
-    .select("nm_id, supplier_article, date, total_price, discount_percent, finished_price, is_cancel, warehouse, region")
+    .select("nm_id, supplier_article, date, total_price, discount_percent, finished_price, price_with_disc, spp, is_cancel, warehouse, region")
     .eq("cabinet_id", OPIU_WB_CABINET_ID)
     .gte("date", dateFrom)
     .lte("date", `${dateTo}T23:59:59.999Z`)
@@ -33,6 +33,8 @@ export async function fetchOrders(
     totalPrice: row.total_price ?? undefined,
     discountPercent: row.discount_percent ?? undefined,
     finishedPrice: row.finished_price ?? undefined,
+    priceWithDisc: row.price_with_disc ?? undefined,
+    spp: row.spp ?? undefined,
     isCancel: Boolean(row.is_cancel),
     warehouseName: row.warehouse ?? undefined,
     regionName: row.region ?? undefined,
@@ -44,10 +46,10 @@ export async function fetchSalesFromCache(dateFrom: string, dateTo: string): Pro
   const [sales, stocks, commission] = await Promise.all([
     loadAllSupabasePages<{
       nm_id: number; date: string; sale_id: string; for_pay: number | null;
-      finished_price: number | null; price_with_disc: number | null;
+      finished_price: number | null; price_with_disc: number | null; spp: number | null;
     }>((from, to) => client
       .from("wb_sales")
-      .select("nm_id, date, sale_id, for_pay, finished_price, price_with_disc")
+      .select("nm_id, date, sale_id, for_pay, finished_price, price_with_disc, spp")
       .eq("cabinet_id", OPIU_WB_CABINET_ID)
       .gte("date", dateFrom)
       .lte("date", `${dateTo}T23:59:59.999Z`)
@@ -75,6 +77,7 @@ export async function fetchSalesFromCache(dateFrom: string, dateTo: string): Pro
       supplier_oper_name: returned ? "Возврат" : "Продажа",
       retail_amount: returned ? 0 : amount,
       retail_price_withdisc_rub: returned ? 0 : amount,
+      spp: row.spp ?? null,
       ppvz_for_pay: Number(row.for_pay ?? 0),
       ppvz_sales_commission: returned ? 0 : amount * rates.commissionPct / 100,
       acquiring_fee: returned ? 0 : amount * rates.acquiringPct / 100,

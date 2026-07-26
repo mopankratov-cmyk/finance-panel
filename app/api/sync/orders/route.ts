@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
+import { checkCronAuth, chunkedUpsertWithOptionalColumns, writeSyncLog } from "@/lib/sync/helpers";
 import {
   getWbSyncTargets,
   groupWbStatisticsTargets,
@@ -20,6 +20,20 @@ interface OrdersSyncContext {
   target: SyncTarget;
   saved: WbSyncState | null;
   dateFrom: string;
+}
+
+function numericOrNull(value: unknown): number | null {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function priceWithDiscFromOrder(order: Record<string, unknown>): number | null {
+  const direct = numericOrNull(order.priceWithDisc);
+  if (direct !== null) return direct;
+  const totalPrice = numericOrNull(order.totalPrice);
+  if (totalPrice === null) return null;
+  const discount = numericOrNull(order.discountPercent) ?? 0;
+  return totalPrice * (1 - discount / 100);
 }
 
 export async function GET(request: NextRequest) {
@@ -132,6 +146,8 @@ export async function GET(request: NextRequest) {
             total_price: order.totalPrice as number | null,
             discount_percent: order.discountPercent as number | null,
             finished_price: order.finishedPrice as number | null,
+            price_with_disc: priceWithDiscFromOrder(order),
+            spp: numericOrNull(order.spp),
             is_cancel: (order.isCancel as boolean) ?? false,
             warehouse: order.warehouseName as string | null,
             region: order.regionName as string | null,
@@ -140,7 +156,11 @@ export async function GET(request: NextRequest) {
           }))
           .filter((row) => row.srid)
           .filter((row) => !toDate || String(row.date) < toDate);
-        const upsertError = await chunkedUpsert("wb_orders", rows, "srid", forceFrom ? 100_000 : undefined);
+        const upsertResult = await chunkedUpsertWithOptionalColumns("wb_orders", rows, "srid", ["price_with_disc", "spp"], forceFrom ? 100_000 : undefined);
+        if (upsertResult.skippedColumns.length) {
+          deferred.push(`${target.name}: примените SQL-миграцию WB СПП, временно не записаны ${upsertResult.skippedColumns.join(", ")}`);
+        }
+        const upsertError = upsertResult.error;
         if (upsertError) {
           errors.push(`${target.name}: ${upsertError}`);
           if (!forceFrom && db && target.cabinetId) await writeWbSyncState(db, target.cabinetId, "orders", {

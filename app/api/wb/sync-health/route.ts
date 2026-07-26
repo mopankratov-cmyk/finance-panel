@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 interface ScopeRow { cabinet_id: string; nm_id: number; brand: string | null }
 interface StateRow { cabinet_id: string; job: string; cursor: string | null; status: string; attempts: number; last_error: string | null; state: Record<string, unknown>; updated_at: string }
 interface TokenRow { cabinet_id: string; scope: WbScope; available: boolean | null; expires_at: string | null; days_left: number | null; checked_at: string; last_error: string | null }
+interface FieldCoverage { field: string; label: string; filled: number; total: number; coveragePct: number | null; error: string | null }
 
 const SOURCE_SLA_MINUTES: Record<string, number> = {
   orders: 90,
@@ -39,6 +40,24 @@ async function sourceSnapshot(db: SupabaseClient, cabinetId: string, table: stri
     rows: result.count ?? 0,
     lastSyncedAt: result.error ? null : String(((result.data?.[0] as unknown) as Record<string, unknown> | undefined)?.[timestamp] ?? "") || null,
     error: result.error?.message ?? null,
+  };
+}
+
+async function fieldCoverageSnapshot(db: SupabaseClient, cabinetId: string, table: string, field: string, label: string): Promise<FieldCoverage> {
+  const [totalResult, filledResult] = await Promise.all([
+    db.from(table).select("id", { count: "exact", head: true }).eq("cabinet_id", cabinetId),
+    db.from(table).select("id", { count: "exact", head: true }).eq("cabinet_id", cabinetId).not(field, "is", null),
+  ]);
+  const total = totalResult.count ?? 0;
+  const filled = filledResult.count ?? 0;
+  const error = totalResult.error?.message ?? filledResult.error?.message ?? null;
+  return {
+    field,
+    label,
+    filled,
+    total,
+    coveragePct: total > 0 ? Math.round((filled / total) * 1_000) / 10 : null,
+    error,
   };
 }
 
@@ -82,18 +101,26 @@ export async function GET() {
       acc[brand] = (acc[brand] ?? 0) + 1;
       return acc;
     }, {});
-    const sources = await Promise.all([
-      sourceSnapshot(db, cabinet.id, "wb_orders", "synced_at").then((value) => ({ job: "orders", ...value })),
-      sourceSnapshot(db, cabinet.id, "wb_sales", "synced_at").then((value) => ({ job: "sales", ...value })),
-      sourceSnapshot(db, cabinet.id, "wb_stocks", "synced_at").then((value) => ({ job: "stocks", ...value })),
-      sourceSnapshot(db, cabinet.id, "wb_adverts", "synced_at").then((value) => ({ job: "adverts", ...value })),
-      sourceSnapshot(db, cabinet.id, "wb_advert_stats", "date").then((value) => ({ job: "advert-stats", ...value })),
-      sourceSnapshot(db, cabinet.id, "wb_funnel_daily", "date").then((value) => ({ job: "funnel", ...value })),
-      sourceSnapshot(db, cabinet.id, "wb_feedbacks", "synced_at").then((value) => ({ job: "feedbacks", ...value })),
-      sourceSnapshot(db, cabinet.id, "wb_nm_commissions", "synced_at").then((value) => ({ job: "commissions", ...value })),
+    const [sources, ordersSppCoverage, salesSppCoverage] = await Promise.all([
+      Promise.all([
+        sourceSnapshot(db, cabinet.id, "wb_orders", "synced_at").then((value) => ({ job: "orders", ...value })),
+        sourceSnapshot(db, cabinet.id, "wb_sales", "synced_at").then((value) => ({ job: "sales", ...value })),
+        sourceSnapshot(db, cabinet.id, "wb_stocks", "synced_at").then((value) => ({ job: "stocks", ...value })),
+        sourceSnapshot(db, cabinet.id, "wb_adverts", "synced_at").then((value) => ({ job: "adverts", ...value })),
+        sourceSnapshot(db, cabinet.id, "wb_advert_stats", "date").then((value) => ({ job: "advert-stats", ...value })),
+        sourceSnapshot(db, cabinet.id, "wb_funnel_daily", "date").then((value) => ({ job: "funnel", ...value })),
+        sourceSnapshot(db, cabinet.id, "wb_feedbacks", "synced_at").then((value) => ({ job: "feedbacks", ...value })),
+        sourceSnapshot(db, cabinet.id, "wb_nm_commissions", "synced_at").then((value) => ({ job: "commissions", ...value })),
+      ]),
+      fieldCoverageSnapshot(db, cabinet.id, "wb_orders", "spp", "СПП заказов"),
+      fieldCoverageSnapshot(db, cabinet.id, "wb_sales", "spp", "СПП продаж"),
     ]);
     const cabinetStates = states.filter((state) => state.cabinet_id === cabinet.id);
     const stateByJob = new Map(cabinetStates.map((state) => [state.job, state]));
+    const fieldCoverageByJob = new Map<string, FieldCoverage[]>([
+      ["orders", [ordersSppCoverage]],
+      ["sales", [salesSppCoverage]],
+    ]);
     return {
       id: cabinet.id,
       name: cabinet.name,
@@ -143,6 +170,7 @@ export async function GET() {
           cursor: state?.cursor ?? null,
           attempts: state?.attempts ?? 0,
           coveragePct: Number(state?.state?.coveragePct ?? (source.lastSyncedAt ? 100 : 0)),
+          fieldCoverage: fieldCoverageByJob.get(source.job) ?? [],
           stateUpdatedAt: state?.updated_at ?? null,
           lastError: health.lastError,
         };

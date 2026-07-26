@@ -45,6 +45,8 @@ function isSale(row: WbReportRow): boolean {
 }
 
 function orderRub(row: WbOrder): number {
+  const directBeforeSpp = Math.abs(num(row.priceWithDisc));
+  if (directBeforeSpp > 0) return directBeforeSpp;
   const price = num(row.totalPrice);
   const discount = num(row.discountPercent);
   const beforeSpp = Math.abs(price * (1 - discount / 100));

@@ -60,6 +60,40 @@ export async function chunkedUpsert(
   return flush();
 }
 
+function missingOptionalColumn(error: string, column: string): boolean {
+  const quoted = [`"${column}"`, `'${column}'`, column];
+  return /schema cache|column|Could not find/i.test(error)
+    && quoted.some((needle) => error.toLowerCase().includes(needle.toLowerCase()));
+}
+
+export async function chunkedUpsertWithOptionalColumns(
+  table: string,
+  rows: Record<string, unknown>[],
+  onConflict: string,
+  optionalColumns: string[],
+  chunkBytes: number = CHUNK_BYTES,
+): Promise<{ error: string | null; skippedColumns: string[] }> {
+  let currentRows = rows;
+  const skippedColumns: string[] = [];
+
+  for (let attempt = 0; attempt <= optionalColumns.length; attempt++) {
+    const error = await chunkedUpsert(table, currentRows, onConflict, chunkBytes);
+    if (!error) return { error: null, skippedColumns };
+
+    const missing = optionalColumns.find((column) => !skippedColumns.includes(column) && missingOptionalColumn(error, column));
+    if (!missing) return { error, skippedColumns };
+
+    skippedColumns.push(missing);
+    currentRows = currentRows.map((row) => {
+      const copy = { ...row };
+      delete copy[missing];
+      return copy;
+    });
+  }
+
+  return { error: `Не удалось записать ${table}: отсутствуют колонки ${skippedColumns.join(", ")}`, skippedColumns };
+}
+
 // Найдено аудитом данных/API 2026-07-08: апсерт в целевую таблицу проходил, а сама
 // запись в sync_log — нет (эта функция не проверяла { error } от Supabase и не
 // ретраила транзиентные сбои), из-за чего страница /sync врала про "остановку" синка,
