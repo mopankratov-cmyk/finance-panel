@@ -4,12 +4,41 @@ import {
   mergePlanningBlock,
   normalizePlanningBlock,
   selectPlanningBlock,
+  type PlanningBlock,
   type PlanningState,
 } from "@/lib/planning/state";
+import { loadPlanningState, writePlanningStateSnapshot } from "@/lib/planning/stateStore";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+
+const PLANNING_STATE_SAVE_ATTEMPTS = 3;
+
+type SavePlanningBlockResult =
+  | { ok: true }
+  | { ok: false; error: string; status: number };
+
+async function savePlanningBlockWithRetry(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  year: number,
+  cabinetId: string | null,
+  block: PlanningBlock,
+): Promise<SavePlanningBlockResult> {
+  let snapshot = await loadPlanningState<PlanningState>(db, year);
+
+  for (let attempt = 0; attempt < PLANNING_STATE_SAVE_ATTEMPTS; attempt += 1) {
+    const data = mergePlanningBlock(snapshot.data, cabinetId, block);
+    const result = await writePlanningStateSnapshot(db, year, snapshot, data, new Date().toISOString());
+
+    if (result.ok) return { ok: true };
+    if ("error" in result) return { ok: false, error: result.error, status: 500 };
+
+    snapshot = await loadPlanningState<PlanningState>(db, year);
+  }
+
+  return { ok: false, error: "План изменился во время сохранения. Обновите данные и повторите.", status: 409 };
+}
 
 // Контракт inferno: GET → {orders:[12], norms:{}, sku_orders:{art:[12]}}; POST сохраняет блок целиком.
 export async function GET(request: NextRequest) {
@@ -21,8 +50,12 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ orders: Array(12).fill(0), norms: {}, sku_orders: {} });
   const year = Number(params.get("year")) || new Date().getFullYear();
-  const { data } = await db.from("planning_state").select("data").eq("year", year).maybeSingle();
-  return NextResponse.json(selectPlanningBlock((data?.data ?? {}) as PlanningState, cabinetId));
+  try {
+    const snapshot = await loadPlanningState<PlanningState>(db, year);
+    return NextResponse.json(selectPlanningBlock(snapshot.data, cabinetId));
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось загрузить план" }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -36,11 +69,11 @@ export async function POST(request: NextRequest) {
   const b = await request.json().catch(() => ({}));
   const year = Number(b.year) || new Date().getFullYear();
   const block = normalizePlanningBlock({ orders: b.orders, norms: b.norms, sku_orders: b.sku_orders });
-  const existing = await db.from("planning_state").select("data").eq("year", year).maybeSingle();
-  const data = mergePlanningBlock((existing.data?.data ?? {}) as PlanningState, cabinetId, block);
-  const { error } = await db
-    .from("planning_state")
-    .upsert({ year, data, updated_at: new Date().toISOString() }, { onConflict: "year" });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    const result = await savePlanningBlockWithRetry(db, year, cabinetId, block);
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось сохранить план" }, { status: 500 });
+  }
 }

@@ -17,6 +17,11 @@ import {
   validateSalesPlan,
   type SalesPlanMarketplace,
 } from "@/lib/planning/salesPlan";
+import {
+  loadPlanningState,
+  type PlanningStateSnapshot,
+  writePlanningStateSnapshot,
+} from "@/lib/planning/stateStore";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +29,8 @@ export const dynamic = "force-dynamic";
 type StoredState = Record<string, unknown> & {
   sales_plan_v1?: Partial<Record<SalesPlanMarketplace, Record<string, unknown>>>;
 };
+
+const PLANNING_STATE_SAVE_ATTEMPTS = 3;
 
 function isMarketplace(value: string | null): value is SalesPlanMarketplace {
   return value === "wb" || value === "ozon";
@@ -109,18 +116,58 @@ async function resolveContext(request: NextRequest) {
   } as const;
 }
 
-async function loadState(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, year: number) {
-  const { data, error } = await db.from("planning_state").select("data").eq("year", year).maybeSingle();
-  if (error) throw new Error(error.message);
-  return ((data?.data ?? {}) as StoredState);
+function conflictResponse(envelope: SalesPlanEnvelope, monthKey: string | null, message = "План изменился в другой вкладке. Обновите данные перед продолжением.") {
+  return NextResponse.json(
+    {
+      error: message,
+      conflict: true,
+      plan: envelope.working,
+      approvedPlan: monthKey ? getApprovedSalesPlanForMonth(envelope, monthKey) : envelope.approved,
+      approvedByMonth: envelope.approvedByMonth,
+    },
+    { status: 409 },
+  );
+}
+
+async function saveEnvelopeWithRetry(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  context: { marketplace: SalesPlanMarketplace; cabinetId: string; year: number },
+  initialSnapshot: PlanningStateSnapshot<StoredState>,
+  expectedRevision: number,
+  monthKey: string | null,
+  envelope: SalesPlanEnvelope,
+  updatedAt: string,
+) {
+  let snapshot = initialSnapshot;
+
+  for (let attempt = 0; attempt < PLANNING_STATE_SAVE_ATTEMPTS; attempt += 1) {
+    const latestEnvelope = readEnvelope(snapshot.data, context);
+    if ((latestEnvelope.working?.revision ?? 0) !== expectedRevision) {
+      return conflictResponse(latestEnvelope, monthKey);
+    }
+
+    const merged = mergeEnvelope(snapshot.data, context, envelope);
+    const result = await writePlanningStateSnapshot(db, context.year, snapshot, merged, updatedAt);
+
+    if (result.ok) return null;
+    if ("error" in result) return NextResponse.json({ error: result.error }, { status: 500 });
+
+    snapshot = await loadPlanningState<StoredState>(db, context.year);
+  }
+
+  return conflictResponse(
+    readEnvelope(snapshot.data, context),
+    monthKey,
+    "Состояние плана изменилось во время сохранения. Обновите данные и повторите.",
+  );
 }
 
 export async function GET(request: NextRequest) {
   const resolved = await resolveContext(request);
   if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
   try {
-    const state = await loadState(resolved.db, resolved.context.year);
-    const envelope = readEnvelope(state, resolved.context);
+    const snapshot = await loadPlanningState<StoredState>(resolved.db, resolved.context.year);
+    const envelope = readEnvelope(snapshot.data, resolved.context);
     const monthKey = normalizeSalesPlanMonthKey(new URL(request.url).searchParams.get("monthKey") ?? new URL(request.url).searchParams.get("month"));
     return NextResponse.json({
       plan: envelope.working,
@@ -153,15 +200,12 @@ export async function POST(request: NextRequest) {
   const actor = resolved.session.email;
 
   try {
-    const state = await loadState(resolved.db, resolved.context.year);
-    const currentEnvelope = readEnvelope(state, resolved.context);
+    const snapshot = await loadPlanningState<StoredState>(resolved.db, resolved.context.year);
+    const currentEnvelope = readEnvelope(snapshot.data, resolved.context);
     const current = currentEnvelope.working;
     const expectedRevision = Math.max(0, Math.round(Number(body.expectedRevision) || 0));
     if ((current?.revision ?? 0) !== expectedRevision) {
-      return NextResponse.json(
-        { error: "План изменился в другой вкладке. Обновите данные перед продолжением.", conflict: true, plan: current, approvedPlan: currentEnvelope.approved },
-        { status: 409 },
-      );
+      return conflictResponse(currentEnvelope, monthKey);
     }
 
     const now = new Date().toISOString();
@@ -255,11 +299,16 @@ export async function POST(request: NextRequest) {
     }
 
     const envelope = { working: next, approved, approvedByMonth } satisfies SalesPlanEnvelope;
-    const merged = mergeEnvelope(state, resolved.context, envelope);
-    const { error } = await resolved.db
-      .from("planning_state")
-      .upsert({ year: resolved.context.year, data: merged, updated_at: now }, { onConflict: "year" });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const saveError = await saveEnvelopeWithRetry(
+      resolved.db,
+      resolved.context,
+      snapshot,
+      expectedRevision,
+      monthKey,
+      envelope,
+      now,
+    );
+    if (saveError) return saveError;
     return NextResponse.json({ ok: true, plan: next, approvedPlan: monthKey ? getApprovedSalesPlanForMonth(envelope, monthKey) : approved, approvedByMonth });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось сохранить план" }, { status: 500 });
