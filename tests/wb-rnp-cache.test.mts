@@ -28,7 +28,7 @@ test("WB RNP snapshot tag is compact", () => {
 });
 
 test("WB RNP data-integrity schema invalidates the previous snapshot", () => {
-  assert.equal(WB_RNP_CACHE_VERSION, "v9");
+  assert.equal(WB_RNP_CACHE_VERSION, "v10");
 });
 
 test("WB RNP last-good snapshot survives short cron gaps", () => {

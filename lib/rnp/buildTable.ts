@@ -334,6 +334,19 @@ export function buildFunnelMetrics(
   });
 }
 
+export function calculateTurnoverDays(
+  stock: number,
+  values: Array<number | null>,
+  windowDays: number,
+): number | null {
+  const observed = values
+    .filter((value): value is number => value != null && Number.isFinite(value))
+    .slice(-Math.max(1, windowDays));
+  if (!observed.length) return null;
+  const average = observed.reduce((sum, value) => sum + value, 0) / observed.length;
+  return average > 0 ? Math.round(stock / average) : null;
+}
+
 // cost > 0 → добавляем прибыль и маржу после расходов МП. Для сводки эти метрики вклеиваются агрегатом по SKU.
 function buildMetrics(
   days: string[],
@@ -344,6 +357,7 @@ function buildMetrics(
   cutoffs: MetricCutoffs,
   cost = 0,
   wbCostPct: number | null = null,
+  turnoverWindowDays = 30,
 ): Metric[] {
   const pick = (key: keyof DailyRow, cutoff: string | null) => days.map((day) =>
     !cutoff || day > asOf || day > cutoff ? null : Number(byDate.get(day)?.[key] ?? 0));
@@ -413,13 +427,16 @@ function buildMetrics(
       { field: "margin_pct", label: "Расчётная маржа после рекламы, %", kind: "pct", daily: days.map(() => null), total: null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason },
     );
   }
-  // Оборачиваемость, дней = остаток / (выкупы в день). GMROI % = валовая / деньги в остатках.
-  const observedDays = buyoutsCount.filter((value) => value != null).length;
-  const dailyBuyouts = observedDays > 0 && totalBuyoutsCount != null ? totalBuyoutsCount / observedDays : 0;
-  const turnover = dailyBuyouts > 0 ? Math.round(stock / dailyBuyouts) : null;
+  // Оборачиваемость, дней = остаток / средние дневные выкупы за выбранное
+  // пользователем окно. Будущие/не загруженные дни не попадают в знаменатель.
+  const turnoverValues = days
+    .map((day, index) => ({ day, value: buyoutsCount[index] }))
+    .filter((item): item is { day: string; value: number } => item.day <= asOf && item.value != null)
+    .slice(-Math.max(1, turnoverWindowDays));
+  const turnover = calculateTurnoverDays(stock, turnoverValues.map((item) => item.value), turnoverWindowDays);
   const gmroi = grossTotalForGmroi != null && stockMoney > 0 ? r1(Math.min(999, (grossTotalForGmroi / stockMoney) * 100)) : null;
   const knownStockMoney = stockMoney > 0 || stock === 0 ? Math.round(stockMoney) : null;
-  const snapshotNote = "Текущий снимок показан в дате факта; прошлые дни не подменяются сегодняшним остатком.";
+  const snapshotNote = `Текущий снимок показан в дате факта; прошлые дни не подменяются сегодняшним остатком. Оборачиваемость рассчитана по последним ${Math.max(1, turnoverWindowDays)} доступным дням.`;
   out.push(
     { field: "stock", label: "Остаток, шт", kind: "int", daily: pointInTimeMetricDaily(days, asOf, stock), total: stock, forecast: null, source: "WB Остатки", note: snapshotNote, group_start: true },
     { field: "money", label: "Деньги в остатках, ₽", kind: "money", daily: pointInTimeMetricDaily(days, asOf, knownStockMoney), total: knownStockMoney, forecast: null, source: "WB Остатки + себестоимость", note: snapshotNote, qualityReason: knownStockMoney == null && stock > 0 ? "missing_cost" : undefined },
@@ -772,7 +789,13 @@ async function loadScopedBaseFacts(
   return buildScopedBaseFactsFromRows({ allowedNmIds: allowed, orders, sales, advertSpend, stocks, products, costs });
 }
 
-export async function buildRnpTable(from: string, to: string, cabinetId?: string | null, shopLabel?: string): Promise<RnpTable | { error: string }> {
+export async function buildRnpTable(
+  from: string,
+  to: string,
+  cabinetId?: string | null,
+  shopLabel?: string,
+  turnoverWindowDays = 30,
+): Promise<RnpTable | { error: string }> {
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен" };
 
@@ -1039,7 +1062,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
     const skus = [...totalByNm.values()]
       .map((t) => {
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
-        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id));
+        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays);
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
         return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: orders };
@@ -1048,7 +1071,7 @@ export async function buildRnpTable(from: string, to: string, cabinetId?: string
       .map(({ _o, ...rest }) => { void _o; return rest; });
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
-    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs);
+    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays);
     summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs));
     const sumDaily = (field: string) => days.map((_, i) => {
       let acc = 0, any = false;

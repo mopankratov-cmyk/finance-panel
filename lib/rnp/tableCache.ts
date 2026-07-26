@@ -8,13 +8,14 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 // холодным тяжёлым расчётом, если почасовой прогрев задержался из-за WB/БД.
 // Сам прогрев всё равно принудительно пересобирает снимки каждый час.
 export const WB_RNP_CACHE_SECONDS = 12 * 60 * 60;
-export const WB_RNP_CACHE_VERSION = "v9";
+export const WB_RNP_CACHE_VERSION = "v10";
 
 export interface WbRnpCacheRequest {
   from: string;
   to: string;
   cabinetId: string | null;
   label?: string;
+  turnoverWindowDays?: number;
 }
 
 export interface WbRnpCacheOptions {
@@ -38,6 +39,7 @@ export function wbRnpCacheIdentity(input: WbRnpCacheRequest): string {
     to: input.to,
     cabinetId: input.cabinetId,
     label: input.label?.trim() || "Все кабинеты",
+    turnoverWindowDays: input.turnoverWindowDays ?? 30,
   });
 }
 
@@ -56,7 +58,13 @@ export async function loadCachedWbRnp(
   if (revalidationProfile) revalidateTag(tag, revalidationProfile);
   const loadSnapshot = unstable_cache(
     async () => {
-      const result = await buildRnpTable(input.from, input.to, input.cabinetId, input.label);
+      const result = await buildRnpTable(
+        input.from,
+        input.to,
+        input.cabinetId,
+        input.label,
+        input.turnoverWindowDays ?? 30,
+      );
       if ("error" in result) throw new Error(result.error);
       return encodeCompressedJson(result);
     },

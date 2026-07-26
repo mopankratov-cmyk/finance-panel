@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  BookOpen,
   CalendarDays,
   Loader2,
   Pencil,
@@ -22,7 +23,31 @@ import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
 import { readApiResponse, readOkApiResponse } from "@/lib/http/readApiResponse";
 import { buildRnpArticleCompare } from "@/lib/rnp/articleCompare";
 import { buildRnpFocusSummary, type RnpFocusSignal } from "@/lib/rnp/focusSummary";
+import {
+  RNP_METRIC_FIELDS,
+  RNP_VIEW_PRESETS,
+  anomalyDirection,
+  detectSkuAnomalies,
+  filterAnomalies,
+  matchesArticleList,
+  metricDelta,
+  previousEqualRange,
+  sanitizeMetricFields,
+  type RnpAnomaly,
+  type RnpAnomalyDirection,
+  type RnpDeltaMode,
+  type RnpMetricField,
+  type RnpViewId,
+} from "@/lib/rnp/operatingMatrix";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import {
+  RnpOperatingToolbar,
+  type RnpTagOption,
+} from "./RnpOperatingToolbar";
+import {
+  RnpProductOperationsDrawer,
+  type RnpJournalEntry,
+} from "./RnpProductOperationsDrawer";
 import { WbProductImage } from "./WbProductImage";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -96,26 +121,31 @@ interface RnpFilterPreset {
   compareMetric?: (typeof COMPARE_METRICS)[number]["field"];
 }
 
-const METRIC_ORDER = [
-  "views",
-  "clicks",
-  "ctr",
-  "open_card",
-  "cart",
-  "orders_sum",
-  "orders_count",
-  "buyouts_sum",
-  "buyouts_count",
-  "buyout_pct",
-  "gross",
-  "margin_pct",
-  "ad_spent",
-  "drr",
-  "stock",
-  "turnover",
-  "money",
-  "gmroi",
-];
+interface RnpTagAssignment {
+  nm_id: number;
+  tag_id: string;
+}
+
+interface RnpOperationsPayload {
+  available?: boolean;
+  tags?: RnpTagOption[];
+  assignments?: RnpTagAssignment[];
+  journal?: RnpJournalEntry[];
+  message?: string;
+  error?: string;
+}
+
+interface RnpMatrixPreferences {
+  metricFields: RnpMetricField[];
+  showDeltas: boolean;
+  deltaMode: RnpDeltaMode;
+  heatmapEnabled: boolean;
+  sparklinesEnabled: boolean;
+  anomalyThreshold: number;
+  turnoverWindowDays: number;
+}
+
+const METRIC_ORDER = [...RNP_METRIC_FIELDS];
 
 const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   views: { label: "Рекламные показы", kind: "int" },
@@ -139,8 +169,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
 };
 
 const METRIC_ROW_HEIGHT = 34;
-const SKU_BLOCK_HEIGHT = METRIC_ORDER.length * METRIC_ROW_HEIGHT;
-const TABLE_PREFIX_HEIGHT = 38 + 34 + METRIC_ORDER.length * METRIC_ROW_HEIGHT + 34;
+const DELTA_METRIC_ROW_HEIGHT = 42;
 const MOBILE_PAGE_SIZE = 20;
 const MONTHLY_FLOW_FIELDS = new Set([
   "views",
@@ -186,6 +215,7 @@ const PRESETS = [
 ] as const;
 
 const RNP_FILTER_PRESETS_STORAGE_KEY = "finance-panel:wb-rnp-filter-presets:v1";
+const RNP_MATRIX_STORAGE_KEY = "finance-panel:wb-rnp-operating-matrix:v1";
 const MAX_USER_FILTER_PRESETS = 8;
 const SHOW_RNP_ASSISTANT_BLOCKS = false;
 
@@ -318,6 +348,42 @@ function writeUserFilterPresets(presets: RnpFilterPreset[]) {
   }
 }
 
+function readMatrixPreferences(): RnpMatrixPreferences {
+  const fallback: RnpMatrixPreferences = {
+    metricFields: [...RNP_VIEW_PRESETS[0].fields],
+    showDeltas: true,
+    deltaMode: "percent",
+    heatmapEnabled: true,
+    sparklinesEnabled: true,
+    anomalyThreshold: 30,
+    turnoverWindowDays: 30,
+  };
+  try {
+    const raw = window.localStorage.getItem(RNP_MATRIX_STORAGE_KEY);
+    if (!raw) return fallback;
+    const value = JSON.parse(raw) as Partial<RnpMatrixPreferences>;
+    return {
+      metricFields: sanitizeMetricFields(value.metricFields, fallback.metricFields),
+      showDeltas: value.showDeltas !== false,
+      deltaMode: value.deltaMode === "absolute" ? "absolute" : "percent",
+      heatmapEnabled: value.heatmapEnabled !== false,
+      sparklinesEnabled: value.sparklinesEnabled !== false,
+      anomalyThreshold: Math.max(10, Math.min(100, Number(value.anomalyThreshold) || 30)),
+      turnoverWindowDays: [7, 14, 30, 60, 90].includes(Number(value.turnoverWindowDays)) ? Number(value.turnoverWindowDays) : 30,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeMatrixPreferences(value: RnpMatrixPreferences) {
+  try {
+    window.localStorage.setItem(RNP_MATRIX_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // В закрытом браузере настройки останутся в текущей сессии.
+  }
+}
+
 function matchingPresetCategory(preset: RnpFilterPreset, categories: string[]) {
   if (preset.category) return preset.category === "__none" || categories.includes(preset.category) ? preset.category : "";
   const keywords = preset.categoryKeywords ?? [];
@@ -360,8 +426,8 @@ function findMetric(metrics: Metric[], field: string) {
   return metrics.find((metric) => metric.field === field);
 }
 
-function completeMetrics(metrics: Metric[], periodLength: number) {
-  return METRIC_ORDER.map((field) => {
+function completeMetrics(metrics: Metric[], periodLength: number, fields: readonly string[] = METRIC_ORDER) {
+  return fields.map((field) => {
     const existing = findMetric(metrics, field);
     if (existing) return existing;
     const fallback = METRIC_FALLBACKS[field];
@@ -438,6 +504,7 @@ export function WbRnpPage() {
   const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, canWrite, setCabinetId } = useWbCabinet();
   const [range, setRange] = useState<DateRange>(() => rangeFor("month"));
   const [data, setData] = useState<RnpTable | null>(null);
+  const [previousData, setPreviousData] = useState<RnpTable | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -456,6 +523,28 @@ export function WbRnpPage() {
   const [skuWindow, setSkuWindow] = useState({ start: 0, end: 4 });
   const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE_SIZE);
   const [userFilterPresets, setUserFilterPresets] = useState<RnpFilterPreset[]>([]);
+  const [matrixReady, setMatrixReady] = useState(false);
+  const [metricViewId, setMetricViewId] = useState<RnpViewId>("main");
+  const [metricFields, setMetricFields] = useState<RnpMetricField[]>([...RNP_VIEW_PRESETS[0].fields]);
+  const [metricsOpen, setMetricsOpen] = useState(false);
+  const [articleQuery, setArticleQuery] = useState("");
+  const [showDeltas, setShowDeltas] = useState(true);
+  const [deltaMode, setDeltaMode] = useState<RnpDeltaMode>("percent");
+  const [heatmapEnabled, setHeatmapEnabled] = useState(true);
+  const [sparklinesEnabled, setSparklinesEnabled] = useState(true);
+  const [anomalyMode, setAnomalyMode] = useState<"off" | RnpAnomalyDirection>("off");
+  const [anomalyThreshold, setAnomalyThreshold] = useState(30);
+  const [turnoverWindowDays, setTurnoverWindowDays] = useState(30);
+  const [operationsAvailable, setOperationsAvailable] = useState(false);
+  const [operationsMessage, setOperationsMessage] = useState<string | null>(null);
+  const [operationsLoading, setOperationsLoading] = useState(false);
+  const [operationsBusy, setOperationsBusy] = useState(false);
+  const [tags, setTags] = useState<RnpTagOption[]>([]);
+  const [tagAssignments, setTagAssignments] = useState<RnpTagAssignment[]>([]);
+  const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
+  const [selectedOperationNms, setSelectedOperationNms] = useState<number[]>([]);
+  const [operationsSkuNm, setOperationsSkuNm] = useState<number | null>(null);
+  const [journal, setJournal] = useState<RnpJournalEntry[]>([]);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
@@ -463,18 +552,52 @@ export function WbRnpPage() {
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
   const month = range.from.slice(0, 7);
-  const currentDataKey = `${cabinetId || "all"}:${range.from}:${range.to}`;
+  const currentDataKey = `${cabinetId || "all"}:${range.from}:${range.to}:${turnoverWindowDays}`;
   const activeData = dataKey === currentDataKey ? data : null;
 
   useEffect(() => {
     setUserFilterPresets(readUserFilterPresets());
+    const preferences = readMatrixPreferences();
+    setMetricFields(preferences.metricFields);
+    setShowDeltas(preferences.showDeltas);
+    setDeltaMode(preferences.deltaMode);
+    setHeatmapEnabled(preferences.heatmapEnabled);
+    setSparklinesEnabled(preferences.sparklinesEnabled);
+    setAnomalyThreshold(preferences.anomalyThreshold);
+    setTurnoverWindowDays(preferences.turnoverWindowDays);
+    const preset = RNP_VIEW_PRESETS.find((view) =>
+      view.fields.length === preferences.metricFields.length
+      && view.fields.every((field, index) => field === preferences.metricFields[index]));
+    setMetricViewId(preset?.id ?? "custom");
+    setMatrixReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!matrixReady) return;
+    writeMatrixPreferences({
+      metricFields,
+      showDeltas,
+      deltaMode,
+      heatmapEnabled,
+      sparklinesEnabled,
+      anomalyThreshold,
+      turnoverWindowDays,
+    });
+  }, [anomalyThreshold, deltaMode, heatmapEnabled, matrixReady, metricFields, showDeltas, sparklinesEnabled, turnoverWindowDays]);
 
   useEffect(() => {
     setPlanning(false);
     setPlan({});
     setDrafts({});
     setPlanMessage(null);
+    setPreviousData(null);
+    setTags([]);
+    setTagAssignments([]);
+    setActiveTagIds([]);
+    setSelectedOperationNms([]);
+    setOperationsSkuNm(null);
+    setJournal([]);
+    setOperationsMessage(null);
   }, [cabinetId]);
 
   useEffect(() => {
@@ -496,31 +619,52 @@ export function WbRnpPage() {
       return;
     }
 
-    const requestKey = `${cabinetId || "all"}:${range.from}:${range.to}`;
+    const requestKey = `${cabinetId || "all"}:${range.from}:${range.to}:${turnoverWindowDays}`;
     if (dataKeyRef.current !== requestKey) {
       dataKeyRef.current = null;
       setDataKey(null);
       setData(null);
+      setPreviousData(null);
     }
     const controller = new AbortController();
+    const previousController = new AbortController();
     const currentRequest = ++requestId.current;
     let timedOut = false;
     const deadline = window.setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, 65_000);
+    const previousDeadline = window.setTimeout(() => previousController.abort(), 45_000);
 
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({ date_from: range.from, date_to: range.to });
-    deploymentPinnedFetch(`/api/rnp/${encodeURIComponent(cabinetId || "all")}/table?${params.toString()}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        return readOkApiResponse<RnpTable>(response, "РНП");
+    const loadTable = async (from: string, to: string, label: string, signal: AbortSignal) => {
+      const params = new URLSearchParams({
+        date_from: from,
+        date_to: to,
+        turnover_days: String(turnoverWindowDays),
+      });
+      const response = await deploymentPinnedFetch(`/api/rnp/${encodeURIComponent(cabinetId || "all")}/table?${params.toString()}`, {
+        cache: "no-store",
+        signal,
+      });
+      return label === "РНП"
+        ? readOkApiResponse<RnpTable>(response, "РНП")
+        : readOkApiResponse<RnpTable>(response, label);
+    };
+    const previousRange = previousEqualRange(range.from, range.to);
+
+    loadTable(previousRange.from, previousRange.to, "РНП за предыдущий период", previousController.signal)
+      .then((previous) => {
+        if (currentRequest === requestId.current) setPreviousData(previous.error ? null : previous);
       })
+      .catch(() => {
+        if (currentRequest === requestId.current) setPreviousData(null);
+      })
+      .finally(() => window.clearTimeout(previousDeadline));
+
+    loadTable(range.from, range.to, "РНП", controller.signal)
       .then((body) => {
         if (currentRequest !== requestId.current) return;
         if (body.error) throw new Error(body.error);
@@ -545,9 +689,11 @@ export function WbRnpPage() {
 
     return () => {
       window.clearTimeout(deadline);
+      window.clearTimeout(previousDeadline);
       controller.abort();
+      previousController.abort();
     };
-  }, [activeCabinet, cabinetId, cabinets.length, cabinetsError, cabinetsLoading, range.from, range.to, ready, retryKey]);
+  }, [activeCabinet, cabinetId, cabinets.length, cabinetsError, cabinetsLoading, range.from, range.to, ready, retryKey, turnoverWindowDays]);
 
   useEffect(() => {
     if (!canWrite) {
@@ -571,10 +717,76 @@ export function WbRnpPage() {
     return () => controller.abort();
   }, [cabinetId, canWrite, month]);
 
-  const filteredSkus = useMemo(
+  useEffect(() => {
+    if (!canWrite || cabinetId === "all") {
+      setOperationsAvailable(false);
+      setTags([]);
+      setTagAssignments([]);
+      setJournal([]);
+      return;
+    }
+    const controller = new AbortController();
+    const params = new URLSearchParams();
+    if (operationsSkuNm != null) params.set("nm", String(operationsSkuNm));
+    setOperationsLoading(true);
+    deploymentPinnedFetch(`/api/rnp/${encodeURIComponent(cabinetId)}/operations${params.size ? `?${params.toString()}` : ""}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) => readApiResponse<RnpOperationsPayload>(response, "Теги и журнал РНП").then((body) => ({ response, body })))
+      .then(({ response, body }) => {
+        if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
+        setOperationsAvailable(body.available === true);
+        setOperationsMessage(body.message ?? null);
+        setTags(body.tags ?? []);
+        setTagAssignments(body.assignments ?? []);
+        setJournal(body.journal ?? []);
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setOperationsAvailable(false);
+          setOperationsMessage(cause instanceof Error ? cause.message : "Не удалось загрузить теги и журнал");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setOperationsLoading(false);
+      });
+    return () => controller.abort();
+  }, [cabinetId, canWrite, operationsSkuNm]);
+
+  const previousSkuByNm = useMemo(
+    () => new Map((previousData?.skus ?? []).map((sku) => [sku.nm, sku])),
+    [previousData?.skus],
+  );
+  const tagsByNm = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const assignment of tagAssignments) {
+      const list = map.get(assignment.nm_id) ?? [];
+      list.push(assignment.tag_id);
+      map.set(assignment.nm_id, list);
+    }
+    return map;
+  }, [tagAssignments]);
+  const anomalyByNm = useMemo(() => {
+    const map = new Map<number, RnpAnomaly[]>();
+    for (const sku of activeData?.skus ?? []) {
+      const anomalies = detectSkuAnomalies(sku, previousSkuByNm.get(sku.nm), anomalyThreshold);
+      if (anomalies.length) map.set(sku.nm, anomalies);
+    }
+    return map;
+  }, [activeData?.skus, anomalyThreshold, previousSkuByNm]);
+
+  const categorySkus = useMemo(
     () => filterByCategory(activeData?.skus ?? [], (sku) => sku.art, byArticle, category),
     [activeData?.skus, byArticle, category],
   );
+  const filteredSkus = useMemo(() => categorySkus
+    .filter((sku) => matchesArticleList(sku, articleQuery))
+    .filter((sku) => !activeTagIds.length || (tagsByNm.get(sku.nm) ?? []).some((tagId) => activeTagIds.includes(tagId)))
+    .filter((sku) => {
+      if (anomalyMode === "off") return true;
+      return filterAnomalies(anomalyByNm.get(sku.nm) ?? [], anomalyMode).length > 0;
+    }), [activeTagIds, anomalyByNm, anomalyMode, articleQuery, categorySkus, tagsByNm]);
 
   const sortedSkus = useMemo(() => {
     return [...filteredSkus].sort((left, right) => {
@@ -600,10 +812,18 @@ export function WbRnpPage() {
     setSkuWindow({ start: 0, end: Math.min(4, tableSkus.length) });
     setMobileLimit(MOBILE_PAGE_SIZE);
     if (tableViewportRef.current) tableViewportRef.current.scrollTop = 0;
-  }, [tableSkus]);
+  }, [metricFields.length, showDeltas, tableSkus]);
+
+  useEffect(() => {
+    const available = new Set((activeData?.skus ?? []).map((sku) => sku.nm));
+    setSelectedOperationNms((current) => current.filter((nm) => available.has(nm)));
+    if (operationsSkuNm != null && !available.has(operationsSkuNm)) setOperationsSkuNm(null);
+  }, [activeData?.skus, operationsSkuNm]);
 
   const visibleSkus = tableSkus.slice(skuWindow.start, skuWindow.end);
   const mobileSkus = tableSkus.slice(0, mobileLimit);
+  const operationsSku = operationsSkuNm == null ? null : activeData?.skus.find((sku) => sku.nm === operationsSkuNm) ?? null;
+  const anomalyCount = [...anomalyByNm.values()].filter((items) => items.length > 0).length;
   const monthDayCount = daysInMonth(month);
   const planOverview = (() => {
     if (!activeData) return null;
@@ -663,11 +883,22 @@ export function WbRnpPage() {
     () => [...visibleSystemPresets, ...userFilterPresets],
     [userFilterPresets, visibleSystemPresets],
   );
+  const metricDefinitions = useMemo(
+    () => RNP_METRIC_FIELDS.map((field) => ({ field, label: METRIC_FALLBACKS[field].label })),
+    [],
+  );
+  const previousSummaryByField = useMemo(
+    () => new Map((previousData?.summary ?? []).map((metric) => [metric.field, metric])),
+    [previousData?.summary],
+  );
+  const metricRowHeight = showDeltas ? DELTA_METRIC_ROW_HEIGHT : METRIC_ROW_HEIGHT;
+  const skuBlockHeight = metricFields.length * metricRowHeight;
+  const tablePrefixHeight = 38 + 34 + metricFields.length * metricRowHeight + 34;
 
   const updateSkuWindow = (element: HTMLDivElement) => {
-    const offset = Math.max(0, element.scrollTop - TABLE_PREFIX_HEIGHT);
-    const firstVisible = Math.floor(offset / SKU_BLOCK_HEIGHT);
-    const visibleBlocks = Math.ceil(element.clientHeight / SKU_BLOCK_HEIGHT);
+    const offset = Math.max(0, element.scrollTop - tablePrefixHeight);
+    const firstVisible = Math.floor(offset / skuBlockHeight);
+    const visibleBlocks = Math.ceil(element.clientHeight / skuBlockHeight);
     const start = Math.max(0, firstVisible - 1);
     const end = Math.min(tableSkus.length, firstVisible + visibleBlocks + 2);
     setSkuWindow((current) => (current.start === start && current.end === end ? current : { start, end }));
@@ -695,6 +926,18 @@ export function WbRnpPage() {
   };
 
   const applyPreset = (preset: DateRange["preset"]) => setRange(rangeFor(preset));
+
+  const applyMetricView = (viewId: Exclude<RnpViewId, "custom">) => {
+    const view = RNP_VIEW_PRESETS.find((item) => item.id === viewId);
+    if (!view) return;
+    setMetricViewId(viewId);
+    setMetricFields([...view.fields]);
+  };
+
+  const updateMetricFields = (fields: RnpMetricField[]) => {
+    setMetricFields(sanitizeMetricFields(fields));
+    setMetricViewId("custom");
+  };
 
   const applyFilterPreset = (preset: RnpFilterPreset) => {
     const nextCabinet = preset.cabinetId;
@@ -752,6 +995,69 @@ export function WbRnpPage() {
     });
   };
 
+  const postOperation = async <T extends RnpOperationsPayload>(body: Record<string, unknown>) => {
+    if (!canWrite || cabinetId === "all") return null;
+    setOperationsBusy(true);
+    setOperationsMessage(null);
+    try {
+      const response = await deploymentPinnedFetch(`/api/rnp/${encodeURIComponent(cabinetId)}/operations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await readApiResponse<T>(response, "Операция РНП");
+      if (!response.ok) throw new Error(result.error || `Ошибка ${response.status}`);
+      return result;
+    } catch (cause) {
+      setOperationsMessage(cause instanceof Error ? cause.message : "Не удалось сохранить изменение");
+      return null;
+    } finally {
+      setOperationsBusy(false);
+    }
+  };
+
+  const createTag = async (name: string, color: string) => {
+    const result = await postOperation<RnpOperationsPayload & { tag?: RnpTagOption }>({
+      action: "create_tag",
+      name,
+      color,
+    });
+    if (result?.tag) setTags((current) => [...current, result.tag!].sort((left, right) => left.name.localeCompare(right.name, "ru")));
+    return Boolean(result?.tag);
+  };
+
+  const setTagForNms = async (tagId: string, nmIds: number[], assigned: boolean) => {
+    if (!nmIds.length) return false;
+    const result = await postOperation({ action: "set_tag", tagId, nmIds, assigned });
+    if (!result) return false;
+    setTagAssignments((current) => {
+      const selected = new Set(nmIds);
+      const without = current.filter((item) => !(item.tag_id === tagId && selected.has(item.nm_id)));
+      return assigned ? [
+        ...without,
+        ...nmIds.map((nm) => ({ nm_id: nm, tag_id: tagId })),
+      ] : without;
+    });
+    return true;
+  };
+
+  const bulkTag = async (tagId: string) => {
+    const ok = await setTagForNms(tagId, selectedOperationNms, true);
+    if (ok) setSelectedOperationNms([]);
+  };
+
+  const addJournal = async (input: { eventDate: string; eventType: string; comment: string }) => {
+    if (!operationsSku) return false;
+    const result = await postOperation<RnpOperationsPayload & { entry?: RnpJournalEntry }>({
+      action: "add_journal",
+      nmId: operationsSku.nm,
+      ...input,
+    });
+    if (!result?.entry) return false;
+    setJournal((current) => [result.entry!, ...current]);
+    return true;
+  };
+
   const savePlan = async (sku: Sku, metric: Metric) => {
     const key = `${sku.nm}:${metric.field}`;
     const raw = drafts[key];
@@ -789,7 +1095,7 @@ export function WbRnpPage() {
     });
   };
 
-  const totalColumns = 7 + (activeData?.period.length ?? 0);
+  const totalColumns = 7 + (sparklinesEnabled ? 1 : 0) + (activeData?.period.length ?? 0);
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] px-3 pb-20 pt-3 md:px-6 md:pb-6 md:pt-4">
@@ -890,6 +1196,42 @@ export function WbRnpPage() {
         </div>
       </section>
 
+      <RnpOperatingToolbar
+        viewId={metricViewId}
+        metricFields={metricFields}
+        metrics={metricDefinitions}
+        metricsOpen={metricsOpen}
+        articleQuery={articleQuery}
+        showDeltas={showDeltas}
+        deltaMode={deltaMode}
+        heatmapEnabled={heatmapEnabled}
+        sparklinesEnabled={sparklinesEnabled}
+        anomalyMode={anomalyMode}
+        anomalyThreshold={anomalyThreshold}
+        anomalyCount={anomalyCount}
+        turnoverWindowDays={turnoverWindowDays}
+        tags={tags}
+        activeTagIds={activeTagIds}
+        selectedCount={selectedOperationNms.length}
+        operationsAvailable={operationsAvailable}
+        busy={operationsBusy}
+        onViewChange={applyMetricView}
+        onMetricFieldsChange={updateMetricFields}
+        onMetricsOpenChange={setMetricsOpen}
+        onArticleQueryChange={setArticleQuery}
+        onShowDeltasChange={setShowDeltas}
+        onDeltaModeChange={setDeltaMode}
+        onHeatmapChange={setHeatmapEnabled}
+        onSparklinesChange={setSparklinesEnabled}
+        onAnomalyModeChange={setAnomalyMode}
+        onAnomalyThresholdChange={setAnomalyThreshold}
+        onTurnoverWindowChange={setTurnoverWindowDays}
+        onTagFilterToggle={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((item) => item !== tagId) : [...current, tagId])}
+        onCreateTag={createTag}
+        onBulkTag={bulkTag}
+        onClearSelection={() => setSelectedOperationNms([])}
+      />
+
       {SHOW_RNP_ASSISTANT_BLOCKS && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Быстрые срезы РНП">
           <div className="flex flex-wrap items-center gap-2">
@@ -935,6 +1277,11 @@ export function WbRnpPage() {
       {planMessage && (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {planMessage}
+        </div>
+      )}
+      {operationsMessage && canWrite && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {operationsMessage}
         </div>
       )}
 
@@ -1248,6 +1595,7 @@ export function WbRnpPage() {
                   <PlanHeader>Прогноз мес.<span className="mt-0.5 block text-[8px] font-normal text-slate-400">диапазон</span></PlanHeader>
                   <PlanHeader>% плана</PlanHeader>
                   <PlanHeader strong>Факт мес.</PlanHeader>
+                  {sparklinesEnabled ? <TrendHeader /> : null}
                   {activeData.period.map((day, index) => (
                     <th key={`${day.label}-${index}`} className="sticky top-0 z-30 h-[38px] w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fafbfc] px-1.5 text-center font-medium text-slate-500">
                       <span className="block">{day.label}</span>
@@ -1258,20 +1606,27 @@ export function WbRnpPage() {
               </thead>
               <tbody>
                 <SectionRow columns={totalColumns} icon="chart" label="СВОДКА ПО МАГАЗИНУ" />
-                {completeMetrics(activeData.summary, activeData.period.length).map((metric, index, metrics) => (
+                {completeMetrics(activeData.summary, activeData.period.length, metricFields).map((metric, index, metrics) => (
                   <MetricRow
                     key={`summary-${metric.field}`}
                     metric={metric}
+                    previousMetric={previousSummaryByField.get(metric.field)}
                     planValue={aggregatePlanValue(plan, activeData.skus, metric.field, monthDayCount)}
                     planEditable={false}
                     monthDays={monthDayCount}
+                    showDeltas={showDeltas}
+                    deltaMode={deltaMode}
+                    heatmapEnabled={heatmapEnabled}
+                    sparklinesEnabled={sparklinesEnabled}
                     firstCell={index === 0 ? <SummaryCell label={activeData.shop_label} rowSpan={metrics.length} /> : null}
                   />
                 ))}
                 <SectionRow columns={totalColumns} icon="box" label={focusedNm == null ? `ТОВАРЫ (${sortedSkus.length})` : `ТОВАРЫ (1 из ${sortedSkus.length})`} />
-                {skuWindow.start > 0 && <SpacerRow columns={totalColumns} height={skuWindow.start * SKU_BLOCK_HEIGHT} />}
+                {skuWindow.start > 0 && <SpacerRow columns={totalColumns} height={skuWindow.start * skuBlockHeight} />}
                 {visibleSkus.map((sku) => {
-                  const metrics = completeMetrics(sku.metrics, activeData.period.length);
+                  const metrics = completeMetrics(sku.metrics, activeData.period.length, metricFields);
+                  const previousSku = previousSkuByNm.get(sku.nm);
+                  const skuTagIds = tagsByNm.get(sku.nm) ?? [];
                   return metrics.map((metric, index) => {
                     const key = `${sku.nm}:${metric.field}`;
                     const savedPlan = plan[String(sku.nm)]?.[metric.field] ?? null;
@@ -1280,10 +1635,26 @@ export function WbRnpPage() {
                       <MetricRow
                         key={`${sku.nm}-${metric.field}`}
                         metric={metric}
+                        previousMetric={findMetric(previousSku?.metrics ?? [], metric.field)}
                         planValue={savedPlan}
                         planEditable={planning && canWrite}
                         monthDays={monthDayCount}
-                        firstCell={index === 0 ? <ProductCell sku={sku} rowSpan={metrics.length} /> : null}
+                        showDeltas={showDeltas}
+                        deltaMode={deltaMode}
+                        heatmapEnabled={heatmapEnabled}
+                        sparklinesEnabled={sparklinesEnabled}
+                        firstCell={index === 0 ? (
+                          <ProductCell
+                            sku={sku}
+                            rowSpan={metrics.length}
+                            tags={tags.filter((tag) => skuTagIds.includes(tag.id))}
+                            anomalies={anomalyByNm.get(sku.nm) ?? []}
+                            selected={selectedOperationNms.includes(sku.nm)}
+                            onSelectedChange={operationsAvailable ? (selected) => setSelectedOperationNms((current) =>
+                              selected ? [...new Set([...current, sku.nm])] : current.filter((nm) => nm !== sku.nm)) : undefined}
+                            onOpenOperations={canWrite ? () => setOperationsSkuNm(sku.nm) : undefined}
+                          />
+                        ) : null}
                         draftValue={displayedDraft}
                         saving={saving === key}
                         onDraftChange={(value) => setDrafts((current) => ({ ...current, [key]: value }))}
@@ -1292,7 +1663,7 @@ export function WbRnpPage() {
                     );
                   });
                 })}
-                {skuWindow.end < tableSkus.length && <SpacerRow columns={totalColumns} height={(tableSkus.length - skuWindow.end) * SKU_BLOCK_HEIGHT} />}
+                {skuWindow.end < tableSkus.length && <SpacerRow columns={totalColumns} height={(tableSkus.length - skuWindow.end) * skuBlockHeight} />}
               </tbody>
             </table>
           </div>
@@ -1302,9 +1673,12 @@ export function WbRnpPage() {
               Сначала показаны {Math.min(mobileLimit, tableSkus.length)} SKU по сортировке «{SORTS.find((sort) => sort.field === sortField)?.label}».
             </p>
             {mobileSkus.map((sku) => {
-              const selected = SORTS.map((sort) => findMetric(sku.metrics, sort.field)).filter((metric): metric is Metric => Boolean(metric));
+              const selected = completeMetrics(sku.metrics, activeData.period.length, metricFields).slice(0, 8);
               const orders = findMetric(sku.metrics, "orders_sum");
+              const previousOrders = findMetric(previousSkuByNm.get(sku.nm)?.metrics ?? [], "orders_sum");
+              const orderDelta = metricDelta(orders?.total, previousOrders?.total);
               const skuPlan = plan[String(sku.nm)]?.orders_sum ?? null;
+              const skuTagIds = tagsByNm.get(sku.nm) ?? [];
               return (
                 <article key={sku.nm} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                   <div className="flex items-center gap-2.5">
@@ -1314,10 +1688,24 @@ export function WbRnpPage() {
                       <p className="mt-0.5 truncate text-[10px] text-slate-400">{sku.name}</p>
                       <p className="mt-1 text-[9px] text-slate-400">WB {sku.nm}</p>
                     </div>
+                    {canWrite ? (
+                      <button type="button" onClick={() => setOperationsSkuNm(sku.nm)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-400 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700" aria-label={`Теги и журнал ${sku.art}`}>
+                        <BookOpen className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </div>
+                  {skuTagIds.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {tags.filter((tag) => skuTagIds.includes(tag.id)).map((tag) => (
+                        <span key={tag.id} className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1 text-[8px] font-semibold text-slate-600">
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tag.color }} />{tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   <dl className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-50 p-1.5">
                     <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">План</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">{compactFmt(skuPlan, "money")}</dd></div>
-                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Факт</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">{compactFmt(orders?.total, "money")}</dd></div>
+                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Факт</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">{compactFmt(orders?.total, "money")}</dd>{showDeltas && orderDelta ? <DeltaMark delta={orderDelta} kind="money" mode={deltaMode} field="orders_sum" /> : null}</div>
                     <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Прогноз</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-violet-700">{compactFmt(orders?.forecast, "money")}</dd></div>
                   </dl>
                   <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-slate-200">
@@ -1343,6 +1731,19 @@ export function WbRnpPage() {
           </div>
         </>
       ) : null}
+
+      <RnpProductOperationsDrawer
+        sku={operationsSku}
+        tags={tags}
+        assignedTagIds={operationsSku ? tagsByNm.get(operationsSku.nm) ?? [] : []}
+        journal={journal}
+        loading={operationsLoading}
+        available={operationsAvailable}
+        message={operationsMessage}
+        onClose={() => setOperationsSkuNm(null)}
+        onToggleTag={(tagId, assigned) => operationsSku ? setTagForNms(tagId, [operationsSku.nm], assigned) : Promise.resolve(false)}
+        onAddJournal={addJournal}
+      />
     </div>
   );
 }
@@ -1441,6 +1842,15 @@ function PlanHeader({ children, strong = false }: { children: React.ReactNode; s
   );
 }
 
+function TrendHeader() {
+  return (
+    <th className="sticky top-0 z-30 h-[38px] w-[72px] min-w-[72px] border-b border-r border-slate-200 bg-[#fafbfc] px-1 text-center font-semibold text-slate-500">
+      Тренд
+      <span className="mt-0.5 block text-[8px] font-normal text-slate-400">по дням</span>
+    </th>
+  );
+}
+
 function SectionRow({ columns, label, icon }: { columns: number; label: string; icon: "chart" | "box" }) {
   return (
     <tr>
@@ -1462,14 +1872,63 @@ function SpacerRow({ columns, height }: { columns: number; height: number }) {
   );
 }
 
-function ProductCell({ sku, rowSpan }: { sku: Sku; rowSpan: number }) {
+function ProductCell({
+  sku,
+  rowSpan,
+  tags,
+  anomalies,
+  selected,
+  onSelectedChange,
+  onOpenOperations,
+}: {
+  sku: Sku;
+  rowSpan: number;
+  tags: RnpTagOption[];
+  anomalies: RnpAnomaly[];
+  selected: boolean;
+  onSelectedChange?: (selected: boolean) => void;
+  onOpenOperations?: () => void;
+}) {
+  const riskCount = anomalies.filter((anomaly) => anomaly.direction === "negative").length;
+  const growthCount = anomalies.filter((anomaly) => anomaly.direction === "positive").length;
   return (
     <td rowSpan={rowSpan} className="sticky left-0 z-20 w-28 min-w-28 border-b border-r border-slate-200 bg-white p-2 align-top">
       <div className="space-y-1">
-        <WbProductImage nm={sku.nm} src={sku.img_url} className="h-[74px] w-[74px] rounded-md bg-slate-100 object-cover" />
+        <div className="flex items-start justify-between gap-1">
+          <WbProductImage nm={sku.nm} src={sku.img_url} className="h-14 w-14 rounded-md bg-slate-100 object-cover" />
+          <div className="flex flex-col gap-1">
+            {onSelectedChange ? (
+              <label className="grid h-6 w-6 cursor-pointer place-items-center rounded-md border border-slate-200 bg-white hover:border-violet-300" title="Выбрать для массового тега">
+                <input type="checkbox" checked={selected} onChange={(event) => onSelectedChange(event.target.checked)} className="h-3 w-3 accent-violet-600" aria-label={`Выбрать ${sku.art}`} />
+              </label>
+            ) : null}
+            {onOpenOperations ? (
+              <button type="button" onClick={onOpenOperations} className="grid h-6 w-6 place-items-center rounded-md border border-slate-200 text-slate-400 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700" aria-label={`Открыть теги и журнал ${sku.art}`} title="Теги и журнал">
+                <BookOpen className="h-3 w-3" />
+              </button>
+            ) : null}
+          </div>
+        </div>
         <div className="truncate text-[10px] font-semibold text-violet-700" title={sku.art}>{sku.art}</div>
         <div className="text-[9px] text-slate-400">{sku.nm}</div>
         <div className="line-clamp-2 text-[9px] leading-3 text-slate-500">{sku.name}</div>
+        {tags.length ? (
+          <div className="flex flex-wrap gap-0.5 pt-0.5">
+            {tags.slice(0, 2).map((tag) => (
+              <span key={tag.id} className="inline-flex max-w-[88px] items-center gap-1 rounded-full bg-slate-50 px-1.5 py-0.5 text-[8px] font-semibold text-slate-500" title={tag.name}>
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+                <span className="truncate">{tag.name}</span>
+              </span>
+            ))}
+            {tags.length > 2 ? <span className="text-[8px] text-slate-400">+{tags.length - 2}</span> : null}
+          </div>
+        ) : null}
+        {riskCount || growthCount ? (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {riskCount ? <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[8px] font-bold text-rose-700" title={anomalies.filter((item) => item.direction === "negative").map((item) => item.label).join(", ")}>↓ риск {riskCount}</span> : null}
+            {growthCount ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[8px] font-bold text-emerald-700" title={anomalies.filter((item) => item.direction === "positive").map((item) => item.label).join(", ")}>↑ рост {growthCount}</span> : null}
+          </div>
+        ) : null}
       </div>
     </td>
   );
@@ -1485,22 +1944,32 @@ function SummaryCell({ label, rowSpan }: { label: string; rowSpan: number }) {
 
 function MetricRow({
   metric,
+  previousMetric,
   firstCell,
   planValue,
   planEditable,
   monthDays,
   draftValue = "",
   saving = false,
+  showDeltas,
+  deltaMode,
+  heatmapEnabled,
+  sparklinesEnabled,
   onDraftChange,
   onSave,
 }: {
   metric: Metric;
+  previousMetric?: Metric;
   firstCell: React.ReactNode;
   planValue: number | null;
   planEditable: boolean;
   monthDays: number;
   draftValue?: string;
   saving?: boolean;
+  showDeltas: boolean;
+  deltaMode: RnpDeltaMode;
+  heatmapEnabled: boolean;
+  sparklinesEnabled: boolean;
   onDraftChange?: (value: string) => void;
   onSave?: () => void;
 }) {
@@ -1520,15 +1989,16 @@ function MetricRow({
     qualityReason,
     metric.forecastMethod,
   ].filter(Boolean).join(" · ");
+  const rowHeight = showDeltas ? "h-[42px]" : "h-[34px]";
 
   return (
     <tr className="group hover:bg-violet-50/40">
       {firstCell}
-      <td className={`sticky left-28 z-10 h-[34px] w-[168px] min-w-[168px] border-b border-r border-slate-200 bg-white px-2 font-medium group-hover:bg-violet-50 ${groupBorder}`} title={metricHelp || undefined}>
+      <td className={`sticky left-28 z-10 ${rowHeight} w-[168px] min-w-[168px] border-b border-r border-slate-200 bg-white px-2 font-medium group-hover:bg-violet-50 ${groupBorder}`} title={metricHelp || undefined}>
         <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${qualityTone}`} />{metric.label}</span>
       </td>
-      <DataCell metric={metric} value={planDay} muted extraClass={groupBorder} />
-      <td className={`relative h-[34px] w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1 text-right tabular-nums ${groupBorder}`}>
+      <DataCell metric={metric} value={planDay} muted tall={showDeltas} heatmapEnabled={false} extraClass={groupBorder} />
+      <td className={`relative ${rowHeight} w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1 text-right tabular-nums ${groupBorder}`}>
         {planEditable ? (
           <div className="relative">
             <input
@@ -1548,17 +2018,38 @@ function MetricRow({
           <span title={planValue == null ? undefined : fmt(planValue, metric.kind)} className={planValue == null ? "text-slate-400" : "text-slate-600"}>{denseFmt(planValue, metric.kind)}</span>
         )}
       </td>
-      <ForecastCell metric={metric} extraClass={groupBorder} />
-      <DataCell metric={{ ...metric, kind: "pct" }} value={progress} muted extraClass={groupBorder} />
-      <DataCell metric={metric} value={metric.total} strong extraClass={`border-l-2 border-l-slate-300 ${groupBorder}`} />
+      <ForecastCell metric={metric} tall={showDeltas} extraClass={groupBorder} />
+      <DataCell metric={{ ...metric, kind: "pct" }} value={progress} muted tall={showDeltas} heatmapEnabled={false} extraClass={groupBorder} />
+      <DataCell
+        metric={metric}
+        value={metric.total}
+        previousValue={previousMetric?.total}
+        showDelta={showDeltas}
+        deltaMode={deltaMode}
+        tall={showDeltas}
+        heatmapEnabled={heatmapEnabled}
+        strong
+        extraClass={`border-l-2 border-l-slate-300 ${groupBorder}`}
+      />
+      {sparklinesEnabled ? <TrendCell metric={metric} extraClass={groupBorder} tall={showDeltas} /> : null}
       {metric.daily.map((value, index) => (
-        <DataCell key={index} metric={metric} value={value} extraClass={groupBorder} />
+        <DataCell
+          key={index}
+          metric={metric}
+          value={value}
+          previousValue={previousMetric?.daily[index]}
+          showDelta={showDeltas}
+          deltaMode={deltaMode}
+          tall={showDeltas}
+          heatmapEnabled={heatmapEnabled}
+          extraClass={groupBorder}
+        />
       ))}
     </tr>
   );
 }
 
-function ForecastCell({ metric, extraClass = "" }: { metric: Metric; extraClass?: string }) {
+function ForecastCell({ metric, tall, extraClass = "" }: { metric: Metric; tall: boolean; extraClass?: string }) {
   const hasRange = metric.forecastLow != null && metric.forecastHigh != null && metric.forecast != null;
   const title = [
     metric.forecast != null ? `Прогноз: ${fmt(metric.forecast, metric.kind)}` : null,
@@ -1567,37 +2058,114 @@ function ForecastCell({ metric, extraClass = "" }: { metric: Metric; extraClass?
     metric.coveragePct != null ? `Покрытие: ${metric.coveragePct}%` : null,
   ].filter(Boolean).join(" · ");
   return (
-    <td className={`h-[34px] w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1.5 text-right tabular-nums ${toneClass(metric, metric.forecast ?? null)} ${extraClass}`} title={title || undefined}>
+    <td className={`${tall ? "h-[42px]" : "h-[34px]"} w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1.5 text-right tabular-nums ${toneClass(metric, metric.forecast ?? null)} ${extraClass}`} title={title || undefined}>
       <span className="block whitespace-nowrap font-medium">{denseFmt(metric.forecast, metric.kind)}</span>
       {hasRange && <span className="mt-0.5 block text-[8px] text-slate-400">{compactFmt(metric.forecastLow, metric.kind)}–{compactFmt(metric.forecastHigh, metric.kind)}</span>}
     </td>
   );
 }
 
+function TrendCell({ metric, tall, extraClass = "" }: { metric: Metric; tall: boolean; extraClass?: string }) {
+  return (
+    <td className={`${tall ? "h-[42px]" : "h-[34px]"} w-[72px] min-w-[72px] border-b border-r border-slate-200 bg-white px-1 ${extraClass}`}>
+      <Sparkline values={metric.daily} />
+    </td>
+  );
+}
+
+function Sparkline({ values }: { values: Array<number | null> }) {
+  const known = values
+    .map((value, index) => ({ value, index }))
+    .filter((item): item is { value: number; index: number } => item.value != null && Number.isFinite(item.value));
+  if (known.length < 2) return <span className="block text-center text-[9px] text-slate-300">—</span>;
+  const min = Math.min(...known.map((item) => item.value));
+  const max = Math.max(...known.map((item) => item.value));
+  const range = max - min || 1;
+  const width = 62;
+  const height = 24;
+  const points = known.map((item) => {
+    const x = values.length <= 1 ? width / 2 : (item.index / (values.length - 1)) * width;
+    const y = height - 3 - ((item.value - min) / range) * (height - 6);
+    return `${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`;
+  }).join(" ");
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-6 w-[62px]" role="img" aria-label={`Тренд: минимум ${min}, максимум ${max}`}>
+      <polyline points={points} fill="none" stroke="#7c3aed" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={points.split(" ").at(-1)?.split(",")[0]} cy={points.split(" ").at(-1)?.split(",")[1]} r="2" fill="#7c3aed" />
+    </svg>
+  );
+}
+
 function DataCell({
   metric,
   value,
+  previousValue,
+  showDelta = false,
+  deltaMode = "percent",
+  tall = false,
+  heatmapEnabled,
   muted = false,
   strong = false,
   extraClass = "",
 }: {
   metric: Metric;
   value: number | null | undefined;
+  previousValue?: number | null;
+  showDelta?: boolean;
+  deltaMode?: RnpDeltaMode;
+  tall?: boolean;
+  heatmapEnabled: boolean;
   muted?: boolean;
   strong?: boolean;
   extraClass?: string;
 }) {
-  const background = cellBackground(metric, value ?? null);
+  const delta = showDelta ? metricDelta(value, previousValue) : null;
+  const semanticDirection = delta ? anomalyDirection(metric.field, delta) : null;
+  const background = heatmapEnabled
+    ? semanticDirection === "positive"
+      ? "#ecfdf5"
+      : semanticDirection === "negative"
+        ? "#fff1f2"
+        : cellBackground(metric, value ?? null)
+    : undefined;
   const fullValue = value == null || !Number.isFinite(value) ? undefined : fmt(value, metric.kind);
   return (
     <td
-      title={fullValue}
-      className={`h-[34px] w-[78px] min-w-[78px] whitespace-nowrap border-b border-r border-slate-200 px-1.5 text-right tabular-nums ${
+      title={[fullValue, delta ? `Изменение: ${delta.absolute}` : null].filter(Boolean).join(" · ") || undefined}
+      className={`${tall ? "h-[42px]" : "h-[34px]"} w-[78px] min-w-[78px] whitespace-nowrap border-b border-r border-slate-200 px-1.5 text-right tabular-nums ${
         strong ? "font-semibold" : "font-normal"
       } ${muted && value == null ? "bg-[#fbfcfd] text-slate-400" : toneClass(metric, value ?? null)} ${extraClass}`}
       style={background ? { backgroundColor: background } : undefined}
     >
-      {denseFmt(value, metric.kind)}
+      <span className="block">{denseFmt(value, metric.kind)}</span>
+      {delta ? <DeltaMark delta={delta} kind={metric.kind} mode={deltaMode} field={metric.field} /> : null}
     </td>
   );
+}
+
+function DeltaMark({
+  delta,
+  kind,
+  mode,
+  field,
+}: {
+  delta: NonNullable<ReturnType<typeof metricDelta>>;
+  kind: string;
+  mode: RnpDeltaMode;
+  field: string;
+}) {
+  const semantic = anomalyDirection(field, delta);
+  const tone = semantic === "positive" ? "text-emerald-700" : semantic === "negative" ? "text-rose-700" : "text-slate-400";
+  if (delta.direction === "flat") return <span className="mt-0.5 block text-[8px] font-medium text-slate-400">→ без изм.</span>;
+  const arrow = delta.direction === "up" ? "↑" : "↓";
+  const sign = delta.absolute > 0 ? "+" : "";
+  let label: string;
+  if (mode === "percent") {
+    label = delta.percent == null ? "новое" : `${delta.percent > 0 ? "+" : ""}${delta.percent}%`;
+  } else if (kind === "pct") {
+    label = `${sign}${delta.absolute} п.п.`;
+  } else {
+    label = `${sign}${denseFmt(delta.absolute, kind)}`;
+  }
+  return <span className={`mt-0.5 block text-[8px] font-bold ${tone}`}>{arrow} {label}</span>;
 }
