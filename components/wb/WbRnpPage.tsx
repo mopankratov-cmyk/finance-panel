@@ -765,8 +765,17 @@ export function WbRnpPage() {
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
+          const message = cause instanceof Error ? cause.message : "Не удалось загрузить теги и журнал";
+          // Cabinet switching can briefly leave the previously opened SKU in state.
+          // Drop that stale selection and retry the cabinet-level request without
+          // showing a misleading authorization warning to the user.
+          if (operationsSkuNm != null && message.includes("вне контура выбранного кабинета")) {
+            setOperationsSkuNm(null);
+            setOperationsMessage(null);
+            return;
+          }
           setOperationsAvailable(false);
-          setOperationsMessage(cause instanceof Error ? cause.message : "Не удалось загрузить теги и журнал");
+          setOperationsMessage(message);
         }
       })
       .finally(() => {
@@ -1141,15 +1150,17 @@ export function WbRnpPage() {
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f7f7fb] px-3 pb-20 pt-4 md:px-6 md:pb-8 lg:px-7">
-      <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-medium text-slate-400">Аналитика</div>
-          <div className="mt-0.5 flex items-center gap-2">
-            <BarChart3Icon />
-            <h1 className="text-xl font-bold tracking-[-0.02em] text-slate-900">Рука на пульсе</h1>
+      <header className="mb-3 flex min-h-12 flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
+            <BarChart3Icon bare />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[10px] font-medium leading-3 text-slate-400">Аналитика</div>
+            <h1 className="mt-0.5 truncate text-xl font-bold leading-6 tracking-[-0.02em] text-slate-900">Рука на пульсе</h1>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
             disabled={!canWrite}
@@ -1174,9 +1185,9 @@ export function WbRnpPage() {
       </header>
 
       <section className="relative z-30 mb-4 rounded-[14px] border border-[#e5e7ef] bg-white p-3.5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]" aria-label="Фильтры РНП">
-        <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-[140px_140px_minmax(440px,1fr)_76px_170px]">
+        <div className="grid items-end gap-2.5 sm:grid-cols-2 xl:grid-cols-[132px_132px_minmax(0,1fr)_110px_142px]">
           <label>
-            <span className="mb-1 block text-[10px] font-medium text-slate-500">С даты</span>
+            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">С даты</span>
             <input
               type="date"
               value={range.from}
@@ -1186,7 +1197,7 @@ export function WbRnpPage() {
             />
           </label>
           <label>
-            <span className="mb-1 block text-[10px] font-medium text-slate-500">По дату</span>
+            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">По дату</span>
             <input
               type="date"
               value={range.to}
@@ -1195,7 +1206,7 @@ export function WbRnpPage() {
               className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             />
           </label>
-          <div className="flex min-w-0 flex-wrap items-end gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-end gap-1.5 xl:flex-nowrap">
             <button
               type="button"
               onClick={downloadTable}
@@ -1231,7 +1242,7 @@ export function WbRnpPage() {
             ))}
           </div>
           <label>
-            <span className="mb-1 block text-[10px] font-medium text-slate-500">Окно оборач., дн</span>
+            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Окно оборота, дн</span>
             <input
               type="number"
               min={1}
@@ -1242,8 +1253,8 @@ export function WbRnpPage() {
             />
           </label>
           <div>
-            <span className="mb-1 block text-[10px] font-medium text-slate-500">Остатки</span>
-            <span className="flex h-9 items-center justify-center rounded-lg border border-violet-300 bg-violet-50 px-2 text-center text-[9px] font-semibold leading-3 text-violet-700" title="Используются актуальные остатки WB">
+            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Остатки</span>
+            <span className="flex h-9 items-center justify-center whitespace-nowrap rounded-lg border border-violet-300 bg-violet-50 px-2 text-center text-[9px] font-semibold leading-3 text-violet-700" title="Используются актуальные остатки WB">
               Актуальные WB
             </span>
           </div>

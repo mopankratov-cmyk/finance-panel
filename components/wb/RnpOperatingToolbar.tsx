@@ -151,9 +151,9 @@ export function RnpOperatingToolbar(props: Props) {
 
   return (
     <div className="relative">
-      <div className="mt-2.5 grid gap-2.5 border-t border-slate-100 pt-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(118px,0.8fr)_minmax(118px,0.8fr)_88px_minmax(170px,1fr)_minmax(230px,1.4fr)_175px]">
+      <div className="mt-2.5 grid items-end gap-2.5 border-t border-slate-100 pt-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(118px,0.8fr)_minmax(118px,0.8fr)_88px_minmax(160px,1fr)_minmax(210px,1.35fr)_184px]">
         <label>
-          <span className="mb-1 block text-[10px] font-medium text-slate-500">Бренд</span>
+          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Бренд</span>
           <span className="relative block">
             <Building2 className="pointer-events-none absolute bottom-[11px] left-3 h-3.5 w-3.5 text-violet-500" />
             <select
@@ -170,7 +170,7 @@ export function RnpOperatingToolbar(props: Props) {
         </label>
 
         <label>
-          <span className="mb-1 block text-[10px] font-medium text-slate-500">Категория</span>
+          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Категория</span>
           <span className="relative block">
             <select
               value={props.category}
@@ -187,7 +187,7 @@ export function RnpOperatingToolbar(props: Props) {
         </label>
 
         <div className="relative">
-          <span className="mb-1 block text-[10px] font-medium text-slate-500">Теги</span>
+          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Теги</span>
           <button
             type="button"
             onClick={() => setTagsOpen((open) => !open)}
@@ -200,7 +200,7 @@ export function RnpOperatingToolbar(props: Props) {
         </div>
 
         <label>
-          <span className="mb-1 block text-[10px] font-medium text-slate-500">Сортировка</span>
+          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Сортировка</span>
           <span className="flex">
             <select
               value={props.sortField}
@@ -222,7 +222,7 @@ export function RnpOperatingToolbar(props: Props) {
         </label>
 
         <label className="relative">
-          <span className="mb-1 block text-[10px] font-medium text-slate-500">Поиск / список артикулов</span>
+          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Поиск / список артикулов</span>
           <Search className="pointer-events-none absolute bottom-[10px] left-3 h-3.5 w-3.5 text-slate-400" />
           <input
             value={props.articleQuery}
@@ -244,17 +244,17 @@ export function RnpOperatingToolbar(props: Props) {
         </label>
 
         <div>
-          <span className="mb-1 block text-[10px] font-medium text-slate-500">Детектор аномалий</span>
+          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Детектор аномалий</span>
           <button
             type="button"
             onClick={() => props.onAnomalyModeChange(props.anomalyMode === "off" ? "all" : "off")}
             aria-pressed={props.anomalyMode !== "off"}
-            className={`${CONTROL_CLASS} inline-flex w-full items-center gap-2 ${
+            className={`${CONTROL_CLASS} inline-flex w-full items-center justify-between gap-2 whitespace-nowrap ${
               props.anomalyMode !== "off" ? "border-violet-300 bg-violet-50 text-violet-700" : ""
             }`}
           >
-            <Activity className="h-3.5 w-3.5" />
-            Детектор аномалий
+            <Activity className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 flex-1 truncate text-left">Детектор аномалий</span>
             {props.anomalyCount > 0 ? <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold">{props.anomalyCount}</span> : null}
           </button>
         </div>

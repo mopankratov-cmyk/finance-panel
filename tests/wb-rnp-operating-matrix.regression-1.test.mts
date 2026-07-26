@@ -71,6 +71,8 @@ test("WB RNP mirrors the Optima default week, grouped matrix and display control
 test("WB RNP shared tags and product journal stay scoped to one cabinet", () => {
   assert.match(drawer, /Общие для всех сотрудников кабинета/);
   assert.match(drawer, /Сохранить в журнал/);
+  assert.match(page, /message\.includes\("вне контура выбранного кабинета"\)/);
+  assert.match(page, /setOperationsSkuNm\(null\)/);
   assert.match(operationsRoute, /Для тегов и журнала выберите один WB-кабинет/);
   assert.match(operationsRoute, /requestAllowedNmIds/);
   assert.match(operationsRoute, /\.range\(from, from \+ pageSize - 1\)/);
