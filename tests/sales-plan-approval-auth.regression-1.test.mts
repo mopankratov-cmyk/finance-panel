@@ -48,3 +48,21 @@ test("sales-plan UI submits only after autosave is clean", () => {
   assert.match(source, /const submitDisabled = saving \|\| dirty \|\| Boolean\(saveError\) \|\| conflict;/);
   assert.match(source, /disabled=\{submitDisabled\} title=\{submitDisabledHint\}/);
 });
+
+test("sales-plan API approves and returns selected month only", () => {
+  const source = readFileSync(new URL("../app/api/sales-plan/route.ts", import.meta.url), "utf8");
+
+  assert.match(source, /const monthKey = normalizeSalesPlanMonthKey\(body\.monthKey \?\? body\.month\);/);
+  assert.match(source, /getSalesPlanMonthState\(current, monthKey\)\.status !== "review"/);
+  assert.match(source, /approvedByMonth = \{ \.\.\.approvedByMonth, \[monthKey\]: next \};/);
+  assert.match(source, /getApprovedSalesPlanForMonth\(envelope, monthKey\)/);
+});
+
+test("sales-plan UI sends active month and reads monthly approved snapshot", () => {
+  const source = readFileSync(new URL("../components/planning/SalesPlanPage.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /body: JSON\.stringify\(\{ action, expectedRevision: serverRevision\.current, monthKey: activeMonth,/);
+  assert.match(source, /const activeApprovedPlan = getApprovedSalesPlanForMonth\(approvedEnvelope, activeMonth\);/);
+  assert.match(source, /approvedPlan=\{activeApprovedPlan\}/);
+  assert.match(source, /getSalesPlanMonthState\(plan, activeMonth\)\.status !== "draft"/);
+});

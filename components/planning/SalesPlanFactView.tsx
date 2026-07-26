@@ -6,6 +6,7 @@ import {
   calculateSalesPlanRowMonth,
   calculateSalesPlanSummary,
   daysInSalesPlanMonth,
+  getSalesPlanMonthState,
   salesPlanMonthLabel,
   type SalesPlanDocument,
   type SalesPlanMarketplace,
@@ -124,6 +125,7 @@ export function SalesPlanFactView({ marketplace, cabinetId, monthKey, approvedPl
   }
 
   const planSummary = calculateSalesPlanSummary(approvedPlan, [monthKey]);
+  const approvedMonthState = getSalesPlanMonthState(approvedPlan, monthKey);
   const factOrders = rows.reduce((sum, item) => sum + sumValues(item.orders), 0);
   const knownDays = Math.max(0, ...rows.map((item) => item.orders.reduce<number>((last, value, index) => value != null ? index + 1 : last, 0)));
   const forecast = knownDays > 0 ? Math.round((factOrders / knownDays) * days) : 0;
@@ -133,7 +135,7 @@ export function SalesPlanFactView({ marketplace, cabinetId, monthKey, approvedPl
     <div className="space-y-3">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Сводка план факт">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h2 className="text-sm font-bold text-slate-900">План · факт · прогноз заказов</h2><p className="mt-1 text-xs text-slate-500">Утверждённый план v{approvedPlan.version} · {salesPlanMonthLabel(approvedPlan.year, monthKey)} · факт из {marketplace === "wb" ? "Wildberries" : "Ozon"}</p></div>
+          <div><h2 className="text-sm font-bold text-slate-900">План · факт · прогноз заказов</h2><p className="mt-1 text-xs text-slate-500">Утверждённый план v{approvedMonthState.version} · {salesPlanMonthLabel(approvedPlan.year, monthKey)} · факт из {marketplace === "wb" ? "Wildberries" : "Ozon"}</p></div>
           <button type="button" onClick={load} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 sm:min-h-9"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> Обновить факт</button>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

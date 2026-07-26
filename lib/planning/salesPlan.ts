@@ -4,6 +4,21 @@ export const SALES_PLAN_ACTIONS = ["save", "submit", "approve", "return", "new_v
 export type SalesPlanAction = (typeof SALES_PLAN_ACTIONS)[number];
 export const SALES_PLAN_RETURN_COMMENT_MIN_LENGTH = 3;
 
+export interface SalesPlanMonthState {
+  monthKey: string;
+  status: SalesPlanStatus;
+  version: number;
+  revision: number;
+  submittedAt: string | null;
+  submittedBy: string | null;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  returnedAt: string | null;
+  returnedBy: string | null;
+  returnComment: string | null;
+  rnpSyncedAt: string | null;
+}
+
 export interface SalesPlanRow {
   id: string;
   model: string;
@@ -38,12 +53,14 @@ export interface SalesPlanDocument {
   returnedAt: string | null;
   returnedBy: string | null;
   returnComment: string | null;
+  monthStates: Partial<Record<string, SalesPlanMonthState>>;
   rnpSyncedAt: string | null;
 }
 
 export interface SalesPlanEnvelope {
   working: SalesPlanDocument | null;
   approved: SalesPlanDocument | null;
+  approvedByMonth: Partial<Record<string, SalesPlanDocument>>;
 }
 
 export interface SalesPlanValidationIssue {
@@ -99,6 +116,104 @@ export function normalizeSalesPlanAction(value: unknown, fallback: SalesPlanActi
 export function normalizeSalesPlanReturnComment(value: unknown) {
   const comment = text(value).replace(/\s+/g, " ");
   return comment.length >= SALES_PLAN_RETURN_COMMENT_MIN_LENGTH ? comment.slice(0, 1000) : "";
+}
+
+export function normalizeSalesPlanMonthKey(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const number = Number(raw);
+  if (!Number.isInteger(number) || number < 1 || number > 12) return "";
+  return String(number).padStart(2, "0");
+}
+
+function normalizeSalesPlanMonthState(
+  value: unknown,
+  monthKey: string,
+  fallback: Partial<SalesPlanMonthState> & { status: SalesPlanStatus },
+): SalesPlanMonthState {
+  const source = record(value);
+  const has = (field: string) => Object.prototype.hasOwnProperty.call(source, field);
+  const nullableText = (field: string, fallbackValue: string | null | undefined) => has(field)
+    ? text(source[field]) || null
+    : fallbackValue ?? null;
+  const status = source.status === "draft" || source.status === "review" || source.status === "approved" ? source.status : fallback.status;
+  return {
+    monthKey,
+    status,
+    version: Math.max(1, Math.round(finite(source.version, fallback.version ?? 1))),
+    revision: Math.max(0, Math.round(finite(source.revision, fallback.revision ?? 0))),
+    submittedAt: nullableText("submittedAt", fallback.submittedAt),
+    submittedBy: nullableText("submittedBy", fallback.submittedBy),
+    approvedAt: nullableText("approvedAt", fallback.approvedAt),
+    approvedBy: nullableText("approvedBy", fallback.approvedBy),
+    returnedAt: nullableText("returnedAt", fallback.returnedAt),
+    returnedBy: nullableText("returnedBy", fallback.returnedBy),
+    returnComment: has("returnComment")
+      ? normalizeSalesPlanReturnComment(source.returnComment) || null
+      : fallback.returnComment ?? null,
+    rnpSyncedAt: nullableText("rnpSyncedAt", fallback.rnpSyncedAt),
+  };
+}
+
+function normalizeSalesPlanMonthStates(
+  value: unknown,
+  fallback: Partial<SalesPlanMonthState> & { status: SalesPlanStatus },
+) {
+  const source = record(value);
+  return Object.fromEntries(
+    MONTH_KEYS.map((monthKey) => [monthKey, normalizeSalesPlanMonthState(source[monthKey], monthKey, fallback)]),
+  ) as Record<string, SalesPlanMonthState>;
+}
+
+export function getSalesPlanMonthState(plan: SalesPlanDocument, monthKey: string): SalesPlanMonthState {
+  const normalizedMonth = normalizeSalesPlanMonthKey(monthKey) || "01";
+  return normalizeSalesPlanMonthState(plan.monthStates?.[normalizedMonth], normalizedMonth, {
+    status: plan.status,
+    version: plan.version,
+    revision: plan.revision,
+    submittedAt: plan.submittedAt,
+    submittedBy: plan.submittedBy,
+    approvedAt: plan.approvedAt,
+    approvedBy: plan.approvedBy,
+    returnedAt: plan.returnedAt,
+    returnedBy: plan.returnedBy,
+    returnComment: plan.returnComment,
+    rnpSyncedAt: plan.rnpSyncedAt,
+  });
+}
+
+export function summarizeSalesPlanStatus(plan: Pick<SalesPlanDocument, "monthStates" | "status">): SalesPlanStatus {
+  const states = MONTH_KEYS.map((monthKey) => plan.monthStates?.[monthKey]?.status ?? plan.status);
+  if (states.some((status) => status === "review")) return "review";
+  if (states.length > 0 && states.every((status) => status === "approved")) return "approved";
+  return "draft";
+}
+
+export function setSalesPlanMonthState(
+  plan: SalesPlanDocument,
+  monthKey: string,
+  patch: Partial<SalesPlanMonthState> & { status: SalesPlanStatus },
+): SalesPlanDocument {
+  const normalizedMonth = normalizeSalesPlanMonthKey(monthKey) || "01";
+  const current = getSalesPlanMonthState(plan, normalizedMonth);
+  const monthState = normalizeSalesPlanMonthState({ ...current, ...patch, monthKey: normalizedMonth }, normalizedMonth, current);
+  const next = {
+    ...plan,
+    monthStates: {
+      ...plan.monthStates,
+      [normalizedMonth]: monthState,
+    },
+  };
+  return { ...next, status: summarizeSalesPlanStatus(next) };
+}
+
+export function getApprovedSalesPlanForMonth(envelope: SalesPlanEnvelope, monthKey: string) {
+  const normalizedMonth = normalizeSalesPlanMonthKey(monthKey);
+  if (!normalizedMonth) return null;
+  const monthly = envelope.approvedByMonth[normalizedMonth];
+  if (monthly && getSalesPlanMonthState(monthly, normalizedMonth).status === "approved") return monthly;
+  if (!envelope.approved) return null;
+  return getSalesPlanMonthState(envelope.approved, normalizedMonth).status === "approved" ? envelope.approved : null;
 }
 
 export function daysInSalesPlanMonth(year: number, monthKey: string) {
@@ -157,13 +272,23 @@ export function normalizeSalesPlanDocument(
   const source = record(value);
   const now = new Date().toISOString();
   const status = source.status === "review" || source.status === "approved" ? source.status : "draft";
+  const version = Math.max(1, Math.round(finite(source.version, 1)));
+  const revision = Math.max(0, Math.round(finite(source.revision)));
+  const approvedAt = text(source.approvedAt) || null;
+  const approvedBy = text(source.approvedBy) || null;
+  const submittedAt = text(source.submittedAt) || null;
+  const submittedBy = text(source.submittedBy) || null;
+  const returnedAt = text(source.returnedAt) || null;
+  const returnedBy = text(source.returnedBy) || null;
+  const returnComment = normalizeSalesPlanReturnComment(source.returnComment) || null;
+  const rnpSyncedAt = text(source.rnpSyncedAt) || null;
   return {
     schemaVersion: 1,
     marketplace: context.marketplace,
     cabinetId: context.cabinetId,
     year: context.year,
-    version: Math.max(1, Math.round(finite(source.version, 1))),
-    revision: Math.max(0, Math.round(finite(source.revision))),
+    version,
+    revision,
     status,
     responsible: text(source.responsible),
     rows: Array.isArray(source.rows)
@@ -171,14 +296,27 @@ export function normalizeSalesPlanDocument(
       : [],
     createdAt: text(source.createdAt, now),
     updatedAt: text(source.updatedAt, now),
-    approvedAt: text(source.approvedAt) || null,
-    approvedBy: text(source.approvedBy) || null,
-    submittedAt: text(source.submittedAt) || null,
-    submittedBy: text(source.submittedBy) || null,
-    returnedAt: text(source.returnedAt) || null,
-    returnedBy: text(source.returnedBy) || null,
-    returnComment: normalizeSalesPlanReturnComment(source.returnComment) || null,
-    rnpSyncedAt: text(source.rnpSyncedAt) || null,
+    approvedAt,
+    approvedBy,
+    submittedAt,
+    submittedBy,
+    returnedAt,
+    returnedBy,
+    returnComment,
+    monthStates: normalizeSalesPlanMonthStates(source.monthStates, {
+      status,
+      version,
+      revision,
+      approvedAt,
+      approvedBy,
+      submittedAt,
+      submittedBy,
+      returnedAt,
+      returnedBy,
+      returnComment,
+      rnpSyncedAt,
+    }),
+    rnpSyncedAt,
   };
 }
 
@@ -208,6 +346,7 @@ export function createEmptySalesPlan(input: {
     returnedAt: null,
     returnedBy: null,
     returnComment: null,
+    monthStates: normalizeSalesPlanMonthStates(null, { status: "draft", version: 1, revision: 0 }),
     rnpSyncedAt: null,
   };
 }

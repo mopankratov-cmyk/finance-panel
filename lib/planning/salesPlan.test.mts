@@ -6,8 +6,12 @@ import {
   calculateSalesPlanRowMonth,
   createEmptySalesPlan,
   emptySalesPlanMonths,
+  getApprovedSalesPlanForMonth,
+  getSalesPlanMonthState,
   normalizeSalesPlanAction,
+  normalizeSalesPlanMonthKey,
   normalizeSalesPlanReturnComment,
+  setSalesPlanMonthState,
   type SalesPlanRow,
   validateSalesPlan,
   visibleSalesPlanMonths,
@@ -85,4 +89,46 @@ test("комментарий возврата плана обязателен и
   assert.equal(normalizeSalesPlanReturnComment("  "), "");
   assert.equal(normalizeSalesPlanReturnComment("ок"), "");
   assert.equal(normalizeSalesPlanReturnComment("  Цена   не заполнена  "), "Цена не заполнена");
+});
+
+test("согласование плана изолировано по месяцу", () => {
+  const plan = createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026, responsible: "Анна" });
+  const submittedAugust = setSalesPlanMonthState(plan, "08", { status: "review", submittedAt: "2026-07-26T10:00:00.000Z", submittedBy: "manager@example.com" });
+  const approvedAugust = setSalesPlanMonthState(submittedAugust, "08", { status: "approved", approvedAt: "2026-07-26T11:00:00.000Z", approvedBy: "director@example.com" });
+
+  assert.equal(getSalesPlanMonthState(approvedAugust, "08").status, "approved");
+  assert.equal(getSalesPlanMonthState(approvedAugust, "09").status, "draft");
+  assert.equal(approvedAugust.status, "draft");
+});
+
+test("утверждённый план выбирается по конкретному месяцу", () => {
+  const august = setSalesPlanMonthState(createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 }), "08", { status: "approved", approvedAt: "2026-07-26T11:00:00.000Z", approvedBy: "director@example.com" });
+  const september = setSalesPlanMonthState(createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 }), "09", { status: "approved", approvedAt: "2026-07-27T11:00:00.000Z", approvedBy: "director@example.com" });
+
+  const envelope = { working: september, approved: september, approvedByMonth: { "08": august, "09": september } };
+  assert.equal(getApprovedSalesPlanForMonth(envelope, "08"), august);
+  assert.equal(getApprovedSalesPlanForMonth(envelope, "09"), september);
+  assert.equal(getApprovedSalesPlanForMonth({ working: september, approved: september, approvedByMonth: {} }, "08"), null);
+  assert.equal(normalizeSalesPlanMonthKey("9"), "09");
+});
+
+test("новая версия месяца очищает метаданные утверждения только у этого месяца", () => {
+  const approved = setSalesPlanMonthState(createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 }), "08", {
+    status: "approved",
+    approvedAt: "2026-07-26T11:00:00.000Z",
+    approvedBy: "director@example.com",
+    rnpSyncedAt: "2026-07-26T11:00:00.000Z",
+  });
+  const draft = setSalesPlanMonthState(approved, "08", {
+    ...getSalesPlanMonthState(approved, "08"),
+    status: "draft",
+    version: 2,
+    approvedAt: null,
+    approvedBy: null,
+    rnpSyncedAt: null,
+  });
+
+  assert.equal(getSalesPlanMonthState(draft, "08").status, "draft");
+  assert.equal(getSalesPlanMonthState(draft, "08").approvedAt, null);
+  assert.equal(getSalesPlanMonthState(draft, "08").approvedBy, null);
 });

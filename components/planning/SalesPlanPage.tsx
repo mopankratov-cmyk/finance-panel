@@ -20,8 +20,11 @@ import {
   canModerateSalesPlan,
   calculateSalesPlanSummary,
   createEmptySalesPlan,
+  getApprovedSalesPlanForMonth,
+  getSalesPlanMonthState,
   normalizeSalesPlanReturnComment,
   salesPlanMonthLabel,
+  type SalesPlanEnvelope,
   type SalesPlanDocument,
   type SalesPlanMarketplace,
   type SalesPlanRow,
@@ -41,6 +44,7 @@ interface SalesPlanApiResponse {
   ok?: boolean;
   plan: SalesPlanDocument | null;
   approvedPlan: SalesPlanDocument | null;
+  approvedByMonth?: SalesPlanEnvelope["approvedByMonth"];
   cabinet?: string;
   error?: string;
   conflict?: boolean;
@@ -84,6 +88,7 @@ export function SalesPlanPage({
   const [mode, setMode] = useState<ViewMode>("edit");
   const [plan, setPlan] = useState<SalesPlanDocument | null>(null);
   const [approvedPlan, setApprovedPlan] = useState<SalesPlanDocument | null>(null);
+  const [approvedByMonth, setApprovedByMonth] = useState<SalesPlanEnvelope["approvedByMonth"]>({});
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -115,6 +120,7 @@ export function SalesPlanPage({
     if (!ready || !exactCabinet) {
       setPlan(null);
       setApprovedPlan(null);
+      setApprovedByMonth({});
       return;
     }
     const controller = new AbortController();
@@ -135,6 +141,7 @@ export function SalesPlanPage({
       .then((body) => {
         setPlan(body.plan);
         setApprovedPlan(body.approvedPlan);
+        setApprovedByMonth(body.approvedByMonth ?? {});
         serverRevision.current = body.plan?.revision ?? 0;
         editSerial.current = 0;
       })
@@ -157,7 +164,7 @@ export function SalesPlanPage({
       const response = await fetch(`/api/sales-plan?${params.toString()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, expectedRevision: serverRevision.current, plan: source, comment: options?.comment }),
+        body: JSON.stringify({ action, expectedRevision: serverRevision.current, monthKey: activeMonth, plan: source, comment: options?.comment }),
       });
       const body = await response.json() as SalesPlanApiResponse;
       if (!response.ok || !body.plan) {
@@ -167,6 +174,7 @@ export function SalesPlanPage({
       }
       serverRevision.current = body.plan.revision;
       setApprovedPlan(body.approvedPlan);
+      setApprovedByMonth(body.approvedByMonth ?? {});
       if (serial === editSerial.current || action !== "save") {
         setPlan(body.plan);
         setDirty(false);
@@ -182,23 +190,23 @@ export function SalesPlanPage({
     } finally {
       setSaving(false);
     }
-  }, [cabinetId, exactCabinet, marketplace, saving, year]);
+  }, [activeMonth, cabinetId, exactCabinet, marketplace, saving, year]);
 
   useEffect(() => {
-    if (!dirty || !plan || plan.status !== "draft" || saving || conflict) return;
+    if (!dirty || !plan || getSalesPlanMonthState(plan, activeMonth).status !== "draft" || saving || conflict) return;
     const timer = window.setTimeout(() => { void persist("save", plan, true); }, 850);
     return () => window.clearTimeout(timer);
-  }, [conflict, dirty, persist, plan, saving]);
+  }, [activeMonth, conflict, dirty, persist, plan, saving]);
 
   const editPlan = useCallback((mutate: (current: SalesPlanDocument) => SalesPlanDocument) => {
     setPlan((current) => {
-      if (!current || current.status !== "draft") return current;
+      if (!current || getSalesPlanMonthState(current, activeMonth).status !== "draft") return current;
       return mutate(current);
     });
     editSerial.current += 1;
     setDirty(true);
     setSaveError(null);
-  }, []);
+  }, [activeMonth]);
 
   const loadCatalog = useCallback(() => {
     if (!exactCabinet || catalogLoading || catalog.length > 0) return;
@@ -325,11 +333,16 @@ export function SalesPlanPage({
   if (cabinetError) return <PageError message={cabinetError} onRetry={() => setReloadKey((value) => value + 1)} />;
   if (!exactCabinet) return <CabinetRequired marketplace={marketplace} />;
 
-  const displayPlan = mode === "approved" ? approvedPlan : plan;
-  const readOnly = mode !== "edit" || displayPlan?.status !== "draft";
+  const approvedEnvelope: SalesPlanEnvelope = { working: plan, approved: approvedPlan, approvedByMonth };
+  const activeApprovedPlan = getApprovedSalesPlanForMonth(approvedEnvelope, activeMonth);
+  const activeMonthState = plan ? getSalesPlanMonthState(plan, activeMonth) : null;
+  const activeApprovedMonthState = activeApprovedPlan ? getSalesPlanMonthState(activeApprovedPlan, activeMonth) : null;
+  const displayPlan = mode === "approved" ? activeApprovedPlan : plan;
+  const displayMonthState = displayPlan ? getSalesPlanMonthState(displayPlan, activeMonth) : null;
+  const readOnly = mode !== "edit" || displayMonthState?.status !== "draft";
   const summary = displayPlan ? calculateSalesPlanSummary(displayPlan, visibleMonths) : null;
   const monthCountWord = visibleMonths.length === 1 ? "месяц" : visibleMonths.length < 5 ? "месяца" : "месяцев";
-  const status = plan?.status ?? "empty";
+  const status = activeMonthState?.status ?? "empty";
   const statusLabel = status === "draft" ? "Черновик" : status === "review" ? "На согласовании" : status === "approved" ? "Утверждён" : "Не создан";
   const statusTone = status === "draft" ? "bg-amber-500" : status === "review" ? "bg-blue-500" : status === "approved" ? "bg-emerald-500" : "bg-slate-400";
   const primary = accent === "violet" ? "bg-violet-600 hover:bg-violet-700 focus-visible:ring-violet-500" : "bg-sky-600 hover:bg-sky-700 focus-visible:ring-sky-500";
@@ -374,39 +387,40 @@ export function SalesPlanPage({
         <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Статус плана">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className={`h-2.5 w-2.5 rounded-full ${statusTone}`} />
-            <strong className="text-slate-800">{statusLabel}{plan ? ` · v${plan.version}` : ""}</strong>
+            <strong className="text-slate-800">{statusLabel}{activeMonthState ? ` · ${salesPlanMonthLabel(year, activeMonth, false)} · v${activeMonthState.version}` : ""}</strong>
             {plan ? <span className="text-slate-400">Ответственный: {plan.responsible || user?.email || "—"}</span> : null}
-            {approvedPlan?.approvedAt && mode !== "edit" ? <span className="inline-flex items-center gap-1 text-emerald-700"><LockKeyhole className="h-3.5 w-3.5" /> {approvedPlan.approvedBy} · {new Date(approvedPlan.approvedAt).toLocaleString("ru-RU")}</span> : null}
+            {activeApprovedMonthState?.approvedAt && mode !== "edit" ? <span className="inline-flex items-center gap-1 text-emerald-700"><LockKeyhole className="h-3.5 w-3.5" /> {activeApprovedMonthState.approvedBy} · {new Date(activeApprovedMonthState.approvedAt).toLocaleString("ru-RU")}</span> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {plan ? <span aria-live="polite" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium ${saveError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : dirty ? <Clock3 className="h-3.5 w-3.5 text-amber-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}{saving ? "Сохраняем…" : saveError ? "Ошибка автосохранения" : dirty ? "Есть изменения" : "Сохранено автоматически"}</span> : null}
-            {plan?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => void returnPlan()} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9">Вернуть</button> : null}
+            {activeMonthState?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => void returnPlan()} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9">Вернуть</button> : null}
             {!plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
-              : plan.status === "draft" ? <ActionButton primary={primary} disabled={submitDisabled} title={submitDisabledHint} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
-                : plan.status === "review" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void approvePlan()} icon={FileCheck2}>Утвердить</ActionButton>
-                  : plan.status === "approved" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void newVersion()} icon={RefreshCw}>Новая версия</ActionButton>
+              : activeMonthState?.status === "draft" ? <ActionButton primary={primary} disabled={submitDisabled} title={submitDisabledHint} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
+                : activeMonthState?.status === "review" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void approvePlan()} icon={FileCheck2}>Утвердить</ActionButton>
+                  : activeMonthState?.status === "approved" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void newVersion()} icon={RefreshCw}>Новая версия</ActionButton>
                     : null}
           </div>
         </section>
 
-        {plan?.status === "draft" && plan.returnComment ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><span className="font-semibold">План возвращён на доработку</span>{plan.returnedBy ? ` · ${plan.returnedBy}` : ""}{plan.returnedAt ? ` · ${new Date(plan.returnedAt).toLocaleString("ru-RU")}` : ""}: {plan.returnComment}</div> : null}
+        {activeMonthState?.status === "draft" && activeMonthState.returnComment ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><span className="font-semibold">Месяц возвращён на доработку</span>{activeMonthState.returnedBy ? ` · ${activeMonthState.returnedBy}` : ""}{activeMonthState.returnedAt ? ` · ${new Date(activeMonthState.returnedAt).toLocaleString("ru-RU")}` : ""}: {activeMonthState.returnComment}</div> : null}
         {saveError || actionError ? <div role="alert" className="flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"><span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{saveError || actionError}</span>{conflict ? <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="min-h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold hover:bg-rose-100">Загрузить серверную версию</button> : null}</div> : null}
         {issues.length > 0 ? <ValidationSummary issues={issues} /> : null}
 
         {loading ? <div className="flex min-h-[420px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" /> Загружаем план…</div>
           : loadError ? <PageError message={loadError} onRetry={() => setReloadKey((value) => value + 1)} />
             : mode === "rnp" ? <>
-              {approvedPlan ? <section className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Период план-факт">
+              {approvedPlan || Object.keys(approvedByMonth).length > 0 ? <section className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Период план-факт">
                   <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
                     <div className="flex w-max min-w-full gap-1" role="tablist" aria-label="Месяц план-факт">
                       {visibleMonths.map((monthKey) => {
-                        const monthTotal = calculateSalesPlanSummary(approvedPlan, [monthKey]).orders;
-                        return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-8 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)}</span></button>;
+                        const monthPlan = getApprovedSalesPlanForMonth(approvedEnvelope, monthKey);
+                        const monthTotal = monthPlan ? calculateSalesPlanSummary(monthPlan, [monthKey]).orders : 0;
+                        return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-8 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{monthPlan ? number(monthTotal) : "—"}</span></button>;
                       })}
                     </div>
                   </div>
               </section> : null}
-              <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={approvedPlan} />
+              <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={activeApprovedPlan} />
             </>
               : !displayPlan ? <EmptyPlan mode={mode} marketplace={marketplace} onCreate={() => void createPlan()} />
                 : <>
@@ -423,7 +437,9 @@ export function SalesPlanPage({
                         <div className="flex w-max min-w-full gap-1" role="tablist" aria-label="Месяц плана">
                           {visibleMonths.map((monthKey) => {
                             const monthTotal = calculateSalesPlanSummary(displayPlan, [monthKey]).orders;
-                            return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-8 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{number(monthTotal)}</span></button>;
+                            const state = getSalesPlanMonthState(displayPlan, monthKey);
+                            const badge = state.status === "approved" ? "утв" : state.status === "review" ? "согл" : number(monthTotal);
+                            return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-8 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{badge}</span></button>;
                           })}
                         </div>
                       </div>
@@ -455,7 +471,7 @@ export function SalesPlanPage({
                 </>}
       </div>
 
-      {addOpen && plan?.status === "draft" ? <SalesPlanAddSkuModal marketplace={marketplace} year={year} catalog={catalog} catalogLoading={catalogLoading} catalogError={catalogError} existingVariants={plan.rows.map((row) => row.variant)} onClose={() => setAddOpen(false)} onAdd={addRows} /> : null}
+      {addOpen && activeMonthState?.status === "draft" && plan ? <SalesPlanAddSkuModal marketplace={marketplace} year={year} catalog={catalog} catalogLoading={catalogLoading} catalogError={catalogError} existingVariants={plan.rows.map((row) => row.variant)} onClose={() => setAddOpen(false)} onAdd={addRows} /> : null}
     </div>
   );
 }
