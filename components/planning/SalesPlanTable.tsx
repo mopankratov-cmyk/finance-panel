@@ -3,6 +3,7 @@
 import { ChevronDown, Trash2 } from "lucide-react";
 import {
   calculateSalesPlanDaily,
+  calculateSalesPlanRowStockRisk,
   calculateSalesPlanRowMonth,
   calculateSalesPlanSummary,
   daysInSalesPlanMonth,
@@ -117,6 +118,7 @@ export function SalesPlanTable({
   readOnly,
   marketplace,
   query,
+  stockRiskOnly,
   expanded,
   selectedCell,
   fill,
@@ -133,6 +135,7 @@ export function SalesPlanTable({
   readOnly: boolean;
   marketplace: "wb" | "ozon";
   query: string;
+  stockRiskOnly: boolean;
   expanded: Set<string>;
   selectedCell: SalesPlanCellPosition | null;
   fill: SalesPlanFillState | null;
@@ -147,7 +150,11 @@ export function SalesPlanTable({
   const days = daysInSalesPlanMonth(plan.year, monthKey);
   const dayIndexes = Array.from({ length: days }, (_, index) => index);
   const needle = query.trim().toLocaleLowerCase("ru-RU");
-  const visibleRows = plan.rows.filter((row) => !needle || `${row.model} ${row.modelName} ${row.variant} ${row.color} ${row.externalId}`.toLocaleLowerCase("ru-RU").includes(needle));
+  const visibleRows = plan.rows.filter((row) => {
+    const matchesQuery = !needle || `${row.model} ${row.modelName} ${row.variant} ${row.color} ${row.externalId}`.toLocaleLowerCase("ru-RU").includes(needle);
+    const matchesStockRisk = !stockRiskOnly || calculateSalesPlanRowStockRisk(row, monthKey).shortageDay !== null;
+    return matchesQuery && matchesStockRisk;
+  });
   const summary = calculateSalesPlanSummary(plan, [monthKey]);
   const dayOrderTotals = dayIndexes.map((day) => plan.rows.reduce((sum, row) => sum + Number(row.months[monthKey]?.[day] ?? 0), 0));
   const dayGrossTotals = dayIndexes.map((day) => plan.rows.reduce((sum, row) => sum + calculateSalesPlanDaily(row, row.months[monthKey]?.[day] ?? 0).gross, 0));
@@ -161,7 +168,7 @@ export function SalesPlanTable({
   const tableWidth = STICKY_LEFT.ads + STICKY_WIDTHS.ads + days * DAY_WIDTH + 5 * END_WIDTH;
 
   if (visibleRows.length === 0) {
-    return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">По заданному фильтру SKU не найдены.</div>;
+    return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">{stockRiskOnly ? "По фильтру дефицита SKU не найдены." : "По заданному фильтру SKU не найдены."}</div>;
   }
 
   return (
@@ -279,6 +286,7 @@ function SkuRows({
   onToggleExpand, onRowChange, onDayChange, onRemove, onSelectCell, onFillStart, onFillEnter,
 }: Omit<Parameters<typeof ModelRows>[0], "model" | "rows" | "totalColumns" | "modelTotals"> & { row: SalesPlanRow }) {
   const totals = calculateSalesPlanRowMonth(row, monthKey);
+  const stockRisk = calculateSalesPlanRowStockRisk(row, monthKey);
   const opened = expanded.has(row.id);
   const fillMin = fill?.rowId === row.id ? Math.min(fill.day, fill.endDay) : -1;
   const fillMax = fill?.rowId === row.id ? Math.max(fill.day, fill.endDay) : -1;
@@ -294,7 +302,7 @@ function SkuRows({
             <ProductThumb row={row} marketplace={marketplace} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[10px] font-semibold text-slate-800">{row.color}{row.isNew ? " · Новый" : ""}</span>
-              <span className="block truncate text-[9px] text-slate-400">{row.variant} · {marketplace === "wb" ? "WB" : "SKU"} {row.externalId || "—"} · ост. {number(row.stock)}</span>
+              <span className={`block truncate text-[9px] ${stockRisk.shortageDay ? "text-rose-500" : "text-slate-400"}`}>{row.variant} · {marketplace === "wb" ? "WB" : "SKU"} {row.externalId || "—"} · ост. {number(row.stock)} → {number(stockRisk.endingStock)}{stockRisk.shortageDay ? ` · дефицит ${String(stockRisk.shortageDay).padStart(2, "0")}` : ""}</span>
             </span>
             {!readOnly ? <button type="button" onClick={() => onRemove(row.id)} aria-label={`Удалить ${row.color} из плана`} title="Удалить из плана" className="grid h-7 w-6 shrink-0 place-items-center rounded-md text-slate-300 opacity-0 hover:bg-rose-50 hover:text-rose-600 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button> : null}
           </div>
@@ -306,8 +314,10 @@ function SkuRows({
           const orders = row.months[monthKey]?.[day] ?? 0;
           const selected = selectedCell?.rowId === row.id && selectedCell.day === day;
           const inFill = day >= fillMin && day <= fillMax;
+          const afterShortage = stockRisk.shortageDay !== null && day + 1 >= stockRisk.shortageDay;
+          const firstShortage = stockRisk.shortageDay === day + 1;
           return (
-            <td key={day} onMouseEnter={() => onFillEnter({ rowId: row.id, day })} className={`relative ${dayCellClass} border-b border-r border-slate-200 p-0.5 ${isWeekend(plan.year, monthKey, day + 1) ? "bg-sky-50/70" : "bg-white"} ${inFill ? fillClass : ""}`}>
+            <td key={day} onMouseEnter={() => onFillEnter({ rowId: row.id, day })} className={`relative ${dayCellClass} border-b border-r border-slate-200 p-0.5 ${afterShortage ? "bg-rose-50/80" : isWeekend(plan.year, monthKey, day + 1) ? "bg-sky-50/70" : "bg-white"} ${firstShortage ? "ring-1 ring-inset ring-rose-300" : ""} ${inFill ? fillClass : ""}`}>
               <input
                 type="text"
                 inputMode="numeric"

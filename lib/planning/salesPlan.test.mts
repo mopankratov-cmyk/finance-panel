@@ -4,7 +4,9 @@ import {
   appendSalesPlanEvent,
   canModerateSalesPlan,
   calculateSalesPlanDaily,
+  calculateSalesPlanRowStockRisk,
   calculateSalesPlanRowMonth,
+  calculateSalesPlanStockRiskSummary,
   createEmptySalesPlan,
   emptySalesPlanMonths,
   getApprovedSalesPlanForMonth,
@@ -51,6 +53,32 @@ test("месячные итоги используют заказы конкре
   assert.equal(total.orders, 8);
   assert.equal(total.ads, 12_960);
   assert.equal(total.revenue, 27_000);
+});
+
+test("остаток плана показывает конец месяца и первый день дефицита", () => {
+  const current = row();
+  current.stock = 10;
+  current.months["07"] = [3, 3, 5, 2];
+  const safe = row();
+  safe.id = "safe";
+  safe.variant = "NV-08-35-BLK";
+  safe.stock = 100;
+  safe.months["07"] = [10, 10];
+  const plan = createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 });
+  plan.rows = [current, safe];
+
+  const risk = calculateSalesPlanRowStockRisk(current, "07");
+  assert.equal(risk.plannedOrders, 13);
+  assert.equal(risk.endingStock, -3);
+  assert.equal(risk.shortageDay, 3);
+  assert.equal(risk.shortageQty, 3);
+
+  const summary = calculateSalesPlanStockRiskSummary(plan, "07");
+  assert.equal(summary.currentStock, 110);
+  assert.equal(summary.plannedOrders, 33);
+  assert.equal(summary.endingStock, 77);
+  assert.equal(summary.shortageRows, 1);
+  assert.equal(summary.shortageDay, 3);
 });
 
 test("утверждение блокируется при дубле цвета и нулевой цене", () => {

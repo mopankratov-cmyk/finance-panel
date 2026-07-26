@@ -99,6 +99,18 @@ export interface SalesPlanSummary extends SalesPlanDailyMetrics {
   variants: number;
 }
 
+export interface SalesPlanStockRisk {
+  currentStock: number;
+  plannedOrders: number;
+  endingStock: number;
+  shortageDay: number | null;
+  shortageQty: number;
+}
+
+export interface SalesPlanStockRiskSummary extends SalesPlanStockRisk {
+  shortageRows: number;
+}
+
 const MONTH_KEYS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
 
 function record(value: unknown): Record<string, unknown> {
@@ -499,6 +511,52 @@ export function calculateSalesPlanSummary(
     adPct: summary.gross > 0 ? (summary.ads / summary.gross) * 100 : 0,
     variants: plan.rows.length,
   };
+}
+
+export function calculateSalesPlanRowStockRisk(row: SalesPlanRow, monthKey: string): SalesPlanStockRisk {
+  const orders = row.months[monthKey] ?? [];
+  const currentStock = Math.max(0, Math.round(finite(row.stock)));
+  let cumulativeOrders = 0;
+  let shortageDay: number | null = null;
+
+  for (let index = 0; index < orders.length; index += 1) {
+    cumulativeOrders += Math.max(0, finite(orders[index]));
+    if (shortageDay === null && cumulativeOrders > currentStock) {
+      shortageDay = index + 1;
+    }
+  }
+
+  const plannedOrders = Math.round(cumulativeOrders);
+  const endingStock = currentStock - plannedOrders;
+  return {
+    currentStock,
+    plannedOrders,
+    endingStock,
+    shortageDay,
+    shortageQty: endingStock < 0 ? Math.abs(endingStock) : 0,
+  };
+}
+
+export function calculateSalesPlanStockRiskSummary(
+  plan: Pick<SalesPlanDocument, "rows">,
+  monthKey: string,
+): SalesPlanStockRiskSummary {
+  const risks = plan.rows.map((row) => calculateSalesPlanRowStockRisk(row, monthKey));
+  const summary = risks.reduce<SalesPlanStockRiskSummary>(
+    (total, risk) => {
+      total.currentStock += risk.currentStock;
+      total.plannedOrders += risk.plannedOrders;
+      total.endingStock += risk.endingStock;
+      total.shortageQty += risk.shortageQty;
+      if (risk.shortageDay !== null) {
+        total.shortageRows += 1;
+        total.shortageDay = total.shortageDay === null ? risk.shortageDay : Math.min(total.shortageDay, risk.shortageDay);
+      }
+      return total;
+    },
+    { currentStock: 0, plannedOrders: 0, endingStock: 0, shortageDay: null, shortageQty: 0, shortageRows: 0 } as SalesPlanStockRiskSummary,
+  );
+  return summary;
 }
 
 export function validateSalesPlan(plan: SalesPlanDocument): SalesPlanValidationIssue[] {

@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   canModerateSalesPlan,
   calculateSalesPlanSummary,
+  calculateSalesPlanStockRiskSummary,
   createEmptySalesPlan,
   getApprovedSalesPlanForMonth,
   getSalesPlanMonthState,
@@ -102,6 +103,7 @@ export function SalesPlanPage({
   const [issues, setIssues] = useState<SalesPlanValidationIssue[]>([]);
   const [conflict, setConflict] = useState(false);
   const [query, setQuery] = useState("");
+  const [stockRiskOnly, setStockRiskOnly] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedCell, setSelectedCell] = useState<SalesPlanCellPosition | null>(null);
   const [fill, setFill] = useState<SalesPlanFillState | null>(null);
@@ -347,6 +349,7 @@ export function SalesPlanPage({
   const displayMonthState = displayPlan ? getSalesPlanMonthState(displayPlan, activeMonth) : null;
   const readOnly = mode !== "edit" || displayMonthState?.status !== "draft";
   const summary = displayPlan ? calculateSalesPlanSummary(displayPlan, visibleMonths) : null;
+  const stockRisk = displayPlan ? calculateSalesPlanStockRiskSummary(displayPlan, activeMonth) : null;
   const monthCountWord = visibleMonths.length === 1 ? "месяц" : visibleMonths.length < 5 ? "месяца" : "месяцев";
   const status = activeMonthState?.status ?? "empty";
   const statusLabel = status === "draft" ? "Черновик" : status === "review" ? "На согласовании" : status === "approved" ? "Утверждён" : "Не создан";
@@ -431,11 +434,12 @@ export function SalesPlanPage({
             </>
               : !displayPlan ? <EmptyPlan mode={mode} marketplace={marketplace} onCreate={() => void createPlan()} />
                 : <>
-                  {summary ? <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Показатели плана">
+                  {summary ? <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5" aria-label="Показатели плана">
                     <Metric label="План заказов" value={`${number(summary.orders)} шт.`} detail={`${summary.variants} цветов · ${visibleMonths.length} ${monthCountWord}`} />
                     <Metric label={marketplace === "wb" ? "Ожидаемый выкуп" : "Ожидаемое завершение"} value={`${number(summary.buyouts)} шт.`} detail={`${summary.buyoutPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% по каждому цвету`} />
                     <Metric label="Плановая выручка" value={money(summary.revenue)} detail={`${marketplace === "wb" ? "выкуп" : "завершение"} × цена`} />
                     <Metric label="Рекламный бюджет" value={money(summary.ads)} detail={`${summary.adPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% от заказной выручки`} tone="amber" />
+                    {stockRisk ? <Metric label="Остаток на конец" value={`${number(stockRisk.endingStock)} шт.`} detail={stockRisk.shortageRows > 0 ? `${stockRisk.shortageRows} SKU покажут дефицит с ${stockRisk.shortageDay} числа` : `сейчас ${number(stockRisk.currentStock)} шт.`} tone={stockRisk.shortageRows > 0 ? "rose" : "slate"} /> : null}
                   </section> : null}
 
                   <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3">
@@ -451,6 +455,7 @@ export function SalesPlanPage({
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                        {stockRisk ? <button type="button" aria-pressed={stockRiskOnly} onClick={() => setStockRiskOnly((value) => !value)} className={`inline-flex min-h-11 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition sm:min-h-9 ${stockRiskOnly ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>Покажет дефицит <span className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-[10px]">{stockRisk.shortageRows}</span></button> : null}
                         <label className="relative block min-w-[220px]"><span className="sr-only">Поиск в плане</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Артикул, цвет или ID" className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:h-9" /></label>
                         {!readOnly ? <button type="button" onClick={() => setAddOpen(true)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 sm:min-h-9 ${soft}`}><PackagePlus className="h-4 w-4" /> Добавить SKU</button> : null}
                       </div>
@@ -464,6 +469,7 @@ export function SalesPlanPage({
                     readOnly={readOnly}
                     marketplace={marketplace}
                     query={query}
+                    stockRiskOnly={stockRiskOnly}
                     expanded={expanded}
                     selectedCell={selectedCell}
                     fill={fill}
@@ -491,8 +497,9 @@ function ActionButton({ primary, disabled, title, onClick, icon: Icon, children 
   return <button type="button" disabled={disabled} title={title} onClick={onClick} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-55 sm:min-h-9 ${primary}`}><Icon className="h-4 w-4" />{children}</button>;
 }
 
-function Metric({ label, value, detail, tone = "slate" }: { label: string; value: string; detail: string; tone?: "slate" | "amber" }) {
-  return <div className={`rounded-xl border p-4 ${tone === "amber" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-white"}`}><div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-xl font-bold tabular-nums text-slate-900">{value}</div><div className="mt-1 text-[11px] text-slate-500">{detail}</div></div>;
+function Metric({ label, value, detail, tone = "slate" }: { label: string; value: string; detail: string; tone?: "slate" | "amber" | "rose" }) {
+  const toneClass = tone === "amber" ? "border-amber-200 bg-amber-50" : tone === "rose" ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white";
+  return <div className={`rounded-xl border p-4 ${toneClass}`}><div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-xl font-bold tabular-nums text-slate-900">{value}</div><div className={`mt-1 text-[11px] ${tone === "rose" ? "text-rose-700" : "text-slate-500"}`}>{detail}</div></div>;
 }
 
 function ValidationSummary({ issues }: { issues: SalesPlanValidationIssue[] }) {

@@ -86,3 +86,17 @@ test("sales-plan UI renders server-side month event history", () => {
   assert.match(source, /<SalesPlanHistory events=\{events\} activeMonth=\{activeMonth\} year=\{year\} \/>/);
   assert.match(source, /const eventLabels: Record<SalesPlanEvent\["type"\], string>/);
 });
+
+test("sales-plan UI surfaces ending stock, shortage day and shortage filter", () => {
+  const page = readFileSync(new URL("../components/planning/SalesPlanPage.tsx", import.meta.url), "utf8");
+  const table = readFileSync(new URL("../components/planning/SalesPlanTable.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /calculateSalesPlanStockRiskSummary/);
+  assert.match(page, /const \[stockRiskOnly, setStockRiskOnly\] = useState\(false\);/);
+  assert.match(page, /Остаток на конец/);
+  assert.match(page, /Покажет дефицит/);
+  assert.match(table, /calculateSalesPlanRowStockRisk/);
+  assert.match(table, /stockRiskOnly: boolean;/);
+  assert.match(table, /shortageDay !== null/);
+  assert.match(table, /дефицит/);
+});
