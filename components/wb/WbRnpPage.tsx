@@ -17,6 +17,7 @@ import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/component
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
 import { readApiResponse } from "@/lib/http/readApiResponse";
+import { buildRnpFocusSummary, type RnpFocusSignal } from "@/lib/rnp/focusSummary";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { WbProductImage } from "./WbProductImage";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -438,6 +439,10 @@ export function WbRnpPage() {
       unavailableMetrics: activeData.summary.filter((item) => item.status === "unavailable").length,
     };
   })();
+  const focusSummary = useMemo(
+    () => activeData ? buildRnpFocusSummary(sortedSkus) : null,
+    [activeData, sortedSkus],
+  );
 
   const updateSkuWindow = (element: HTMLDivElement) => {
     const offset = Math.max(0, element.scrollTop - TABLE_PREFIX_HEIGHT);
@@ -602,6 +607,67 @@ export function WbRnpPage() {
             Сводка складывает каждый кабинет только до указанной даты.
           </span>
         </div>
+      )}
+
+      {activeData && focusSummary && (
+        <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Фокус РНП">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-bold text-slate-800">Фокус по текущему срезу</h2>
+              <p className="mt-0.5 text-[10px] text-slate-400">
+                Считает {focusSummary.skuCount} SKU после выбора кабинета, периода и категории. ДРР = реклама / заказы.
+              </p>
+            </div>
+            <span className="rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[9px] font-semibold text-violet-700">
+              {category ? "Категория" : "Все категории"} · {SORTS.find((sort) => sort.field === sortField)?.label}
+            </span>
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+            <OverviewMetric
+              label="Заказы"
+              value={fmt(focusSummary.ordersRub, "money")}
+              detail={`${fmt(focusSummary.ordersCount, "int")} шт`}
+              tone="slate"
+            />
+            <OverviewMetric
+              label="Выкупы"
+              value={fmt(focusSummary.buyoutsRub, "money")}
+              detail={`${fmt(focusSummary.buyoutsCount, "int")} шт · выкуп ${fmt(focusSummary.buyoutPct, "pct")}`}
+              tone={focusSummary.buyoutPct == null ? "slate" : focusSummary.buyoutPct < 50 ? "amber" : "emerald"}
+            />
+            <OverviewMetric
+              label="Реклама"
+              value={fmt(focusSummary.adSpent, "money")}
+              detail={`ДРР к заказам ${fmt(focusSummary.drr, "pct")}`}
+              tone={focusSummary.drr != null && focusSummary.drr >= 30 ? "rose" : focusSummary.drr != null && focusSummary.drr >= 20 ? "amber" : "slate"}
+            />
+            <OverviewMetric
+              label="Прибыль после МП"
+              value={fmt(focusSummary.gross, "money")}
+              detail={`Маржа ${fmt(focusSummary.marginPct, "pct")}`}
+              tone={focusSummary.gross == null ? "slate" : focusSummary.gross < 0 ? "rose" : "emerald"}
+            />
+            <OverviewMetric
+              label="Остаток"
+              value={`${fmt(focusSummary.stock, "int")} шт`}
+              detail={focusSummary.stockMoney == null ? "В деньгах —" : `В деньгах ${compactFmt(focusSummary.stockMoney, "money")} ₽`}
+              tone="slate"
+            />
+            <OverviewMetric
+              label="GMROI"
+              value={fmt(focusSummary.gmroi, "pct")}
+              detail="прибыль / деньги в остатках"
+              tone={focusSummary.gmroi == null ? "slate" : focusSummary.gmroi < 30 ? "amber" : "violet"}
+            />
+          </div>
+
+          <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            {focusSummary.signals.map((signal) => (
+              <FocusSignal key={signal.id} signal={signal} />
+            ))}
+          </div>
+        </section>
       )}
 
       {activeData && planOverview && (
@@ -807,6 +873,23 @@ function OverviewMetric({ label, value, detail, tone }: { label: string; value: 
       <div className="text-[9px] font-semibold uppercase tracking-wide opacity-70">{label}</div>
       <div className="mt-1 text-base font-bold tabular-nums">{value}</div>
       <div className="mt-0.5 text-[9px] opacity-70">{detail}</div>
+    </div>
+  );
+}
+
+function FocusSignal({ signal }: { signal: RnpFocusSignal }) {
+  const tones = {
+    slate: "border-slate-200 bg-slate-50 text-slate-600",
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    rose: "border-rose-200 bg-rose-50 text-rose-800",
+  };
+  return (
+    <div className={`rounded-lg border px-2.5 py-2 ${tones[signal.tone]}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-[9px] font-bold uppercase tracking-wide">{signal.label}</span>
+        <span className="shrink-0 rounded-full bg-white/80 px-1.5 py-0.5 text-[9px] font-bold tabular-nums">{signal.count}</span>
+      </div>
+      <p className="mt-1 line-clamp-2 text-[9px] leading-3 opacity-75" title={signal.detail}>{signal.detail}</p>
     </div>
   );
 }
