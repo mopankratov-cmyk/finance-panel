@@ -186,6 +186,7 @@ const PRESETS = [
 
 const RNP_FILTER_PRESETS_STORAGE_KEY = "finance-panel:wb-rnp-filter-presets:v1";
 const MAX_USER_FILTER_PRESETS = 8;
+const SHOW_RNP_ASSISTANT_BLOCKS = false;
 
 const SYSTEM_FILTER_PRESETS: RnpFilterPreset[] = [
   {
@@ -838,45 +839,47 @@ export function WbRnpPage() {
         </div>
       </section>
 
-      <section className="mb-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Быстрые срезы РНП">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="mr-1">
-            <h2 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Быстрые срезы</h2>
-            <p className="text-[9px] text-slate-400">Кабинет · период · категория · сортировка</p>
-          </div>
-          {allFilterPresets.map((preset) => (
-            <span key={preset.id} className="inline-flex h-8 items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-              <button
-                type="button"
-                onClick={() => applyFilterPreset(preset)}
-                title={preset.description ?? "Применить сохранённый срез"}
-                className={`h-8 px-2.5 text-[10px] font-semibold transition hover:bg-violet-50 hover:text-violet-700 ${
-                  preset.system ? "text-slate-600" : "text-violet-700"
-                }`}
-              >
-                {preset.label}
-              </button>
-              {!preset.system && (
+      {SHOW_RNP_ASSISTANT_BLOCKS && (
+        <section className="mb-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Быстрые срезы РНП">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-1">
+              <h2 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Быстрые срезы</h2>
+              <p className="text-[9px] text-slate-400">Кабинет · период · категория · сортировка</p>
+            </div>
+            {allFilterPresets.map((preset) => (
+              <span key={preset.id} className="inline-flex h-8 items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                 <button
                   type="button"
-                  onClick={() => deleteFilterPreset(preset.id)}
-                  aria-label={`Удалить срез ${preset.label}`}
-                  className="grid h-8 w-7 place-items-center border-l border-slate-200 text-[13px] font-semibold text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+                  onClick={() => applyFilterPreset(preset)}
+                  title={preset.description ?? "Применить сохранённый срез"}
+                  className={`h-8 px-2.5 text-[10px] font-semibold transition hover:bg-violet-50 hover:text-violet-700 ${
+                    preset.system ? "text-slate-600" : "text-violet-700"
+                  }`}
                 >
-                  ×
+                  {preset.label}
                 </button>
-              )}
-            </span>
-          ))}
-          <button
-            type="button"
-            onClick={saveCurrentFilterPreset}
-            className="ml-auto h-8 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-[10px] font-semibold text-violet-700 hover:border-violet-300 hover:bg-violet-100"
-          >
-            Сохранить текущий срез
-          </button>
-        </div>
-      </section>
+                {!preset.system && (
+                  <button
+                    type="button"
+                    onClick={() => deleteFilterPreset(preset.id)}
+                    aria-label={`Удалить срез ${preset.label}`}
+                    className="grid h-8 w-7 place-items-center border-l border-slate-200 text-[13px] font-semibold text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={saveCurrentFilterPreset}
+              className="ml-auto h-8 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-[10px] font-semibold text-violet-700 hover:border-violet-300 hover:bg-violet-100"
+            >
+              Сохранить текущий срез
+            </button>
+          </div>
+        </section>
+      )}
 
       {planMessage && (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
@@ -884,9 +887,9 @@ export function WbRnpPage() {
         </div>
       )}
 
-      {activeData?.scope_freshness?.length ? <RnpFreshnessNotice items={activeData.scope_freshness} /> : null}
+      {SHOW_RNP_ASSISTANT_BLOCKS && activeData?.scope_freshness?.length ? <RnpFreshnessNotice items={activeData.scope_freshness} /> : null}
 
-      {activeData && focusSummary && (
+      {SHOW_RNP_ASSISTANT_BLOCKS && activeData && focusSummary && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Фокус РНП">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
