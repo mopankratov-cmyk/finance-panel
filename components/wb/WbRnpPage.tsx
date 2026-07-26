@@ -174,7 +174,8 @@ const COMPARE_METRICS = [
   { field: "stock", label: "Остаток" },
 ] as const;
 
-const COMPARE_COLORS = ["#7c3aed", "#ec4899", "#0ea5e9", "#10b981", "#f59e0b"];
+const COMPARE_COLORS = ["#7c3aed", "#ec4899", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#6366f1", "#14b8a6", "#f97316", "#84cc16", "#06b6d4", "#a855f7"];
+const DEFAULT_COMPARE_SELECTED_LIMIT = 12;
 
 const PRESETS = [
   { value: "today", label: "Сегодня" },
@@ -444,6 +445,8 @@ export function WbRnpPage() {
   const [sortField, setSortField] = useState("orders_sum");
   const [sortDirection, setSortDirection] = useState<1 | -1>(-1);
   const [compareMetric, setCompareMetric] = useState<(typeof COMPARE_METRICS)[number]["field"]>("orders_sum");
+  const [compareQuery, setCompareQuery] = useState("");
+  const [selectedCompareNms, setSelectedCompareNms] = useState<number[]>([]);
   const [focusedNm, setFocusedNm] = useState<number | null>(null);
   const [planning, setPlanning] = useState(false);
   const [plan, setPlan] = useState<Record<string, Record<string, number>>>({});
@@ -621,9 +624,36 @@ export function WbRnpPage() {
     () => activeData ? buildRnpFocusSummary(sortedSkus) : null,
     [activeData, sortedSkus],
   );
-  const articleCompare = useMemo(
-    () => activeData ? buildRnpArticleCompare(sortedSkus, activeData.period, compareMetric, COMPARE_COLORS.length) : null,
+  const articleCompareCatalog = useMemo(
+    () => activeData ? buildRnpArticleCompare(sortedSkus, activeData.period, compareMetric, sortedSkus.length || 1) : null,
     [activeData, compareMetric, sortedSkus],
+  );
+  const compareColorByNm = useMemo(
+    () => new Map((articleCompareCatalog?.lines ?? []).map((line, index) => [line.nm, COMPARE_COLORS[index % COMPARE_COLORS.length]])),
+    [articleCompareCatalog],
+  );
+  const compareSkuByNm = useMemo(
+    () => new Map(sortedSkus.map((sku) => [sku.nm, sku])),
+    [sortedSkus],
+  );
+  const filteredCompareOptions = useMemo(() => {
+    const options = articleCompareCatalog?.lines ?? [];
+    const query = compareQuery.trim().toLocaleLowerCase("ru-RU");
+    if (!query) return options;
+    return options.filter((line) => {
+      const sku = compareSkuByNm.get(line.nm);
+      const haystack = `${line.label} ${sku?.name ?? ""} ${line.nm}`.toLocaleLowerCase("ru-RU");
+      return haystack.includes(query);
+    });
+  }, [articleCompareCatalog, compareQuery, compareSkuByNm]);
+  const selectedCompareSkus = useMemo(() => {
+    if (!selectedCompareNms.length) return [];
+    const selected = new Set(selectedCompareNms);
+    return sortedSkus.filter((sku) => selected.has(sku.nm));
+  }, [selectedCompareNms, sortedSkus]);
+  const articleCompare = useMemo(
+    () => activeData ? buildRnpArticleCompare(selectedCompareSkus, activeData.period, compareMetric, selectedCompareSkus.length || 1) : null,
+    [activeData, compareMetric, selectedCompareSkus],
   );
   const visibleSystemPresets = useMemo(
     () => SYSTEM_FILTER_PRESETS.filter((preset) => !preset.categoryKeywords?.length || Boolean(matchingPresetCategory(preset, categories))),
@@ -641,6 +671,27 @@ export function WbRnpPage() {
     const start = Math.max(0, firstVisible - 1);
     const end = Math.min(tableSkus.length, firstVisible + visibleBlocks + 2);
     setSkuWindow((current) => (current.start === start && current.end === end ? current : { start, end }));
+  };
+
+  useEffect(() => {
+    const available = articleCompareCatalog?.lines.map((line) => line.nm) ?? [];
+    setSelectedCompareNms((current) => {
+      const availableSet = new Set(available);
+      const kept = current.filter((nm) => availableSet.has(nm));
+      if (kept.length) return kept;
+      return available.slice(0, Math.min(DEFAULT_COMPARE_SELECTED_LIMIT, available.length));
+    });
+  }, [articleCompareCatalog]);
+
+  useEffect(() => {
+    if (focusedNm != null && !selectedCompareNms.includes(focusedNm)) setFocusedNm(null);
+  }, [focusedNm, selectedCompareNms]);
+
+  const selectAllCompareSkus = () => setSelectedCompareNms((articleCompareCatalog?.lines ?? []).map((line) => line.nm));
+  const selectTopCompareSkus = () => setSelectedCompareNms((articleCompareCatalog?.lines ?? []).slice(0, Math.min(5, DEFAULT_COMPARE_SELECTED_LIMIT)).map((line) => line.nm));
+  const clearCompareSkus = () => setSelectedCompareNms([]);
+  const toggleCompareSku = (nm: number) => {
+    setSelectedCompareNms((current) => current.includes(nm) ? current.filter((item) => item !== nm) : [...current, nm]);
   };
 
   const applyPreset = (preset: DateRange["preset"]) => setRange(rangeFor(preset));
@@ -993,13 +1044,13 @@ export function WbRnpPage() {
         </section>
       )}
 
-      {activeData && articleCompare && (
+      {activeData && articleCompare && articleCompareCatalog && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Сравнение артикулов РНП">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <h2 className="text-xs font-bold text-slate-800">Сравнение артикулов</h2>
               <p className="mt-0.5 text-[10px] text-slate-400">
-                Топ-{articleCompare.lines.length} SKU из текущей категории: клик по линии или легенде фильтрует таблицу до SKU.
+                Доступно {articleCompareCatalog.lines.length} SKU из текущей категории. Выберите нужные артикулы, клик по линии фильтрует таблицу до SKU.
               </p>
             </div>
             <div className="flex flex-wrap gap-1">
@@ -1020,67 +1071,139 @@ export function WbRnpPage() {
             </div>
           </div>
 
-          {articleCompare.lines.length > 0 ? (
+          {articleCompareCatalog.lines.length > 0 ? (
             <>
-              <div className="mt-3 h-[240px] min-w-0">
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                  <LineChart data={articleCompare.points} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="date" fontSize={10} minTickGap={18} stroke="#94a3b8" />
-                    <YAxis
-                      width={42}
-                      fontSize={10}
-                      stroke="#94a3b8"
-                      tickFormatter={(value) => formatChartValue(Number(value), articleCompare.metricKind)}
-                    />
-                    <Tooltip
-                      formatter={(value, name) => [
-                        formatChartValue(Number(value), articleCompare.metricKind),
-                        articleCompare.lines.find((line) => line.key === String(name))?.label ?? String(name),
-                      ]}
-                      labelFormatter={(label) => `Дата ${label}`}
-                    />
-                    {articleCompare.lines.map((line, index) => (
-                      <Line
-                        key={line.key}
-                        type="monotone"
-                        dataKey={line.key}
-                        name={line.key}
-                        stroke={COMPARE_COLORS[index % COMPARE_COLORS.length]}
-                        strokeWidth={2}
-                        dot={{ r: 2 }}
-                        connectNulls
-                        onClick={() => setFocusedNm(line.nm)}
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="h-[260px] min-w-0 rounded-lg border border-slate-100 bg-white p-2">
+                  {articleCompare.lines.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                      <LineChart data={articleCompare.points} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="date" fontSize={10} minTickGap={18} stroke="#94a3b8" />
+                        <YAxis
+                          width={42}
+                          fontSize={10}
+                          stroke="#94a3b8"
+                          tickFormatter={(value) => formatChartValue(Number(value), articleCompare.metricKind)}
+                        />
+                        <Tooltip
+                          formatter={(value, name) => [
+                            formatChartValue(Number(value), articleCompare.metricKind),
+                            articleCompare.lines.find((line) => line.key === String(name))?.label ?? String(name),
+                          ]}
+                          labelFormatter={(label) => `Дата ${label}`}
+                        />
+                        {articleCompare.lines.map((line, index) => (
+                          <Line
+                            key={line.key}
+                            type="monotone"
+                            dataKey={line.key}
+                            name={line.key}
+                            stroke={compareColorByNm.get(line.nm) ?? COMPARE_COLORS[index % COMPARE_COLORS.length]}
+                            strokeWidth={2}
+                            dot={{ r: 2 }}
+                            connectNulls
+                            onClick={() => setFocusedNm(line.nm)}
+                          />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="grid h-full place-items-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-center text-xs text-slate-400">
+                      Выберите хотя бы один артикул справа.
+                    </div>
+                  )}
+                </div>
+
+                <aside className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Артикулы на графике</div>
+                      <div className="mt-0.5 text-[10px] text-slate-400">
+                        выбрано {selectedCompareNms.length} из {articleCompareCatalog.lines.length}
+                      </div>
+                    </div>
+                    {focusedNm != null && (
+                      <button
+                        type="button"
+                        onClick={() => setFocusedNm(null)}
+                        className="h-7 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-semibold text-violet-700 hover:bg-violet-50"
+                      >
+                        Все SKU
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    value={compareQuery}
+                    onChange={(event) => setCompareQuery(event.target.value)}
+                    placeholder="поиск по артикулу, названию или WB ID"
+                    className="mt-2 h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <button type="button" onClick={selectAllCompareSkus} className="h-7 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-600 hover:text-violet-700">
+                      Все артикулы
+                    </button>
+                    <button type="button" onClick={selectTopCompareSkus} className="h-7 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-600 hover:text-violet-700">
+                      Топ-5
+                    </button>
+                    <button type="button" onClick={clearCompareSkus} className="h-7 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-600 hover:text-rose-600">
+                      Очистить
+                    </button>
+                  </div>
+                  <div className="mt-2 max-h-[210px] space-y-1 overflow-auto pr-1">
+                    {filteredCompareOptions.length > 0 ? filteredCompareOptions.map((line) => {
+                      const checked = selectedCompareNms.includes(line.nm);
+                      const sku = compareSkuByNm.get(line.nm);
+                      return (
+                        <label
+                          key={line.key}
+                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 text-[10px] transition ${
+                            checked ? "border-violet-200 bg-white text-slate-800 shadow-[0_1px_1px_rgba(15,23,42,0.04)]" : "border-transparent bg-white/50 text-slate-500 hover:bg-white"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleCompareSku(line.nm)}
+                            className="h-3.5 w-3.5 accent-violet-600"
+                          />
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: compareColorByNm.get(line.nm) ?? "#94a3b8" }} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-bold">{line.label}</span>
+                            <span className="block truncate text-[9px] text-slate-400">
+                              WB {line.nm}{sku?.name && sku.name !== line.label ? ` · ${sku.name}` : ""}
+                            </span>
+                          </span>
+                          <span className="shrink-0 font-semibold tabular-nums text-slate-600">{fmt(line.total, articleCompareCatalog.metricKind)}</span>
+                        </label>
+                      );
+                    }) : (
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-6 text-center text-[10px] text-slate-400">
+                        Поиск ничего не нашёл.
+                      </div>
+                    )}
+                  </div>
+                </aside>
               </div>
-              <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500">
-                {articleCompare.lines.map((line, index) => (
-                  <button
-                    key={line.key}
-                    type="button"
-                    onClick={() => setFocusedNm((current) => current === line.nm ? null : line.nm)}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition ${
-                      focusedNm === line.nm ? "bg-violet-50 text-violet-700 ring-1 ring-violet-200" : "bg-slate-50 text-slate-500 hover:bg-slate-100"
-                    }`}
-                    title="Нажмите, чтобы оставить в таблице только этот SKU"
-                  >
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COMPARE_COLORS[index % COMPARE_COLORS.length] }} />
-                    <span className="font-semibold text-slate-700">{line.label}</span>
-                    <span>{fmt(line.total, articleCompare.metricKind)}</span>
-                  </button>
-                ))}
-                {focusedNm != null && (
-                  <button
-                    type="button"
-                    onClick={() => setFocusedNm(null)}
-                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-500 hover:text-violet-700"
-                  >
-                    Показать все SKU
-                  </button>
-                )}
+
+              <div className="mt-2 max-h-16 overflow-auto rounded-lg bg-slate-50 p-1.5 text-[10px] text-slate-500">
+                <div className="flex flex-wrap gap-1.5">
+                  {articleCompare.lines.map((line, index) => (
+                    <button
+                      key={line.key}
+                      type="button"
+                      onClick={() => setFocusedNm((current) => current === line.nm ? null : line.nm)}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition ${
+                        focusedNm === line.nm ? "bg-violet-50 text-violet-700 ring-1 ring-violet-200" : "bg-white text-slate-500 hover:bg-slate-100"
+                      }`}
+                      title="Нажмите, чтобы оставить в таблице только этот SKU"
+                    >
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: compareColorByNm.get(line.nm) ?? COMPARE_COLORS[index % COMPARE_COLORS.length] }} />
+                      <span className="font-semibold text-slate-700">{line.label}</span>
+                      <span>{fmt(line.total, articleCompare.metricKind)}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </>
           ) : (

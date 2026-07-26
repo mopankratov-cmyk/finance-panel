@@ -18,11 +18,15 @@ test("WB RNP keeps optional management assistant blocks disabled by default", ()
 test("WB RNP page exposes an article comparison chart for the current slice", () => {
   const source = readFileSync(new URL("../components/wb/WbRnpPage.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /buildRnpArticleCompare\(sortedSkus, activeData\.period, compareMetric/);
+  assert.match(source, /articleCompareCatalog/);
+  assert.match(source, /buildRnpArticleCompare\(sortedSkus, activeData\.period, compareMetric, sortedSkus\.length/);
+  assert.match(source, /selectedCompareNms/);
   assert.match(source, /Сравнение артикулов/);
+  assert.match(source, /Все артикулы/);
+  assert.match(source, /поиск по артикулу, названию или WB ID/);
   assert.match(source, /ResponsiveContainer/);
   assert.match(source, /COMPARE_METRICS\.map/);
   assert.match(source, /cart_conversion/);
   assert.match(source, /setFocusedNm\(line\.nm\)/);
-  assert.match(source, /Показать все SKU/);
+  assert.match(source, /Все SKU/);
 });

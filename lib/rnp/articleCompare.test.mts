@@ -56,6 +56,22 @@ test("RNP article compare picks top SKU by selected metric and builds daily poin
   ]);
 });
 
+test("RNP article compare can expose every eligible SKU for manual selection", () => {
+  const compare = buildRnpArticleCompare(
+    [
+      sku(1, "LOW", [10], 10),
+      sku(2, "HIGH", [100], 100),
+      sku(3, "MID", [40], 40),
+    ],
+    [{ label: "01", period_type: "ср" }],
+    "orders_sum",
+    99,
+  );
+
+  assert.deepEqual(compare.lines.map((line) => line.label), ["HIGH", "MID", "LOW"]);
+  assert.deepEqual(compare.points, [{ date: "01", weekday: "ср", sku_2: 100, sku_3: 40, sku_1: 10 }]);
+});
+
 test("RNP article compare returns an empty chart model without matching metrics", () => {
   const compare = buildRnpArticleCompare(
     [sku(1, "NO-AD", [10], 10)],
