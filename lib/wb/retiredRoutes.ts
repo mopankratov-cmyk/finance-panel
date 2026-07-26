@@ -1,12 +1,12 @@
 const RETIRED_WB_ROUTES = {
-  "/wb/abc": "/wb",
-  "/abc": "/wb",
+  "/wb/abc": "/wb/rnp",
+  "/abc": "/wb/rnp",
   "/wb/trends": "/wb/market",
   "/trends": "/wb/market",
-  "/wb/planning": "/wb",
-  "/planning": "/wb",
-  "/wb/health": "/wb",
-  "/wb/tasks": "/wb",
+  "/wb/planning": "/wb/rnp",
+  "/planning": "/wb/rnp",
+  "/wb/health": "/wb/rnp",
+  "/wb/tasks": "/wb/rnp",
 } as const;
 
 export type RetiredWbRoute = keyof typeof RETIRED_WB_ROUTES;

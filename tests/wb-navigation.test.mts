@@ -4,7 +4,6 @@ import { WB_MOBILE_NAVIGATION, WB_NAVIGATION_ITEMS, isWbNavigationItemActive } f
 
 test("WB navigation exposes only the approved dashboards as direct links", () => {
   assert.deepEqual(WB_NAVIGATION_ITEMS.map((item) => item.href), [
-    "/wb",
     "/wb/rnp",
     "/wb/planning",
     "/wb/funnel",
@@ -30,9 +29,8 @@ test("WB mobile navigation keeps four operational shortcuts", () => {
   ]);
 });
 
-test("WB route activity handles the cockpit alias and nested pages", () => {
-  assert.equal(isWbNavigationItemActive("/wb", "/wb"), true);
-  assert.equal(isWbNavigationItemActive("/wb/rnp", "/wb"), false);
+test("WB route activity handles nested pages without a separate home item", () => {
+  assert.equal(WB_NAVIGATION_ITEMS.some((item) => item.href === "/wb"), false);
   assert.equal(isWbNavigationItemActive("/wb/rnp", "/wb/rnp"), true);
   assert.equal(isWbNavigationItemActive("/wb/ctr/session", "/wb/ctr"), true);
   assert.equal(isWbNavigationItemActive("/wb/adverts", "/wb/rnp"), false);

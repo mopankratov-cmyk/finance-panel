@@ -3,7 +3,7 @@
 import {
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
   FlaskConical,
-  Package, TrendingDown, Wallet, Building2, ArrowUpRight, ChevronDown, LayoutDashboard,
+  Package, TrendingDown, Wallet, Building2, ArrowUpRight, ChevronDown,
   LogOut, AlertTriangle, Info, XCircle, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -49,7 +49,7 @@ const ZONES = ["Аналитика", "Финансы", "Операции", "AI"]
 type Zone = (typeof ZONES)[number];
 
 const PRIMARY_MODULES: ModuleCard[] = [
-  { title: "Wildberries Cockpit", description: "Единый центр управления WB: обзор, продажи, реклама и операции", href: "/wb", icon: LayoutDashboard, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
+  { title: "РНП WB", description: "Основной рабочий экран Wildberries: заказы, реклама, маржа и остатки по SKU", href: "/wb/rnp", icon: Table2, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "Ozon Cockpit", description: "Продажи, реклама, остатки, заказы и здоровье интеграций", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
   { title: "Финансы", description: "Календарь ДДС, платежи, счета и кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
 ];

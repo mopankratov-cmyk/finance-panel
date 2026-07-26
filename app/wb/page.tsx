@@ -1,5 +1,5 @@
-import { WbHomePage } from "@/components/wb/WbHomePage";
+import { redirect } from "next/navigation";
 
 export default function WbPage() {
-  return <WbHomePage />;
+  redirect("/wb/rnp");
 }
