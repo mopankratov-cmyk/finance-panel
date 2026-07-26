@@ -30,17 +30,31 @@ test("WB RNP renders previous-period deltas, heatmap and sparklines in the opera
 });
 
 test("WB RNP supports article-list filtering and anomaly direction filters", () => {
-  assert.match(toolbar, /Артикулы или WB ID/);
+  assert.match(toolbar, /Поиск \/ список артикулов/);
+  assert.match(toolbar, /nmID \/ артикул — можно списком/);
   assert.match(page, /matchesArticleList\(sku, articleQuery\)/);
   assert.match(page, /detectSkuAnomalies/);
-  assert.match(toolbar, /Риски/);
-  assert.match(toolbar, /Рост/);
+  assert.match(toolbar, /Только риски/);
+  assert.match(toolbar, /Только рост/);
 });
 
 test("WB RNP turnover window reaches the cached table calculation", () => {
-  assert.match(toolbar, /Окно расчёта оборачиваемости/);
+  assert.match(page, /Окно оборач\., дн/);
+  assert.match(toolbar, /окно оборачиваемости \{props\.turnoverWindowDays\} дней/);
   assert.match(page, /turnover_days: String\(turnoverWindowDays\)/);
   assert.match(tableRoute, /sp\.get\("turnover_days"\)/);
+});
+
+test("WB RNP follows the Optima matrix composition for summary and every product", () => {
+  assert.match(page, /Рука на пульсе/);
+  assert.match(page, /title="Общая сводка"/);
+  assert.match(page, /function OptimaProductCard/);
+  assert.match(page, /function OptimaMatrixTable/);
+  assert.match(page, /За период/);
+  assert.match(page, /Мини-график/);
+  assert.match(page, /Журнал изменений/);
+  assert.match(toolbar, /Показатели \{props\.metricFields\.length\}\/\{RNP_METRIC_FIELDS\.length\}/);
+  assert.match(toolbar, /Показатели · тяните ⠿ для порядка/);
 });
 
 test("WB RNP shared tags and product journal stay scoped to one cabinet", () => {

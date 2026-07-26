@@ -24,6 +24,7 @@ interface DrawerSku {
 
 interface Props {
   sku: DrawerSku | null;
+  initialEventDate?: string;
   tags: RnpTagOption[];
   assignedTagIds: string[];
   journal: RnpJournalEntry[];
@@ -70,11 +71,11 @@ export function RnpProductOperationsDrawer(props: Props) {
   const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
-    setEventDate(todayIso());
+    setEventDate(props.initialEventDate || todayIso());
     setEventType("note");
     setComment("");
     setSaving(null);
-  }, [props.sku?.nm]);
+  }, [props.initialEventDate, props.sku?.nm]);
 
   if (!props.sku) return null;
 

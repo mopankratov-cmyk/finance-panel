@@ -2,11 +2,10 @@
 
 import {
   AlertTriangle,
-  ArrowDown,
   ArrowRight,
-  ArrowUp,
   BookOpen,
   CalendarDays,
+  Download,
   Loader2,
   Pencil,
   RefreshCw,
@@ -102,7 +101,7 @@ interface RnpTable {
 interface DateRange {
   from: string;
   to: string;
-  preset: "today" | "yesterday" | "week" | "month" | "previous" | "custom";
+  preset: "today" | "yesterday" | "week" | "two_weeks" | "month" | "quarter" | "previous" | "custom";
 }
 
 interface RnpFilterPreset {
@@ -207,11 +206,10 @@ const COMPARE_COLORS = ["#7c3aed", "#ec4899", "#0ea5e9", "#10b981", "#f59e0b", "
 const DEFAULT_COMPARE_SELECTED_LIMIT = 12;
 
 const PRESETS = [
-  { value: "today", label: "Сегодня" },
-  { value: "yesterday", label: "Вчера" },
   { value: "week", label: "Неделя" },
-  { value: "month", label: "Этот месяц" },
-  { value: "previous", label: "Прошлый месяц" },
+  { value: "two_weeks", label: "2 недели" },
+  { value: "month", label: "Месяц" },
+  { value: "quarter", label: "Квартал" },
 ] as const;
 
 const RNP_FILTER_PRESETS_STORAGE_KEY = "finance-panel:wb-rnp-filter-presets:v1";
@@ -291,9 +289,13 @@ function rangeFor(preset: DateRange["preset"]): DateRange {
     end.setDate(end.getDate() - 1);
   } else if (preset === "week") {
     start.setDate(start.getDate() - 6);
+  } else if (preset === "two_weeks") {
+    start.setDate(start.getDate() - 13);
   } else if (preset === "month") {
     start.setDate(1);
     end.setMonth(end.getMonth() + 1, 0);
+  } else if (preset === "quarter") {
+    start.setDate(start.getDate() - 89);
   } else if (preset === "previous") {
     start.setMonth(start.getMonth() - 1, 1);
     end.setDate(0);
@@ -317,7 +319,7 @@ function normalizeUserPreset(raw: unknown): RnpFilterPreset | null {
     label: label.slice(0, 40),
     cabinetId: typeof value.cabinetId === "string" ? value.cabinetId : undefined,
     category: typeof value.category === "string" ? value.category : "",
-    rangePreset: ["today", "yesterday", "week", "month", "previous", "custom"].includes(String(value.rangePreset))
+    rangePreset: ["today", "yesterday", "week", "two_weeks", "month", "quarter", "previous", "custom"].includes(String(value.rangePreset))
       ? value.rangePreset as DateRange["preset"]
       : "custom",
     from: typeof value.from === "string" ? value.from : undefined,
@@ -356,7 +358,7 @@ function readMatrixPreferences(): RnpMatrixPreferences {
     heatmapEnabled: true,
     sparklinesEnabled: true,
     anomalyThreshold: 30,
-    turnoverWindowDays: 30,
+    turnoverWindowDays: 7,
   };
   try {
     const raw = window.localStorage.getItem(RNP_MATRIX_STORAGE_KEY);
@@ -369,7 +371,7 @@ function readMatrixPreferences(): RnpMatrixPreferences {
       heatmapEnabled: value.heatmapEnabled !== false,
       sparklinesEnabled: value.sparklinesEnabled !== false,
       anomalyThreshold: Math.max(10, Math.min(100, Number(value.anomalyThreshold) || 30)),
-      turnoverWindowDays: [7, 14, 30, 60, 90].includes(Number(value.turnoverWindowDays)) ? Number(value.turnoverWindowDays) : 30,
+      turnoverWindowDays: [7, 14, 30, 60, 90].includes(Number(value.turnoverWindowDays)) ? Number(value.turnoverWindowDays) : 7,
     };
   } catch {
     return fallback;
@@ -534,7 +536,7 @@ export function WbRnpPage() {
   const [sparklinesEnabled, setSparklinesEnabled] = useState(true);
   const [anomalyMode, setAnomalyMode] = useState<"off" | RnpAnomalyDirection>("off");
   const [anomalyThreshold, setAnomalyThreshold] = useState(30);
-  const [turnoverWindowDays, setTurnoverWindowDays] = useState(30);
+  const [turnoverWindowDays, setTurnoverWindowDays] = useState(7);
   const [operationsAvailable, setOperationsAvailable] = useState(false);
   const [operationsMessage, setOperationsMessage] = useState<string | null>(null);
   const [operationsLoading, setOperationsLoading] = useState(false);
@@ -544,6 +546,7 @@ export function WbRnpPage() {
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [selectedOperationNms, setSelectedOperationNms] = useState<number[]>([]);
   const [operationsSkuNm, setOperationsSkuNm] = useState<number | null>(null);
+  const [operationsInitialDate, setOperationsInitialDate] = useState<string | undefined>();
   const [journal, setJournal] = useState<RnpJournalEntry[]>([]);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
@@ -596,6 +599,7 @@ export function WbRnpPage() {
     setActiveTagIds([]);
     setSelectedOperationNms([]);
     setOperationsSkuNm(null);
+    setOperationsInitialDate(undefined);
     setJournal([]);
     setOperationsMessage(null);
   }, [cabinetId]);
@@ -1095,142 +1099,176 @@ export function WbRnpPage() {
     });
   };
 
+  const downloadTable = () => {
+    if (!activeData) return;
+    const header = ["Артикул", "WB ID", "Название", "Показатель", "За период", ...activeData.period.map((day) => day.label)];
+    const rows = tableSkus.flatMap((sku) =>
+      completeMetrics(sku.metrics, activeData.period.length, metricFields).map((metric) => [
+        sku.art,
+        String(sku.nm),
+        sku.name,
+        metric.label,
+        metric.total == null || !Number.isFinite(metric.total) ? "" : String(metric.total),
+        ...metric.daily.map((value) => value == null || !Number.isFinite(value) ? "" : String(value)),
+      ]));
+    const csv = [header, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(";"))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rnp-${range.from}-${range.to}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const totalColumns = 7 + (sparklinesEnabled ? 1 : 0) + (activeData?.period.length ?? 0);
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] px-3 pb-20 pt-3 md:px-6 md:pb-6 md:pt-4">
-      <section className="mb-2.5 flex flex-wrap items-center gap-2" aria-label="Период РНП">
-        <div className="mr-1 flex h-8 items-center gap-1.5 text-sm font-semibold text-slate-700">
-          <BarChart3Icon />
-          РНП
+    <div className="min-h-[calc(100vh-54px)] bg-[#f7f7fb] px-3 pb-20 pt-4 md:px-6 md:pb-8 lg:px-7">
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-medium text-slate-400">Аналитика</div>
+          <div className="mt-0.5 flex items-center gap-2">
+            <BarChart3Icon />
+            <h1 className="text-xl font-bold tracking-[-0.02em] text-slate-900">Рука на пульсе</h1>
+          </div>
         </div>
-
-        <label className="relative">
-          <span className="sr-only">Дата начала</span>
-          <input
-            type="date"
-            value={range.from}
-            max={range.to}
-            onChange={(event) => setRange((current) => ({ ...current, from: event.target.value, preset: "custom" }))}
-            className="h-8 w-[142px] rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-          />
-        </label>
-        <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
-        <label className="relative">
-          <span className="sr-only">Дата окончания</span>
-          <input
-            type="date"
-            value={range.to}
-            min={range.from}
-            onChange={(event) => setRange((current) => ({ ...current, to: event.target.value, preset: "custom" }))}
-            className="h-8 w-[142px] rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-          />
-        </label>
-
-        <div className="flex flex-wrap items-center gap-1">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.value}
-              type="button"
-              onClick={() => applyPreset(preset.value)}
-              className={`h-8 rounded-lg border px-2.5 text-[11px] font-medium transition ${
-                range.preset === preset.value
-                  ? "border-violet-200 bg-violet-50 text-violet-700"
-                  : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-
-        <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-600">
-          <Store className="h-3.5 w-3.5 text-violet-600" />
-          {activeData?.shop_label || activeCabinet?.name || "Все кабинеты"}
-        </span>
-
-        <button
-          type="button"
-          disabled={!canWrite}
-          onClick={() => setPlanning((value) => !value)}
-          title={!canWrite ? "Для планирования выберите один кабинет" : "Редактировать месячный план"}
-          className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-            planning ? "border-violet-600 bg-violet-600 text-white" : "border-slate-200 bg-white text-slate-500 hover:border-violet-200 hover:text-violet-700"
-          }`}
-        >
-          <Pencil className="h-3.5 w-3.5" /> Режим планирования
-        </button>
-      </section>
-
-      <section className="mb-2.5 flex flex-wrap items-center justify-between gap-2" aria-label="Сортировка и фильтры РНП">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <CategoryFilter categories={categories} value={category} onChange={setCategory} />
-          {activeData && (
-            <span className="text-[10px] text-slate-400">
-              {sortedSkus.length} из {activeData.sku_count} SKU · {activeData.period.length} дн.
-            </span>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setSortDirection((direction) => (direction === -1 ? 1 : -1))}
-            className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[10px] text-slate-500 hover:text-violet-700"
+            disabled={!canWrite}
+            onClick={() => setPlanning((value) => !value)}
+            title={!canWrite ? "Для планирования выберите один кабинет" : "Редактировать план внутри таблицы"}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+              planning ? "border-violet-600 bg-violet-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:text-violet-700"
+            }`}
           >
-            Сорт {sortDirection === -1 ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />}
+            <Pencil className="h-3.5 w-3.5" /> Планирование
           </button>
-          {SORTS.map((sort) => (
-            <button
-              key={sort.field}
-              type="button"
-              onClick={() => setSortField(sort.field)}
-              className={`h-7 rounded-md border px-2.5 text-[10px] font-medium transition ${
-                sortField === sort.field
-                  ? "border-violet-200 bg-violet-50 text-violet-700"
-                  : "border-slate-200 bg-white text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {sort.label}
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => setRetryKey((key) => key + 1)}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#7567e8] px-3.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#6558d9] disabled:opacity-60"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Обновить
+          </button>
         </div>
-      </section>
+      </header>
 
-      <RnpOperatingToolbar
-        viewId={metricViewId}
-        metricFields={metricFields}
-        metrics={metricDefinitions}
-        metricsOpen={metricsOpen}
-        articleQuery={articleQuery}
-        showDeltas={showDeltas}
-        deltaMode={deltaMode}
-        heatmapEnabled={heatmapEnabled}
-        sparklinesEnabled={sparklinesEnabled}
-        anomalyMode={anomalyMode}
-        anomalyThreshold={anomalyThreshold}
-        anomalyCount={anomalyCount}
-        turnoverWindowDays={turnoverWindowDays}
-        tags={tags}
-        activeTagIds={activeTagIds}
-        selectedCount={selectedOperationNms.length}
-        operationsAvailable={operationsAvailable}
-        busy={operationsBusy}
-        onViewChange={applyMetricView}
-        onMetricFieldsChange={updateMetricFields}
-        onMetricsOpenChange={setMetricsOpen}
-        onArticleQueryChange={setArticleQuery}
-        onShowDeltasChange={setShowDeltas}
-        onDeltaModeChange={setDeltaMode}
-        onHeatmapChange={setHeatmapEnabled}
-        onSparklinesChange={setSparklinesEnabled}
-        onAnomalyModeChange={setAnomalyMode}
-        onAnomalyThresholdChange={setAnomalyThreshold}
-        onTurnoverWindowChange={setTurnoverWindowDays}
-        onTagFilterToggle={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((item) => item !== tagId) : [...current, tagId])}
-        onCreateTag={createTag}
-        onBulkTag={bulkTag}
-        onClearSelection={() => setSelectedOperationNms([])}
-      />
+      <section className="relative z-30 mb-4 rounded-[14px] border border-[#e5e7ef] bg-white p-3.5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]" aria-label="Фильтры РНП">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[140px_140px_minmax(0,1fr)] 2xl:grid-cols-[150px_150px_auto_minmax(110px,1fr)_170px_170px]">
+          <label>
+            <span className="mb-1 block text-[10px] font-medium text-slate-500">С</span>
+            <input
+              type="date"
+              value={range.from}
+              max={range.to}
+              onChange={(event) => setRange((current) => ({ ...current, from: event.target.value, preset: "custom" }))}
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-[10px] font-medium text-slate-500">По</span>
+            <input
+              type="date"
+              value={range.to}
+              min={range.from}
+              onChange={(event) => setRange((current) => ({ ...current, to: event.target.value, preset: "custom" }))}
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+          </label>
+          <div className="flex flex-wrap items-end gap-1.5">
+            <button
+              type="button"
+              onClick={downloadTable}
+              disabled={!activeData}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Download className="h-3.5 w-3.5" /> Скачать
+            </button>
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => applyPreset(preset.value)}
+                className={`h-9 whitespace-nowrap rounded-lg border px-2.5 text-[10px] font-medium transition ${
+                  range.preset === preset.value
+                    ? "border-violet-200 bg-violet-50 text-violet-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <label>
+            <span className="mb-1 block text-[10px] font-medium text-slate-500">Окно оборач., дн</span>
+            <input
+              type="number"
+              min={1}
+              max={180}
+              value={turnoverWindowDays}
+              onChange={(event) => setTurnoverWindowDays(Math.max(1, Math.min(180, Number(event.target.value) || 7)))}
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-[11px] tabular-nums text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+          </label>
+          <div>
+            <span className="mb-1 block text-[10px] font-medium text-slate-500">Категория</span>
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+          </div>
+          <div>
+            <span className="mb-1 block text-[10px] font-medium text-slate-500">Бренд / кабинет</span>
+            <span className="flex h-9 min-w-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-medium text-slate-700">
+              <Store className="h-3.5 w-3.5 shrink-0 text-violet-600" />
+              <span className="truncate">{activeData?.shop_label || activeCabinet?.name || "Все"}</span>
+            </span>
+          </div>
+        </div>
+
+        <RnpOperatingToolbar
+          viewId={metricViewId}
+          metricFields={metricFields}
+          metrics={metricDefinitions}
+          metricsOpen={metricsOpen}
+          articleQuery={articleQuery}
+          showDeltas={showDeltas}
+          deltaMode={deltaMode}
+          heatmapEnabled={heatmapEnabled}
+          sparklinesEnabled={sparklinesEnabled}
+          anomalyMode={anomalyMode}
+          anomalyThreshold={anomalyThreshold}
+          anomalyCount={anomalyCount}
+          turnoverWindowDays={turnoverWindowDays}
+          tags={tags}
+          activeTagIds={activeTagIds}
+          selectedCount={selectedOperationNms.length}
+          operationsAvailable={operationsAvailable}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          sortOptions={SORTS}
+          busy={operationsBusy}
+          onViewChange={applyMetricView}
+          onMetricFieldsChange={updateMetricFields}
+          onMetricsOpenChange={setMetricsOpen}
+          onArticleQueryChange={setArticleQuery}
+          onShowDeltasChange={setShowDeltas}
+          onDeltaModeChange={setDeltaMode}
+          onHeatmapChange={setHeatmapEnabled}
+          onSparklinesChange={setSparklinesEnabled}
+          onAnomalyModeChange={setAnomalyMode}
+          onAnomalyThresholdChange={setAnomalyThreshold}
+          onTurnoverWindowChange={setTurnoverWindowDays}
+          onSortFieldChange={setSortField}
+          onSortDirectionChange={setSortDirection}
+          onTagFilterToggle={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((item) => item !== tagId) : [...current, tagId])}
+          onCreateTag={createTag}
+          onBulkTag={bulkTag}
+          onClearSelection={() => setSelectedOperationNms([])}
+        />
+      </section>
 
       {SHOW_RNP_ASSISTANT_BLOCKS && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Быстрые срезы РНП">
@@ -1348,7 +1386,7 @@ export function WbRnpPage() {
         </section>
       )}
 
-      {activeData && planOverview && (
+      {SHOW_RNP_ASSISTANT_BLOCKS && activeData && planOverview && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="План факт прогноз РНП">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -1391,7 +1429,7 @@ export function WbRnpPage() {
         </section>
       )}
 
-      {activeData && articleCompare && articleCompareCatalog && (
+      {SHOW_RNP_ASSISTANT_BLOCKS && activeData && articleCompare && articleCompareCatalog && (
         <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Сравнение артикулов РНП">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -1580,92 +1618,72 @@ export function WbRnpPage() {
         </div>
       ) : activeData ? (
         <>
-          <div
-            ref={tableViewportRef}
-            onScroll={(event) => updateSkuWindow(event.currentTarget)}
-            className="hidden max-h-[calc(100vh-188px)] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)] md:block"
-          >
-            <table className="min-w-max border-separate border-spacing-0 text-[10px] leading-[1.15] text-slate-600">
-              <thead>
-                <tr>
-                  <th className="sticky left-0 top-0 z-40 h-[38px] w-28 min-w-28 border-b border-r border-slate-200 bg-[#fafbfc] px-2 text-left font-semibold text-slate-500">Товар</th>
-                  <th className="sticky left-28 top-0 z-40 h-[38px] w-[168px] min-w-[168px] border-b border-r border-slate-200 bg-[#fafbfc] px-2 text-left font-semibold text-slate-500">Метрика \\ Дата</th>
-                  <PlanHeader>План день</PlanHeader>
-                  <PlanHeader>План мес.</PlanHeader>
-                  <PlanHeader>Прогноз мес.<span className="mt-0.5 block text-[8px] font-normal text-slate-400">диапазон</span></PlanHeader>
-                  <PlanHeader>% плана</PlanHeader>
-                  <PlanHeader strong>Факт мес.</PlanHeader>
-                  {sparklinesEnabled ? <TrendHeader /> : null}
-                  {activeData.period.map((day, index) => (
-                    <th key={`${day.label}-${index}`} className="sticky top-0 z-30 h-[38px] w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fafbfc] px-1.5 text-center font-medium text-slate-500">
-                      <span className="block">{day.label}</span>
-                      <span className="mt-0.5 block text-[9px] font-normal text-slate-400">{day.period_type}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <SectionRow columns={totalColumns} icon="chart" label="СВОДКА ПО МАГАЗИНУ" />
-                {completeMetrics(activeData.summary, activeData.period.length, metricFields).map((metric, index, metrics) => (
-                  <MetricRow
-                    key={`summary-${metric.field}`}
-                    metric={metric}
-                    previousMetric={previousSummaryByField.get(metric.field)}
-                    planValue={aggregatePlanValue(plan, activeData.skus, metric.field, monthDayCount)}
-                    planEditable={false}
-                    monthDays={monthDayCount}
-                    showDeltas={showDeltas}
-                    deltaMode={deltaMode}
-                    heatmapEnabled={heatmapEnabled}
-                    sparklinesEnabled={sparklinesEnabled}
-                    firstCell={index === 0 ? <SummaryCell label={activeData.shop_label} rowSpan={metrics.length} /> : null}
-                  />
-                ))}
-                <SectionRow columns={totalColumns} icon="box" label={focusedNm == null ? `ТОВАРЫ (${sortedSkus.length})` : `ТОВАРЫ (1 из ${sortedSkus.length})`} />
-                {skuWindow.start > 0 && <SpacerRow columns={totalColumns} height={skuWindow.start * skuBlockHeight} />}
-                {visibleSkus.map((sku) => {
-                  const metrics = completeMetrics(sku.metrics, activeData.period.length, metricFields);
-                  const previousSku = previousSkuByNm.get(sku.nm);
-                  const skuTagIds = tagsByNm.get(sku.nm) ?? [];
-                  return metrics.map((metric, index) => {
-                    const key = `${sku.nm}:${metric.field}`;
-                    const savedPlan = plan[String(sku.nm)]?.[metric.field] ?? null;
-                    const displayedDraft = drafts[key] ?? (savedPlan == null ? "" : String(savedPlan));
-                    return (
-                      <MetricRow
-                        key={`${sku.nm}-${metric.field}`}
-                        metric={metric}
-                        previousMetric={findMetric(previousSku?.metrics ?? [], metric.field)}
-                        planValue={savedPlan}
-                        planEditable={planning && canWrite}
-                        monthDays={monthDayCount}
-                        showDeltas={showDeltas}
-                        deltaMode={deltaMode}
-                        heatmapEnabled={heatmapEnabled}
-                        sparklinesEnabled={sparklinesEnabled}
-                        firstCell={index === 0 ? (
-                          <ProductCell
-                            sku={sku}
-                            rowSpan={metrics.length}
-                            tags={tags.filter((tag) => skuTagIds.includes(tag.id))}
-                            anomalies={anomalyByNm.get(sku.nm) ?? []}
-                            selected={selectedOperationNms.includes(sku.nm)}
-                            onSelectedChange={operationsAvailable ? (selected) => setSelectedOperationNms((current) =>
-                              selected ? [...new Set([...current, sku.nm])] : current.filter((nm) => nm !== sku.nm)) : undefined}
-                            onOpenOperations={canWrite ? () => setOperationsSkuNm(sku.nm) : undefined}
-                          />
-                        ) : null}
-                        draftValue={displayedDraft}
-                        saving={saving === key}
-                        onDraftChange={(value) => setDrafts((current) => ({ ...current, [key]: value }))}
-                        onSave={() => savePlan(sku, metric)}
-                      />
-                    );
-                  });
-                })}
-                {skuWindow.end < tableSkus.length && <SpacerRow columns={totalColumns} height={(tableSkus.length - skuWindow.end) * skuBlockHeight} />}
-              </tbody>
-            </table>
+          <div className="hidden space-y-4 md:block">
+            <OptimaMatrixCard
+              title="Общая сводка"
+              subtitle={`${sortedSkus.length} артикулов · ${activeData.shop_label} · данные на ${formatAsOf(activeData.generated_at)}`}
+              period={activeData.period}
+              metrics={completeMetrics(activeData.summary, activeData.period.length, metricFields)}
+              previousMetrics={previousData?.summary ?? []}
+              showDeltas={showDeltas}
+              deltaMode={deltaMode}
+              heatmapEnabled={heatmapEnabled}
+              sparklinesEnabled={sparklinesEnabled}
+              onHideMetric={(field) => updateMetricFields(metricFields.filter((item) => item !== field))}
+            />
+
+            <label className="flex h-11 cursor-pointer items-center gap-2 rounded-xl border border-[#e5e7ef] bg-white px-4 text-[11px] font-medium text-slate-600 shadow-[0_1px_5px_rgba(15,23,42,0.025)]">
+              <input
+                type="checkbox"
+                disabled={!operationsAvailable || tableSkus.length === 0}
+                checked={tableSkus.length > 0 && tableSkus.every((sku) => selectedOperationNms.includes(sku.nm))}
+                onChange={(event) => setSelectedOperationNms(event.target.checked ? tableSkus.map((sku) => sku.nm) : [])}
+                className="h-4 w-4 accent-violet-600 disabled:opacity-40"
+              />
+              Выбрать все ({tableSkus.length})
+            </label>
+
+            {tableSkus.map((sku) => {
+              const skuTagIds = tagsByNm.get(sku.nm) ?? [];
+              const skuMetrics = completeMetrics(sku.metrics, activeData.period.length, metricFields);
+              return (
+                <OptimaProductCard
+                  key={sku.nm}
+                  sku={sku}
+                  period={activeData.period}
+                  metrics={skuMetrics}
+                  previousMetrics={previousSkuByNm.get(sku.nm)?.metrics ?? []}
+                  tags={tags.filter((tag) => skuTagIds.includes(tag.id))}
+                  anomalies={anomalyByNm.get(sku.nm) ?? []}
+                  selected={selectedOperationNms.includes(sku.nm)}
+                  selectable={operationsAvailable}
+                  canWrite={canWrite}
+                  planning={planning}
+                  showDeltas={showDeltas}
+                  deltaMode={deltaMode}
+                  heatmapEnabled={heatmapEnabled}
+                  sparklinesEnabled={sparklinesEnabled}
+                  plan={plan[String(sku.nm)] ?? {}}
+                  drafts={drafts}
+                  saving={saving}
+                  journal={operationsSkuNm === sku.nm ? journal : []}
+                  onSelectedChange={(selected) => setSelectedOperationNms((current) =>
+                    selected ? [...new Set([...current, sku.nm])] : current.filter((nm) => nm !== sku.nm))}
+                  onOpenOperations={() => {
+                    setOperationsInitialDate(undefined);
+                    setOperationsSkuNm(sku.nm);
+                  }}
+                  onOpenJournalDate={(dateLabel) => {
+                    const [day, monthPart] = dateLabel.split(".");
+                    setOperationsInitialDate(`${range.to.slice(0, 4)}-${monthPart}-${day}`);
+                    setOperationsSkuNm(sku.nm);
+                  }}
+                  onHideMetric={(field) => updateMetricFields(metricFields.filter((item) => item !== field))}
+                  onDraftChange={(field, value) => setDrafts((current) => ({ ...current, [`${sku.nm}:${field}`]: value }))}
+                  onSave={(metric) => savePlan(sku, metric)}
+                />
+              );
+            })}
           </div>
 
           <div className="space-y-2.5 md:hidden">
@@ -1734,6 +1752,7 @@ export function WbRnpPage() {
 
       <RnpProductOperationsDrawer
         sku={operationsSku}
+        initialEventDate={operationsInitialDate}
         tags={tags}
         assignedTagIds={operationsSku ? tagsByNm.get(operationsSku.nm) ?? [] : []}
         journal={journal}
@@ -1744,6 +1763,479 @@ export function WbRnpPage() {
         onToggleTag={(tagId, assigned) => operationsSku ? setTagForNms(tagId, [operationsSku.nm], assigned) : Promise.resolve(false)}
         onAddJournal={addJournal}
       />
+    </div>
+  );
+}
+
+function formatAsOf(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "—";
+  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function OptimaMatrixCard({
+  title,
+  subtitle,
+  period,
+  metrics,
+  previousMetrics,
+  showDeltas,
+  deltaMode,
+  heatmapEnabled,
+  sparklinesEnabled,
+  onHideMetric,
+}: {
+  title: string;
+  subtitle: string;
+  period: RnpTable["period"];
+  metrics: Metric[];
+  previousMetrics: Metric[];
+  showDeltas: boolean;
+  deltaMode: RnpDeltaMode;
+  heatmapEnabled: boolean;
+  sparklinesEnabled: boolean;
+  onHideMetric: (field: RnpMetricField) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[14px] border border-[#e5e7ef] bg-white shadow-[0_2px_10px_rgba(15,23,42,0.035)]">
+      <header className="flex min-h-[58px] items-center gap-3 border-b border-[#eceef4] px-4 py-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#f2f0ff] text-[#7567e8]">
+          <BarChart3Icon bare />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-[13px] font-bold text-slate-900">{title}</h2>
+          <p className="mt-0.5 truncate text-[10px] text-slate-500">{subtitle}</p>
+        </div>
+      </header>
+      <OptimaMatrixTable
+        period={period}
+        metrics={metrics}
+        previousMetrics={previousMetrics}
+        showDeltas={showDeltas}
+        deltaMode={deltaMode}
+        heatmapEnabled={heatmapEnabled}
+        sparklinesEnabled={sparklinesEnabled}
+        onHideMetric={onHideMetric}
+      />
+    </section>
+  );
+}
+
+function OptimaProductCard({
+  sku,
+  period,
+  metrics,
+  previousMetrics,
+  tags,
+  anomalies,
+  selected,
+  selectable,
+  canWrite,
+  planning,
+  showDeltas,
+  deltaMode,
+  heatmapEnabled,
+  sparklinesEnabled,
+  plan,
+  drafts,
+  saving,
+  journal,
+  onSelectedChange,
+  onOpenOperations,
+  onOpenJournalDate,
+  onHideMetric,
+  onDraftChange,
+  onSave,
+}: {
+  sku: Sku;
+  period: RnpTable["period"];
+  metrics: Metric[];
+  previousMetrics: Metric[];
+  tags: RnpTagOption[];
+  anomalies: RnpAnomaly[];
+  selected: boolean;
+  selectable: boolean;
+  canWrite: boolean;
+  planning: boolean;
+  showDeltas: boolean;
+  deltaMode: RnpDeltaMode;
+  heatmapEnabled: boolean;
+  sparklinesEnabled: boolean;
+  plan: Record<string, number>;
+  drafts: Record<string, string>;
+  saving: string | null;
+  journal: RnpJournalEntry[];
+  onSelectedChange: (selected: boolean) => void;
+  onOpenOperations: () => void;
+  onOpenJournalDate: (dateLabel: string) => void;
+  onHideMetric: (field: RnpMetricField) => void;
+  onDraftChange: (field: string, value: string) => void;
+  onSave: (metric: Metric) => void;
+}) {
+  const risks = anomalies.filter((item) => item.direction === "negative").length;
+  const growth = anomalies.filter((item) => item.direction === "positive").length;
+  return (
+    <article
+      className="overflow-hidden rounded-[14px] border border-[#e5e7ef] bg-white shadow-[0_2px_10px_rgba(15,23,42,0.035)]"
+      style={{ contentVisibility: "auto", containIntrinsicSize: "760px" }}
+    >
+      <header className="flex min-h-[70px] flex-wrap items-center gap-3 border-b border-[#eceef4] px-4 py-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={!selectable}
+          onChange={(event) => onSelectedChange(event.target.checked)}
+          className="h-4 w-4 shrink-0 accent-violet-600 disabled:opacity-30"
+          aria-label={`Выбрать артикул ${sku.art}`}
+        />
+        <WbProductImage nm={sku.nm} src={sku.img_url} className="h-12 w-12 shrink-0 rounded-lg bg-slate-100 object-cover" />
+        <div className="min-w-[220px] flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={`https://www.wildberries.ru/catalog/${sku.nm}/detail.aspx`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[12px] font-bold text-slate-900 hover:text-violet-700"
+            >
+              {sku.art}
+            </a>
+            {risks ? <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[8px] font-bold text-rose-600">↓ риск {risks}</span> : null}
+            {growth ? <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[8px] font-bold text-emerald-600">↑ рост {growth}</span> : null}
+          </div>
+          <p className="mt-0.5 max-w-[680px] truncate text-[10px] text-slate-500">{sku.name}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="grid h-5 min-w-5 place-items-center rounded-md bg-[#f1f2f7] px-1 text-[8px] font-bold text-slate-500">{sku.art.slice(0, 1).toUpperCase()}</span>
+            <a href={`https://www.wildberries.ru/catalog/${sku.nm}/detail.aspx`} target="_blank" rel="noreferrer" className="rounded-md bg-[#f7f7fa] px-1.5 py-1 text-[8px] font-medium text-slate-500 hover:text-violet-700">
+              WB {sku.nm}
+            </a>
+            {tags.map((tag) => (
+              <span key={tag.id} className="inline-flex items-center gap-1 rounded-md bg-[#f7f7fa] px-1.5 py-1 text-[8px] font-medium text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tag.color }} />{tag.name}
+              </span>
+            ))}
+            {canWrite ? (
+              <button type="button" onClick={onOpenOperations} className="rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[8px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700">
+                + тег
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {canWrite ? (
+          <button
+            type="button"
+            onClick={onOpenOperations}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[9px] font-semibold text-slate-500 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+          >
+            <BookOpen className="h-3.5 w-3.5" /> Теги и журнал
+          </button>
+        ) : null}
+      </header>
+      <OptimaMatrixTable
+        period={period}
+        metrics={metrics}
+        previousMetrics={previousMetrics}
+        showDeltas={showDeltas}
+        deltaMode={deltaMode}
+        heatmapEnabled={heatmapEnabled}
+        sparklinesEnabled={sparklinesEnabled}
+        journal={journal}
+        onJournalDate={canWrite ? onOpenJournalDate : undefined}
+        onHideMetric={onHideMetric}
+        planning={planning && canWrite}
+        plan={plan}
+        drafts={drafts}
+        saving={saving}
+        skuNm={sku.nm}
+        onDraftChange={onDraftChange}
+        onSave={onSave}
+      />
+    </article>
+  );
+}
+
+function OptimaMatrixTable({
+  period,
+  metrics,
+  previousMetrics,
+  showDeltas,
+  deltaMode,
+  heatmapEnabled,
+  sparklinesEnabled,
+  journal = [],
+  onJournalDate,
+  onHideMetric,
+  planning = false,
+  plan = {},
+  drafts = {},
+  saving = null,
+  skuNm,
+  onDraftChange,
+  onSave,
+}: {
+  period: RnpTable["period"];
+  metrics: Metric[];
+  previousMetrics: Metric[];
+  showDeltas: boolean;
+  deltaMode: RnpDeltaMode;
+  heatmapEnabled: boolean;
+  sparklinesEnabled: boolean;
+  journal?: RnpJournalEntry[];
+  onJournalDate?: (dateLabel: string) => void;
+  onHideMetric: (field: RnpMetricField) => void;
+  planning?: boolean;
+  plan?: Record<string, number>;
+  drafts?: Record<string, string>;
+  saving?: string | null;
+  skuNm?: number;
+  onDraftChange?: (field: string, value: string) => void;
+  onSave?: (metric: Metric) => void;
+}) {
+  const previousByField = new Map(previousMetrics.map((metric) => [metric.field, metric]));
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-max border-separate border-spacing-0 text-[10px] leading-[1.15] text-slate-600">
+        <thead>
+          <tr>
+            <th className="sticky left-0 z-20 h-11 w-[210px] min-w-[210px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">Показатель</th>
+            <th className="h-11 w-[116px] min-w-[116px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-right text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">За период</th>
+            {sparklinesEnabled ? <th className="h-11 w-[108px] min-w-[108px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-2 text-center text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">Мини-график</th> : null}
+            {period.map((day, index) => (
+              <th key={`${day.label}-${index}`} className="h-11 w-[78px] min-w-[78px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-2 text-center font-semibold text-slate-600">
+                <span className="block">{day.label}</span>
+                <span className="mt-0.5 block text-[8px] font-normal lowercase text-slate-400">{day.period_type}</span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {onJournalDate ? (
+            <tr>
+              <td className="sticky left-0 z-10 h-9 border-b border-r border-[#eceef4] bg-white px-3 text-[9px] font-bold uppercase tracking-[0.05em] text-slate-500">
+                Журнал изменений
+              </td>
+              <td className="border-b border-r border-[#eceef4] bg-white" />
+              {sparklinesEnabled ? <td className="border-b border-r border-[#eceef4] bg-white" /> : null}
+              {period.map((day) => {
+                const entries = journal.filter((entry) => `${entry.event_date.slice(8, 10)}.${entry.event_date.slice(5, 7)}` === day.label);
+                return (
+                  <td key={`journal-${day.label}`} className="h-9 border-b border-r border-[#eceef4] bg-white p-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => onJournalDate(day.label)}
+                      title={entries.length ? `${entries.length} событий · добавить запись` : "Добавить запись"}
+                      className={`mx-auto grid h-6 min-w-6 place-items-center rounded-md px-1 text-[9px] font-semibold ${
+                        entries.length ? "bg-violet-50 text-violet-700" : "text-slate-300 hover:bg-slate-50 hover:text-violet-700"
+                      }`}
+                    >
+                      {entries.length || "—"}
+                    </button>
+                  </td>
+                );
+              })}
+            </tr>
+          ) : null}
+          <tr>
+            <td colSpan={2 + (sparklinesEnabled ? 1 : 0) + period.length} className="h-8 border-b border-[#eceef4] bg-white px-3 text-[9px] font-bold text-slate-600">
+              <span className="mr-1 text-slate-400">▼</span> Основное
+            </td>
+          </tr>
+          {metrics.map((metric) => {
+            const key = skuNm == null ? metric.field : `${skuNm}:${metric.field}`;
+            const savedPlan = plan[metric.field];
+            const draft = drafts[key] ?? (savedPlan == null ? "" : String(savedPlan));
+            return (
+              <OptimaMetricRow
+                key={metric.field}
+                metric={metric}
+                previousMetric={previousByField.get(metric.field)}
+                showDeltas={showDeltas}
+                deltaMode={deltaMode}
+                heatmapEnabled={heatmapEnabled}
+                sparklinesEnabled={sparklinesEnabled}
+                canHide={metrics.length > 1}
+                onHide={() => onHideMetric(metric.field as RnpMetricField)}
+                planning={planning}
+                draftValue={draft}
+                saving={saving === key}
+                onDraftChange={(value) => onDraftChange?.(metric.field, value)}
+                onSave={() => onSave?.(metric)}
+              />
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OptimaMetricRow({
+  metric,
+  previousMetric,
+  showDeltas,
+  deltaMode,
+  heatmapEnabled,
+  sparklinesEnabled,
+  canHide,
+  onHide,
+  planning,
+  draftValue,
+  saving,
+  onDraftChange,
+  onSave,
+}: {
+  metric: Metric;
+  previousMetric?: Metric;
+  showDeltas: boolean;
+  deltaMode: RnpDeltaMode;
+  heatmapEnabled: boolean;
+  sparklinesEnabled: boolean;
+  canHide: boolean;
+  onHide: () => void;
+  planning: boolean;
+  draftValue: string;
+  saving: boolean;
+  onDraftChange: (value: string) => void;
+  onSave: () => void;
+}) {
+  const totalDelta = showDeltas ? metricDelta(metric.total, previousMetric?.total) : null;
+  const qualityTone = metric.status === "ready" ? "bg-[#7567e8]" : metric.status === "partial" ? "bg-amber-400" : "bg-slate-300";
+  return (
+    <tr className="group">
+      <td className="sticky left-0 z-10 h-[48px] w-[210px] min-w-[210px] border-b border-r border-[#eceef4] bg-white px-3 group-hover:bg-[#fbfaff]">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!canHide}
+            onClick={onHide}
+            title="Скрыть показатель"
+            className={`h-4 w-7 rounded-full p-0.5 transition ${canHide ? "bg-[#7567e8]" : "bg-slate-200"}`}
+          >
+            <span className="block h-3 w-3 translate-x-3 rounded-full bg-white shadow-sm" />
+          </button>
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${qualityTone}`} />
+          <span className="min-w-0 truncate font-medium text-slate-700" title={metric.label}>{metric.label.replace(/, (₽|%|дней|шт)$/u, "")}</span>
+          <span className="ml-auto shrink-0 text-[8px] text-slate-400">{metricUnit(metric)}</span>
+        </div>
+      </td>
+      <td className="h-[48px] w-[116px] min-w-[116px] border-b border-r border-[#eceef4] bg-white px-3 text-right tabular-nums">
+        {planning ? (
+          <div className="relative">
+            <span className="mb-0.5 block text-[8px] text-slate-400">план месяца</span>
+            <input
+              inputMode="decimal"
+              value={draftValue}
+              onChange={(event) => onDraftChange(event.target.value)}
+              onBlur={onSave}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              className="h-6 w-full rounded-md border border-amber-200 bg-amber-50 px-1.5 text-right text-[9px] font-semibold text-slate-700 outline-none focus:border-violet-400 focus:bg-white"
+              aria-label={`План: ${metric.label}`}
+            />
+            {saving ? <Loader2 className="absolute left-1 top-[18px] h-3 w-3 animate-spin text-violet-500" /> : null}
+          </div>
+        ) : (
+          <>
+            <span className="block font-bold text-slate-800">{denseFmt(metric.total, metric.kind)}</span>
+            {totalDelta ? <DeltaMark delta={totalDelta} kind={metric.kind} mode={deltaMode} field={metric.field} /> : null}
+          </>
+        )}
+      </td>
+      {sparklinesEnabled ? (
+        <td className="h-[48px] w-[108px] min-w-[108px] border-b border-r border-[#eceef4] bg-white px-2 text-center">
+          <OptimaSparkline values={metric.daily} />
+        </td>
+      ) : null}
+      {metric.daily.map((value, index) => (
+        <OptimaDayCell
+          key={index}
+          metric={metric}
+          value={value}
+          previousValue={previousMetric?.daily[index]}
+          showDelta={showDeltas}
+          deltaMode={deltaMode}
+          heatmapEnabled={heatmapEnabled}
+        />
+      ))}
+    </tr>
+  );
+}
+
+function metricUnit(metric: Metric) {
+  if (metric.kind === "money") return "₽";
+  if (metric.kind === "pct") return "%";
+  if (metric.field === "turnover") return "дн.";
+  return "шт.";
+}
+
+function OptimaDayCell({
+  metric,
+  value,
+  previousValue,
+  showDelta,
+  deltaMode,
+  heatmapEnabled,
+}: {
+  metric: Metric;
+  value: number | null | undefined;
+  previousValue: number | null | undefined;
+  showDelta: boolean;
+  deltaMode: RnpDeltaMode;
+  heatmapEnabled: boolean;
+}) {
+  const delta = showDelta ? metricDelta(value, previousValue) : null;
+  const semantic = delta ? anomalyDirection(metric.field, delta) : null;
+  const background = heatmapEnabled
+    ? semantic === "positive"
+      ? "#eef9f2"
+      : semantic === "negative"
+        ? "#fff1f2"
+        : "#ffffff"
+    : "#ffffff";
+  return (
+    <td
+      className="h-[48px] w-[78px] min-w-[78px] border-b border-r border-[#eceef4] px-2 text-center tabular-nums"
+      style={{ backgroundColor: background }}
+      title={value == null ? "Нет данных" : fmt(value, metric.kind)}
+    >
+      <span className={`block font-semibold ${toneClass(metric, value ?? null)}`}>{denseFmt(value, metric.kind)}</span>
+      {delta ? <DeltaMark delta={delta} kind={metric.kind} mode={deltaMode} field={metric.field} /> : null}
+    </td>
+  );
+}
+
+function OptimaSparkline({ values }: { values: Array<number | null> }) {
+  const known = values.filter((value): value is number => value != null && Number.isFinite(value));
+  if (known.length < 2) return <span className="text-[9px] text-slate-300">→ ровно</span>;
+  const max = Math.max(...known.map((value) => Math.abs(value)), 1);
+  const width = 90;
+  const height = 27;
+  const gap = 2;
+  const barWidth = Math.max(2, (width - gap * (values.length - 1)) / values.length);
+  const first = known[0];
+  const last = known[known.length - 1];
+  const change = first === 0 ? 0 : ((last - first) / Math.abs(first)) * 100;
+  return (
+    <div className="flex flex-col items-center">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-6 w-[90px]" role="img" aria-label="Мини-график показателя">
+        {values.map((value, index) => {
+          const barHeight = value == null ? 1 : Math.max(2, Math.abs(value) / max * (height - 3));
+          return (
+            <rect
+              key={index}
+              x={index * (barWidth + gap)}
+              y={height - barHeight}
+              width={barWidth}
+              height={barHeight}
+              rx={1}
+              fill={value == null ? "#e8e7f4" : "#8478eb"}
+            />
+          );
+        })}
+      </svg>
+      <span className={`mt-0.5 text-[7px] font-semibold ${change > 0 ? "text-emerald-600" : change < 0 ? "text-rose-600" : "text-slate-400"}`}>
+        {change > 0 ? "↑" : change < 0 ? "↓" : "→"} {Math.abs(Math.round(change))}%/период
+      </span>
     </div>
   );
 }
@@ -1822,16 +2314,16 @@ function RnpFreshnessNotice({ items }: { items: NonNullable<RnpTable["scope_fres
   );
 }
 
-function BarChart3Icon() {
-  return (
-    <span className="grid h-7 w-7 place-items-center rounded-lg bg-violet-50 text-violet-700">
-      <span className="flex h-4 items-end gap-[2px]">
-        <span className="h-2 w-[3px] rounded-sm bg-current" />
-        <span className="h-4 w-[3px] rounded-sm bg-current" />
-        <span className="h-3 w-[3px] rounded-sm bg-current" />
-      </span>
+function BarChart3Icon({ bare = false }: { bare?: boolean }) {
+  const bars = (
+    <span className="flex h-4 items-end gap-[2px]">
+      <span className="h-2 w-[3px] rounded-sm bg-current" />
+      <span className="h-4 w-[3px] rounded-sm bg-current" />
+      <span className="h-3 w-[3px] rounded-sm bg-current" />
     </span>
   );
+  if (bare) return bars;
+  return <span className="grid h-7 w-7 place-items-center rounded-lg bg-violet-50 text-violet-700">{bars}</span>;
 }
 
 function PlanHeader({ children, strong = false }: { children: React.ReactNode; strong?: boolean }) {
