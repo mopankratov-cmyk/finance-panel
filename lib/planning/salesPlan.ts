@@ -2,6 +2,8 @@ export type SalesPlanMarketplace = "wb" | "ozon";
 export type SalesPlanStatus = "draft" | "review" | "approved";
 export const SALES_PLAN_ACTIONS = ["save", "submit", "approve", "return", "new_version"] as const;
 export type SalesPlanAction = (typeof SALES_PLAN_ACTIONS)[number];
+export const SALES_PLAN_EVENT_TYPES = ["created", "saved", "submitted", "resubmitted", "returned", "approved", "new_version"] as const;
+export type SalesPlanEventType = (typeof SALES_PLAN_EVENT_TYPES)[number];
 export const SALES_PLAN_RETURN_COMMENT_MIN_LENGTH = 3;
 
 export interface SalesPlanMonthState {
@@ -61,6 +63,19 @@ export interface SalesPlanEnvelope {
   working: SalesPlanDocument | null;
   approved: SalesPlanDocument | null;
   approvedByMonth: Partial<Record<string, SalesPlanDocument>>;
+  events: SalesPlanEvent[];
+}
+
+export interface SalesPlanEvent {
+  id: string;
+  type: SalesPlanEventType;
+  at: string;
+  actor: string;
+  role: string;
+  monthKey: string | null;
+  version: number;
+  revision: number;
+  comment: string | null;
 }
 
 export interface SalesPlanValidationIssue {
@@ -111,6 +126,59 @@ export function normalizeSalesPlanAction(value: unknown, fallback: SalesPlanActi
   return typeof value === "string" && SALES_PLAN_ACTIONS.includes(value as SalesPlanAction)
     ? (value as SalesPlanAction)
     : null;
+}
+
+function isSalesPlanEventType(value: unknown): value is SalesPlanEventType {
+  return typeof value === "string" && SALES_PLAN_EVENT_TYPES.includes(value as SalesPlanEventType);
+}
+
+function normalizeSalesPlanEvent(value: unknown, index = 0): SalesPlanEvent | null {
+  const source = record(value);
+  const type = isSalesPlanEventType(source.type) ? source.type : null;
+  if (!type) return null;
+  const at = text(source.at);
+  const actor = text(source.actor);
+  if (!at || !actor) return null;
+  const monthKey = normalizeSalesPlanMonthKey(source.monthKey) || null;
+  const version = Math.max(1, Math.round(finite(source.version, 1)));
+  const revision = Math.max(0, Math.round(finite(source.revision, 0)));
+  return {
+    id: text(source.id, `legacy-${index}-${type}-${at}`),
+    type,
+    at,
+    actor,
+    role: text(source.role, "unknown"),
+    monthKey,
+    version,
+    revision,
+    comment: text(source.comment) || null,
+  };
+}
+
+export function normalizeSalesPlanEvents(value: unknown): SalesPlanEvent[] {
+  const source = Array.isArray(value) ? value : [];
+  return source
+    .map((event, index) => normalizeSalesPlanEvent(event, index))
+    .filter((event): event is SalesPlanEvent => Boolean(event));
+}
+
+export function appendSalesPlanEvent(
+  events: SalesPlanEvent[],
+  input: Omit<SalesPlanEvent, "id"> & { id?: string },
+): SalesPlanEvent[] {
+  const normalizedMonth = normalizeSalesPlanMonthKey(input.monthKey) || null;
+  const event: SalesPlanEvent = {
+    id: input.id || `${input.at}:${input.type}:${normalizedMonth ?? "all"}:${input.version}:${input.revision}:${events.length}`,
+    type: input.type,
+    at: input.at,
+    actor: input.actor,
+    role: input.role,
+    monthKey: normalizedMonth,
+    version: Math.max(1, Math.round(input.version)),
+    revision: Math.max(0, Math.round(input.revision)),
+    comment: input.comment ? normalizeSalesPlanReturnComment(input.comment) || text(input.comment).slice(0, 1000) : null,
+  };
+  return [...events, event];
 }
 
 export function normalizeSalesPlanReturnComment(value: unknown) {

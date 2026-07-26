@@ -26,6 +26,7 @@ import {
   salesPlanMonthLabel,
   type SalesPlanEnvelope,
   type SalesPlanDocument,
+  type SalesPlanEvent,
   type SalesPlanMarketplace,
   type SalesPlanRow,
   type SalesPlanValidationIssue,
@@ -45,6 +46,7 @@ interface SalesPlanApiResponse {
   plan: SalesPlanDocument | null;
   approvedPlan: SalesPlanDocument | null;
   approvedByMonth?: SalesPlanEnvelope["approvedByMonth"];
+  events?: SalesPlanEvent[];
   cabinet?: string;
   error?: string;
   conflict?: boolean;
@@ -89,6 +91,7 @@ export function SalesPlanPage({
   const [plan, setPlan] = useState<SalesPlanDocument | null>(null);
   const [approvedPlan, setApprovedPlan] = useState<SalesPlanDocument | null>(null);
   const [approvedByMonth, setApprovedByMonth] = useState<SalesPlanEnvelope["approvedByMonth"]>({});
+  const [events, setEvents] = useState<SalesPlanEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -121,6 +124,7 @@ export function SalesPlanPage({
       setPlan(null);
       setApprovedPlan(null);
       setApprovedByMonth({});
+      setEvents([]);
       return;
     }
     const controller = new AbortController();
@@ -142,6 +146,7 @@ export function SalesPlanPage({
         setPlan(body.plan);
         setApprovedPlan(body.approvedPlan);
         setApprovedByMonth(body.approvedByMonth ?? {});
+        setEvents(body.events ?? []);
         serverRevision.current = body.plan?.revision ?? 0;
         editSerial.current = 0;
       })
@@ -175,6 +180,7 @@ export function SalesPlanPage({
       serverRevision.current = body.plan.revision;
       setApprovedPlan(body.approvedPlan);
       setApprovedByMonth(body.approvedByMonth ?? {});
+      setEvents(body.events ?? []);
       if (serial === editSerial.current || action !== "save") {
         setPlan(body.plan);
         setDirty(false);
@@ -333,7 +339,7 @@ export function SalesPlanPage({
   if (cabinetError) return <PageError message={cabinetError} onRetry={() => setReloadKey((value) => value + 1)} />;
   if (!exactCabinet) return <CabinetRequired marketplace={marketplace} />;
 
-  const approvedEnvelope: SalesPlanEnvelope = { working: plan, approved: approvedPlan, approvedByMonth };
+  const approvedEnvelope: SalesPlanEnvelope = { working: plan, approved: approvedPlan, approvedByMonth, events };
   const activeApprovedPlan = getApprovedSalesPlanForMonth(approvedEnvelope, activeMonth);
   const activeMonthState = plan ? getSalesPlanMonthState(plan, activeMonth) : null;
   const activeApprovedMonthState = activeApprovedPlan ? getSalesPlanMonthState(activeApprovedPlan, activeMonth) : null;
@@ -405,6 +411,7 @@ export function SalesPlanPage({
         {activeMonthState?.status === "draft" && activeMonthState.returnComment ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><span className="font-semibold">Месяц возвращён на доработку</span>{activeMonthState.returnedBy ? ` · ${activeMonthState.returnedBy}` : ""}{activeMonthState.returnedAt ? ` · ${new Date(activeMonthState.returnedAt).toLocaleString("ru-RU")}` : ""}: {activeMonthState.returnComment}</div> : null}
         {saveError || actionError ? <div role="alert" className="flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"><span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{saveError || actionError}</span>{conflict ? <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="min-h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold hover:bg-rose-100">Загрузить серверную версию</button> : null}</div> : null}
         {issues.length > 0 ? <ValidationSummary issues={issues} /> : null}
+        {events.length > 0 ? <SalesPlanHistory events={events} activeMonth={activeMonth} year={year} /> : null}
 
         {loading ? <div className="flex min-h-[420px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" /> Загружаем план…</div>
           : loadError ? <PageError message={loadError} onRetry={() => setReloadKey((value) => value + 1)} />
@@ -490,6 +497,48 @@ function Metric({ label, value, detail, tone = "slate" }: { label: string; value
 
 function ValidationSummary({ issues }: { issues: SalesPlanValidationIssue[] }) {
   return <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><div className="flex items-center gap-2 text-sm font-semibold text-amber-900"><AlertTriangle className="h-4 w-4" />Нужно исправить: {issues.length}</div><ul className="mt-2 grid gap-1 text-xs text-amber-800 sm:grid-cols-2">{issues.slice(0, 8).map((issue, index) => <li key={`${issue.field}-${issue.rowId}-${index}`}>• {issue.message}</li>)}</ul>{issues.length > 8 ? <p className="mt-1 text-xs text-amber-700">И ещё {issues.length - 8}</p> : null}</div>;
+}
+
+const eventLabels: Record<SalesPlanEvent["type"], string> = {
+  created: "Создан",
+  saved: "Сохранён",
+  submitted: "Отправлен",
+  resubmitted: "Повторно отправлен",
+  returned: "Возвращён",
+  approved: "Утверждён",
+  new_version: "Новая версия",
+};
+
+function SalesPlanHistory({ events, activeMonth, year }: { events: SalesPlanEvent[]; activeMonth: string; year: number }) {
+  const scoped = events
+    .filter((event) => !event.monthKey || event.monthKey === activeMonth)
+    .slice(-8)
+    .reverse();
+  if (scoped.length === 0) return null;
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white px-4 py-3" aria-label="История плана">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-bold text-slate-900">История месяца</h2>
+          <p className="mt-0.5 text-xs text-slate-500">{salesPlanMonthLabel(year, activeMonth, false)} · последние события, сохранённые сервером</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{scoped.length} событий</span>
+      </div>
+      <ol className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {scoped.map((event) => (
+          <li key={event.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-800">{eventLabels[event.type]}</span>
+              <span className="text-[10px] font-semibold text-slate-400">v{event.version} · r{event.revision}</span>
+            </div>
+            <div className="mt-1 truncate text-[11px] text-slate-500">{event.actor} · {event.role}</div>
+            <time className="mt-1 block text-[10px] text-slate-400" dateTime={event.at}>{new Date(event.at).toLocaleString("ru-RU")}</time>
+            {event.comment ? <p className="mt-1 line-clamp-2 text-[11px] text-amber-800">{event.comment}</p> : null}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
 
 function EmptyPlan({ mode, marketplace, onCreate }: { mode: ViewMode; marketplace: SalesPlanMarketplace; onCreate: () => void }) {

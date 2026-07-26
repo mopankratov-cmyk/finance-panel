@@ -58,6 +58,17 @@ test("sales-plan API approves and returns selected month only", () => {
   assert.match(source, /getApprovedSalesPlanForMonth\(envelope, monthKey\)/);
 });
 
+test("sales-plan API stores and returns an immutable event log", () => {
+  const source = readFileSync(new URL("../app/api/sales-plan/route.ts", import.meta.url), "utf8");
+
+  assert.match(source, /appendSalesPlanEvent/);
+  assert.match(source, /events: normalizeSalesPlanEvents\(source\.events\)/);
+  assert.match(source, /const events = appendSalesPlanEvent\(currentEnvelope\.events,/);
+  assert.match(source, /type: salesPlanEventTypeForAction\(action, current, monthKey\)/);
+  assert.match(source, /events: envelope\.events/);
+  assert.match(source, /events \}/);
+});
+
 test("sales-plan UI sends active month and reads monthly approved snapshot", () => {
   const source = readFileSync(new URL("../components/planning/SalesPlanPage.tsx", import.meta.url), "utf8");
 
@@ -65,4 +76,13 @@ test("sales-plan UI sends active month and reads monthly approved snapshot", () 
   assert.match(source, /const activeApprovedPlan = getApprovedSalesPlanForMonth\(approvedEnvelope, activeMonth\);/);
   assert.match(source, /approvedPlan=\{activeApprovedPlan\}/);
   assert.match(source, /getSalesPlanMonthState\(plan, activeMonth\)\.status !== "draft"/);
+});
+
+test("sales-plan UI renders server-side month event history", () => {
+  const source = readFileSync(new URL("../components/planning/SalesPlanPage.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /const \[events, setEvents\] = useState<SalesPlanEvent\[\]>\(\[\]\);/);
+  assert.match(source, /setEvents\(body\.events \?\? \[\]\);/);
+  assert.match(source, /<SalesPlanHistory events=\{events\} activeMonth=\{activeMonth\} year=\{year\} \/>/);
+  assert.match(source, /const eventLabels: Record<SalesPlanEvent\["type"\], string>/);
 });

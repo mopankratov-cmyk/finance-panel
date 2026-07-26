@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  appendSalesPlanEvent,
   canModerateSalesPlan,
   calculateSalesPlanDaily,
   calculateSalesPlanRowMonth,
@@ -9,6 +10,7 @@ import {
   getApprovedSalesPlanForMonth,
   getSalesPlanMonthState,
   normalizeSalesPlanAction,
+  normalizeSalesPlanEvents,
   normalizeSalesPlanMonthKey,
   normalizeSalesPlanReturnComment,
   setSalesPlanMonthState,
@@ -105,10 +107,10 @@ test("утверждённый план выбирается по конкрет
   const august = setSalesPlanMonthState(createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 }), "08", { status: "approved", approvedAt: "2026-07-26T11:00:00.000Z", approvedBy: "director@example.com" });
   const september = setSalesPlanMonthState(createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 }), "09", { status: "approved", approvedAt: "2026-07-27T11:00:00.000Z", approvedBy: "director@example.com" });
 
-  const envelope = { working: september, approved: september, approvedByMonth: { "08": august, "09": september } };
+  const envelope = { working: september, approved: september, approvedByMonth: { "08": august, "09": september }, events: [] };
   assert.equal(getApprovedSalesPlanForMonth(envelope, "08"), august);
   assert.equal(getApprovedSalesPlanForMonth(envelope, "09"), september);
-  assert.equal(getApprovedSalesPlanForMonth({ working: september, approved: september, approvedByMonth: {} }, "08"), null);
+  assert.equal(getApprovedSalesPlanForMonth({ working: september, approved: september, approvedByMonth: {}, events: [] }, "08"), null);
   assert.equal(normalizeSalesPlanMonthKey("9"), "09");
 });
 
@@ -131,4 +133,28 @@ test("новая версия месяца очищает метаданные �
   assert.equal(getSalesPlanMonthState(draft, "08").status, "draft");
   assert.equal(getSalesPlanMonthState(draft, "08").approvedAt, null);
   assert.equal(getSalesPlanMonthState(draft, "08").approvedBy, null);
+});
+
+test("журнал событий плана нормализуется и дополняется append-only", () => {
+  const existing = normalizeSalesPlanEvents([
+    { id: "old", type: "submitted", at: "2026-07-26T10:00:00.000Z", actor: "manager@example.com", role: "manager", monthKey: "8", version: 1, revision: 2 },
+    { type: "delete_everything", at: "2026-07-26T10:01:00.000Z", actor: "bad@example.com" },
+  ]);
+  const next = appendSalesPlanEvent(existing, {
+    type: "returned",
+    at: "2026-07-26T11:00:00.000Z",
+    actor: "director@example.com",
+    role: "director",
+    monthKey: "08",
+    version: 1,
+    revision: 3,
+    comment: "  Цена   не заполнена  ",
+  });
+
+  assert.equal(existing.length, 1);
+  assert.equal(next.length, 2);
+  assert.equal(next[0].id, "old");
+  assert.equal(next[0].monthKey, "08");
+  assert.equal(next[1].type, "returned");
+  assert.equal(next[1].comment, "Цена не заполнена");
 });

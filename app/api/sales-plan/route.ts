@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import {
+  appendSalesPlanEvent,
   canModerateSalesPlan,
   createEmptySalesPlan,
   getApprovedSalesPlanForMonth,
   getSalesPlanMonthState,
   normalizeSalesPlanAction,
   normalizeSalesPlanDocument,
+  normalizeSalesPlanEvents,
   normalizeSalesPlanMonthKey,
   normalizeSalesPlanReturnComment,
   setSalesPlanMonthState,
+  type SalesPlanEventType,
   type SalesPlanDocument,
   type SalesPlanEnvelope,
   summarizeSalesPlanStatus,
@@ -39,11 +42,11 @@ function asEnvelope(
   value: unknown,
   context: { marketplace: SalesPlanMarketplace; cabinetId: string; year: number },
 ): SalesPlanEnvelope {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return { working: null, approved: null, approvedByMonth: {} };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { working: null, approved: null, approvedByMonth: {}, events: [] };
   const source = value as Record<string, unknown>;
   if (source.schemaVersion === 1) {
     const plan = normalizeSalesPlanDocument(source, context);
-    return { working: plan, approved: plan.status === "approved" ? plan : null, approvedByMonth: {} };
+    return { working: plan, approved: plan.status === "approved" ? plan : null, approvedByMonth: {}, events: [] };
   }
   const approvedByMonthSource = source.approvedByMonth && typeof source.approvedByMonth === "object" && !Array.isArray(source.approvedByMonth)
     ? source.approvedByMonth as Record<string, unknown>
@@ -57,6 +60,7 @@ function asEnvelope(
     working: source.working ? normalizeSalesPlanDocument(source.working, context) : null,
     approved: source.approved ? normalizeSalesPlanDocument(source.approved, context) : null,
     approvedByMonth,
+    events: normalizeSalesPlanEvents(source.events),
   };
 }
 
@@ -124,9 +128,21 @@ function conflictResponse(envelope: SalesPlanEnvelope, monthKey: string | null, 
       plan: envelope.working,
       approvedPlan: monthKey ? getApprovedSalesPlanForMonth(envelope, monthKey) : envelope.approved,
       approvedByMonth: envelope.approvedByMonth,
+      events: envelope.events,
     },
     { status: 409 },
   );
+}
+
+function salesPlanEventTypeForAction(action: Exclude<ReturnType<typeof normalizeSalesPlanAction>, null>, current: SalesPlanDocument | null, monthKey: string | null): SalesPlanEventType {
+  if (action === "save") return current ? "saved" : "created";
+  if (action === "submit") {
+    const monthState = current && monthKey ? getSalesPlanMonthState(current, monthKey) : null;
+    return monthState?.returnedAt ? "resubmitted" : "submitted";
+  }
+  if (action === "return") return "returned";
+  if (action === "approve") return "approved";
+  return "new_version";
 }
 
 async function saveEnvelopeWithRetry(
@@ -173,6 +189,7 @@ export async function GET(request: NextRequest) {
       plan: envelope.working,
       approvedPlan: monthKey ? getApprovedSalesPlanForMonth(envelope, monthKey) : envelope.approved,
       approvedByMonth: envelope.approvedByMonth,
+      events: envelope.events,
       cabinet: resolved.cabinetName,
     });
   } catch (error) {
@@ -212,6 +229,7 @@ export async function POST(request: NextRequest) {
     let next: SalesPlanDocument;
     let approved = currentEnvelope.approved;
     let approvedByMonth = currentEnvelope.approvedByMonth;
+    let eventComment: string | null = null;
 
     if (action === "approve") {
       if (!elevated) return NextResponse.json({ error: "Утверждение доступно руководителю или финотделу" }, { status: 403 });
@@ -231,6 +249,7 @@ export async function POST(request: NextRequest) {
       if (!current || getSalesPlanMonthState(current, monthKey).status !== "review") return NextResponse.json({ error: "Вернуть можно только месяц на согласовании" }, { status: 409 });
       const returnComment = normalizeSalesPlanReturnComment(body.comment);
       if (!returnComment) return NextResponse.json({ error: "Укажите комментарий возврата: что исправить в плане" }, { status: 422 });
+      eventComment = returnComment;
       const monthState = getSalesPlanMonthState(current, monthKey);
       next = setSalesPlanMonthState(
         { ...current, revision: current.revision + 1, updatedAt: now, returnedAt: now, returnedBy: actor, returnComment },
@@ -298,7 +317,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const envelope = { working: next, approved, approvedByMonth } satisfies SalesPlanEnvelope;
+    const eventMonthState = monthKey ? getSalesPlanMonthState(next, monthKey) : null;
+    const events = appendSalesPlanEvent(currentEnvelope.events, {
+      type: salesPlanEventTypeForAction(action, current, monthKey),
+      at: now,
+      actor,
+      role: String(resolved.session.role ?? "unknown"),
+      monthKey: monthKey || null,
+      version: eventMonthState?.version ?? next.version,
+      revision: eventMonthState?.revision ?? next.revision,
+      comment: eventComment,
+    });
+    const envelope = { working: next, approved, approvedByMonth, events } satisfies SalesPlanEnvelope;
     const saveError = await saveEnvelopeWithRetry(
       resolved.db,
       resolved.context,
@@ -309,7 +339,7 @@ export async function POST(request: NextRequest) {
       now,
     );
     if (saveError) return saveError;
-    return NextResponse.json({ ok: true, plan: next, approvedPlan: monthKey ? getApprovedSalesPlanForMonth(envelope, monthKey) : approved, approvedByMonth });
+    return NextResponse.json({ ok: true, plan: next, approvedPlan: monthKey ? getApprovedSalesPlanForMonth(envelope, monthKey) : approved, approvedByMonth, events });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось сохранить план" }, { status: 500 });
   }
