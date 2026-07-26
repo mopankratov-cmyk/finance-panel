@@ -18,4 +18,7 @@ test("WB RNP page exposes an article comparison chart for the current slice", ()
   assert.match(source, /Сравнение артикулов/);
   assert.match(source, /ResponsiveContainer/);
   assert.match(source, /COMPARE_METRICS\.map/);
+  assert.match(source, /cart_conversion/);
+  assert.match(source, /setFocusedNm\(line\.nm\)/);
+  assert.match(source, /Показать все SKU/);
 });

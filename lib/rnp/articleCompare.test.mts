@@ -20,6 +20,18 @@ function sku(nm: number, art: string, values: Array<number | null>, total: numbe
   };
 }
 
+function funnelSku(nm: number, art: string, openCard: Array<number | null>, cart: Array<number | null>): RnpCompareSku {
+  return {
+    nm,
+    art,
+    name: art,
+    metrics: [
+      { field: "open_card", label: "Переходы в карточку", kind: "int", daily: openCard, total: openCard.reduce<number>((sum, value) => sum + (value ?? 0), 0) },
+      { field: "cart", label: "В корзину", kind: "int", daily: cart, total: cart.reduce<number>((sum, value) => sum + (value ?? 0), 0) },
+    ],
+  };
+}
+
 test("RNP article compare picks top SKU by selected metric and builds daily points", () => {
   const compare = buildRnpArticleCompare(
     [
@@ -57,4 +69,26 @@ test("RNP article compare returns an empty chart model without matching metrics"
   assert.equal(compare.metricKind, "int");
   assert.deepEqual(compare.lines, []);
   assert.deepEqual(compare.points, [{ date: "01", weekday: "ср" }]);
+});
+
+test("RNP article compare derives cart conversion from funnel metrics", () => {
+  const compare = buildRnpArticleCompare(
+    [funnelSku(1, "CR", [100, 0, 50], [20, 1, 15])],
+    [
+      { label: "01", period_type: "ср" },
+      { label: "02", period_type: "чт" },
+      { label: "03", period_type: "пт" },
+    ],
+    "cart_conversion",
+  );
+
+  assert.equal(compare.metricLabel, "CR в корзину, %");
+  assert.equal(compare.metricKind, "pct");
+  assert.equal(compare.lines[0]?.nm, 1);
+  assert.equal(compare.lines[0]?.total, 24);
+  assert.deepEqual(compare.points, [
+    { date: "01", weekday: "ср", sku_1: 20 },
+    { date: "02", weekday: "чт", sku_1: null },
+    { date: "03", weekday: "пт", sku_1: 30 },
+  ]);
 });

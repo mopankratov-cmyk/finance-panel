@@ -148,9 +148,10 @@ const COMPARE_METRICS = [
   { field: "orders_sum", label: "Заказы ₽" },
   { field: "orders_count", label: "Заказы шт" },
   { field: "open_card", label: "Переходы" },
-  { field: "cart", label: "Корзины" },
+  { field: "cart_conversion", label: "CR в корзину" },
   { field: "ad_spent", label: "Реклама" },
   { field: "drr", label: "ДРР" },
+  { field: "stock", label: "Остаток" },
 ] as const;
 
 const COMPARE_COLORS = ["#7c3aed", "#ec4899", "#0ea5e9", "#10b981", "#f59e0b"];
@@ -299,6 +300,7 @@ export function WbRnpPage() {
   const [sortField, setSortField] = useState("orders_sum");
   const [sortDirection, setSortDirection] = useState<1 | -1>(-1);
   const [compareMetric, setCompareMetric] = useState<(typeof COMPARE_METRICS)[number]["field"]>("orders_sum");
+  const [focusedNm, setFocusedNm] = useState<number | null>(null);
   const [planning, setPlanning] = useState(false);
   const [plan, setPlan] = useState<Record<string, Record<string, number>>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -435,14 +437,23 @@ export function WbRnpPage() {
     });
   }, [filteredSkus, sortDirection, sortField]);
 
+  const tableSkus = useMemo(
+    () => focusedNm == null ? sortedSkus : sortedSkus.filter((sku) => sku.nm === focusedNm),
+    [focusedNm, sortedSkus],
+  );
+
   useEffect(() => {
-    setSkuWindow({ start: 0, end: Math.min(4, sortedSkus.length) });
+    if (focusedNm != null && !sortedSkus.some((sku) => sku.nm === focusedNm)) setFocusedNm(null);
+  }, [focusedNm, sortedSkus]);
+
+  useEffect(() => {
+    setSkuWindow({ start: 0, end: Math.min(4, tableSkus.length) });
     setMobileLimit(MOBILE_PAGE_SIZE);
     if (tableViewportRef.current) tableViewportRef.current.scrollTop = 0;
-  }, [sortedSkus]);
+  }, [tableSkus]);
 
-  const visibleSkus = sortedSkus.slice(skuWindow.start, skuWindow.end);
-  const mobileSkus = sortedSkus.slice(0, mobileLimit);
+  const visibleSkus = tableSkus.slice(skuWindow.start, skuWindow.end);
+  const mobileSkus = tableSkus.slice(0, mobileLimit);
   const monthDayCount = daysInMonth(month);
   const planOverview = (() => {
     if (!activeData) return null;
@@ -473,7 +484,7 @@ export function WbRnpPage() {
     const firstVisible = Math.floor(offset / SKU_BLOCK_HEIGHT);
     const visibleBlocks = Math.ceil(element.clientHeight / SKU_BLOCK_HEIGHT);
     const start = Math.max(0, firstVisible - 1);
-    const end = Math.min(sortedSkus.length, firstVisible + visibleBlocks + 2);
+    const end = Math.min(tableSkus.length, firstVisible + visibleBlocks + 2);
     setSkuWindow((current) => (current.start === start && current.end === end ? current : { start, end }));
   };
 
@@ -743,7 +754,7 @@ export function WbRnpPage() {
             <div>
               <h2 className="text-xs font-bold text-slate-800">Сравнение артикулов</h2>
               <p className="mt-0.5 text-[10px] text-slate-400">
-                Топ-{articleCompare.lines.length} SKU из текущей категории: видно, кто даёт всплеск или провал по дням.
+                Топ-{articleCompare.lines.length} SKU из текущей категории: клик по линии или легенде фильтрует таблицу до SKU.
               </p>
             </div>
             <div className="flex flex-wrap gap-1">
@@ -794,6 +805,7 @@ export function WbRnpPage() {
                         strokeWidth={2}
                         dot={{ r: 2 }}
                         connectNulls
+                        onClick={() => setFocusedNm(line.nm)}
                       />
                     ))}
                   </LineChart>
@@ -801,12 +813,29 @@ export function WbRnpPage() {
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500">
                 {articleCompare.lines.map((line, index) => (
-                  <span key={line.key} className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1">
+                  <button
+                    key={line.key}
+                    type="button"
+                    onClick={() => setFocusedNm((current) => current === line.nm ? null : line.nm)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition ${
+                      focusedNm === line.nm ? "bg-violet-50 text-violet-700 ring-1 ring-violet-200" : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                    }`}
+                    title="Нажмите, чтобы оставить в таблице только этот SKU"
+                  >
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COMPARE_COLORS[index % COMPARE_COLORS.length] }} />
                     <span className="font-semibold text-slate-700">{line.label}</span>
                     <span>{fmt(line.total, articleCompare.metricKind)}</span>
-                  </span>
+                  </button>
                 ))}
+                {focusedNm != null && (
+                  <button
+                    type="button"
+                    onClick={() => setFocusedNm(null)}
+                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-500 hover:text-violet-700"
+                  >
+                    Показать все SKU
+                  </button>
+                )}
               </div>
             </>
           ) : (
@@ -885,7 +914,7 @@ export function WbRnpPage() {
                     firstCell={index === 0 ? <SummaryCell label={activeData.shop_label} rowSpan={metrics.length} /> : null}
                   />
                 ))}
-                <SectionRow columns={totalColumns} icon="box" label={`ТОВАРЫ (${sortedSkus.length})`} />
+                <SectionRow columns={totalColumns} icon="box" label={focusedNm == null ? `ТОВАРЫ (${sortedSkus.length})` : `ТОВАРЫ (1 из ${sortedSkus.length})`} />
                 {skuWindow.start > 0 && <SpacerRow columns={totalColumns} height={skuWindow.start * SKU_BLOCK_HEIGHT} />}
                 {visibleSkus.map((sku) => {
                   const metrics = completeMetrics(sku.metrics, activeData.period.length);
@@ -909,14 +938,14 @@ export function WbRnpPage() {
                     );
                   });
                 })}
-                {skuWindow.end < sortedSkus.length && <SpacerRow columns={totalColumns} height={(sortedSkus.length - skuWindow.end) * SKU_BLOCK_HEIGHT} />}
+                {skuWindow.end < tableSkus.length && <SpacerRow columns={totalColumns} height={(tableSkus.length - skuWindow.end) * SKU_BLOCK_HEIGHT} />}
               </tbody>
             </table>
           </div>
 
           <div className="space-y-2.5 md:hidden">
             <p className="rounded-lg bg-violet-50 px-3 py-2 text-[10px] text-violet-700">
-              Сначала показаны {Math.min(mobileLimit, sortedSkus.length)} SKU по сортировке «{SORTS.find((sort) => sort.field === sortField)?.label}».
+              Сначала показаны {Math.min(mobileLimit, tableSkus.length)} SKU по сортировке «{SORTS.find((sort) => sort.field === sortField)?.label}».
             </p>
             {mobileSkus.map((sku) => {
               const selected = SORTS.map((sort) => findMetric(sku.metrics, sort.field)).filter((metric): metric is Metric => Boolean(metric));
@@ -948,13 +977,13 @@ export function WbRnpPage() {
                 </article>
               );
             })}
-            {mobileLimit < sortedSkus.length && (
+            {mobileLimit < tableSkus.length && (
               <button
                 type="button"
-                onClick={() => setMobileLimit((current) => Math.min(sortedSkus.length, current + MOBILE_PAGE_SIZE))}
+                onClick={() => setMobileLimit((current) => Math.min(tableSkus.length, current + MOBILE_PAGE_SIZE))}
                 className="min-h-11 w-full rounded-xl border border-violet-200 bg-white text-xs font-semibold text-violet-700"
               >
-                Показать ещё {Math.min(MOBILE_PAGE_SIZE, sortedSkus.length - mobileLimit)} SKU
+                Показать ещё {Math.min(MOBILE_PAGE_SIZE, tableSkus.length - mobileLimit)} SKU
               </button>
             )}
           </div>

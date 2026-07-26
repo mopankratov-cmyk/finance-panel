@@ -19,6 +19,7 @@ export interface RnpComparePeriod {
 }
 
 export interface RnpCompareLine {
+  nm: number;
   key: string;
   label: string;
   total: number | null;
@@ -42,8 +43,41 @@ function finite(value: number | null | undefined): value is number {
   return value != null && Number.isFinite(value);
 }
 
+function round1(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
 function metric(sku: RnpCompareSku, field: string) {
   return sku.metrics.find((item) => item.field === field) ?? null;
+}
+
+function knownSum(values: (number | null | undefined)[]) {
+  const known = values.filter(finite);
+  return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function ratio(numerator: number | null, denominator: number | null) {
+  return finite(numerator) && finite(denominator) && denominator > 0 ? round1((numerator / denominator) * 100) : null;
+}
+
+function virtualMetric(sku: RnpCompareSku, field: string): RnpCompareMetric | null {
+  if (field !== "cart_conversion") return metric(sku, field);
+  const openCard = metric(sku, "open_card");
+  const cart = metric(sku, "cart");
+  if (!openCard || !cart) return null;
+  const length = Math.max(openCard.daily.length, cart.daily.length);
+  const daily = Array.from({ length }, (_, index) => {
+    const openValue = openCard.daily[index];
+    const cartValue = cart.daily[index];
+    return ratio(cartValue, openValue);
+  });
+  return {
+    field,
+    label: "CR в корзину, %",
+    kind: "pct",
+    daily,
+    total: ratio(knownSum(cart.daily), knownSum(openCard.daily)),
+  };
 }
 
 function skuLabel(sku: RnpCompareSku) {
@@ -57,7 +91,7 @@ export function buildRnpArticleCompare(
   limit = 5,
 ): RnpArticleCompare {
   const candidates = skus
-    .map((sku) => ({ sku, metric: metric(sku, metricField) }))
+    .map((sku) => ({ sku, metric: virtualMetric(sku, metricField) }))
     .filter((item): item is { sku: RnpCompareSku; metric: RnpCompareMetric } => Boolean(item.metric))
     .sort((left, right) => {
       const leftValue = left.metric.total;
@@ -72,6 +106,7 @@ export function buildRnpArticleCompare(
   const metricLabel = candidates[0]?.metric.label ?? metricField;
   const metricKind = candidates[0]?.metric.kind ?? "int";
   const lines = candidates.map(({ sku, metric: selectedMetric }) => ({
+    nm: sku.nm,
     key: `sku_${sku.nm}`,
     label: skuLabel(sku),
     total: finite(selectedMetric.total) ? selectedMetric.total : null,
