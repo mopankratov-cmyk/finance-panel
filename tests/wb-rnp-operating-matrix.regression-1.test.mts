@@ -24,6 +24,7 @@ test("WB RNP renders previous-period deltas, heatmap and sparklines in the opera
   assert.match(page, /previousEqualRange/);
   assert.match(page, /previousController/);
   assert.match(page, /previousValue=\{dayOverDayBaseline\(metric\.daily, previousMetric\?\.daily, index\)\}/);
+  assert.match(page, /index === openDayIndex \? null : dayOverDayBaseline/);
   assert.match(page, /<DeltaMark/);
   assert.match(page, /<Sparkline values=\{metric\.daily\}/);
   assert.match(page, /heatmapEnabled/);

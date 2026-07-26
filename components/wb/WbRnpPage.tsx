@@ -28,6 +28,7 @@ import {
   dayOverDayBaseline,
   detectSkuAnomalies,
   filterAnomalies,
+  isOpenMoscowDayLabel,
   matchesArticleList,
   metricDelta,
   previousEqualRange,
@@ -2042,6 +2043,7 @@ function OptimaMatrixTable({
   onSave?: (metric: Metric) => void;
 }) {
   const previousByField = new Map(previousMetrics.map((metric) => [metric.field, metric]));
+  const openDayIndex = period.findIndex((day) => isOpenMoscowDayLabel(day.label));
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(OPTIMA_TABLE_GROUPS.filter((group) => group.expanded).map((group) => group.id)),
   );
@@ -2132,6 +2134,7 @@ function OptimaMatrixTable({
                       heatmapEnabled={heatmapEnabled}
                       sparklinesEnabled={sparklinesEnabled}
                       compactNumbers={compactNumbers}
+                      openDayIndex={openDayIndex}
                       canHide={metrics.length > 1}
                       onHide={() => onHideMetric(metric.field as RnpMetricField)}
                       planning={planning}
@@ -2159,6 +2162,7 @@ function OptimaMetricRow({
   heatmapEnabled,
   sparklinesEnabled,
   compactNumbers,
+  openDayIndex,
   canHide,
   onHide,
   planning,
@@ -2174,6 +2178,7 @@ function OptimaMetricRow({
   heatmapEnabled: boolean;
   sparklinesEnabled: boolean;
   compactNumbers: boolean;
+  openDayIndex: number;
   canHide: boolean;
   onHide: () => void;
   planning: boolean;
@@ -2236,7 +2241,7 @@ function OptimaMetricRow({
           key={index}
           metric={metric}
           value={value}
-          previousValue={dayOverDayBaseline(metric.daily, previousMetric?.daily, index)}
+          previousValue={index === openDayIndex ? null : dayOverDayBaseline(metric.daily, previousMetric?.daily, index)}
           showDelta={showDeltas}
           deltaMode={deltaMode}
           heatmapEnabled={heatmapEnabled}

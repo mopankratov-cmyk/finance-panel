@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   dayOverDayBaseline,
   detectSkuAnomalies,
+  isOpenMoscowDayLabel,
   matchesArticleList,
   metricDelta,
   parseArticleList,
@@ -50,6 +51,12 @@ test("daily RNP deltas compare with the previous calendar day", () => {
   assert.equal(dayOverDayBaseline(current, previousPeriod, 1), 120);
   assert.equal(dayOverDayBaseline(current, previousPeriod, 2), 150);
   assert.equal(dayOverDayBaseline(current, previousPeriod, 3), null);
+});
+
+test("an unfinished Moscow calendar day can be excluded from daily deltas", () => {
+  const now = new Date("2026-07-26T21:30:00.000Z");
+  assert.equal(isOpenMoscowDayLabel("27.07", now), true);
+  assert.equal(isOpenMoscowDayLabel("26.07", now), false);
 });
 
 test("anomaly detector understands beneficial and harmful directions", () => {

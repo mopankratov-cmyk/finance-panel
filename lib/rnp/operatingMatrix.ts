@@ -203,6 +203,17 @@ export function dayOverDayBaseline(
   return previousPeriodDaily?.at(-1) ?? null;
 }
 
+export function isOpenMoscowDayLabel(label: string, now = new Date()) {
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+  }).formatToParts(now);
+  const day = parts.find((part) => part.type === "day")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  return Boolean(day && month && label === `${day}.${month}`);
+}
+
 export function anomalyDirection(field: string, delta: RnpMetricDelta): "positive" | "negative" | null {
   if (delta.direction === "flat" || field === "ad_spent" || field === "money") return null;
   if (POSITIVE_WHEN_DOWN.has(field)) return delta.direction === "down" ? "positive" : "negative";

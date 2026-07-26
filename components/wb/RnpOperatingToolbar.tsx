@@ -434,7 +434,7 @@ export function RnpOperatingToolbar(props: Props) {
       </div>
 
       <p className="mt-3 text-[9px] leading-4 text-slate-400">
-        Дельты: итог — к предыдущему периоду, дни — к предыдущему дню · окно оборачиваемости {props.turnoverWindowDays} дней
+        Дельты: итог — к предыдущему периоду, дни — к предыдущему дню, текущий день — после закрытия · окно оборачиваемости {props.turnoverWindowDays} дней
       </p>
 
       {tagsOpen ? (
