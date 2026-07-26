@@ -12,11 +12,13 @@ import {
   Store,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
 import { readApiResponse } from "@/lib/http/readApiResponse";
+import { buildRnpArticleCompare } from "@/lib/rnp/articleCompare";
 import { buildRnpFocusSummary, type RnpFocusSignal } from "@/lib/rnp/focusSummary";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { WbProductImage } from "./WbProductImage";
@@ -142,6 +144,17 @@ const SORTS = [
   { field: "money", label: "Деньги в остатках" },
 ] as const;
 
+const COMPARE_METRICS = [
+  { field: "orders_sum", label: "Заказы ₽" },
+  { field: "orders_count", label: "Заказы шт" },
+  { field: "open_card", label: "Переходы" },
+  { field: "cart", label: "Корзины" },
+  { field: "ad_spent", label: "Реклама" },
+  { field: "drr", label: "ДРР" },
+] as const;
+
+const COMPARE_COLORS = ["#7c3aed", "#ec4899", "#0ea5e9", "#10b981", "#f59e0b"];
+
 const PRESETS = [
   { value: "today", label: "Сегодня" },
   { value: "yesterday", label: "Вчера" },
@@ -189,6 +202,12 @@ function compactFmt(value: number | null | undefined, kind: string) {
   if (value == null || !Number.isFinite(value)) return "—";
   if (kind === "pct") return `${Math.round(value * 10) / 10}%`;
   return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(Math.round(value));
+}
+
+function formatChartValue(value: number | null | undefined, kind: string) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (kind === "money") return `${compactFmt(value, kind)} ₽`;
+  return compactFmt(value, kind);
 }
 
 function findMetric(metrics: Metric[], field: string) {
@@ -279,6 +298,7 @@ export function WbRnpPage() {
   const [retryKey, setRetryKey] = useState(0);
   const [sortField, setSortField] = useState("orders_sum");
   const [sortDirection, setSortDirection] = useState<1 | -1>(-1);
+  const [compareMetric, setCompareMetric] = useState<(typeof COMPARE_METRICS)[number]["field"]>("orders_sum");
   const [planning, setPlanning] = useState(false);
   const [plan, setPlan] = useState<Record<string, Record<string, number>>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -442,6 +462,10 @@ export function WbRnpPage() {
   const focusSummary = useMemo(
     () => activeData ? buildRnpFocusSummary(sortedSkus) : null,
     [activeData, sortedSkus],
+  );
+  const articleCompare = useMemo(
+    () => activeData ? buildRnpArticleCompare(sortedSkus, activeData.period, compareMetric, COMPARE_COLORS.length) : null,
+    [activeData, compareMetric, sortedSkus],
   );
 
   const updateSkuWindow = (element: HTMLDivElement) => {
@@ -710,6 +734,86 @@ export function WbRnpPage() {
             <span>{activeData.forecast_note}</span>
             <span>«Выкуп потока» не является когортным показателем и может превышать 100%.</span>
           </div>
+        </section>
+      )}
+
+      {activeData && articleCompare && (
+        <section className="mb-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Сравнение артикулов РНП">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-bold text-slate-800">Сравнение артикулов</h2>
+              <p className="mt-0.5 text-[10px] text-slate-400">
+                Топ-{articleCompare.lines.length} SKU из текущей категории: видно, кто даёт всплеск или провал по дням.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {COMPARE_METRICS.map((metric) => (
+                <button
+                  key={metric.field}
+                  type="button"
+                  onClick={() => setCompareMetric(metric.field)}
+                  className={`h-7 rounded-md border px-2.5 text-[10px] font-semibold transition ${
+                    compareMetric === metric.field
+                      ? "border-violet-200 bg-violet-50 text-violet-700"
+                      : "border-slate-200 bg-white text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {metric.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {articleCompare.lines.length > 0 ? (
+            <>
+              <div className="mt-3 h-[240px] min-w-0">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <LineChart data={articleCompare.points} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="date" fontSize={10} minTickGap={18} stroke="#94a3b8" />
+                    <YAxis
+                      width={42}
+                      fontSize={10}
+                      stroke="#94a3b8"
+                      tickFormatter={(value) => formatChartValue(Number(value), articleCompare.metricKind)}
+                    />
+                    <Tooltip
+                      formatter={(value, name) => [
+                        formatChartValue(Number(value), articleCompare.metricKind),
+                        articleCompare.lines.find((line) => line.key === String(name))?.label ?? String(name),
+                      ]}
+                      labelFormatter={(label) => `Дата ${label}`}
+                    />
+                    {articleCompare.lines.map((line, index) => (
+                      <Line
+                        key={line.key}
+                        type="monotone"
+                        dataKey={line.key}
+                        name={line.key}
+                        stroke={COMPARE_COLORS[index % COMPARE_COLORS.length]}
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                        connectNulls
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                {articleCompare.lines.map((line, index) => (
+                  <span key={line.key} className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COMPARE_COLORS[index % COMPARE_COLORS.length] }} />
+                    <span className="font-semibold text-slate-700">{line.label}</span>
+                    <span>{fmt(line.total, articleCompare.metricKind)}</span>
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-8 text-center text-xs text-slate-400">
+              По текущему фильтру нет SKU для сравнения.
+            </div>
+          )}
         </section>
       )}
 

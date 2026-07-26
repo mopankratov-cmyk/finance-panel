@@ -1,0 +1,60 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { buildRnpArticleCompare, type RnpCompareSku } from "./articleCompare";
+
+function sku(nm: number, art: string, values: Array<number | null>, total: number | null): RnpCompareSku {
+  return {
+    nm,
+    art,
+    name: art,
+    metrics: [
+      {
+        field: "orders_sum",
+        label: "Заказы, ₽",
+        kind: "money",
+        daily: values,
+        total,
+      },
+    ],
+  };
+}
+
+test("RNP article compare picks top SKU by selected metric and builds daily points", () => {
+  const compare = buildRnpArticleCompare(
+    [
+      sku(1, "LOW", [10, 20], 30),
+      sku(2, "HIGH", [100, null], 100),
+      sku(3, "MID", [40, 30], 70),
+    ],
+    [
+      { label: "01", period_type: "ср" },
+      { label: "02", period_type: "чт" },
+    ],
+    "orders_sum",
+    2,
+  );
+
+  assert.equal(compare.metricLabel, "Заказы, ₽");
+  assert.equal(compare.metricKind, "money");
+  assert.deepEqual(compare.lines.map((line) => line.label), ["HIGH", "MID"]);
+  assert.deepEqual(compare.points, [
+    { date: "01", weekday: "ср", sku_2: 100, sku_3: 40 },
+    { date: "02", weekday: "чт", sku_2: null, sku_3: 30 },
+  ]);
+});
+
+test("RNP article compare returns an empty chart model without matching metrics", () => {
+  const compare = buildRnpArticleCompare(
+    [sku(1, "NO-AD", [10], 10)],
+    [{ label: "01", period_type: "ср" }],
+    "ad_spent",
+    5,
+  );
+
+  assert.equal(compare.metricField, "ad_spent");
+  assert.equal(compare.metricLabel, "ad_spent");
+  assert.equal(compare.metricKind, "int");
+  assert.deepEqual(compare.lines, []);
+  assert.deepEqual(compare.points, [{ date: "01", weekday: "ср" }]);
+});
