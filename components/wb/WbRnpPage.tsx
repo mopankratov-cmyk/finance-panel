@@ -76,6 +76,22 @@ interface DateRange {
   preset: "today" | "yesterday" | "week" | "month" | "previous" | "custom";
 }
 
+interface RnpFilterPreset {
+  id: string;
+  label: string;
+  description?: string;
+  system?: boolean;
+  cabinetId?: string;
+  category?: string;
+  categoryKeywords?: string[];
+  rangePreset?: DateRange["preset"];
+  from?: string;
+  to?: string;
+  sortField?: string;
+  sortDirection?: 1 | -1;
+  compareMetric?: (typeof COMPARE_METRICS)[number]["field"];
+}
+
 const METRIC_ORDER = [
   "views",
   "clicks",
@@ -164,6 +180,64 @@ const PRESETS = [
   { value: "previous", label: "Прошлый месяц" },
 ] as const;
 
+const RNP_FILTER_PRESETS_STORAGE_KEY = "finance-panel:wb-rnp-filter-presets:v1";
+const MAX_USER_FILTER_PRESETS = 8;
+
+const SYSTEM_FILTER_PRESETS: RnpFilterPreset[] = [
+  {
+    id: "system-stock-risk",
+    label: "Дефицит / остатки",
+    description: "SKU с минимальной оборачиваемостью наверху",
+    system: true,
+    rangePreset: "month",
+    sortField: "turnover",
+    sortDirection: 1,
+    compareMetric: "stock",
+  },
+  {
+    id: "system-high-drr",
+    label: "Высокий ДРР",
+    description: "Быстро найти SKU, где реклама давит маржу",
+    system: true,
+    rangePreset: "week",
+    sortField: "drr",
+    sortDirection: -1,
+    compareMetric: "drr",
+  },
+  {
+    id: "system-stock-money",
+    label: "Деньги в остатках",
+    description: "Самые дорогие складские остатки сверху",
+    system: true,
+    rangePreset: "month",
+    sortField: "money",
+    sortDirection: -1,
+    compareMetric: "stock",
+  },
+  {
+    id: "system-jackets",
+    label: "Ветровки / куртки",
+    description: "Категория верхней одежды, если заведена в себестоимости",
+    system: true,
+    rangePreset: "month",
+    categoryKeywords: ["ветров", "куртк"],
+    sortField: "orders_sum",
+    sortDirection: -1,
+    compareMetric: "orders_sum",
+  },
+  {
+    id: "system-bags",
+    label: "Сумки",
+    description: "Категория сумок, если заведена в себестоимости",
+    system: true,
+    rangePreset: "month",
+    categoryKeywords: ["сумк"],
+    sortField: "orders_sum",
+    sortDirection: -1,
+    compareMetric: "orders_sum",
+  },
+];
+
 function toIso(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -190,6 +264,63 @@ function rangeFor(preset: DateRange["preset"]): DateRange {
   }
 
   return { from: toIso(start), to: toIso(end), preset };
+}
+
+function isCompareMetric(value: unknown): value is (typeof COMPARE_METRICS)[number]["field"] {
+  return typeof value === "string" && COMPARE_METRICS.some((metric) => metric.field === value);
+}
+
+function normalizeUserPreset(raw: unknown): RnpFilterPreset | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  const label = typeof value.label === "string" ? value.label.trim() : "";
+  if (!label) return null;
+  const sortDirection = value.sortDirection === 1 ? 1 : -1;
+  return {
+    id: typeof value.id === "string" && value.id ? value.id : `user-${Date.now()}`,
+    label: label.slice(0, 40),
+    cabinetId: typeof value.cabinetId === "string" ? value.cabinetId : undefined,
+    category: typeof value.category === "string" ? value.category : "",
+    rangePreset: ["today", "yesterday", "week", "month", "previous", "custom"].includes(String(value.rangePreset))
+      ? value.rangePreset as DateRange["preset"]
+      : "custom",
+    from: typeof value.from === "string" ? value.from : undefined,
+    to: typeof value.to === "string" ? value.to : undefined,
+    sortField: typeof value.sortField === "string" ? value.sortField : "orders_sum",
+    sortDirection,
+    compareMetric: isCompareMetric(value.compareMetric) ? value.compareMetric : "orders_sum",
+  };
+}
+
+function readUserFilterPresets(): RnpFilterPreset[] {
+  try {
+    const raw = window.localStorage.getItem(RNP_FILTER_PRESETS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.map(normalizeUserPreset).filter((preset): preset is RnpFilterPreset => Boolean(preset)).slice(0, MAX_USER_FILTER_PRESETS)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeUserFilterPresets(presets: RnpFilterPreset[]) {
+  try {
+    window.localStorage.setItem(RNP_FILTER_PRESETS_STORAGE_KEY, JSON.stringify(presets.slice(0, MAX_USER_FILTER_PRESETS)));
+  } catch {
+    // Корпоративный браузер может запретить localStorage — пресеты просто останутся в текущей сессии.
+  }
+}
+
+function matchingPresetCategory(preset: RnpFilterPreset, categories: string[]) {
+  if (preset.category) return preset.category === "__none" || categories.includes(preset.category) ? preset.category : "";
+  const keywords = preset.categoryKeywords ?? [];
+  if (!keywords.length) return "";
+  const loweredKeywords = keywords.map((keyword) => keyword.toLocaleLowerCase("ru-RU"));
+  return categories.find((category) => {
+    const lowered = category.toLocaleLowerCase("ru-RU");
+    return loweredKeywords.some((keyword) => lowered.includes(keyword));
+  }) ?? "";
 }
 
 function fmt(value: number | null | undefined, kind: string) {
@@ -290,7 +421,7 @@ function toneClass(metric: Metric, value: number | null) {
 }
 
 export function WbRnpPage() {
-  const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, canWrite } = useWbCabinet();
+  const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, canWrite, setCabinetId } = useWbCabinet();
   const [range, setRange] = useState<DateRange>(() => rangeFor("month"));
   const [data, setData] = useState<RnpTable | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
@@ -308,6 +439,7 @@ export function WbRnpPage() {
   const [planMessage, setPlanMessage] = useState<string | null>(null);
   const [skuWindow, setSkuWindow] = useState({ start: 0, end: 4 });
   const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE_SIZE);
+  const [userFilterPresets, setUserFilterPresets] = useState<RnpFilterPreset[]>([]);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
@@ -317,6 +449,10 @@ export function WbRnpPage() {
   const month = range.from.slice(0, 7);
   const currentDataKey = `${cabinetId || "all"}:${range.from}:${range.to}`;
   const activeData = dataKey === currentDataKey ? data : null;
+
+  useEffect(() => {
+    setUserFilterPresets(readUserFilterPresets());
+  }, []);
 
   useEffect(() => {
     setPlanning(false);
@@ -478,6 +614,14 @@ export function WbRnpPage() {
     () => activeData ? buildRnpArticleCompare(sortedSkus, activeData.period, compareMetric, COMPARE_COLORS.length) : null,
     [activeData, compareMetric, sortedSkus],
   );
+  const visibleSystemPresets = useMemo(
+    () => SYSTEM_FILTER_PRESETS.filter((preset) => !preset.categoryKeywords?.length || Boolean(matchingPresetCategory(preset, categories))),
+    [categories],
+  );
+  const allFilterPresets = useMemo(
+    () => [...visibleSystemPresets, ...userFilterPresets],
+    [userFilterPresets, visibleSystemPresets],
+  );
 
   const updateSkuWindow = (element: HTMLDivElement) => {
     const offset = Math.max(0, element.scrollTop - TABLE_PREFIX_HEIGHT);
@@ -489,6 +633,62 @@ export function WbRnpPage() {
   };
 
   const applyPreset = (preset: DateRange["preset"]) => setRange(rangeFor(preset));
+
+  const applyFilterPreset = (preset: RnpFilterPreset) => {
+    const nextCabinet = preset.cabinetId;
+    if (
+      nextCabinet &&
+      nextCabinet !== cabinetId &&
+      (nextCabinet === "all" || cabinets.some((cabinet) => cabinet.id === nextCabinet))
+    ) {
+      setCabinetId(nextCabinet);
+    }
+    if (preset.from && preset.to) {
+      setRange({ from: preset.from, to: preset.to, preset: preset.rangePreset ?? "custom" });
+    } else if (preset.rangePreset) {
+      setRange(rangeFor(preset.rangePreset));
+    }
+    setCategory(matchingPresetCategory(preset, categories));
+    setSortField(preset.sortField ?? "orders_sum");
+    setSortDirection(preset.sortDirection ?? -1);
+    if (isCompareMetric(preset.compareMetric)) setCompareMetric(preset.compareMetric);
+    setFocusedNm(null);
+  };
+
+  const saveCurrentFilterPreset = () => {
+    const defaultName = [
+      activeCabinet?.name ?? (cabinetId === "all" ? "Все кабинеты" : "РНП"),
+      category && category !== "__none" ? category : null,
+      SORTS.find((sort) => sort.field === sortField)?.label ?? sortField,
+    ].filter(Boolean).join(" · ");
+    const label = window.prompt("Название быстрого среза", defaultName || "Мой срез РНП")?.trim();
+    if (!label) return;
+    const nextPreset: RnpFilterPreset = {
+      id: `user-${Date.now()}`,
+      label: label.slice(0, 40),
+      cabinetId,
+      category,
+      rangePreset: range.preset,
+      from: range.from,
+      to: range.to,
+      sortField,
+      sortDirection,
+      compareMetric,
+    };
+    setUserFilterPresets((current) => {
+      const next = [nextPreset, ...current].slice(0, MAX_USER_FILTER_PRESETS);
+      writeUserFilterPresets(next);
+      return next;
+    });
+  };
+
+  const deleteFilterPreset = (id: string) => {
+    setUserFilterPresets((current) => {
+      const next = current.filter((preset) => preset.id !== id);
+      writeUserFilterPresets(next);
+      return next;
+    });
+  };
 
   const savePlan = async (sku: Sku, metric: Metric) => {
     const key = `${sku.nm}:${metric.field}`;
@@ -625,6 +825,46 @@ export function WbRnpPage() {
               {sort.label}
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="mb-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Быстрые срезы РНП">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="mr-1">
+            <h2 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Быстрые срезы</h2>
+            <p className="text-[9px] text-slate-400">Кабинет · период · категория · сортировка</p>
+          </div>
+          {allFilterPresets.map((preset) => (
+            <span key={preset.id} className="inline-flex h-8 items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => applyFilterPreset(preset)}
+                title={preset.description ?? "Применить сохранённый срез"}
+                className={`h-8 px-2.5 text-[10px] font-semibold transition hover:bg-violet-50 hover:text-violet-700 ${
+                  preset.system ? "text-slate-600" : "text-violet-700"
+                }`}
+              >
+                {preset.label}
+              </button>
+              {!preset.system && (
+                <button
+                  type="button"
+                  onClick={() => deleteFilterPreset(preset.id)}
+                  aria-label={`Удалить срез ${preset.label}`}
+                  className="grid h-8 w-7 place-items-center border-l border-slate-200 text-[13px] font-semibold text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={saveCurrentFilterPreset}
+            className="ml-auto h-8 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-[10px] font-semibold text-violet-700 hover:border-violet-300 hover:bg-violet-100"
+          >
+            Сохранить текущий срез
+          </button>
         </div>
       </section>
 
