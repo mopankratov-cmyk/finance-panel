@@ -11,7 +11,7 @@ import { DayDetailPanel } from "./DayDetailPanel";
 import { SalesForecastPanel } from "./SalesForecastPanel";
 import { FinancialAlertsPanel } from "./FinancialAlertsPanel";
 import { FinanceTasksPanel } from "./FinanceTasksPanel";
-import { calendarExportRows, downloadCalendarXlsx } from "./calendarExport";
+import { calendarExportRows, calendarTemplateSheets, downloadCalendarXlsx } from "./calendarExport";
 import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
 import { WeekSummaryCell } from "./WeekSummaryCell";
 import { cleanPaymentComment, getPaymentPriority, PRIORITY_META, priorityRank, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
@@ -101,6 +101,7 @@ export function CalendarPage() {
   const [calendarLayout, setCalendarLayout] = useState<"agenda" | "grid">("grid");
   const [replaceCalendarOpen, setReplaceCalendarOpen] = useState(false);
   const [priorityScope, setPriorityScope] = useState<PaymentPriorityScope>("all");
+  const [planFactOpen, setPlanFactOpen] = useState(false);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -133,18 +134,32 @@ export function CalendarPage() {
     companyNames: new Map(companies.map((company) => [company.id, company.name])),
     companyByPayment,
   }), [scopedPayments, state.accounts, companies, companyByPayment]);
+  const calendarSheets = useMemo(() => calendarTemplateSheets({
+    payments: scopedPayments,
+    accountNames: new Map(state.accounts.map((account) => [account.id, account.name])),
+    companyNames: new Map(companies.map((company) => [company.id, company.name])),
+    companyByPayment,
+  }), [scopedPayments, state.accounts, companies, companyByPayment]);
   useEffect(() => {
     if (calendarRows.length <= 1) return;
     const timer = window.setTimeout(() => {
       void fetch("/api/opiu/google-sheets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: calendarRows }),
+        body: JSON.stringify({ rows: calendarRows, sheetName: "План выбытий", template: "calendar_outflow" }),
       });
     }, 3000);
     return () => window.clearTimeout(timer);
   }, [calendarRows]);
-  const planFactMatches = useMemo(() => matchPlannedToFacts(scopedPayments), [scopedPayments]);
+  const planFactMatches = useMemo(() => {
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    return matchPlannedToFacts(scopedPayments).filter((match) => match.planned.date.startsWith(prefix));
+  }, [scopedPayments, year, month]);
+  const planFactPeriod = useMemo(() => {
+    const dates = planFactMatches.flatMap((match) => [match.planned.date, match.fact.date]).sort();
+    return dates.length ? { from: dates[0], to: dates.at(-1)! } : null;
+  }, [planFactMatches]);
+  const accountNames = useMemo(() => new Map(state.accounts.map((account) => [account.id, account.name])), [state.accounts]);
   const calendarPayments = useMemo(
     () => calendarPaymentsWithoutMatchedPlans(scopedPayments, planFactMatches),
     [scopedPayments, planFactMatches],
@@ -262,9 +277,49 @@ export function CalendarPage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryTile icon={TrendingUp} label="План поступлений" value={plannedIncome} tone="emerald" />
         <SummaryTile icon={CircleDollarSign} label="План расходов" value={plannedExpense} tone="rose" />
-        <SummaryTile icon={CheckCircle2} label="План совпал с фактом" value={planFactMatches.length} count tone="violet" />
+        <SummaryTile icon={CheckCircle2} label="План совпал с фактом" value={planFactMatches.length} count tone="violet" onClick={() => setPlanFactOpen((open) => !open)} expanded={planFactOpen} />
         <SummaryTile icon={negativeDays > 0 ? TriangleAlert : Clock3} label="Дней с кассовым разрывом" value={negativeDays} count tone={negativeDays > 0 ? "amber" : "slate"} />
       </div>
+
+      {planFactOpen && (
+        <Card>
+          <CardHeader>
+            <div>
+              <h2 className="font-semibold text-slate-950">Платежи, у которых план совпал с фактом</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {planFactPeriod
+                  ? `Найдено ${planFactMatches.length} пар за период ${formatDate(planFactPeriod.from)} — ${formatDate(planFactPeriod.to)}.`
+                  : "Совпадений пока нет."}
+                {" "}Сравниваются только плановые и фактические поступления от маркетплейсов, займов и кредитов. Переводы между счетами и расходы исключены.
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {planFactMatches.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[820px] text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr><th className="px-4 py-3">Плановая дата</th><th className="px-4 py-3">Фактическая дата</th><th className="px-4 py-3">Поступление</th><th className="px-4 py-3">Кошелёк</th><th className="px-4 py-3 text-right">План</th><th className="px-4 py-3 text-right">Факт</th><th className="px-4 py-3 text-right">Отклонение</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {planFactMatches.map((match) => (
+                      <tr key={`${match.planned.id}-${match.fact.id}`}>
+                        <td className="whitespace-nowrap px-4 py-3">{formatDate(match.planned.date)}</td>
+                        <td className="whitespace-nowrap px-4 py-3">{formatDate(match.fact.date)}</td>
+                        <td className="px-4 py-3"><p className="font-medium text-slate-900">{match.fact.name || match.planned.name}</p><p className="mt-0.5 text-xs text-slate-500">План: {match.planned.name}</p></td>
+                        <td className="px-4 py-3 text-slate-600">{accountNames.get(match.fact.accountId) ?? accountNames.get(match.planned.accountId) ?? "Не указан"}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{formatMoney(match.planned.amount)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums">{formatMoney(match.fact.amount)}</td>
+                        <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${match.fact.amount - match.planned.amount >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatMoney(match.fact.amount - match.planned.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-1">
@@ -285,9 +340,10 @@ export function CalendarPage() {
           {groups.map((group) => <option key={group} value={`group:${group}`}>Группа: {group}</option>)}
           {companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
         </select>
-        <button onClick={() => downloadCalendarXlsx(calendarRows)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-emerald-200 px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"><FileSpreadsheet className="h-4 w-4" /> Excel</button>
+        <button onClick={() => downloadCalendarXlsx(calendarSheets)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-emerald-200 px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"><FileSpreadsheet className="h-4 w-4" /> Excel</button>
         <button onClick={async () => {
-          const response = await fetch("/api/opiu/google-sheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: calendarRows }) });
+          const responses = await Promise.all(calendarSheets.map((sheet) => fetch("/api/opiu/google-sheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: sheet.rows, sheetName: sheet.name, template: "calendar" }) })));
+          const response = { ok: responses.every((item) => item.ok) };
           alert(response.ok ? "Платёжный календарь выгружен в Google Таблицу" : "Google Таблица ещё не настроена владельцем");
         }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"><CloudUpload className="h-4 w-4" /> Google Таблица</button>
         <button onClick={() => setReplaceCalendarOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50"><FileUp className="h-4 w-4" /> Заменить из CSV</button>
@@ -539,12 +595,16 @@ function SummaryTile({
   value,
   count,
   tone,
+  onClick,
+  expanded,
 }: {
   icon: typeof TrendingUp;
   label: string;
   value: number;
   count?: boolean;
   tone: "emerald" | "rose" | "violet" | "amber" | "slate";
+  onClick?: () => void;
+  expanded?: boolean;
 }) {
   const colors = {
     emerald: "bg-emerald-50 text-emerald-700",
@@ -553,9 +613,9 @@ function SummaryTile({
     amber: "bg-amber-50 text-amber-700",
     slate: "bg-slate-100 text-slate-700",
   };
-  return (
+  const content = (
     <Card>
-      <CardContent className="flex items-center gap-3 pt-5">
+      <CardContent className={`flex items-center gap-3 pt-5 ${onClick ? "cursor-pointer transition hover:bg-violet-50/50" : ""}`}>
         <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colors[tone]}`}><Icon className="h-5 w-5" /></div>
         <div className="min-w-0">
           <p className="truncate text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
@@ -566,6 +626,7 @@ function SummaryTile({
       </CardContent>
     </Card>
   );
+  return onClick ? <button type="button" aria-expanded={expanded} onClick={onClick} className="w-full text-left">{content}</button> : content;
 }
 
 function FlowList({

@@ -11,7 +11,14 @@ interface ExportContext {
 
 const MONTHS = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 
-function exportRows({ payments, accountNameById, companyNameById }: ExportContext): Array<Array<string | number>> {
+function directionForPayment(payment: Payment): string {
+  const category = payment.category.toLowerCase();
+  if (category.includes("поступ") || category.includes("получение") || category.includes("вклад")) return "Поступление";
+  if (category.includes("выбыт") || category.includes("выдача") || category.includes("оплат") || category.includes("дивиденд")) return "Выбытие";
+  return payment.amount >= 0 ? "Поступление" : "Выбытие";
+}
+
+export function ddsTemplateRows({ payments, accountNameById, companyNameById }: ExportContext): Array<Array<string | number>> {
   const header = [
     "Месяц", "Мсц (цифрой)", "Дата", "Сумма", "Сумма в валюте", "Кошелек",
     "Направление бизнеса", "Контрагент", "Вид выплаты сотруднику", "Назначение платежа",
@@ -33,7 +40,7 @@ function exportRows({ payments, accountNameById, companyNameById }: ExportContex
       "",
       payment.name,
       payment.category,
-      payment.amount >= 0 ? "Поступление" : "Выбытие",
+      directionForPayment(payment),
       `${sectionForCategory(payment.category)}${sectionForCategory(payment.category) === "Техническая" ? " операция" : ""}`,
     ];
   })];
@@ -49,12 +56,16 @@ function download(blob: Blob, fileName: string) {
 }
 
 function csvCell(value: string | number): string {
-  const text = String(value);
+  const text = sanitizeSpreadsheetText(String(value));
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+export function sanitizeSpreadsheetText(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 export function downloadDdsCsv(context: ExportContext) {
-  const csv = "\ufeff" + exportRows(context).map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const csv = "\ufeff" + ddsTemplateRows(context).map((row) => row.map(csvCell).join(",")).join("\r\n");
   download(new Blob([csv], { type: "text/csv;charset=utf-8" }), `ДДС_факт_${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
@@ -120,21 +131,36 @@ function columnName(index: number): string {
 }
 
 export function buildSimpleXlsx(rows: Array<Array<string | number>>, sheetName = "Данные"): Uint8Array {
-  const body = rows.map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((value, columnIndex) => {
-    const reference = `${columnName(columnIndex)}${rowIndex + 1}`;
-    return typeof value === "number"
-      ? `<c r="${reference}"><v>${value}</v></c>`
-      : `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(String(value))}</t></is></c>`;
-  }).join("")}</row>`).join("");
-  const sheet = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
-  const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
-  const workbookRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+  return buildMultiSheetXlsx([{ name: sheetName, rows }]);
+}
+
+export function buildMultiSheetXlsx(sheets: Array<{ name: string; rows: Array<Array<string | number>> }>): Uint8Array {
+  const worksheetFiles: Array<{ name: string; data: Uint8Array }> = [];
+  const workbookSheets: string[] = [];
+  const workbookRelationships: string[] = [];
+  const contentTypes: string[] = [];
+  sheets.forEach((item, sheetIndex) => {
+    const body = item.rows.map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((value, columnIndex) => {
+      const reference = `${columnName(columnIndex)}${rowIndex + 1}`;
+      return typeof value === "number"
+        ? `<c r="${reference}"><v>${value}</v></c>`
+        : `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(String(value))}</t></is></c>`;
+    }).join("")}</row>`).join("");
+    const sheet = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+    const id = sheetIndex + 1;
+    worksheetFiles.push({ name: `xl/worksheets/sheet${id}.xml`, data: encoder.encode(sheet) });
+    workbookSheets.push(`<sheet name="${escapeXml(item.name.slice(0, 31))}" sheetId="${id}" r:id="rId${id}"/>`);
+    workbookRelationships.push(`<Relationship Id="rId${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${id}.xml"/>`);
+    contentTypes.push(`<Override PartName="/xl/worksheets/sheet${id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`);
+  });
+  const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${workbookSheets.join("")}</sheets></workbook>`;
+  const workbookRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${workbookRelationships.join("")}</Relationships>`;
   const rootRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
-  const types = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`;
+  const types = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${contentTypes.join("")}</Types>`;
   return zipStore([
     { name: "[Content_Types].xml", data: encoder.encode(types) }, { name: "_rels/.rels", data: encoder.encode(rootRels) },
     { name: "xl/workbook.xml", data: encoder.encode(workbook) }, { name: "xl/_rels/workbook.xml.rels", data: encoder.encode(workbookRels) },
-    { name: "xl/worksheets/sheet1.xml", data: encoder.encode(sheet) },
+    ...worksheetFiles,
   ]);
 }
 
@@ -145,7 +171,7 @@ export function downloadSimpleXlsx(rows: Array<Array<string | number>>, fileName
 }
 
 export function downloadDdsXlsx(context: ExportContext) {
-  const bytes = buildSimpleXlsx(exportRows(context), "ДДС факт");
+  const bytes = buildSimpleXlsx(ddsTemplateRows(context), "ДДС месяц");
   const buffer = bytes.slice().buffer as ArrayBuffer;
   download(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `ДДС_факт_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

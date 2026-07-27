@@ -1,12 +1,11 @@
 "use client";
 
-import { AlertTriangle, FileSpreadsheet, Loader2 } from "lucide-react";
+import { AlertTriangle, FileSpreadsheet, Loader2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { parseBankStatement, type BankStatement } from "./bankStatement";
 import { classifyBankStatement, type BankSuggestion } from "./bankAutoClassify";
 import type { DdsCompany } from "./ddsCompanies";
-import { rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
-import { Modal } from "@/components/ui/Modal";
+import { loadBankAccountMappings, rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
 import { PAYMENT_CATEGORIES } from "@/lib/constants";
 import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
@@ -41,6 +40,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<BankSuggestion[]>([]);
   const [done, setDone] = useState<{ queued: number } | null>(null);
+  const [controlMismatchAccepted, setControlMismatchAccepted] = useState(false);
 
   const selectedAccount = accounts.find((account) => account.id === accountId);
   const selectedCompany = companies.find((company) => company.id === companyId);
@@ -55,6 +55,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setBulkCategory("");
     setSuggestions([]);
     setDone(null);
+    setControlMismatchAccepted(false);
     setError(null);
   };
 
@@ -68,10 +69,12 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setError(null);
     try {
       const parsed = await parseBankStatement(file);
-      const suggestions = classifyBankStatement(parsed, accounts, companies, existingPayments, []);
+      const mappings = await loadBankAccountMappings().catch(() => []);
+      const suggestions = classifyBankStatement(parsed, accounts, companies, existingPayments, mappings);
       setSuggestions(suggestions);
       setStatement(parsed);
       setFileName(file.name);
+      setControlMismatchAccepted(false);
       setIncluded(new Set(parsed.rows.map((row) => row.id)));
       setCategories(
         new Map(
@@ -135,7 +138,9 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
           };
         });
       const queued = await saveBankReviewBatch(statement, selectedSuggestions, fileName);
-      await rememberBankAccount(statement.accountNumber, statement.ownerInn, companyId, accountId);
+      if (statement.accountNumber) {
+        await rememberBankAccount(statement.accountNumber, statement.ownerInn, companyId, accountId);
+      }
       setDone({ queued });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось отправить операции на проверку");
@@ -144,8 +149,17 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     }
   };
 
+  if (!open) return null;
+  const hasControlMismatch = statement?.warnings.some((warning) => warning.includes("не совпала с контрольной суммой")) ?? false;
   return (
-    <Modal open={open} onClose={close} title="Импорт банковской выписки">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
+      <button type="button" aria-label="Закрыть" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
+      <div className="relative flex max-h-[94vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <h2 className="text-lg font-semibold text-slate-900">Импорт банковской выписки</h2>
+          <button type="button" onClick={close} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="overflow-y-auto px-5 py-4">
       {done ? (
         <div className="space-y-4 text-sm">
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
@@ -201,10 +215,10 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                 </div>
                 <button onClick={applyBulkCategory} disabled={!bulkCategory} className="min-h-11 rounded-lg border border-slate-300 px-4 font-medium text-slate-700 disabled:opacity-50">Применить</button>
               </div>
-              <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
-                <table className="w-full min-w-[900px] text-xs">
+              <div className="max-h-[48vh] overflow-auto rounded-lg border border-slate-200">
+                <table className="w-full table-fixed text-xs">
                   <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
-                    <tr><th className="p-2">Добавить</th><th className="p-2">Дата</th><th className="p-2 text-right">Сумма</th><th className="p-2">Контрагент</th><th className="p-2">Назначение</th><th className="p-2">Статья</th></tr>
+                    <tr><th className="w-16 p-2">Добавить</th><th className="w-24 p-2">Дата</th><th className="w-32 p-2 text-right">Сумма</th><th className="w-[18%] p-2">Контрагент</th><th className="p-2">Назначение</th><th className="w-72 p-2">Статья</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {statement.rows.map((row) => (
@@ -215,7 +229,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                         <td className="max-w-48 truncate p-2" title={row.counterparty}>{row.counterparty}</td>
                         <td className="max-w-72 truncate p-2" title={row.purpose}>{row.purpose}</td>
                         <td className="p-2">
-                          <select value={categories.get(row.id) ?? ""} onChange={(e) => setCategory(row.id, e.target.value)} className="min-h-10 w-56 rounded border border-slate-300 px-2">
+                          <select value={categories.get(row.id) ?? ""} onChange={(e) => setCategory(row.id, e.target.value)} className="min-h-10 w-full rounded border border-slate-300 px-2">
                             <option value="">Выберите статью</option>
                             {BANK_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                           </select>
@@ -229,7 +243,18 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                 <span>Будет добавлено: {selectedRows.length}</span><span>Без статьи: {unclassified}</span>
               </div>
               {statement.warnings.map((warning) => <div key={warning} className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800"><AlertTriangle className="h-4 w-4" />{warning}</div>)}
-              <button onClick={handlePrepare} disabled={loading || !companyId || !accountId || selectedRows.length === 0} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+              {hasControlMismatch && (
+                <label className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                  <input
+                    type="checkbox"
+                    checked={controlMismatchAccepted}
+                    onChange={(event) => setControlMismatchAccepted(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  Я сверил выписку и подтверждаю отправку несмотря на расхождение с контрольной суммой банка.
+                </label>
+              )}
+              <button onClick={handlePrepare} disabled={loading || !companyId || !accountId || selectedRows.length === 0 || (hasControlMismatch && !controlMismatchAccepted)} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
                 {loading ? "Отправляю…" : "Отправить на проверку"}
               </button>
             </>
@@ -237,7 +262,9 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
           {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">{error}</div>}
         </div>
       )}
-    </Modal>
+        </div>
+      </div>
+    </div>
   );
 }
 

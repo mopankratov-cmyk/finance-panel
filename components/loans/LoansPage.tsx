@@ -41,6 +41,10 @@ function contractName(payments: Payment[], loanId: string): string {
   return linkedRows(payments, loanId).map((payment) => commentValue(payment.comment, "contract")).find(Boolean) ?? "";
 }
 
+function contractNumber(payments: Payment[], loanId: string): string {
+  return linkedRows(payments, loanId).map((payment) => commentValue(payment.comment, "contract-number")).find(Boolean) ?? "";
+}
+
 function addDays(date: string, days: number): string {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
@@ -110,7 +114,9 @@ export function LoansPage() {
   const [monthTo, setMonthTo] = useState(todayISO().slice(0, 7));
   const [periodYear, setPeriodYear] = useState(todayISO().slice(0, 4));
   const [syncing, setSyncing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const reconciledRef = useRef(false);
+  const contractNumberBackfillRef = useRef(false);
   const today = todayISO();
   const next30Date = addDays(today, 30);
 
@@ -125,7 +131,13 @@ export function LoansPage() {
     const linked = linkedRows(state.payments, loanId);
     return linked.map((payment) => companyByPayment.get(payment.id)).find(Boolean) ?? null;
   };
-  const filteredLoans = state.loans.filter((loan) => companyScope.size === 0 || companyScope.has(loanCompany(loan.id) ?? ""));
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredLoans = state.loans.filter((loan) => {
+    if (companyScope.size > 0 && !companyScope.has(loanCompany(loan.id) ?? "")) return false;
+    if (!normalizedSearch) return true;
+    const company = companies.find((item) => item.id === loanCompany(loan.id))?.name ?? "";
+    return `${loan.creditorName} ${company} ${contractNumber(state.payments, loan.id)}`.toLowerCase().includes(normalizedSearch);
+  });
   const schedules = useMemo(() => new Map(state.loans.map((loan) => [loan.id, scheduleFromPayments(state.payments, loan.id)])), [state.loans, state.payments]);
   const outstanding = filteredLoans.reduce((sum, loan) => {
     const paidPrincipal = (schedules.get(loan.id) ?? []).filter((row) => row.status === "done").reduce((value, row) => value + row.principal, 0);
@@ -187,9 +199,22 @@ export function LoansPage() {
     reconcileWithDds(false);
   }, [reconcileWithDds, state.loans.length, state.payments.length]);
 
+  useEffect(() => {
+    if (contractNumberBackfillRef.current || state.loans.length === 0 || state.payments.length === 0) return;
+    const loan = state.loans.find((item) => item.startDate === "2026-02-08" && /вб\s*финанс/i.test(item.creditorName));
+    if (!loan || contractNumber(state.payments, loan.id)) return;
+    contractNumberBackfillRef.current = true;
+    for (const payment of linkedRows(state.payments, loan.id)) {
+      dispatch({
+        type: "UPDATE_PAYMENT",
+        payload: { ...payment, comment: `${payment.comment ?? ""} [contract-number:2026020800236]` },
+      });
+    }
+  }, [dispatch, state.loans, state.payments]);
+
   const handleSubmit = (result: LoanFormResult) => {
     const loan: Loan = editing ? { ...editing, ...result.loan } : { id: generateId("loan"), ...result.loan };
-    const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]`;
+    const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]${result.contractNumber ? ` [contract-number:${result.contractNumber.replace(/\]/g, "")}]` : ""}`;
     if (editing) dispatch({ type: "UPDATE_LOAN", payload: loan });
     else dispatch({ type: "ADD_LOAN", payload: loan });
     const existing = linkedRows(state.payments, loan.id);
@@ -275,7 +300,7 @@ export function LoansPage() {
   const syncGoogle = async () => {
     setSyncing(true);
     try {
-      const response = await fetch("/api/opiu/google-sheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: rowsForExport, sheetName: "Кредиты и займы" }) });
+      const response = await fetch("/api/opiu/google-sheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: rowsForExport, sheetName: "Учёт кредитов займов от сторонн", template: "loans" }) });
       if (!response.ok) throw new Error("Не удалось выгрузить");
       alert("Реестр кредитов отправлен в Google Таблицу");
     } catch {
@@ -292,12 +317,13 @@ export function LoansPage() {
           <div><h1 className="text-2xl font-bold text-slate-950">Кредиты и займы</h1><p className="mt-1 text-sm text-slate-500">Договоры, графики, остаток долга и ближайшие оплаты</p></div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => reconcileWithDds(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"><RefreshCw className="h-4 w-4" /> Сверить с ДДС</button>
-            <button onClick={() => downloadSimpleXlsx(rowsForExport, `Кредиты_и_займы_${today}.xlsx`, "График")} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> Excel</button>
+            <button onClick={() => downloadSimpleXlsx(rowsForExport, `Учёт_финансовой_деятельности_${today}.xlsx`, "Учёт кредитов займов от сторонн")} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> Excel</button>
             <button onClick={() => void syncGoogle()} disabled={syncing} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Google Таблица</button>
             <button onClick={() => { setEditing(null); setModalOpen(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> Новый договор</button>
           </div>
         </div>
         <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+          <label className="block max-w-xl text-xs font-semibold uppercase tracking-wide text-slate-500">Поиск договора<input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-normal normal-case text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" placeholder="Номер договора, кредитор или компания" /></label>
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Компании — можно выбрать несколько</p>
             <div className="flex flex-wrap gap-2">
@@ -345,7 +371,7 @@ export function LoansPage() {
           const fee = metadataNumber(state.payments, loan.id, "origination-fee");
           return <article key={loan.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-lg font-bold text-slate-950">{loan.creditorName}</h2><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${loan.status === "active" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{loan.status === "active" ? "Активен" : "Закрыт"}</span></div><p className="mt-1 text-sm text-slate-500">{company?.name ?? "Компания не назначена"} · договор от {formatDate(loan.startDate)}</p></div>
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-lg font-bold text-slate-950">{loan.creditorName}</h2><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${loan.status === "active" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{loan.status === "active" ? "Активен" : "Закрыт"}</span></div><p className="mt-1 text-sm text-slate-500">{company?.name ?? "Компания не назначена"} · {contractNumber(state.payments, loan.id) ? `договор № ${contractNumber(state.payments, loan.id)} от ` : "договор от "}{formatDate(loan.startDate)}</p></div>
               <div className="flex gap-2"><button onClick={() => setDetails(loan)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 text-sm font-bold text-violet-700 hover:bg-violet-50">Подробнее<ChevronRight className="h-4 w-4" /></button><button aria-label="Редактировать договор" onClick={() => { setEditing(loan); setModalOpen(true); }} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"><Pencil className="h-4 w-4" /></button><button aria-label="Удалить договор" onClick={() => handleDelete(loan)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -374,6 +400,7 @@ export function LoansPage() {
             companyId={editing ? loanCompany(editing.id) : null}
             accountId={editing ? linkedRows(state.payments, editing.id)[0]?.accountId : undefined}
             contractFileName={editing ? contractName(state.payments, editing.id) : ""}
+            contractNumber={editing ? contractNumber(state.payments, editing.id) : ""}
             schedule={editing ? schedules.get(editing.id) : undefined}
             currency={editing ? (commentValue(linkedRows(state.payments, editing.id)[0]?.comment, "currency") as LoanFormResult["currency"] || "RUB") : "RUB"}
             originalPrincipal={editing ? Number(commentValue(linkedRows(state.payments, editing.id)[0]?.comment, "principal-original")) || editing.principalAmount : undefined}
@@ -411,7 +438,7 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
     <button type="button" aria-label="Закрыть карточку" className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
     <div className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-      <header className="flex items-start justify-between gap-4 border-b p-5"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">{company}</p><h2 className="mt-1 text-xl font-bold text-slate-950">{loan.creditorName}</h2><p className="mt-1 text-sm text-slate-500">Договор от {formatDate(loan.startDate)} · срок до {formatDate(loan.dueDate)}</p></div><button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
+      <header className="flex items-start justify-between gap-4 border-b p-5"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">{company}</p><h2 className="mt-1 text-xl font-bold text-slate-950">{loan.creditorName}</h2><p className="mt-1 text-sm text-slate-500">{contractNumber(payments, loan.id) ? `Договор № ${contractNumber(payments, loan.id)} от ` : "Договор от "}{formatDate(loan.startDate)} · срок до {formatDate(loan.dueDate)}</p></div><button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
       <div className="overflow-y-auto p-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={formatMoney(loan.principalAmount)} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
         <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[820px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th><th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени / штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {

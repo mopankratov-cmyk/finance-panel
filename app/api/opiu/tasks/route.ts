@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export async function GET() {
+  const gate = await requireApiSession(["director", "finance"]);
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Серверная база не настроена" }, { status: 503 });
   const { data, error } = await db
@@ -14,6 +17,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const gate = await requireApiSession(["director", "finance"]);
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Серверная база не настроена" }, { status: 503 });
   const body = await request.json() as { id?: number; status?: string; resultText?: string };

@@ -102,6 +102,7 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
         activity: "",
         company: companyById.get(item.companyId!) ?? "",
         comment: `Банковская выписка · ${item.sourceFileName}`,
+        importSource: `bank-review:${item.id}`,
       }));
       const result: DdsParseResult = {
         drafts,

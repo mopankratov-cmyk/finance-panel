@@ -77,6 +77,7 @@ export function ImportDdsModal({
     setReviewing(false);
     setPlan(null);
     try {
+      if (file.size > 20 * 1024 * 1024) throw new Error("CSV-файл больше 20 МБ");
       const text = await file.text();
       const parsed = parseDdsCsv(text);
       setResult(parsed);

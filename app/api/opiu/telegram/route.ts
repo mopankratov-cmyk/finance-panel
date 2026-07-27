@@ -32,7 +32,8 @@ export async function POST(request: Request) {
   const chatId = update.message?.chat?.id;
   if (!text || !chatId) return NextResponse.json({ ok: true });
   const allowedChat = process.env.FINANCE_TELEGRAM_CHAT_ID;
-  if (allowedChat && String(chatId) !== allowedChat) return NextResponse.json({ ok: true });
+  if (!allowedChat) return NextResponse.json({ error: "Разрешённый Telegram-чат не настроен" }, { status: 503 });
+  if (String(chatId) !== allowedChat) return NextResponse.json({ ok: true });
 
   try {
     const command = text.split(/\s+/)[0].toLowerCase().split("@")[0];

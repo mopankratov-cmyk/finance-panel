@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 const ids: Record<string, string> = { USD: "R01235", EUR: "R01239", CNY: "R01375" };
 
 export async function GET(request: Request) {
+  const gate = await requireApiSession(["director", "finance"]);
+  if (gate) return gate;
   const currency = new URL(request.url).searchParams.get("currency")?.toUpperCase() ?? "RUB";
   if (currency === "RUB") return NextResponse.json({ currency, rate: 1, date: new Date().toISOString().slice(0, 10), source: "RUB" });
   if (!ids[currency]) return NextResponse.json({ error: "Неподдерживаемая валюта" }, { status: 400 });

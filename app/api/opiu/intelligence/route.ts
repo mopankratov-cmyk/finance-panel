@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { analyzeFinances } from "@/lib/opiu/financialIntelligence";
 import type { Account, Payment } from "@/lib/types";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
+  const gate = await requireApiSession(["director", "finance"]);
+  if (gate) return gate;
   try {
     const body = await request.json() as { accounts?: Account[]; payments?: Payment[]; today?: string };
     if (!Array.isArray(body.accounts) || !Array.isArray(body.payments)) {

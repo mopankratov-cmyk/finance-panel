@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Account, Payment } from "@/lib/types";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export async function POST(request: Request) {
+  const gate = await requireApiSession(["director", "finance"]);
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Серверная база не настроена" }, { status: 503 });
   try {

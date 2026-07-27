@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import type { Account, Loan, LoanStatus, PaymentStatus } from "@/lib/types";
 import { extractOfficeText } from "./officeText";
-import { mergeRecognition, recognizeLoanText, type LoanCurrency, type RecognizedLoan } from "./loanRecognition";
+import { mergeRecognition, recognizeLoanText, type LoanCurrency, type RecognizedLoan, type RecognizedScheduleRow } from "./loanRecognition";
 
 export interface LoanScheduleDraft {
   id: string;
@@ -21,6 +21,7 @@ export interface LoanFormResult {
   accountId: string;
   companyId: string;
   contractFileName: string;
+  contractNumber: string;
   schedule: LoanScheduleDraft[];
   currency: LoanCurrency;
   originalPrincipal: number;
@@ -38,6 +39,7 @@ interface LoanFormProps {
   companyId?: string | null;
   accountId?: string;
   contractFileName?: string;
+  contractNumber?: string;
   schedule?: LoanScheduleDraft[];
   currency?: LoanCurrency;
   originalPrincipal?: number;
@@ -51,7 +53,7 @@ interface LoanFormProps {
 
 const fieldClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
 const emptySchedule = (): LoanScheduleDraft => ({ id: crypto.randomUUID(), date: "", principal: 0, interest: 0, penalty: 0, status: "planned" });
-const initialRecognition = (): RecognizedLoan => ({ creditorName: "", companyHint: "", accountHint: "", principalAmount: 0, currency: "RUB", annualRate: 0, originationFee: 0, feeAmortizationMonths: 36, startDate: "", dueDate: "", interestFrequency: "unknown", confidence: 0, warnings: [] });
+const initialRecognition = (): RecognizedLoan => ({ contractNumber: "", creditorName: "", companyHint: "", accountHint: "", principalAmount: 0, currency: "RUB", annualRate: 0, originationFee: 0, feeAmortizationMonths: 36, startDate: "", dueDate: "", interestFrequency: "unknown", confidence: 0, warnings: [] });
 
 function fileBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -60,6 +62,16 @@ function fileBase64(file: File) {
     reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
     reader.readAsDataURL(file);
   });
+}
+
+function imageMediaType(file: File) {
+  const type = file.type.toLowerCase();
+  if (["image/jpeg", "image/png", "image/gif", "image/webp"].includes(type)) return type;
+  if (/\.jpe?g$/i.test(file.name)) return "image/jpeg";
+  if (/\.png$/i.test(file.name)) return "image/png";
+  if (/\.gif$/i.test(file.name)) return "image/gif";
+  if (/\.webp$/i.test(file.name)) return "image/webp";
+  return "";
 }
 
 function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[] {
@@ -91,13 +103,34 @@ function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[
   return rows.length ? rows : [emptySchedule()];
 }
 
-export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, onSubmit, onCancel }: LoanFormProps) {
+function recognizedSchedule(rows: RecognizedScheduleRow[] | undefined, rate: number) {
+  return (rows ?? [])
+    .filter((row) => row.date && Number(row.principal) + Number(row.interest) + Number(row.penalty || 0) > 0)
+    .map((row) => ({
+      id: crypto.randomUUID(),
+      date: row.date,
+      principal: Number(row.principal || 0) * rate,
+      interest: Number(row.interest || 0) * rate,
+      penalty: Number(row.penalty || 0) * rate,
+      status: "planned" as PaymentStatus,
+    }));
+}
+
+function companyMatchesHint(companyName: string, hint: string) {
+  const company = companyName.toLowerCase();
+  const recognized = hint.toLowerCase();
+  if (/филиппов|коровкин/.test(recognized)) return /филиппов|коровкин/.test(company);
+  return company.includes(recognized) || recognized.includes(company);
+}
+
+export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, onSubmit, onCancel }: LoanFormProps) {
   const editing = Boolean(loan);
   const [stage, setStage] = useState<"source" | "review">(editing ? "review" : "source");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState<RecognizedLoan>(() => loan ? {
     ...initialRecognition(),
+    contractNumber,
     creditorName: loan.creditorName,
     principalAmount: originalPrincipal ?? loan.principalAmount,
     currency,
@@ -115,6 +148,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
   const [schedule, setSchedule] = useState<LoanScheduleDraft[]>(initialSchedule?.length ? initialSchedule : [emptySchedule()]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [correctionText, setCorrectionText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const totals = useMemo(() => schedule.reduce((sum, row) => ({ principal: sum.principal + Number(row.principal || 0), interest: sum.interest + Number(row.interest || 0), penalty: sum.penalty + Number(row.penalty || 0) }), { principal: 0, interest: 0, penalty: 0 }), [schedule]);
 
@@ -145,8 +179,11 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     try {
       let extractedText = description.trim();
       let pdfBase64 = "";
+      let imageBase64 = "";
+      let imageType = "";
       if (file) {
         if (file.name.toLowerCase().endsWith(".pdf")) pdfBase64 = await fileBase64(file);
+        else if ((imageType = imageMediaType(file))) imageBase64 = await fileBase64(file);
         else extractedText = `${extractedText}\n${await extractOfficeText(file)}`.trim();
       }
       const local = recognizeLoanText(extractedText || file?.name || "");
@@ -155,7 +192,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         const response = await fetch("/api/opiu/loan-recognize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: extractedText, pdfBase64, fileName: file?.name }),
+          body: JSON.stringify({ text: extractedText, pdfBase64, imageBase64, imageMediaType: imageType, fileName: file?.name }),
         });
         const responseBody = await response.json() as Partial<RecognizedLoan> & { error?: string };
         if (response.ok) {
@@ -164,20 +201,61 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
           throw new Error(responseBody.error || "Не удалось распознать PDF");
         }
       } catch (error) {
-        if (pdfBase64) throw error;
+        if (pdfBase64 || imageBase64) throw error;
         // Для текстового описания и Office-файлов остаётся локальный резерв.
       }
       const recognized = mergeRecognition(local, remote);
       const rate = await loadRate(recognized.currency).catch(() => 1);
       setData(recognized);
-      setSchedule(monthlySchedule(recognized, rate));
-      const company = companies.find((item) => recognized.companyHint && item.name.toLowerCase().includes(recognized.companyHint.toLowerCase()));
+      const exactSchedule = recognizedSchedule(remote?.schedule, rate);
+      setSchedule(exactSchedule.length ? exactSchedule : monthlySchedule(recognized, rate));
+      const company = companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));
       const account = accounts.find((item) => recognized.accountHint && item.name.toLowerCase().includes(recognized.accountHint.toLowerCase()));
       if (company) setSelectedCompany(company.id);
       if (account) setSelectedAccount(account.id);
       setStage("review");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось прочитать документ");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyCorrections = async () => {
+    if (!correctionText.trim()) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/opiu/loan-recognize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          corrections: correctionText,
+          existingRecognition: {
+            ...data,
+            schedule: schedule.map(({ date, principal, interest, penalty }) => ({
+              date,
+              principal: principal / exchangeRate,
+              interest: interest / exchangeRate,
+              penalty: penalty / exchangeRate,
+            })),
+          },
+        }),
+      });
+      const corrected = await response.json() as Partial<RecognizedLoan> & { error?: string };
+      if (!response.ok) throw new Error(corrected.error || "Не удалось применить корректировки");
+      const recognized = mergeRecognition(data, corrected);
+      const rate = await loadRate(recognized.currency).catch(() => exchangeRate);
+      setData(recognized);
+      const correctedSchedule = recognizedSchedule(corrected.schedule, rate);
+      if (correctedSchedule.length) setSchedule(correctedSchedule);
+      const company = companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));
+      const account = accounts.find((item) => recognized.accountHint && item.name.toLowerCase().includes(recognized.accountHint.toLowerCase()));
+      if (company) setSelectedCompany(company.id);
+      if (account) setSelectedAccount(account.id);
+      setCorrectionText("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось применить корректировки");
     } finally {
       setBusy(false);
     }
@@ -218,6 +296,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       accountId: selectedAccount,
       companyId: selectedCompany,
       contractFileName: file?.name ?? contractFileName ?? "",
+      contractNumber: data.contractNumber.trim(),
       schedule: cleanSchedule,
       currency: data.currency,
       originalPrincipal: data.principalAmount,
@@ -234,9 +313,9 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5">
         <div className="flex items-start gap-3"><div className="rounded-xl bg-violet-600 p-2 text-white"><Sparkles className="h-5 w-5" /></div><div><h3 className="font-bold text-slate-950">Добавьте договор — поля заранее заполнять не нужно</h3><p className="mt-1 text-sm text-slate-600">Система прочитает документ, предложит компанию, счёт, кредитора и условия. Сохранение произойдёт только после вашей проверки.</p></div></div>
       </section>
-      <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.xls,.csv" className="hidden" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+      <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.webp,.gif" className="hidden" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
       <button type="button" onClick={() => fileRef.current?.click()} className="flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 p-5 text-violet-700 hover:bg-violet-50">
-        <Upload className="h-6 w-6" /><span className="font-bold">{file ? file.name : "Выбрать договор или график"}</span><span className="text-xs text-slate-500">PDF, DOCX, Excel или CSV</span>
+        <Upload className="h-6 w-6" /><span className="font-bold">{file ? file.name : "Выбрать договор или график"}</span><span className="text-xs text-slate-500">PDF, DOCX, Excel, CSV или изображение JPG/PNG/WEBP</span>
       </button>
       <label className="block text-sm font-semibold text-slate-700">Или опишите займ обычным текстом
         <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} className={`${fieldClass} resize-y py-3`} />
@@ -250,7 +329,12 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     <form onSubmit={submit} className="space-y-5">
       <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><div><p className="font-bold text-emerald-900">Данные подготовлены — проверьте перед сохранением</p><p className="text-sm text-emerald-800">Любое поле можно исправить. Компания и счёт требуют вашего подтверждения.</p></div></div>
       {data.warnings.length > 0 && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800"><b>Нужно проверить:</b> {data.warnings.join("; ")}.</div>}
+      <section className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
+        <label className="block text-sm font-semibold text-slate-800">Корректировки после распознавания<textarea value={correctionText} onChange={(event) => setCorrectionText(event.target.value)} rows={3} className={`${fieldClass} resize-y py-3`} placeholder="Напишите обычным текстом, что исправить или дополнить" /></label>
+        <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs text-slate-500">Например: изменить кредитора, комиссию, дату или конкретную строку графика.</p><button type="button" disabled={busy || !correctionText.trim()} onClick={() => void applyCorrections()} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Применить</button></div>
+      </section>
       <section className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+        <label className="text-sm font-medium text-slate-700">Номер договора<input value={data.contractNumber} onChange={(e) => updateData({ contractNumber: e.target.value })} className={fieldClass} placeholder="Например, 2026020800236" /></label>
         <label className="text-sm font-medium text-slate-700 md:col-span-2">Кредитор / займодавец<input required value={data.creditorName} onChange={(e) => updateData({ creditorName: e.target.value })} className={fieldClass} placeholder="ФИО или название организации" /></label>
         <label className="text-sm font-medium text-slate-700">Компания<select required value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)} className={fieldClass}><option value="">Проверьте и выберите</option>{companies.filter((item) => item.isActive).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="text-sm font-medium text-slate-700">Счёт оплаты<select required value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)} className={fieldClass}><option value="">Проверьте и выберите</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>

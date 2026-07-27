@@ -108,15 +108,17 @@ SUPABASE_SERVICE_ROLE_KEY=существующий серверный ключ S
 
 Секреты добавляются в окружение хостинга. Их нельзя коммитить в `.env` или отправлять в чат.
 
-## 3. Одна правка владельца вне зоны «Финансы»
+## 3. Маршруты webhook и мониторинга
 
-В `proxy.ts` добавить Telegram webhook в `PUBLIC_API`:
+В `proxy.ts` уже добавлены два публичных только по маршрутизации POST-endpoint:
 
 ```ts
 { prefix: "/api/opiu/telegram", methods: ["POST"] },
+{ prefix: "/api/opiu/monitor", methods: ["POST"] },
 ```
 
-Без этого production-прокси остановит запрос Telegram до проверки webhook-секрета.
+Они не являются открытыми: Telegram проверяет `x-telegram-bot-api-secret-token`,
+а мониторинг — `Authorization: Bearer ...` внутри самих route handlers.
 
 ## 4. Подключить webhook
 
@@ -163,32 +165,13 @@ on conflict (article) do update set
 
 ## 7. Google Таблица
 
-Создать Google Таблицу и открыть **Расширения → Apps Script**. Вставить код:
-
-```javascript
-const SECRET = 'тот же FINANCE_GOOGLE_SHEETS_SECRET';
-
-function doPost(e) {
-  const body = JSON.parse(e.postData.contents);
-  if (body.secret !== SECRET) {
-    return ContentService.createTextOutput(JSON.stringify({ ok: false }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  const book = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = book.getSheetByName(body.sheet) || book.insertSheet(body.sheet);
-  sheet.clearContents();
-  if (body.rows && body.rows.length) {
-    sheet.getRange(1, 1, body.rows.length, body.rows[0].length).setValues(body.rows);
-    sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, body.rows[0].length).setFontWeight('bold').setBackground('#ede9fe');
-    sheet.autoResizeColumns(1, body.rows[0].length);
-  }
-  return ContentService.createTextOutput(JSON.stringify({ ok: true }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-```
-
-Опубликовать как Web App с доступом для всех, кто знает URL. URL записать в `FINANCE_GOOGLE_SHEETS_WEBHOOK_URL`. Секрет проверяется внутри скрипта. Панель автоматически обновляет лист после изменения календаря; кнопка «Google Таблица» позволяет выполнить выгрузку вручную.
+Создать Google Таблицу и открыть **Расширения → Apps Script**. Полностью заменить
+`Code.gs` содержимым `app/api/opiu/google-sheets/GoogleAppsScript.gs`.
+В свойствах скрипта задать `FINANCE_SPREADSHEET_ID` и `FINANCE_SYNC_SECRET`;
+секрет в исходный код не вставлять. Опубликовать новую версию Web App с доступом
+для всех, кто знает URL. URL записать в `FINANCE_GOOGLE_SHEETS_WEBHOOK_URL`.
+Панель автоматически обновляет лист после изменения календаря; кнопка
+«Google Таблица» позволяет выполнить выгрузку вручную.
 
 ## 8. Команды
 

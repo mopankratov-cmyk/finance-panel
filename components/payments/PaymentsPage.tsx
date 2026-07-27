@@ -14,7 +14,7 @@ import {
   type DdsCompany,
 } from "./ddsCompanies";
 import { cleanDemoData } from "./ddsImport";
-import { downloadDdsCsv, downloadDdsXlsx } from "./ddsExport";
+import { ddsTemplateRows, downloadDdsCsv, downloadDdsXlsx } from "./ddsExport";
 import { syncDdsToGoogleSheets } from "./ddsGoogleSync";
 import { ImportDdsModal } from "./ImportDdsModal";
 import { PaymentForm } from "./PaymentForm";
@@ -143,7 +143,7 @@ export function PaymentsPage() {
   const handleGoogleSync = async () => {
     setSyncingGoogle(true);
     try {
-      const result = await syncDdsToGoogleSheets();
+      const result = await syncDdsToGoogleSheets(ddsTemplateRows({ payments: paymentsWithCompany, accountNameById, companyNameById }));
       alert(`Google Таблица обновлена. Строк: ${result.rows}. Листы: ${result.sheets.join(", ")}.`);
       if (result.spreadsheetUrl && confirm("Открыть Google Таблицу?")) window.open(result.spreadsheetUrl, "_blank", "noopener,noreferrer");
     } catch (error) {

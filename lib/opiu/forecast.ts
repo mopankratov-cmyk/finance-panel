@@ -1,7 +1,8 @@
+import { fetchSalesReport } from "@/lib/wb/fetchSalesReport";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
 import { calculateWeatherImpacts, type SeasonalProductRule } from "@/lib/opiu/weatherImpact";
-import { fetchOrders, fetchSalesFromCache } from "@/lib/opiu/loadMonth";
+import { fetchOrders } from "@/lib/opiu/loadMonth";
 
 const num = (value: unknown) => {
   const parsed = Number(value);
@@ -25,7 +26,7 @@ export interface ArticlePayoutForecast {
   adaptiveRevenue: number;
 }
 
-function aggregateByArticle(report: Awaited<ReturnType<typeof fetchSalesFromCache>>) {
+function aggregateByArticle(report: Awaited<ReturnType<typeof fetchSalesReport>>) {
   const result = new Map<string, { revenue: number; payout: number }>();
   for (const row of report) {
     const article = String(row.sa_name ?? "").trim().toUpperCase();
@@ -62,6 +63,19 @@ export async function buildMarketplacePayoutForecast(
     .eq("year", year)
     .eq("month", month);
   if (error) throw new Error(error.message);
+  let availablePlanPeriods: Array<{ year: number; month: number }> = [];
+  if (!(planRows ?? []).length) {
+    const { data: availableRows } = await client
+      .from("sales_plan")
+      .select("year,month")
+      .order("year", { ascending: false })
+      .order("month", { ascending: false })
+      .limit(36);
+    availablePlanPeriods = [...new Map((availableRows ?? []).map((row) => [
+      `${row.year}-${row.month}`,
+      { year: Number(row.year), month: Number(row.month) },
+    ])).values()];
+  }
 
   const targetStart = new Date(year, month - 1, 1);
   const historyEnd = new Date(targetStart);
@@ -78,8 +92,8 @@ export async function buildMarketplacePayoutForecast(
   const orderRegionFrom = new Date(historyEnd);
   orderRegionFrom.setDate(orderRegionFrom.getDate() - 27);
   const [report, currentReport, recentOrders] = await Promise.all([
-    fetchSalesFromCache(iso(historyStart), iso(historyEnd)),
-    hasStarted ? fetchSalesFromCache(iso(targetStart), iso(actualEnd)) : Promise.resolve([]),
+    fetchSalesReport(iso(historyStart), iso(historyEnd), false),
+    hasStarted ? fetchSalesReport(iso(targetStart), iso(actualEnd), false) : Promise.resolve([]),
     fetchOrders(iso(orderRegionFrom), iso(historyEnd), false),
   ]);
   const actualByArticle = aggregateByArticle(report);
@@ -141,6 +155,7 @@ export async function buildMarketplacePayoutForecast(
     .select("plan_revenue,projected_revenue,snapshot_date")
     .eq("year", year)
     .eq("month", month)
+    .neq("snapshot_date", iso(today))
     .order("snapshot_date", { ascending: false })
     .limit(2);
   const previousDeviations = (previousSnapshots ?? []).map((snapshot) => {
@@ -175,6 +190,8 @@ export async function buildMarketplacePayoutForecast(
     historyFrom: iso(historyStart),
     historyTo: iso(historyEnd),
     items,
+    planRowsCount: (planRows ?? []).length,
+    availablePlanPeriods,
     planRevenue: items.reduce((sum, item) => sum + item.planRevenue, 0),
     forecastPayout,
     articlesWithoutHistory: items.filter((item) => item.payoutRate === null).length,

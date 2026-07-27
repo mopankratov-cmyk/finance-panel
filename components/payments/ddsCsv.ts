@@ -15,6 +15,7 @@ export interface DdsDraft {
   activity: string; // Вид деятельности (операционная/финансовая/…)
   company: string; // Направление бизнеса (для Этапа 2)
   comment?: string;
+  importSource?: string; // устойчивый ключ для идемпотентного импорта из внешней очереди
 }
 
 export interface DdsParseResult {

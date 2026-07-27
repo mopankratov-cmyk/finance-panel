@@ -12,8 +12,8 @@ const dayDistance = (a: string, b: string) =>
 const clean = (value: string) => value.toLowerCase().replace(/[^а-яa-z0-9]+/gi, " ").trim();
 
 export function matchPlannedToFacts(payments: Payment[]): PlanFactMatch[] {
-  const planned = payments.filter((payment) => payment.status === "planned");
-  const facts = payments.filter((payment) => payment.status === "done");
+  const planned = payments.filter((payment) => payment.status === "planned" && isMarketplaceOrLoanIncome(payment));
+  const facts = payments.filter((payment) => payment.status === "done" && isMarketplaceOrLoanIncome(payment));
   const usedFacts = new Set<string>();
   const matches: PlanFactMatch[] = [];
 
@@ -22,17 +22,22 @@ export function matchPlannedToFacts(payments: Payment[]): PlanFactMatch[] {
       .filter((fact) => !usedFacts.has(fact.id))
       .map((fact) => {
         const days = dayDistance(plan.date, fact.date);
-        if (days > 7 || Math.abs(plan.amount - fact.amount) > 0.01) return null;
-        let score = 70 - days * 4;
-        if (plan.accountId === fact.accountId) score += 15;
-        if (clean(plan.counterparty) && clean(plan.counterparty) === clean(fact.counterparty)) score += 10;
-        if (clean(plan.category) === clean(fact.category)) score += 5;
+        if (days > 7) return null;
+        const amountDifference = Math.abs(plan.amount - fact.amount) / Math.max(plan.amount, fact.amount, 1);
+        let score = 45 - days * 4;
+        if (plan.accountId === fact.accountId) score += 20;
+        if (clean(plan.counterparty) && clean(plan.counterparty) === clean(fact.counterparty)) score += 15;
+        if (clean(plan.category) === clean(fact.category)) score += 10;
+        if (amountDifference <= 0.01) score += 20;
+        else if (amountDifference <= 0.05) score += 15;
+        else if (amountDifference <= 0.15) score += 8;
+        else if (amountDifference <= 0.3) score += 3;
         return { fact, score };
       })
       .filter((candidate): candidate is { fact: Payment; score: number } => candidate !== null)
       .sort((a, b) => b.score - a.score);
 
-    if (candidates[0] && candidates[0].score >= 65) {
+    if (candidates[0] && candidates[0].score >= 55) {
       usedFacts.add(candidates[0].fact.id);
       matches.push({ planned: plan, fact: candidates[0].fact, score: Math.min(100, candidates[0].score) });
     }

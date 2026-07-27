@@ -3,7 +3,6 @@
 import { BarChart3, CalendarPlus, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
-import { ActionableError } from "@/components/ui/ActionableError";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 
@@ -25,6 +24,8 @@ interface ForecastResponse {
   historyFrom: string;
   historyTo: string;
   items: ForecastItem[];
+  planRowsCount: number;
+  availablePlanPeriods: { year: number; month: number }[];
   planRevenue: number;
   forecastPayout: number;
   articlesWithoutHistory: number;
@@ -127,7 +128,7 @@ export function SalesForecastPanel({ year, month, accounts, onAddPayment }: {
       </div>
       <CardContent className="space-y-4 pt-5">
         {loading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Считаю по отчётам…</div>
-          : error ? <ActionableError message={error} label="Прогноз ОПиУ" />
+          : error ? <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>
           : data && <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Плановая выручка" value={data.planRevenue} />
@@ -136,6 +137,23 @@ export function SalesForecastPanel({ year, month, accounts, onAddPayment }: {
               <Metric label="Прогноз выплаты" value={data.forecastPayout} green />
               {adjustment !== 0 && <Metric label="После изменений МП" value={expectedPayout} green={expectedPayout >= data.forecastPayout} />}
             </div>
+            {data.planRowsCount === 0 && (
+              <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                <p className="font-semibold">План продаж за {String(month + 1).padStart(2, "0")}.{year} не найден</p>
+                <p className="mt-1 text-amber-800">
+                  Расчёт не запускается без строк этого месяца в таблице <code>sales_plan</code>.
+                  {data.availablePlanPeriods.length > 0
+                    ? ` Сервер видит планы за периоды: ${data.availablePlanPeriods.map((period) => `${String(period.month).padStart(2, "0")}.${period.year}`).join(", ")}.`
+                    : " Сервер не видит в этой таблице ни одного периода — нужно проверить подключение к базе и права доступа."}
+                </p>
+              </div>
+            )}
+            {data.planRowsCount > 0 && data.planRevenue === 0 && (
+              <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                <p className="font-semibold">План найден, но плановая выручка равна нулю</p>
+                <p className="mt-1 text-amber-800">Заполните поле <code>plan_revenue</code> у артикулов выбранного месяца.</p>
+              </div>
+            )}
             <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
               Адаптивный план продаж: <b>{formatMoney(data.adaptiveRevenue)}</b>. Уже отражено выплат: <b>{formatMoney(data.actualPayout)}</b>, осталось запланировать: <b>{formatMoney(data.remainingPayout)}</b>. Чем больше дней месяца прошло, тем сильнее прогноз опирается на фактический темп.
             </p>
@@ -180,11 +198,18 @@ export function SalesForecastPanel({ year, month, accounts, onAddPayment }: {
                 <label className="text-sm text-blue-950">Причина<input value={changeReason} onChange={(event) => setChangeReason(event.target.value)} placeholder="Например, комиссия +2%" className="mt-1 min-h-11 w-full rounded-lg border border-blue-200 px-3" /></label>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="mb-3">
+                <h3 className="font-semibold text-slate-900">Перенести прогноз в платёжный календарь</h3>
+                <p className="mt-1 text-sm text-slate-500">Это не меняет план продаж в базе. Здесь создаются будущие поступления денег в календаре.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
               <label className="text-sm font-medium text-slate-700">Ожидаемая дата выплаты<input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3" /></label>
               <label className="text-sm font-medium text-slate-700">Кошелёк<select value={accountId} onChange={(event) => setAccountId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3">{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
-              <button onClick={addForecast} disabled={!accountId || !paymentDate || expectedPayout <= 0} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> Добавить план</button>
-              <button onClick={addForecastSchedule} disabled={!accountId || !data.payoutSchedule.length} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200 bg-white px-4 text-sm font-semibold text-violet-700 disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> По неделям</button>
+              <button onClick={addForecast} disabled={!accountId || !paymentDate || expectedPayout <= 0} title="Создать одно плановое поступление на выбранную дату" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> Одной суммой</button>
+              <button onClick={addForecastSchedule} disabled={!accountId || !data.payoutSchedule.length} title="Разделить остаток прогноза между ближайшими датами выплат" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200 bg-white px-4 text-sm font-semibold text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> По датам выплат</button>
+              </div>
+              <p className="mt-3 text-xs text-slate-500">«Одной суммой» создаёт одну запись. «По датам выплат» делит оставшуюся сумму между ближайшими датами 7, 14, 21 и 28 числа.</p>
             </div>
           </>}
       </CardContent>

@@ -1,6 +1,14 @@
 export type LoanCurrency = "RUB" | "USD" | "EUR" | "CNY";
 
+export interface RecognizedScheduleRow {
+  date: string;
+  principal: number;
+  interest: number;
+  penalty?: number;
+}
+
 export interface RecognizedLoan {
+  contractNumber: string;
   creditorName: string;
   companyHint: string;
   accountHint: string;
@@ -11,9 +19,10 @@ export interface RecognizedLoan {
   feeAmortizationMonths: number;
   startDate: string;
   dueDate: string;
-  interestFrequency: "monthly" | "quarterly" | "at_maturity" | "unknown";
+  interestFrequency: "weekly" | "monthly" | "quarterly" | "at_maturity" | "unknown";
   confidence: number;
   warnings: string[];
+  schedule?: RecognizedScheduleRow[];
 }
 
 const currencyByText: Array<[RegExp, LoanCurrency]> = [
@@ -60,6 +69,7 @@ export function recognizeLoanText(text: string): RecognizedLoan {
   if (!dueDate) warnings.push("Не удалось определить дату возврата тела");
 
   return {
+    contractNumber: "",
     creditorName: nameMatch?.[1]?.trim() ?? "",
     companyHint: "",
     accountHint: "",
@@ -85,6 +95,8 @@ export function mergeRecognition(local: RecognizedLoan, remote?: Partial<Recogni
   return {
     ...local,
     ...Object.fromEntries(Object.entries(remote).filter(([, value]) => value !== "" && value != null)),
-    warnings: [...new Set([...(remote.warnings ?? []), ...local.warnings])],
+    // Для PDF локальный анализ видит только имя файла и создаёт ложные предупреждения.
+    // Если серверный ИИ ответил, доверяем его списку проверок.
+    warnings: remote.warnings ?? local.warnings,
   } as RecognizedLoan;
 }

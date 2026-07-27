@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildMarketplacePayoutForecast } from "@/lib/opiu/forecast";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
+  const gate = await requireApiSession(["director", "finance"]);
+  if (gate) return gate;
   const year = Number(request.nextUrl.searchParams.get("year"));
   const month = Number(request.nextUrl.searchParams.get("month"));
   if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {

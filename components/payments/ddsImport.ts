@@ -22,6 +22,7 @@ type PaymentRow = {
   counterparty: string;
   comment: string | null;
   company_id: string | null;
+  import_source: string | null;
 };
 
 export interface SuspectedRow {
@@ -161,6 +162,7 @@ export function buildImportPlan(
       counterparty: d.counterparty,
       comment: null, // «Направление бизнеса» появится отдельным полем на Этапе 2
       company_id: companyId,
+      import_source: d.importSource ?? null,
     };
     const match = looseMatch.get(looseKey(d.date, d.amount, d.wallet));
     if (match) suspectedRows.push({ row, match, wallet: d.wallet });
@@ -238,6 +240,24 @@ async function insertChunked(table: string, rows: object[], size: number): Promi
   return inserted;
 }
 
+async function upsertPaymentsChunked(rows: PaymentRow[], size: number): Promise<number> {
+  let inserted = 0;
+  for (let i = 0; i < rows.length; i += size) {
+    const chunk = rows.slice(i, i + size);
+    const { data, error } = await supabase
+      .from("payments")
+      .upsert(chunk, { onConflict: "import_source", ignoreDuplicates: true })
+      .select("id");
+    if (error) {
+      throw new Error(
+        `Ошибка при вставке в «payments» (строки ${i + 1}–${i + chunk.length}): ${error.message}`,
+      );
+    }
+    inserted += data?.length ?? 0;
+  }
+  return inserted;
+}
+
 // Вставляет счета + точно новые платежи + выбранные пользователем «под вопросом».
 export async function commitImport(
   plan: ImportPlan,
@@ -266,7 +286,7 @@ export async function commitImport(
       if (error) throw new Error(`Не удалось назначить компанию платежам: ${error.message}`);
     }
   }
-  const paymentsCreated = await insertChunked("payments", payments, 500);
+  const paymentsCreated = await upsertPaymentsChunked(payments, 500);
   return {
     accountsCreated,
     paymentsCreated,
