@@ -24,6 +24,10 @@ export interface SalesPlanCatalogSku {
   avgDaily7?: number;
   avgPriceMonth?: number;
   seasonalityFactor?: number;
+  seasonalityRawFactor?: number;
+  seasonalitySource?: string;
+  seasonalitySubject?: string;
+  seasonalityNote?: string;
   demandFactor?: number;
   stockAsOf?: string | null;
 }

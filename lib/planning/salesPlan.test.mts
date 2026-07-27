@@ -114,6 +114,36 @@ test("предложение плана заполняет пустые дни �
   assert.deepEqual(applied.rows[0].months["07"].slice(0, 4), [5, 3, 3, 2]);
 });
 
+test("предложение показывает сырой MPSTATS-пик и применяет безопасный коэффициент", () => {
+  const current = row();
+  current.stock = 1_000;
+  current.months["08"] = [0, 0];
+  const plan = createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 });
+  plan.rows = [current];
+
+  const suggestion = buildSalesPlanSuggestion(plan, "08", {
+    [current.id]: {
+      stock: 1_000,
+      ordersWeek: 70,
+      revenueWeek: 21_000,
+      ordersMonth: 200,
+      revenueMonth: 70_000,
+      seasonalityFactor: 3,
+      seasonalityRawFactor: 4.51,
+      seasonalitySource: "mpstats-forecast",
+      seasonalitySubject: "Пеналы",
+      seasonalityNote: "MPSTATS: дневной прогноз",
+      demandFactor: 1,
+    },
+  });
+
+  assert.equal(suggestion.rows[0].dailyOrders, 30);
+  assert.equal(suggestion.rows[0].seasonalityRawFactor, 4.51);
+  assert.equal(suggestion.rows[0].seasonalityFactor, 3);
+  assert.equal(suggestion.rows[0].seasonalitySubject, "Пеналы");
+  assert.ok(suggestion.rows[0].warnings.some((warning) => warning.includes("ограничен до 3")));
+});
+
 test("утверждение блокируется при дубле цвета и нулевой цене", () => {
   const plan = createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026, responsible: "Анна" });
   const first = row();

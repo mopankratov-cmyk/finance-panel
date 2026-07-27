@@ -130,6 +130,19 @@ const enc = (s: string) => encodeURIComponent(s);
 export interface SubjectDay { period?: string; sales?: number; revenue?: number }
 export interface NicheQuery { word: string; wb_count: number; items_count?: number }
 export interface SkuKwRow { query: string; wb_count?: number; avg_organic_position?: number | null; avg_ad_position?: number | null }
+export interface SubjectForecastDay {
+  date?: string;
+  yhat_sales?: number;
+  yhat_lower_sales?: number;
+  yhat_upper_sales?: number;
+  real_sales?: number;
+}
+export interface SubjectAnnualSeasonality {
+  date?: string;
+  yearly_sales?: number;
+  holidays_sales?: number;
+  season_sales?: number;
+}
 
 // Ниша по дням (рост): продажи/выручка предмета по датам.
 export async function subjectByDate(subjectPath: string, d1: string, d2: string): Promise<SubjectDay[]> {
@@ -168,4 +181,18 @@ export async function subjectByDateId(subjectId: number | string, d1: string, d2
 export async function subjectKeywordsId(subjectId: number | string, d1: string, d2: string, limit = 400): Promise<NicheQuery[]> {
   const data = await post<{ queries?: NicheQuery[] }>("/subject/keywords", `d1=${d1}&d2=${d2}&path=${subjectId}`, { startRow: 0, endRow: limit });
   return (data?.queries ?? []).map((r) => ({ word: r.word, wb_count: Number(r.wb_count ?? 0), items_count: r.items_count }));
+}
+
+// Рыночный прогноз продаж предмета. Используем только как относительный
+// коэффициент к собственному факту, а не как абсолютный план кабинета.
+export async function subjectForecastDaily(subjectId: number | string): Promise<SubjectForecastDay[]> {
+  const data = await get<SubjectForecastDay[]>(`/subject/forecast/daily?path=${enc(String(subjectId))}`, 12 * 3600);
+  return Array.isArray(data) ? data : [];
+}
+
+// Годовой профиль нужен как fallback для месяцев, которых ещё нет в
+// горизонте ежедневного прогноза MPSTATS.
+export async function subjectAnnualSeasonality(subjectId: number | string): Promise<SubjectAnnualSeasonality[]> {
+  const data = await get<SubjectAnnualSeasonality[]>(`/subject/season_effects/annual?path=${enc(String(subjectId))}&period=month`, 24 * 3600);
+  return Array.isArray(data) ? data : [];
 }

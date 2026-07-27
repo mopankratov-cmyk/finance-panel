@@ -108,6 +108,11 @@ test("sales-plan UI exposes basis panel and explainable suggestion preview", () 
   assert.match(skusRoute, /orders_week/);
   assert.match(skusRoute, /orders_month/);
   assert.match(skusRoute, /avg_daily_7/);
+  assert.match(skusRoute, /loadMpstatsSeasonality/);
+  assert.match(skusRoute, /seasonality_raw_factor/);
+  assert.match(skusRoute, /seasonality_subject/);
+  assert.match(page, /year=\$\{year\}&month=\$\{activeMonth\}/);
+  assert.match(page, /рынок \$\{row\.seasonalityRawFactor/);
   assert.match(page, /Основание плана/);
   assert.match(page, /Предложить план/);
   assert.match(page, /buildSalesPlanSuggestion/);

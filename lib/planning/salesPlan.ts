@@ -121,6 +121,10 @@ export interface SalesPlanSuggestionBasis {
   ordersMonth: number;
   revenueMonth: number;
   seasonalityFactor?: number;
+  seasonalityRawFactor?: number;
+  seasonalitySource?: string;
+  seasonalitySubject?: string;
+  seasonalityNote?: string;
   demandFactor?: number;
 }
 
@@ -133,6 +137,10 @@ export interface SalesPlanSuggestionRow {
   changedCells: number;
   avgDaily7: number;
   seasonalityFactor: number;
+  seasonalityRawFactor: number;
+  seasonalitySource: string;
+  seasonalitySubject: string;
+  seasonalityNote: string;
   demandFactor: number;
   endingStock: number;
   confidence: SalesPlanSuggestionConfidence;
@@ -655,6 +663,12 @@ export function buildSalesPlanSuggestion(
     const warnings: string[] = [];
     if (!basis) warnings.push("нет фактической базы");
     else if (basis.ordersWeek <= 0) warnings.push("нет заказов за 7 дней");
+    const seasonalityFactor = suggestionFactor(basis?.seasonalityFactor);
+    const seasonalityRawFactor = suggestionFactor(basis?.seasonalityRawFactor);
+    if (basis?.seasonalitySource === "unavailable") warnings.push("сезонность MPSTATS недоступна");
+    if (seasonalityRawFactor > seasonalityFactor + 0.01) {
+      warnings.push(`рынок ${seasonalityRawFactor.toLocaleString("ru-RU")}× ограничен до ${seasonalityFactor.toLocaleString("ru-RU")}×`);
+    }
     if (endingStock < 0) warnings.push(`дефицит ${Math.abs(endingStock).toLocaleString("ru-RU")} шт.`);
     if (!replaceFilled && currentDays.some((value) => value > 0)) warnings.push("ручные ячейки сохранены");
     return {
@@ -665,7 +679,11 @@ export function buildSalesPlanSuggestion(
       dailyOrders,
       changedCells,
       avgDaily7: basis ? Math.max(0, finite(basis.ordersWeek) / 7) : 0,
-      seasonalityFactor: suggestionFactor(basis?.seasonalityFactor),
+      seasonalityFactor,
+      seasonalityRawFactor,
+      seasonalitySource: basis?.seasonalitySource ?? "",
+      seasonalitySubject: basis?.seasonalitySubject ?? "",
+      seasonalityNote: basis?.seasonalityNote ?? "",
       demandFactor: suggestionFactor(basis?.demandFactor),
       endingStock,
       confidence,

@@ -121,6 +121,7 @@ export function SalesPlanPage({
   const [catalog, setCatalog] = useState<SalesPlanCatalogSku[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogPeriod, setCatalogPeriod] = useState<string | null>(null);
   const editSerial = useRef(0);
   const serverRevision = useRef(0);
   const exactCabinet = canWrite && Boolean(cabinetId) && cabinetId !== "all" && !cabinetId.startsWith("group:");
@@ -227,12 +228,13 @@ export function SalesPlanPage({
   }, [activeMonth]);
 
   const loadCatalog = useCallback(() => {
-    if (!exactCabinet || catalogLoading || catalog.length > 0) return;
+    const targetPeriod = `${year}-${activeMonth}`;
+    if (!exactCabinet || catalogLoading || catalogPeriod === targetPeriod) return;
     const controller = new AbortController();
     setCatalogLoading(true);
     setCatalogError(null);
     const url = marketplace === "wb"
-      ? `/api/planning/skus?cabinet=${encodeURIComponent(cabinetId)}`
+      ? `/api/planning/skus?cabinet=${encodeURIComponent(cabinetId)}&year=${year}&month=${activeMonth}`
       : `/api/ozon/stocks?cabinet=${encodeURIComponent(cabinetId)}`;
     fetch(url, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
@@ -251,6 +253,10 @@ export function SalesPlanPage({
             avg_daily_7?: number;
             avg_price_month?: number;
             seasonality_factor?: number;
+            seasonality_raw_factor?: number;
+            seasonality_source?: string;
+            seasonality_subject?: string;
+            seasonality_note?: string;
             demand_factor?: number;
           }[];
           rows?: { external_id?: string; art: string; name: string; free: number; img_url?: string | null }[];
@@ -272,16 +278,28 @@ export function SalesPlanPage({
               avgDaily7: Number(sku.avg_daily_7 ?? 0),
               avgPriceMonth: Number(sku.avg_price_month ?? 0),
               seasonalityFactor: Number(sku.seasonality_factor ?? 1),
+              seasonalityRawFactor: Number(sku.seasonality_raw_factor ?? sku.seasonality_factor ?? 1),
+              seasonalitySource: sku.seasonality_source ?? "",
+              seasonalitySubject: sku.seasonality_subject ?? "",
+              seasonalityNote: sku.seasonality_note ?? "",
               demandFactor: Number(sku.demand_factor ?? 1),
               stockAsOf: new Date().toISOString().slice(0, 10),
             };
           })
           : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null }));
       })
-      .then(setCatalog)
-      .catch((cause: unknown) => { if (!controller.signal.aborted) setCatalogError(cause instanceof Error ? cause.message : "Не удалось загрузить каталог"); })
+      .then((rows) => {
+        setCatalog(rows);
+        setCatalogPeriod(targetPeriod);
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setCatalogPeriod(targetPeriod);
+          setCatalogError(cause instanceof Error ? cause.message : "Не удалось загрузить каталог");
+        }
+      })
       .finally(() => { if (!controller.signal.aborted) setCatalogLoading(false); });
-  }, [cabinetId, catalog.length, catalogLoading, exactCabinet, marketplace]);
+  }, [activeMonth, cabinetId, catalogLoading, catalogPeriod, exactCabinet, marketplace, year]);
 
   useEffect(() => {
     if (addOpen) loadCatalog();
@@ -293,6 +311,7 @@ export function SalesPlanPage({
 
   useEffect(() => {
     setCatalog([]);
+    setCatalogPeriod(null);
     setCatalogError(null);
     setAddOpen(false);
   }, [cabinetId, marketplace]);
@@ -415,6 +434,10 @@ export function SalesPlanPage({
       ordersMonth: Number(sku.ordersMonth ?? 0),
       revenueMonth: Number(sku.revenueMonth ?? 0),
       seasonalityFactor: Number(sku.seasonalityFactor ?? 1),
+      seasonalityRawFactor: Number(sku.seasonalityRawFactor ?? sku.seasonalityFactor ?? 1),
+      seasonalitySource: sku.seasonalitySource ?? "",
+      seasonalitySubject: sku.seasonalitySubject ?? "",
+      seasonalityNote: sku.seasonalityNote ?? "",
       demandFactor: Number(sku.demandFactor ?? 1),
     } : undefined;
     return acc;
@@ -524,7 +547,7 @@ export function SalesPlanPage({
                     basisByRowId={basisByRowId}
                     loading={catalogLoading}
                     error={catalogError}
-                    onReload={loadCatalog}
+                    onReload={() => setCatalogPeriod(null)}
                   />
 
                   <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3">
@@ -616,7 +639,7 @@ function SalesPlanBasisPanel({
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
         <span>
           <span className="block text-sm font-bold text-slate-900">Основание плана</span>
-          <span className="mt-0.5 block text-xs text-slate-500">Среднее заказов RNP за 7 дней; сейчас сезонность и спрос не корректируют результат (коэффициенты 1,0)</span>
+          <span className="mt-0.5 block text-xs text-slate-500">Заказы RNP за 7 дней × сезонность MPSTATS по предмету. Рыночные пики ограничиваются; коэффициент спроса пока 1,0</span>
         </span>
         <span className="flex items-center gap-2 text-[11px] text-slate-500">
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
@@ -635,16 +658,19 @@ function SalesPlanBasisPanel({
           <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
             <table className="min-w-full text-[11px]">
               <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
-                <tr><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">30д</th><th className="px-3 py-2 text-right">7д/день</th><th className="px-3 py-2 text-right">Остаток</th><th className="px-3 py-2 text-right">Предложение</th></tr>
+                <tr><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">30д</th><th className="px-3 py-2 text-right">7д/день</th><th className="px-3 py-2 text-left">Сезонность</th><th className="px-3 py-2 text-right">Остаток</th><th className="px-3 py-2 text-right">Предложение</th></tr>
               </thead>
               <tbody>
                 {rows.map(({ row, basis }) => {
                   const suggested = calculateSalesPlanSuggestedDailyOrders(basis);
+                  const rawFactor = Number(basis?.seasonalityRawFactor ?? basis?.seasonalityFactor ?? 1);
+                  const appliedFactor = Number(basis?.seasonalityFactor ?? 1);
                   return (
                     <tr key={row.id} className="border-t border-slate-100">
                       <td className="px-3 py-2"><span className="block font-semibold text-slate-800">{row.variant}</span><span className="block text-[10px] text-slate-400">{row.color}</span></td>
                       <td className="px-3 py-2 text-right tabular-nums">{basis ? `${number(basis.ordersMonth)} / ${money(basis.revenueMonth)}` : "—"}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{basis ? `${number(basis.ordersWeek)} / ${number(basis.ordersWeek / 7)}` : "—"}</td>
+                      <td className="px-3 py-2"><span className="block font-medium text-slate-700">{basis?.seasonalitySubject || "—"}</span><span className="block text-[10px] tabular-nums text-slate-400">{basis ? rawFactor > appliedFactor + 0.01 ? `рынок ${rawFactor.toLocaleString("ru-RU")}× → план ${appliedFactor.toLocaleString("ru-RU")}×` : `${appliedFactor.toLocaleString("ru-RU")}×` : "—"}</span></td>
                       <td className="px-3 py-2 text-right tabular-nums">{number(basis?.stock ?? row.stock)}</td>
                       <td className="px-3 py-2 text-right font-semibold tabular-nums text-violet-700">{suggested ? `${number(suggested)} шт./день` : "—"}</td>
                     </tr>
@@ -689,7 +715,7 @@ function SalesPlanSuggestionModal({
       <div className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
           <h2 id="sales-plan-suggestion-title" className="text-lg font-bold text-slate-900">Предложить план</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">Сейчас берём заказы RNP за 7 дней, делим на 7 и округляем до целого. Одинаковое значение ставится на каждый день; сезонность и спрос пока равны 1,0. По умолчанию заполняются только пустые ячейки.</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">Заказы RNP за 7 дней делятся на 7 и умножаются на сезонность предмета из MPSTATS. Слишком резкие рыночные пики ограничиваются безопасным пределом. Коэффициент спроса пока равен 1,0; по умолчанию заполняются только пустые ячейки.</p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="grid gap-2 sm:grid-cols-4">
@@ -701,14 +727,14 @@ function SalesPlanSuggestionModal({
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
             <table className="min-w-full text-[11px]">
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
-                <tr><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">База 7д</th><th className="px-3 py-2 text-right">Коэф.</th><th className="px-3 py-2 text-right">План</th><th className="px-3 py-2 text-left">Сигналы</th></tr>
+                <tr><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">База 7д</th><th className="px-3 py-2 text-left">MPSTATS</th><th className="px-3 py-2 text-right">План</th><th className="px-3 py-2 text-left">Сигналы</th></tr>
               </thead>
               <tbody>
                 {previewRows.map((row) => (
                   <tr key={row.rowId} className="border-t border-slate-100">
                     <td className="px-3 py-2 font-semibold text-slate-800">{row.variant}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{number(row.avgDaily7)} шт./день</td>
-                    <td className="px-3 py-2 text-right tabular-nums">сез. {row.seasonalityFactor.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} · спрос {row.demandFactor.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2"><span className="block font-medium text-slate-700">{row.seasonalitySubject || "Предмет не определён"}</span><span className="block text-[10px] tabular-nums text-slate-400">{row.seasonalityRawFactor > row.seasonalityFactor + 0.01 ? `рынок ${row.seasonalityRawFactor.toLocaleString("ru-RU")}× → применено ${row.seasonalityFactor.toLocaleString("ru-RU")}×` : `применено ${row.seasonalityFactor.toLocaleString("ru-RU")}×`} · спрос {row.demandFactor.toLocaleString("ru-RU")}×</span></td>
                     <td className="px-3 py-2 text-right tabular-nums"><span className="font-semibold">{number(row.currentOrders)} → {number(row.proposedOrders)}</span><span className="block text-[10px] text-slate-400">{number(row.dailyOrders)} шт./день</span></td>
                     <td className="px-3 py-2"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{confidenceLabels[row.confidence]}</span>{row.warnings.length ? <span className="ml-1 text-amber-700">{row.warnings.join(" · ")}</span> : null}</td>
                   </tr>
