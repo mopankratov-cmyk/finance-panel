@@ -64,7 +64,9 @@ test("WB RNP mirrors the Optima default week, grouped matrix and display control
   assert.match(page, /OPTIMA_TABLE_GROUPS/);
   assert.match(page, /Продажи и возвраты/);
   assert.match(page, /groupedMetrics\.map/);
-  assert.match(toolbar, /Бренд или кабинет/);
+  assert.match(toolbar, /aria-label="Бренд товара"/);
+  assert.match(toolbar, /Все бренды/);
+  assert.match(toolbar, /Все категории/);
   assert.match(toolbar, /Настройки отображения/);
   assert.match(toolbar, /Формат чисел/);
 });
@@ -72,11 +74,11 @@ test("WB RNP mirrors the Optima default week, grouped matrix and display control
 test("WB RNP shared tags and product journal stay scoped to one cabinet", () => {
   assert.match(drawer, /Общие для всех сотрудников кабинета/);
   assert.match(drawer, /Сохранить в журнал/);
-  assert.match(page, /message\.includes\("вне контура выбранного кабинета"\)/);
   assert.match(page, /setOperationsSkuNm\(null\)/);
+  assert.match(page, /journalByNm\.get\(sku\.nm\)/);
   assert.match(operationsRoute, /Для тегов и журнала выберите один WB-кабинет/);
   assert.match(operationsRoute, /requestAllowedNmIds/);
-  assert.match(operationsRoute, /nmParam == null \|\| nmParam\.trim\(\) === "" \? null : Number\(nmParam\)/);
+  assert.match(operationsRoute, /loadJournalEntries/);
   assert.match(operationsRoute, /\.range\(from, from \+ pageSize - 1\)/);
   assert.match(operationsRoute, /action === "set_tag"/);
   assert.match(operationsRoute, /action === "add_journal"/);

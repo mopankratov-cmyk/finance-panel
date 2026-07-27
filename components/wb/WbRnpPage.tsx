@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { filterByCategory } from "@/components/ui/CategoryFilter";
 import { ActionableError } from "@/components/ui/ActionableError";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
@@ -21,6 +20,12 @@ import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
 import { readApiResponse, readOkApiResponse } from "@/lib/http/readApiResponse";
 import { buildRnpArticleCompare } from "@/lib/rnp/articleCompare";
 import { buildRnpFocusSummary, type RnpFocusSignal } from "@/lib/rnp/focusSummary";
+import {
+  filterRnpProductFacets,
+  rnpBrandOptions,
+  rnpCategoryOptions,
+  sortRnpProducts,
+} from "@/lib/rnp/productFacets";
 import {
   RNP_METRIC_FIELDS,
   RNP_VIEW_PRESETS,
@@ -74,6 +79,8 @@ interface Sku {
   nm: number;
   art: string;
   name: string;
+  brand?: string;
+  subject?: string;
   img_url: string;
   metrics: Metric[];
 }
@@ -569,7 +576,8 @@ export function WbRnpPage() {
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
-  const { categories, byArticle } = useCategoryMap();
+  const { byArticle } = useCategoryMap();
+  const [brand, setBrand] = useState("");
   const [category, setCategory] = useState("");
   const month = range.from.slice(0, 7);
   const currentDataKey = `${cabinetId || "all"}:${range.from}:${range.to}:${turnoverWindowDays}`;
@@ -621,6 +629,8 @@ export function WbRnpPage() {
     setOperationsInitialDate(undefined);
     setJournal([]);
     setOperationsMessage(null);
+    setBrand("");
+    setCategory("");
   }, [cabinetId]);
 
   useEffect(() => {
@@ -749,10 +759,8 @@ export function WbRnpPage() {
       return;
     }
     const controller = new AbortController();
-    const params = new URLSearchParams();
-    if (operationsSkuNm != null) params.set("nm", String(operationsSkuNm));
     setOperationsLoading(true);
-    deploymentPinnedFetch(`/api/rnp/${encodeURIComponent(cabinetId)}/operations${params.size ? `?${params.toString()}` : ""}`, {
+    deploymentPinnedFetch(`/api/rnp/${encodeURIComponent(cabinetId)}/operations`, {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -768,14 +776,6 @@ export function WbRnpPage() {
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
           const message = cause instanceof Error ? cause.message : "Не удалось загрузить теги и журнал";
-          // Cabinet switching can briefly leave the previously opened SKU in state.
-          // Drop that stale selection and retry the cabinet-level request without
-          // showing a misleading authorization warning to the user.
-          if (operationsSkuNm != null && message.includes("вне контура выбранного кабинета")) {
-            setOperationsSkuNm(null);
-            setOperationsMessage(null);
-            return;
-          }
           setOperationsAvailable(false);
           setOperationsMessage(message);
         }
@@ -784,7 +784,7 @@ export function WbRnpPage() {
         if (!controller.signal.aborted) setOperationsLoading(false);
       });
     return () => controller.abort();
-  }, [cabinetId, canWrite, operationsSkuNm]);
+  }, [cabinetId, canWrite]);
 
   const previousSkuByNm = useMemo(
     () => new Map((previousData?.skus ?? []).map((sku) => [sku.nm, sku])),
@@ -799,6 +799,15 @@ export function WbRnpPage() {
     }
     return map;
   }, [tagAssignments]);
+  const journalByNm = useMemo(() => {
+    const map = new Map<number, RnpJournalEntry[]>();
+    for (const entry of journal) {
+      const list = map.get(entry.nm_id) ?? [];
+      list.push(entry);
+      map.set(entry.nm_id, list);
+    }
+    return map;
+  }, [journal]);
   const anomalyByNm = useMemo(() => {
     const map = new Map<number, RnpAnomaly[]>();
     for (const sku of activeData?.skus ?? []) {
@@ -808,28 +817,40 @@ export function WbRnpPage() {
     return map;
   }, [activeData?.skus, anomalyThreshold, previousSkuByNm]);
 
-  const categorySkus = useMemo(
-    () => filterByCategory(activeData?.skus ?? [], (sku) => sku.art, byArticle, category),
-    [activeData?.skus, byArticle, category],
+  const brands = useMemo(
+    () => rnpBrandOptions(activeData?.skus ?? []),
+    [activeData?.skus],
   );
-  const filteredSkus = useMemo(() => categorySkus
+  const productCategories = useMemo(
+    () => rnpCategoryOptions(activeData?.skus ?? [], byArticle),
+    [activeData?.skus, byArticle],
+  );
+  useEffect(() => {
+    if (brand && !brands.includes(brand)) setBrand("");
+  }, [brand, brands]);
+  useEffect(() => {
+    if (category && category !== "__none" && !productCategories.includes(category)) setCategory("");
+  }, [category, productCategories]);
+  const facetSkus = useMemo(
+    () => filterRnpProductFacets(activeData?.skus ?? [], {
+      brand,
+      category,
+      fallbackCategoryByArticle: byArticle,
+    }),
+    [activeData?.skus, brand, byArticle, category],
+  );
+  const filteredSkus = useMemo(() => facetSkus
     .filter((sku) => matchesArticleList(sku, articleQuery))
     .filter((sku) => !activeTagIds.length || (tagsByNm.get(sku.nm) ?? []).some((tagId) => activeTagIds.includes(tagId)))
     .filter((sku) => {
       if (anomalyMode === "off") return true;
       return filterAnomalies(anomalyByNm.get(sku.nm) ?? [], anomalyMode).length > 0;
-    }), [activeTagIds, anomalyByNm, anomalyMode, articleQuery, categorySkus, tagsByNm]);
+    }), [activeTagIds, anomalyByNm, anomalyMode, articleQuery, facetSkus, tagsByNm]);
 
-  const sortedSkus = useMemo(() => {
-    return [...filteredSkus].sort((left, right) => {
-      const leftValue = findMetric(left.metrics, sortField)?.total;
-      const rightValue = findMetric(right.metrics, sortField)?.total;
-      if (leftValue == null && rightValue == null) return 0;
-      if (leftValue == null) return 1;
-      if (rightValue == null) return -1;
-      return sortDirection * (leftValue - rightValue);
-    });
-  }, [filteredSkus, sortDirection, sortField]);
+  const sortedSkus = useMemo(
+    () => sortRnpProducts(filteredSkus, sortField, sortDirection),
+    [filteredSkus, sortDirection, sortField],
+  );
 
   const tableSkus = useMemo(
     () => focusedNm == null ? sortedSkus : sortedSkus.filter((sku) => sku.nm === focusedNm),
@@ -908,8 +929,8 @@ export function WbRnpPage() {
     [activeData, compareMetric, selectedCompareSkus],
   );
   const visibleSystemPresets = useMemo(
-    () => SYSTEM_FILTER_PRESETS.filter((preset) => !preset.categoryKeywords?.length || Boolean(matchingPresetCategory(preset, categories))),
-    [categories],
+    () => SYSTEM_FILTER_PRESETS.filter((preset) => !preset.categoryKeywords?.length || Boolean(matchingPresetCategory(preset, productCategories))),
+    [productCategories],
   );
   const allFilterPresets = useMemo(
     () => [...visibleSystemPresets, ...userFilterPresets],
@@ -985,7 +1006,7 @@ export function WbRnpPage() {
     } else if (preset.rangePreset) {
       setRange(rangeFor(preset.rangePreset));
     }
-    setCategory(matchingPresetCategory(preset, categories));
+    setCategory(matchingPresetCategory(preset, productCategories));
     setSortField(preset.sortField ?? "orders_sum");
     setSortDirection(preset.sortDirection ?? -1);
     if (isCompareMetric(preset.compareMetric)) setCompareMetric(preset.compareMetric);
@@ -1303,11 +1324,11 @@ export function WbRnpPage() {
           onCreateTag={createTag}
           onBulkTag={bulkTag}
           onClearSelection={() => setSelectedOperationNms([])}
-          cabinetId={cabinetId}
-          cabinets={cabinets}
+          brand={brand}
+          brands={brands}
           category={category}
-          categories={categories}
-          onCabinetChange={setCabinetId}
+          categories={productCategories}
+          onBrandChange={setBrand}
           onCategoryChange={setCategory}
         />
       </section>
@@ -1710,7 +1731,7 @@ export function WbRnpPage() {
                   plan={plan[String(sku.nm)] ?? {}}
                   drafts={drafts}
                   saving={saving}
-                  journal={operationsSkuNm === sku.nm ? journal : []}
+                  journal={journalByNm.get(sku.nm) ?? []}
                   onSelectedChange={(selected) => setSelectedOperationNms((current) =>
                     selected ? [...new Set([...current, sku.nm])] : current.filter((nm) => nm !== sku.nm))}
                   onOpenOperations={() => {
@@ -1799,7 +1820,7 @@ export function WbRnpPage() {
         initialEventDate={operationsInitialDate}
         tags={tags}
         assignedTagIds={operationsSku ? tagsByNm.get(operationsSku.nm) ?? [] : []}
-        journal={journal}
+        journal={operationsSku ? journalByNm.get(operationsSku.nm) ?? [] : []}
         loading={operationsLoading}
         available={operationsAvailable}
         message={operationsMessage}

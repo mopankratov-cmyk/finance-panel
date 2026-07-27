@@ -69,26 +69,34 @@ export function RnpProductOperationsDrawer(props: Props) {
   const [eventType, setEventType] = useState("note");
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState("");
 
   useEffect(() => {
     setEventDate(props.initialEventDate || todayIso());
     setEventType("note");
     setComment("");
     setSaving(null);
+    setSaveNotice("");
   }, [props.initialEventDate, props.sku?.nm]);
 
   if (!props.sku) return null;
 
   const toggleTag = async (tagId: string, assigned: boolean) => {
+    setSaveNotice("");
     setSaving(`tag:${tagId}`);
-    await props.onToggleTag(tagId, assigned);
+    const ok = await props.onToggleTag(tagId, assigned);
+    setSaveNotice(ok ? (assigned ? "Тег назначен" : "Тег снят") : "");
     setSaving(null);
   };
 
   const addJournal = async () => {
+    setSaveNotice("");
     setSaving("journal");
     const ok = await props.onAddJournal({ eventDate, eventType, comment });
-    if (ok) setComment("");
+    if (ok) {
+      setComment("");
+      setSaveNotice("Запись сохранена в журнале");
+    }
     setSaving(null);
   };
 
@@ -198,6 +206,9 @@ export function RnpProductOperationsDrawer(props: Props) {
               {saving === "journal" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Сохранить в журнал
             </button>
+            <p aria-live="polite" className={`mt-2 min-h-4 text-center text-[10px] font-medium ${saveNotice ? "text-emerald-700" : "text-transparent"}`}>
+              {saveNotice || "Сохранение"}
+            </p>
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-3">

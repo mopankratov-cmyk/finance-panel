@@ -11,6 +11,7 @@ import {
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
+import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
@@ -43,7 +44,13 @@ interface FunnelRow {
   orders: number | null;
   orders_sum: number | null;
 }
-interface ProductCostRow { article: string; name: string | null; cost_rub?: number | null }
+interface ProductCostRow {
+  article: string;
+  name: string | null;
+  cost_rub?: number | null;
+  brand?: string | null;
+  category?: string | null;
+}
 interface CabinetScope { cabinetId: string | null; label: string; allowedNmIds: Set<number> | null }
 interface MetricCutoffs { orders: string | null; sales: string | null; adverts: string | null }
 interface FunnelCutoffs { adverts: string | null; funnel: string | null }
@@ -470,7 +477,15 @@ export interface RnpTable {
   forecast_note: string;
   period: { label: string; period_type: string }[];
   summary: Metric[];
-  skus: { nm: number; art: string; name: string; img_url: string; metrics: Metric[] }[];
+  skus: {
+    nm: number;
+    art: string;
+    name: string;
+    brand: string;
+    subject: string;
+    img_url: string;
+    metrics: Metric[];
+  }[];
 }
 
 function nextIsoDate(value: string) {
@@ -852,7 +867,7 @@ export async function buildRnpTable(
       if (!scope.cabinetId || scope.allowedNmIds?.size === 0) return null;
       return sourceCutoffFromSyncState(await readWbSyncState(db, scope.cabinetId, job), periodEnd, options);
     };
-    const [scopeData, costs, comm] = await Promise.all([
+    const [scopeData, costs, comm, catalog] = await Promise.all([
       Promise.all(scopes.map(async (scope) => {
         if (scope.allowedNmIds?.size === 0) {
           return {
@@ -943,10 +958,14 @@ export async function buildRnpTable(
       })),
       loadAllPages<ProductCostRow>((start, end) => db
         .from("product_costs")
-        .select("article, name, cost_rub")
+        .select("article, name, cost_rub, brand, category")
         .order("article", { ascending: true })
         .range(start, end)),
       getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false }),
+      // Бренд и предмет WB принадлежат карточке товара, а не кабинету.
+      // Ошибка/лимит Content API не должны ломать сам РНП: в таком случае
+      // ниже остаётся безопасный fallback на справочник себестоимости.
+      loadCabinetPimRowsHourly(p_cabinet).catch(() => []),
     ]);
 
     const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(
@@ -1031,8 +1050,8 @@ export async function buildRnpTable(
       dailyByDate.set(date, current);
     }
 
-    const nameByArt = new Map<string, string>();
-    for (const cost of costs) nameByArt.set(cost.article, cost.name ?? "");
+    const costByArt = new Map(costs.map((cost) => [cost.article, cost]));
+    const cardByNm = new Map(catalog.map((card) => [card.nmId, card]));
     const totalByNm = new Map<number, RpcTotal>();
     for (const total of totals) {
       const existing = totalByNm.get(total.nm_id);
@@ -1062,10 +1081,21 @@ export async function buildRnpTable(
     const skus = [...totalByNm.values()]
       .map((t) => {
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
+        const card = cardByNm.get(t.nm_id);
+        const cost = costByArt.get(t.article);
         const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays);
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
-        return { nm: t.nm_id, art: t.article || String(t.nm_id), name: nameByArt.get(t.article) || t.article || String(t.nm_id), img_url: wbCardImageUrl(t.nm_id), metrics, _o: orders };
+        return {
+          nm: t.nm_id,
+          art: t.article || card?.article || String(t.nm_id),
+          name: card?.name || cost?.name || t.article || String(t.nm_id),
+          brand: card?.brand || cost?.brand || "",
+          subject: card?.subject || cost?.category || "",
+          img_url: wbCardImageUrl(t.nm_id),
+          metrics,
+          _o: orders,
+        };
       })
       .sort((a, b) => b._o - a._o)
       .map(({ _o, ...rest }) => { void _o; return rest; });

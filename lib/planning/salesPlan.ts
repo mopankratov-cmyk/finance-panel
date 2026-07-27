@@ -32,6 +32,7 @@ export interface SalesPlanRow {
   buyout: number;
   adPct: number;
   stock: number;
+  openingStocks?: Record<string, number>;
   image: string | null;
   isNew: boolean;
   months: Record<string, number[]>;
@@ -348,6 +349,11 @@ export function emptySalesPlanMonths(year: number): Record<string, number[]> {
   );
 }
 
+export function emptySalesPlanOpeningStocks(stock = 0): Record<string, number> {
+  const openingStock = Math.max(0, Math.round(finite(stock)));
+  return Object.fromEntries(MONTH_KEYS.map((monthKey) => [monthKey, openingStock]));
+}
+
 function normalizeMonthValues(value: unknown, days: number) {
   const source = Array.isArray(value) ? value : [];
   return Array.from({ length: days }, (_, index) => finite(source[index]));
@@ -359,6 +365,8 @@ export function normalizeSalesPlanRow(value: unknown, year: number, index = 0): 
   const variant = text(source.variant, `SKU-${index + 1}`);
   const model = text(source.model, inferModelArticle(variant));
   const color = text(source.color, inferColorFromVariant(variant));
+  const stock = Math.max(0, finite(source.stock));
+  const openingStocksSource = record(source.openingStocks);
   const months = Object.fromEntries(
     MONTH_KEYS.map((monthKey) => [
       monthKey,
@@ -376,7 +384,11 @@ export function normalizeSalesPlanRow(value: unknown, year: number, index = 0): 
     price: finite(source.price),
     buyout: finite(source.buyout),
     adPct: finite(source.adPct),
-    stock: Math.max(0, finite(source.stock)),
+    stock,
+    openingStocks: Object.fromEntries(MONTH_KEYS.map((monthKey) => [
+      monthKey,
+      Math.max(0, finite(openingStocksSource[monthKey], stock)),
+    ])),
     image: text(source.image) || null,
     isNew: Boolean(source.isNew),
     months,
@@ -524,6 +536,10 @@ export function calculateSalesPlanRowMonth(row: SalesPlanRow, monthKey: string):
   };
 }
 
+export function salesPlanOpeningStock(row: SalesPlanRow, monthKey: string) {
+  return Math.max(0, Math.round(finite(row.openingStocks?.[monthKey], row.stock)));
+}
+
 export function calculateSalesPlanSummary(
   plan: Pick<SalesPlanDocument, "rows">,
   monthKeys: string[],
@@ -553,7 +569,7 @@ export function calculateSalesPlanSummary(
 
 export function calculateSalesPlanRowStockRisk(row: SalesPlanRow, monthKey: string): SalesPlanStockRisk {
   const orders = row.months[monthKey] ?? [];
-  const currentStock = Math.max(0, Math.round(finite(row.stock)));
+  const currentStock = salesPlanOpeningStock(row, monthKey);
   let cumulativeOrders = 0;
   let shortageDay: number | null = null;
 
@@ -633,7 +649,7 @@ export function buildSalesPlanSuggestion(
     const currentOrders = Math.round(currentDays.reduce((sum, value) => sum + value, 0));
     const proposedOrders = Math.round(proposedDays.reduce((sum, value) => sum + value, 0));
     const changedCells = proposedDays.reduce((count, value, index) => count + (value !== currentDays[index] ? 1 : 0), 0);
-    const stock = Math.max(0, Math.round(finite(basis?.stock, row.stock)));
+    const stock = salesPlanOpeningStock(row, monthKey);
     const endingStock = stock - proposedOrders;
     const confidence = suggestionConfidence(basis);
     const warnings: string[] = [];

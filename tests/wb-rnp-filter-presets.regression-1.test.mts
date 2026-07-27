@@ -27,6 +27,6 @@ test("WB RNP user presets can restore cabinet, category, period, sort and chart 
   assert.ok(source.includes("compareMetric,"));
   assert.ok(source.includes("setCabinetId(nextCabinet)"));
   assert.ok(source.includes("setRange({ from: preset.from, to: preset.to"));
-  assert.ok(source.includes("setCategory(matchingPresetCategory(preset, categories))"));
+  assert.ok(source.includes("setCategory(matchingPresetCategory(preset, productCategories))"));
   assert.ok(source.includes('setSortField(preset.sortField ?? "orders_sum")'));
 });

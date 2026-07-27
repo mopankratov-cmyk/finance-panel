@@ -616,7 +616,7 @@ function SalesPlanBasisPanel({
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
         <span>
           <span className="block text-sm font-bold text-slate-900">Основание плана</span>
-          <span className="mt-0.5 block text-xs text-slate-500">Факт RNP, средний темп 7 дней, остаток и расчётное предложение без расширения дневной сетки</span>
+          <span className="mt-0.5 block text-xs text-slate-500">Среднее заказов RNP за 7 дней; сейчас сезонность и спрос не корректируют результат (коэффициенты 1,0)</span>
         </span>
         <span className="flex items-center gap-2 text-[11px] text-slate-500">
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
@@ -689,7 +689,7 @@ function SalesPlanSuggestionModal({
       <div className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
           <h2 id="sales-plan-suggestion-title" className="text-lg font-bold text-slate-900">Предложить план</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">Формула: средний факт 7 дней × коэффициент сезонности × коэффициент спроса. По умолчанию заполнит только пустые дневные ячейки.</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">Сейчас берём заказы RNP за 7 дней, делим на 7 и округляем до целого. Одинаковое значение ставится на каждый день; сезонность и спрос пока равны 1,0. По умолчанию заполняются только пустые ячейки.</p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="grid gap-2 sm:grid-cols-4">

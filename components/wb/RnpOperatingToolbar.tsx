@@ -4,7 +4,7 @@ import {
   Activity,
   ArrowDown,
   ArrowUp,
-  Building2,
+  BadgeCheck,
   Check,
   ChevronDown,
   GripVertical,
@@ -24,7 +24,6 @@ import {
   type RnpMetricField,
   type RnpViewId,
 } from "@/lib/rnp/operatingMatrix";
-import type { WbCabinet } from "./WbCabinetContext";
 
 interface MetricDefinition {
   field: string;
@@ -59,8 +58,8 @@ interface Props {
   sortField: string;
   sortDirection: 1 | -1;
   sortOptions: ReadonlyArray<{ field: string; label: string }>;
-  cabinetId: string;
-  cabinets: WbCabinet[];
+  brand: string;
+  brands: string[];
   category: string;
   categories: string[];
   busy?: boolean;
@@ -82,7 +81,7 @@ interface Props {
   onCreateTag: (name: string, color: string) => Promise<boolean>;
   onBulkTag: (tagId: string) => void;
   onClearSelection: () => void;
-  onCabinetChange: (cabinetId: string) => void;
+  onBrandChange: (brand: string) => void;
   onCategoryChange: (category: string) => void;
 }
 
@@ -155,15 +154,15 @@ export function RnpOperatingToolbar(props: Props) {
         <label>
           <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Бренд</span>
           <span className="relative block">
-            <Building2 className="pointer-events-none absolute bottom-[11px] left-3 h-3.5 w-3.5 text-violet-500" />
+            <BadgeCheck className="pointer-events-none absolute bottom-[11px] left-3 h-3.5 w-3.5 text-violet-500" />
             <select
-              value={props.cabinetId}
-              onChange={(event) => props.onCabinetChange(event.target.value)}
+              value={props.brand}
+              onChange={(event) => props.onBrandChange(event.target.value)}
               className={`${CONTROL_CLASS} w-full appearance-none pl-9 pr-7`}
-              aria-label="Бренд или кабинет"
+              aria-label="Бренд товара"
             >
-              {props.cabinets.length > 1 ? <option value="all">Все</option> : null}
-              {props.cabinets.map((cabinet) => <option key={cabinet.id} value={cabinet.id}>{cabinet.trade_mark || cabinet.name}</option>)}
+              <option value="">Все бренды</option>
+              {props.brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
             </select>
             <ChevronDown className="pointer-events-none absolute bottom-[11px] right-2.5 h-3.5 w-3.5 text-slate-400" />
           </span>
@@ -178,9 +177,9 @@ export function RnpOperatingToolbar(props: Props) {
               className={`${CONTROL_CLASS} w-full appearance-none pr-7`}
               aria-label="Категория"
             >
-              <option value="">Все</option>
+              <option value="">Все категории</option>
               {props.categories.map((category) => <option key={category} value={category}>{category}</option>)}
-              <option value="__none">Остальное</option>
+              <option value="__none">Без категории</option>
             </select>
             <ChevronDown className="pointer-events-none absolute bottom-[11px] right-2.5 h-3.5 w-3.5 text-slate-400" />
           </span>
@@ -195,7 +194,7 @@ export function RnpOperatingToolbar(props: Props) {
             className={`${CONTROL_CLASS} inline-flex w-full items-center gap-2`}
           >
             <Tag className="h-3.5 w-3.5 text-slate-500" />
-            {props.activeTagIds.length ? props.activeTagIds.length : "Теги"}
+            {props.activeTagIds.length ? `${props.activeTagIds.length} выбрано` : props.tags.length ? `${props.tags.length} тегов` : "Нет тегов"}
           </button>
         </div>
 

@@ -88,7 +88,37 @@ async function loadTagAssignments(db: NonNullable<ReturnType<typeof getSupabaseA
   };
 }
 
-export async function GET(request: NextRequest, context: { params: Promise<{ shop: string }> }) {
+async function loadJournalEntries(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, cabinetId: string) {
+  const pageSize = 1_000;
+  const journal: Array<{
+    id: string;
+    nm_id: number;
+    event_date: string;
+    event_type: string;
+    comment: string;
+    created_by: string | null;
+    created_at: string;
+  }> = [];
+  for (let page = 0; page < 100; page++) {
+    const from = page * pageSize;
+    const result = await db.from("wb_rnp_journal")
+      .select("id, nm_id, event_date, event_type, comment, created_by, created_at")
+      .eq("cabinet_id", cabinetId)
+      .order("event_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (result.error) return { data: journal, error: result.error };
+    const rows = (result.data ?? []) as typeof journal;
+    journal.push(...rows);
+    if (rows.length < pageSize) return { data: journal, error: null };
+  }
+  return {
+    data: journal,
+    error: { code: "RNP_JOURNAL_LIMIT", message: "Превышен безопасный лимит 100 000 записей журнала" },
+  };
+}
+
+export async function GET(_request: NextRequest, context: { params: Promise<{ shop: string }> }) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const { shop } = await context.params;
@@ -97,27 +127,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sho
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
-  const nmParam = new URL(request.url).searchParams.get("nm");
-  const nmId = nmParam == null || nmParam.trim() === "" ? null : Number(nmParam);
-  if (nmId != null && Number.isFinite(nmId) && !(await allowedProducts(scoped.cabinetId, [nmId]))) {
-    return NextResponse.json({ error: "Товар вне контура выбранного кабинета" }, { status: 403 });
-  }
-
   const [tagsResult, assignmentsResult, journalResult] = await Promise.all([
     db.from("wb_rnp_tags")
       .select("id, name, color, created_by, created_at")
       .eq("cabinet_id", scoped.cabinetId)
       .order("name", { ascending: true }),
     loadTagAssignments(db, scoped.cabinetId),
-    nmId != null && Number.isSafeInteger(nmId) && nmId > 0
-      ? db.from("wb_rnp_journal")
-        .select("id, nm_id, event_date, event_type, comment, created_by, created_at")
-        .eq("cabinet_id", scoped.cabinetId)
-        .eq("nm_id", nmId)
-        .order("event_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(100)
-      : Promise.resolve({ data: [], error: null }),
+    loadJournalEntries(db, scoped.cabinetId),
   ]);
 
   const error = tagsResult.error ?? assignmentsResult.error ?? journalResult.error;

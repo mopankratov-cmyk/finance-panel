@@ -3,6 +3,7 @@
 import { Check, Loader2, PackagePlus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  emptySalesPlanOpeningStocks,
   emptySalesPlanMonths,
   inferColorFromVariant,
   inferModelArticle,
@@ -124,6 +125,7 @@ export function SalesPlanAddSkuModal({
         buyout: marketplace === "wb" ? 30 : 92,
         adPct: 12,
         stock: sku.stock,
+        openingStocks: emptySalesPlanOpeningStocks(sku.stock),
         image: sku.image,
         isNew: false,
         months: emptySalesPlanMonths(year),
@@ -147,6 +149,7 @@ export function SalesPlanAddSkuModal({
       buyout: Number(manual.buyout) || 0,
       adPct: Number(manual.adPct) || 0,
       stock: 0,
+      openingStocks: emptySalesPlanOpeningStocks(),
       image: null,
       isNew: true,
       months: emptySalesPlanMonths(year),
