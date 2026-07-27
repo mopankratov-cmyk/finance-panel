@@ -96,3 +96,13 @@ test("loan form waits for server document upload before saving the loan", () => 
   assert.match(page, /await deleteLoanDocument\(loan\.id\);/);
   assert.match(helper, /process\.env\.NODE_ENV !== "development"/);
 });
+
+test("loan form preserves a valid zero annual rate", () => {
+  const form = readFileSync(
+    new URL("../../components/loans/LoanForm.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(form, /value=\{data\.annualRate\}/);
+  assert.doesNotMatch(form, /value=\{data\.annualRate \|\| ""\}/);
+});
