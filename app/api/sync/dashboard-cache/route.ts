@@ -24,30 +24,55 @@ export const maxDuration = 300;
 const VIEWS = new Set<OzonCockpitView>(["overview", "sales", "adverts", "stocks", "orders", "economy", "health"]);
 const BLOCKING_SNAPSHOT_REFRESH = { forceRefresh: true } as const;
 
+function shiftIsoDate(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+function currentMoscowWeek(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  const to = `${part("year")}-${part("month")}-${part("day")}`;
+  return { from: shiftIsoDate(to, -6), to };
+}
+
 async function warmWbRnp() {
   const startedAt = Date.now();
   const scopes = await listWbRnpScopes();
-  const period = currentMoscowMonth();
-  const snapshots: Array<{ scope: string; ok: boolean; generatedAt?: string; error?: string }> = [];
-  const warm = async (scope: (typeof scopes)[number]) => {
+  // Интерфейс открывает последние 7 дней, а раньше cron грел только календарный
+  // месяц. Из-за несовпадающего ключа кэша первый пользователь запускал тяжёлый
+  // расчёт сам. Греем оба реально используемых периода.
+  const periods = [...new Map(
+    [currentMoscowWeek(), currentMoscowMonth()].map((period) => [`${period.from}:${period.to}`, period]),
+  ).values()];
+  const snapshots: Array<{ scope: string; from: string; to: string; ok: boolean; generatedAt?: string; error?: string }> = [];
+  const warm = async (scope: (typeof scopes)[number], period: (typeof periods)[number]) => {
     try {
       await loadCachedWbRnp({ ...period, ...scope }, BLOCKING_SNAPSHOT_REFRESH);
-      snapshots.push({ scope: scope.label, ok: true, generatedAt: new Date().toISOString(), error: undefined });
+      snapshots.push({ scope: scope.label, ...period, ok: true, generatedAt: new Date().toISOString(), error: undefined });
     } catch (error) {
-      snapshots.push({ scope: scope.label, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      snapshots.push({ scope: scope.label, ...period, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
     }
   };
   if (scopes.length) {
-    await warm(scopes[0]);
+    for (const period of periods) await warm(scopes[0], period);
     for (let offset = 1; offset < scopes.length; offset += 3) {
-      await Promise.all(scopes.slice(offset, offset + 3).map(warm));
+      await Promise.all(scopes.slice(offset, offset + 3).map(async (scope) => {
+        for (const period of periods) await warm(scope, period);
+      }));
     }
   }
   return {
     ok: snapshots.every((snapshot) => snapshot.ok),
     marketplace: "wb",
     view: "rnp",
-    period,
+    periods,
     snapshots,
     durationMs: Date.now() - startedAt,
   };

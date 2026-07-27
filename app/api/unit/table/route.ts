@@ -49,11 +49,7 @@ export async function GET(req: NextRequest) {
   const forceRefresh = sp.get("refresh") === "1";
   const backgroundRefresh = sp.get("background") === "1";
 
-  try {
-    const payload = await loadHourlyDashboard(
-    "wb-unit-table",
-    unitPeriodCacheIdentity({ cabinetId: p_cabinet, from: period.from, to: period.to, taxPct, ff, targetMargin }),
-    async () => {
+  const buildPayload = async () => {
       const [rpcRes, costsRes, comm] = await Promise.all([
         db.rpc("unit_report_period", { p_cabinet, p_from: period.from, p_to: period.to }),
         db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
@@ -134,6 +130,9 @@ export async function GET(req: NextRequest) {
   }
 
   const totalRows = rows.length;
+  if (allowedNmIds !== null && allowedNmIds.size > 0 && totalRows === 0) {
+    throw new Error("Юнит-экономика получила пустой снимок при непустом товарном контуре. Данные будут пересобраны.");
+  }
   const completeRows = sorted.filter((row) => row.cost != null && Number(row.cost) > 0 && resolveWbRatesForNm(comm, row.nm_id).factual).length;
   return {
     headers: [
@@ -153,9 +152,26 @@ export async function GET(req: NextRequest) {
     periodTo: period.to,
     timezone: UNIT_PERIOD_TIMEZONE,
   };
-    },
-    { forceRefresh, backgroundRefresh },
-  );
+  };
+
+  try {
+    const identity = unitPeriodCacheIdentity({ cabinetId: p_cabinet, from: period.from, to: period.to, taxPct, ff, targetMargin });
+    let payload = await loadHourlyDashboard(
+      "wb-unit-table",
+      identity,
+      buildPayload,
+      { forceRefresh, backgroundRefresh },
+    );
+    // Пустой снимок мог попасть в часовой кэш до завершения product-scope.
+    // При уже заполненном allowlist один раз пересобираем его автоматически.
+    if (allowedNmIds !== null && allowedNmIds.size > 0 && payload.rows.length === 0 && !forceRefresh) {
+      payload = await loadHourlyDashboard(
+        "wb-unit-table",
+        identity,
+        buildPayload,
+        { forceRefresh: true },
+      );
+    }
     return NextResponse.json(payload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось рассчитать юнит-экономику" }, { status: 500 });

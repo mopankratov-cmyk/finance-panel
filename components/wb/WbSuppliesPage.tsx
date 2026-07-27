@@ -83,7 +83,7 @@ export function WbSuppliesPage() {
       <WbModuleHeader
         icon={Truck}
         title="Поставки"
-        description={data ? `${data.skus.length} SKU · ${data.warehouses.length} складов · мин. партия ${minBatch} шт` : "Потребность, склады, ограничения и приёмка"}
+        description={data ? `${data.data?.catalog.length ?? data.skus.length} SKU · ${data.data?.warehouses.length ?? data.warehouses.length} складов · мин. партия ${minBatch} шт` : "Потребность, склады, ограничения и приёмка"}
         actions={
           <>
             <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 sm:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Boxes className="h-3.5 w-3.5" />} Загрузить остатки WB</button>
