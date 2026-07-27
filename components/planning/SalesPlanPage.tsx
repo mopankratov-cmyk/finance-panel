@@ -442,6 +442,21 @@ export function SalesPlanPage({
     } : undefined;
     return acc;
   }, {}) ?? {};
+  const liveStock = displayPlan?.rows.reduce(
+    (total, row) => {
+      const sku = catalogByExternalId.get(row.externalId) ?? catalogByVariant.get(row.variant.toLocaleLowerCase("ru-RU"));
+      if (!sku) return total;
+      total.value += Math.max(0, Number(sku.stock) || 0);
+      total.matchedRows += 1;
+      return total;
+    },
+    { value: 0, matchedRows: 0 },
+  ) ?? { value: 0, matchedRows: 0 };
+  const stockDetail = stockRisk
+    ? liveStock.matchedRows > 0
+      ? `на начало: ${number(stockRisk.currentStock)} шт. · факт сейчас: ${number(liveStock.value)} шт. (${liveStock.matchedRows}/${displayPlan?.rows.length ?? 0} SKU)`
+      : `плановый остаток на начало: ${number(stockRisk.currentStock)} шт.`
+    : "";
 
   const openSuggestionPreview = () => {
     if (!plan) return;
@@ -537,7 +552,7 @@ export function SalesPlanPage({
                     <Metric label={marketplace === "wb" ? "Ожидаемый выкуп" : "Ожидаемое завершение"} value={`${number(summary.buyouts)} шт.`} detail={`${summary.buyoutPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% по каждому цвету`} />
                     <Metric label="Плановая выручка" value={money(summary.revenue)} detail={`${marketplace === "wb" ? "выкуп" : "завершение"} × цена`} />
                     <Metric label="Рекламный бюджет" value={money(summary.ads)} detail={`${summary.adPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% от заказной выручки`} tone="amber" />
-                    {stockRisk ? <Metric label="Остаток на конец" value={`${number(stockRisk.endingStock)} шт.`} detail={stockRisk.shortageRows > 0 ? `${stockRisk.shortageRows} SKU покажут дефицит с ${stockRisk.shortageDay} числа` : `сейчас ${number(stockRisk.currentStock)} шт.`} tone={stockRisk.shortageRows > 0 ? "rose" : "slate"} /> : null}
+                    {stockRisk ? <Metric label="Остаток на конец" value={`${number(stockRisk.endingStock)} шт.`} detail={stockRisk.shortageRows > 0 ? `${stockRisk.shortageRows} SKU покажут дефицит с ${stockRisk.shortageDay} числа · ${stockDetail}` : stockDetail} tone={stockRisk.shortageRows > 0 ? "rose" : "slate"} /> : null}
                   </section> : null}
 
                   <SalesPlanBasisPanel

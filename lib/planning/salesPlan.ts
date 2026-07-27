@@ -103,6 +103,7 @@ export interface SalesPlanSummary extends SalesPlanDailyMetrics {
 export interface SalesPlanStockRisk {
   currentStock: number;
   plannedOrders: number;
+  plannedBuyouts: number;
   endingStock: number;
   shortageDay: number | null;
   shortageQty: number;
@@ -580,19 +581,22 @@ export function calculateSalesPlanRowStockRisk(row: SalesPlanRow, monthKey: stri
   const currentStock = salesPlanOpeningStock(row, monthKey);
   let cumulativeOrders = 0;
   let shortageDay: number | null = null;
+  const buyoutRate = Math.max(0, finite(row.buyout)) / 100;
 
   for (let index = 0; index < orders.length; index += 1) {
     cumulativeOrders += Math.max(0, finite(orders[index]));
-    if (shortageDay === null && cumulativeOrders > currentStock) {
+    if (shortageDay === null && cumulativeOrders * buyoutRate > currentStock) {
       shortageDay = index + 1;
     }
   }
 
   const plannedOrders = Math.round(cumulativeOrders);
-  const endingStock = currentStock - plannedOrders;
+  const plannedBuyouts = Math.round(cumulativeOrders * buyoutRate);
+  const endingStock = currentStock - plannedBuyouts;
   return {
     currentStock,
     plannedOrders,
+    plannedBuyouts,
     endingStock,
     shortageDay,
     shortageQty: endingStock < 0 ? Math.abs(endingStock) : 0,
@@ -608,6 +612,7 @@ export function calculateSalesPlanStockRiskSummary(
     (total, risk) => {
       total.currentStock += risk.currentStock;
       total.plannedOrders += risk.plannedOrders;
+      total.plannedBuyouts += risk.plannedBuyouts;
       total.endingStock += risk.endingStock;
       total.shortageQty += risk.shortageQty;
       if (risk.shortageDay !== null) {
@@ -616,7 +621,7 @@ export function calculateSalesPlanStockRiskSummary(
       }
       return total;
     },
-    { currentStock: 0, plannedOrders: 0, endingStock: 0, shortageDay: null, shortageQty: 0, shortageRows: 0 } as SalesPlanStockRiskSummary,
+    { currentStock: 0, plannedOrders: 0, plannedBuyouts: 0, endingStock: 0, shortageDay: null, shortageQty: 0, shortageRows: 0 } as SalesPlanStockRiskSummary,
   );
   return summary;
 }
@@ -658,7 +663,8 @@ export function buildSalesPlanSuggestion(
     const proposedOrders = Math.round(proposedDays.reduce((sum, value) => sum + value, 0));
     const changedCells = proposedDays.reduce((count, value, index) => count + (value !== currentDays[index] ? 1 : 0), 0);
     const stock = salesPlanOpeningStock(row, monthKey);
-    const endingStock = stock - proposedOrders;
+    const plannedBuyouts = Math.round((proposedOrders * Math.max(0, finite(row.buyout))) / 100);
+    const endingStock = stock - plannedBuyouts;
     const confidence = suggestionConfidence(basis);
     const warnings: string[] = [];
     if (!basis) warnings.push("нет фактической базы");

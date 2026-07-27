@@ -60,28 +60,45 @@ test("месячные итоги используют заказы конкре
 
 test("остаток плана показывает конец месяца и первый день дефицита", () => {
   const current = row();
-  current.stock = 10;
-  current.months["07"] = [3, 3, 5, 2];
+  current.stock = 2;
+  current.buyout = 50;
+  current.months["07"] = [1, 1, 3, 3];
   const safe = row();
   safe.id = "safe";
   safe.variant = "NV-08-35-BLK";
   safe.stock = 100;
+  safe.buyout = 50;
   safe.months["07"] = [10, 10];
   const plan = createEmptySalesPlan({ marketplace: "wb", cabinetId: "cabinet", year: 2026 });
   plan.rows = [current, safe];
 
   const risk = calculateSalesPlanRowStockRisk(current, "07");
-  assert.equal(risk.plannedOrders, 13);
-  assert.equal(risk.endingStock, -3);
+  assert.equal(risk.plannedOrders, 8);
+  assert.equal(risk.plannedBuyouts, 4);
+  assert.equal(risk.endingStock, -2);
   assert.equal(risk.shortageDay, 3);
-  assert.equal(risk.shortageQty, 3);
+  assert.equal(risk.shortageQty, 2);
 
   const summary = calculateSalesPlanStockRiskSummary(plan, "07");
-  assert.equal(summary.currentStock, 110);
-  assert.equal(summary.plannedOrders, 33);
-  assert.equal(summary.endingStock, 77);
+  assert.equal(summary.currentStock, 102);
+  assert.equal(summary.plannedOrders, 28);
+  assert.equal(summary.plannedBuyouts, 14);
+  assert.equal(summary.endingStock, 88);
   assert.equal(summary.shortageRows, 1);
   assert.equal(summary.shortageDay, 3);
+});
+
+test("остаток уменьшается на ожидаемые выкупы, а не на все заказы", () => {
+  const current = row();
+  current.stock = 1_030;
+  current.buyout = 28;
+  current.months["07"] = [228];
+
+  const risk = calculateSalesPlanRowStockRisk(current, "07");
+  assert.equal(risk.plannedOrders, 228);
+  assert.equal(risk.plannedBuyouts, 64);
+  assert.equal(risk.endingStock, 966);
+  assert.equal(risk.shortageDay, null);
 });
 
 test("предложение плана заполняет пустые дни по факту 7 дней и не трогает ручные ячейки", () => {
@@ -108,6 +125,8 @@ test("предложение плана заполняет пустые дни �
   assert.equal(suggestion.rows[0].proposedDays[0], 5);
   assert.equal(suggestion.rows[0].proposedDays[1], 3);
   assert.equal(suggestion.rows[0].proposedDays[3], 2);
+  assert.equal(suggestion.rows[0].proposedOrders, 94);
+  assert.equal(suggestion.rows[0].endingStock, 73);
   assert.ok(suggestion.rows[0].warnings.includes("ручные ячейки сохранены"));
 
   const applied = applySalesPlanSuggestion(plan, suggestion);

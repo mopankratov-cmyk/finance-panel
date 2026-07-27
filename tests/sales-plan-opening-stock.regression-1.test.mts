@@ -40,9 +40,10 @@ test("остаток на начало хранится отдельно для 
   assert.deepEqual(calculateSalesPlanRowStockRisk(current, "08"), {
     currentStock: 10,
     plannedOrders: 12,
-    endingStock: -2,
-    shortageDay: 3,
-    shortageQty: 2,
+    plannedBuyouts: 6,
+    endingStock: 4,
+    shortageDay: null,
+    shortageQty: 0,
   });
 });
 
