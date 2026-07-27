@@ -47,7 +47,7 @@ interface LoanFormProps {
   annualRate?: number;
   originationFee?: number;
   feeAmortizationMonths?: number;
-  onSubmit: (result: LoanFormResult) => void;
+  onSubmit: (result: LoanFormResult) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -273,7 +273,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     }
   };
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const cleanSchedule = schedule.filter((row) => row.date && Number(row.principal) + Number(row.interest) + Number(row.penalty) > 0);
     if (!data.creditorName.trim() || !selectedCompany || !selectedAccount) {
@@ -284,28 +284,36 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       setMessage("Добавьте хотя бы один платёж в график.");
       return;
     }
-    onSubmit({
-      loan: {
-        creditorName: data.creditorName.trim(),
-        principalAmount: data.principalAmount * exchangeRate,
-        interestRatePerDay: data.annualRate / 365,
-        startDate: data.startDate,
-        dueDate: data.dueDate,
-        status: (loan?.status ?? "active") as LoanStatus,
-      },
-      accountId: selectedAccount,
-      companyId: selectedCompany,
-      contractFileName: file?.name ?? contractFileName ?? "",
-      contractNumber: data.contractNumber.trim(),
-      schedule: cleanSchedule,
-      currency: data.currency,
-      originalPrincipal: data.principalAmount,
-      exchangeRate,
-      annualRate: data.annualRate,
-      originationFee: data.originationFee,
-      feeAmortizationMonths: data.feeAmortizationMonths,
-      contractFile: file ?? undefined,
-    });
+    setBusy(true);
+    setMessage("");
+    try {
+      await onSubmit({
+        loan: {
+          creditorName: data.creditorName.trim(),
+          principalAmount: data.principalAmount * exchangeRate,
+          interestRatePerDay: data.annualRate / 365,
+          startDate: data.startDate,
+          dueDate: data.dueDate,
+          status: (loan?.status ?? "active") as LoanStatus,
+        },
+        accountId: selectedAccount,
+        companyId: selectedCompany,
+        contractFileName: file?.name ?? contractFileName ?? "",
+        contractNumber: data.contractNumber.trim(),
+        schedule: cleanSchedule,
+        currency: data.currency,
+        originalPrincipal: data.principalAmount,
+        exchangeRate,
+        annualRate: data.annualRate,
+        originationFee: data.originationFee,
+        feeAmortizationMonths: data.feeAmortizationMonths,
+        contractFile: file ?? undefined,
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось сохранить договор");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (stage === "source") return (
@@ -361,7 +369,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       </section>
       {file && <p className="flex items-center gap-2 text-sm text-slate-600"><FileText className="h-4 w-4" />Документ обработан: {file.name}</p>}
       {message && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{message}</p>}
-      <div className="flex flex-wrap justify-between gap-3 border-t pt-4"><button type="button" onClick={() => setStage("source")} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">{editing ? "Заменить документ / описание" : "Назад к документу"}</button><div className="flex gap-2"><button type="button" onClick={onCancel} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Отмена</button><button type="submit" className="min-h-11 rounded-xl bg-violet-600 px-5 font-bold text-white">{editing ? "Сохранить изменения" : "Подтвердить и создать"}</button></div></div>
+      <div className="flex flex-wrap justify-between gap-3 border-t pt-4"><button type="button" disabled={busy} onClick={() => setStage("source")} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600 disabled:opacity-50">{editing ? "Заменить документ / описание" : "Назад к документу"}</button><div className="flex gap-2"><button type="button" disabled={busy} onClick={onCancel} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600 disabled:opacity-50">Отмена</button><button type="submit" disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-5 font-bold text-white disabled:opacity-60">{busy && <LoaderCircle className="h-4 w-4 animate-spin" />}{busy ? "Сохраняю…" : editing ? "Сохранить изменения" : "Подтвердить и создать"}</button></div></div>
     </form>
   );
 }
