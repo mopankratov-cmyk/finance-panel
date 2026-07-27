@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, CloudUpload, FileSpreadsheet, FileUp, LayoutGrid, List, Plus, TrendingUp, TriangleAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, CloudUpload, FileSpreadsheet, FileUp, LayoutGrid, List, Loader2, Plus, TrendingUp, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BulkPaymentModal } from "./BulkPaymentModal";
 import { CalendarAgenda } from "./CalendarAgenda";
 import { CalendarDayCell } from "./CalendarDayCell";
@@ -102,6 +102,8 @@ export function CalendarPage() {
   const [replaceCalendarOpen, setReplaceCalendarOpen] = useState(false);
   const [priorityScope, setPriorityScope] = useState<PaymentPriorityScope>("all");
   const [planFactOpen, setPlanFactOpen] = useState(false);
+  const [googleSyncing, setGoogleSyncing] = useState(false);
+  const googleSyncRef = useRef<Promise<{ ok: boolean; error?: string }> | null>(null);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -140,17 +142,37 @@ export function CalendarPage() {
     companyNames: new Map(companies.map((company) => [company.id, company.name])),
     companyByPayment,
   }), [scopedPayments, state.accounts, companies, companyByPayment]);
+  const syncCalendarToGoogle = useCallback(() => {
+    if (googleSyncRef.current) return googleSyncRef.current;
+    setGoogleSyncing(true);
+    const promise = fetch("/api/opiu/google-sheets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sheets: calendarSheets.map((sheet) => ({
+          rows: sheet.rows,
+          sheetName: sheet.name,
+          template: "calendar",
+        })),
+      }),
+    }).then(async (response) => {
+      const data = await response.json().catch(() => null) as { error?: string } | null;
+      return { ok: response.ok, error: data?.error };
+    }).catch(() => ({ ok: false, error: "Не удалось связаться с сервером выгрузки" }))
+      .finally(() => {
+        googleSyncRef.current = null;
+        setGoogleSyncing(false);
+      });
+    googleSyncRef.current = promise;
+    return promise;
+  }, [calendarSheets]);
   useEffect(() => {
     if (calendarRows.length <= 1) return;
     const timer = window.setTimeout(() => {
-      void fetch("/api/opiu/google-sheets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: calendarRows, sheetName: "План выбытий", template: "calendar_outflow" }),
-      });
+      void syncCalendarToGoogle();
     }, 3000);
     return () => window.clearTimeout(timer);
-  }, [calendarRows]);
+  }, [calendarRows, syncCalendarToGoogle]);
   const planFactMatches = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     return matchPlannedToFacts(scopedPayments).filter((match) => match.planned.date.startsWith(prefix));
@@ -341,11 +363,13 @@ export function CalendarPage() {
           {companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
         </select>
         <button onClick={() => downloadCalendarXlsx(calendarSheets)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-emerald-200 px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"><FileSpreadsheet className="h-4 w-4" /> Excel</button>
-        <button onClick={async () => {
-          const responses = await Promise.all(calendarSheets.map((sheet) => fetch("/api/opiu/google-sheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: sheet.rows, sheetName: sheet.name, template: "calendar" }) })));
-          const response = { ok: responses.every((item) => item.ok) };
-          alert(response.ok ? "Платёжный календарь выгружен в Google Таблицу" : "Google Таблица ещё не настроена владельцем");
-        }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"><CloudUpload className="h-4 w-4" /> Google Таблица</button>
+        <button disabled={googleSyncing} onClick={async () => {
+          const result = await syncCalendarToGoogle();
+          alert(result.ok ? "Платёжный календарь выгружен в Google Таблицу" : result.error || "Не удалось выгрузить платёжный календарь");
+        }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60">
+          {googleSyncing ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <CloudUpload className="h-4 w-4" />}
+          {googleSyncing ? "Выгружаю…" : "Google Таблица"}
+        </button>
         <button onClick={() => setReplaceCalendarOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50"><FileUp className="h-4 w-4" /> Заменить из CSV</button>
         </div>
       </div>

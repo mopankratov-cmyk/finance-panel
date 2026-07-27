@@ -8,16 +8,26 @@ function doPost(event) {
   try {
     var payload = JSON.parse((event && event.postData && event.postData.contents) || "{}");
     assertAuthorized(payload.secret);
-    if (!payload.sheet || !Array.isArray(payload.rows) || payload.rows.length < 1) throw new Error("Нет строк для выгрузки");
+    var jobs = Array.isArray(payload.sheets) && payload.sheets.length
+      ? payload.sheets
+      : [{ sheet: payload.sheet, template: payload.template, rows: payload.rows }];
+    if (jobs.length > 10) throw new Error("Слишком много листов в одной выгрузке");
+    jobs.forEach(function(job) {
+      if (!job.sheet || !Array.isArray(job.rows) || job.rows.length < 1) throw new Error("Нет строк для выгрузки");
+    });
 
     lock = LockService.getScriptLock();
     if (!lock.tryLock(30000)) throw new Error("Другая выгрузка ещё выполняется. Повторите попытку через минуту.");
     var book = SpreadsheetApp.openById(requiredProperty("FINANCE_SPREADSHEET_ID"));
-    var result = payload.template === "loans"
-      ? syncLoanRegister(book, payload.rows)
-      : syncRegisterSheet(book, String(payload.sheet), payload.rows);
+    var results = jobs.map(function(job) {
+      return job.template === "loans"
+        ? syncLoanRegister(book, job.rows)
+        : syncRegisterSheet(book, String(job.sheet), job.rows);
+    });
+    var appended = results.reduce(function(sum, result) { return sum + result.appended; }, 0);
+    var skipped = results.reduce(function(sum, result) { return sum + result.skipped; }, 0);
     SpreadsheetApp.flush();
-    return jsonResponse({ ok: true, appended: result.appended, skipped: result.skipped, sheet: result.sheet, spreadsheetUrl: book.getUrl() });
+    return jsonResponse({ ok: true, appended: appended, skipped: skipped, sheets: results, spreadsheetUrl: book.getUrl() });
   } catch (error) {
     return jsonResponse({ ok: false, error: String(error && error.message || error) });
   } finally {
@@ -50,8 +60,13 @@ function syncRegisterSheet(book, requestedName, rows) {
     });
   }
 
+  var existingRows = lastDataRow >= dataStart ? lastDataRow - dataStart + 1 : 0;
+  var matrix = existingRows
+    ? sheet.getRange(dataStart, 1, existingRows, sheetHeader.length).getValues()
+    : [];
   var appended = 0;
   var skipped = 0;
+  var touched = {};
   rows.slice(1).forEach(function(incoming) {
     var candidate = sheetHeader.map(function(name) {
       var index = incomingIndex[name];
@@ -59,41 +74,51 @@ function syncRegisterSheet(book, requestedName, rows) {
     });
     var key = makeKey(candidate, sheetIndex, keyNames);
     if (!key) { skipped++; return; }
-    if (known[key]) {
-      // Повторная выгрузка также восстанавливает строку, если предыдущий запуск
-      // оборвался после записи ключа, но до заполнения остальных колонок.
-      writeRegisterRow(sheet, known[key], candidate, sheetHeader, sheetIndex, formulaColumns, keyNames);
+    var targetRow = known[key];
+    if (targetRow) {
       skipped++;
-      return;
+    } else {
+      targetRow = dataStart + matrix.length;
+      known[key] = targetRow;
+      matrix.push(sheetHeader.map(function() { return ""; }));
+      appended++;
     }
-    var targetRow = Math.max(dataStart, lastDataRow + 1);
-    prepareTemplateRow(sheet, targetRow, dataStart, lastDataRow, sheetHeader.length);
-    writeRegisterRow(sheet, targetRow, candidate, sheetHeader, sheetIndex, formulaColumns, keyNames);
-    known[key] = targetRow;
-    lastDataRow = targetRow;
-    appended++;
+    var matrixIndex = targetRow - dataStart;
+    sheetHeader.forEach(function(name, columnIndex) {
+      if (formulaColumns.indexOf(name) < 0) matrix[matrixIndex][columnIndex] = candidate[columnIndex];
+    });
+    touched[matrixIndex] = true;
   });
-  formatRegister(sheet, headerRow, sheetHeader);
-  return { appended: appended, skipped: skipped, sheet: sheet.getName() };
-}
+  if (!matrix.length) return { appended: appended, skipped: skipped, sheet: sheet.getName() };
 
-function writeRegisterRow(sheet, targetRow, candidate, sheetHeader, sheetIndex, formulaColumns, keyNames) {
-  var keyColumnIndexes = keyNames.map(function(name) { return sheetIndex[name]; });
-  var ordinaryColumns = [];
-  var keyColumns = [];
+  var finalLastRow = dataStart + matrix.length - 1;
+  if (finalLastRow > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), finalLastRow - sheet.getMaxRows());
+  if (appended) {
+    prepareTemplateRows(
+      sheet,
+      finalLastRow - appended + 1,
+      appended,
+      dataStart,
+      lastDataRow,
+      sheetHeader.length,
+      formulaColumns,
+      sheetIndex
+    );
+  }
   sheetHeader.forEach(function(name, columnIndex) {
     if (formulaColumns.indexOf(name) >= 0) return;
-    if (keyColumnIndexes.indexOf(columnIndex) >= 0) keyColumns.push(columnIndex);
-    else ordinaryColumns.push(columnIndex);
+    sheet.getRange(dataStart, columnIndex + 1, matrix.length, 1)
+      .setValues(matrix.map(function(row) { return [row[columnIndex]]; }));
   });
-  // Ключевые поля пишутся последними. Если выполнение оборвётся раньше,
-  // повторный запуск переиспользует эту же незавершённую строку.
-  ordinaryColumns.concat(keyColumns.slice().reverse()).forEach(function(columnIndex) {
-    sheet.getRange(targetRow, columnIndex + 1).setValue(candidate[columnIndex]);
-  });
-  if (keyColumns.length) {
-    sheet.getRange(targetRow, keyColumns[0] + 1).setNote("FINANCE_SYNC_COMPLETE");
+  var firstKeyColumn = sheetIndex[keyNames[0]];
+  if (firstKeyColumn != null) {
+    var noteRange = sheet.getRange(dataStart, firstKeyColumn + 1, matrix.length, 1);
+    var notes = noteRange.getNotes();
+    Object.keys(touched).forEach(function(index) { notes[Number(index)][0] = "FINANCE_SYNC_COMPLETE"; });
+    noteRange.setNotes(notes);
   }
+  formatRegister(sheet, headerRow, sheetHeader);
+  return { appended: appended, skipped: skipped, sheet: sheet.getName() };
 }
 
 function findTargetSheet(book, requestedName) {
@@ -125,13 +150,24 @@ function findHeader(sheet, incomingHeader) {
   return null;
 }
 
-function prepareTemplateRow(sheet, targetRow, dataStart, lastDataRow, width) {
+function prepareTemplateRows(sheet, targetRow, count, dataStart, lastDataRow, width, formulaColumns, sheetIndex) {
   var sourceRow = lastDataRow >= dataStart ? lastDataRow : dataStart;
-  if (targetRow > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), targetRow - sheet.getMaxRows());
-  if (sourceRow <= sheet.getMaxRows() && sourceRow !== targetRow) {
-    sheet.getRange(sourceRow, 1, 1, width).copyTo(sheet.getRange(targetRow, 1, 1, width), SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
-    sheet.setRowHeight(targetRow, sheet.getRowHeight(sourceRow));
-  }
+  if (sourceRow > sheet.getMaxRows() || sourceRow === targetRow) return;
+  var source = sheet.getRange(sourceRow, 1, 1, width);
+  source.copyFormatToRange(sheet, 1, width, targetRow, targetRow + count - 1);
+  var validations = source.getDataValidations()[0];
+  sheet.getRange(targetRow, 1, count, width).setDataValidations(
+    Array(count).fill(null).map(function() { return validations.slice(); })
+  );
+  sheet.setRowHeights(targetRow, count, sheet.getRowHeight(sourceRow));
+  formulaColumns.forEach(function(name) {
+    var columnIndex = sheetIndex[name];
+    if (columnIndex == null) return;
+    var formula = sheet.getRange(sourceRow, columnIndex + 1).getFormulaR1C1();
+    if (!formula) return;
+    sheet.getRange(targetRow, columnIndex + 1, count, 1)
+      .setFormulasR1C1(Array(count).fill(null).map(function() { return [formula]; }));
+  });
 }
 
 function coerceCellValue(headerName, value) {
