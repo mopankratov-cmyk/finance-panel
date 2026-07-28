@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
-import { getSheetValues, appendSheetRows, type SheetCell } from "@/lib/google/sheets";
+import { getSheetValues, appendSheetRows, ensureSheetTab, type SheetCell } from "@/lib/google/sheets";
 
-// Выгрузка поставок (WB "Поставки" / supplier/incomes) в Google Sheets, вкладка «Поставки».
-// Только строки со статусом «Принято». Существующие строки в таблице не трогаем —
+// Выгрузка поставок WB (supplier/incomes) в Google Sheets — отдельная вкладка «Поставки WB»
+// в файле «Поставки ИП Панкратов» (тот же файл, где lib/opiu/fetchGoogleCosts.ts читает
+// себестоимость на gid=0 — эту вкладку не трогаем, пишем только в свою).
+// Только строки со статусом «Принято». Существующие строки не трогаем —
 // на каждый прогон дочитываем уже записанные (incomeId+barcode) и дописываем в конец только новые.
 export const maxDuration = 60;
 
-const SPREADSHEET_ID = process.env.SUPPLIES_SHEET_ID || "1uewQgUMBWNNjYtInguUGjYZaMsOH-W532LUnEMHIZa4";
-const SHEET_NAME = process.env.SUPPLIES_SHEET_TAB || "Поставки";
+const SPREADSHEET_ID = process.env.SUPPLIES_SHEET_ID || "1LLo9jYSdXZMCvdtgFTN-e1S4FTwCM4YYyKxsrbZ6Oc4";
+const SHEET_NAME = process.env.SUPPLIES_SHEET_TAB || "Поставки WB";
 const STATUS_ACCEPTED = "Принято";
+const HEADER = ["incomeId", "date", "supplierArticle", "techSize", "barcode", "quantity", "dateClose", "nmId", "status", "lastChangeDate"];
 // Окно по lastChangeDate (WB dateFrom фильтрует именно по нему) — с запасом, чтобы не терять
 // поставки, у которых статус сменился на «Принято» не сразу.
 const LOOKBACK_DAYS = 120;
@@ -80,6 +83,7 @@ export async function GET(request: NextRequest) {
 
   let appended = 0;
   try {
+    await ensureSheetTab(SPREADSHEET_ID, SHEET_NAME, HEADER);
     const existing = await getSheetValues(SPREADSHEET_ID, `'${SHEET_NAME}'!A2:J`);
     if (existing === null) {
       errors.push("sheet: не удалось прочитать таблицу (проверьте GOOGLE_SERVICE_ACCOUNT_B64 и доступ сервис-аккаунта к таблице)");
