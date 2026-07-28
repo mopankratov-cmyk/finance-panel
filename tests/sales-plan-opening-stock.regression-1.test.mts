@@ -38,7 +38,15 @@ test("остаток на начало хранится отдельно для 
   const current = row();
   assert.equal(salesPlanOpeningStock(current, "08"), 10);
   assert.deepEqual(calculateSalesPlanRowStockRisk(current, "08"), {
+    forecastAvailable: true,
+    unavailableReason: null,
     currentStock: 10,
+    ffAllocated: 0,
+    marketplaceStock: 0,
+    marketplaceAsOf: null,
+    marketplaceStale: false,
+    remainingOrders: 0,
+    targetMonthOrders: 12,
     plannedOrders: 12,
     plannedBuyouts: 6,
     endingStock: 4,
@@ -52,9 +60,11 @@ test("старые планы без нового поля совместимы 
   assert.equal(normalized.openingStocks?.["08"], 77);
 });
 
-test("таблица показывает редактируемый жёлтый столбец после рекламного процента", () => {
-  assert.match(table, /Ост\. нач\./);
-  assert.match(table, /Предполагаемый остаток на начало выбранного месяца/);
-  assert.match(table, /openingStocks: \{ \.\.\.row\.openingStocks, \[monthKey\]/);
-  assert.ok(table.indexOf(">Рек %<") < table.indexOf("Ост. нач."));
+test("таблица заменяет старый остаток на ФФ, МП и прогноз после рекламного процента", () => {
+  assert.match(table, /ФФ, шт\./);
+  assert.match(table, /МП, шт\./);
+  assert.match(table, /Прогноз конца/);
+  assert.match(table, /ffAllocatedStocks: \{ \.\.\.row\.ffAllocatedStocks, \[monthKey\]/);
+  assert.doesNotMatch(table, /Ост\. нач\./);
+  assert.ok(table.indexOf(">Рек %<") < table.indexOf("ФФ, шт."));
 });

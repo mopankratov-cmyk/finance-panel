@@ -61,6 +61,7 @@ function CatalogThumb({ sku }: { sku: SalesPlanCatalogSku }) {
 export function SalesPlanAddSkuModal({
   marketplace,
   year,
+  monthKey,
   catalog,
   catalogLoading,
   catalogError,
@@ -70,6 +71,7 @@ export function SalesPlanAddSkuModal({
 }: {
   marketplace: SalesPlanMarketplace;
   year: number;
+  monthKey: string;
   catalog: SalesPlanCatalogSku[];
   catalogLoading: boolean;
   catalogError: string | null;
@@ -130,6 +132,8 @@ export function SalesPlanAddSkuModal({
         adPct: 12,
         stock: sku.stock,
         openingStocks: emptySalesPlanOpeningStocks(sku.stock),
+        ffAllocatedStocks: { [monthKey]: 0 },
+        marketplaceStocks: { [monthKey]: { quantity: Math.max(0, Math.round(sku.stock)), asOf: sku.stockAsOf ?? null, stale: false } },
         image: sku.image,
         isNew: false,
         months: emptySalesPlanMonths(year),
@@ -154,6 +158,8 @@ export function SalesPlanAddSkuModal({
       adPct: Number(manual.adPct) || 0,
       stock: 0,
       openingStocks: emptySalesPlanOpeningStocks(),
+      ffAllocatedStocks: {},
+      marketplaceStocks: {},
       image: null,
       isNew: true,
       months: emptySalesPlanMonths(year),
