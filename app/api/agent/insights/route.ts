@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { checkCronAuth } from "@/lib/sync/helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,38 @@ export async function GET() {
   const rows = (data ?? []) as AgentInsight[];
   const unread = rows.filter((r) => !r.is_read).length;
   return NextResponse.json({ data: rows, unread, error: null });
+}
+
+// Внешний источник (напр. Apps Script) создаёт инсайт — авторизация тем же CRON_SECRET, что и синки.
+export async function POST(request: NextRequest) {
+  const authError = checkCronAuth(request);
+  if (authError) return authError;
+
+  const db = getSupabaseAdmin();
+  if (!db) {
+    return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  }
+  const body = await request.json().catch(() => ({}));
+  const moduleName = typeof body.module === "string" ? body.module : null;
+  const title = typeof body.title === "string" ? body.title : null;
+  if (!moduleName || !title) {
+    return NextResponse.json({ error: "module и title обязательны" }, { status: 400 });
+  }
+  const severity = ["critical", "warning", "info"].includes(body.severity) ? body.severity : "info";
+
+  const { error } = await db.from("agent_insights").insert({
+    module: moduleName,
+    severity,
+    title,
+    body: typeof body.body === "string" ? body.body : "",
+    data: body.data ?? null,
+    is_read: false,
+  });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
 }
 
 // Пометить инсайты прочитанными (все или по id)
