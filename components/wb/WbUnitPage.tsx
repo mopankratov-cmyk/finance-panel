@@ -112,6 +112,7 @@ export function WbUnitPage() {
 
     setLoading(true);
     setError(null);
+    setData(null);
     const refreshParam = retryKey > 0 ? "&refresh=1" : "";
     fetch(`/api/unit/table?cabinet=${encodeURIComponent(cabinetId || "all")}&from=${encodeURIComponent(appliedPeriod.from)}&to=${encodeURIComponent(appliedPeriod.to)}${refreshParam}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {

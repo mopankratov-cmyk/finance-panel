@@ -11,11 +11,12 @@ test("finance payout forecast uses synchronized cabinet data instead of revoked 
   assert.doesNotMatch(source, /fetchSalesReport/);
 });
 
-test("WB unit rejects and self-heals an impossible empty scoped snapshot", () => {
+test("WB unit rebuilds an impossible empty scoped snapshot from current RNP sources", () => {
   const source = read("../app/api/unit/table/route.ts");
-  assert.match(source, /allowedNmIds\.size > 0 && totalRows === 0/);
-  assert.match(source, /payload\.rows\.length === 0 && !forceRefresh/);
-  assert.match(source, /\{\s*forceRefresh:\s*true\s*\}/);
+  assert.match(source, /allowedNmIds\.size > 0 && scopedRows\.length === 0/);
+  assert.match(source, /loadRnpDailySkuRows<ScopedUnitDailyRow>/);
+  assert.match(source, /loadRnpReportRows<ScopedUnitReferenceRow>/);
+  assert.match(source, /mergeScopedUnitPeriodRows\(allowedNmIds/);
 });
 
 test("supplies header counts the full stock catalog, not only reorder recommendations", () => {

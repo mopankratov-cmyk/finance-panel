@@ -1,5 +1,5 @@
 export const UNIT_PERIOD_TIMEZONE = "Europe/Moscow";
-export const UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v1";
+export const UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v2";
 
 export interface UnitPeriod {
   from: string;
