@@ -9,9 +9,11 @@ const API = "https://sheets.googleapis.com/v4/spreadsheets";
 
 interface SA { client_email: string; private_key: string }
 
+// Свой сервис-аккаунт (проект finance-panel-sheets), отдельный от Drive-интеграции —
+// у неё нет доступа к этому GCP-проекту, поэтому переменная своя.
 function loadSA(): SA | null {
-  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT;
+  const b64 = process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_B64;
+  const raw = process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT;
   try {
     const json = b64 ? Buffer.from(b64, "base64").toString("utf8") : raw;
     if (!json) return null;
