@@ -33,6 +33,8 @@ export interface WeekRawMetrics {
   adsSpend: number;          // ВБ продвижение
   loanTransfer: number;      // Перевод на баланс заёмщика (займ/кредит)
   penaltyLoan: number;       // Пени по займу/кредиту
+  loyaltyCompensation: number; // Компенсация скидки по программе лояльности (cashback_discount)
+  withdrawNow: number;         // Вывести сейчас (Разовое изменение срока перечисления)
 }
 
 function num(value: unknown): number {
@@ -44,7 +46,6 @@ function inRange(date: string, from: string, to: string): boolean {
   return date >= from && date <= to;
 }
 
-/** Дата продажи — как в «Своде отчёта WB по дате продажи» (sale_dt, не rr_dt) */
 function rowDate(row: WbReportRow): string {
   return String(row.sale_dt ?? row.rr_dt ?? row.order_dt ?? row.create_dt ?? "").slice(0, 10);
 }
@@ -278,6 +279,18 @@ export function aggregateWeek(
         ? s + expenseRub(r.deduction)
         : s;
     }, 0),
+    withdrawNow: weekSales.reduce((s, r) => {
+      const oper = String(r.supplier_oper_name ?? "").trim().toLowerCase();
+      return oper === "разовое изменение срока перечисления денежных средств"
+        ? s + num(r.deduction)
+        : s;
+    }, 0),
+    loyaltyCompensation: weekSales.reduce((s, r) => {
+      const oper = String(r.supplier_oper_name ?? "").trim();
+      if (oper !== "Компенсация скидки по программе лояльности") return s;
+      const sign = docType(r) === "return" ? -1 : 1;
+      return s + sign * num(r.cashback_discount);
+    }, 0),
   };
 }
 
@@ -288,6 +301,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
     penalties: 0, storage: 0, otherDeductions: 0,
     subscriptionJem: 0, transitDelivery: 0, acceptance: 0, adsSpend: 0,
     loanTransfer: 0, penaltyLoan: 0,
+    loyaltyCompensation: 0, withdrawNow: 0,
   };
   return weeks.reduce(
     (acc, w) => ({
@@ -308,6 +322,8 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       adsSpend: acc.adsSpend + w.adsSpend,
       loanTransfer: acc.loanTransfer + w.loanTransfer,
       penaltyLoan: acc.penaltyLoan + w.penaltyLoan,
+      loyaltyCompensation: acc.loyaltyCompensation + w.loyaltyCompensation,
+      withdrawNow: acc.withdrawNow + w.withdrawNow,
     }),
     zero,
   );

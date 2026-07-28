@@ -53,7 +53,7 @@ async function fetchAdStats(
   const url = `https://advert-api.wildberries.ru/adv/v1/upd?from=${dateFrom}&to=${dateTo}`;
   const cacheOpt: RequestInit = refresh
     ? { cache: "no-store" }
-    : { next: { revalidate: 3600 } } as RequestInit;
+    : { cache: "force-cache" } as RequestInit;
 
   try {
     const res = await fetch(url, {
@@ -134,27 +134,38 @@ export async function loadOpiuMonth(
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
 
-  const [sales, orders, adStats, costs, deliveryCosts, nmStatsByWeek] = await Promise.all([
+  // Рекламный API ограничен 1 месяцем — используем границы самого месяца
+  const monthStart = `${month}-01`;
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  const monthEnd = `${month}-${String(lastDay).padStart(2, "0")}`;
+
+  // Воронка продаж v3: запускаем параллельно с остальными запросами,
+  // но внутри — последовательно с паузой 300мс, чтобы не получить rate limit
+  const nmStatsPromise = (async () => {
+    const result: import("./fetchNmStats").NmStatRow[] = [];
+    for (let i = 0; i < weeks.length; i++) {
+      if (i > 0) await new Promise<void>((r) => setTimeout(r, 2000));
+      try {
+        const rows = await fetchNmOrderStats(weeks[i]!.rangeFrom, weeks[i]!.rangeTo, refresh);
+        result.push(...rows);
+      } catch (e) {
+        console.warn("[opiu] sales-funnel fetch failed:", e);
+      }
+    }
+    return result;
+  })();
+
+  const [sales, orders, adStats, costs, deliveryCosts, nmStats] = await Promise.all([
     fetchSalesReport(dateFrom, dateTo, refresh),
     fetchOrders(dateFrom, dateTo, refresh),
-    fetchAdStats(dateFrom, dateTo, refresh),
+    fetchAdStats(monthStart, monthEnd, refresh),
     fetchProductCosts(),
     fetchDeliveryCosts().catch((e) => {
       console.warn("[opiu] delivery costs fetch failed:", e);
       return [];
     }),
-    // Воронка продаж v3: запрашиваем отдельно для каждой недели,
-    // чтобы date совпадал с rangeFrom недели при агрегации
-    Promise.all(
-      weeks.map((w) =>
-        fetchNmOrderStats(w.rangeFrom, w.rangeTo, refresh).catch((e) => {
-          console.warn("[opiu] sales-funnel fetch failed:", e);
-          return [];
-        }),
-      ),
-    ).then((arr) => arr.flat()),
+    nmStatsPromise,
   ]);
-  const nmStats = nmStatsByWeek;
 
   const report = buildOpiuReport(weeks, sales, orders, adStats, costs, deliveryCosts, nmStats);
 

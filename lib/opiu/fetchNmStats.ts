@@ -47,6 +47,7 @@ export async function fetchNmOrderStats(
   let page = 1;
 
   try {
+    let retries429 = 0;
     while (page <= 100) {
       const body = JSON.stringify({
         selectedPeriod: { start: dateFrom, end: dateTo },
@@ -63,16 +64,21 @@ export async function fetchNmOrderStats(
           headers: { Authorization: token, "Content-Type": "application/json" },
           body,
           signal: controller.signal,
-          cache: refresh ? "no-store" : undefined,
+          ...(refresh ? { cache: "no-store" } : { cache: "force-cache" }),
         } as RequestInit);
       } finally {
         clearTimeout(timer);
       }
 
       if (!res.ok) {
-        if (res.status !== 401 && res.status !== 403) {
-          console.warn("[opiu] sales-funnel HTTP", res.status);
+        if (res.status === 429 && retries429 < 3) {
+          retries429++;
+          console.warn(`[opiu] sales-funnel 429, retry ${retries429}/3 after 5s`);
+          await new Promise<void>((r) => setTimeout(r, 5000));
+          continue;
         }
+        const errBody = await res.text().catch(() => "");
+        console.warn("[opiu] sales-funnel HTTP", res.status, dateFrom, "→", dateTo, errBody.slice(0, 200));
         return [];
       }
 

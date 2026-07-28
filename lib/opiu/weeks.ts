@@ -34,17 +34,13 @@ export function weeksInMonth(year: number, monthIndex: number): MonthWeek[] {
   while (cursor <= monthEnd) {
     const weekStart = new Date(cursor);
     const weekEnd = addDays(weekStart, 6);
-    const rangeFrom = weekStart < monthStart ? monthStart : weekStart;
-    const rangeTo = weekEnd > monthEnd ? monthEnd : weekEnd;
 
-    if (rangeFrom <= rangeTo) {
-      weeks.push({
-        weekStart: toISODate(weekStart),
-        rangeFrom: toISODate(rangeFrom),
-        rangeTo: toISODate(rangeTo),
-        label: `${formatShort(toISODate(rangeFrom))} – ${formatShort(toISODate(rangeTo))}`,
-      });
-    }
+    weeks.push({
+      weekStart: toISODate(weekStart),
+      rangeFrom: toISODate(weekStart),
+      rangeTo: toISODate(weekEnd),
+      label: `${formatShort(toISODate(weekStart))} – ${formatShort(toISODate(weekEnd))}`,
+    });
 
     cursor.setDate(cursor.getDate() + 7);
   }

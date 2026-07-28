@@ -89,6 +89,7 @@ function buildMockReport(month: string): OpiuReport {
 
   const marginal = revNoSpp.map((r, i) =>
     r - commission[i]! - logistics[i]! - cogs[i]! - packaging[i]! - penalties[i]! - storage[i]! - other[i]!
+    // loyalty_comp и pvz_comp в mock = 0, формула совпадает с buildReport.ts
   );
   const gross = marginal.map((m, i) => m - ads[i]!);
 
@@ -104,6 +105,7 @@ function buildMockReport(month: string): OpiuReport {
   const rows: OpiuTableRow[] = [
     { id: "orders",        label: "Заказы, руб",                                  kind: "metric",  values: tot(orders,     tOrd) },
     { id: "rev_no_spp",    label: "Выручка без СПП, руб",                         kind: "metric",  values: tot(revNoSpp,   tRevNoSpp) },
+    { id: "loyalty_comp", label: "Компенсация скидки по программе лояльности, руб", kind: "metric", expense: false, values: zeroArr },
     { id: "revenue",       label: "Выручка с учётом СПП, руб",                    kind: "metric",  values: tot(revenue,    tRev) },
     { id: "buyout",        label: "% выкупа",                                     kind: "percent", values: tot(revNoSpp.map((r, i) => pct(r, orders[i]!)), pct(tRevNoSpp, tOrd)) },
     { id: "for_pay",       label: "К перечислению продавцу, руб",                 kind: "metric",  values: tot(forPay,     tForPay) },
@@ -118,8 +120,9 @@ function buildMockReport(month: string): OpiuReport {
     { id: "penalties",     label: "Штрафы и доплаты, руб",                        kind: "metric",  expense: true, values: tot(penalties,  tPen) },
     { id: "storage",       label: "Хранение, руб",                                kind: "metric",  expense: true, values: tot(storage,    tStr) },
     { id: "storage_pct",   label: "% хранения",                                   kind: "percent", values: tot(storage.map((s, i) => pct(s, revNoSpp[i]!)), pct(tStr, tRevNoSpp)) },
-    { id: "other",         label: "Прочие удержания, руб",                        kind: "metric",  expense: true, values: tot(other,      tOth) },
-    { id: "jem",           label: "Подписка «Джем», руб",                         kind: "metric",  expense: true, values: zeroArr },
+    { id: "other",         label: "Прочие удержания, руб",                        kind: "metric",  expense: true,  values: tot(other,      tOth) },
+    { id: "withdraw_now",  label: "Вывести сейчас, руб",                          kind: "metric",  expense: true,  values: zeroArr },
+    { id: "jem",           label: "Подписка «Джем», руб",                         kind: "metric",  expense: true,  values: zeroArr },
     { id: "transit",       label: "Транзитные поставки, руб",                     kind: "metric",  expense: true, values: zeroArr },
     { id: "acceptance",    label: "Платная приёмка, руб",                         kind: "metric",  expense: true, values: zeroArr },
     sep("sep2"),
@@ -141,7 +144,7 @@ function buildMockReport(month: string): OpiuReport {
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "summary", label: "Сводка" },
-  { id: "detail", label: "Детально P&L" },
+  { id: "detail", label: "Свод по дате продажи" },
   { id: "risks", label: "Риски и задачи" },
   { id: "forecast", label: "Прогноз" },
   { id: "calendar", label: "Платёжный календарь" },
@@ -909,7 +912,7 @@ export function OpiuPage() {
                     <div className="text-sm font-semibold text-[#1a2138]">Формула</div>
                     <div className="text-xs text-[#2c3454] mt-1 leading-relaxed">
                       МД = Выручка − Себестоимость − Склад − Комиссия − Логистика − Прочие. Валовая прибыль = МД − Реклама.
-                      Себестоимость и склад вводятся вручную во вкладке «Детально P&L».
+                      Себестоимость и склад вводятся вручную во вкладке «Свод по дате продажи».
                     </div>
                   </div>
                 </div>

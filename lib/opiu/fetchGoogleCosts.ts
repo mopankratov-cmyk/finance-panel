@@ -46,7 +46,7 @@ async function fetchCSV(spreadsheetId: string, gid?: string): Promise<string[][]
   const url = gid
     ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`
     : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
-  const res = await fetch(url, { next: { revalidate: 3600 } } as RequestInit);
+  const res = await fetch(url, { cache: "force-cache" } as RequestInit);
   if (!res.ok) throw new Error(`Google Sheets fetch failed: HTTP ${res.status} (id=${spreadsheetId})`);
   const text = await res.text();
   return text.split(/\r?\n/).map(parseCSVLine);

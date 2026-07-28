@@ -42,6 +42,8 @@ function derived(m: WeekRawMetrics) {
     m.penalties -
     m.storage -
     m.otherDeductions -
+    m.withdrawNow +
+    m.loyaltyCompensation -
     m.subscriptionJem -
     m.transitDelivery -
     m.acceptance;
@@ -113,6 +115,7 @@ export function buildOpiuReport(
   const rows: OpiuTableRow[] = [
     { id: "orders",           label: "Заказы, руб",                                  kind: "metric",  values: cols((m) => m.ordersRub) },
     { id: "rev_no_spp",       label: "Выручка без СПП, руб",                         kind: "metric",  values: cols((m) => m.revenueWithoutSpp) },
+    { id: "loyalty_comp",    label: "Компенсация скидки по программе лояльности, руб", kind: "metric", expense: false, values: cols((m) => m.loyaltyCompensation) },
     { id: "revenue",          label: "Выручка с учётом СПП, руб",                    kind: "metric",  values: cols((m) => m.revenue) },
     { id: "buyout",           label: "% выкупа",                                     kind: "percent", values: pctCols((d) => d.buyoutPct) },
     { id: "for_pay",          label: "К перечислению продавцу, руб",                 kind: "metric",  values: cols((m) => m.forPay) },
@@ -128,6 +131,7 @@ export function buildOpiuReport(
     { id: "storage",          label: "Хранение, руб",                                kind: "metric",  expense: true, values: cols((m) => m.storage) },
     { id: "storage_pct",      label: "% хранения",                                   kind: "percent", values: pctCols((d) => d.storagePct) },
     { id: "other",            label: "Прочие удержания, руб",                        kind: "metric",  expense: true, values: cols((m) => m.otherDeductions) },
+    { id: "withdraw_now",     label: "Вывести сейчас, руб",                          kind: "metric",  expense: true, values: cols((m) => m.withdrawNow) },
     { id: "jem",              label: "Подписка «Джем», руб",                         kind: "metric",  expense: true, values: cols((m) => m.subscriptionJem) },
     { id: "transit",          label: "Транзитные поставки, руб",                     kind: "metric",  expense: true, values: cols((m) => m.transitDelivery) },
     { id: "acceptance",       label: "Платная приёмка, руб",                         kind: "metric",  expense: true, values: cols((m) => m.acceptance) },

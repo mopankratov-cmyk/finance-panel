@@ -36,6 +36,10 @@ export interface WbReportRow {
   additional_payment?: number;
   acceptance?: number;
   acquiring_fee?: number;
+  cashback_discount?: number;   // Компенсация скидки по программе лояльности
+  ppvz_reward?: number;         // Возмещение за выдачу и возврат товаров на ПВЗ
+  ppvz_vw?: number;
+  ppvz_vw_nds?: number;
   [key: string]: unknown;
 }
 
