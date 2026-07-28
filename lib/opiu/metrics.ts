@@ -46,7 +46,10 @@ function inRange(date: string, from: string, to: string): boolean {
   return date >= from && date <= to;
 }
 
-function rowDate(row: WbReportRow): string {
+function rowDate(row: WbReportRow, mode: "sale" | "report" = "sale"): string {
+  if (mode === "report") {
+    return String(row.rr_dt ?? row.sale_dt ?? row.order_dt ?? row.create_dt ?? "").slice(0, 10);
+  }
   return String(row.sale_dt ?? row.rr_dt ?? row.order_dt ?? row.create_dt ?? "").slice(0, 10);
 }
 
@@ -206,6 +209,7 @@ export function aggregateWeek(
   adStats: AdvertSpendRow[],
   costLookup: ReturnType<typeof buildCostLookup>,
   nmStats: NmStatRow[] = [],
+  dateMode: "sale" | "report" = "sale",
 ): WeekRawMetrics {
   const { rangeFrom, rangeTo } = week;
 
@@ -219,7 +223,7 @@ export function aggregateWeek(
   const weekOrders = orders.filter(
     (o) => inRange(orderDate(o), rangeFrom, rangeTo),
   );
-  const weekSales = sales.filter((r) => inRange(rowDate(r), rangeFrom, rangeTo));
+  const weekSales = sales.filter((r) => inRange(rowDate(r, dateMode), rangeFrom, rangeTo));
 
   const revenueWithoutSpp = weekSales.reduce((s, r) => s + revenueWithoutSppRub(r), 0);
   const forPay = weekSales.reduce((s, r) => s + forPayRub(r), 0);

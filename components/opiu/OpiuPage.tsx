@@ -9,60 +9,13 @@ import { useCallback, useEffect, useState } from "react";
 interface OpiuResponse {
   month: string;
   report: OpiuReport;
+  reportByReportDate?: OpiuReport;
   timestamp: string;
   meta?: { salesRows: number; ordersCount: number; costsCount: number; adCampaigns: number };
   error?: string;
 }
 
-type Tab = "summary" | "detail" | "forecast" | "calendar" | "risks";
-
-/* ── Mock SKU data для Карты рисков ── */
-interface SkuRisk {
-  nm: number;
-  name: string;
-  abc: "A" | "B" | "C" | "D";
-  revenue: number;
-  profit: number;
-  margin: number | null;
-  adSpend: number;
-  drr: number | null;        // реклама / выручка %
-  stock: number;             // шт
-  turnoverDays: number | null;
-  ordersPlan: number;        // плановые заказы за месяц, руб
-  ordersActual: number;      // фактические заказы за месяц, руб
-  planPct: number | null;    // факт / план %
-}
-
-const MOCK_SKUS: SkuRisk[] = [
-  { nm:1001, name:"Термокружка 450 мл",          abc:"A", revenue:1_456_240, profit:312_000, margin:21.4, adSpend:55_520,  drr:3.8,  stock:120, turnoverDays:34,  ordersPlan:1_400_000, ordersActual:1_456_240, planPct:104 },
-  { nm:1002, name:"Фильтры для кофе 100 шт",     abc:"A", revenue:1_382_590, profit:287_000, margin:20.8, adSpend:53_120,  drr:3.8,  stock:95,  turnoverDays:40,  ordersPlan:1_200_000, ordersActual:1_382_590, planPct:115 },
-  { nm:1003, name:"Робот-пылесос CleanWow",       abc:"A", revenue:834_911,  profit:198_000, margin:23.7, adSpend:34_110,  drr:4.1,  stock:18,  turnoverDays:30,  ordersPlan:900_000,   ordersActual:834_911,  planPct:93  },
-  { nm:1004, name:"Krups Roma White EA810570",    abc:"A", revenue:756_281,  profit:142_000, margin:18.8, adSpend:29_660,  drr:3.9,  stock:22,  turnoverDays:44,  ordersPlan:700_000,   ordersActual:756_281,  planPct:108 },
-  { nm:1005, name:"Must Puro Arabica 1000 г",     abc:"B", revenue:740_128,  profit:98_000,  margin:13.2, adSpend:27_720,  drr:3.7,  stock:65,  turnoverDays:59,  ordersPlan:800_000,   ordersActual:740_128,  planPct:93  },
-  { nm:1006, name:"Ahmad Tea Ceylon 100 пак.",    abc:"B", revenue:673_074,  profit:87_000,  margin:12.9, adSpend:25_360,  drr:3.8,  stock:80,  turnoverDays:67,  ordersPlan:700_000,   ordersActual:673_074,  planPct:96  },
-  { nm:1007, name:"Подарочная упаковка",          abc:"B", revenue:520_350,  profit:71_000,  margin:13.6, adSpend:20_320,  drr:3.9,  stock:200, turnoverDays:118, ordersPlan:600_000,   ordersActual:520_350,  planPct:87  },
-  { nm:1008, name:"Мойщик посуды mini",           abc:"C", revenue:312_000,  profit:22_000,  margin:7.1,  adSpend:37_440,  drr:12.0, stock:45,  turnoverDays:84,  ordersPlan:500_000,   ordersActual:312_000,  planPct:62  },
-  { nm:1009, name:"Greenfield Golden Ceylon",     abc:"C", revenue:268_000,  profit:14_000,  margin:5.2,  adSpend:32_160,  drr:12.0, stock:38,  turnoverDays:71,  ordersPlan:400_000,   ordersActual:268_000,  planPct:67  },
-  { nm:1010, name:"Пароочиститель Bort",          abc:"C", revenue:198_000,  profit:-8_500,  margin:-4.3, adSpend:31_680,  drr:16.0, stock:28,  turnoverDays:97,  ordersPlan:350_000,   ordersActual:198_000,  planPct:57  },
-  { nm:1011, name:"DeLonghi ECAM21.117.SB",       abc:"D", revenue:118_483,  profit:-42_000, margin:-35.4,adSpend:49_850,  drr:42.1, stock:12,  turnoverDays:null,ordersPlan:300_000,   ordersActual:118_483,  planPct:39  },
-  { nm:1012, name:"Nescafé Dolce Gusto 8 порций", abc:"D", revenue:89_000,   profit:-18_000, margin:-20.2,adSpend:29_150,  drr:32.8, stock:9,   turnoverDays:null,ordersPlan:200_000,   ordersActual:89_000,   planPct:45  },
-  { nm:1013, name:"Усилитель Wi-Fi сигнала",      abc:"D", revenue:0,        profit:-3_200,  margin:null, adSpend:3_200,   drr:null, stock:34,  turnoverDays:null,ordersPlan:150_000,   ordersActual:0,        planPct:0   },
-  { nm:1014, name:"Капельница для полива",        abc:"D", revenue:0,        profit:-1_800,  margin:null, adSpend:1_800,   drr:null, stock:18,  turnoverDays:null,ordersPlan:120_000,   ordersActual:0,        planPct:0   },
-  { nm:1015, name:"Аэрогриль Redmond AF-777",     abc:"C", revenue:156_000,  profit:-5_600,  margin:-3.6, adSpend:28_080,  drr:18.0, stock:260, turnoverDays:231, ordersPlan:280_000,   ordersActual:156_000,  planPct:56  },
-  { nm:1016, name:"Су-вид Kitfort KT-2021",       abc:"C", revenue:134_000,  profit:-3_100,  margin:-2.3, adSpend:20_100,  drr:15.0, stock:180, turnoverDays:209, ordersPlan:250_000,   ordersActual:134_000,  planPct:54  },
-];
-
-function deriveRisks(skus: SkuRisk[]) {
-  return {
-    losers:   skus.filter(s => s.profit < 0),
-    redZone:  skus.filter(s => (s.planPct ?? 100) < 50 && s.ordersPlan >= 150_000 && s.revenue > 0),
-    frozen:   skus.filter(s => (s.turnoverDays ?? 0) > 150 && s.stock > 0),
-    highDrr:  skus.filter(s => (s.drr ?? 0) > 12 && s.revenue > 0),
-    noTraffic:skus.filter(s => s.revenue === 0 && s.ordersPlan > 0),
-    aItems:   skus.filter(s => s.abc === "A"),
-  };
-}
-
+type Tab = "summary" | "detail" | "report_date";
 
 /* ── Mock report (используется когда API недоступен) ── */
 function buildMockReport(month: string): OpiuReport {
@@ -145,9 +98,7 @@ function buildMockReport(month: string): OpiuReport {
 const TABS: { id: Tab; label: string }[] = [
   { id: "summary", label: "Сводка" },
   { id: "detail", label: "Свод по дате продажи" },
-  { id: "risks", label: "Риски и задачи" },
-  { id: "forecast", label: "Прогноз" },
-  { id: "calendar", label: "Платёжный календарь" },
+  { id: "report_date", label: "Свод по дате отчета" },
 ];
 
 function getTotal(rows: OpiuTableRow[], id: string): number | null {
@@ -410,281 +361,6 @@ function DetailTable({
   );
 }
 
-/* ── Risk map card ── */
-function RiskCard({
-  icon, count, title, desc, items, accent,
-}: {
-  icon: string;
-  count: number;
-  title: string;
-  desc: string;
-  items: SkuRisk[];
-  accent: "red" | "yellow" | "blue" | "green" | "gray";
-}) {
-  const border: Record<string, string> = {
-    red:    "border-[#fca5a5] bg-[#fff5f5]",
-    yellow: "border-[#fcd34d] bg-[#fffbeb]",
-    blue:   "border-[#93c5fd] bg-[#eff6ff]",
-    green:  "border-[#86efac] bg-[#f0fdf4]",
-    gray:   "border-[#e6e9f2] bg-white",
-  };
-  const countColor: Record<string, string> = {
-    red: "text-[#d4423b]", yellow: "text-[#d68a00]",
-    blue: "text-[#2a6df4]", green: "text-[#1f9d55]", gray: "text-[#1a2138]",
-  };
-
-  return (
-    <div className={`rounded-xl border-2 p-5 ${border[accent]}`}>
-      <div className="text-2xl mb-1">{icon}</div>
-      <div className={`text-3xl font-bold ${countColor[accent]}`}>{count}</div>
-      <div className="font-semibold text-[#1a2138] text-sm mt-1">{title}</div>
-      <div className="text-xs text-[#6b7390] mt-1 leading-relaxed">{desc}</div>
-      {items.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-3">
-          {items.slice(0, 6).map((s) => (
-            <span key={s.nm} className="text-[11px] px-2 py-0.5 rounded-md bg-white border border-[#e6e9f2] text-[#1a2138] font-medium">
-              {s.name.length > 18 ? s.name.slice(0, 18) + "…" : s.name}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Задачи РОПу ── */
-function RopuTask({
-  num, icon, title, desc, items, accent,
-}: {
-  num: number;
-  icon: string;
-  title: string;
-  desc: string;
-  items: SkuRisk[];
-  accent: "red" | "yellow" | "green";
-}) {
-  const left: Record<string, string> = {
-    red: "border-l-[#d4423b]", yellow: "border-l-[#d68a00]", green: "border-l-[#1f9d55]",
-  };
-  const numBg: Record<string, string> = {
-    red: "bg-[#d4423b]", yellow: "bg-[#d68a00]", green: "bg-[#1f9d55]",
-  };
-
-  return (
-    <div className={`bg-white border border-[#e6e9f2] border-l-4 ${left[accent]} rounded-xl p-5`}>
-      <div className="flex items-start gap-3">
-        <span className={`shrink-0 w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center ${numBg[accent]}`}>
-          {num}
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-[#1a2138]">{icon} {title}</div>
-          <div className="text-xs text-[#6b7390] mt-1 leading-relaxed">{desc}</div>
-          {items.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {items.slice(0, 6).map((s) => (
-                <span key={s.nm} className="text-[11px] px-2 py-0.5 rounded-md bg-[#f4f6fb] border border-[#e6e9f2] text-[#1a2138] font-medium">
-                  {s.name.length > 20 ? s.name.slice(0, 20) + "…" : s.name}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Вкладка Риски ── */
-function RisksTab({ usingMock }: { usingMock: boolean }) {
-  const skus = MOCK_SKUS;
-  const { losers, redZone, frozen, highDrr, noTraffic, aItems } = deriveRisks(skus);
-
-  const totalLoss = losers.reduce((s, x) => s + x.profit, 0);
-  const frozenRub = frozen.reduce((s, x) => s + x.revenue * 0.3, 0); // грубая оценка
-
-  return (
-    <div className="space-y-6">
-      {usingMock && (
-        <div className="flex items-center gap-3 rounded-lg border border-[#d68a00] bg-[#fff4dd] px-4 py-3 text-sm text-[#7a4f00]">
-          <span>⚠️</span>
-          <span><strong>Тестовые данные.</strong> Риски рассчитаны на примерных SKU. После восстановления токена WB появятся реальные товары.</span>
-        </div>
-      )}
-
-      {/* Карта рисков */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-lg">⚠️</span>
-          <h2 className="text-base font-semibold text-[#1a2138]">Карта рисков</h2>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          <RiskCard
-            icon="🪲" count={losers.length} accent="red"
-            title="Убыточные товары"
-            desc={`Отрицательная маржа. Суммарный убыток: ${fmtK(totalLoss)} ₽. Поднять цену выше точки безубыточности или остановить поставки.`}
-            items={losers}
-          />
-          <RiskCard
-            icon="🔴" count={redZone.length} accent="red"
-            title="Красная зона плана (<50%)"
-            desc="Значимые товары с планом >150к ₽, выполняют <50%. Проверить позиции в выдаче и ставки рекламы."
-            items={redZone}
-          />
-          <RiskCard
-            icon="❄️" count={frozen.length} accent="blue"
-            title="Замороженный капитал (>150 дн)"
-            desc={`Остатки с оборачиваемостью >150 дней. Оценка замороженных средств: ~${fmtK(frozenRub)} ₽. Акция, снижение цены или вывод из матрицы.`}
-            items={frozen}
-          />
-          <RiskCard
-            icon="📣" count={highDrr.length} accent="yellow"
-            title="Высокий ДРР >12%"
-            desc="Реклама слишком дорогая. Снизить ставки, перераспределить бюджет на товары с ДРР <6%."
-            items={highDrr}
-          />
-          <RiskCard
-            icon="🚫" count={noTraffic.length} accent="gray"
-            title="Нет трафика (есть план)"
-            desc="Товары с планом, но нулевые заказы. Не раскрываются — проверить контент, цену, наличие остатков."
-            items={noTraffic}
-          />
-          <RiskCard
-            icon="✅" count={aItems.length} accent="green"
-            title="А-товары (80% объёма)"
-            desc="Ядро бизнеса. Удерживать позиции, не допускать стокаута, масштабировать рекламу."
-            items={aItems}
-          />
-        </div>
-      </div>
-
-      {/* Задачи РОПу */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-lg">🎯</span>
-          <h2 className="text-base font-semibold text-[#1a2138]">Задачи РОПу — приоритизированный список</h2>
-        </div>
-        <div className="space-y-3">
-          {losers.length > 0 && (
-            <RopuTask num={1} accent="red" icon="🪲"
-              title="Убыточные товары — решение сегодня"
-              desc={`${losers.length} товаров с отрицательной маржой. Суммарный убыток: ${fmtK(totalLoss)} ₽. Поднять цену выше точки безубыточности или остановить поставки.`}
-              items={losers}
-            />
-          )}
-          {redZone.length > 0 && (
-            <RopuTask num={2} accent="red" icon="🔻"
-              title="Восстановить трафик на упавшие товары"
-              desc={`${redZone.length} товаров в красной зоне плана. Причина — падение заказов, а не рост расходов. Проверить позиции в выдаче и ставки рекламы.`}
-              items={redZone}
-            />
-          )}
-          {highDrr.length > 0 && (
-            <RopuTask num={3} accent="yellow" icon="📣"
-              title="Оптимизировать рекламу (ДРР >12%)"
-              desc={`${highDrr.length} товаров с завышенным ДРР. Снизить ставки, перераспределить бюджет на товары с ДРР <6%.`}
-              items={highDrr}
-            />
-          )}
-          {frozen.length > 0 && (
-            <RopuTask num={4} accent="yellow" icon="❄️"
-              title={`Распродать товары с оборотом >150 дней`}
-              desc={`${frozen.length} товаров с замороженным капиталом (~${fmtK(frozenRub)} ₽). Акция, снижение цены или вывод из матрицы.`}
-              items={frozen}
-            />
-          )}
-          {noTraffic.length > 0 && (
-            <RopuTask num={5} accent="yellow" icon="🚫"
-              title="Разобрать товары без трафика"
-              desc={`${noTraffic.length} товаров с планом, но нулевыми заказами. Не раскрываются — проверить контент, цену, наличие остатков на складе.`}
-              items={noTraffic}
-            />
-          )}
-          {aItems.length > 0 && (
-            <RopuTask num={6} accent="green" icon="🚀"
-              title="Усилить лидеров роста"
-              desc={`${aItems.length} А-товаров дают основной объём прибыли. Масштабировать рекламный бюджет, не допускать стокаута, расширять ассортимент.`}
-              items={aItems}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Итоговый стол SKU */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-lg">📋</span>
-          <h2 className="text-base font-semibold text-[#1a2138]">Все товары</h2>
-        </div>
-        <div className="bg-white border border-[#e6e9f2] rounded-xl shadow-sm overflow-x-auto">
-          <table className="w-full min-w-[800px] border-collapse text-sm">
-            <thead>
-              <tr className="bg-[#fafbfd] border-b border-[#e6e9f2]">
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[#6b7390]">Товар</th>
-                <th className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-[#6b7390]">ABC</th>
-                <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6b7390]">Заказы ₽</th>
-                <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6b7390]">% плана</th>
-                <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6b7390]">Прибыль ₽</th>
-                <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6b7390]">Маржа %</th>
-                <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6b7390]">ДРР %</th>
-                <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-[#6b7390]">Оборот дн.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {skus.map((s) => {
-                const isLoss = s.profit < 0;
-                const isHighDrr = (s.drr ?? 0) > 12;
-                const isFrozen = (s.turnoverDays ?? 0) > 150;
-                const planBad = (s.planPct ?? 100) < 50;
-                const abcColors: Record<string, string> = {
-                  A: "bg-[#e6f6ec] text-[#1f9d55]",
-                  B: "bg-[#e8efff] text-[#2a6df4]",
-                  C: "bg-[#fff4dd] text-[#d68a00]",
-                  D: "bg-[#fdecea] text-[#d4423b]",
-                };
-                return (
-                  <tr key={s.nm} className={`border-b border-[#e6e9f2] hover:bg-[#fafbff] transition-colors ${isLoss ? "bg-[#fff8f8]" : ""}`}>
-                    <td className="px-4 py-2.5 text-[#1a2138] font-medium max-w-[200px] truncate">{s.name}</td>
-                    <td className="px-3 py-2.5 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-bold ${abcColors[s.abc]}`}>{s.abc}</span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-[#1a2138]">{fmtK(s.revenue)}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${planBad ? "text-[#d4423b]" : (s.planPct ?? 0) >= 100 ? "text-[#1f9d55]" : "text-[#d68a00]"}`}>
-                      {s.planPct != null ? `${s.planPct}%` : "—"}
-                    </td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${isLoss ? "text-[#d4423b]" : "text-[#1f9d55]"}`}>
-                      {fmtK(s.profit)}
-                    </td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${isLoss ? "text-[#d4423b]" : "text-[#1a2138]"}`}>
-                      {s.margin != null ? `${s.margin}%` : "—"}
-                    </td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${isHighDrr ? "text-[#d4423b] font-semibold" : "text-[#1a2138]"}`}>
-                      {s.drr != null ? `${s.drr}%` : "—"}
-                    </td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${isFrozen ? "text-[#2a6df4] font-semibold" : "text-[#1a2138]"}`}>
-                      {s.turnoverDays != null ? `${s.turnoverDays} дн.` : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Stub screens ── */
-function ComingSoon({ icon, title, desc }: { icon: string; title: string; desc: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="text-5xl mb-5">{icon}</div>
-      <div className="text-lg font-semibold text-[#1a2138] mb-2">{title}</div>
-      <div className="text-sm text-[#6b7390] max-w-sm leading-relaxed">{desc}</div>
-    </div>
-  );
-}
-
 /* ══════════════════════════════════════════
    Main page
 ══════════════════════════════════════════ */
@@ -928,26 +604,15 @@ export function OpiuPage() {
               />
             )}
 
-            {/* ════ РИСКИ И ЗАДАЧИ ════ */}
-            {tab === "risks" && <RisksTab usingMock={usingMock} />}
-
-            {/* ════ ПРОГНОЗ ════ */}
-            {tab === "forecast" && (
-              <ComingSoon
-                icon="🔮"
-                title="Прогноз — в разработке"
-                desc="Здесь появятся сценарии на следующий месяц, калькулятор «Что-если» и риски."
+            {/* ════ СВОД ПО ДАТЕ ОТЧЁТА ════ */}
+            {tab === "report_date" && (
+              <DetailTable
+                report={data?.reportByReportDate ?? report}
+                savingWeek={savingWeek}
+                onSave={handleWarehouseSave}
               />
             )}
 
-            {/* ════ ПЛАТЁЖНЫЙ КАЛЕНДАРЬ ════ */}
-            {tab === "calendar" && (
-              <ComingSoon
-                icon="📅"
-                title="Платёжный календарь — в разработке"
-                desc="Здесь будет календарь поступлений и списаний с привязкой к выплатам WB."
-              />
-            )}
           </>
         ) : null}
       </div>

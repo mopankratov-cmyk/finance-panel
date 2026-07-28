@@ -119,13 +119,14 @@ export async function loadOpiuMonth(
   year: number,
   monthIndex: number,
   refresh = false,
-): Promise<{ month: string; report: OpiuReport; timestamp: string; meta: OpiuLoadMeta }> {
+): Promise<{ month: string; report: OpiuReport; reportByReportDate: OpiuReport; timestamp: string; meta: OpiuLoadMeta }> {
   const month = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
   const weeks = weeksInMonth(year, monthIndex);
   if (weeks.length === 0) {
     return {
       month,
       report: { weeks: [], rows: [], warehouseByWeek: {} },
+      reportByReportDate: { weeks: [], rows: [], warehouseByWeek: {} },
       timestamp: new Date().toISOString(),
       meta: { salesRows: 0, ordersCount: 0, costsCount: 0, adCampaigns: 0 },
     };
@@ -167,11 +168,13 @@ export async function loadOpiuMonth(
     nmStatsPromise,
   ]);
 
-  const report = buildOpiuReport(weeks, sales, orders, adStats, costs, deliveryCosts, nmStats);
+  const report = buildOpiuReport(weeks, sales, orders, adStats, costs, deliveryCosts, nmStats, "sale");
+  const reportByReportDate = buildOpiuReport(weeks, sales, orders, adStats, costs, deliveryCosts, nmStats, "report");
 
   return {
     month,
     report,
+    reportByReportDate,
     timestamp: new Date().toISOString(),
     meta: {
       salesRows: sales.length,

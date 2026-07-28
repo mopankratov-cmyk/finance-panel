@@ -80,6 +80,7 @@ export function buildOpiuReport(
   costs: ProductCostRow[],
   deliveryCosts: DeliveryCostRow[],
   nmStats: NmStatRow[] = [],
+  dateMode: "sale" | "report" = "sale",
 ): OpiuReport {
   const costLookup = {
     costByArticle: new Map(costs.map((c) => [c.article.trim().toUpperCase(), c.cost_rub])),
@@ -95,7 +96,7 @@ export function buildOpiuReport(
   };
 
   const weekMetrics = weeks.map((w) =>
-    aggregateWeek(w, sales, orders, adStats, costLookup, nmStats),
+    aggregateWeek(w, sales, orders, adStats, costLookup, nmStats, dateMode),
   );
 
   const cols = (fn: (m: WeekRawMetrics) => number) =>
