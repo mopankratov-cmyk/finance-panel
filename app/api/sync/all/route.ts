@@ -9,7 +9,7 @@ import { generateInsights } from "@/lib/agent/rules";
 //  - adverts до advert-stats (статистика читает живые кампании из wb_adverts);
 //  - funnel ПЕРЕД advert-stats: у advert-stats паузы 61с/батч (WB 1 req/min), они съедают
 //    60с-бюджет функции, и воронка не доходит. Воронка аналитически важнее → идёт раньше.
-const JOBS = ["orders", "sales", "stocks", "adverts", "funnel", "advert-stats", "supplies-sheet"] as const;
+const JOBS = ["orders", "sales", "stocks", "adverts", "funnel", "advert-stats"] as const;
 
 export const maxDuration = 60;
 
