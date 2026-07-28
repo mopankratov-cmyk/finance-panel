@@ -1,3 +1,5 @@
+import { moscowCalendarDate } from "./mpstatsSeasonality";
+
 export type SalesPlanMarketplace = "wb" | "ozon";
 export type SalesPlanStatus = "draft" | "review" | "approved";
 export const SALES_PLAN_ACTIONS = ["save", "submit", "approve", "return", "new_version"] as const;
@@ -45,6 +47,20 @@ export interface SalesPlanStockSnapshot {
   asOf: string | null;
   stale: boolean;
 }
+
+export interface SalesPlanCatalogRequestScope {
+  contextScope: string;
+  requestScope: string;
+}
+
+export function isSalesPlanCatalogResponseCurrent(
+  request: SalesPlanCatalogRequestScope,
+  current: SalesPlanCatalogRequestScope,
+) {
+  return request.contextScope === current.contextScope
+    && request.requestScope === current.requestScope;
+}
+
 export interface SalesPlanDocument {
   schemaVersion: 1;
   marketplace: SalesPlanMarketplace;
@@ -622,10 +638,13 @@ export function refreshSalesPlanMarketplaceStocks(
   const changedRows = plan.rows.map((row) => {
     const previous = row.marketplaceStocks?.[monthKey];
     const variantKey = row.variant.toLocaleLowerCase("ru-RU");
-    const fallback = catalogVariantCounts.get(variantKey) === 1 && planVariantCounts.get(variantKey) === 1
+    const stableExternalId = text(row.externalId);
+    const fallback = !stableExternalId
+      && catalogVariantCounts.get(variantKey) === 1
+      && planVariantCounts.get(variantKey) === 1
       ? catalog.find((sku) => sku.variant.toLocaleLowerCase("ru-RU") === variantKey)
       : undefined;
-    const match = options.failed ? undefined : (externalIds.get(row.externalId) ?? fallback);
+    const match = options.failed ? undefined : (externalIds.get(stableExternalId) ?? fallback);
     const snapshot: SalesPlanStockSnapshot | undefined = match
       ? {
         quantity: Math.max(0, Math.round(finite(match.stock))),
@@ -681,23 +700,24 @@ export function calculateSalesPlanRowStockRisk(row: SalesPlanRow, monthKey: stri
   const ffAllocated = snapshot ? salesPlanFfAllocated(row, monthKey) : 0;
   const marketplaceStock = snapshot?.quantity ?? 0;
   const currentStock = snapshot ? ffAllocated + marketplaceStock : salesPlanOpeningStock(row, monthKey);
-  const targetYear = year ?? (snapshot?.asOf ? new Date(snapshot.asOf).getUTCFullYear() : new Date().getFullYear());
   const snapshotDate = snapshot?.asOf ? new Date(snapshot.asOf) : null;
   const validSnapshotDate = snapshotDate && Number.isFinite(snapshotDate.getTime()) ? snapshotDate : null;
-  const forecastAvailable = !snapshot || Boolean(validSnapshotDate && validSnapshotDate.getUTCFullYear() === targetYear);
+  const [snapshotYear, snapshotMonth, snapshotDay] = validSnapshotDate
+    ? moscowCalendarDate(validSnapshotDate).split("-").map(Number)
+    : [0, 0, 0];
+  const targetYear = year ?? (snapshotYear || new Date().getFullYear());
+  const forecastAvailable = !snapshot || Boolean(validSnapshotDate && snapshotYear === targetYear);
   const unavailableReason = forecastAvailable
     ? null
     : validSnapshotDate
       ? "нет непрерывного плана через границу года"
       : "нет даты снимка маркетплейса";
   const snapshotIsTargetMonth = validSnapshotDate
-    && validSnapshotDate.getUTCFullYear() === targetYear
-    && validSnapshotDate.getUTCMonth() + 1 === Number(monthKey);
-  const targetStartIndex = snapshotIsTargetMonth ? validSnapshotDate.getUTCDate() : 0;
+    && snapshotYear === targetYear
+    && snapshotMonth === Number(monthKey);
+  const targetStartIndex = snapshotIsTargetMonth ? snapshotDay : 0;
   let remainingOrders = 0;
   if (snapshot && validSnapshotDate && forecastAvailable) {
-    const snapshotYear = validSnapshotDate.getUTCFullYear();
-    const snapshotMonth = validSnapshotDate.getUTCMonth() + 1;
     const targetMonth = Number(monthKey);
     for (let currentMonth = 1; currentMonth <= 12; currentMonth += 1) {
       const afterSnapshotMonth = targetYear > snapshotYear || currentMonth > snapshotMonth;
@@ -705,7 +725,7 @@ export function calculateSalesPlanRowStockRisk(row: SalesPlanRow, monthKey: stri
       if (currentMonth >= targetMonth) break;
       if (!afterSnapshotMonth && !isSnapshotMonth) continue;
       const values = row.months[String(currentMonth).padStart(2, "0")] ?? [];
-      const fromIndex = isSnapshotMonth ? validSnapshotDate.getUTCDate() : 0;
+      const fromIndex = isSnapshotMonth ? snapshotDay : 0;
       remainingOrders += values.slice(fromIndex).reduce((sum, value) => sum + Math.max(0, finite(value)), 0);
     }
   }

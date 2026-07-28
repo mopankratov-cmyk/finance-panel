@@ -28,6 +28,7 @@ import {
   createEmptySalesPlan,
   getApprovedSalesPlanForMonth,
   getSalesPlanMonthState,
+  isSalesPlanCatalogResponseCurrent,
   normalizeSalesPlanReturnComment,
   refreshSalesPlanMarketplaceStocks,
   salesPlanMonthLabel,
@@ -124,6 +125,10 @@ export function SalesPlanPage({
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogPeriod, setCatalogPeriod] = useState<string | null>(null);
   const catalogRequestScope = useRef("");
+  const catalogRequestSerial = useRef(0);
+  const catalogContextScope = `${marketplace}:${cabinetId}:${year}-${activeMonth}`;
+  const currentCatalogContextScope = useRef(catalogContextScope);
+  currentCatalogContextScope.current = catalogContextScope;
   const editSerial = useRef(0);
   const serverRevision = useRef(0);
   const exactCabinet = canWrite && Boolean(cabinetId) && cabinetId !== "all" && !cabinetId.startsWith("group:");
@@ -229,8 +234,18 @@ export function SalesPlanPage({
     setSaveError(null);
   }, [activeMonth]);
 
-  const applyMarketplaceStockRefresh = useCallback((rows: SalesPlanCatalogSku[], failed = false) => {
+  const applyMarketplaceStockRefresh = useCallback((
+    rows: SalesPlanCatalogSku[],
+    failed = false,
+    request = { contextScope: catalogContextScope, requestScope: catalogRequestScope.current },
+  ) => {
+    const currentScope = () => ({
+      contextScope: currentCatalogContextScope.current,
+      requestScope: catalogRequestScope.current,
+    });
+    if (!isSalesPlanCatalogResponseCurrent(request, currentScope())) return;
     setPlan((current) => {
+      if (!isSalesPlanCatalogResponseCurrent(request, currentScope())) return current;
       if (!current) return current;
       if (current.marketplace !== marketplace || current.cabinetId !== cabinetId || current.year !== year) return current;
       const next = refreshSalesPlanMarketplaceStocks(current, activeMonth, rows, {
@@ -243,12 +258,20 @@ export function SalesPlanPage({
       setSaveError(null);
       return next;
     });
-  }, [activeMonth, cabinetId, marketplace, year]);
+  }, [activeMonth, cabinetId, catalogContextScope, marketplace, year]);
 
   const loadCatalog = useCallback(() => {
-    const targetPeriod = `${marketplace}:${cabinetId}:${year}-${activeMonth}`;
+    const targetPeriod = catalogContextScope;
     if (!exactCabinet || catalogLoading || catalogPeriod === targetPeriod) return;
-    catalogRequestScope.current = targetPeriod;
+    const request = {
+      contextScope: targetPeriod,
+      requestScope: `${targetPeriod}:${++catalogRequestSerial.current}`,
+    };
+    catalogRequestScope.current = request.requestScope;
+    const requestIsCurrent = () => isSalesPlanCatalogResponseCurrent(request, {
+      contextScope: currentCatalogContextScope.current,
+      requestScope: catalogRequestScope.current,
+    });
     const controller = new AbortController();
     setCatalogLoading(true);
     setCatalogError(null);
@@ -309,22 +332,22 @@ export function SalesPlanPage({
           : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null, stockAsOf: new Date().toISOString() }));
       })
       .then((rows) => {
-        if (catalogRequestScope.current !== targetPeriod) return;
+        if (!requestIsCurrent()) return;
         setCatalog(rows);
         setCatalogPeriod(targetPeriod);
-        applyMarketplaceStockRefresh(rows);
+        applyMarketplaceStockRefresh(rows, false, request);
       })
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted && catalogRequestScope.current === targetPeriod) {
+        if (!controller.signal.aborted && requestIsCurrent()) {
           setCatalogPeriod(targetPeriod);
           setCatalogError(cause instanceof Error ? cause.message : "Не удалось загрузить каталог");
-          applyMarketplaceStockRefresh([], true);
+          applyMarketplaceStockRefresh([], true, request);
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted && catalogRequestScope.current === targetPeriod) setCatalogLoading(false);
+        if (!controller.signal.aborted && requestIsCurrent()) setCatalogLoading(false);
       });
-  }, [activeMonth, applyMarketplaceStockRefresh, cabinetId, catalogLoading, catalogPeriod, exactCabinet, marketplace, year]);
+  }, [activeMonth, applyMarketplaceStockRefresh, cabinetId, catalogContextScope, catalogLoading, catalogPeriod, exactCabinet, marketplace, year]);
 
   useEffect(() => {
     if (addOpen) loadCatalog();
@@ -341,7 +364,7 @@ export function SalesPlanPage({
     setCatalogPeriod(null);
     setCatalogError(null);
     setAddOpen(false);
-  }, [cabinetId, marketplace]);
+  }, [activeMonth, cabinetId, marketplace, year]);
 
   useEffect(() => {
     if (!fill) return;

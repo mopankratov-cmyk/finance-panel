@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   calculateSalesPlanRowStockRisk,
   emptySalesPlanMonths,
+  isSalesPlanCatalogResponseCurrent,
   normalizeSalesPlanRow,
   refreshSalesPlanMarketplaceStocks,
   type SalesPlanDocument,
@@ -12,7 +13,6 @@ import {
 } from "../lib/planning/salesPlan";
 
 const table = readFileSync(new URL("../components/planning/SalesPlanTable.tsx", import.meta.url), "utf8");
-const page = readFileSync(new URL("../components/planning/SalesPlanPage.tsx", import.meta.url), "utf8");
 
 function row(overrides: Partial<SalesPlanRow> = {}): SalesPlanRow {
   const months = emptySalesPlanMonths(2026);
@@ -144,6 +144,20 @@ test("failed and unmatched refresh keep last-good stock stale; successful zero i
   });
 });
 
+test("valid external ID miss does not fall back to the same variant", () => {
+  const refreshed = refreshSalesPlanMarketplaceStocks(document(row()), "08", [
+    { externalId: "202", variant: "NV-1-BLK", stock: 80 },
+  ], {
+    asOf: "2026-07-21T10:00:00.000Z",
+  });
+
+  assert.deepEqual(refreshed.rows[0].marketplaceStocks?.["08"], {
+    quantity: 20,
+    asOf: "2026-07-20T12:00:00.000Z",
+    stale: true,
+  });
+});
+
 test("approved snapshot is immutable and ambiguous variant fallback does not cross-match", () => {
   const approved = document(row(), "approved");
   assert.strictEqual(
@@ -156,6 +170,17 @@ test("approved snapshot is immutable and ambiguous variant fallback does not cro
   ]);
   assert.equal(ambiguous.rows[0].marketplaceStocks?.["08"]?.quantity, 20);
   assert.equal(ambiguous.rows[0].marketplaceStocks?.["08"]?.stale, true);
+});
+
+test("snapshot boundary follows Moscow business date at UTC rollover", () => {
+  const current = row({
+    marketplaceStocks: {
+      "07": { quantity: 20, asOf: "2026-07-20T21:30:00.000Z", stale: false },
+    },
+  });
+
+  const risk = calculateSalesPlanRowStockRisk(current, "07", 2026);
+  assert.equal(risk.targetMonthOrders, 20);
 });
 
 test("year boundary fails visibly when the previous-year daily plan is unavailable", () => {
@@ -187,8 +212,19 @@ test("table exposes FF, marketplace and forecast columns in order without editab
   assert.match(table, /Дефицит/);
 });
 
-test("catalog refresh is scope-guarded against stale cabinet requests", () => {
-  assert.match(page, /current\.marketplace !== marketplace \|\| current\.cabinetId !== cabinetId \|\| current\.year !== year/);
-  assert.match(page, /catalogRequestScope\.current !== targetPeriod/);
-  assert.match(page, /`\$\{marketplace\}:\$\{cabinetId\}:\$\{year\}-\$\{activeMonth\}`/);
+test("catalog response is rejected after active context changes", () => {
+  const request = {
+    contextScope: "wb:cabinet-a:2026-07",
+    requestScope: "wb:cabinet-a:2026-07:1",
+  };
+
+  assert.equal(isSalesPlanCatalogResponseCurrent(request, {
+    contextScope: "wb:cabinet-a:2026-08",
+    requestScope: request.requestScope,
+  }), false);
+  assert.equal(isSalesPlanCatalogResponseCurrent(request, {
+    contextScope: request.contextScope,
+    requestScope: "wb:cabinet-a:2026-07:2",
+  }), false);
+  assert.equal(isSalesPlanCatalogResponseCurrent(request, request), true);
 });
