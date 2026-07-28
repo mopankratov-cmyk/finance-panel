@@ -648,7 +648,11 @@ export function refreshSalesPlanMarketplaceStocks(
     const snapshot: SalesPlanStockSnapshot | undefined = match
       ? {
         quantity: Math.max(0, Math.round(finite(match.stock))),
-        asOf: text(match.stockAsOf ?? options.asOf) || null,
+        asOf: !text(match.stockAsOf)
+          && previous?.quantity === Math.max(0, Math.round(finite(match.stock)))
+          && previous.stale === false
+          ? previous.asOf
+          : text(match.stockAsOf ?? options.asOf) || null,
         stale: false,
       }
       : previous
@@ -697,19 +701,27 @@ export function calculateSalesPlanSummary(
 export function calculateSalesPlanRowStockRisk(row: SalesPlanRow, monthKey: string, year?: number): SalesPlanStockRisk {
   const orders = row.months[monthKey] ?? [];
   const snapshot = salesPlanMarketplaceStock(row, monthKey);
-  const ffAllocated = snapshot ? salesPlanFfAllocated(row, monthKey) : 0;
+  const ffAllocated = salesPlanFfAllocated(row, monthKey);
   const marketplaceStock = snapshot?.quantity ?? 0;
-  const currentStock = snapshot ? ffAllocated + marketplaceStock : salesPlanOpeningStock(row, monthKey);
+  const currentStock = snapshot
+    ? ffAllocated + marketplaceStock
+    : row.isNew
+      ? ffAllocated
+      : salesPlanOpeningStock(row, monthKey);
   const snapshotDate = snapshot?.asOf ? new Date(snapshot.asOf) : null;
   const validSnapshotDate = snapshotDate && Number.isFinite(snapshotDate.getTime()) ? snapshotDate : null;
   const [snapshotYear, snapshotMonth, snapshotDay] = validSnapshotDate
     ? moscowCalendarDate(validSnapshotDate).split("-").map(Number)
     : [0, 0, 0];
   const targetYear = year ?? (snapshotYear || new Date().getFullYear());
-  const forecastAvailable = !snapshot || Boolean(validSnapshotDate && snapshotYear === targetYear);
+  const forecastAvailable = snapshot
+    ? Boolean(validSnapshotDate && snapshotYear === targetYear)
+    : !row.isNew;
   const unavailableReason = forecastAvailable
     ? null
-    : validSnapshotDate
+    : !snapshot
+      ? "нет снимка маркетплейса"
+      : validSnapshotDate
       ? "нет непрерывного плана через границу года"
       : "нет даты снимка маркетплейса";
   const snapshotIsTargetMonth = validSnapshotDate

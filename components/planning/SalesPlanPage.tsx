@@ -329,7 +329,7 @@ export function SalesPlanPage({
               stockAsOf: body.wb_stock_date ?? new Date().toISOString(),
             };
           })
-          : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null, stockAsOf: new Date().toISOString() }));
+          : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null }));
       })
       .then((rows) => {
         if (!requestIsCurrent()) return;

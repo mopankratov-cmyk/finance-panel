@@ -118,6 +118,23 @@ test("legacy documents keep the previous opening-stock forecast without double c
   assert.equal(risk.endingStock, 71);
 });
 
+test("manual FF survives normalization without marketplace snapshot and forecast fails visibly", () => {
+  const manual = normalizeSalesPlanRow({
+    ...row(),
+    externalId: "",
+    isNew: true,
+    ffAllocatedStocks: { "08": 12.6 },
+    marketplaceStocks: {},
+  }, 2026);
+
+  assert.equal(manual.ffAllocatedStocks?.["08"], 13);
+  const risk = calculateSalesPlanRowStockRisk(manual, "08", 2026);
+  assert.equal(risk.ffAllocated, 13);
+  assert.equal(risk.currentStock, 13);
+  assert.equal(risk.forecastAvailable, false);
+  assert.match(risk.unavailableReason ?? "", /маркетплейса/);
+});
+
 test("failed and unmatched refresh keep last-good stock stale; successful zero is current", () => {
   const initial = document(row());
   const failed = refreshSalesPlanMarketplaceStocks(initial, "08", [], {
@@ -140,6 +157,41 @@ test("failed and unmatched refresh keep last-good stock stale; successful zero i
   assert.deepEqual(zero.rows[0].marketplaceStocks?.["08"], {
     quantity: 0,
     asOf: "2026-07-21T10:00:00.000Z",
+    stale: false,
+  });
+});
+
+test("same Ozon stock without source timestamp preserves document identity; changes and zero update it", () => {
+  const initial = document(row({
+    marketplaceStocks: { "08": { quantity: 20, asOf: "2026-07-20T12:00:00.000Z", stale: false } },
+  }));
+  const unchanged = refreshSalesPlanMarketplaceStocks(initial, "08", [
+    { externalId: "101", variant: "NV-1-BLK", stock: 20 },
+  ], { asOf: "2026-07-21T10:00:00.000Z" });
+
+  assert.strictEqual(unchanged, initial);
+  assert.deepEqual(unchanged.rows[0].marketplaceStocks?.["08"], {
+    quantity: 20,
+    asOf: "2026-07-20T12:00:00.000Z",
+    stale: false,
+  });
+
+  const changed = refreshSalesPlanMarketplaceStocks(initial, "08", [
+    { externalId: "101", variant: "NV-1-BLK", stock: 21 },
+  ], { asOf: "2026-07-21T10:00:00.000Z" });
+  assert.notStrictEqual(changed, initial);
+  assert.deepEqual(changed.rows[0].marketplaceStocks?.["08"], {
+    quantity: 21,
+    asOf: "2026-07-21T10:00:00.000Z",
+    stale: false,
+  });
+
+  const zero = refreshSalesPlanMarketplaceStocks(changed, "08", [
+    { externalId: "101", variant: "NV-1-BLK", stock: 0 },
+  ], { asOf: "2026-07-22T10:00:00.000Z" });
+  assert.deepEqual(zero.rows[0].marketplaceStocks?.["08"], {
+    quantity: 0,
+    asOf: "2026-07-22T10:00:00.000Z",
     stale: false,
   });
 });
