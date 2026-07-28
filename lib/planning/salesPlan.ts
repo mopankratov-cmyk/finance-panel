@@ -33,9 +33,17 @@ export interface SalesPlanRow {
   adPct: number;
   stock: number;
   openingStocks?: Record<string, number>;
+  ffAllocatedStocks?: Record<string, number>;
+  marketplaceStocks?: Record<string, SalesPlanStockSnapshot>;
   image: string | null;
   isNew: boolean;
   months: Record<string, number[]>;
+}
+
+export interface SalesPlanStockSnapshot {
+  quantity: number;
+  asOf: string | null;
+  stale: boolean;
 }
 export interface SalesPlanDocument {
   schemaVersion: 1;
@@ -101,7 +109,15 @@ export interface SalesPlanSummary extends SalesPlanDailyMetrics {
 }
 
 export interface SalesPlanStockRisk {
+  forecastAvailable: boolean;
+  unavailableReason: string | null;
   currentStock: number;
+  ffAllocated: number;
+  marketplaceStock: number;
+  marketplaceAsOf: string | null;
+  marketplaceStale: boolean;
+  remainingOrders: number;
+  targetMonthOrders: number;
   plannedOrders: number;
   plannedBuyouts: number;
   endingStock: number;
@@ -368,6 +384,16 @@ function normalizeMonthValues(value: unknown, days: number) {
   return Array.from({ length: days }, (_, index) => finite(source[index]));
 }
 
+function normalizeStockSnapshot(value: unknown): SalesPlanStockSnapshot | null {
+  const source = record(value);
+  if (!Object.hasOwn(source, "quantity")) return null;
+  return {
+    quantity: Math.max(0, Math.round(finite(source.quantity))),
+    asOf: text(source.asOf) || null,
+    stale: Boolean(source.stale),
+  };
+}
+
 export function normalizeSalesPlanRow(value: unknown, year: number, index = 0): SalesPlanRow {
   const source = record(value);
   const monthsSource = record(source.months);
@@ -376,6 +402,8 @@ export function normalizeSalesPlanRow(value: unknown, year: number, index = 0): 
   const color = text(source.color, inferColorFromVariant(variant));
   const stock = Math.max(0, finite(source.stock));
   const openingStocksSource = record(source.openingStocks);
+  const ffAllocatedStocksSource = record(source.ffAllocatedStocks);
+  const marketplaceStocksSource = record(source.marketplaceStocks);
   const months = Object.fromEntries(
     MONTH_KEYS.map((monthKey) => [
       monthKey,
@@ -398,6 +426,16 @@ export function normalizeSalesPlanRow(value: unknown, year: number, index = 0): 
       monthKey,
       Math.max(0, finite(openingStocksSource[monthKey], stock)),
     ])),
+    ffAllocatedStocks: Object.keys(ffAllocatedStocksSource).length > 0
+      ? Object.fromEntries(MONTH_KEYS.map((monthKey) => [
+        monthKey,
+        Math.max(0, Math.round(finite(ffAllocatedStocksSource[monthKey]))),
+      ]))
+      : undefined,
+    marketplaceStocks: Object.fromEntries(MONTH_KEYS.flatMap((monthKey) => {
+      const snapshot = normalizeStockSnapshot(marketplaceStocksSource[monthKey]);
+      return snapshot ? [[monthKey, snapshot]] : [];
+    })),
     image: text(source.image) || null,
     isNew: Boolean(source.isNew),
     months,
@@ -549,6 +587,67 @@ export function salesPlanOpeningStock(row: SalesPlanRow, monthKey: string) {
   return Math.max(0, Math.round(finite(row.openingStocks?.[monthKey], row.stock)));
 }
 
+export function salesPlanFfAllocated(row: SalesPlanRow, monthKey: string) {
+  return Math.max(0, Math.round(finite(row.ffAllocatedStocks?.[monthKey])));
+}
+
+export function salesPlanMarketplaceStock(row: SalesPlanRow, monthKey: string) {
+  return row.marketplaceStocks?.[monthKey] ?? null;
+}
+
+export function refreshSalesPlanMarketplaceStocks(
+  plan: SalesPlanDocument,
+  monthKey: string,
+  catalog: { externalId: string; variant: string; stock: number; stockAsOf?: string | null }[],
+  options: { failed?: boolean; asOf?: string | null } = {},
+) {
+  if (getSalesPlanMonthState(plan, monthKey).status !== "draft") return plan;
+  const externalIdCounts = new Map<string, number>();
+  for (const sku of catalog) {
+    if (sku.externalId) externalIdCounts.set(sku.externalId, (externalIdCounts.get(sku.externalId) ?? 0) + 1);
+  }
+  const externalIds = new Map(catalog
+    .filter((sku) => sku.externalId && externalIdCounts.get(sku.externalId) === 1)
+    .map((sku) => [sku.externalId, sku]));
+  const catalogVariantCounts = new Map<string, number>();
+  const planVariantCounts = new Map<string, number>();
+  for (const sku of catalog) {
+    const key = sku.variant.toLocaleLowerCase("ru-RU");
+    catalogVariantCounts.set(key, (catalogVariantCounts.get(key) ?? 0) + 1);
+  }
+  for (const row of plan.rows) {
+    const key = row.variant.toLocaleLowerCase("ru-RU");
+    planVariantCounts.set(key, (planVariantCounts.get(key) ?? 0) + 1);
+  }
+  const changedRows = plan.rows.map((row) => {
+    const previous = row.marketplaceStocks?.[monthKey];
+    const variantKey = row.variant.toLocaleLowerCase("ru-RU");
+    const fallback = catalogVariantCounts.get(variantKey) === 1 && planVariantCounts.get(variantKey) === 1
+      ? catalog.find((sku) => sku.variant.toLocaleLowerCase("ru-RU") === variantKey)
+      : undefined;
+    const match = options.failed ? undefined : (externalIds.get(row.externalId) ?? fallback);
+    const snapshot: SalesPlanStockSnapshot | undefined = match
+      ? {
+        quantity: Math.max(0, Math.round(finite(match.stock))),
+        asOf: text(match.stockAsOf ?? options.asOf) || null,
+        stale: false,
+      }
+      : previous
+        ? { ...previous, stale: true }
+        : undefined;
+    if (!snapshot || (
+      previous?.quantity === snapshot.quantity
+      && previous.asOf === snapshot.asOf
+      && previous.stale === snapshot.stale
+    )) return row;
+    return {
+      ...row,
+      marketplaceStocks: { ...row.marketplaceStocks, [monthKey]: snapshot },
+    };
+  });
+  return changedRows.every((row, index) => row === plan.rows[index]) ? plan : { ...plan, rows: changedRows };
+}
+
 export function calculateSalesPlanSummary(
   plan: Pick<SalesPlanDocument, "rows">,
   monthKeys: string[],
@@ -576,41 +675,88 @@ export function calculateSalesPlanSummary(
   };
 }
 
-export function calculateSalesPlanRowStockRisk(row: SalesPlanRow, monthKey: string): SalesPlanStockRisk {
+export function calculateSalesPlanRowStockRisk(row: SalesPlanRow, monthKey: string, year?: number): SalesPlanStockRisk {
   const orders = row.months[monthKey] ?? [];
-  const currentStock = salesPlanOpeningStock(row, monthKey);
+  const snapshot = salesPlanMarketplaceStock(row, monthKey);
+  const ffAllocated = snapshot ? salesPlanFfAllocated(row, monthKey) : 0;
+  const marketplaceStock = snapshot?.quantity ?? 0;
+  const currentStock = snapshot ? ffAllocated + marketplaceStock : salesPlanOpeningStock(row, monthKey);
+  const targetYear = year ?? (snapshot?.asOf ? new Date(snapshot.asOf).getUTCFullYear() : new Date().getFullYear());
+  const snapshotDate = snapshot?.asOf ? new Date(snapshot.asOf) : null;
+  const validSnapshotDate = snapshotDate && Number.isFinite(snapshotDate.getTime()) ? snapshotDate : null;
+  const forecastAvailable = !snapshot || Boolean(validSnapshotDate && validSnapshotDate.getUTCFullYear() === targetYear);
+  const unavailableReason = forecastAvailable
+    ? null
+    : validSnapshotDate
+      ? "нет непрерывного плана через границу года"
+      : "нет даты снимка маркетплейса";
+  const snapshotIsTargetMonth = validSnapshotDate
+    && validSnapshotDate.getUTCFullYear() === targetYear
+    && validSnapshotDate.getUTCMonth() + 1 === Number(monthKey);
+  const targetStartIndex = snapshotIsTargetMonth ? validSnapshotDate.getUTCDate() : 0;
+  let remainingOrders = 0;
+  if (snapshot && validSnapshotDate && forecastAvailable) {
+    const snapshotYear = validSnapshotDate.getUTCFullYear();
+    const snapshotMonth = validSnapshotDate.getUTCMonth() + 1;
+    const targetMonth = Number(monthKey);
+    for (let currentMonth = 1; currentMonth <= 12; currentMonth += 1) {
+      const afterSnapshotMonth = targetYear > snapshotYear || currentMonth > snapshotMonth;
+      const isSnapshotMonth = targetYear === snapshotYear && currentMonth === snapshotMonth;
+      if (currentMonth >= targetMonth) break;
+      if (!afterSnapshotMonth && !isSnapshotMonth) continue;
+      const values = row.months[String(currentMonth).padStart(2, "0")] ?? [];
+      const fromIndex = isSnapshotMonth ? validSnapshotDate.getUTCDate() : 0;
+      remainingOrders += values.slice(fromIndex).reduce((sum, value) => sum + Math.max(0, finite(value)), 0);
+    }
+  }
   let cumulativeOrders = 0;
   let shortageDay: number | null = null;
   const buyoutRate = Math.max(0, finite(row.buyout)) / 100;
 
-  for (let index = 0; index < orders.length; index += 1) {
+  for (let index = targetStartIndex; index < orders.length; index += 1) {
     cumulativeOrders += Math.max(0, finite(orders[index]));
-    if (shortageDay === null && cumulativeOrders * buyoutRate > currentStock) {
+    if (shortageDay === null && (remainingOrders + cumulativeOrders) * buyoutRate > currentStock) {
       shortageDay = index + 1;
     }
   }
 
-  const plannedOrders = Math.round(cumulativeOrders);
-  const plannedBuyouts = Math.round(cumulativeOrders * buyoutRate);
+  const targetMonthOrders = Math.round(cumulativeOrders);
+  const plannedOrders = Math.round(remainingOrders + cumulativeOrders);
+  const plannedBuyouts = Math.round((remainingOrders + cumulativeOrders) * buyoutRate);
   const endingStock = currentStock - plannedBuyouts;
   return {
+    forecastAvailable,
+    unavailableReason,
     currentStock,
+    ffAllocated,
+    marketplaceStock,
+    marketplaceAsOf: snapshot?.asOf ?? null,
+    marketplaceStale: snapshot?.stale ?? false,
+    remainingOrders: Math.round(remainingOrders),
+    targetMonthOrders,
     plannedOrders,
     plannedBuyouts,
     endingStock,
-    shortageDay,
-    shortageQty: endingStock < 0 ? Math.abs(endingStock) : 0,
+    shortageDay: forecastAvailable ? shortageDay : null,
+    shortageQty: forecastAvailable && endingStock < 0 ? Math.abs(endingStock) : 0,
   };
 }
 
 export function calculateSalesPlanStockRiskSummary(
-  plan: Pick<SalesPlanDocument, "rows">,
+  plan: Pick<SalesPlanDocument, "rows"> & Partial<Pick<SalesPlanDocument, "year">>,
   monthKey: string,
 ): SalesPlanStockRiskSummary {
-  const risks = plan.rows.map((row) => calculateSalesPlanRowStockRisk(row, monthKey));
+  const risks = plan.rows.map((row) => calculateSalesPlanRowStockRisk(row, monthKey, "year" in plan ? plan.year : undefined));
   const summary = risks.reduce<SalesPlanStockRiskSummary>(
     (total, risk) => {
       total.currentStock += risk.currentStock;
+      total.forecastAvailable &&= risk.forecastAvailable;
+      total.unavailableReason ??= risk.unavailableReason;
+      total.ffAllocated += risk.ffAllocated;
+      total.marketplaceStock += risk.marketplaceStock;
+      total.marketplaceStale ||= risk.marketplaceStale;
+      total.remainingOrders += risk.remainingOrders;
+      total.targetMonthOrders += risk.targetMonthOrders;
       total.plannedOrders += risk.plannedOrders;
       total.plannedBuyouts += risk.plannedBuyouts;
       total.endingStock += risk.endingStock;
@@ -621,7 +767,23 @@ export function calculateSalesPlanStockRiskSummary(
       }
       return total;
     },
-    { currentStock: 0, plannedOrders: 0, plannedBuyouts: 0, endingStock: 0, shortageDay: null, shortageQty: 0, shortageRows: 0 } as SalesPlanStockRiskSummary,
+    {
+      currentStock: 0,
+      forecastAvailable: true,
+      unavailableReason: null,
+      ffAllocated: 0,
+      marketplaceStock: 0,
+      marketplaceAsOf: null,
+      marketplaceStale: false,
+      remainingOrders: 0,
+      targetMonthOrders: 0,
+      plannedOrders: 0,
+      plannedBuyouts: 0,
+      endingStock: 0,
+      shortageDay: null,
+      shortageQty: 0,
+      shortageRows: 0,
+    } as SalesPlanStockRiskSummary,
   );
   return summary;
 }

@@ -29,6 +29,7 @@ import {
   getApprovedSalesPlanForMonth,
   getSalesPlanMonthState,
   normalizeSalesPlanReturnComment,
+  refreshSalesPlanMarketplaceStocks,
   salesPlanMonthLabel,
   type SalesPlanEnvelope,
   type SalesPlanDocument,
@@ -122,6 +123,7 @@ export function SalesPlanPage({
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogPeriod, setCatalogPeriod] = useState<string | null>(null);
+  const catalogRequestScope = useRef("");
   const editSerial = useRef(0);
   const serverRevision = useRef(0);
   const exactCabinet = canWrite && Boolean(cabinetId) && cabinetId !== "all" && !cabinetId.startsWith("group:");
@@ -227,9 +229,26 @@ export function SalesPlanPage({
     setSaveError(null);
   }, [activeMonth]);
 
+  const applyMarketplaceStockRefresh = useCallback((rows: SalesPlanCatalogSku[], failed = false) => {
+    setPlan((current) => {
+      if (!current) return current;
+      if (current.marketplace !== marketplace || current.cabinetId !== cabinetId || current.year !== year) return current;
+      const next = refreshSalesPlanMarketplaceStocks(current, activeMonth, rows, {
+        failed,
+        asOf: new Date().toISOString(),
+      });
+      if (next === current) return current;
+      editSerial.current += 1;
+      setDirty(true);
+      setSaveError(null);
+      return next;
+    });
+  }, [activeMonth, cabinetId, marketplace, year]);
+
   const loadCatalog = useCallback(() => {
-    const targetPeriod = `${year}-${activeMonth}`;
+    const targetPeriod = `${marketplace}:${cabinetId}:${year}-${activeMonth}`;
     if (!exactCabinet || catalogLoading || catalogPeriod === targetPeriod) return;
+    catalogRequestScope.current = targetPeriod;
     const controller = new AbortController();
     setCatalogLoading(true);
     setCatalogError(null);
@@ -240,6 +259,7 @@ export function SalesPlanPage({
       .then(async (response) => {
         const body = await response.json() as {
           error?: string;
+          wb_stock_date?: string | null;
           skus?: {
             external_id?: string;
             nm_id?: number;
@@ -283,23 +303,28 @@ export function SalesPlanPage({
               seasonalitySubject: sku.seasonality_subject ?? "",
               seasonalityNote: sku.seasonality_note ?? "",
               demandFactor: Number(sku.demand_factor ?? 1),
-              stockAsOf: new Date().toISOString().slice(0, 10),
+              stockAsOf: body.wb_stock_date ?? new Date().toISOString(),
             };
           })
-          : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null }));
+          : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null, stockAsOf: new Date().toISOString() }));
       })
       .then((rows) => {
+        if (catalogRequestScope.current !== targetPeriod) return;
         setCatalog(rows);
         setCatalogPeriod(targetPeriod);
+        applyMarketplaceStockRefresh(rows);
       })
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && catalogRequestScope.current === targetPeriod) {
           setCatalogPeriod(targetPeriod);
           setCatalogError(cause instanceof Error ? cause.message : "Не удалось загрузить каталог");
+          applyMarketplaceStockRefresh([], true);
         }
       })
-      .finally(() => { if (!controller.signal.aborted) setCatalogLoading(false); });
-  }, [activeMonth, cabinetId, catalogLoading, catalogPeriod, exactCabinet, marketplace, year]);
+      .finally(() => {
+        if (!controller.signal.aborted && catalogRequestScope.current === targetPeriod) setCatalogLoading(false);
+      });
+  }, [activeMonth, applyMarketplaceStockRefresh, cabinetId, catalogLoading, catalogPeriod, exactCabinet, marketplace, year]);
 
   useEffect(() => {
     if (addOpen) loadCatalog();
@@ -310,7 +335,9 @@ export function SalesPlanPage({
   }, [exactCabinet, loadCatalog, mode, plan]);
 
   useEffect(() => {
+    catalogRequestScope.current = "";
     setCatalog([]);
+    setCatalogLoading(false);
     setCatalogPeriod(null);
     setCatalogError(null);
     setAddOpen(false);
@@ -552,7 +579,7 @@ export function SalesPlanPage({
                     <Metric label={marketplace === "wb" ? "Ожидаемый выкуп" : "Ожидаемое завершение"} value={`${number(summary.buyouts)} шт.`} detail={`${summary.buyoutPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% по каждому цвету`} />
                     <Metric label="Плановая выручка" value={money(summary.revenue)} detail={`${marketplace === "wb" ? "выкуп" : "завершение"} × цена`} />
                     <Metric label="Рекламный бюджет" value={money(summary.ads)} detail={`${summary.adPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% от заказной выручки`} tone="amber" />
-                    {stockRisk ? <Metric label="Остаток на конец" value={`${number(stockRisk.endingStock)} шт.`} detail={stockRisk.shortageRows > 0 ? `${stockRisk.shortageRows} SKU покажут дефицит с ${stockRisk.shortageDay} числа · ${stockDetail}` : stockDetail} tone={stockRisk.shortageRows > 0 ? "rose" : "slate"} /> : null}
+                    {stockRisk ? <Metric label="Остаток на конец" value={stockRisk.forecastAvailable ? `${number(stockRisk.endingStock)} шт.` : "Недоступен"} detail={!stockRisk.forecastAvailable ? `Прогноз недоступен: ${stockRisk.unavailableReason}` : stockRisk.shortageRows > 0 ? `${stockRisk.shortageRows} SKU покажут дефицит с ${stockRisk.shortageDay} числа · ${stockDetail}` : stockDetail} tone={stockRisk.shortageRows > 0 ? "rose" : "slate"} /> : null}
                   </section> : null}
 
                   <SalesPlanBasisPanel
@@ -609,7 +636,7 @@ export function SalesPlanPage({
       </div>
 
       {suggestionPreview && plan ? <SalesPlanSuggestionModal suggestion={suggestionPreview} onClose={() => setSuggestionPreview(null)} onApplyEmpty={() => applySuggestion(false)} onReplaceAll={() => applySuggestion(true)} /> : null}
-      {addOpen && activeMonthState?.status === "draft" && plan ? <SalesPlanAddSkuModal marketplace={marketplace} year={year} catalog={catalog} catalogLoading={catalogLoading} catalogError={catalogError} existingVariants={plan.rows.map((row) => row.variant)} onClose={() => setAddOpen(false)} onAdd={addRows} /> : null}
+      {addOpen && activeMonthState?.status === "draft" && plan ? <SalesPlanAddSkuModal marketplace={marketplace} year={year} monthKey={activeMonth} catalog={catalog} catalogLoading={catalogLoading} catalogError={catalogError} existingVariants={plan.rows.map((row) => row.variant)} onClose={() => setAddOpen(false)} onAdd={addRows} /> : null}
     </div>
   );
 }
