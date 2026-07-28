@@ -81,7 +81,7 @@ async function fetchAdStats(
   }
 }
 
-async function fetchProductCosts(): Promise<ProductCostRow[]> {
+export async function fetchProductCosts(): Promise<ProductCostRow[]> {
   // Сначала пробуем Google Sheets (актуальная себестоимость + подготовка)
   try {
     const rows = await fetchGoogleSheetCosts();

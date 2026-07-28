@@ -37,12 +37,12 @@ export interface WeekRawMetrics {
   withdrawNow: number;         // Вывести сейчас (Разовое изменение срока перечисления)
 }
 
-function num(value: unknown): number {
+export function num(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
 
-function inRange(date: string, from: string, to: string): boolean {
+export function inRange(date: string, from: string, to: string): boolean {
   return date >= from && date <= to;
 }
 
@@ -57,7 +57,7 @@ function orderDate(row: WbOrder): string {
   return String(row.date ?? "").slice(0, 10);
 }
 
-function docType(row: WbReportRow): "sale" | "return" | "other" {
+export function docType(row: WbReportRow): "sale" | "return" | "other" {
   const t = String(row.doc_type_name ?? row.supplier_oper_name ?? "").toLowerCase();
   if (t.includes("продаж") || t.includes("sale")) return "sale";
   if (t.includes("возврат") || t.includes("return")) return "return";
@@ -78,44 +78,46 @@ function orderRub(row: WbOrder): number {
   return Math.abs(price * (1 - discount / 100));
 }
 
-function revenueRub(row: WbReportRow): number {
+export function revenueRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
   const amount = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
   return type === "sale" ? amount : -amount;
 }
 
-function revenueWithoutSppRub(row: WbReportRow): number {
+export function revenueWithoutSppRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
   const amount = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
   return type === "sale" ? amount : -amount;
 }
 
-function forPayRub(row: WbReportRow): number {
+export function forPayRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
   const amount = num(row.ppvz_for_pay);
   return type === "sale" ? amount : -amount;
 }
 
-function expenseRub(value: unknown): number {
+export function expenseRub(value: unknown): number {
   return num(value);
 }
 
 /** Тип удержания по bonus_type_name */
-function bonusType(row: WbReportRow): string {
+export function bonusType(row: WbReportRow): string {
   return String(row.bonus_type_name ?? "").toLowerCase();
 }
 
-function buildCostLookup(costs: ProductCostRow[], deliveryCosts: DeliveryCostRow[]): {
+export type CostLookup = {
   costByArticle: Map<string, number>;
   costByBarcode: Map<string, number>;
   packByArticle: Map<string, number>;
   packByBarcode: Map<string, number>;
   costByGiBarcode: Map<string, number>;
   packByGiBarcode: Map<string, number>;
-} {
+};
+
+export function buildCostLookup(costs: ProductCostRow[], deliveryCosts: DeliveryCostRow[]): CostLookup {
   const costByArticle = new Map<string, number>();
   const costByBarcode = new Map<string, number>();
   const packByArticle = new Map<string, number>();
@@ -172,7 +174,7 @@ function unitPackaging(
   return lookup.packByArticle.get(article) ?? lookup.packByBarcode.get(barcode) ?? 0;
 }
 
-function cogsForSales(
+export function cogsForSales(
   sales: WbReportRow[],
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
@@ -185,7 +187,7 @@ function cogsForSales(
   }, 0);
 }
 
-function packagingForSales(
+export function packagingForSales(
   sales: WbReportRow[],
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
