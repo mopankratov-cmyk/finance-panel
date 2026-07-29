@@ -25,6 +25,17 @@ export interface ArticlePayoutForecast {
   adaptiveRevenue: number;
 }
 
+export function deriveWbPayoutSummary(
+  forecastPayout: number,
+  reportAccruedPayout: number,
+) {
+  return {
+    reportAccruedPayout,
+    actualPayout: null,
+    remainingPayout: Number.isFinite(forecastPayout) ? Math.max(0, forecastPayout) : 0,
+  };
+}
+
 function aggregateByArticle(report: Awaited<ReturnType<typeof fetchSalesFromCache>>) {
   const result = new Map<string, { revenue: number; payout: number }>();
   for (const row of report) {
@@ -180,11 +191,11 @@ export async function buildMarketplacePayoutForecast(
 
   const forecastPayout = items.reduce((sum, item) => sum + (item.forecastPayout ?? 0), 0);
   const payoutDays = [7, 14, 21, Math.min(28, daysInMonth)];
-  const actualPayout = [...currentByArticle.values()].reduce((sum, item) => sum + item.payout, 0);
+  const reportAccruedPayout = [...currentByArticle.values()].reduce((sum, item) => sum + item.payout, 0);
+  const payoutSummary = deriveWbPayoutSummary(forecastPayout, reportAccruedPayout);
   const futurePayoutDays = targetEnd < today
     ? []
     : payoutDays.filter((day) => targetStart > today || day > actualEnd.getDate());
-  const remainingPayout = Math.max(0, forecastPayout - actualPayout);
   const result = {
     historyFrom: iso(historyStart),
     historyTo: iso(historyEnd),
@@ -207,13 +218,12 @@ export async function buildMarketplacePayoutForecast(
     stableDeviationDays,
     automaticAdjustmentApplied,
     currentDeviation,
-    actualPayout,
-    remainingPayout,
+    ...payoutSummary,
     payoutSchedule: futurePayoutDays.map((day, index) => ({
       date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
       amount: index === futurePayoutDays.length - 1
-        ? remainingPayout - Math.round(remainingPayout / futurePayoutDays.length) * (futurePayoutDays.length - 1)
-        : Math.round(remainingPayout / futurePayoutDays.length),
+        ? payoutSummary.remainingPayout - Math.round(payoutSummary.remainingPayout / futurePayoutDays.length) * (futurePayoutDays.length - 1)
+        : Math.round(payoutSummary.remainingPayout / futurePayoutDays.length),
     })),
   };
   await client.from("finance_forecast_versions").upsert({
@@ -225,7 +235,7 @@ export async function buildMarketplacePayoutForecast(
     projected_revenue: result.projectedRevenue,
     adaptive_revenue: result.adaptiveRevenue,
     forecast_payout: result.forecastPayout,
-    actual_payout: result.actualPayout,
+    actual_payout: null,
     remaining_payout: result.remainingPayout,
     details: result.items,
   }, { onConflict: "year,month,snapshot_date" });

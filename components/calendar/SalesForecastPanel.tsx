@@ -34,7 +34,8 @@ interface ForecastResponse {
   elapsedDays: number;
   daysInMonth: number;
   payoutSchedule: { date: string; amount: number }[];
-  actualPayout: number;
+  actualPayout: number | null;
+  reportAccruedPayout: number;
   remainingPayout: number;
   weatherWarnings: { article: string; adjustmentPercent: number; reason: string | null }[];
   stableDeviationDays: number;
@@ -96,6 +97,7 @@ export function SalesForecastPanel({ year, month }: {
               <Metric label={`Факт за ${data.elapsedDays} дн.`} value={data.actualRevenue} />
               <Metric label="Прогноз продаж по темпу" value={data.projectedRevenue} />
               <Metric label="Прогноз выплаты" value={data.forecastPayout} green />
+              <Metric label="Подтверждено отчётом WB" value={data.reportAccruedPayout} />
               {adjustment !== 0 && <Metric label="После изменений МП" value={expectedPayout} green={expectedPayout >= data.forecastPayout} />}
             </div>
             {data.planRowsCount === 0 && (
@@ -116,7 +118,7 @@ export function SalesForecastPanel({ year, month }: {
               </div>
             )}
             <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-              Адаптивный план продаж: <b>{formatMoney(data.adaptiveRevenue)}</b>. Уже отражено выплат: <b>{formatMoney(data.actualPayout)}</b>, осталось запланировать: <b>{formatMoney(data.remainingPayout)}</b>. Чем больше дней месяца прошло, тем сильнее прогноз опирается на фактический темп.
+              Адаптивный план продаж: <b>{formatMoney(data.adaptiveRevenue)}</b>. Банковский факт: недоступен — сверка с ДДС ещё не подключена. Осталось запланировать: <b>{formatMoney(data.remainingPayout)}</b>. Чем больше дней месяца прошло, тем сильнее прогноз опирается на фактический темп.
             </p>
             {!data.automaticAdjustmentApplied && data.stableDeviationDays > 0 && (
               <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
