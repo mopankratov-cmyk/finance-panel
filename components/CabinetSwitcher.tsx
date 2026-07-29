@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Building2, Layers3 } from "lucide-react";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import type { CabinetGroup } from "@/app/api/cabinet-groups/route";
+import { shouldShowCabinetSwitcher } from "@/lib/unit/groupListing";
 
 interface Cab { id: string; name: string; marketplace: string }
 
@@ -12,21 +13,35 @@ export function CabinetSwitcher({ mp, accent = "sky", onChange }: { mp: "ozon" |
   const [id, setId] = useActiveCabinet(mp);
   const [cabs, setCabs] = useState<Cab[]>([]);
   const [groups, setGroups] = useState<CabinetGroup[]>([]);
+  const [groupsError, setGroupsError] = useState("");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/cabinets", { cache: "no-store" }).then((r) => r.json())
+    const controller = new AbortController();
+    fetch("/api/cabinets?accessible=1", { cache: "no-store" }).then((r) => r.json())
       .then((j) => setCabs((j.cabinets ?? []).filter((c: Cab) => c.marketplace === mp))).catch(() => {});
-    fetch(`/api/cabinet-groups?mp=${mp}`, { cache: "no-store" }).then((r) => r.json())
-      .then((j) => setGroups(j.groups ?? [])).catch(() => {});
+    setGroupsError("");
+    fetch(`/api/cabinet-groups?mp=${mp}`, { cache: "no-store", signal: controller.signal }).then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof j.error === "string" ? j.error : "Не удалось загрузить группы");
+      return j;
+    }).then((j) => setGroups(j.groups ?? []))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setGroups([]);
+        setGroupsError("Группы кабинетов временно недоступны");
+      });
+    return () => controller.abort();
   }, [mp]);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  if (cabs.length <= 1) return null; // переключатель нужен только при 2+ кабинетах
+  if (!shouldShowCabinetSwitcher(cabs.length, groups.length)) {
+    return groupsError ? <span role="alert" className="text-xs text-red-600">{groupsError}</span> : null;
+  }
 
   const activeGroup = id.startsWith("group:") ? groups.find((g) => `group:${g.id}` === id) : undefined;
   const active = cabs.find((c) => c.id === id);
@@ -56,6 +71,9 @@ export function CabinetSwitcher({ mp, accent = "sky", onChange }: { mp: "ozon" |
                 </button>
               ))}
             </>
+          )}
+          {groupsError && (
+            <div role="alert" className="border-t border-red-100 px-3 py-2 text-xs text-red-600">{groupsError}</div>
           )}
         </div>
       )}

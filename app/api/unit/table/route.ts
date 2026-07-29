@@ -1,15 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
-import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { formatUnitPeriod, parseUnitPeriodQuery, UNIT_PERIOD_TIMEZONE, unitPeriodCacheIdentity } from "@/lib/unit/period";
+import { parseUnitMoneyQuery, parseUnitRefreshQuery, validateUnitSingletonQuery } from "@/lib/unit/query";
 import { mergeScopedUnitPeriodRows, type ScopedUnitCatalogRow, type ScopedUnitDailyRow, type ScopedUnitReferenceRow } from "@/lib/unit/scopedPeriodReport";
 import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { checkCronAuth } from "@/lib/sync/helpers";
+import { isConfiguredCronBearer } from "@/lib/unit/cronAuth";
+import {
+  assertUnitScopeAccess,
+  assertUnitMemberAccess,
+  parseUnitCabinetQuery,
+  resolveUnitCabinetScope,
+  UnitScopeError,
+  type UnitResolvedScope,
+} from "@/lib/unit/groupScope";
+import { loadUnitCommissionCache } from "@/lib/unit/commissionCache";
+import { aggregateUnitContributions, type UnitContribution } from "@/lib/unit/groupAggregation";
+import { mapLimitAllOrThrow } from "@/lib/unit/mapLimit";
+import { loadUnitProductScope } from "@/lib/unit/productScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,39 +41,252 @@ interface RpcRow {
   ad_spend_month: number;
 }
 
+type UnitDb = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+type ProductMeta = { name: string; cat: string; storage: number; cost: number | null };
+
+async function loadGroupPayload(
+  db: UnitDb,
+  scope: Extract<UnitResolvedScope, { mode: "group" }>,
+  period: { from: string; to: string },
+  money: { taxPct: number; ff: number; targetMargin: number },
+) {
+  const costsRes = await db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses");
+  if (costsRes.error) throw new Error(costsRes.error.message);
+  const meta = new Map<string, ProductMeta>();
+  for (const costRow of costsRes.data ?? []) {
+    meta.set(costRow.article as string, {
+      name: (costRow.name as string) ?? "",
+      cat: (costRow.entity as string) ?? "",
+      storage: Number(costRow.warehouse_expenses ?? 0),
+      cost: costRow.cost_rub == null ? null : Number(costRow.cost_rub),
+    });
+  }
+
+  const parts = await mapLimitAllOrThrow(scope.members, 3, async (cabinetId) => {
+    const [rpcResult, allowedNmIds, commissions] = await Promise.all([
+      db.rpc("unit_report_period", {
+        p_cabinet: cabinetId,
+        p_from: period.from,
+        p_to: period.to,
+      }),
+      loadUnitProductScope(cabinetId, {
+        cabinet: async () => {
+          const result = await db.from("wb_cabinets")
+            .select("name, trade_mark, brand_filters")
+            .eq("id", cabinetId)
+            .eq("marketplace", "wb")
+            .eq("is_active", true)
+            .maybeSingle();
+          return { data: result.data, error: result.error };
+        },
+        scopeRows: () => loadAllSupabasePages<{ nm_id: unknown }>((from, to) => db
+          .from("wb_cabinet_product_scope")
+          .select("nm_id")
+          .eq("cabinet_id", cabinetId)
+          .order("nm_id", { ascending: true })
+          .range(from, to), {
+          label: "Unit group: allowlist товарного контура",
+          maxPages: 1_000,
+        }),
+      }),
+      loadUnitCommissionCache(async (table, columns, scopedCabinetId, from, to) => {
+        const query = db.from(table)
+          .select(columns)
+          .eq("cabinet_id", scopedCabinetId)
+          .order(table === "wb_nm_commissions" ? "nm_id" : "cabinet_id", { ascending: true })
+          .range(from, to);
+        const result = await query;
+        return { data: result.data, error: result.error };
+      }, cabinetId),
+    ]);
+    if (rpcResult.error) throw new Error(rpcResult.error.message);
+    let scopedRows = ((rpcResult.data ?? []) as RpcRow[])
+      .filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
+
+    if (allowedNmIds !== null && allowedNmIds.size > 0 && scopedRows.length === 0) {
+      const [dailyRows, referenceRows, catalogRows] = await Promise.all([
+        loadRnpDailySkuRows<ScopedUnitDailyRow>(db, {
+          from: period.from,
+          to: period.to,
+          cabinetId,
+          allowedNmIds,
+          label: "Unit group: календарный факт по SKU",
+        }),
+        loadRnpReportRows<ScopedUnitReferenceRow>(db, cabinetId, {
+          allowedNmIds,
+          label: "Unit group: остатки и себестоимость",
+        }),
+        loadAllSupabasePages<{ nm_id: number; article: string }>((from, to) => db
+          .from("wb_cabinet_product_scope")
+          .select("nm_id, article")
+          .eq("cabinet_id", cabinetId)
+          .in("nm_id", [...allowedNmIds])
+          .order("nm_id", { ascending: true })
+          .range(from, to), { label: "Unit group: товарный контур", maxPages: 100 }),
+      ]);
+      scopedRows = mergeScopedUnitPeriodRows(
+        allowedNmIds,
+        dailyRows,
+        referenceRows,
+        catalogRows.map((row) => ({ ...row, cost: meta.get(row.article)?.cost ?? null })),
+      );
+    }
+
+    return scopedRows.map((row): UnitContribution => {
+      const rates = commissions.resolve(row.nm_id);
+      const rowCost = row.cost != null && Number(row.cost) > 0
+        ? Number(row.cost)
+        : meta.get(row.article)?.cost ?? null;
+      return {
+        cabinetId,
+        nmId: row.nm_id,
+        article: row.article || String(row.nm_id),
+        orders: Number(row.orders_month ?? 0),
+        revenue: Number(row.orders_sum_month ?? 0),
+        buyouts: Number(row.buyouts_month ?? 0),
+        stock: Number(row.stock ?? 0) + Number(row.in_way_to_client ?? 0),
+        adSpend: Number(row.ad_spend_month ?? 0),
+        costPerUnit: rowCost != null && rowCost > 0 ? rowCost : null,
+        marketplacePct: rates.marketplacePct,
+        acquiringPct: rates.acquiringPct,
+        ratesFactual: rates.factual,
+      };
+    });
+  });
+
+  const aggregated = aggregateUnitContributions(parts.flat(), money);
+  const round0 = (value: number) => Math.round(value);
+  const round1 = (value: number) => Math.round(value * 10) / 10;
+  const blank = (value: number | null) => value == null || !Number.isFinite(value) ? "" : value;
+  const rows = aggregated.map((row): (string | number)[] => {
+    const product = meta.get(row.article);
+    return [
+      "", "",
+      row.article,
+      product?.cat ?? "",
+      row.nmId,
+      row.stock,
+      blank(row.costPerUnit == null ? null : round0(row.costPerUnit)),
+      blank(row.revenue > 0 && row.orders > 0 ? round0(row.revenue / row.orders) : null),
+      row.orders,
+      round0(row.revenue),
+      blank(row.buyoutPct == null ? null : round1(row.buyoutPct)),
+      blank(row.marketplacePct == null ? null : round1(row.marketplacePct)),
+      blank(row.marketplacePerUnit == null ? null : round0(row.marketplacePerUnit)),
+      blank(row.acquiringRub == null || row.revenue <= 0 || row.orders <= 0 ? null : round0(row.acquiringRub / row.orders)),
+      round0(row.adSpend),
+      blank(row.drrPct == null ? null : round1(row.drrPct)),
+      blank(row.revenue > 0 && row.orders > 0 ? round0(row.taxRub / row.orders) : null),
+      blank(row.marginPerUnit == null ? null : round0(row.marginPerUnit)),
+      blank(row.marginBeforeDrrPct == null ? null : round1(row.marginBeforeDrrPct)),
+      blank(row.marginAfterDrrPct == null ? null : round1(row.marginAfterDrrPct)),
+      "",
+      "",
+    ];
+  });
+  const costsKnown = aggregated.filter((row) => row.costPerUnit != null).length;
+  const factualRatesKnown = aggregated.filter((row) => row.marketplacePct != null).length;
+  const complete = aggregated.filter((row) => row.costPerUnit != null && row.marketplacePct != null).length;
+  return {
+    headers: [
+      "", "", "Артикул", "Юрлицо", "SKU",
+      "Текущий остаток + в пути", "Себес ₽/ед", "Цена до СПП ₽/ед", "Заказы", "Выручка ₽",
+      "Продажи / заказы %", "Удержания WB %", "Удержания WB ₽/ед", "Эквайринг ₽/ед", "Реклама ₽",
+      "ДРР %", "Налог ₽/ед", "Маржа ₽/ед", "Маржа % до ДРР", "Вал % ПОСЛЕ ДРР",
+      `Цена до СПП ₽/ед для ${money.targetMargin}% маржи`, "Дельта %",
+    ],
+    rows,
+    img_urls: aggregated.map((row) => wbCardImageUrl(row.nmId)),
+    names: aggregated.map((row) => meta.get(row.article)?.name ?? ""),
+    source_url: null,
+    coverage: { total: rows.length, costsKnown, factualRatesKnown, complete },
+    meta_text: `Группа ${scope.members.length} кабинетов · юнит по ${rows.length} SKU · полный факт ${complete}/${rows.length} · ставки комиссий — последний синхронизированный 30-дневный snapshot, не исторический факт выбранного периода · целевая цена и дельта для группы недоступны · налог ${money.taxPct}% · ${formatUnitPeriod(period)}`,
+    periodFrom: period.from,
+    periodTo: period.to,
+    timezone: UNIT_PERIOD_TIMEZONE,
+  };
+}
+
 // Юнит-экономика WB «1 в 1» с инферноф (формула калькулятора Юры):
 // Прибыль/ед = Цена до СПП − Себес − Фулфилмент − удержания WB − Эквайринг − Реклама(ДРР) − Налог.
 // Целевые цены и маржу не публикуем, пока нет себестоимости и фактических ставок WB.
 // СПП %/Цена после СПП НЕ считаем — в БД нет (discount_percent ≠ СПП).
 export async function GET(req: NextRequest) {
+  const isCron = isConfiguredCronBearer(
+    req.headers.get("authorization"),
+    process.env.CRON_SECRET,
+  ) && checkCronAuth(req) === null;
+  let session = null;
+  if (!isCron) {
+    const gate = await requireApiSession(["director", "finance", "manager"]);
+    if (gate) return gate;
+    session = await getServerSession();
+    if (!session) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
+    if (!["director", "finance", "manager"].includes(session.role)) {
+      return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
+    }
+  }
+
   const sp = new URL(req.url).searchParams;
   let period;
+  let money;
+  let rawCabinet;
+  let refresh;
   try {
+    validateUnitSingletonQuery(sp);
     period = parseUnitPeriodQuery(sp);
+    money = parseUnitMoneyQuery(sp);
+    rawCabinet = parseUnitCabinetQuery(sp);
+    refresh = parseUnitRefreshQuery(sp);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Некорректный период" }, { status: 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Некорректные параметры" }, { status: 400 });
   }
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ headers: [], rows: [], img_urls: [] });
-  const num = (k: string, def: number) => { const v = Number(sp.get(k)); return Number.isFinite(v) && sp.get(k) !== null ? v : def; };
-  const taxPct = num("tax", 7);        // налог
-  const ff = num("ff", 0);             // фулфилмент ₽/ед (нет per-SKU данных)
-  const targetMargin = num("margin", 25); // целевая маржа для «цены до СПП для N% маржи»
-  const { cabinetId: p_cabinet } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
-  if (!(await hasCabinetAccess(p_cabinet))) {
-    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
+  let scope: UnitResolvedScope;
+  try {
+    scope = await resolveUnitCabinetScope(rawCabinet, {
+      group: async (id) => {
+        const result = await db.from("cabinet_groups")
+          .select("id, marketplace, member_ids")
+          .eq("id", id)
+          .eq("marketplace", "wb")
+          .maybeSingle();
+        return { data: result.data, error: result.error };
+      },
+      authorizeMembers: (members) => assertUnitMemberAccess(session, members),
+      cabinets: async (ids) => {
+        const result = await db.from("wb_cabinets")
+          .select("id, marketplace, is_active")
+          .in("id", ids)
+          .eq("marketplace", "wb")
+          .eq("is_active", true);
+        return { data: result.data, error: result.error };
+      },
+    });
+    assertUnitScopeAccess(session, scope);
+  } catch (error) {
+    if (error instanceof UnitScopeError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: "Сервис кабинетов временно недоступен" }, { status: 503 });
   }
-  const allowedNmIds = await requestAllowedNmIds(p_cabinet);
-  const forceRefresh = sp.get("refresh") === "1";
-  const backgroundRefresh = sp.get("background") === "1";
+  const p_cabinet = scope.mode === "single" ? scope.cabinetId : null;
+  const { taxPct, ff, targetMargin } = money;
+  const allowedNmIds = scope.mode === "group" ? null : await requestAllowedNmIds(p_cabinet);
+  const { forceRefresh, backgroundRefresh } = refresh;
 
   const buildPayload = async () => {
+    if (scope.mode === "group") {
+      return loadGroupPayload(db, scope, period, money);
+    }
     const [rpcRes, costsRes, comm] = await Promise.all([
       db.rpc("unit_report_period", { p_cabinet, p_from: period.from, p_to: period.to }),
       db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
       getWbCommissionForCabinet(p_cabinet, 30),
     ]);
     if (rpcRes.error) throw new Error(rpcRes.error.message);
+    if (costsRes.error) throw new Error(costsRes.error.message);
     const meta = new Map<string, { name: string; cat: string; storage: number; cost: number | null }>();
     for (const c of costsRes.data ?? []) meta.set(c.article as string, {
       name: (c.name as string) ?? "",
@@ -194,7 +422,14 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const identity = unitPeriodCacheIdentity({ cabinetId: p_cabinet, from: period.from, to: period.to, taxPct, ff, targetMargin });
+    const identity = unitPeriodCacheIdentity({
+      scopeKey: scope.scopeKey,
+      from: period.from,
+      to: period.to,
+      taxPct,
+      ff,
+      targetMargin,
+    });
     let payload = await loadHourlyDashboard(
       "wb-unit-table",
       identity,
@@ -203,7 +438,7 @@ export async function GET(req: NextRequest) {
     );
     // Пустой снимок мог попасть в часовой кэш до завершения product-scope.
     // При уже заполненном allowlist один раз пересобираем его автоматически.
-    if (allowedNmIds !== null && allowedNmIds.size > 0 && payload.rows.length === 0 && !forceRefresh) {
+    if (scope.mode !== "group" && allowedNmIds !== null && allowedNmIds.size > 0 && payload.rows.length === 0 && !forceRefresh) {
       payload = await loadHourlyDashboard(
         "wb-unit-table",
         identity,
@@ -212,7 +447,7 @@ export async function GET(req: NextRequest) {
       );
     }
     return NextResponse.json(payload);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось рассчитать юнит-экономику" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
   }
 }

@@ -1,5 +1,5 @@
 export const UNIT_PERIOD_TIMEZONE = "Europe/Moscow";
-export const UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v2";
+export const UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v3";
 
 export interface UnitPeriod {
   from: string;
@@ -55,12 +55,18 @@ export function formatUnitPeriod(period: UnitPeriod): string {
 }
 
 export function unitPeriodCacheIdentity(input: {
-  cabinetId: string | null;
+  scopeKey?: string;
+  cabinetId?: string | null;
   from: string;
   to: string;
   taxPct: number;
   ff: number;
   targetMargin: number;
 }) {
-  return { schemaVersion: UNIT_PERIOD_SCHEMA_VERSION, ...input };
+  const { cabinetId, ...rest } = input;
+  return {
+    schemaVersion: UNIT_PERIOD_SCHEMA_VERSION,
+    ...rest,
+    scopeKey: input.scopeKey ?? (cabinetId ? `single:${cabinetId}` : "all"),
+  };
 }

@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
   }));
   const accessibleOnly = new URL(request.url).searchParams.get("accessible") === "1";
   const session = accessibleOnly ? await getServerSession() : null;
-  const cabinets = accessibleOnly && session?.role === "manager" && session.cabinet_ids.length > 0
+  const cabinets = accessibleOnly && session?.role === "manager"
     ? allCabinets.filter((cabinet) => session.cabinet_ids.includes(String(cabinet.id)))
     : allCabinets;
   return NextResponse.json({ cabinets, count: cabinets.length });
