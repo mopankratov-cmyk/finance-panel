@@ -36,6 +36,17 @@ export function deriveWbPayoutSummary(
   };
 }
 
+export function deriveWbLegacySnapshotPayout(
+  summary: ReturnType<typeof deriveWbPayoutSummary>,
+) {
+  return {
+    // Compatibility sentinel for the legacy NOT NULL column, not a confirmed bank fact.
+    // The API source of truth remains summary.actualPayout === null.
+    actual_payout: 0,
+    remaining_payout: summary.remainingPayout,
+  };
+}
+
 function aggregateByArticle(report: Awaited<ReturnType<typeof fetchSalesFromCache>>) {
   const result = new Map<string, { revenue: number; payout: number }>();
   for (const row of report) {
@@ -226,6 +237,7 @@ export async function buildMarketplacePayoutForecast(
         : Math.round(payoutSummary.remainingPayout / futurePayoutDays.length),
     })),
   };
+  const legacySnapshotPayout = deriveWbLegacySnapshotPayout(payoutSummary);
   await client.from("finance_forecast_versions").upsert({
     year,
     month,
@@ -235,8 +247,7 @@ export async function buildMarketplacePayoutForecast(
     projected_revenue: result.projectedRevenue,
     adaptive_revenue: result.adaptiveRevenue,
     forecast_payout: result.forecastPayout,
-    actual_payout: null,
-    remaining_payout: result.remainingPayout,
+    ...legacySnapshotPayout,
     details: result.items,
   }, { onConflict: "year,month,snapshot_date" });
   return result;

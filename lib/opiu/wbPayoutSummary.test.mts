@@ -4,13 +4,19 @@ import test from "node:test";
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
 
-const { deriveWbPayoutSummary } = await import("./forecast");
+const { deriveWbLegacySnapshotPayout, deriveWbPayoutSummary } = await import("./forecast");
 
 test("WB payout keeps report accrual separate from unavailable bank fact", () => {
-  assert.deepEqual(deriveWbPayoutSummary(1_000, 400), {
+  const summary = deriveWbPayoutSummary(1_000, 400);
+
+  assert.deepEqual(summary, {
     reportAccruedPayout: 400,
     actualPayout: null,
     remainingPayout: 1_000,
+  });
+  assert.deepEqual(deriveWbLegacySnapshotPayout(summary), {
+    actual_payout: 0,
+    remaining_payout: 1_000,
   });
 });
 
