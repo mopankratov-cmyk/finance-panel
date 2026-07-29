@@ -45,3 +45,39 @@ test("calendar-only alerts and priority controls stay outside forecast views", (
     /\{view !== "forecast" && view !== "ozon-forecast" && <FinancialAlertsPanel/,
   );
 });
+
+test("selecting a forecast tab clears every open calendar mutation surface before changing view", () => {
+  assert.match(
+    source,
+    /const isForecastView = view === "forecast" \|\| view === "ozon-forecast";/,
+  );
+  assert.match(
+    source,
+    /const handleViewChange = \(nextView:[\s\S]*?if \(nextView === "forecast" \|\| nextView === "ozon-forecast"\) \{\s*setSelectedDate\(null\);\s*setQuickAddPending\(false\);\s*setBulkOpen\(false\);\s*setReplaceCalendarOpen\(false\);\s*\}\s*setView\(nextView\);/,
+  );
+  assert.match(source, /onClick=\{\(\) => handleViewChange\(value\)\}/);
+});
+
+test("forecast views guard calendar sync and do not mount surrounding write controls", () => {
+  assert.match(
+    source,
+    /useEffect\(\(\) => \{\s*if \(isForecastView \|\| calendarRows\.length <= 1\) return;/,
+  );
+  assert.match(
+    source,
+    /\{!isForecastView && \(\s*<div className="flex flex-wrap gap-2">[\s\S]*?syncCalendarToGoogle\(\)[\s\S]*?setReplaceCalendarOpen\(true\)[\s\S]*?<\/div>\s*\)\}/,
+  );
+  assert.match(source, /\{!isForecastView && <FinanceTasksPanel \/>\}/);
+  assert.match(
+    source,
+    /\{!isForecastView && \(\s*<DayDetailPanel[\s\S]*?onAddPayment=\{handleAddPayment\}[\s\S]*?onUpdatePayment=\{handleUpdatePayment\}[\s\S]*?\/>\s*\)\}/,
+  );
+  assert.match(
+    source,
+    /\{!isForecastView && \(\s*<BulkPaymentModal[\s\S]*?dispatch\(\{ type: "ADD_PAYMENT"[\s\S]*?\/>\s*\)\}/,
+  );
+  assert.match(
+    source,
+    /\{!isForecastView && \(\s*<ReplaceCalendarModal[\s\S]*?dispatch\(\{ type: "DELETE_PAYMENT"[\s\S]*?dispatch\(\{ type: "ADD_PAYMENT"[\s\S]*?\/>\s*\)\}/,
+  );
+});

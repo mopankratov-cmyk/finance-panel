@@ -105,6 +105,7 @@ export function CalendarPage() {
   const [planFactOpen, setPlanFactOpen] = useState(false);
   const [googleSyncing, setGoogleSyncing] = useState(false);
   const googleSyncRef = useRef<Promise<{ ok: boolean; error?: string }> | null>(null);
+  const isForecastView = view === "forecast" || view === "ozon-forecast";
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -168,12 +169,12 @@ export function CalendarPage() {
     return promise;
   }, [calendarSheets]);
   useEffect(() => {
-    if (calendarRows.length <= 1) return;
+    if (isForecastView || calendarRows.length <= 1) return;
     const timer = window.setTimeout(() => {
       void syncCalendarToGoogle();
     }, 3000);
     return () => window.clearTimeout(timer);
-  }, [calendarRows, syncCalendarToGoogle]);
+  }, [calendarRows, isForecastView, syncCalendarToGoogle]);
   const planFactMatches = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     return matchPlannedToFacts(scopedPayments).filter((match) => match.planned.date.startsWith(prefix));
@@ -261,6 +262,16 @@ export function CalendarPage() {
     setSelectedDate(dateStr);
     setQuickAddPending(true);
   }, []);
+
+  const handleViewChange = (nextView: "calendar" | "expense" | "income" | "forecast" | "ozon-forecast") => {
+    if (nextView === "forecast" || nextView === "ozon-forecast") {
+      setSelectedDate(null);
+      setQuickAddPending(false);
+      setBulkOpen(false);
+      setReplaceCalendarOpen(false);
+    }
+    setView(nextView);
+  };
 
   const handleAddPayment = (payment: Payment, companyId?: string | null) => {
     dispatch({ type: "ADD_PAYMENT", payload: payment });
@@ -353,11 +364,12 @@ export function CalendarPage() {
             ["forecast", "Прогноз WB", TrendingUp],
             ["ozon-forecast", "Прогноз Ozon", TrendingUp],
           ] as const).map(([value, label, Icon]) => (
-            <button key={value} onClick={() => setView(value)} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${view === value ? "bg-violet-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+            <button key={value} onClick={() => handleViewChange(value)} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${view === value ? "bg-violet-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
               <Icon className="h-4 w-4" /> {label}
             </button>
           ))}
         </div>
+        {!isForecastView && (
         <div className="flex flex-wrap gap-2">
         <select value={companyScope} onChange={(event) => setCompanyScope(event.target.value)} aria-label="Компания в платёжном календаре" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm font-medium sm:w-auto sm:min-w-64">
           <option value="all">Все компании</option>
@@ -375,6 +387,7 @@ export function CalendarPage() {
         </button>
         <button onClick={() => setReplaceCalendarOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50"><FileUp className="h-4 w-4" /> Заменить из CSV</button>
         </div>
+        )}
       </div>
 
       {view !== "forecast" && view !== "ozon-forecast" && <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -425,7 +438,7 @@ export function CalendarPage() {
       </div>}
 
       {view !== "forecast" && view !== "ozon-forecast" && <FinancialAlertsPanel accounts={state.accounts} payments={scopedPayments} />}
-      <FinanceTasksPanel />
+      {!isForecastView && <FinanceTasksPanel />}
 
       <div id="calendar-main-content" className="scroll-mt-4">
       {view === "forecast" ? (
@@ -565,6 +578,7 @@ export function CalendarPage() {
       )}
       </div>
 
+      {!isForecastView && (
       <DayDetailPanel
         dayInfo={selectedDay}
         allPayments={visibleCalendarPayments}
@@ -577,6 +591,8 @@ export function CalendarPage() {
         quickAddOpen={quickAddPending}
         onQuickAddConsumed={() => setQuickAddPending(false)}
       />
+      )}
+      {!isForecastView && (
       <BulkPaymentModal
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}
@@ -587,6 +603,8 @@ export function CalendarPage() {
           for (const payment of payments) dispatch({ type: "ADD_PAYMENT", payload: payment });
         }}
       />
+      )}
+      {!isForecastView && (
       <ReplaceCalendarModal
         open={replaceCalendarOpen}
         onClose={() => setReplaceCalendarOpen(false)}
@@ -608,6 +626,7 @@ export function CalendarPage() {
           setCompanyByPayment((current) => new Map([...current, ...safePayments.map((payment) => [payment.id, companyId] as const)]));
         }}
       />
+      )}
     </div>
   );
 }
