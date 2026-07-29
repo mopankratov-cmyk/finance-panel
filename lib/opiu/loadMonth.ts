@@ -1,32 +1,47 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
-import type { WbAdStat, WbOrder, WbReportRow } from "@/lib/wb/types";
+import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
 import { OPIU_ENTITY, OPIU_WB_CABINET_ID } from "./constants";
 import { buildOpiuReport, type OpiuReport } from "./buildReport";
+import { loadReadyFunnelFacts } from "./loadFunnelOrders";
 import { weeksInMonth, type MonthWeek } from "./weeks";
-import type { ProductCostRow } from "./metrics";
+import {
+  overlayFunnelOrders,
+  type OpiuOrder,
+  type ProductCostRow,
+} from "./metrics";
 
 export async function fetchOrders(
   dateFrom: string,
   dateTo: string,
   _refresh = false,
-): Promise<WbOrder[]> {
+): Promise<OpiuOrder[]> {
   const client = getSupabaseAdmin() ?? supabase;
-  const rows = await loadAllSupabasePages<{
-    nm_id: number; supplier_article: string | null; date: string; total_price: number | null;
-    discount_percent: number | null; finished_price: number | null; price_with_disc: number | null; spp: number | null; is_cancel: boolean | null; warehouse: string | null; region: string | null;
-  }>((from, to) => client
-    .from("wb_orders")
-    .select("nm_id, supplier_article, date, total_price, discount_percent, finished_price, price_with_disc, spp, is_cancel, warehouse, region")
-    .eq("cabinet_id", OPIU_WB_CABINET_ID)
-    .gte("date", dateFrom)
-    .lte("date", `${dateTo}T23:59:59.999Z`)
-    .order("date", { ascending: true })
-    .range(from, to), { maxPages: 300, label: "ОПиУ: заказы WB" });
-  return rows.map((row) => ({
+  const rowsPromise = loadAllSupabasePages<{
+      id: number; cabinet_id: string; nm_id: number; supplier_article: string | null; date: string; total_price: number | null;
+      discount_percent: number | null; finished_price: number | null; price_with_disc: number | null; spp: number | null; is_cancel: boolean | null; warehouse: string | null; region: string | null;
+    }>((from, to) => client
+      .from("wb_orders")
+      .select("id, cabinet_id, nm_id, supplier_article, date, total_price, discount_percent, finished_price, price_with_disc, spp, is_cancel, warehouse, region")
+      .eq("cabinet_id", OPIU_WB_CABINET_ID)
+      .gte("date", dateFrom)
+      .lte("date", `${dateTo}T23:59:59.999Z`)
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .order("cabinet_id", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to), { maxPages: 300, label: "ОПиУ: заказы WB" });
+  const funnelFacts = await loadReadyFunnelFacts(
+    client,
+    OPIU_WB_CABINET_ID,
+    dateFrom,
+    dateTo,
+  );
+  const rows = await rowsPromise;
+  const cachedOrders: OpiuOrder[] = rows.map((row) => ({
     date: row.date,
     nmId: row.nm_id,
     supplierArticle: row.supplier_article ?? undefined,
@@ -39,6 +54,7 @@ export async function fetchOrders(
     warehouseName: row.warehouse ?? undefined,
     regionName: row.region ?? undefined,
   }));
+  return overlayFunnelOrders(cachedOrders, funnelFacts, OPIU_WB_CABINET_ID);
 }
 
 export async function fetchSalesFromCache(dateFrom: string, dateTo: string): Promise<WbReportRow[]> {
@@ -197,7 +213,7 @@ export async function loadOpiuMonth(
     timestamp: new Date().toISOString(),
     meta: {
       salesRows: sales.length,
-      ordersCount: orders.length,
+      ordersCount: orders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
       costsCount: costs.length,
       adCampaigns: adStats.length,
     },
