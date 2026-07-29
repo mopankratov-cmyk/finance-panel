@@ -1,10 +1,9 @@
 "use client";
 
-import { BarChart3, CalendarPlus, Loader2, TriangleAlert } from "lucide-react";
+import { BarChart3, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
-import { formatMoney, generateId } from "@/lib/format";
-import type { Account, Payment } from "@/lib/types";
+import { formatMoney } from "@/lib/format";
 
 interface ForecastItem {
   article: string;
@@ -43,17 +42,13 @@ interface ForecastResponse {
   error?: string;
 }
 
-export function SalesForecastPanel({ year, month, accounts, onAddPayment }: {
+export function SalesForecastPanel({ year, month }: {
   year: number;
   month: number;
-  accounts: Account[];
-  onAddPayment: (payment: Payment) => void;
 }) {
   const [data, setData] = useState<ForecastResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
-  const [paymentDate, setPaymentDate] = useState(`${year}-${String(month + 1).padStart(2, "0")}-28`);
   const [adjustment, setAdjustment] = useState(0);
   const [changeDate, setChangeDate] = useState("");
   const [changeReason, setChangeReason] = useState("");
@@ -82,41 +77,6 @@ export function SalesForecastPanel({ year, month, accounts, onAddPayment }: {
   const expectedPayout = (data?.forecastPayout ?? 0) + adjustment;
   const articleRows = useMemo(() => data?.items.slice().sort((a, b) => b.planRevenue - a.planRevenue) ?? [], [data]);
 
-  const addForecast = () => {
-    if (!accountId || !paymentDate || expectedPayout <= 0 || !data) return;
-    const changeComment = adjustment
-      ? ` Изменение МП с ${changeDate || "неуказанной даты"}: ${changeReason || "без пояснения"}, ${formatMoney(adjustment)}.`
-      : "";
-    onAddPayment({
-      id: generateId("sales-plan"),
-      date: paymentDate,
-      name: "Плановое поступление от маркетплейсов по ОПиУ",
-      amount: expectedPayout,
-      category: "Поступления от маркетплейсов",
-      accountId,
-      status: "planned",
-      counterparty: "Маркетплейсы",
-      comment: `Расчёт по фактической экономике артикулов за ${data.historyFrom}—${data.historyTo}.${changeComment}`,
-    });
-  };
-
-  const addForecastSchedule = () => {
-    if (!accountId || !data?.payoutSchedule.length) return;
-    for (const item of data.payoutSchedule) {
-      onAddPayment({
-        id: generateId("sales-plan"),
-        date: item.date,
-        name: "Плановое поступление от маркетплейсов по адаптивному прогнозу",
-        amount: item.amount,
-        category: "Поступления от маркетплейсов",
-        accountId,
-        status: "planned",
-        counterparty: "Маркетплейсы",
-        comment: `Недельная часть прогноза. План ${formatMoney(data.planRevenue)}, темп продаж ${formatMoney(data.projectedRevenue)}, адаптивный план ${formatMoney(data.adaptiveRevenue)}.`,
-      });
-    }
-  };
-
   return (
     <Card>
       <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
@@ -127,6 +87,7 @@ export function SalesForecastPanel({ year, month, accounts, onAddPayment }: {
         </div>
       </div>
       <CardContent className="space-y-4 pt-5">
+        <p className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm font-semibold text-violet-950">Только просмотр: прогноз не публикуется в платёжный календарь.</p>
         {loading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Считаю по отчётам…</div>
           : error ? <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>
           : data && <>
@@ -197,19 +158,6 @@ export function SalesForecastPanel({ year, month, accounts, onAddPayment }: {
                 <label className="text-sm text-blue-950">Корректировка выплаты, ₽<input type="number" value={adjustment} onChange={(event) => setAdjustment(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-blue-200 px-3" /></label>
                 <label className="text-sm text-blue-950">Причина<input value={changeReason} onChange={(event) => setChangeReason(event.target.value)} placeholder="Например, комиссия +2%" className="mt-1 min-h-11 w-full rounded-lg border border-blue-200 px-3" /></label>
               </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="mb-3">
-                <h3 className="font-semibold text-slate-900">Перенести прогноз в платёжный календарь</h3>
-                <p className="mt-1 text-sm text-slate-500">Это не меняет план продаж в базе. Здесь создаются будущие поступления денег в календаре.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
-              <label className="text-sm font-medium text-slate-700">Ожидаемая дата выплаты<input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3" /></label>
-              <label className="text-sm font-medium text-slate-700">Кошелёк<select value={accountId} onChange={(event) => setAccountId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3">{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
-              <button onClick={addForecast} disabled={!accountId || !paymentDate || expectedPayout <= 0} title="Создать одно плановое поступление на выбранную дату" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> Одной суммой</button>
-              <button onClick={addForecastSchedule} disabled={!accountId || !data.payoutSchedule.length} title="Разделить остаток прогноза между ближайшими датами выплат" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200 bg-white px-4 text-sm font-semibold text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> По датам выплат</button>
-              </div>
-              <p className="mt-3 text-xs text-slate-500">«Одной суммой» создаёт одну запись. «По датам выплат» делит оставшуюся сумму между ближайшими датами 7, 14, 21 и 28 числа.</p>
             </div>
           </>}
       </CardContent>

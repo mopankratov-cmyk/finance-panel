@@ -16,12 +16,15 @@ export type PlanningStateWriteResult =
 export async function loadPlanningState<TState extends PlanningStateJson = PlanningStateJson>(
   db: SupabaseClient,
   year: number,
+  options: { signal?: AbortSignal } = {},
 ): Promise<PlanningStateSnapshot<TState>> {
-  const { data, error } = await db
+  options.signal?.throwIfAborted();
+  let query = db
     .from("planning_state")
     .select("data, updated_at")
-    .eq("year", year)
-    .maybeSingle();
+    .eq("year", year);
+  if (options.signal) query = query.abortSignal(options.signal);
+  const { data, error } = await query.maybeSingle();
 
   if (error) throw new Error(error.message);
 

@@ -6,13 +6,32 @@ export interface OzonCreds {
   apiKey: string;
 }
 
+export interface OzonRequestOptions {
+  signal?: AbortSignal;
+  cache?: RequestCache;
+}
+
+function financialFetchPolicy(
+  options: OzonRequestOptions,
+  revalidate: number,
+): Pick<RequestInit, "cache" | "next"> {
+  return options.cache === "no-store"
+    ? { cache: "no-store" }
+    : { next: { revalidate } };
+}
+
 function headers(c: OzonCreds): HeadersInit {
   return { "Client-Id": c.clientId.trim(), "Api-Key": c.apiKey.trim(), "Content-Type": "application/json" };
 }
 
 // fetch с таймаутом 20с — чтобы при стопоре сети/прокси не висеть минуту, а падать быстро.
 function tfetch(url: string, opts: RequestInit = {}): Promise<Response> {
-  return fetch(url, { ...opts, signal: AbortSignal.timeout(20000) });
+  const timeoutSignal = AbortSignal.timeout(20000);
+  const signal = opts.signal
+    ? AbortSignal.any([opts.signal, timeoutSignal])
+    : timeoutSignal;
+  signal.throwIfAborted();
+  return fetch(url, { ...opts, signal });
 }
 
 // Валидация ключа: лёгкий запрос финансовых итогов за 1 день. 200 → ключ рабочий.
@@ -93,15 +112,18 @@ async function analyticsPages(
   dateTo: string,
   metrics: string[],
   dimension: string[],
+  options: OzonRequestOptions = {},
 ): Promise<{ ok: true; data: AnalyticsData[] } | { ok: false; error: string }> {
   const data: AnalyticsData[] = [];
   try {
     for (let offset = 0; offset < 20_000; offset += 1000) {
+      options.signal?.throwIfAborted();
       const res = await tfetch(`${BASE}/v1/analytics/data`, {
         method: "POST",
         headers: headers(c),
         body: JSON.stringify({ date_from: dateFrom, date_to: dateTo, metrics, dimension, limit: 1000, offset }),
-        next: { revalidate: 1800 },
+        ...financialFetchPolicy(options, 1800),
+        signal: options.signal,
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
       const json = (await res.json()) as { result?: { data?: AnalyticsData[] } };
@@ -111,6 +133,9 @@ async function analyticsPages(
     }
     return { ok: true, data };
   } catch (error) {
+    if (options.signal?.aborted) {
+      return { ok: false, error: "Запрос Ozon отменён" };
+    }
     return { ok: false, error: String(error).slice(0, 120) };
   }
 }
@@ -143,7 +168,11 @@ export async function ozonAnalyticsDaily(
   dateFrom: string,
   dateTo: string,
   includeFunnel = false,
+  options: OzonRequestOptions = {},
 ): Promise<{ ok: true; rows: OzonAnalyticsDailyRow[]; funnel: boolean } | { ok: false; error: string }> {
+  if (options.signal?.aborted) {
+    return { ok: false, error: "Запрос Ozon отменён" };
+  }
   if (includeFunnel) {
     const expanded = await analyticsPages(
       c,
@@ -151,6 +180,7 @@ export async function ozonAnalyticsDaily(
       dateTo,
       ["hits_view", "hits_tocart", "ordered_units", "revenue"],
       ["sku", "day"],
+      options,
     );
     if (expanded.ok && expanded.data.length > 0 && expanded.data.every((row) => row.metrics.length >= 4)) {
       return {
@@ -168,9 +198,11 @@ export async function ozonAnalyticsDaily(
         })),
       };
     }
+    if (!expanded.ok && options.signal?.aborted) return expanded;
   }
 
-  const base = await analyticsPages(c, dateFrom, dateTo, ["ordered_units", "revenue"], ["sku", "day"]);
+  options.signal?.throwIfAborted();
+  const base = await analyticsPages(c, dateFrom, dateTo, ["ordered_units", "revenue"], ["sku", "day"], options);
   if (!base.ok) return base;
   return {
     ok: true,
@@ -307,15 +339,18 @@ export interface OzonPriceRow {
 }
 export async function ozonPrices(
   c: OzonCreds,
+  options: OzonRequestOptions = {},
 ): Promise<{ ok: true; rows: OzonPriceRow[] } | { ok: false; error: string }> {
   const rows: OzonPriceRow[] = [];
   try {
     let cursor = "";
     for (let page = 0; page < 20; page++) {
+      options.signal?.throwIfAborted();
       const res = await tfetch(`${BASE}/v5/product/info/prices`, {
         method: "POST", headers: headers(c),
         body: JSON.stringify({ filter: { visibility: "ALL" }, limit: 1000, cursor }),
-        next: { revalidate: 1800 },
+        ...financialFetchPolicy(options, 1800),
+        signal: options.signal,
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
       const j = (await res.json()) as {
@@ -339,6 +374,9 @@ export async function ozonPrices(
     }
     return { ok: true, rows };
   } catch (e) {
+    if (options.signal?.aborted) {
+      return { ok: false, error: "Запрос Ozon отменён" };
+    }
     return { ok: false, error: String(e).slice(0, 120) };
   }
 }

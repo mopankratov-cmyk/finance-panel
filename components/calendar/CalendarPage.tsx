@@ -9,6 +9,7 @@ import { CashFlowSparkline } from "./CashFlowSparkline";
 import { calendarPaymentsWithoutMatchedPlans, isCalendarCashFlow, isMarketplaceOrLoanIncome, matchPlannedToFacts } from "./calendarPlan";
 import { DayDetailPanel } from "./DayDetailPanel";
 import { SalesForecastPanel } from "./SalesForecastPanel";
+import { OzonForecastPanel } from "./OzonForecastPanel";
 import { FinancialAlertsPanel } from "./FinancialAlertsPanel";
 import { FinanceTasksPanel } from "./FinanceTasksPanel";
 import { calendarExportRows, calendarTemplateSheets, downloadCalendarXlsx } from "./calendarExport";
@@ -425,9 +426,8 @@ export function CalendarPage() {
         key={`${year}-${month}`}
         year={year}
         month={month}
-        accounts={state.accounts}
-        onAddPayment={handleAddPayment}
       />
+          <OzonForecastPanel year={year} month={month} />
 
       <FinancialAlertsPanel accounts={state.accounts} payments={scopedPayments} />
       <FinanceTasksPanel />

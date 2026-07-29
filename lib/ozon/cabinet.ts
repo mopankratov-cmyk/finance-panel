@@ -31,6 +31,14 @@ interface OzonCabinetRow {
   perf_secret: string | null;
 }
 
+export function applyOzonQuerySignal<T extends { abortSignal(signal: AbortSignal): T }>(
+  query: T,
+  signal?: AbortSignal,
+) {
+  signal?.throwIfAborted();
+  return signal ? query.abortSignal(signal) : query;
+}
+
 function cabinetAccess(row: OzonCabinetRow): OzonCabinetAccess {
   return {
     id: row.id,
@@ -70,18 +78,24 @@ export function selectOzonCabinets(
 
 // Разрешает один кабинет, агрегат «все» или сохранённую группу. В отличие от старого
 // getActiveOzonCreds, агрегат никогда не маскируется под первый кабинет.
-export async function getOzonCabinetScope(requested?: string | null): Promise<
+export async function getOzonCabinetScope(
+  requested?: string | null,
+  options: { signal?: AbortSignal } = {},
+): Promise<
   { ok: true; scope: OzonCabinetScope } | { ok: false; error: string }
 > {
+  options.signal?.throwIfAborted();
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "Supabase не настроен" };
 
-  const { data, error } = await db
+  let cabinetQuery = db
     .from("wb_cabinets")
     .select("id, name, client_id, token, perf_client_id, perf_secret")
     .eq("marketplace", "ozon")
     .eq("is_active", true)
     .order("created_at", { ascending: true });
+  cabinetQuery = applyOzonQuerySignal(cabinetQuery, options.signal);
+  const { data, error } = await cabinetQuery;
   if (error) return { ok: false, error: error.message };
 
   const session = await getServerSession();
@@ -95,14 +109,16 @@ export async function getOzonCabinetScope(requested?: string | null): Promise<
   let groupMemberIds: string[] = [];
   let groupName = "Группа кабинетов";
   if (requested?.startsWith("group:")) {
+    options.signal?.throwIfAborted();
     const groupId = Number(requested.slice("group:".length));
     if (!Number.isInteger(groupId) || groupId <= 0) return { ok: false, error: "Некорректная группа кабинетов" };
-    const { data: group, error: groupError } = await db
+    let groupQuery = db
       .from("cabinet_groups")
       .select("name, member_ids")
       .eq("id", groupId)
-      .eq("marketplace", "ozon")
-      .maybeSingle();
+      .eq("marketplace", "ozon");
+    groupQuery = applyOzonQuerySignal(groupQuery, options.signal);
+    const { data: group, error: groupError } = await groupQuery.maybeSingle();
     if (groupError) return { ok: false, error: groupError.message };
     if (!group) return { ok: false, error: "Группа Ozon не найдена" };
     groupMemberIds = (group.member_ids as string[] | null) ?? [];
