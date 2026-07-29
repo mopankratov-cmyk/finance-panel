@@ -243,7 +243,10 @@ test("forecast panels and calendar wiring expose no publication or reconciliatio
     calendarPage,
     /<SalesForecastPanel[\s\S]*?year=\{year\}[\s\S]*?month=\{month\}[\s\S]*?\/>/,
   );
-  assert.match(calendarPage, /<OzonForecastPanel year=\{year\} month=\{month\} \/>/);
+  assert.match(
+    calendarPage,
+    /<OzonForecastPanel[\s\S]*?year=\{year\}[\s\S]*?month=\{month\}[\s\S]*?\/>/,
+  );
   assert.doesNotMatch(
     calendarPage.match(/<SalesForecastPanel[\s\S]*?\/>/)?.[0] ?? "",
     /accounts|onAddPayment/,

@@ -93,7 +93,7 @@ export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [quickAddPending, setQuickAddPending] = useState(false);
-  const [view, setView] = useState<"calendar" | "expense" | "income">("calendar");
+  const [view, setView] = useState<"calendar" | "expense" | "income" | "forecast" | "ozon-forecast">("calendar");
   const [companyScope, setCompanyScope] = useState("all");
   const [companies, setCompanies] = useState<DdsCompany[]>([]);
   const [companyByPayment, setCompanyByPayment] = useState<Map<string, string | null>>(new Map());
@@ -350,6 +350,8 @@ export function CalendarPage() {
             ["calendar", "Календарь", CalendarDays],
             ["expense", "Все расходы", ArrowUpRight],
             ["income", "Все поступления", ArrowDownLeft],
+            ["forecast", "Прогноз WB", TrendingUp],
+            ["ozon-forecast", "Прогноз Ozon", TrendingUp],
           ] as const).map(([value, label, Icon]) => (
             <button key={value} onClick={() => setView(value)} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${view === value ? "bg-violet-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
               <Icon className="h-4 w-4" /> {label}
@@ -375,7 +377,7 @@ export function CalendarPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
+      {view !== "forecast" && view !== "ozon-forecast" && <div className="rounded-xl border border-slate-200 bg-white p-3">
         <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Приоритет платежей</h2>
@@ -420,20 +422,17 @@ export function CalendarPage() {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
-      <SalesForecastPanel
-        key={`${year}-${month}`}
-        year={year}
-        month={month}
-      />
-          <OzonForecastPanel year={year} month={month} />
-
-      <FinancialAlertsPanel accounts={state.accounts} payments={scopedPayments} />
+      {view !== "forecast" && view !== "ozon-forecast" && <FinancialAlertsPanel accounts={state.accounts} payments={scopedPayments} />}
       <FinanceTasksPanel />
 
       <div id="calendar-main-content" className="scroll-mt-4">
-      {view === "calendar" ? <Card>
+      {view === "forecast" ? (
+        <SalesForecastPanel key={`${year}-${month}`} year={year} month={month} />
+      ) : view === "ozon-forecast" ? (
+        <OzonForecastPanel key={`ozon-${year}-${month}`} year={year} month={month} />
+      ) : view === "calendar" ? <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
