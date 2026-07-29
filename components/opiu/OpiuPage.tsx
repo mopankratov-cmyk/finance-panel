@@ -6,9 +6,12 @@ import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+type OpiuTab = "sale_date" | "report_date";
+
 interface OpiuResponse {
   month: string;
   report: OpiuReport;
+  reportByReportDate?: OpiuReport;
   timestamp: string;
   meta?: {
     salesRows: number;
@@ -65,6 +68,7 @@ function OpiuTableSkeleton({ cols }: { cols: number }) {
 
 export function OpiuPage() {
   const [month, setMonth] = useState(currentMonthParam);
+  const [tab, setTab] = useState<OpiuTab>("sale_date");
   const [data, setData] = useState<OpiuResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -136,7 +140,9 @@ export function OpiuPage() {
     }
   };
 
-  const report = data?.report;
+  const report = tab === "report_date"
+    ? (data?.reportByReportDate ?? data?.report)
+    : data?.report;
   const weekCount = report?.weeks.length ?? 4;
   const colCount = weekCount + 2;
 
@@ -192,6 +198,28 @@ export function OpiuPage() {
           )}
         </p>
       )}
+
+      <div className="flex gap-1 border-b border-white/10">
+        {(
+          [
+            { id: "sale_date", label: "Свод по дате продажи" },
+            { id: "report_date", label: "Свод по дате отчёта" },
+          ] as { id: OpiuTab; label: string }[]
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t.id
+                ? "border-b-2 border-violet-500 text-violet-400"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {loading ? (
         <OpiuTableSkeleton cols={colCount} />
