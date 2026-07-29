@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "find lib tests -name '*.test.mts' -type f -print0 | xargs -0 node --import tsx --test"
+    "test": "find lib tests -name '*.test.mts' -type f -print0 | xargs -0 node --import tsx --test",
+    "test:payout-contract": "node --test --test-concurrency=1 test/payout-contract/*.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
@@ -30,6 +31,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
+    "pg": "^8.13.0",
     "playwright": "^1.60.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
