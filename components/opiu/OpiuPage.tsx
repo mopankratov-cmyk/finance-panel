@@ -5,6 +5,7 @@ import { currentMonthParam, weeksInMonth, parseMonthParam } from "@/lib/opiu/wee
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { InsightsBanner } from "@/components/agent/InsightsBanner";
 
 interface OpiuResponse {
   month: string;
@@ -468,6 +469,9 @@ export function OpiuPage() {
           Синхронизировано
         </div>
       </div>
+
+      {/* ── Что требует внимания (видно на любой вкладке) ── */}
+      <InsightsBanner />
 
       {/* ── Error ── */}
       {error && (
