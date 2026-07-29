@@ -3,8 +3,9 @@
 import { formatPct, formatRub, formatTime } from "@/lib/analytics/format";
 import { currentMonthParam } from "@/lib/opiu/weeks";
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
+import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
 import { Loader2, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type OpiuTab = "sale_date" | "report_date";
 
@@ -73,71 +74,84 @@ export function OpiuPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savingWeek, setSavingWeek] = useState<string | null>(null);
+  const [savingWeeks, setSavingWeeks] = useState<Set<string>>(() => new Set());
 
-  const fetchReport = useCallback(async (m: string, refresh = false) => {
+  const fetchReport = useCallback(async (
+    m: string,
+    refresh = false,
+    signal?: AbortSignal,
+  ) => {
     const params = new URLSearchParams({ month: m });
     if (refresh) params.set("refresh", "1");
-    const res = await fetch(`/api/opiu?${params}`);
+    const res = await fetch(`/api/opiu?${params}`, { signal });
     const json = (await res.json()) as OpiuResponse & { error?: string };
     if (!res.ok) throw new Error(json.error ?? "Ошибка загрузки");
     return json;
   }, []);
 
+  const coordinatorRef = useRef<ReturnType<
+    typeof createOpiuRequestCoordinator<OpiuResponse>
+  > | null>(null);
+  if (!coordinatorRef.current) {
+    coordinatorRef.current = createOpiuRequestCoordinator<OpiuResponse>({
+      fetchReport,
+      writeWarehouse: async (payload) => {
+        const res = await fetch("/api/opiu/warehouse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const json = (await res.json()) as { error?: string };
+          throw new Error(json.error ?? "Ошибка сохранения");
+        }
+      },
+      onReport: (json) => setData(json),
+      onError: setError,
+      onSavingChange: (payload, pendingCount) => {
+        const key = `${payload.month}:${payload.weekStart}`;
+        setSavingWeeks((current) => {
+          const next = new Set(current);
+          if (pendingCount > 0) next.add(key);
+          else next.delete(key);
+          return next;
+        });
+      },
+      onReportStart: ({ refresh }) => {
+        setError(null);
+        setLoading(!refresh);
+        setRefreshing(refresh);
+      },
+      onReportSettled: ({ refresh }) => {
+        if (refresh) setRefreshing(false);
+        else setLoading(false);
+      },
+    });
+  }
+  const coordinator = coordinatorRef.current;
+
   useEffect(() => {
-    let cancelled = false;
+    coordinator.setMonth(month);
+    setData(null);
+    void coordinator.loadReport(month, false);
+  }, [coordinator, month]);
+
+  useEffect(() => () => coordinator.dispose(), [coordinator]);
+
+  const handleMonthChange = (nextMonth: string) => {
+    setError(null);
+    setRefreshing(false);
     setLoading(true);
-    setError(null);
-
-    fetchReport(month)
-      .then((json) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [month, fetchReport]);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const json = await fetchReport(month, true);
-      setData(json);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка обновления");
-    } finally {
-      setRefreshing(false);
-    }
+    setMonth(nextMonth);
   };
 
-  const handleWarehouseSave = async (weekStart: string, raw: string) => {
+  const handleRefresh = () => {
+    void coordinator.loadReport(month, true);
+  };
+
+  const handleWarehouseSave = (weekStart: string, raw: string) => {
     const amount = Number(raw.replace(/\s/g, "").replace(",", ".")) || 0;
-    setSavingWeek(weekStart);
-    try {
-      const res = await fetch("/api/opiu/warehouse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month, weekStart, amount }),
-      });
-      if (!res.ok) {
-        const json = (await res.json()) as { error?: string };
-        throw new Error(json.error ?? "Ошибка сохранения");
-      }
-      const json = await fetchReport(month);
-      setData(json);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка сохранения");
-    } finally {
-      setSavingWeek(null);
-    }
+    return coordinator.saveWarehouse({ month, weekStart, amount });
   };
 
   const report = tab === "report_date"
@@ -160,7 +174,7 @@ export function OpiuPage() {
           <input
             type="month"
             value={month}
-            onChange={(e) => setMonth(e.target.value)}
+            onChange={(e) => handleMonthChange(e.target.value)}
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           />
           <button
@@ -286,7 +300,7 @@ export function OpiuPage() {
                               key={`${week.weekStart}-${val}`}
                               type="text"
                               defaultValue={val != null ? String(Math.round(val)) : "0"}
-                              disabled={savingWeek === week.weekStart}
+                              disabled={savingWeeks.has(`${month}:${week.weekStart}`)}
                               onBlur={(e) => {
                                 const next = e.target.value;
                                 const prev = val != null ? String(Math.round(val)) : "0";
