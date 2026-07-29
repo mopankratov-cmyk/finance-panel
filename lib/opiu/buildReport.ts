@@ -2,10 +2,11 @@ import type { MonthWeek } from "./weeks";
 import {
   aggregateWeek,
   sumWeeks,
+  type OpiuOrder,
   type ProductCostRow,
   type WeekRawMetrics,
 } from "./metrics";
-import type { WbAdStat, WbOrder, WbReportRow } from "@/lib/wb/types";
+import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
 
 export type OpiuRowKind = "metric" | "separator" | "percent";
 
@@ -56,7 +57,7 @@ function rowValues(
 export function buildOpiuReport(
   weeks: MonthWeek[],
   sales: WbReportRow[],
-  orders: WbOrder[],
+  orders: OpiuOrder[],
   adStats: WbAdStat[],
   costs: ProductCostRow[],
   warehouseByWeek: Record<string, number>,
