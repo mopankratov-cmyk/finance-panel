@@ -47,10 +47,22 @@ export function deriveWbLegacySnapshotPayout(
   };
 }
 
+// Shift the decimal exponent before half-up rounding so values such as 1.005
+// normalize to business cents without inheriting binary multiplication drift.
+function normalizeRubToCents(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+
+  const [coefficient, exponent = "0"] = value.toString().toLowerCase().split("e");
+  const shifted = Number(`${coefficient}e${Number(exponent) + 2}`);
+  const cents = Math.floor(shifted + 0.5);
+  if (!Number.isFinite(cents) || !Number.isSafeInteger(cents)) {
+    throw new RangeError("WB payout amount exceeds safe integer cents");
+  }
+  return cents;
+}
+
 export function allocateWbPayoutSchedule(remainingPayout: number, dates: string[]) {
-  const totalCents = Number.isFinite(remainingPayout)
-    ? Math.max(0, Math.round(remainingPayout * 100))
-    : 0;
+  const totalCents = normalizeRubToCents(remainingPayout);
   const bucketCount = Math.min(dates.length, totalCents);
   if (bucketCount === 0) return [];
 

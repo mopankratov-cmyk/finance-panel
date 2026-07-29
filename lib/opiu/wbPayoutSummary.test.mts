@@ -66,3 +66,21 @@ test("WB payout schedule ignores invalid, non-positive, or undated amounts", () 
   assert.deepEqual(allocateWbPayoutSchedule(-1, dates), []);
   assert.deepEqual(allocateWbPayoutSchedule(1, []), []);
 });
+
+test("WB payout schedule rejects amounts that overflow safe integer cents", () => {
+  assert.throws(
+    () => allocateWbPayoutSchedule(Number.MAX_VALUE, ["2026-08-07"]),
+    RangeError,
+  );
+});
+
+test("WB payout schedule rounds decimal money half-up to cents", () => {
+  const schedule = allocateWbPayoutSchedule(
+    1.005,
+    ["2026-08-07", "2026-08-14", "2026-08-21", "2026-08-28"],
+  );
+  const cents = schedule.map(({ amount }) => Math.round(amount * 100));
+
+  assert.equal(cents.reduce((total, amount) => total + amount, 0), 101);
+  assert.ok(schedule.every(({ amount }) => Number.isFinite(amount) && amount > 0));
+});
