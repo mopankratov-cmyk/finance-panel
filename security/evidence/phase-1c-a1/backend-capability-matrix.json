@@ -1,0 +1,97 @@
+{
+  "schema_version": "pankster.phase1c-a1.backend-capability-matrix.v1",
+  "recorded_at": "2026-07-22T19:35:00Z",
+  "result": "RESEARCH_COMPLETE_NO_BACKEND_APPROVED",
+  "source_policy": {
+    "official_sources_only": true,
+    "installs_performed": false,
+    "provider_api_calls_performed": false,
+    "runtime_started": false,
+    "network_probes_performed": false,
+    "credentials_used": false
+  },
+  "sources": {
+    "modal_sandbox_networking": "https://modal.com/docs/guide/sandbox-networking",
+    "e2b_sandbox_internet_access": "https://e2b.dev/docs/network/internet-access",
+    "apple_container": "https://github.com/apple/container",
+    "lima_network": "https://lima-vm.io/docs/config/network/",
+    "colima_configuration": "https://colima.run/docs/configuration/",
+    "orbstack_architecture": "https://docs.orbstack.dev/architecture",
+    "docker_desktop_eci": "https://docs.docker.com/enterprise/security/hardened-desktop/enhanced-container-isolation/"
+  },
+  "candidate_matrix": {
+    "modal_sandbox": {
+      "disposition": "SHORTLIST_REMOTE_SANDBOX_A2",
+      "native_egress_controls_found": true,
+      "deny_all_supported_by_docs": true,
+      "allowlist_supported_by_docs": true,
+      "profile_runtime_approved": false,
+      "implementation_ready": false,
+      "risk_notes": [
+        "default outbound access must be explicitly restricted",
+        "domain allowlist is beta in reviewed docs",
+        "cloud data boundary requires A2 review"
+      ]
+    },
+    "e2b_sandbox": {
+      "disposition": "SHORTLIST_REMOTE_SANDBOX_A2",
+      "native_egress_controls_found": true,
+      "deny_all_supported_by_docs": true,
+      "allowlist_supported_by_docs": true,
+      "profile_runtime_approved": false,
+      "implementation_ready": false,
+      "risk_notes": [
+        "default outbound access must be explicitly restricted",
+        "blocked TCP connects may appear successful inside sandbox",
+        "cloud data boundary requires A2 review"
+      ]
+    },
+    "apple_container": {
+      "disposition": "HOLD_PENDING_NETWORK_POLICY_PROOF",
+      "native_egress_controls_found": false,
+      "profile_runtime_approved": false,
+      "implementation_ready": false
+    },
+    "lima": {
+      "disposition": "REJECTED_BY_PHASE_1B_FOR_STANDALONE_PROFILE_RUNTIME",
+      "native_egress_controls_found": false,
+      "profile_runtime_approved": false,
+      "implementation_ready": false
+    },
+    "colima": {
+      "disposition": "HOLD_PENDING_NETWORK_POLICY_PROOF",
+      "native_egress_controls_found": false,
+      "profile_runtime_approved": false,
+      "implementation_ready": false
+    },
+    "orbstack": {
+      "disposition": "HOLD_PENDING_SECURITY_MODEL_PROOF",
+      "native_egress_controls_found": false,
+      "profile_runtime_approved": false,
+      "implementation_ready": false
+    },
+    "docker_desktop_eci": {
+      "disposition": "HOLD_PENDING_EGRESS_POLICY_PROOF",
+      "native_egress_controls_found": false,
+      "profile_runtime_approved": false,
+      "implementation_ready": false
+    }
+  },
+  "recommendation": "SHORTLIST_REMOTE_SANDBOXES_FOR_A2_THREAT_MODEL",
+  "shortlist": [
+    "modal_sandbox",
+    "e2b_sandbox"
+  ],
+  "forbidden_in_a1": {
+    "production_profiles_started": false,
+    "real_credentials_used": false,
+    "gateway_changed": false,
+    "canary_started": false,
+    "pfctl_executed": false,
+    "host_firewall_changed": false,
+    "auth_files_read": false,
+    "keychain_read": false,
+    "environment_values_dumped": false
+  },
+  "next_gate": "PHASE_1C_A2_PROFILE_RUNTIME_THREAT_MODEL"
+}

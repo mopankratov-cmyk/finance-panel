@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,14 @@ export interface PriceRow {
 export async function GET() {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
-  const { data, error } = await db.rpc("rnp_report");
-  if (error) return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+  let data: RpcRow[];
+  try {
+    data = await loadRnpReportRows<RpcRow>(db, null, { label: "Цены WB: товары" });
+  } catch (error) {
+    return NextResponse.json({ data: null, error: error instanceof Error ? error.message : "Не удалось загрузить товары WB" }, { status: 500 });
+  }
 
-  const rows: PriceRow[] = ((data ?? []) as RpcRow[])
+  const rows: PriceRow[] = data
     .map((r) => ({
       article: r.article || String(r.nm_id),
       nmId: r.nm_id,

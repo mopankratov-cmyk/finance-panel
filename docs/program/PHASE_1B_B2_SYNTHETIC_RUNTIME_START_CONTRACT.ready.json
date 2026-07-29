@@ -1,0 +1,58 @@
+{
+  "content_sha256": "33e69d32cc068007d5de497665b9ef3671228033763d30836bf9298908aa5665",
+  "contract_content": {
+    "allowed_actions": [
+      "/usr/local/bin/container system start",
+      "/usr/local/bin/container system status",
+      "/usr/local/bin/container system version",
+      "/usr/local/bin/container --version",
+      "read-only process scan for container runtime services"
+    ],
+    "approval_id": "p1b-20260722-syntheticruntimeb2",
+    "backend": "apple-container-cli",
+    "backend_version": "1.1.0",
+    "created_at": "2026-07-22T14:20:00Z",
+    "denied_actions": [
+      "container run/create/start workload commands",
+      "OCI image pull/build/push/login commands",
+      "production profiles",
+      "real credentials",
+      "Keychain credential creation",
+      "gateway restart or change",
+      "canary start",
+      "dependency changes",
+      "database migrations"
+    ],
+    "expires_at": "2026-07-25T12:06:00Z",
+    "install_manifest_sha256": "eb3e9d783f78af0fb766f5d14da427eaa1ac6c00267bc7da713b381d82133a87",
+    "installed_backend_receipt": {
+      "container_cli_version": "container CLI version 1.1.0 (build: release, commit: 5973b9c)",
+      "package_sha256": "0ca1c42a2269c2557efb1d82b1b38ac553e6a3a3da1b1179c439bcee1e7d6714",
+      "pkgid": "com.apple.container-installer",
+      "pkg_version": "1.1.0"
+    },
+    "post_install_evidence_sha256": "5bb068a8f4b1d95286fc864c3301f1c7faf4f24073d799cdbeec3faeb335228a",
+    "preconditions": [
+      "Phase 1B-B1 installer evidence is committed and matches post_install_evidence_sha256.",
+      "Apple Container CLI exists at /usr/local/bin/container.",
+      "Apple Container CLI reports version 1.1.0.",
+      "No production profiles are enabled.",
+      "No real credentials are used.",
+      "No container workload start is authorized by this contract."
+    ],
+    "required_runtime_state_after_start": [
+      "container system status command completes or returns diagnosable non-zero output.",
+      "No synthetic workload container is created.",
+      "No production profile is started.",
+      "No gateway or canary process is changed by the runner."
+    ],
+    "rollback_boundary": [
+      "If runtime start fails, do not retry by broadening scope.",
+      "If runtime start succeeds but follow-up gates fail, stop only Apple Container system services using a separately reviewed rollback command.",
+      "Do not delete user data or production state."
+    ],
+    "synthetic_only": true
+  },
+  "contract_state": "READY_FOR_OWNER_APPROVAL",
+  "schema_version": "pankster.phase1b-b2.synthetic-runtime-start-contract.v1"
+}

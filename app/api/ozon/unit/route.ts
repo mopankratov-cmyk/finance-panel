@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import { ozonPrices, ozonImages, ozonAnalytics } from "@/lib/ozon/api";
+import { ozonPrices, ozonImages, ozonAnalytics, ozonStocks } from "@/lib/ozon/api";
+import { createOzonCostResolver } from "@/lib/ozon/costs";
+import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -19,38 +21,48 @@ export async function GET(request: NextRequest) {
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
 
-  const [pricesRes, an, imgs] = await Promise.all([
+  const [pricesRes, an, imgs, stocks] = await Promise.all([
     ozonPrices(cab.creds),
     ozonAnalytics(cab.creds, from, to),
     ozonImages(cab.creds),
+    ozonStocks(cab.creds),
   ]);
   if (!pricesRes.ok) return NextResponse.json({ rows: [], error: pricesRes.error }, { status: 502 });
 
   // себес + реклама
   const db = getSupabaseAdmin();
-  // реклама по SKU за 30дн — из общего кэша ozon_ad_cache (тот же источник, что РНП)
+  // реклама по SKU за 14 дней — из общего кэша ozon_ad_cache (тот же источник, что РНП)
   const adBySku: Record<string, number> = {};
   if (db) {
-    const { data: adCache } = await db.from("ozon_ad_cache").select("sku, spent").eq("days", WINDOW_DAYS);
+    const { data: adCache } = await db
+      .from("ozon_ad_cache")
+      .select("sku, spent")
+      .eq("days", WINDOW_DAYS)
+      .eq("client_id", cab.creds.clientId);
     for (const r of adCache ?? []) adBySku[r.sku as string] = Number(r.spent ?? 0);
   }
-  const costByArt = new Map<string, number>();
-  const nameByArt = new Map<string, string>();
+  let costs = createOzonCostResolver([]);
   if (db) {
     const { data } = await db.from("product_costs").select("article, name, cost_rub");
-    for (const c of data ?? []) { costByArt.set(c.article as string, Number(c.cost_rub ?? 0)); nameByArt.set(c.article as string, (c.name as string) ?? ""); }
+    costs = createOzonCostResolver(data ?? []);
   }
 
   // реализация по offer: выручка, заказы, реклама — через sku→offer
   const skuToOffer = imgs.skuToOffer;
+  const stockOfferBySku = indexOzonOfferIdsBySku(stocks.ok ? stocks.rows : []);
   const revByOffer: Record<string, number> = {}, unitsByOffer: Record<string, number> = {}, adByOffer: Record<string, number> = {};
+  const nameByOffer = new Map<string, string>();
   if (an.ok) for (const row of an.rows) {
-    const offer = skuToOffer[row.sku]; if (!offer) continue;
+    const offer = resolveOzonOfferId(row.sku, skuToOffer, stockOfferBySku); if (!offer) continue;
     revByOffer[offer] = (revByOffer[offer] ?? 0) + row.revenue;
     unitsByOffer[offer] = (unitsByOffer[offer] ?? 0) + row.ordered_units;
+    if (row.name && !nameByOffer.has(offer)) nameByOffer.set(offer, row.name);
+  }
+  if (stocks.ok) for (const row of stocks.rows) {
+    if (row.name && !nameByOffer.has(row.article)) nameByOffer.set(row.article, row.name);
   }
   for (const [sku, spent] of Object.entries(adBySku)) {
-    const offer = skuToOffer[sku]; if (!offer) continue;
+    const offer = resolveOzonOfferId(sku, skuToOffer, stockOfferBySku); if (!offer) continue;
     adByOffer[offer] = (adByOffer[offer] ?? 0) + spent;
   }
 
@@ -59,7 +71,9 @@ export async function GET(request: NextRequest) {
     const units = unitsByOffer[off] ?? 0;
     // реальная цена продажи = выручка/заказы; если продаж нет — каталожная
     const price = units > 0 ? Math.round((revByOffer[off] ?? 0) / units) : Math.round(p.price);
-    const cost = costByArt.get(off) ?? 0;
+    const productName = nameByOffer.get(off) ?? "";
+    const costMatch = costs.resolve({ offerId: off, names: [productName] });
+    const cost = costMatch?.cost ?? 0;
     const commissionRub = Math.round((price * p.commissionPct) / 100);
     const logistics = Math.round(p.logistics);
     const acquiring = Math.round(p.acquiring);
@@ -69,7 +83,7 @@ export async function GET(request: NextRequest) {
     const profit = Math.round(price - cost - commissionRub - logistics - acquiring - adPerUnit - taxRub);
     const margin = price > 0 ? Math.round((profit / price) * 1000) / 10 : null;
     return {
-      art: off, product_id: p.product_id, name: nameByArt.get(off) || off, img_url: imgs.byOffer[off] ?? null,
+      art: off, product_id: p.product_id, name: productName || costMatch?.name || off, img_url: imgs.byOffer[off] ?? null,
       price, cost: Math.round(cost), units,
       commission_pct: p.commissionPct, commission_rub: commissionRub,
       logistics, acquiring, ad: adPerUnit, drr, tax: taxRub,

@@ -1,0 +1,402 @@
+{
+  "schema_version": "pankster.phase1b-c17.final-evidence-pack-manifest.v1",
+  "recorded_at": "2026-07-22T18:48:00Z",
+  "result": "SUPERSEDED_BY_C9_HOST_FIREWALL_RESEARCH_PATH",
+  "final_lima_vz_verdict": "LIMA_VZ_REJECTED_AS_STANDALONE_PROFILE_RUNTIME_BACKEND",
+  "phase_scope": "Phase 1B-C0 through Phase 1B-C9 R6 firewall execution block plus C16 reclaim-only closeout execution; C10-C15 remain blocked because Lima-vz is rejected as a standalone profile runtime backend",
+  "artifacts": [
+    {
+      "gate": "C0",
+      "path": "docs/program/PHASE_1B_C0_FALLBACK_BACKEND_SELECTION_01.md",
+      "sha256": "9016096fda6916017a9f94ca6b175066e6a06eb4de78182a9732a2f01ef91784"
+    },
+    {
+      "gate": "C0",
+      "path": "security/evidence/phase-1b-c0/fallback-selection-summary.json",
+      "sha256": "75d09b0d7a660ccd2bd3957ec710016e9d5ed96e36fee92aa667a22677dd535e"
+    },
+    {
+      "gate": "C1",
+      "path": "docs/program/PHASE_1B_C1_LIMA_VZ_INSTALLATION_MANIFEST.ready.json",
+      "sha256": "78429b6b77272e0dedf28e708dcdc5a06aa4171a2e719789c3a7f5e647df4209"
+    },
+    {
+      "gate": "C1",
+      "path": "security/evidence/phase-1b-c1/install-execution-summary.json",
+      "sha256": "f65c56344099c9eb5a929d013a5cbfd6e18db367fa812bab03086796eaf4f4a0"
+    },
+    {
+      "gate": "C2",
+      "path": "docs/program/PHASE_1B_C2_LIMA_VZ_SYNTHETIC_VM_CONFIG.yaml",
+      "sha256": "ec4ee37801c5168f3522dbd58ab729e565918c684c415265d3079eb7a3a74008"
+    },
+    {
+      "gate": "C2",
+      "path": "security/evidence/phase-1b-c2/static-config-validation.json",
+      "sha256": "56fffd2be88a0c628c52953706423bfc0201ec3262554ef0d8259b001e697c19"
+    },
+    {
+      "gate": "C3",
+      "path": "docs/program/PHASE_1B_C3_R2_SYNTHETIC_LIMA_RUNTIME_START_CONTRACT.ready.json",
+      "sha256": "04f102a90742dd80b932388e47c469a1316be2949b77d2855bca2bd8913099d2"
+    },
+    {
+      "gate": "C3",
+      "path": "security/evidence/phase-1b-c3/runtime-start-r2-execution-summary.json",
+      "sha256": "e8efcc387a1dcaa4f6f1f64fca2e1d2d0be2b360acb498d1e16b211567f3d3c4"
+    },
+    {
+      "gate": "C4",
+      "path": "docs/program/PHASE_1B_C4_SYNTHETIC_LIMA_POSTSTART_PROBE_CONTRACT.ready.json",
+      "sha256": "ee3210b2bad22a93141bf7059f03cc628115a85cf8187824b1f3eb459382aa24"
+    },
+    {
+      "gate": "C4",
+      "path": "security/evidence/phase-1b-c4/poststart-probe-execution-summary.json",
+      "sha256": "fd723c2d94d76b3e5efb4c7f5b6b539f85d63e0f4ccc63afd53d2857f2af7679"
+    },
+    {
+      "gate": "C5",
+      "path": "docs/program/PHASE_1B_C5_SYNTHETIC_LIMA_EGRESS_CLASSIFICATION_CONTRACT.ready.json",
+      "sha256": "af09c6907038f290c86789060b6e4d36ebae12429ef1183b1cf34a07bb7c6ede"
+    },
+    {
+      "gate": "C5",
+      "path": "security/evidence/phase-1b-c5/egress-classification-execution-summary.json",
+      "sha256": "43e57edf2c6742340be025d99fbffddd22178de6581cd1565db12f929e7413fd"
+    },
+    {
+      "gate": "C6",
+      "path": "docs/program/PHASE_1B_C6_NETWORK_CONTAINMENT_OR_RECLAIM_DECISION.md",
+      "sha256": "2ab1a014660b6e46b2aee32584b87e4e48ea78115cc9ec07990a981d0f5572df"
+    },
+    {
+      "gate": "C6",
+      "path": "security/evidence/phase-1b-c6/network-containment-or-reclaim-decision.json",
+      "sha256": "a6f9e41050d4d4abfd035a22e1f8aefeff684aac736874574e8f9ffaeadac357"
+    },
+    {
+      "gate": "C7",
+      "path": "docs/program/PHASE_1B_C7_NETWORK_CONTAINMENT_DESIGN.md",
+      "sha256": "ac9d164e1e23d3ef5b9ca34666d8882e9c23997ed7424190639075c96277db65"
+    },
+    {
+      "gate": "C7",
+      "path": "security/evidence/phase-1b-c7/network-containment-design-summary.json",
+      "sha256": "49e53fd8aa5ba35d9f9e5fe5c797a9986a9e0e13cc3cd65b66fb1723a702d7d4"
+    },
+    {
+      "gate": "C8",
+      "path": "docs/program/PHASE_1B_C8_STATIC_CONTAINMENT_REVIEW.md",
+      "sha256": "b673cebaf96ec635180c84f319ec16f74528fb54390e1e3d33919f5b5c6b6c73"
+    },
+    {
+      "gate": "C8",
+      "path": "security/evidence/phase-1b-c8/static-containment-review.json",
+      "sha256": "a3479fcee217638d172bae7bb35190a2635b021f31cfd5ccd8564af8b19e8396"
+    },
+    {
+      "gate": "C9",
+      "path": "docs/program/PHASE_1B_C9_HOST_FIREWALL_RESEARCH_CONTRACT.ready.json",
+      "sha256": "554bc67739c9eda86ca87731717d8190981448752cab4e1645a60cf78eac443a"
+    },
+    {
+      "gate": "C9",
+      "path": "docs/program/PHASE_1B_C9_HOST_FIREWALL_RESEARCH_APPROVAL_PACKET.md",
+      "sha256": "e77598c039516ffef5f523be758c875b901ff5ff5a0108826a13e70a382206dd"
+    },
+    {
+      "gate": "C9",
+      "path": "docs/program/PHASE_1B_C9_HOST_FIREWALL_RESEARCH_APPROVAL_RECORD.json",
+      "sha256": "9489899efb430ac659916f01daf2441e15b8ba1123843a29a3d66b1f9de9187b"
+    },
+    {
+      "gate": "C9",
+      "path": "security/evidence/phase-1b-c9/host-firewall-research-approval-prep.json",
+      "sha256": "438477e587feaf054b6a69016984344762c813648271c43124c859568781fb93"
+    },
+    {
+      "gate": "C9",
+      "path": "tools/phase_1b_c9_host_firewall_research_validator.py",
+      "sha256": "78625ac3ac2d21a4eaa1a959d3ad9323d9800abcdc9a766da68d4ffd62cfeb85"
+    },
+    {
+      "gate": "C9",
+      "path": "tools/tests/test_phase_1b_c9_host_firewall_research_validator.py",
+      "sha256": "95298ba5c91a33377d234c02cc9e60f9e0d8ac70d8071cea2003a7c156a2b8ce"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "docs/program/PHASE_1B_C9_R2_FIREWALL_TARGET_DISCOVERY_CONTRACT.ready.json",
+      "sha256": "00b0ca5e2711ada2b12792bb1a5e8a8324927d87839b5f79311e2a1058464cf3"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "docs/program/PHASE_1B_C9_R2_FIREWALL_TARGET_DISCOVERY_APPROVAL_PACKET.md",
+      "sha256": "fcacb83b673b9977c7d58173cdcea7688461d7234e905196ea7b68c1f4eee04c"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "security/evidence/phase-1b-c9-r2/firewall-target-discovery-approval-prep.json",
+      "sha256": "f7e258fbcf1150edd7d6f6b2d3b1751ab70e3473cf11064d1e60841e43d969e8"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "tools/phase_1b_c9_r2_firewall_target_discovery_validator.py",
+      "sha256": "20753ab4f81b196cb5282e4fe0eb39f366cbe8b49be9dc29cf8907fe52aba747"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "tools/tests/test_phase_1b_c9_r2_firewall_target_discovery_validator.py",
+      "sha256": "f50ec886a281192f44c03da04fa4141c1836e6b7249a0cbc8291f0cfb2adaf80"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "docs/program/PHASE_1B_C9_R2_FIREWALL_TARGET_DISCOVERY_APPROVAL_RECORD.json",
+      "sha256": "0d0f6e90a9840dfac8c899ae89dca24cffac425703729234c42b75b13e896927"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "tools/phase_1b_c9_r2_firewall_target_discovery_runner.py",
+      "sha256": "038bc3d40e768fa2e10847c42962f46babffc0d606e09589c5aea28029ba58ff"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "tools/tests/test_phase_1b_c9_r2_firewall_target_discovery_runner.py",
+      "sha256": "f7f034415fced6f1595d455d0447b7a3eb5bc529410036f33482a3a81abdab08"
+    },
+    {
+      "gate": "C9_R2",
+      "path": "security/evidence/phase-1b-c9-r2/firewall-target-discovery-execution-summary.json",
+      "sha256": "0ccbef5c473b25a1f460a2ccf47aa5b689bc4ded0f183524fbf73855106af698"
+    },
+    {
+      "gate": "C9_R3",
+      "path": "docs/program/PHASE_1B_C9_R3_HOST_FIREWALL_EXECUTION_PRECHECK.md",
+      "sha256": "2e09c88ab58f3073e5233b7213a0df0cc580a208c5878e524f32aa4ca6d8d54d"
+    },
+    {
+      "gate": "C9_R3",
+      "path": "security/evidence/phase-1b-c9-r3/host-firewall-execution-precheck.json",
+      "sha256": "b5ddac57db83b33ddac5144c8bbdbdf6f6c901d34ec81951d666aa9856e816c9"
+    },
+    {
+      "gate": "C9_R3",
+      "path": "docs/program/PHASE_1B_C9_R3_PF_VISIBILITY_AND_TARGET_UNIQUENESS_REVIEW.md",
+      "sha256": "cf9aba66448ab28ea997bb0b03fe05e3053f063d7506cd4cca5aafb5293270e3"
+    },
+    {
+      "gate": "C9_R3",
+      "path": "security/evidence/phase-1b-c9-r3/pf-visibility-target-uniqueness-review.json",
+      "sha256": "b6db632e56636c19e5c9c5e1a51e8fdfd76f4e8a9919cca1dc0ee0d37bdb6feb"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "docs/program/PHASE_1B_C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY_CONTRACT.ready.json",
+      "sha256": "ce532fde373a206fbbe10396d794797107371ec05bab9cece7e88eea6582a043"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "docs/program/PHASE_1B_C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY_APPROVAL_PACKET.md",
+      "sha256": "102906d991494c65e33f00f4c7cf9a053237d00c2e5a98ba1023df5fc10a345e"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "security/evidence/phase-1b-c9-r4/host-network-observability-approval-prep.json",
+      "sha256": "0b4e9c2151e6339623398f469c3bac215b3d117525f4f15f50541d5556e8c76d"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "tools/phase_1b_c9_r4_host_network_observability_validator.py",
+      "sha256": "6a1e9e528e6262d163d9e7047ab3885f261500290c4d530666b262dcc898e588"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "tools/tests/test_phase_1b_c9_r4_host_network_observability_validator.py",
+      "sha256": "d95c176b127033f44873a098511c4d3765aefd1d2f8e4f1a5c6ad5653ee34c38"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "docs/program/PHASE_1B_C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY_APPROVAL_RECORD.json",
+      "sha256": "071f2de6ae630b498a9e2db7728a4c7202f752dd4e54b0d594bb1916e7a145ff"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "tools/phase_1b_c9_r4_host_network_observability_runner.py",
+      "sha256": "1622a41f73cf3db9580ca5518b9684101bcf741e7da7b85a649ea953b47e2dff"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "tools/tests/test_phase_1b_c9_r4_host_network_observability_runner.py",
+      "sha256": "a11f7d80f33f89b7d84ba9146e9c941dff2fbe707ee065567919b9fb0db22439"
+    },
+    {
+      "gate": "C9_R4",
+      "path": "security/evidence/phase-1b-c9-r4/host-network-observability-execution-summary.json",
+      "sha256": "08e54b09efc082bacec2e6498c0e06f4f217cfa0eb3dcae36d6b6518a48c863b"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "docs/program/PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_CONTRACT.ready.json",
+      "sha256": "22076ed3da419e7ed4901f0d0ea0aca25cff34d63c6073c649a9bd3420269026"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "docs/program/PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_APPROVAL_PACKET.md",
+      "sha256": "1abaf141fc96c413e0cb26151b3cb12d968a9781a9e27b2457571545a2447dc0"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "security/evidence/phase-1b-c9-r5/packet-visibility-approval-prep.json",
+      "sha256": "77ef4c72b551bf464311a25dc93e3378c8c8cf9547bf973cd9a77cb57836d985"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "tools/phase_1b_c9_r5_packet_visibility_validator.py",
+      "sha256": "7d4aa8e286fd2ce83e04f5d945d706aa82a3c1fa9c73959859d73709a3589e6e"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "tools/tests/test_phase_1b_c9_r5_packet_visibility_validator.py",
+      "sha256": "805c3c873b1cc3c9c89d13b717b737ddfa02e6dd132ec8756990068866c2c0b9"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "docs/program/PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_APPROVAL_RECORD.json",
+      "sha256": "e5a2a71a1e399593ed47267a46bf4ab5ad4338810bf9ea880a50d8fec7ffe3f4"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "tools/phase_1b_c9_r5_packet_visibility_runner.py",
+      "sha256": "1bdd47dfa910df5a9c15a0f6d0373a9785c5c23b8421d29f5c145878aaf8322c"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "tools/tests/test_phase_1b_c9_r5_packet_visibility_runner.py",
+      "sha256": "bf23072096d8c1b23327ec094c7981365fef6f8b9e3c26413b6506f4dff1569a"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "docs/program/PHASE_1B_C9_R5_PACKET_VISIBILITY_PROBE_EXECUTION_BLOCK.md",
+      "sha256": "cc79d5c24458e16b863756ae1b47dfcd0c70986f935ae8371a6c0e497efbd0ca"
+    },
+    {
+      "gate": "C9_R5",
+      "path": "security/evidence/phase-1b-c9-r5/packet-visibility-execution-block.json",
+      "sha256": "c3e98625dc3b86cb1aef490bc064fff6e04bd5d51cdc49c1b75bde65f2493036"
+    },
+    {
+      "gate": "C9_R5_R2",
+      "path": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_CONTRACT.ready.json",
+      "sha256": "2eda566cc6ac8d9ca6b2b81fc4d21a78cdf965d62aaebcd22ba528714c808238"
+    },
+    {
+      "gate": "C9_R5_R2",
+      "path": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_APPROVAL_PACKET.md",
+      "sha256": "da85f6f732d0486a92ff9d8ebe71f984c641bdd3b8eaa33d38f62f6b37fd2bed"
+    },
+    {
+      "gate": "C9_R5_R2",
+      "path": "security/evidence/phase-1b-c9-r5-r2/manual-packet-visibility-approval-prep.json",
+      "sha256": "2bb863b064ae8b0da22b1b706a66a964da44066c89a6b198884b7e114ac23bc2"
+    },
+    {
+      "gate": "C9_R5_R2",
+      "path": "tools/phase_1b_c9_r5_r2_manual_packet_visibility_validator.py",
+      "sha256": "bd2e2ff0ab4861340c78c5cf489a30920588de0419128b6dc0d4f111418cc223"
+    },
+    {
+      "gate": "C9_R5_R2",
+      "path": "tools/tests/test_phase_1b_c9_r5_r2_manual_packet_visibility_validator.py",
+      "sha256": "8bcd991088a72dc86eb0b675760c569c331646bfcd334c738e66f42e9be86e44"
+    },
+    {
+      "gate": "C9_R5_R2",
+      "path": "docs/program/PHASE_1B_C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE_APPROVAL_RECORD.json",
+      "sha256": "ccd6986d95bdf9013b43a9725c1f582ac4abda486d1f879813792d5f89fd9523"
+    },
+    {
+      "gate": "C9_R5_R2",
+      "path": "security/evidence/phase-1b-c9-r5-r2/manual-packet-visibility-pending-operator-result.json",
+      "sha256": "7ac0733de7625542544645eecf8a8ac9a8aa966b89c22e530b836e6ce7b505b8"
+    },
+    {
+      "gate": "C9_R5_R2",
+      "path": "security/evidence/phase-1b-c9-r5-r2/manual-packet-visibility-operator-result.json",
+      "sha256": "acb3f53251c7abf39a8fe79383d2c902589b4cb138083a153d2bbdda4f5922f7"
+    },
+    {
+      "gate": "C9_R6",
+      "path": "docs/program/PHASE_1B_C9_R6_TARGET_UNIQUENESS_OR_FIREWALL_EXECUTION_BLOCK.md",
+      "sha256": "98964e71fe6978e5878903859c3110ca94efb669f09692bde47f1e32484dfa54"
+    },
+    {
+      "gate": "C9_R6",
+      "path": "security/evidence/phase-1b-c9-r6/target-uniqueness-or-firewall-execution-block.json",
+      "sha256": "9ad23975fa084eb8ee6bbc6fb72832bc96ed313a6481afc366a17131aa1ad916"
+    },
+    {
+      "gate": "C16",
+      "path": "docs/program/PHASE_1B_C16_RECLAIM_ONLY_CLOSEOUT_CONTRACT.ready.json",
+      "sha256": "ba1096dc1b09b8cf08da946ebce77808b2b4abbebd4432779aeb6705d900b6c0"
+    },
+    {
+      "gate": "C16",
+      "path": "docs/program/PHASE_1B_C16_RECLAIM_ONLY_CLOSEOUT_APPROVAL_PACKET.md",
+      "sha256": "f30a3bbfbf4b64a29d4444354a3d3b5a87693cd26151bd27e83bdd44dc4a77dc"
+    },
+    {
+      "gate": "C16",
+      "path": "security/evidence/phase-1b-c16/reclaim-only-closeout-approval-prep.json",
+      "sha256": "f6eeb030fe0cdbacb7f5aaeb5451dc569d9442a4fdd262835e3f937eac022012"
+    },
+    {
+      "gate": "C16",
+      "path": "tools/phase_1b_c16_reclaim_only_closeout_validator.py",
+      "sha256": "3f7ebac10314ab41a431df28f4407b16d632d6fa0d7e46f6994aa89f5aaa187d"
+    },
+    {
+      "gate": "C16",
+      "path": "tools/tests/test_phase_1b_c16_reclaim_only_closeout_validator.py",
+      "sha256": "81a9f3f183ccfe36eaa41c3a80579e39fc3d018b3f7603730f6944f1095b39cd"
+    },
+    {
+      "gate": "C16",
+      "path": "docs/program/PHASE_1B_C16_RECLAIM_ONLY_CLOSEOUT_APPROVAL_RECORD.json",
+      "sha256": "d039fe25507e2f3bcb4953876040b0c89c85adb13be07332ff526f37deca66bb"
+    },
+    {
+      "gate": "C16",
+      "path": "security/evidence/phase-1b-c16/reclaim-only-closeout-execution-summary.json",
+      "sha256": "a8f0f84f32cf3ab6749e12895704a1479237a6850cc6f967c0265454dda0119d"
+    }
+  ],
+  "blocked_gates": {
+    "C9_HOST_FIREWALL_RESEARCH_PREP": "approved_no_firewall_execution",
+    "C9_R2_FIREWALL_TARGET_DISCOVERY": "complete_no_firewall_execution",
+    "C9_R3_PF_VISIBILITY_AND_TARGET_UNIQUENESS_REVIEW": "complete_blocks_pf_execution",
+    "C9_R4_HOST_NETWORK_OBSERVABILITY_DISCOVERY": "complete_no_packet_capture_no_firewall_execution",
+    "C9_R5_PACKET_VISIBILITY_PROBE": "blocked_packet_capture_permission_required",
+    "C9_R5_R2_MANUAL_PACKET_VISIBILITY_PROCEDURE": "complete_operator_result_no_pre_nat_visibility_proof",
+    "C9_R6_TARGET_UNIQUENESS_OR_FIREWALL_EXECUTION_BLOCK": "complete_blocks_firewall_execution_fail_closed",
+    "C9_HOST_FIREWALL_EXECUTION_CONTRACT": "blocked_no_pre_nat_visibility_proof",
+    "C10_CONTAINMENT_EGRESS_RETEST": "blocked_no_firewall_execution_contract",
+    "C11_RUNTIME_SECURITY_CONTEXT_CONTRACT_FOR_LIMA_PRODUCTION_MAPPING": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C12_PROFILE_WORKER_SANDBOX_PROTOTYPE": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C13_CREDENTIAL_ISOLATION_SYNTHETIC_TESTS": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C14_MCP_AND_TERMINAL_SANDBOX_TESTS": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C15_DEFAULT_PROFILE_COMPATIBILITY_REVIEW": "blocked_lima_vz_rejected_as_standalone_backend",
+    "C16_ROLLBACK_AND_RECLAIM_FINALIZATION": "complete_reclaim_only_scoped_synthetic_vms_deleted"
+  },
+  "security_invariants_preserved": {
+    "production_profiles_started": false,
+    "real_credentials_used": false,
+    "gateway_changed": false,
+    "canary_started": false,
+    "host_firewall_changed": false,
+    "guest_writes_after_c5": false,
+    "vm_reclaimed_or_deleted": true,
+    "vm_reclaim_scope": "synthetic_pc3_lc3_and_pc9r2_lc9r2_only"
+  },
+  "c18_status": "READY_FOR_FINAL_REVIEW_AFTER_C16_RECLAIM_ONLY_CLOSEOUT"
+}

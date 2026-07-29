@@ -1,0 +1,28 @@
+{
+  "schema_version": "pankster.phase1c-a3.isolation-proof-contract-prep.v1",
+  "recorded_at": "2026-07-22T20:08:00Z",
+  "result": "CONTRACT_READY_OWNER_APPROVAL_REQUIRED_FOR_EXECUTION",
+  "contract_path": "docs/program/PHASE_1C_A3_ISOLATION_PROOF_CONTRACT.ready.json",
+  "contract_content_sha256": "cad565e56c421e65b5629136eea366df30ce7b3d72250ccce9afb89779411f1d",
+  "candidate_scope": [
+    "modal_sandbox",
+    "e2b_sandbox"
+  ],
+  "execution_approved": false,
+  "provider_api_calls_performed": false,
+  "sandbox_started": false,
+  "real_credentials_used": false,
+  "production_profiles_started": false,
+  "required_next_gate": "PHASE_1C_A4_OWNER_APPROVAL_PACKET",
+  "hard_gates": {
+    "provider_api_calls_allowed_before_a4": false,
+    "real_credentials_allowed": false,
+    "production_profiles_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false,
+    "host_firewall_changes_allowed": false,
+    "auth_files_read_allowed": false,
+    "keychain_read_allowed": false,
+    "environment_value_dump_allowed": false
+  }
+}

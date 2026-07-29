@@ -1,0 +1,60 @@
+{
+  "content_sha256": "360d4f746e7ef7cb225b8da333b7dec739c5d8d6175c24a89150dd34f2ddd2c5",
+  "contract_content": {
+    "allowed_action": "prepare owner-approved synthetic Lima host-firewall research using a scoped macOS pf anchor; no firewall execution is authorized by this preparation artifact",
+    "approval_id": "p1b-20260722-limapfc9",
+    "backend": "lima-vz",
+    "backend_version": "2.2.0",
+    "canary_allowed": false,
+    "created_at": "2026-07-22T16:55:00Z",
+    "existing_instance_name": "pc3",
+    "existing_lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+    "existing_pc3_reuse_for_production_candidate_allowed": false,
+    "expires_at": "2026-07-23T16:55:00Z",
+    "future_experiment_required_controls": [
+      "dedicated isolated LIMA_HOME",
+      "new disposable instance name",
+      "recorded guest IPv4 before pf load",
+      "pf anchor rules generated from observed guest IPv4 only",
+      "pf syntax validation before load",
+      "pf enable token captured if pf is enabled",
+      "rollback command printed and executed in same approved experiment",
+      "before_after_pf_inventory_sanitized",
+      "C10 egress retest immediately after pf load",
+      "host_default_gateway_unmodified",
+      "no /etc/pf.conf edit",
+      "no production profiles",
+      "no real credentials"
+    ],
+    "future_experiment_requires_new_disposable_vm": true,
+    "future_experiment_requires_owner_approval": true,
+    "future_pf_apply_forbidden_if_anchor_not_evaluated": true,
+    "future_pf_apply_forbidden_if_guest_ip_unknown": true,
+    "future_pf_apply_forbidden_if_rollback_unavailable": true,
+    "future_pf_rule_template": [
+      "block drop quick from <GUEST_IPV4> to any",
+      "block drop quick to <GUEST_IPV4> from any"
+    ],
+    "future_pf_rule_template_placeholders_must_be_resolved_before_load": true,
+    "gateway_changes_allowed": false,
+    "guest_writes_allowed_by_preparation": false,
+    "host_firewall_changes_allowed_by_preparation": false,
+    "host_firewall_changes_require_future_approval": true,
+    "host_sync_allowed": false,
+    "network_mode_target": "NETWORK_DISABLED_RESEARCH_ONLY",
+    "pf_anchor_name": "com.apple/pankster_phase1b_c9",
+    "pf_main_anchor_dependency": "anchor \"com.apple/*\" must remain present; /etc/pf.conf must not be edited by this research gate",
+    "pf_main_config_path": "/etc/pf.conf",
+    "pf_main_config_sha256": "6fb5b260918922ca5ca4dfb296967d8edb9c12f2c043f26b64590758441d682d",
+    "pfctl_path": "/sbin/pfctl",
+    "pfctl_path_must_be_absolute": true,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "source_evidence": {
+      "c5_egress_classification_sha256": "43e57edf2c6742340be025d99fbffddd22178de6581cd1565db12f929e7413fd",
+      "c8_static_containment_review_sha256": "a3479fcee217638d172bae7bb35190a2635b021f31cfd5ccd8564af8b19e8396"
+    }
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1b-c9.synthetic-lima-host-firewall-research-contract.v1"
+}

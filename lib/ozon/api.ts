@@ -6,13 +6,32 @@ export interface OzonCreds {
   apiKey: string;
 }
 
+export interface OzonRequestOptions {
+  signal?: AbortSignal;
+  cache?: RequestCache;
+}
+
+function financialFetchPolicy(
+  options: OzonRequestOptions,
+  revalidate: number,
+): Pick<RequestInit, "cache" | "next"> {
+  return options.cache === "no-store"
+    ? { cache: "no-store" }
+    : { next: { revalidate } };
+}
+
 function headers(c: OzonCreds): HeadersInit {
   return { "Client-Id": c.clientId.trim(), "Api-Key": c.apiKey.trim(), "Content-Type": "application/json" };
 }
 
 // fetch с таймаутом 20с — чтобы при стопоре сети/прокси не висеть минуту, а падать быстро.
 function tfetch(url: string, opts: RequestInit = {}): Promise<Response> {
-  return fetch(url, { ...opts, signal: AbortSignal.timeout(20000) });
+  const timeoutSignal = AbortSignal.timeout(20000);
+  const signal = opts.signal
+    ? AbortSignal.any([opts.signal, timeoutSignal])
+    : timeoutSignal;
+  signal.throwIfAborted();
+  return fetch(url, { ...opts, signal });
 }
 
 // Валидация ключа: лёгкий запрос финансовых итогов за 1 день. 200 → ключ рабочий.
@@ -77,30 +96,240 @@ export interface OzonAnalyticsRow {
   sku: string; name: string;
   hits_view: number; hits_tocart: number; ordered_units: number; revenue: number; conv: number;
 }
+
+export interface OzonAnalyticsDailyRow extends OzonAnalyticsRow {
+  day: string;
+}
+
+type AnalyticsData = {
+  dimensions: { id: string; name: string }[];
+  metrics: number[];
+};
+
+async function analyticsPages(
+  c: OzonCreds,
+  dateFrom: string,
+  dateTo: string,
+  metrics: string[],
+  dimension: string[],
+  options: OzonRequestOptions = {},
+): Promise<{ ok: true; data: AnalyticsData[] } | { ok: false; error: string }> {
+  const data: AnalyticsData[] = [];
+  try {
+    for (let offset = 0; offset < 20_000; offset += 1000) {
+      options.signal?.throwIfAborted();
+      const res = await tfetch(`${BASE}/v1/analytics/data`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify({ date_from: dateFrom, date_to: dateTo, metrics, dimension, limit: 1000, offset }),
+        ...financialFetchPolicy(options, 1800),
+        signal: options.signal,
+      });
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
+      const json = (await res.json()) as { result?: { data?: AnalyticsData[] } };
+      const batch = json.result?.data ?? [];
+      data.push(...batch);
+      if (batch.length < 1000) break;
+    }
+    return { ok: true, data };
+  } catch (error) {
+    if (options.signal?.aborted) {
+      return { ok: false, error: "Запрос Ozon отменён" };
+    }
+    return { ok: false, error: String(error).slice(0, 120) };
+  }
+}
+
 export async function ozonAnalytics(
   c: OzonCreds, dateFrom: string, dateTo: string,
 ): Promise<{ ok: true; rows: OzonAnalyticsRow[]; funnel: boolean } | { ok: false; error: string }> {
-  try {
-    const res = await tfetch(`${BASE}/v1/analytics/data`, {
-      method: "POST", headers: headers(c),
-      body: JSON.stringify({
-        date_from: dateFrom, date_to: dateTo,
-        metrics: ["ordered_units", "revenue"],
-        dimension: ["sku"], limit: 1000, offset: 0,
-      }),
-      next: { revalidate: 1800 },
-    });
-    if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
-    const j = (await res.json()) as { result?: { data?: { dimensions: { id: string; name: string }[]; metrics: number[] }[] } };
-    const rows = (j.result?.data ?? []).map((d) => ({
-      sku: d.dimensions[0]?.id ?? "", name: d.dimensions[0]?.name ?? "",
-      ordered_units: d.metrics[0] ?? 0, revenue: d.metrics[1] ?? 0,
-      hits_view: 0, hits_tocart: 0, conv: 0, // воронка недоступна без Ozon Premium Plus
-    }));
-    return { ok: true, rows, funnel: false };
-  } catch (e) {
-    return { ok: false, error: String(e).slice(0, 120) };
+  const result = await analyticsPages(c, dateFrom, dateTo, ["ordered_units", "revenue"], ["sku"]);
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    funnel: false,
+    rows: result.data.map((row) => ({
+      sku: row.dimensions[0]?.id ?? "",
+      name: row.dimensions[0]?.name ?? "",
+      ordered_units: Number(row.metrics[0] ?? 0),
+      revenue: Number(row.metrics[1] ?? 0),
+      hits_view: 0,
+      hits_tocart: 0,
+      conv: 0,
+    })),
+  };
+}
+
+// Посуточная аналитика для Ozon Cockpit. Сначала пробуем расширенную воронку.
+// Если тариф Ozon вернул укороченный metrics[], повторяем запрос только с базовыми
+// ordered_units/revenue — так позиции никогда не «съезжают» и данные остаются честными.
+export async function ozonAnalyticsDaily(
+  c: OzonCreds,
+  dateFrom: string,
+  dateTo: string,
+  includeFunnel = false,
+  options: OzonRequestOptions = {},
+): Promise<{ ok: true; rows: OzonAnalyticsDailyRow[]; funnel: boolean } | { ok: false; error: string }> {
+  if (options.signal?.aborted) {
+    return { ok: false, error: "Запрос Ozon отменён" };
   }
+  if (includeFunnel) {
+    const expanded = await analyticsPages(
+      c,
+      dateFrom,
+      dateTo,
+      ["hits_view", "hits_tocart", "ordered_units", "revenue"],
+      ["sku", "day"],
+      options,
+    );
+    if (expanded.ok && expanded.data.length > 0 && expanded.data.every((row) => row.metrics.length >= 4)) {
+      return {
+        ok: true,
+        funnel: true,
+        rows: expanded.data.map((row) => ({
+          sku: row.dimensions[0]?.id ?? "",
+          name: row.dimensions[0]?.name ?? "",
+          day: (row.dimensions[1]?.id || row.dimensions[1]?.name || "").slice(0, 10),
+          hits_view: Number(row.metrics[0] ?? 0),
+          hits_tocart: Number(row.metrics[1] ?? 0),
+          ordered_units: Number(row.metrics[2] ?? 0),
+          revenue: Number(row.metrics[3] ?? 0),
+          conv: 0,
+        })),
+      };
+    }
+    if (!expanded.ok && options.signal?.aborted) return expanded;
+  }
+
+  options.signal?.throwIfAborted();
+  const base = await analyticsPages(c, dateFrom, dateTo, ["ordered_units", "revenue"], ["sku", "day"], options);
+  if (!base.ok) return base;
+  return {
+    ok: true,
+    funnel: false,
+    rows: base.data.map((row) => ({
+      sku: row.dimensions[0]?.id ?? "",
+      name: row.dimensions[0]?.name ?? "",
+      day: (row.dimensions[1]?.id || row.dimensions[1]?.name || "").slice(0, 10),
+      ordered_units: Number(row.metrics[0] ?? 0),
+      revenue: Number(row.metrics[1] ?? 0),
+      hits_view: 0,
+      hits_tocart: 0,
+      conv: 0,
+    })),
+  };
+}
+
+export interface OzonPosting {
+  scheme: "FBO" | "FBS";
+  postingNumber: string;
+  orderNumber: string;
+  status: string;
+  createdAt: string;
+  shipmentDate: string | null;
+  warehouse: string | null;
+  cancelReason: string | null;
+  units: number;
+  amount: number;
+  products: { sku: string; offerId: string; name: string; quantity: number; price: number }[];
+}
+
+function postingFromUnknown(value: unknown, scheme: "FBO" | "FBS"): OzonPosting | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const rawProducts = Array.isArray(row.products) ? row.products : [];
+  const products = rawProducts.map((product) => {
+    const item = product as Record<string, unknown>;
+    return {
+      sku: String(item.sku ?? ""),
+      offerId: String(item.offer_id ?? ""),
+      name: String(item.name ?? item.offer_id ?? item.sku ?? "Товар"),
+      quantity: Number(item.quantity ?? 0),
+      price: Number(item.price ?? 0),
+    };
+  });
+  const analytics = row.analytics_data && typeof row.analytics_data === "object"
+    ? row.analytics_data as Record<string, unknown>
+    : {};
+  const cancellation = row.cancellation && typeof row.cancellation === "object"
+    ? row.cancellation as Record<string, unknown>
+    : {};
+  const postingNumber = String(row.posting_number ?? "");
+  if (!postingNumber) return null;
+  return {
+    scheme,
+    postingNumber,
+    orderNumber: String(row.order_number ?? row.order_id ?? postingNumber),
+    status: String(row.status ?? "unknown"),
+    createdAt: String(row.created_at ?? row.in_process_at ?? ""),
+    shipmentDate: row.shipment_date ? String(row.shipment_date) : null,
+    warehouse: analytics.warehouse_name
+      ? String(analytics.warehouse_name)
+      : analytics.warehouse_id
+        ? String(analytics.warehouse_id)
+        : null,
+    cancelReason: cancellation.cancel_reason
+      ? String(cancellation.cancel_reason)
+      : cancellation.cancel_reason_id
+        ? String(cancellation.cancel_reason_id)
+        : null,
+    units: products.reduce((sum, product) => sum + product.quantity, 0),
+    amount: products.reduce((sum, product) => sum + product.price * product.quantity, 0),
+    products,
+  };
+}
+
+// Отправления FBO и FBS для операционного экрана. Ошибка одной схемы не скрывает
+// вторую: вызывающая сторона получает частичный результат и список предупреждений.
+export async function ozonPostings(
+  c: OzonCreds,
+  fromIso: string,
+  toIso: string,
+): Promise<{ postings: OzonPosting[]; errors: string[] }> {
+  const postings: OzonPosting[] = [];
+  const errors: string[] = [];
+
+  const load = async (scheme: "FBO" | "FBS") => {
+    for (let offset = 0; offset < 20_000; offset += 1000) {
+      try {
+        const path = scheme === "FBO" ? "/v2/posting/fbo/list" : "/v3/posting/fbs/list";
+        const res = await tfetch(`${BASE}${path}`, {
+          method: "POST",
+          headers: headers(c),
+          body: JSON.stringify({
+            dir: "DESC",
+            filter: { since: fromIso, to: toIso, status: "" },
+            limit: 1000,
+            offset,
+            with: { analytics_data: true, financial_data: true },
+          }),
+          next: { revalidate: 600 },
+        });
+        if (!res.ok) {
+          errors.push(`${scheme}: Ozon ${res.status}`);
+          return;
+        }
+        const json = (await res.json()) as { result?: unknown };
+        const result = json.result;
+        const batch = Array.isArray(result)
+          ? result
+          : result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).postings)
+            ? (result as Record<string, unknown>).postings as unknown[]
+            : [];
+        for (const item of batch) {
+          const posting = postingFromUnknown(item, scheme);
+          if (posting) postings.push(posting);
+        }
+        if (batch.length < 1000) return;
+      } catch (error) {
+        errors.push(`${scheme}: ${String(error).slice(0, 100)}`);
+        return;
+      }
+    }
+  };
+
+  await Promise.all([load("FBO"), load("FBS")]);
+  return { postings, errors };
 }
 
 // Цены/комиссии по SKU (для юнит-экономики).
@@ -110,15 +339,18 @@ export interface OzonPriceRow {
 }
 export async function ozonPrices(
   c: OzonCreds,
+  options: OzonRequestOptions = {},
 ): Promise<{ ok: true; rows: OzonPriceRow[] } | { ok: false; error: string }> {
   const rows: OzonPriceRow[] = [];
   try {
     let cursor = "";
     for (let page = 0; page < 20; page++) {
+      options.signal?.throwIfAborted();
       const res = await tfetch(`${BASE}/v5/product/info/prices`, {
         method: "POST", headers: headers(c),
         body: JSON.stringify({ filter: { visibility: "ALL" }, limit: 1000, cursor }),
-        next: { revalidate: 1800 },
+        ...financialFetchPolicy(options, 1800),
+        signal: options.signal,
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
       const j = (await res.json()) as {
@@ -142,6 +374,9 @@ export async function ozonPrices(
     }
     return { ok: true, rows };
   } catch (e) {
+    if (options.signal?.aborted) {
+      return { ok: false, error: "Запрос Ozon отменён" };
+    }
     return { ok: false, error: String(e).slice(0, 120) };
   }
 }

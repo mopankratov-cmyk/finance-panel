@@ -61,17 +61,15 @@ export function WeekSummaryCell({
     summary.runningBalance < 0 ? "text-red-600" : "text-slate-900";
 
   return (
-    <div
-      className={`flex h-full min-h-[72px] flex-col rounded-lg border border-slate-200 border-l-[3px] bg-white p-2 shadow-sm sm:min-h-[88px] sm:p-2.5 ${borderClass}`}
-    >
-      <p className="mb-2 truncate text-[10px] font-semibold text-slate-700 sm:text-xs">
+    <div className={`rounded-lg border border-slate-200 border-l-[3px] bg-slate-50/70 p-3 ${borderClass}`}>
+      <p className="mb-2 truncate text-xs font-semibold text-slate-700">
         Неделя {summary.weekNumber}
         <span className="mx-1.5 font-normal text-slate-600">|</span>
         <span className="font-normal text-slate-400">
           {formatDayMonth(summary.startDate)}–{formatDayMonth(summary.endDate)}
         </span>
       </p>
-      <div className="flex flex-1 flex-col justify-center gap-2">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Metric
           label="Сальдо за неделю"
           value={signedMoney(summary.netFlow)}

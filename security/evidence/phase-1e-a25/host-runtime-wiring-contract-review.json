@@ -1,0 +1,94 @@
+{
+  "content_sha256": "c2bbc5e59c73b80d79bce82b9ca5b78378c4a84a0f81ec62523396b4e4f6e984",
+  "decision_content": {
+    "created_at": "2026-07-23T02:45:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1E_A24_HOST_RUNTIME_WIRING_CONTRACT_REVIEWED_NO_GATEWAY_WIRED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "host_runtime_wiring_contract_performed": true,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A26_GATEWAY_BINDING_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A25",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "gateway binding to Hermes code is not implemented or approved",
+      "profile worker integration remains absent",
+      "real credential broker storage remains unimplemented",
+      "provider/model API boundaries remain uncalled",
+      "no sandbox or subprocess runtime has been launched",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/host_runtime_wiring_contracts.py",
+        "sha256": "8d6ece759c679f03336336f71ccc82892c8cf8624461785902b99c9eb6b7315b"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_host_runtime_wiring_contracts.py",
+        "sha256": "14d0cc1105d6ca0cbe6c3ad1644ed582fd56ebb1fe93e3a289a19bf81357ebc0"
+      }
+    ],
+    "reviewed_head": "09767526d85a8a566e35fca3f03ef21f5a58fa14",
+    "reviewed_range": "57492de3777abeffcc5c7173ca7fdee883234f74..09767526d85a8a566e35fca3f03ef21f5a58fa14",
+    "rollback": "revert_commit_09767526_to_remove_host_runtime_wiring_contract",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "changed_files_match_a23_allowlist": true,
+      "contract_layer_only": true,
+      "credentials_never_materialized": true,
+      "disabled_by_default": true,
+      "execution_fail_closed_reasons_propagated": true,
+      "expected_profile_backend_policy_rollback_revalidated": true,
+      "gateway_core_dependency_and_runtime_launch_flags_denied": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls_performed": true,
+      "no_provider_sdks": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "provider_model_and_credential_materialization_flags_denied": true,
+      "wiring_identity_capability_validation_present": true,
+      "wiring_manifest_secret_free": true
+    },
+    "source_evidence": {
+      "phase_1e_a23_approval_command_sha256": "4c56d258d260ab1ca9115e70c96a9d4fc136bb6372d0c5631ee11b968d8956ca",
+      "phase_1e_a23_content_sha256": "0271a44bf472079aba1d2f3161552460d66c7df120de4203573814a993583aef",
+      "phase_1e_a23_file_sha256": "ba3d3e7f37700bfcfc40e551734877d7cdd50115ce20f7a16bcb73163852fe72",
+      "phase_1e_a23_path": "security/evidence/phase-1e-a23/host-runtime-wiring-approval-request.json"
+    },
+    "status": "HOST_RUNTIME_WIRING_CONTRACT_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 580
+      },
+      "targeted_1e_a25_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a25_host_runtime_wiring_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_host_runtime_wiring_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_host_runtime_wiring_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    },
+    "verdict": "READY_FOR_GATEWAY_BINDING_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1e-a25.host-runtime-wiring-contract-review.v1"
+}

@@ -1,0 +1,57 @@
+{
+  "content_sha256": "cad565e56c421e65b5629136eea366df30ce7b3d72250ccce9afb89779411f1d",
+  "contract_content": {
+    "allowed_action": "prepare synthetic isolation proof contract for shortlisted remote sandbox candidates; do not call provider APIs or start sandboxes before A4 approval",
+    "approval_id": "p1c-20260722-a3-isolationproof",
+    "auth_files_read_allowed": false,
+    "canary_allowed": false,
+    "candidate_scope": [
+      "modal_sandbox",
+      "e2b_sandbox"
+    ],
+    "created_at": "2026-07-22T20:05:00Z",
+    "environment_value_dump_allowed": false,
+    "expires_at": "2026-07-23T20:05:00Z",
+    "gateway_changes_allowed": false,
+    "host_firewall_changes_allowed": false,
+    "keychain_read_allowed": false,
+    "pass_criteria": {
+      "all_required_proofs_pass": true,
+      "backend_specific_gaps_resolved_before_runtime_approval": true,
+      "no_forbidden_action_performed": true,
+      "sanitized_evidence_only": true
+    },
+    "production_profiles_allowed": false,
+    "provider_api_calls_allowed_before_a4": false,
+    "real_credentials_allowed": false,
+    "required_proofs": {
+      "application_level_network_denial_observed": true,
+      "code_execution_child_environment_sanitized": true,
+      "delegation_child_environment_sanitized": true,
+      "deny_all_network_before_worker_code": true,
+      "logs_argv_journal_evidence_secret_free": true,
+      "mcp_child_environment_sanitized": true,
+      "policy_absent_fails_closed_before_worker_code": true,
+      "policy_invalid_fails_closed_before_worker_code": true,
+      "retry_reclaim_environment_sanitized": true,
+      "sandbox_receives_no_non_profile_credentials": true,
+      "sandbox_receives_no_raw_host_environment": true,
+      "sandbox_receives_no_root_auth": true,
+      "terminal_child_environment_sanitized": true
+    },
+    "source_evidence": {
+      "a0_evidence_path": "security/evidence/phase-1c-a0/runtime-isolation-backend-reselection.json",
+      "a1_matrix_path": "security/evidence/phase-1c-a1/backend-capability-matrix.json",
+      "a2_threat_model_path": "security/evidence/phase-1c-a2/profile-runtime-threat-model.json"
+    },
+    "synthetic_credentials": {
+      "fake_profile_model_token_allowed": true,
+      "real_model_token_allowed": false,
+      "root_auth_json_allowed": false,
+      "root_credential_pool_allowed": false
+    },
+    "synthetic_only": true
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1c-a3.isolation-proof-contract.v1"
+}

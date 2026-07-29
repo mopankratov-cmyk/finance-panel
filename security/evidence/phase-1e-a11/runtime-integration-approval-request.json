@@ -1,0 +1,87 @@
+{
+  "content_sha256": "c1fa810dd6c566da324362fb2715bee1ba0bebcca164ce1899c6315e108f9624",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_integration_contracts_allowed": true,
+      "gateway_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true
+    },
+    "contract_artifact": {
+      "content_sha256": "ac31f2d3a8aa3f75627514d5ffafa01a2a0798b8d1875b9dcdd22810587ab894",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_RUNTIME_INTEGRATION",
+      "file_sha256": "80572cee0645f878fd0cdd9741b58f435291dad263adaa12d306321b67bd3334",
+      "path": "docs/program/PHASE_1E_A11_RUNTIME_INTEGRATION_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1e-a11.runtime-integration-approval-request.v1"
+    },
+    "created_at": "2026-07-23T00:50:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_DISABLED_RUNTIME_INTEGRATION_CONTRACT_NOT_INTEGRATED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/runtime_integration_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_integration_contracts.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "integration_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A12_DISABLED_RUNTIME_INTEGRATION_CONTRACT_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1E_DISABLED_RUNTIME_INTEGRATION_CONTRACT:p1e-20260723-runtimeintegrationa11:ac31f2d3a8aa3f75627514d5ffafa01a2a0798b8d1875b9dcdd22810587ab894",
+      "approval_command_sha256": "bf50a9f1ba714553361b63741c0edd84c75645b1c567e9f07239a9ac282be1b1",
+      "approval_id": "p1e-20260723-runtimeintegrationa11",
+      "approval_required_before_next_gate_integration": true
+    },
+    "phase": "1E-A11",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a10_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "integration_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1e_a11_approval_request_artifacts_and_return_to_phase_1e_a10_security_review_state",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a10_content_sha256": "b999e8f069d489b467ba8851c8dd04c5a2edf41bcc384fe6811e4f3cd09f6428",
+      "phase_1e_a10_file_sha256": "21100364df8d31bcae4adc50187ad71ede78ee0ab66768575184d16cd52ae62f",
+      "phase_1e_a10_path": "security/evidence/phase-1e-a10/pure-contract-implementation-security-review.json",
+      "phase_1e_a10_verdict": "READY_FOR_RUNTIME_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "RUNTIME_INTEGRATION_APPROVAL_REQUEST_COMPLETE_NO_INTEGRATION",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a11_runtime_integration_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a11.runtime-integration-approval-request.v1"
+}

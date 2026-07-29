@@ -1,0 +1,69 @@
+{
+  "content_sha256": "0764a641d0e2b9dfea863eb3ce28703706ba5688d38328b7c06e6fcb85574314",
+  "contract_content": {
+    "allowed_action": "execute one synthetic E2B isolation proof only after exact owner approval; no production profiles or real credentials",
+    "allowed_synthetic_environment_keys": [
+      "PANKSTER_PROFILE_ID",
+      "PANKSTER_SYNTHETIC_MODEL_TOKEN",
+      "PANKSTER_NETWORK_POLICY"
+    ],
+    "approval_id": "p1c-20260722-e2bproofa4",
+    "auth_files_read_allowed": false,
+    "backend": "e2b_sandbox",
+    "canary_allowed": false,
+    "created_at": "2026-07-22T20:25:00Z",
+    "dependency_install_allowed": false,
+    "environment_value_dump_allowed": false,
+    "expires_at": "2026-07-23T20:25:00Z",
+    "forbidden_environment_key_patterns": [
+      "*_KEY",
+      "*_TOKEN",
+      "*_SECRET",
+      "*_PASSWORD",
+      "ANTHROPIC_*",
+      "OPENAI_*",
+      "GLM_*",
+      "GITEA_*",
+      "SUPABASE_*",
+      "TELEGRAM_*"
+    ],
+    "gateway_changes_allowed": false,
+    "host_firewall_changes_allowed": false,
+    "keychain_read_allowed": false,
+    "network_policy": "deny_all_outbound",
+    "network_policy_required_before_user_code": true,
+    "production_profiles_allowed": false,
+    "provider_api_calls_allowed_after_approval": true,
+    "provider_api_calls_allowed_before_approval": false,
+    "real_credentials_allowed": false,
+    "required_proofs": {
+      "application_level_outbound_denial_observed": true,
+      "code_execution_child_environment_sanitized": true,
+      "delegation_child_environment_sanitized_or_not_available_fail_closed": true,
+      "logs_evidence_secret_free": true,
+      "mcp_child_environment_sanitized_or_not_available_fail_closed": true,
+      "policy_absent_fails_closed_before_sandbox_creation": true,
+      "policy_invalid_fails_closed_before_sandbox_creation": true,
+      "sandbox_cannot_read_root_auth_json": true,
+      "sandbox_created_with_deny_all_before_user_code": true,
+      "sandbox_destroyed_after_probe": true,
+      "sandbox_environment_contains_only_allowlisted_synthetic_keys": true,
+      "terminal_child_environment_sanitized": true
+    },
+    "sandbox_creation_allowed_after_approval": true,
+    "sandbox_destroy_required": true,
+    "sanitized_result_only": true,
+    "source_evidence": {
+      "a3_contract_file_sha256": "c94508c6d18eea0da01726f8cf277e655d9190cdf7da0bd8dc608a93416e315c",
+      "a3_contract_path": "docs/program/PHASE_1C_A3_ISOLATION_PROOF_CONTRACT.ready.json"
+    },
+    "synthetic_only": true,
+    "synthetic_values": {
+      "model_token": "fake-profile-model-token",
+      "network_policy": "deny_all",
+      "profile_id": "synthetic-e2b-proof"
+    }
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1c-a4.e2b-synthetic-isolation-proof-contract.v1"
+}

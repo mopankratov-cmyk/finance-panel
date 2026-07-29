@@ -1,0 +1,222 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Megaphone, Wallet, ArrowDown, ArrowUp, ChevronRight } from "lucide-react";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
+import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { LoadingBanner, SkeletonKpiRow, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { useCategoryMap } from "@/lib/useCategoryMap";
+import { useSort } from "@/lib/useSort";
+import { formatTime } from "@/lib/analytics/format";
+import { WbProductImage } from "@/components/wb/WbProductImage";
+import type { AdvertChange } from "@/app/api/adverts/changes/route";
+
+interface Day { ts: string; spend: number; clicks: number; views: number; orders: number }
+interface Campaign {
+  id: number; name: string; status: number; enabled: boolean;
+  budget: number; spend_today: number; drr: number | null; days: Day[];
+}
+interface Article { nm: number; art: string; photo: string; spend: number; campaigns: Campaign[] }
+interface AdvData {
+  ok: boolean; error?: string; cabinet: string; articles: Article[]; count: number;
+  cap_rub: number; balance: number | null; spend_today_total: number; spend_yest_total: number;
+  today: string; yest: string;
+}
+
+const rub = (n: number) => Math.round(n).toLocaleString("ru-RU") + " ₽";
+
+// [bg, fg, glyph] — глиф даёт сигнал не только цветом бейджа (важно для дальтоников/ч-б экранов).
+function drrTone(drr: number | null): [string, string, string] {
+  if (drr == null) return ["bg-gray-100", "text-gray-400", ""];
+  if (drr <= 10) return ["bg-emerald-100", "text-emerald-700", ""];
+  if (drr <= 20) return ["bg-amber-100", "text-amber-700", "△ "];
+  return ["bg-rose-100", "text-rose-700", "▲ "];
+}
+
+function Spark({ data }: { data: number[] }) {
+  if (data.length < 2) return null;
+  const max = Math.max(...data, 1), min = Math.min(...data, 0);
+  const rng = max - min || 1;
+  const w = 120, h = 28;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / rng) * h}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-7 w-24" preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: React.ReactNode; tone?: string }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+      <div className="text-xs font-medium text-gray-500">{label}</div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums ${tone ?? "text-gray-900"}`}>{value}</div>
+      {sub && <div className="mt-0.5 text-[11px] text-gray-400">{sub}</div>}
+    </div>
+  );
+}
+
+function ArticleCard({ a }: { a: Article }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white">
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${a.art}: ${open ? "свернуть" : "развернуть"} кампании`} className="flex w-full items-center gap-3 p-3 text-left">
+        <WbProductImage nm={a.nm} src={a.photo} className="h-12 w-12 shrink-0 rounded-lg bg-gray-100 object-cover" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-gray-900">{a.art}</div>
+          <div className="text-xs text-gray-400">{a.campaigns.length} {a.campaigns.length === 1 ? "кампания" : "кампаний"} · nm {a.nm}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-sm font-bold tabular-nums text-gray-900">{rub(a.spend)}</div>
+          <div className="text-[11px] text-gray-400">сегодня</div>
+        </div>
+        <ChevronRight className={`h-4 w-4 shrink-0 text-gray-300 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && (
+        <div className="space-y-1 border-t border-gray-100 px-3 py-2">
+          {a.campaigns.map((c) => {
+            const [bg, fg, glyph] = drrTone(c.drr);
+            return (
+              <div key={c.id} className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-gray-50">
+                <span className="flex shrink-0 items-center gap-1">
+                  <span className={`h-2 w-2 rounded-full ${c.enabled ? "bg-emerald-500" : "bg-gray-300"}`} aria-hidden="true" />
+                  <span className={`text-[10px] ${c.enabled ? "text-emerald-600" : "text-gray-400"}`}>{c.enabled ? "Активна" : "Пауза"}</span>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-gray-800">{c.name}</div>
+                  <div className="text-[11px] text-gray-400">бюджет {rub(c.budget)}</div>
+                </div>
+                <Spark data={c.days.map((d) => d.spend)} />
+                <div className="w-20 text-right text-sm font-semibold tabular-nums text-gray-900">{rub(c.spend_today)}</div>
+                <span className={`w-16 rounded-md px-2 py-0.5 text-center text-xs font-semibold tabular-nums ${bg} ${fg}`}>
+                  {c.drr == null ? "—" : `${glyph}${c.drr}%`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AdvertsPage() {
+  const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
+  const [data, setData] = useState<AdvData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [changes, setChanges] = useState<AdvertChange[]>([]);
+  const elapsed = useElapsedSeconds(loading);
+
+  useEffect(() => {
+    fetch("/api/adverts/changes", { cache: "no-store" }).then((r) => r.json()).then((j) => setChanges(j.changes ?? [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!cabReady) return;
+    let ignore = false;
+    setLoading(true); setErr(null);
+    fetch(`/api/adverts/list${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((d: AdvData) => { if (ignore) return; if (!d.ok) setErr(d.error || "Ошибка загрузки"); else setData(d); })
+      .catch((e) => { if (!ignore) setErr(String(e)); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [cabId, cabReady]);
+
+  const { categories, byArticle } = useCategoryMap();
+  const [category, setCategory] = useState("");
+  const filtered = filterByCategory(data?.articles ?? [], (a) => a.art, byArticle, category);
+  const { sorted: articles, sortField, toggleSort } = useSort(filtered, (a, field) =>
+    field === "art" ? a.art : a.spend);
+
+  const deltaPct = data && data.spend_yest_total > 0
+    ? Math.round(((data.spend_today_total - data.spend_yest_total) / data.spend_yest_total) * 100)
+    : null;
+
+  return (
+    <div className="bg-gray-50 text-gray-900">
+      <header className="border-b border-gray-200 bg-white">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4 sm:px-6">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Megaphone className="h-5 w-5" /></div>
+          <div>
+            <h1 className="text-lg font-extrabold tracking-tight">Реклама WB</h1>
+            <p className="text-xs text-gray-500">{data ? `${data.cabinet} · расход за ${data.today || "сегодня"}` : "рекламный кабинет"}</p>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
+            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+            <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
+              <button onClick={() => toggleSort("spend")} className={`rounded px-2.5 py-1 text-xs font-semibold ${sortField === "spend" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>по расходу</button>
+              <button onClick={() => toggleSort("art")} className={`rounded px-2.5 py-1 text-xs font-semibold ${sortField === "art" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>А-Я</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-3 py-6 sm:px-6">
+        {loading ? (
+          <>
+            <LoadingBanner seconds={elapsed} hint="реклама WB" />
+            <SkeletonKpiRow count={4} />
+            <SkeletonCards count={4} />
+          </>
+        ) : err ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
+        ) : data ? (
+          <>
+            <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Kpi label="Расход сегодня" value={rub(data.spend_today_total)} tone="text-violet-700"
+                sub={deltaPct == null ? undefined : (
+                  <span className={`inline-flex items-center gap-0.5 ${deltaPct > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    {deltaPct > 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}{Math.abs(deltaPct)}% к вчера
+                  </span>
+                )} />
+              <Kpi label="Расход вчера" value={rub(data.spend_yest_total)} />
+              <Kpi label="Баланс продвижения" value={data.balance == null ? "—" : rub(data.balance)}
+                sub={data.balance == null ? "выберите кабинет" : (data.balance < data.cap_rub ? <span className="text-rose-600">ниже порога {rub(data.cap_rub)}</span> : "ок")} />
+              <Kpi label="Активных кампаний" value={String(data.count)} />
+            </div>
+
+            {articles.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">
+                <Wallet className="mx-auto mb-2 h-6 w-6 text-gray-300" />
+                <div className="text-sm text-gray-500">Нет активных РК за период. Проверьте, что реклама синхронизирована по кабинету.</div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {articles.map((a) => <ArticleCard key={a.nm} a={a} />)}
+              </div>
+            )}
+
+            {changes.length > 0 && (
+              <div className="mt-8">
+                <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">История изменений ставок</h2>
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500">
+                      <tr><th className="px-3 py-2 text-left">Кампания</th><th className="px-3 py-2 text-right">Было → Стало</th><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-left">Когда</th></tr>
+                    </thead>
+                    <tbody>
+                      {changes.map((c) => (
+                        <tr key={c.id} className="border-t border-gray-100">
+                          <td className="px-3 py-2 text-gray-700">{c.advertId}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-500">{c.oldBid ?? "—"} → {c.newBid ?? "—"} ₽</td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${c.status === "ok" ? "bg-emerald-100 text-emerald-700" : c.status === "rejected" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{c.status}</span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-400">{formatTime(c.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        ) : null}
+      </main>
+    </div>
+  );
+}

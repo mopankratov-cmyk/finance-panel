@@ -1,0 +1,380 @@
+{
+  "env_event_contract": {
+    "includes_env_keys": true,
+    "includes_value_metadata": true,
+    "serializes_environment_values": false
+  },
+  "harness_version": "0.1.0",
+  "policy_version": "phase1a.v3",
+  "results": [
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-007",
+      "test_identity": "test_context_propagation.test_sec_prot_007_008_009_010_context_propagation_wrappers",
+      "test_name": "test_sec_prot_007_008_009_010_context_propagation_wrappers"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-008",
+      "test_identity": "test_context_propagation.test_sec_prot_007_008_009_010_context_propagation_wrappers",
+      "test_name": "test_sec_prot_007_008_009_010_context_propagation_wrappers"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-009",
+      "test_identity": "test_context_propagation.test_sec_prot_007_008_009_010_context_propagation_wrappers",
+      "test_name": "test_sec_prot_007_008_009_010_context_propagation_wrappers"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-010",
+      "test_identity": "test_context_propagation.test_sec_prot_007_008_009_010_context_propagation_wrappers",
+      "test_name": "test_sec_prot_007_008_009_010_context_propagation_wrappers"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-016",
+      "test_identity": "test_context_propagation.test_sec_prot_016_no_context_bleed_across_reused_thread_workers",
+      "test_name": "test_sec_prot_016_no_context_bleed_across_reused_thread_workers"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-003",
+      "test_identity": "test_disabled_profile_gate.test_sec_prot_003_runtime_enabled_fail_closed",
+      "test_name": "test_sec_prot_003_runtime_enabled_fail_closed"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-022",
+      "test_identity": "test_evidence_pack.test_sec_prot_022_evidence_pack_contains_no_values",
+      "test_name": "test_sec_prot_022_evidence_pack_contains_no_values"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-031",
+      "test_identity": "test_generate_evidence.test_sec_prot_031_evidence_summary_matches_actual_test_run_shape",
+      "test_name": "test_sec_prot_031_evidence_summary_matches_actual_test_run_shape"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-032",
+      "test_identity": "test_generate_evidence.test_sec_prot_032_evidence_check_detects_stale_count",
+      "test_name": "test_sec_prot_032_evidence_check_detects_stale_count"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-037",
+      "test_identity": "test_generate_evidence.test_sec_prot_037_generator_rejects_failing_suite",
+      "test_name": "test_sec_prot_037_generator_rejects_failing_suite"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-038",
+      "test_identity": "test_generate_evidence.test_sec_prot_038_generator_does_not_overwrite_evidence_on_failure",
+      "test_name": "test_sec_prot_038_generator_does_not_overwrite_evidence_on_failure"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-039",
+      "test_identity": "test_generate_evidence.test_sec_prot_039_missing_required_test_id_fails_generation",
+      "test_name": "test_sec_prot_039_missing_required_test_id_fails_generation"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-040",
+      "test_identity": "test_generate_evidence.test_sec_prot_040_duplicate_test_id_fails_generation",
+      "test_name": "test_sec_prot_040_duplicate_test_id_fails_generation"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-041",
+      "test_identity": "test_generate_evidence.test_sec_prot_041_evidence_results_originate_from_actual_test_result",
+      "test_name": "test_sec_prot_041_evidence_results_originate_from_actual_test_result"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-042",
+      "test_identity": "test_generate_evidence.test_sec_prot_042_duplicate_short_names_do_not_collide",
+      "test_name": "test_sec_prot_042_duplicate_short_names_do_not_collide"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-043",
+      "test_identity": "test_generate_evidence.test_sec_prot_043_unsuccessful_suite_rejected_even_with_failed_count_zero",
+      "test_name": "test_sec_prot_043_unsuccessful_suite_rejected_even_with_failed_count_zero"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-044",
+      "test_identity": "test_generate_evidence.test_sec_prot_044_observation_count_must_equal_tests_run",
+      "test_name": "test_sec_prot_044_observation_count_must_equal_tests_run"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-045",
+      "test_identity": "test_generate_evidence.test_sec_prot_045_failure_cannot_be_overwritten_by_later_pass",
+      "test_name": "test_sec_prot_045_failure_cannot_be_overwritten_by_later_pass"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-046",
+      "test_identity": "test_generate_evidence.test_sec_prot_046_cross_host_check_does_not_report_stale_evidence",
+      "test_name": "test_sec_prot_046_cross_host_check_does_not_report_stale_evidence"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-047",
+      "test_identity": "test_generate_evidence.test_sec_prot_047_same_host_check_detects_changed_host_inventory",
+      "test_name": "test_sec_prot_047_same_host_check_detects_changed_host_inventory"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-048",
+      "test_identity": "test_generate_evidence.test_sec_prot_048_recorded_host_inventory_decision_is_revalidated",
+      "test_name": "test_sec_prot_048_recorded_host_inventory_decision_is_revalidated"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-049",
+      "test_identity": "test_generate_evidence.test_sec_prot_049_failure_before_generation_rename_preserves_old_current",
+      "test_name": "test_sec_prot_049_failure_before_generation_rename_preserves_old_current"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-050",
+      "test_identity": "test_generate_evidence.test_sec_prot_050_failure_after_generation_creation_but_before_pointer_swap_preserves_old_current",
+      "test_name": "test_sec_prot_050_failure_after_generation_creation_but_before_pointer_swap_preserves_old_current"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-051",
+      "test_identity": "test_generate_evidence.test_sec_prot_051_failure_during_pointer_creation_preserves_old_current",
+      "test_name": "test_sec_prot_051_failure_during_pointer_creation_preserves_old_current"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-052",
+      "test_identity": "test_generate_evidence.test_sec_prot_052_successful_pointer_swap_exposes_one_complete_generation",
+      "test_name": "test_sec_prot_052_successful_pointer_swap_exposes_one_complete_generation"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-011",
+      "test_identity": "test_log_redaction.test_sec_prot_011_log_and_evidence_redaction_removes_sentinel",
+      "test_name": "test_sec_prot_011_log_and_evidence_redaction_removes_sentinel"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-012",
+      "test_identity": "test_log_redaction.test_sec_prot_012_no_secret_in_argv_snapshot",
+      "test_name": "test_sec_prot_012_no_secret_in_argv_snapshot"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-021",
+      "test_identity": "test_log_redaction.test_sec_prot_021_generic_evidence_detector",
+      "test_name": "test_sec_prot_021_generic_evidence_detector"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-024",
+      "test_identity": "test_log_redaction.test_sec_prot_024_evidence_event_rejects_generic_secret_shape",
+      "test_name": "test_sec_prot_024_evidence_event_rejects_generic_secret_shape"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-025",
+      "test_identity": "test_log_redaction.test_sec_prot_025_argv_snapshot_rejects_generic_secret_shape",
+      "test_name": "test_sec_prot_025_argv_snapshot_rejects_generic_secret_shape"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-026",
+      "test_identity": "test_log_redaction.test_sec_prot_026_evidence_writer_rejects_generic_secret_shape",
+      "test_name": "test_sec_prot_026_evidence_writer_rejects_generic_secret_shape"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-033",
+      "test_identity": "test_log_redaction.test_sec_prot_033_raw_nested_sentinel_assertion",
+      "test_name": "test_sec_prot_033_raw_nested_sentinel_assertion"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-034",
+      "test_identity": "test_log_redaction.test_sec_prot_034_evidence_event_sanitizes_event_type",
+      "test_name": "test_sec_prot_034_evidence_event_sanitizes_event_type"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-035",
+      "test_identity": "test_log_redaction.test_sec_prot_035_evidence_event_nested_sentinel_redaction",
+      "test_name": "test_sec_prot_035_evidence_event_nested_sentinel_redaction"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-036",
+      "test_identity": "test_log_redaction.test_sec_prot_036_generic_secret_in_event_type_fails_closed",
+      "test_name": "test_sec_prot_036_generic_secret_in_event_type_fails_closed"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-004",
+      "test_identity": "test_patch_contracts.test_sec_prot_004_policy_version_validation",
+      "test_name": "test_sec_prot_004_policy_version_validation"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-005",
+      "test_identity": "test_patch_contracts.test_sec_prot_005_cwd_root_enforcement",
+      "test_name": "test_sec_prot_005_cwd_root_enforcement"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-013",
+      "test_identity": "test_patch_contracts.test_sec_prot_013_immutable_runtime_security_context",
+      "test_name": "test_sec_prot_013_immutable_runtime_security_context"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-014",
+      "test_identity": "test_patch_contracts.test_sec_prot_014_sanitized_audit_event_contains_metadata_not_secrets",
+      "test_name": "test_sec_prot_014_sanitized_audit_event_contains_metadata_not_secrets"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-020",
+      "test_identity": "test_patch_contracts.test_sec_prot_020_strict_grant_references",
+      "test_name": "test_sec_prot_020_strict_grant_references"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-001",
+      "test_identity": "test_safe_env_policy.test_sec_prot_001_allowlisted_environment_excludes_gateway_secret",
+      "test_name": "test_sec_prot_001_allowlisted_environment_excludes_gateway_secret"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-002",
+      "test_identity": "test_safe_env_policy.test_sec_prot_002_mandatory_denylist_applies_last_to_overrides",
+      "test_name": "test_sec_prot_002_mandatory_denylist_applies_last_to_overrides"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-006",
+      "test_identity": "test_safe_env_policy.test_sec_prot_006_no_proxy_and_lowercase_no_proxy_are_preserved",
+      "test_name": "test_sec_prot_006_no_proxy_and_lowercase_no_proxy_are_preserved"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-017",
+      "test_identity": "test_safe_env_policy.test_sec_prot_017_explicit_kanban_env_list_rejects_wildcard_names",
+      "test_name": "test_sec_prot_017_explicit_kanban_env_list_rejects_wildcard_names"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-018",
+      "test_identity": "test_safe_env_policy.test_sec_prot_018_profile_scoped_tmpdir_is_unique_per_profile_session",
+      "test_name": "test_sec_prot_018_profile_scoped_tmpdir_is_unique_per_profile_session"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-019",
+      "test_identity": "test_safe_env_policy.test_sec_prot_019_reject_symlink_escape_for_profile_tmpdir",
+      "test_name": "test_sec_prot_019_reject_symlink_escape_for_profile_tmpdir"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-023",
+      "test_identity": "test_safe_env_policy.test_sec_prot_023_reject_secret_shaped_allowed_env_value",
+      "test_name": "test_sec_prot_023_reject_secret_shaped_allowed_env_value"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-027",
+      "test_identity": "test_safe_env_policy.test_sec_prot_027_tmpdir_traversal_rejected_without_side_effect",
+      "test_name": "test_sec_prot_027_tmpdir_traversal_rejected_without_side_effect"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-028",
+      "test_identity": "test_safe_env_policy.test_sec_prot_028_context_can_deny_all_kanban_variables",
+      "test_name": "test_sec_prot_028_context_can_deny_all_kanban_variables"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-029",
+      "test_identity": "test_safe_env_policy.test_sec_prot_029_context_allows_only_selected_kanban_variables",
+      "test_name": "test_sec_prot_029_context_allows_only_selected_kanban_variables"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-030",
+      "test_identity": "test_safe_env_policy.test_sec_prot_030_unknown_kanban_variable_denied",
+      "test_name": "test_sec_prot_030_unknown_kanban_variable_denied"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-PROT-015",
+      "test_identity": "test_safe_spawn_happy_path.test_sec_prot_015_safe_fixture_subprocess_happy_path",
+      "test_name": "test_sec_prot_015_safe_fixture_subprocess_happy_path"
+    }
+  ],
+  "schema_version": "phase1a.evidence.v1",
+  "scope": "synthetic-only",
+  "test_ids": [
+    "SEC-PROT-007",
+    "SEC-PROT-008",
+    "SEC-PROT-009",
+    "SEC-PROT-010",
+    "SEC-PROT-016",
+    "SEC-PROT-003",
+    "SEC-PROT-022",
+    "SEC-PROT-031",
+    "SEC-PROT-032",
+    "SEC-PROT-037",
+    "SEC-PROT-038",
+    "SEC-PROT-039",
+    "SEC-PROT-040",
+    "SEC-PROT-041",
+    "SEC-PROT-042",
+    "SEC-PROT-043",
+    "SEC-PROT-044",
+    "SEC-PROT-045",
+    "SEC-PROT-046",
+    "SEC-PROT-047",
+    "SEC-PROT-048",
+    "SEC-PROT-049",
+    "SEC-PROT-050",
+    "SEC-PROT-051",
+    "SEC-PROT-052",
+    "SEC-PROT-011",
+    "SEC-PROT-012",
+    "SEC-PROT-021",
+    "SEC-PROT-024",
+    "SEC-PROT-025",
+    "SEC-PROT-026",
+    "SEC-PROT-033",
+    "SEC-PROT-034",
+    "SEC-PROT-035",
+    "SEC-PROT-036",
+    "SEC-PROT-004",
+    "SEC-PROT-005",
+    "SEC-PROT-013",
+    "SEC-PROT-014",
+    "SEC-PROT-020",
+    "SEC-PROT-001",
+    "SEC-PROT-002",
+    "SEC-PROT-006",
+    "SEC-PROT-017",
+    "SEC-PROT-018",
+    "SEC-PROT-019",
+    "SEC-PROT-023",
+    "SEC-PROT-027",
+    "SEC-PROT-028",
+    "SEC-PROT-029",
+    "SEC-PROT-030",
+    "SEC-PROT-015"
+  ],
+  "timestamp": "2026-07-21T21:06:40Z"
+}

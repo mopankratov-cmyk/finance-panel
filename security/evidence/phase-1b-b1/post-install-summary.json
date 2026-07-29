@@ -1,0 +1,75 @@
+{
+  "schema_version": "pankster.phase1b-b1.post-install-evidence.v1",
+  "recorded_at": "2026-07-22T14:03:57Z",
+  "approval_id": "p1b-20260722-artifactpinningb0",
+  "branch": "phase/1b-b1-synthetic-install",
+  "pre_install_commit": "216bf2bedb2390caa833896ac1e09e10d532c9f0",
+  "install_authority": "owner_admin_terminal",
+  "agent_installer_execution": false,
+  "runner_install_result_reported_by_owner": {
+    "container_system_start_executed": false,
+    "installer_returncode": 0,
+    "mode": "execute-install",
+    "package_sha256": "0ca1c42a2269c2557efb1d82b1b38ac553e6a3a3da1b1179c439bcee1e7d6714",
+    "production_install_state": "BLOCKED_AUTHENTICATION_BACKEND_PENDING",
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "result": "PASS",
+    "synthetic_gate": "PASS"
+  },
+  "read_only_post_install_checks": {
+    "pkgutil_receipt": {
+      "pkgid": "com.apple.container-installer",
+      "pkg_version": "1.1.0",
+      "install_location": "usr/local",
+      "volume": "/",
+      "install_time_epoch": 1784728985,
+      "install_time_utc": "2026-07-22T14:03:05Z"
+    },
+    "installed_paths": {
+      "/usr/local/bin/container": {
+        "exists": true,
+        "owner": "root",
+        "group": "wheel",
+        "mode": "-rwxr-xr-x"
+      },
+      "/usr/local/bin/uninstall-container.sh": {
+        "exists": true,
+        "owner": "root",
+        "group": "wheel",
+        "mode": "-rwxr-xr-x"
+      }
+    },
+    "container_cli_version": "container CLI version 1.1.0 (build: release, commit: 5973b9c)",
+    "runtime_process_scan": {
+      "patterns": [
+        "/usr/local/libexec/container",
+        "container-apiserver",
+        "container system start"
+      ],
+      "matches": 0
+    },
+    "post_install_preflight": {
+      "container_system_start_executed": false,
+      "current_uid": 501,
+      "installer_execution_performed": false,
+      "mode": "preflight",
+      "production_install_state": "BLOCKED_AUTHENTICATION_BACKEND_PENDING",
+      "production_profiles_allowed": false,
+      "real_credentials_allowed": false,
+      "result": "BLOCKED_ADMIN_AUTHORIZATION_REQUIRED",
+      "sudo_noninteractive_available": false,
+      "synthetic_gate": "PASS"
+    }
+  },
+  "forbidden_actions_not_performed_by_agent": {
+    "container_system_start": true,
+    "vm_or_container_start": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "next_required_gate": "SEPARATE_SYNTHETIC_RUNTIME_START_APPROVAL"
+}

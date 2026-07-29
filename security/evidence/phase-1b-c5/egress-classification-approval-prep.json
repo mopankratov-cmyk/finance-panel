@@ -1,0 +1,31 @@
+{
+  "schema_version": "pankster.phase1b-c5.synthetic-lima-egress-classification-approval-prep.v1",
+  "recorded_at": "2026-07-22T16:30:00Z",
+  "result": "OWNER_APPROVAL_REQUIRED",
+  "approval_id": "p1b-20260722-limaegressc5",
+  "contract_path": "docs/program/PHASE_1B_C5_SYNTHETIC_LIMA_EGRESS_CLASSIFICATION_CONTRACT.ready.json",
+  "contract_content_sha256": "7172db2bdc66461dfa5f0e2c49fd9134833889fffa53a80f546b239da38f7d1d",
+  "owner_command_hash": "5a610034207cd178e1d75c327c9268ef39000e8f5d59eff7394d95e59dea232c",
+  "scope": {
+    "synthetic_only": true,
+    "network_probes_allowed": true,
+    "network_probe_endpoints": [
+      "example.com DNS lookup",
+      "1.1.1.1:443 TCP connect"
+    ],
+    "http_payloads_allowed": false,
+    "guest_writes_allowed": false,
+    "host_sync_allowed": false,
+    "preserve_host_env_allowed": false,
+    "real_credentials_allowed": false,
+    "production_profiles_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false
+  },
+  "blocked_until_owner_approval": {
+    "network_probe_execution": true,
+    "approval_record_creation": true,
+    "egress_result_claim": true
+  },
+  "required_owner_command": "APPROVE_SYNTHETIC_LIMA_EGRESS_CLASSIFICATION:p1b-20260722-limaegressc5:7172db2bdc66461dfa5f0e2c49fd9134833889fffa53a80f546b239da38f7d1d"
+}

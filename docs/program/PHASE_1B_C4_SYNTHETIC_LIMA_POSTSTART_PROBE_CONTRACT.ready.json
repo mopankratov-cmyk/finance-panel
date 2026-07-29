@@ -1,0 +1,134 @@
+{
+  "content_sha256": "32f674f863d88570c1ee55f49ac85cca2cd2779bcdd992f3f248813048a2f92a",
+  "contract_content": {
+    "allowed_action": "run bounded read-only non-network synthetic post-start probes against the existing pc3 VM via isolated LIMA_HOME",
+    "allowed_probe_commands": [
+      {
+        "argv": [
+          "limactl",
+          "list",
+          "--format",
+          "json",
+          "pc3"
+        ],
+        "purpose": "confirm isolated VM status and effective config",
+        "scope": "host"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/uname",
+          "-a"
+        ],
+        "purpose": "identify guest kernel without writing state",
+        "scope": "guest"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/usr/bin/id"
+        ],
+        "purpose": "confirm guest user identity",
+        "scope": "guest"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/mount"
+        ],
+        "purpose": "inspect guest mount table for unexpected host mounts",
+        "scope": "guest"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/sh",
+          "-lc",
+          "env | sed -E \"s/=.*$/=REDACTED/\" | sort"
+        ],
+        "purpose": "collect guest environment variable names with values redacted",
+        "scope": "guest"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/sh",
+          "-lc",
+          "command -v containerd || true; command -v nerdctl || true; command -v docker || true"
+        ],
+        "purpose": "check container runtime binaries are not unexpectedly present",
+        "scope": "guest"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/sh",
+          "-lc",
+          "test ! -S /run/host-services/ssh-auth.sock && echo ssh_agent_socket_absent"
+        ],
+        "purpose": "confirm host SSH agent socket is absent",
+        "scope": "guest"
+      },
+      {
+        "argv": [
+          "limactl",
+          "shell",
+          "--tty=false",
+          "pc3",
+          "--",
+          "/bin/sh",
+          "-lc",
+          "test ! -e /Users && echo host_users_mount_absent"
+        ],
+        "purpose": "confirm macOS /Users host path is not mounted into guest",
+        "scope": "guest"
+      }
+    ],
+    "approval_id": "p1b-20260722-limaprobesc4",
+    "backend": "lima-vz",
+    "backend_version": "2.2.0",
+    "c3_execution_evidence": "security/evidence/phase-1b-c3/runtime-start-r2-execution-summary.json",
+    "c3_execution_evidence_sha256": "e8efcc387a1dcaa4f6f1f64fca2e1d2d0be2b360acb498d1e16b211567f3d3c4",
+    "canary_allowed": false,
+    "created_at": "2026-07-22T16:09:09Z",
+    "expires_at": "2026-07-23T16:09:09Z",
+    "gateway_changes_allowed": false,
+    "guest_writes_allowed": false,
+    "host_sync_allowed": false,
+    "instance_name": "pc3",
+    "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+    "limactl_binary_sha256": "f19a4fca3875e1017a5285672be4a62699c1e55918fb6a7afce86a14199e10d9",
+    "limactl_path": "/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl",
+    "network_probes_allowed": false,
+    "preserve_host_env_allowed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "required_instance_status": "Running"
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1b-c4.synthetic-poststart-probe-contract.v1"
+}

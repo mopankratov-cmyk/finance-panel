@@ -1,0 +1,94 @@
+{
+  "schema_version": "pankster.phase1b-b4.vendor-behavior-review.v1",
+  "recorded_at": "2026-07-22T14:40:21Z",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_b4": "e5bd9a42433c2f31a90cb3439f47cbd2e8ca352a",
+  "local_observations": {
+    "container_cli_version": "container CLI version 1.1.0 (build: release, commit: 5973b9c)",
+    "system_status": "apiserver is not running and not registered with launchd",
+    "system_start_help": {
+      "supports_enable_kernel_install": true,
+      "supports_disable_kernel_install": true,
+      "default_kernel_policy": "prompt user"
+    },
+    "kernel_set_help": {
+      "supports_recommended": true,
+      "supports_tar": true,
+      "supports_digest_in_installed_help": false
+    },
+    "system_start_r2_result": {
+      "result": "DENIED",
+      "reason": "RUNTIME_START_FAILED",
+      "stderr_contains": "XPC connection error: Connection invalid"
+    },
+    "kernel_set_b3_result": {
+      "result": "DENIED",
+      "reason": "KERNEL_PROVISION_FAILED",
+      "stderr_contains": "Ensure container system service has been started with `container system start`."
+    }
+  },
+  "prior_evidence": {
+    "b2_r2_runtime_start_failure": {
+      "path": "security/evidence/phase-1b-b2/r2-runtime-start-failure-01.json",
+      "sha256": "d9ab959c332ab3d67fa9367a92dd844f5590a8c96aeba101b4bc13ee1e0509d8"
+    },
+    "b3_kernel_provision_failure": {
+      "path": "security/evidence/phase-1b-b3/kernel-provision-failure-01.json",
+      "sha256": "b11f999c4fc3ddbd939ebc4dd7c525701c8e69518c7388481f52c4eb5c195e52"
+    },
+    "b3_artifact_check": {
+      "path": "security/evidence/phase-1b-b3/artifact-check-summary.json",
+      "sha256": "62a407ea056420a5b45910177d7fa1e6f8e3252905aa4e279d997e255149af23"
+    },
+    "b3_review_response": {
+      "path": "docs/program/PHASE_1B_B3_REVIEW_RESPONSE_01.md",
+      "sha256": "b0ee7eb94c4bd018830fa7f3adc3c434519bda211e1a737ee2676fbe37d4990b"
+    }
+  },
+  "external_primary_sources": [
+    {
+      "url": "https://github.com/apple/container/blob/main/docs/command-reference.md",
+      "observations": [
+        "container system start starts container services and optionally installs a default kernel",
+        "enable/disable kernel install flag default is prompt user",
+        "container system status sends a health check request to the API server",
+        "container system kernel set installs or updates the Linux kernel used by the runtime"
+      ]
+    },
+    {
+      "url": "https://github.com/apple/container/issues/1687",
+      "observations": [
+        "kernel download integrity for first-run system start has been a documented upstream concern",
+        "manual SHA-verified local tar workflow was discussed by upstream users"
+      ]
+    },
+    {
+      "url": "https://github.com/apple/container/discussions/1345",
+      "observations": [
+        "upstream discussion describes kernel resource management UX as disjointed",
+        "new-install system start is expected to download a kernel if the current default kernel is missing"
+      ]
+    }
+  ],
+  "assessment": "Apple Container CLI 1.1.0 primary backend is blocked for the current local-only, pinned-artifact bootstrap contract. The installed CLI's local-tar kernel provisioning path still requires a running apiserver, while the apiserver did not become healthy under noninteractive start with kernel install disabled.",
+  "decision_required": [
+    "authorize vendor bootstrap with container system start --enable-kernel-install, accepting network/default-kernel behavior under a new explicit contract",
+    "pause Apple Container and investigate/report vendor behavior before retrying",
+    "switch to fallback backend selection and create a separate Lima-vz supply-chain contract"
+  ],
+  "recommended_decision": "SWITCH_TO_FALLBACK_BACKEND_SELECTION_OR_PAUSE_APPLE_CONTAINER",
+  "forbidden_actions_not_performed_by_agent": {
+    "container_system_start_retry": true,
+    "container_system_start_enable_kernel_install": true,
+    "kernel_provision_retry": true,
+    "recommended_kernel_download": true,
+    "remote_tar_kernel_install": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  }
+}

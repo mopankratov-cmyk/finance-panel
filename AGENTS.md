@@ -23,8 +23,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - `app/api/opiu/` — финансовый бэкенд (ОПиУ)
 - `lib/opiu/` — логика P&L
 
-**НЕ трогай ничего вне этой зоны**, в том числе: общие `app/api/{wb,ozon,supplies}`, `components/CabinetSwitcher*`, `lib/useActiveCabinet*` и прочий общий код; «завод» (`app/inferno`, `lib/factory`, `app/agent`, `app/carousel`, `app/video-overlay`); авторизацию, `middleware`/`proxy`; миграции БД и `.sql`; `package.json`/lock-файлы/зависимости; `.env*`; конфиги (`vercel.json`, `next.config*`); CI (`.gitea/`, `.github/`).
+**НЕ трогай ничего вне этой зоны**, в том числе: общие `app/api/{wb,ozon,supplies}`, `components/CabinetSwitcher*`, `lib/useActiveCabinet*` и прочий общий код; AI-агент (`app/agent`, `components/agent`); авторизацию, `middleware`/`proxy`; миграции БД и `.sql`; `package.json`/lock-файлы/зависимости; `.env*`; конфиги (`vercel.json`, `next.config*`); CI (`.gitea/`, `.github/`).
 
 **Если задача требует тронуть что-то вне зоны Финансы — ОСТАНОВИСЬ** и скажи пользователю: «это вне зоны Финансы, нужно согласование с владельцем» — и НЕ делай эту правку сам. Такой PR всё равно не вольётся автоматически: AI-гейт отправит его владельцу на ручное ревью.
 
 **Порядок работы:** ветка `feat/<коротко>` → правки только в зоне Финансы → `npm run dev` без ошибок → коммит → push → Pull Request в `main`. Прямой push в `main` и мёрж в обход запрещены.
+
+# Контент-завод переехал
+
+Контент-завод (бывшие `app/inferno`, `app/carousel`, `app/video-overlay`, `app/api/factory`, `lib/factory`) выделен в отдельный репозиторий **content-factory** (2026-07-06) — аудит показал отсутствие общего кода и пересекающихся FK-связей с финансами/маркетплейс-операционкой. AI-агент (`app/agent`) остался здесь — он завязан на кабинеты/токены WB, а не на видеопайплайн завода.

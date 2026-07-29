@@ -1,0 +1,217 @@
+{
+  "content_sha256": "d40eab7a1fa78f004f07b8c81da83f140e39462c2b03b7a1c1f6dcfca28ddc66",
+  "decision_content": {
+    "config_source_contract": {
+      "filesystem_writes_allowed": false,
+      "input_type": "explicit_mapping_only",
+      "invalid_flag_behavior": "deny",
+      "missing_flag_behavior": "use_default_false",
+      "network_allowed": false,
+      "read_auth_json_allowed": false,
+      "read_env_files_allowed": false,
+      "read_keychain_allowed": false,
+      "read_process_environment_allowed_in_pure_units": false,
+      "unknown_flag_behavior": "ignore_and_record_warning"
+    },
+    "created_at": "2026-07-23T01:38:00Z",
+    "decision": "FEATURE_FLAGS_AND_CONFIG_RULES_READY_FOR_PURE_UNIT_IMPLEMENTATION_NOT_RUNTIME",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "fail_closed_cases": [
+      "a1_dependency_missing_or_hash_mismatch",
+      "flag_default_true",
+      "invalid_flag_value",
+      "named_profile_runtime_enabled_without_runtime_adapter",
+      "runtime_adapter_enabled_without_brokers",
+      "synthetic_runner_enabled_without_explicit_future_execution_approval",
+      "process_environment_read_detected",
+      "env_file_read_detected",
+      "auth_json_or_keychain_read_detected",
+      "network_call_detected",
+      "forbidden_file_changed",
+      "secret_scan_failed"
+    ],
+    "flag_definitions": {
+      "PANKSTER_CREDENTIAL_BROKER_ENABLED": {
+        "allowed_false_values": [
+          "0",
+          "false",
+          "no",
+          "off",
+          ""
+        ],
+        "allowed_true_values": [
+          "1",
+          "true",
+          "yes",
+          "on"
+        ],
+        "default": false,
+        "invalid_value_behavior": "deny"
+      },
+      "PANKSTER_HOST_MODEL_BROKER_ENABLED": {
+        "allowed_false_values": [
+          "0",
+          "false",
+          "no",
+          "off",
+          ""
+        ],
+        "allowed_true_values": [
+          "1",
+          "true",
+          "yes",
+          "on"
+        ],
+        "default": false,
+        "invalid_value_behavior": "deny"
+      },
+      "PANKSTER_NAMED_PROFILE_RUNTIME_ENABLED": {
+        "allowed_false_values": [
+          "0",
+          "false",
+          "no",
+          "off",
+          ""
+        ],
+        "allowed_true_values": [
+          "1",
+          "true",
+          "yes",
+          "on"
+        ],
+        "default": false,
+        "invalid_value_behavior": "deny"
+      },
+      "PANKSTER_RUNTIME_ADAPTER_ENABLED": {
+        "allowed_false_values": [
+          "0",
+          "false",
+          "no",
+          "off",
+          ""
+        ],
+        "allowed_true_values": [
+          "1",
+          "true",
+          "yes",
+          "on"
+        ],
+        "default": false,
+        "invalid_value_behavior": "deny"
+      },
+      "PANKSTER_SYNTHETIC_RUNNER_ENABLED": {
+        "allowed_false_values": [
+          "0",
+          "false",
+          "no",
+          "off",
+          ""
+        ],
+        "allowed_true_values": [
+          "1",
+          "true",
+          "yes",
+          "on"
+        ],
+        "default": false,
+        "invalid_value_behavior": "deny"
+      }
+    },
+    "forbidden_files": [
+      "app/",
+      "components/",
+      "lib/",
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lockb",
+      ".env",
+      ".env.local",
+      ".gitea/",
+      ".github/",
+      "gateway.py",
+      "web_server.py",
+      "agent/conversation_loop.py"
+    ],
+    "gate_dependency_rules": {
+      "named_profile_runtime_requires": [
+        "PANKSTER_NAMED_PROFILE_RUNTIME_ENABLED",
+        "PANKSTER_RUNTIME_ADAPTER_ENABLED"
+      ],
+      "production_profile_requires_future_gate": "not_defined_in_a2",
+      "runtime_adapter_requires": [
+        "PANKSTER_RUNTIME_ADAPTER_ENABLED",
+        "PANKSTER_HOST_MODEL_BROKER_ENABLED",
+        "PANKSTER_CREDENTIAL_BROKER_ENABLED"
+      ],
+      "synthetic_runner_requires": [
+        "PANKSTER_SYNTHETIC_RUNNER_ENABLED"
+      ]
+    },
+    "gateway_changes_approved": false,
+    "implementation_code_approved_by_a2": false,
+    "next_gate": "1D-A3_POLICY_SCHEMA_VALIDATOR_IMPLEMENTATION",
+    "phase": "1D-A2",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a1_dependency_satisfied": true,
+      "feature_flag_spec_ready": true,
+      "future_a3_code_gate_may_start_after_a2": true,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_behavior_for_future_implementation": [
+      "all_flags_default_false",
+      "parser_is_case_insensitive",
+      "parser_trims_surrounding_whitespace",
+      "invalid_values_return_denied_state_not_true",
+      "unknown_flags_do_not_enable_any_capability",
+      "enabled_named_profile_runtime_requires_runtime_adapter_enabled",
+      "no_process_env_read_in_unit_tests",
+      "no_secret_values_logged"
+    ],
+    "required_tests": {
+      "future_feature_flag_unit": [
+        "parse_true_false_values_case_insensitive",
+        "missing_flags_default_false",
+        "invalid_values_return_denied",
+        "unknown_flags_do_not_enable_capabilities",
+        "named_profile_runtime_requires_runtime_adapter",
+        "runtime_adapter_requires_host_and_credential_brokers"
+      ],
+      "security": [
+        "no_process_env_read_in_pure_unit_tests",
+        "no_auth_json_or_keychain_access",
+        "no_provider_network_clients",
+        "no_secret_values_in_feature_flag_outputs"
+      ],
+      "validator_unit": [
+        "a2_requires_a1_dependency_hash",
+        "a2_all_flags_default_false",
+        "a2_config_source_explicit_mapping_only",
+        "a2_invalid_values_fail_closed",
+        "a2_forbids_runtime_deployment_provider_gateway_profile_scope"
+      ]
+    },
+    "rollback": "revert_a2_spec_and_keep_all_phase_1d_feature_flags_undefined_or_false",
+    "sandbox_execution_approved": false,
+    "scaffold_files_allowed_next": {
+      "package_init_file": "tools/pankster_runtime_security/__init__.py",
+      "policy_schema_file": "tools/pankster_runtime_security/policy_schema.py",
+      "policy_schema_test": "tools/tests/test_pankster_runtime_security_policy_schema.py",
+      "phase_test_prefix": "tools/tests/test_phase_1d_",
+      "phase_validator_prefix": "tools/phase_1d_"
+    },
+    "source_evidence": {
+      "phase_1d_a1_content_sha256": "80c77343c615d5e3a4cb7dc48569e8aa40a24254e4689032d72471f3c82e1035",
+      "phase_1d_a1_file_sha256": "a18a115f6fb8ea133f11c8636b8d910a902f5317bb33da23e3338cb29147e27d",
+      "phase_1d_a1_path": "security/evidence/phase-1d-a1/implementation-scope-and-branch-contract.json",
+      "phase_1d_a1_status": "IMPLEMENTATION_SCOPE_AND_BRANCH_CONTRACT_COMPLETE_NO_CODE_APPROVAL"
+    },
+    "status": "FEATURE_FLAG_AND_CONFIG_SCAFFOLD_SPEC_COMPLETE_NO_CODE_APPROVAL"
+  },
+  "schema_version": "pankster.phase1d-a2.feature-flag-config-scaffold-spec.v1"
+}

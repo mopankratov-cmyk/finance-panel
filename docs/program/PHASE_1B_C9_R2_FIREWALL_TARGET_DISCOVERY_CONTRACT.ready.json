@@ -1,0 +1,47 @@
+{
+  "content_sha256": "3048d2668b5c224ec98bdb0cb1aca865f6fa5e8070e4432833c1c034db6c8b4d",
+  "contract_content": {
+    "allowed_action": "start one new disposable synthetic Lima-vz VM for host-firewall target discovery only; no pfctl or host firewall mutation",
+    "approval_id": "p1b-20260722-limapftargetc9r2",
+    "backend": "lima-vz",
+    "backend_version": "2.2.0",
+    "canary_allowed": false,
+    "config_path": "docs/program/PHASE_1B_C2_LIMA_VZ_SYNTHETIC_VM_CONFIG.yaml",
+    "config_sha256": "ec4ee37801c5168f3522dbd58ab729e565918c684c415265d3079eb7a3a74008",
+    "created_at": "2026-07-22T17:16:00Z",
+    "expires_at": "2026-07-23T17:16:00Z",
+    "gateway_changes_allowed": false,
+    "guest_image_sha256": "7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934",
+    "guest_image_size_bytes": 227737600,
+    "guest_image_url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release-20260716/ubuntu-24.04-minimal-cloudimg-arm64.img",
+    "guest_writes_allowed": false,
+    "host_firewall_changes_allowed": false,
+    "host_sync_allowed": false,
+    "instance_name": "pc9r2",
+    "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc9r2",
+    "limactl_binary_sha256": "f19a4fca3875e1017a5285672be4a62699c1e55918fb6a7afce86a14199e10d9",
+    "limactl_path": "/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl",
+    "max_socket_path_length_estimate": 82,
+    "network_risk_decision": "ACCEPT_DEFAULT_LIMA_NAT_EGRESS_FOR_SYNTHETIC_TARGET_DISCOVERY_ONLY",
+    "next_gate_after_success": "PHASE_1B_C9_R3_HOST_FIREWALL_EXECUTION_CONTRACT",
+    "pfctl_execution_allowed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "required_discovery_outputs": [
+      "limactl list --format json pc9r2",
+      "guest IPv4 address and subnet from ip -4 addr show dev eth0",
+      "guest route table from ip route",
+      "sanitized before-firewall egress marker using same bounded C5 DNS/TCP checks"
+    ],
+    "source_evidence": {
+      "c9_research_approval_record_sha256": "9489899efb430ac659916f01daf2441e15b8ba1123843a29a3d66b1f9de9187b",
+      "c9_research_contract_sha256": "360d4f746e7ef7cb225b8da333b7dec739c5d8d6175c24a89150dd34f2ddd2c5"
+    },
+    "target_discovery_only": true,
+    "target_guest_ipv4_must_be_recorded_before_c9_r3": true,
+    "target_guest_ipv4_unknown_until_execution": true,
+    "target_vm_reuse_for_production_candidate_allowed": false
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1b-c9-r2.synthetic-lima-firewall-target-discovery-contract.v1"
+}

@@ -3,7 +3,7 @@
 // Номер basket зависит от vol по таблице диапазонов (WB периодически добавляет баскеты),
 // поэтому вычисляем кандидат и проверяем HEAD-запросом, сканируя соседние при промахе.
 
-// Верхние границы vol → номер basket (актуально на 2026)
+// Верхние границы vol → номер basket (WB периодически меняет разрезку).
 const VOL_RANGES: [number, number][] = [
   [143, 1], [287, 2], [431, 3], [719, 4], [1007, 5], [1061, 6], [1115, 7],
   [1169, 8], [1313, 9], [1601, 10], [1655, 11], [1919, 12], [2045, 13],
@@ -17,12 +17,68 @@ const VOL_RANGES: [number, number][] = [
   [12461, 50], [12777, 51], [13093, 52], [13409, 53], [13725, 54], [14041, 55],
 ];
 
-function estimateBasket(vol: number): number {
+// Наблюдение 2026-07-14: новые RIOBOX nm 1239272680/1239272678 (vol=12392)
+// лежат на basket-44, хотя линейная таблица выше даёт basket-50. Без этого
+// экраны рекламы/РНП/SEO получают битые миниатюры.
+const VOL_OVERRIDES: [number, number, number][] = [
+  [12146, 12777, 44],
+];
+
+function estimateBasketByRange(vol: number): number {
   for (const [max, basket] of VOL_RANGES) {
     if (vol <= max) return basket;
   }
   // за пределами таблицы — оценка тем же шагом ~316 vol на баскет
   return 55 + Math.ceil((vol - 14041) / 316);
+}
+
+function estimateBasket(vol: number): number {
+  for (const [min, max, basket] of VOL_OVERRIDES) {
+    if (vol >= min && vol <= max) return basket;
+  }
+  return estimateBasketByRange(vol);
+}
+
+export function wbCardImageBasketCandidates(nmId: number, radius = 18): number[] {
+  const vol = Math.floor(nmId / 100000);
+  const roots = new Set<number>([estimateBasket(vol), estimateBasketByRange(vol)]);
+  for (const [, , basket] of VOL_OVERRIDES) roots.add(basket);
+
+  const out: number[] = [];
+  const push = (basket: number) => {
+    if (basket >= 1 && basket <= 99 && !out.includes(basket)) out.push(basket);
+  };
+  for (const root of roots) {
+    push(root);
+    for (let d = 1; d <= radius; d++) {
+      push(root - d);
+      push(root + d);
+    }
+  }
+  return out;
+}
+
+export function wbCardImageUrlCandidates(nmId: number, size = "c246x328", radius = 18): string[] {
+  const vol = Math.floor(nmId / 100000);
+  const part = Math.floor(nmId / 1000);
+  return wbCardImageBasketCandidates(nmId, radius).map((b) =>
+    `https://basket-${String(b).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/${size}/1.webp`,
+  );
+}
+
+export function extractWbNmIdFromImageUrl(src: string | null | undefined): number | null {
+  const value = String(src ?? "");
+  const match = value.match(/\/(\d{5,12})\/images\//) ?? value.match(/\/catalog\/(\d{5,12})(?:\/|$)/);
+  const nmId = Number(match?.[1] ?? 0);
+  return Number.isInteger(nmId) && nmId > 0 ? nmId : null;
+}
+
+export function wbCardImageUrlsForDisplay(input: { nmId?: number | null; src?: string | null; size?: string; radius?: number }): string[] {
+  const src = String(input.src ?? "").trim();
+  const nmId = Number(input.nmId ?? extractWbNmIdFromImageUrl(src) ?? 0);
+  const urls = src ? [src] : [];
+  if (Number.isInteger(nmId) && nmId > 0) urls.push(...wbCardImageUrlCandidates(nmId, input.size ?? "c246x328", input.radius ?? 18));
+  return [...new Set(urls)];
 }
 
 /** Синхронный best-effort URL фото карточки (без HEAD-проверки) — для списков. */
@@ -35,7 +91,7 @@ export function wbCardImageUrl(nmId: number, size = "c246x328"): string {
 
 async function exists(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+    const res = await fetch(url, { method: "HEAD", cache: "no-store", signal: AbortSignal.timeout(5_000) });
     return res.ok;
   } catch {
     return false;
@@ -46,13 +102,7 @@ async function exists(url: string): Promise<boolean> {
 async function resolveBasket(nmId: number): Promise<number> {
   const vol = Math.floor(nmId / 100000);
   const part = Math.floor(nmId / 1000);
-  const est = estimateBasket(vol);
-  const order: number[] = [est];
-  for (let d = 1; d <= 6; d++) order.push(est + d, est - d);
-  const tried = new Set<number>();
-  for (const b of order) {
-    if (b < 1 || tried.has(b)) continue;
-    tried.add(b);
+  for (const b of wbCardImageBasketCandidates(nmId)) {
     if (await exists(`https://basket-${String(b).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/1.webp`)) return b;
   }
   return 0;
@@ -92,16 +142,7 @@ export async function getWbCardImage(nmId: number): Promise<string | null> {
   const build = (b: number) =>
     `https://basket-${String(b).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/1.webp`;
 
-  const est = estimateBasket(vol);
-  // порядок проверки: оценка, затем ±5 вокруг
-  const tried = new Set<number>();
-  const order: number[] = [est];
-  for (let d = 1; d <= 5; d++) {
-    order.push(est + d, est - d);
-  }
-  for (const b of order) {
-    if (b < 1 || tried.has(b)) continue;
-    tried.add(b);
+  for (const b of wbCardImageBasketCandidates(nmId)) {
     const url = build(b);
     if (await exists(url)) return url;
   }

@@ -1,0 +1,26 @@
+{
+  "files": [
+    {
+      "bytes": 3973,
+      "path": "baseline-results.json",
+      "sha256": "351ada2fecabd9b210e2cf9d7bceae14a3f7195ef127441089cc055b69ba0146"
+    },
+    {
+      "bytes": 14847,
+      "path": "safe-prototype-results.json",
+      "sha256": "7d52caf61e9779b1115ae6cd0e714dca088f42844a8518755a4152279100a481"
+    },
+    {
+      "bytes": 8177,
+      "path": "isolation-inventory.json",
+      "sha256": "c1a2c93ee8af9da21302aae717f9641dcbe9fb09c479aaf1c9f9be2482a4e452"
+    },
+    {
+      "bytes": 15344,
+      "path": "test-run-summary.json",
+      "sha256": "f1b836dc5a75a5974aa4ed58dcc12e0641e1b27f9e9ff9ed31c80a4f3ad20688"
+    }
+  ],
+  "pack_id": "20260721t210618z-c4ac91343cc444768859a24c519baa09",
+  "schema_version": "phase1a.evidence.generation.v1"
+}

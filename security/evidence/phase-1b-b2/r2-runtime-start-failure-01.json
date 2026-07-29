@@ -1,0 +1,66 @@
+{
+  "schema_version": "pankster.phase1b-b2-r2.runtime-start-failure.v1",
+  "recorded_at": "2026-07-22T14:27:11Z",
+  "approval_id": "p1b-20260722-syntheticruntimeb2r2",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_runtime_start": "e469016c15e474f3af4f1b5acc9013c0bb87ddb4",
+  "contract_path": "docs/program/PHASE_1B_B2_R2_SYNTHETIC_RUNTIME_START_CONTRACT.ready.json",
+  "contract_file_sha256": "da58f9f04c0b63e9d0ff6d57e6a9876513b6c63cc59b28ec61dd8ef35b77a92d",
+  "approval_record_path": "docs/program/PHASE_1B_B2_R2_SYNTHETIC_RUNTIME_START_APPROVAL_RECORD.json",
+  "approval_record_file_sha256": "0e0258342e5d514a318a67df9c7dd7e031626b9a9773cf2c5a8c0a613df5d5a2",
+  "owner_reported_runner_result": {
+    "command_result": {
+      "returncode": 1,
+      "stderr": "Launching container-apiserver...\nTesting access to container-apiserver...\nError: internalError: \"failed to get a response from apiserver: interrupted: \"XPC connection error: Connection invalid\"\"\nEnsure container system service has been started with `container system start`.",
+      "stdout": ""
+    },
+    "mode": "execute-start",
+    "reason": "RUNTIME_START_FAILED",
+    "result": "DENIED"
+  },
+  "read_only_post_failure_checks": {
+    "container_system_status": {
+      "returncode": 1,
+      "stdout": "apiserver is not running and not registered with launchd",
+      "stderr": ""
+    },
+    "container_system_version": {
+      "container": {
+        "version": "1.1.0",
+        "build": "release",
+        "commit": "5973b9cc626a3e7a499bb316a958237ebe14e2ed"
+      }
+    },
+    "launchd_observation": {
+      "system_com_apple_container_apiserver": "Could not find service in system domain",
+      "gui_501_com_apple_container_apiserver": "Could not find service in user domain"
+    },
+    "runtime_process_scan_matches": 0,
+    "kernel_set_help_observation": {
+      "supports_recommended_download": true,
+      "supports_local_or_remote_tar": true,
+      "relevant_flags": [
+        "--recommended",
+        "--tar <tar>",
+        "--binary <binary>",
+        "--arch <arch>",
+        "--force"
+      ]
+    },
+    "local_kata_artifact_in_repository": false
+  },
+  "assessment": "B2-R2 startup failed after attempting to launch container-apiserver. The service was not registered with launchd after the attempt. Read-only kernel command help indicates Apple Container may require explicit kernel provisioning before the apiserver can become healthy.",
+  "next_required_gate": "PHASE_1B_B3_KERNEL_PROVISIONING_CONTRACT",
+  "forbidden_actions_not_performed_by_agent": {
+    "container_system_start_retry": true,
+    "kernel_recommended_download": true,
+    "kernel_local_tar_install": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  }
+}

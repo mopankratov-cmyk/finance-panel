@@ -5,16 +5,25 @@ import {
   Bot,
   Building2,
   Calendar,
-  Calculator,
   Coins,
   ChevronDown,
   CreditCard,
   Landmark,
   LayoutDashboard,
   LineChart,
+  Megaphone,
   Menu,
+  MessageSquare,
   LogOut,
+  PackageSearch,
+  CalendarRange,
+  Layers,
+  MousePointerClick,
   PieChart,
+  Search,
+  Settings2,
+  Sigma,
+  Table2,
   Tag,
   Target,
   TrendingUp,
@@ -27,9 +36,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { allowedNav, ROLE_LABEL } from "@/lib/auth/roles";
 import type { Role } from "@/lib/auth/session";
+import { isAgentSidebarPath, isFinanceSidebarPath, isSystemSidebarPath } from "@/lib/navigation/sidebar";
 
 interface NavLink {
   href: string;
@@ -48,11 +58,16 @@ const NAV_GROUPS: NavGroup[] = [
     id: "analytics",
     label: "Аналитика МП",
     items: [
-      { href: "/inferno/wb.html", label: "WB Аналитика", icon: BarChart3 },
+      { href: "/wb/adverts", label: "Реклама WB", icon: Megaphone },
+      { href: "/wb/rnp", label: "РНП по SKU", icon: Table2 },
+      { href: "/wb/seo", label: "SEO / Воронка", icon: Search },
+      { href: "/wb/sklejki", label: "Склейки", icon: Layers },
+      { href: "/wb/reviews", label: "Отзывы", icon: MessageSquare },
+      { href: "/wb/product", label: "Инфо по SKU", icon: PackageSearch },
+      { href: "/wb/unit", label: "Юнит-экономика", icon: Sigma },
+      { href: "/wb/ctr", label: "CTR по SKU", icon: MousePointerClick },
       { href: "/ozon", label: "Ozon Аналитика", icon: BarChart3 },
-      { href: "/abc", label: "ABC прибыли", icon: PieChart },
-      { href: "/trends", label: "Динамика", icon: TrendingUp },
-      { href: "/market", label: "Рынок", icon: Target },
+      { href: "/wb/market", label: "Рынок", icon: Target },
     ],
   },
   {
@@ -77,10 +92,9 @@ const NAV_GROUPS: NavGroup[] = [
     id: "operations",
     label: "Операции",
     items: [
-      { href: "/supplies", label: "Закупки", icon: Truck },
+      { href: "/wb/supplies", label: "Закупки", icon: Truck },
       { href: "/costs", label: "Себестоимость", icon: Coins },
-      { href: "/repricer", label: "Репрайсер", icon: Tag },
-      { href: "/price-solver", label: "Решатель цены", icon: Calculator },
+      { href: "/wb/funnel?view=repricer", label: "Цена и маржа", icon: Tag },
     ],
   },
   {
@@ -95,6 +109,58 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const FINANCE_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "finres",
+    label: "Финрезультат",
+    items: [
+      { href: "/summary", label: "Сводка WB · Ozon", icon: LayoutDashboard },
+      { href: "/pnl", label: "ОПиУ (до СПП)", icon: LineChart },
+      { href: "/losses", label: "Где теряем", icon: TrendingDown },
+      { href: "/opiu", label: "WB недельный", icon: Table2 },
+    ],
+  },
+  {
+    id: "money",
+    label: "Деньги (ДДС)",
+    items: [
+      { href: "/calendar", label: "Календарь", icon: Calendar },
+      { href: "/payments", label: "Платежи", icon: CreditCard },
+      { href: "/accounts", label: "Счета", icon: Wallet },
+      { href: "/loans", label: "Кредиты", icon: Landmark },
+    ],
+  },
+  {
+    id: "finance-data",
+    label: "Учёт",
+    items: [
+      { href: "/costs", label: "Себестоимость", icon: Coins },
+    ],
+  },
+];
+
+const SYSTEM_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "system",
+    label: "Настройки",
+    items: [
+      { href: "/cabinets", label: "Кабинеты", icon: Building2 },
+      { href: "/users", label: "Сотрудники", icon: Users },
+      { href: "/sync", label: "Синхронизация", icon: RefreshCw },
+    ],
+  },
+];
+
+const AGENT_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "agent",
+    label: "Помощник",
+    items: [
+      { href: "/agent", label: "AI-агент", icon: Bot },
+    ],
+  },
+];
+
 const DASHBOARD: NavLink = {
   href: "/",
   label: "Дашборд",
@@ -102,20 +168,50 @@ const DASHBOARD: NavLink = {
 };
 
 function isActive(pathname: string, href: string): boolean {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const hrefPath = href.split(/[?#]/, 1)[0] || href;
+  return hrefPath === "/" ? pathname === "/" : pathname.startsWith(hrefPath);
 }
 
 export function Sidebar() {
   const pathname = usePathname();
+  const financeOnly = isFinanceSidebarPath(pathname);
+  const systemOnly = isSystemSidebarPath(pathname);
+  const agentOnly = isAgentSidebarPath(pathname);
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  // Мобильный drawer: focus-trap + Escape + возврат фокуса на триггер при закрытии —
+  // без этого клавиатурный/скринридер-пользователь мог провалиться фокусом за drawer.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    previouslyFocused.current = document.activeElement as HTMLElement;
+    const focusables = asideRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
+    focusables?.[0]?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setMobileOpen(false); return; }
+      if (e.key !== "Tab" || !focusables || focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previouslyFocused.current?.focus();
+    };
+  }, [mobileOpen]);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     analytics: true,
     finres: true,
     money: true,
     operations: true,
     system: true,
+    agent: true,
   });
 
   useEffect(() => {
@@ -129,56 +225,89 @@ export function Sidebar() {
   };
 
   // группы с фильтром по роли (пустые группы скрываем)
-  const groups = NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((i) => (me ? allowedNav(me.role, i.href) : true)) }))
+  const sourceGroups = financeOnly
+    ? FINANCE_NAV_GROUPS
+    : systemOnly
+      ? SYSTEM_NAV_GROUPS
+      : agentOnly
+        ? AGENT_NAV_GROUPS
+        : NAV_GROUPS;
+  const groups = sourceGroups
+    .map((g) => ({ ...g, items: g.items.filter((i) => (me ? allowedNav(me.role, i.href.split(/[?#]/, 1)[0] || i.href) : true)) }))
     .filter((g) => g.items.length > 0);
 
   useEffect(() => {
-    for (const group of NAV_GROUPS) {
+    for (const group of sourceGroups) {
       if (group.items.some((item) => isActive(pathname, item.href))) {
         setOpenGroups((prev) => ({ ...prev, [group.id]: true }));
       }
     }
-  }, [pathname]);
+  }, [pathname, sourceGroups]);
 
   const toggleGroup = (id: string) => {
     setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const linkClass = (active: boolean) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a2e] ${
       active
         ? "bg-violet-600/20 text-violet-300"
         : "text-slate-300 hover:bg-white/10 hover:text-white"
     }`;
+  const financeHomeLinkClass =
+    "mb-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a2e]";
+
+  const BrandIcon = systemOnly ? Settings2 : agentOnly ? Bot : BarChart3;
+  const brandTitle = systemOnly ? "Настройки" : agentOnly ? "AI-агент" : "Финансы МП";
+  const brandSubtitle = systemOnly
+    ? "Кабинеты и доступы"
+    : agentOnly
+      ? "Инсайты и рекомендации"
+      : financeOnly
+        ? "Финансовый контур"
+        : "WB Analytics & Finance";
 
   const nav = (
     <>
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-6">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600/25">
-          <BarChart3 className="h-5 w-5 text-violet-400" />
+          <BrandIcon className="h-5 w-5 text-violet-400" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-white">Финансы МП</p>
-          <p className="text-xs text-slate-400">WB Analytics & Finance</p>
+          <p className="text-sm font-semibold text-white">{brandTitle}</p>
+          <p className="text-xs text-slate-400">{brandSubtitle}</p>
         </div>
         <button
-          className="ml-auto text-slate-400 hover:text-white lg:hidden"
+          className="ml-auto rounded-md p-1 text-slate-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 lg:hidden"
           onClick={() => setMobileOpen(false)}
+          aria-label="Закрыть меню"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        <Link
-          href={DASHBOARD.href}
-          onClick={() => setMobileOpen(false)}
-          className={linkClass(isActive(pathname, DASHBOARD.href))}
-        >
-          <DASHBOARD.icon className="h-5 w-5 shrink-0" />
-          {DASHBOARD.label}
-        </Link>
+        {financeOnly ? (
+          <Link
+            href={DASHBOARD.href}
+            onClick={() => setMobileOpen(false)}
+            className={financeHomeLinkClass}
+            aria-label="Вернуться на главную страницу"
+          >
+            <DASHBOARD.icon className="h-5 w-5 shrink-0 text-violet-300" />
+            На главную
+          </Link>
+        ) : (
+          <Link
+            href={DASHBOARD.href}
+            onClick={() => setMobileOpen(false)}
+            className={linkClass(isActive(pathname, DASHBOARD.href))}
+            aria-current={isActive(pathname, DASHBOARD.href) ? "page" : undefined}
+          >
+            <DASHBOARD.icon className="h-5 w-5 shrink-0" />
+            {DASHBOARD.label}
+          </Link>
+        )}
 
         {groups.map((group) => {
           const groupActive = group.items.some((item) =>
@@ -191,7 +320,8 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={() => toggleGroup(group.id)}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                aria-expanded={expanded}
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
                   groupActive ? "text-violet-400" : "text-slate-500"
                 } hover:text-slate-300`}
               >
@@ -202,24 +332,21 @@ export function Sidebar() {
               </button>
               {expanded && (
                 <div className="mt-1 space-y-0.5 pl-1">
-                  {group.items.map(({ href, label, icon: Icon }) =>
-                    href.startsWith("/inferno/") ? (
-                      <a key={href} href={href} className={linkClass(false)}>
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {label}
-                      </a>
-                    ) : (
+                  {group.items.map(({ href, label, icon: Icon }) => {
+                    const active = isActive(pathname, href);
+                    return (
                       <Link
                         key={href}
                         href={href}
                         onClick={() => setMobileOpen(false)}
-                        className={linkClass(isActive(pathname, href))}
+                        className={linkClass(active)}
+                        aria-current={active ? "page" : undefined}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                         {label}
                       </Link>
-                    ),
-                  )}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -238,7 +365,7 @@ export function Sidebar() {
               <div className="truncate text-xs font-medium text-white">{me.email}</div>
               <div className="text-[10px] text-slate-400">{ROLE_LABEL[me.role]}</div>
             </div>
-            <button onClick={logout} title="Выйти" className="rounded-md p-1.5 text-slate-400 hover:bg-white/10 hover:text-white">
+            <button onClick={logout} title="Выйти" aria-label="Выйти" className="rounded-md p-1.5 text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
@@ -252,8 +379,10 @@ export function Sidebar() {
   return (
     <>
       <button
-        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-lg bg-[#1a1a2e] text-white shadow-lg lg:hidden"
+        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-lg bg-[#1a1a2e] text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 lg:hidden"
         onClick={() => setMobileOpen(true)}
+        aria-label="Открыть меню"
+        aria-expanded={mobileOpen}
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -266,6 +395,10 @@ export function Sidebar() {
       )}
 
       <aside
+        ref={asideRef}
+        role={mobileOpen ? "dialog" : undefined}
+        aria-modal={mobileOpen || undefined}
+        aria-label={mobileOpen ? "Навигация" : undefined}
         className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-[#1a1a2e] transition-transform lg:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}

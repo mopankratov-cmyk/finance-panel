@@ -1,0 +1,101 @@
+{
+  "content_sha256": "3d48c143bbcb2ee6ec9d1a2e048986ace293b6963971109cb356ef05d3c7e334",
+  "decision_content": {
+    "created_at": "2026-07-23T03:40:00Z",
+    "decision": "PURE_IMPLEMENTATION_CHAIN_A3_A7_REVIEWED_FOR_SECURITY_NO_RUNTIME_APPROVAL",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "next_gate": "1D-A9_SYNTHETIC_RUNNER_EXECUTION_APPROVAL_REQUEST",
+    "phase": "1D-A8",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "no sandbox execution has been approved or run in Phase 1D",
+      "host-side real credential broker is not implemented",
+      "model broker remains synthetic fake only",
+      "future execution gate must use a new exact owner approval after this review",
+      "ignored generated __pycache__ outside git status may remain permission-protected but is not part of committed artifacts"
+    ],
+    "reviewed_head": "81dc2a6e681fd2fc2e4fa9563d78b3174761c365",
+    "reviewed_range": "8ec60af3..81dc2a6e",
+    "rollback": "revert_a8_review_artifacts_only_to_return_to_a7_preflight_contract_state",
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "dependency_or_lockfile_changes": false,
+      "denylist_fixture_key_names_are_synthetic_only": true,
+      "env_file_changes": false,
+      "fail_closed_defaults_covered_by_tests": true,
+      "forbidden_file_scope_clean": true,
+      "gateway_or_default_runtime_changes": false,
+      "no_proxy_preservation_covered_by_tests": true,
+      "provider_or_model_api_calls_performed": false,
+      "runtime_security_modules_launch_subprocesses": false,
+      "runtime_security_modules_read_auth_json": false,
+      "runtime_security_modules_read_keychain": false,
+      "runtime_security_modules_read_process_environment": false,
+      "runtime_security_modules_use_network_clients": false,
+      "sandbox_or_profile_or_canary_started": false,
+      "secret_value_scan_passed": true
+    },
+    "source_evidence": {
+      "phase_1d_a7_content_sha256": "6c7f81b7d89118c9765360f734d1bbb8ffead126acedf4a8e8bc522f4a9b900f",
+      "phase_1d_a7_file_sha256": "9eb81dd8fef0de9d5f8b10df27936d5986b75a1edde180832be0707c3eb1b28a",
+      "phase_1d_a7_path": "security/evidence/phase-1d-a7/synthetic-runner-preflight-contract.json",
+      "phase_1d_a7_status": "SYNTHETIC_RUNNER_PREFLIGHT_CONTRACT_COMPLETE_NO_EXECUTION_APPROVAL"
+    },
+    "status": "IMPLEMENTATION_SECURITY_REVIEW_COMPLETE_NO_EXECUTION_APPROVAL",
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 388
+      },
+      "phase_1d_validator_chain": {
+        "command": "python3 tools/phase_1d_a3_policy_schema_validator.py --mode validate-evidence && python3 tools/phase_1d_a4_environment_sanitizer_validator.py --mode validate-evidence && python3 tools/phase_1d_a5_fake_broker_validator.py --mode validate-evidence && python3 tools/phase_1d_a6_runtime_adapter_validator.py --mode validate-evidence && python3 tools/phase_1d_a7_synthetic_runner_preflight_validator.py --mode validate-evidence",
+        "result": "PASS",
+        "validators": 5
+      },
+      "targeted_a8_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1d_a8_implementation_security_review_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "validated_gate_chain": [
+      {
+        "content_sha256": "ea8b47a50ee02033172440fddfef1c8810bd45e177b73b49b5ed09bc27abd24b",
+        "gate": "1D-A3",
+        "result": "PASS",
+        "validator": "tools/phase_1d_a3_policy_schema_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "134354cebf43a950887d039b3bd11d244ef8eef28d19ae4370c161d32e37ed3a",
+        "gate": "1D-A4",
+        "result": "PASS",
+        "validator": "tools/phase_1d_a4_environment_sanitizer_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "ea1bfa81ea2dedfcd2db87c3ac754db1dae5723239a90481cb5e85a1f75d2bd9",
+        "gate": "1D-A5",
+        "result": "PASS",
+        "validator": "tools/phase_1d_a5_fake_broker_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "c4a6e7ed09e7964bac9c057a86dc0a2d6a413ff971deeab3609bf905edcda1c0",
+        "gate": "1D-A6",
+        "result": "PASS",
+        "validator": "tools/phase_1d_a6_runtime_adapter_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "6c7f81b7d89118c9765360f734d1bbb8ffead126acedf4a8e8bc522f4a9b900f",
+        "gate": "1D-A7",
+        "result": "PASS",
+        "validator": "tools/phase_1d_a7_synthetic_runner_preflight_validator.py --mode validate-evidence"
+      }
+    ],
+    "verdict": "READY_FOR_SYNTHETIC_EXECUTION_APPROVAL_REQUEST_NOT_EXECUTION"
+  },
+  "schema_version": "pankster.phase1d-a8.implementation-security-review.v1"
+}

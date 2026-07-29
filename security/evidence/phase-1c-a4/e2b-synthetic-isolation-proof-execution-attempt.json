@@ -1,0 +1,41 @@
+{
+  "approval_command_sha256": "8588f01605d122707be0a39f58640d5fa35e2302148dedbf9bc42d824e2494b9",
+  "approval_received": true,
+  "contract_content_sha256": "0764a641d0e2b9dfea863eb3ce28703706ba5688d38328b7c06e6fcb85574314",
+  "dependency_install_allowed": false,
+  "e2b_sdk_available": false,
+  "execution_result": {
+    "mode": "execute-synthetic-proof",
+    "provider_credential_value_printed": false,
+    "reason": "E2B_SDK_NOT_AVAILABLE",
+    "result": "DENIED",
+    "sandbox_created": false,
+    "sandbox_destroyed": false,
+    "synthetic_only": true
+  },
+  "gateway_changed": false,
+  "host_firewall_changed": false,
+  "mode": "approved-execution-attempt",
+  "preflight_result": {
+    "backend": "e2b_sandbox",
+    "dependency_install_allowed": false,
+    "e2b_sdk_available": false,
+    "execution_approved": true,
+    "mode": "preflight-approved",
+    "provider_credential_name_present": false,
+    "provider_credential_presence_checked": false,
+    "provider_credential_value_printed": false,
+    "result": "PASS",
+    "sandbox_created": false
+  },
+  "production_profiles_allowed": false,
+  "provider_api_call_performed": false,
+  "provider_credential_presence_checked": false,
+  "provider_credential_value_printed": false,
+  "real_credentials_allowed": false,
+  "result": "FAIL_CLOSED",
+  "sandbox_created": false,
+  "sandbox_destroyed": false,
+  "sanitized": true,
+  "synthetic_only": true
+}

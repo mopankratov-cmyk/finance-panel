@@ -1,0 +1,81 @@
+{
+  "content_sha256": "01a743c516d430a81e54d7785e6ca7db986969dd3d8ee0000250bd7e91d4e650",
+  "decision_content": {
+    "approval_scope": {
+      "allowlisted_tools_files_only": true,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "pure_contract_code_allowed": true,
+      "real_credentials_allowed": false,
+      "runtime_integration_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true
+    },
+    "contract_artifact": {
+      "content_sha256": "75760670f82163aae3a7dbc9d977865e629cf37b1c3912dc03a053a955738ab5",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_IMPLEMENTATION",
+      "file_sha256": "a96ce729f4f1dfa52aecf5422eb112634b788adbaa634763c0d299afdfdf0abe",
+      "path": "docs/program/PHASE_1E_A8_IMPLEMENTATION_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1e-a8.pure-contract-implementation-approval-request.v1"
+    },
+    "created_at": "2026-07-22T21:25:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_PURE_CONTRACT_IMPLEMENTATION_NOT_IMPLEMENTED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "implementation_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A9_PURE_CONTRACT_IMPLEMENTATION_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1E_PURE_CONTRACT_IMPLEMENTATION:p1e-20260722-purecontracta8:75760670f82163aae3a7dbc9d977865e629cf37b1c3912dc03a053a955738ab5",
+      "approval_command_sha256": "34b4ddd0bfbac5ff3c2cb5330cd1d0d20469808808e9d8dc8f91654f6c109c2c",
+      "approval_id": "p1e-20260722-purecontracta8",
+      "approval_required_before_next_gate_implementation": true
+    },
+    "phase": "1E-A8",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a7_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "implementation_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1e_a8_approval_request_artifacts_and_return_to_phase_1e_a7_security_review_state",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a7_content_sha256": "bfdcab7a00170ee6b84d88906e1e7257f678dfe821e62aca75ad520f502477c4",
+      "phase_1e_a7_file_sha256": "2646786520c866f32dfb5167164e6fa58731e3ec3747aeac994e6d7cff2bdd94",
+      "phase_1e_a7_path": "security/evidence/phase-1e-a7/independent-security-review-before-code.json",
+      "phase_1e_a7_verdict": "READY_FOR_IMPLEMENTATION_APPROVAL_REQUEST_NOT_CODE"
+    },
+    "status": "IMPLEMENTATION_APPROVAL_REQUEST_COMPLETE_NO_IMPLEMENTATION",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a8_implementation_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a8.implementation-approval-request.v1"
+}

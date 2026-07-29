@@ -1,0 +1,137 @@
+{
+  "content_sha256": "b999e8f069d489b467ba8851c8dd04c5a2edf41bcc384fe6811e4f3cd09f6428",
+  "decision_content": {
+    "created_at": "2026-07-23T00:20:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1E_A9_PURE_CONTRACT_LAYER_REVIEWED_FOR_SECURITY_NO_RUNTIME_INTEGRATION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "implementation_performed": true,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A11_RUNTIME_INTEGRATION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A10",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "runtime integration is not implemented or approved",
+      "contract code is not connected to Hermes gateway/profile workers",
+      "real credential storage and provider SDK boundaries remain unimplemented",
+      "no provider/model API call has been performed by this gate",
+      "OAuth refresh is validate-only and performs no credential write",
+      "rollback is contract-only and does not control live processes"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/credential_broker_contracts.py",
+        "sha256": "b57aeccab0e9de3b7d29a7b9fdd129ee783918b08851ae701f3b33fbf7e6cb19"
+      },
+      {
+        "path": "tools/pankster_runtime_security/model_broker_contracts.py",
+        "sha256": "b39250ff97b5679ae9a1467619668101f1a676f2e229a21259cc004f78cf8e1a"
+      },
+      {
+        "path": "tools/pankster_runtime_security/audit_contracts.py",
+        "sha256": "e4723e05c9b42d72418da14320dfd7173d8bef15cdda81ee9c570a33d028f433"
+      },
+      {
+        "path": "tools/pankster_runtime_security/runtime_launch_contracts.py",
+        "sha256": "9bb9cf70606c73aa9b28db734ceea4423ec257a3c22c9cb8d827b4e33949807a"
+      },
+      {
+        "path": "tools/pankster_runtime_security/rollback_contracts.py",
+        "sha256": "8285a2838090fe4e735a9287838dea1293132b275205b8f4730508849df8f506"
+      },
+      {
+        "path": "tools/pankster_runtime_security/secret_scan.py",
+        "sha256": "8fe91f73fbac468d0177cf223e1d4ac92069335eddac5a9c9b8535b5a81c59fb"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_credential_broker_contracts.py",
+        "sha256": "d57517d327626dfe31c9970f0375a7409128b909212b06e7813091bc7e690f94"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_model_broker_contracts.py",
+        "sha256": "0eef692bca64f6e5d19c003556cc0aa8c9d64d7e0dffa24074b7487d3a5dd7e1"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_audit_contracts.py",
+        "sha256": "9c25f40df56bd468f7ef19945ec9793ce3a5aaa080d4cd579c2e635dd871c783"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_runtime_launch_contracts.py",
+        "sha256": "02d447b85aa779f305492bf01e7898d2c37d9e657f7e29ab7ed967ad94fb69f2"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_rollback_contracts.py",
+        "sha256": "306be63e0eb647c4c3f7dd78a2db036b872c31b536fb9622312762cef6301d25"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_secret_scan.py",
+        "sha256": "434552eed67f308e77e220ed3b0af5c6db6afd85ad99828f61de9f6c415445cd"
+      }
+    ],
+    "reviewed_head": "9938a40f214484a9e30b873d6ecc78b1b1ad3da2",
+    "reviewed_range": "b7428b46f4d9ec6853473fc3e4399bdd67684783..9938a40f214484a9e30b873d6ecc78b1b1ad3da2",
+    "rollback": "revert_commit_9938a40f_to_remove_phase_1e_a9_pure_contract_layer",
+    "runtime_integration_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "audit_secret_free_fail_closed_present": true,
+      "changed_files_match_a8_allowlist": true,
+      "contract_layer_only": true,
+      "credential_grants_are_references_only": true,
+      "model_allowlist_budget_replay_enforced_before_provider_boundary": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_sdks": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "oauth_refresh_worker_denied": true,
+      "retry_reclaim_restart_context_revalidation_present": true,
+      "rollback_disables_new_grants_without_gateway_change": true,
+      "root_auth_fallback_denied": true,
+      "root_credential_pool_materialization_denied": true,
+      "runtime_child_environment_sanitized_with_no_proxy_preservation": true,
+      "secret_scan_contract_present": true
+    },
+    "source_evidence": {
+      "phase_1e_a8_approval_command_sha256": "34b4ddd0bfbac5ff3c2cb5330cd1d0d20469808808e9d8dc8f91654f6c109c2c",
+      "phase_1e_a8_content_sha256": "01a743c516d430a81e54d7785e6ca7db986969dd3d8ee0000250bd7e91d4e650",
+      "phase_1e_a8_file_sha256": "04b2ad216a04eb41e8042c1291f3a85d46855063d531741129072f85a8c2cb85",
+      "phase_1e_a8_path": "security/evidence/phase-1e-a8/implementation-approval-request.json"
+    },
+    "status": "PURE_CONTRACT_IMPLEMENTATION_SECURITY_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 500
+      },
+      "phase_1e_a8_validator": {
+        "command": "python3 tools/phase_1e_a8_implementation_approval_request_validator.py --mode validate-evidence",
+        "result": "PASS"
+      },
+      "targeted_1e_a10_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a10_pure_contract_implementation_security_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_secret_scan tools.tests.test_pankster_runtime_security_audit_contracts tools.tests.test_pankster_runtime_security_credential_broker_contracts tools.tests.test_pankster_runtime_security_model_broker_contracts tools.tests.test_pankster_runtime_security_runtime_launch_contracts tools.tests.test_pankster_runtime_security_rollback_contracts",
+        "result": "PASS",
+        "tests": 31
+      }
+    },
+    "verdict": "READY_FOR_RUNTIME_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1e-a10.pure-contract-implementation-security-review.v1"
+}

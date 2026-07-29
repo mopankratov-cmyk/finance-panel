@@ -1,0 +1,125 @@
+{
+  "content_sha256": "134354cebf43a950887d039b3bd11d244ef8eef28d19ae4370c161d32e37ed3a",
+  "decision_content": {
+    "created_at": "2026-07-23T02:18:00Z",
+    "decision": "PURE_ENVIRONMENT_SANITIZER_READY_FOR_FAKE_BROKER_GATE_NOT_RUNTIME",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "fail_closed_cases": [
+      "non_mapping_source_returns_empty",
+      "denylisted_key_removed",
+      "unknown_key_ignored",
+      "non_string_value_ignored",
+      "secret_value_not_reported",
+      "case_insensitive_sensitive_key_denial"
+    ],
+    "gateway_changes_approved": false,
+    "implementation_scope": "pure_environment_sanitizer_only",
+    "implemented_files": {
+      "tools/pankster_runtime_security/environment_sanitizer.py": "f3c218b90077ad9419f25444b423c11e8c55d03e6410ef551db0df9011bfb046",
+      "tools/tests/test_pankster_runtime_security_environment_sanitizer.py": "9df1005be92dfba231f7f864340ac4bbd269003f37d55e8033600400fd633eba"
+    },
+    "next_gate": "1D-A5_FAKE_GRANT_REGISTRY_AND_BROKER_IMPLEMENTATION",
+    "phase": "1D-A4",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "purity_contract": {
+      "filesystem_writes": false,
+      "gateway_integration": false,
+      "network_calls": false,
+      "provider_sdks_used": false,
+      "reads_auth_json": false,
+      "reads_env_files": false,
+      "reads_keychain": false,
+      "reads_process_environment": false,
+      "sandbox_launch": false
+    },
+    "readiness_findings": {
+      "a3_dependency_satisfied": true,
+      "environment_sanitizer_implemented": true,
+      "production_ready": false,
+      "runtime_execution_ready": false,
+      "targeted_tests_passed": true
+    },
+    "required_tests": {
+      "security": [
+        "sanitizer_reports_keys_not_values",
+        "sanitizer_does_not_read_process_environment",
+        "sanitizer_denies_telegram_gitea_supabase_anthropic_glm_e2b_keys"
+      ],
+      "unit": [
+        "preserves_system_proxy_and_pankster_runtime_keys",
+        "denylist_wins_over_allowlist_shape",
+        "ignores_unknown_and_non_string_values_without_leaking_values",
+        "case_insensitive_sensitive_key_denial",
+        "none_source_returns_empty_environment"
+      ],
+      "validator_unit": [
+        "a4_requires_a3_dependency_hash",
+        "a4_implemented_files_match_hashes",
+        "a4_sanitizer_contract_preserves_no_proxy_and_denies_sensitive_patterns",
+        "a4_purity_contract_blocks_env_auth_keychain_network_gateway_sandbox",
+        "a4_test_results_record_targeted_pass"
+      ]
+    },
+    "rollback": "remove_environment_sanitizer_files_and_return_to_a3_policy_schema_only",
+    "sandbox_execution_approved": false,
+    "sanitizer_contract": {
+      "denylist_precedence_over_allowlist": true,
+      "input_type": "explicit_mapping_only",
+      "mandatory_denylist": [
+        "*_KEY",
+        "*_TOKEN",
+        "*_SECRET",
+        "*_PASSWORD",
+        "AUTHORIZATION",
+        "ANTHROPIC_*",
+        "OPENAI_*",
+        "GLM_*",
+        "GITEA_*",
+        "SUPABASE_*",
+        "TELEGRAM_*",
+        "E2B_API_KEY"
+      ],
+      "pankster_runtime_keys": [
+        "PANKSTER_PROFILE_ID",
+        "PANKSTER_WORKFLOW_ID",
+        "PANKSTER_TASK_ID",
+        "PANKSTER_ATTEMPT_ID",
+        "PANKSTER_POLICY_VERSION",
+        "PANKSTER_GRANT_IDS",
+        "PANKSTER_BROKER_MODE",
+        "PANKSTER_NETWORK_POLICY"
+      ],
+      "preserve_keys": [
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "SHELL",
+        "NO_PROXY",
+        "no_proxy"
+      ],
+      "result_is_secret_free": true
+    },
+    "source_evidence": {
+      "phase_1d_a3_content_sha256": "ea8b47a50ee02033172440fddfef1c8810bd45e177b73b49b5ed09bc27abd24b",
+      "phase_1d_a3_file_sha256": "da7848d7c4726a8e8aaedc2b24e589deb389a030d4d94583a36d039a9289c25d",
+      "phase_1d_a3_path": "security/evidence/phase-1d-a3/policy-schema-validator-implementation.json",
+      "phase_1d_a3_status": "POLICY_SCHEMA_VALIDATOR_IMPLEMENTED_SYNTHETIC_ONLY"
+    },
+    "status": "ENVIRONMENT_SANITIZER_IMPLEMENTED_SYNTHETIC_ONLY",
+    "test_results": {
+      "targeted_environment_sanitizer_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_environment_sanitizer",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1d-a4.environment-sanitizer-implementation.v1"
+}

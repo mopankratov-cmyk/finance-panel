@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { canAccess, ROLE_HOME } from "@/lib/auth/roles";
 
-// Защищаем всё, кроме /login, /api/auth/*, статики и публичных шар-доков (/share/*).
+// Защищаем всё, кроме /login, /privacy, /api/auth/*, статики и публичных шар-доков (/share/*).
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/auth|inferno/vendor|share).*)"],
+  matcher: ["/((?!_next/|favicon.ico|login|privacy|api/auth|share).*)"],
 };
 
 // /api/*-эндпоинты, доступные БЕЗ сессии и БЕЗ cron-секрета (явный allowlist).
 // Это тонкие прокси внешнего медиа — их публичный URL отдаётся внешним рендерам
-// (FAL/Seedance), которые фетчат его сервер-сайд без нашей куки, — и вебхук Telegram,
-// который проверяет собственный секрет (x-telegram-bot-api-secret-token).
+// (FAL/Seedance), которые фетчат его сервер-сайд без нашей куки.
 // ВНИМАНИЕ: всё ОСТАЛЬНОЕ под /api/* требует сессию ИЛИ Bearer CRON_SECRET (fail-closed).
 //
 // img-proxy / media-proxy / yandex-img / drive-img НЕ открыты нараспашку: гейт их пропускает,
@@ -19,7 +18,6 @@ export const config = {
 // Подпись им выдаёт сервер при отдаче URL внешнему рендеру (см. disk-source). Прод-инвариант:
 // задан SIGN_SECRET или AUTH_SECRET, иначе подпись на небезопасном дефолте.
 const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
-  { prefix: "/api/factory/telegram", methods: ["POST"] }, // вебхук Telegram (валидирует свой секрет сам)
   { prefix: "/api/lab/img-proxy" }, // CORS-прокси картинок (само-гард: подпись/сессия + host-allowlist WB)
   { prefix: "/api/lab/media-proxy" }, // CORS-прокси видео/аудио (само-гард: подпись/сессия)
   { prefix: "/api/lab/yandex-img" }, // «стабильный публичный URL» → FAL/Seedance (само-гард: подпись/сессия)
@@ -27,6 +25,8 @@ const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
   { prefix: "/api/lab/model-avatar" }, // аватар модели (<img> + внешний рендер)
   { prefix: "/api/lab/model-photos" }, // список фото модели (отдаёт yandex-img URL)
   { prefix: "/api/lab/product-image" }, // резолвер WB-картинки товара
+  { prefix: "/api/opiu/telegram", methods: ["POST"] }, // Telegram webhook: сам роут проверяет secret-token
+  { prefix: "/api/opiu/monitor", methods: ["GET", "POST"] }, // cron мониторинга: сам роут проверяет Bearer-секрет
 ];
 
 function isPublicApi(pathname: string, method: string): boolean {

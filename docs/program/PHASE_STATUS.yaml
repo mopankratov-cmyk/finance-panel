@@ -1,0 +1,15 @@
+phase: 0
+name: architecture-baseline
+status: accepted
+review_round: 2
+previous_review_verdict: CHANGES_REQUESTED
+final_review_verdict: PASS
+accepted_at: 2026-07-21
+branch: phase/0-architecture-baseline
+hermes_version: 0.18.2
+hermes_commit: 97c67d585e3048c8b9a918d5382005566080903a
+repository_commit: 17dc3debc6840fd2073caf24ab6980a047feef19
+generated_at: 2026-07-21T19:02:01Z
+code_changes: false
+secrets_accessed: false
+next_phase_started: false

@@ -1,0 +1,88 @@
+{
+  "content_sha256": "68682ce1e641fde5e0c88e51fd1a72d76bf04736325f925f63705636c7b40835",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_host_adapter_contract_allowed": true,
+      "gateway_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true
+    },
+    "contract_artifact": {
+      "content_sha256": "d67533a02d14e2fd91c2145882b1fe42c94b265b695759d4a9d256661753aeb1",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_HOST_ADAPTER_INTEGRATION",
+      "file_sha256": "e9878cb2b247c65ee9130a534f186cde21529283af0846f68363e7fbef66d88c",
+      "path": "docs/program/PHASE_1E_A17_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1e-a17.host-adapter-integration-approval-request.v1"
+    },
+    "created_at": "2026-07-23T01:00:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_HOST_ADAPTER_INTEGRATION_CONTRACT_NOT_INTEGRATED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/host_adapter_integration_contracts.py",
+      "tools/tests/test_pankster_runtime_security_host_adapter_integration_contracts.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "integration_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A18_HOST_ADAPTER_INTEGRATION_CONTRACT_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1E_HOST_ADAPTER_INTEGRATION_CONTRACT:p1e-20260723-hostadaptera17:d67533a02d14e2fd91c2145882b1fe42c94b265b695759d4a9d256661753aeb1",
+      "approval_command_sha256": "da3dcc1c271d01d33251703410d2cf35169be5e51805a55d2038bdffd75685e4",
+      "approval_id": "p1e-20260723-hostadaptera17",
+      "approval_required_before_next_gate_integration": true
+    },
+    "phase": "1E-A17",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a16_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "integration_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1e_a17_approval_request_artifacts_and_return_to_phase_1e_a16_review_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a16_content_sha256": "b828543b31fa892db67fc302eb7d5c3bb6ea7d8f14dbd326d65663540f876d1b",
+      "phase_1e_a16_file_sha256": "0bc08b6682b5c4e2446e5fb9827e2afc33a15f4c54e62232891f1647f6eafdef",
+      "phase_1e_a16_path": "security/evidence/phase-1e-a16/runtime-adapter-binding-contract-review.json",
+      "phase_1e_a16_verdict": "READY_FOR_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_COMPLETE_NO_INTEGRATION",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a17_host_adapter_integration_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a17.host-adapter-integration-approval-request.v1"
+}

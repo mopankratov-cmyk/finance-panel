@@ -1,0 +1,21 @@
+{
+  "asset_name": "container-1.1.0-installer-signed.pkg",
+  "backend": "apple-container-cli",
+  "backend_version": "1.1.0",
+  "observed_at": "2026-07-22T12:06:00Z",
+  "published_at": "2026-07-06T19:47:13Z",
+  "release_commit": "5973b9cc626a3e7a499bb316a958237ebe14e2ed",
+  "release_tag": "1.1.0",
+  "release_tag_object": "82fc9a5ba73c34c478ce15958bb75dbb45c67e3b",
+  "repository": "apple/container",
+  "resolved_download_hosts": [
+    "github.com",
+    "release-assets.githubusercontent.com"
+  ],
+  "source_url": "https://github.com/apple/container/releases/download/1.1.0/container-1.1.0-installer-signed.pkg",
+  "tag_verification": {
+    "reason": "valid",
+    "verified": true,
+    "verified_at": "2026-07-06T18:08:54Z"
+  }
+}

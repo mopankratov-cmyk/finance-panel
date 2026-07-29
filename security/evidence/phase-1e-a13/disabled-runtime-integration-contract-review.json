@@ -1,0 +1,94 @@
+{
+  "content_sha256": "dc6458b62972a8075bf9394bf9a2755d7f4ebe6f86a13e839eb6c512ccea57b5",
+  "decision_content": {
+    "created_at": "2026-07-23T00:00:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1E_A12_DISABLED_RUNTIME_INTEGRATION_CONTRACT_REVIEWED_NO_EXECUTION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "integration_contract_performed": true,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A14_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A13",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "runtime adapter binding to Hermes code is not implemented or approved",
+      "gateway/profile worker integration remains absent",
+      "real credential broker storage remains unimplemented",
+      "provider/model API boundaries remain uncalled",
+      "no sandbox or subprocess runtime has been launched",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/runtime_integration_contracts.py",
+        "sha256": "5be424f5c56e7d377af8be5939144942fcde34ecab67a768d78bbed55a4dc0ff"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_runtime_integration_contracts.py",
+        "sha256": "d4957b60d9dad1a1195b3b212d981a81569efb0cba696f9da59b71e12950308b"
+      }
+    ],
+    "reviewed_head": "41d848f93d7ba1be5416cbd4e8f5cb9264780b9c",
+    "reviewed_range": "14cc96388ca211b6288077b2b9a34d3cc77f262d..41d848f93d7ba1be5416cbd4e8f5cb9264780b9c",
+    "rollback": "revert_commit_41d848f9_to_remove_disabled_runtime_integration_contract",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "broker_and_audit_preconditions_required": true,
+      "changed_files_match_a11_allowlist": true,
+      "child_environments_are_sanitized": true,
+      "child_surfaces_cover_terminal_code_execution_delegate_mcp_background": true,
+      "context_profile_surface_and_grant_refs_revalidated": true,
+      "contract_layer_only": true,
+      "disabled_by_default": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls_performed": true,
+      "no_provider_sdks": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "no_proxy_preservation_covered": true,
+      "runtime_launch_flag_denied_as_out_of_scope": true,
+      "sensitive_env_key_denial_covered": true
+    },
+    "source_evidence": {
+      "phase_1e_a11_approval_command_sha256": "bf50a9f1ba714553361b63741c0edd84c75645b1c567e9f07239a9ac282be1b1",
+      "phase_1e_a11_content_sha256": "c1fa810dd6c566da324362fb2715bee1ba0bebcca164ce1899c6315e108f9624",
+      "phase_1e_a11_file_sha256": "65c94bc3e1b8eced7a37151b0e554425c6de4fc91d8c87f63dfe3ae6f2c4d316",
+      "phase_1e_a11_path": "security/evidence/phase-1e-a11/runtime-integration-approval-request.json"
+    },
+    "status": "DISABLED_RUNTIME_INTEGRATION_CONTRACT_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 516
+      },
+      "targeted_1e_a13_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a13_disabled_runtime_integration_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_runtime_integration_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_runtime_integration_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    },
+    "verdict": "READY_FOR_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1e-a13.disabled-runtime-integration-contract-review.v1"
+}

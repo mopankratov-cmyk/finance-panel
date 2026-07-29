@@ -1,0 +1,63 @@
+{
+  "schema_version": "pankster.phase1b-c9-r2.firewall-target-discovery-execution-summary.v1",
+  "recorded_at": "2026-07-22T17:20:35Z",
+  "result": "PASS",
+  "mode": "execute-discovery",
+  "runner_commit": "f0f1a79f147519f086ab71f6bebdde814cc85cf5",
+  "runner_commit_pushed": true,
+  "approval": {
+    "approval_id": "p1b-20260722-limapftargetc9r2",
+    "approval_record_path": "docs/program/PHASE_1B_C9_R2_FIREWALL_TARGET_DISCOVERY_APPROVAL_RECORD.json",
+    "approval_record_file_sha256": "0d0f6e90a9840dfac8c899ae89dca24cffac425703729234c42b75b13e896927",
+    "approval_record_canonical_sha256": "b440e9aa1def321a932084e64f2c9ac1a2c43bd66cec9c006fc6c8dd521bd5ca",
+    "contract_path": "docs/program/PHASE_1B_C9_R2_FIREWALL_TARGET_DISCOVERY_CONTRACT.ready.json",
+    "contract_file_sha256": "00b0ca5e2711ada2b12792bb1a5e8a8324927d87839b5f79311e2a1058464cf3",
+    "contract_content_sha256": "3048d2668b5c224ec98bdb0cb1aca865f6fa5e8070e4432833c1c034db6c8b4d"
+  },
+  "hard_gates": {
+    "pfctl_execution_allowed": false,
+    "pfctl_executed": false,
+    "host_firewall_changes_allowed": false,
+    "host_firewall_changes_performed": false,
+    "host_sync_allowed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false
+  },
+  "target": {
+    "instance_name": "pc9r2",
+    "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc9r2",
+    "status": "Running",
+    "vmType": "vz",
+    "arch": "aarch64",
+    "config_mounts": [],
+    "containerd_system": false,
+    "containerd_user": false,
+    "propagateProxyEnv": false,
+    "hostResolver_enabled": false,
+    "portForwards": [],
+    "networks": []
+  },
+  "guest_network_target": {
+    "interface": "eth0",
+    "ipv4": "192.168.5.15",
+    "prefix": 24,
+    "subnet": "192.168.5.0/24",
+    "default_route_observed": true,
+    "default_gateway": "192.168.5.2",
+    "address_source": "dhcp_dynamic"
+  },
+  "before_firewall_network_classification": {
+    "dns_example_com": "AVAILABLE",
+    "tcp_1_1_1_1_443": "AVAILABLE",
+    "egress_observed_before_firewall": true
+  },
+  "c9_r3_precheck_implications": {
+    "target_guest_ipv4_recorded": true,
+    "pf_rule_placeholders_can_be_resolved": true,
+    "pf_execution_contract_ready": false,
+    "reason": "Guest-side IPv4 discovery does not prove macOS pf can match the pre-NAT guest source address or that the address is unique to this target VM."
+  },
+  "next_gate": "PHASE_1B_C9_R3_HOST_FIREWALL_EXECUTION_PRECHECK"
+}

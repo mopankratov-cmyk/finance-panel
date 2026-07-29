@@ -1,0 +1,107 @@
+{
+  "content_sha256": "c4a6e7ed09e7964bac9c057a86dc0a2d6a413ff971deeab3609bf905edcda1c0",
+  "decision_content": {
+    "created_at": "2026-07-23T03:05:00Z",
+    "decision": "FAIL_CLOSED_RUNTIME_ADAPTER_CONTRACTS_READY_FOR_SYNTHETIC_PREFLIGHT_CONTRACT_NOT_RUNTIME",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "fail_closed_reasons": [
+      "RUNTIME_ADAPTER_DISABLED",
+      "RUNTIME_CONTEXT_FIELD_MISSING:<field>",
+      "RUNTIME_GRANT_MISSING",
+      "RUNTIME_GRANT_INVALID",
+      "RUNTIME_COMMAND_MISSING",
+      "SANDBOX_LAUNCH_NOT_IMPLEMENTED",
+      "BROKER_CHANNEL_DISABLED",
+      "GRANT_NOT_BOUND_TO_CONTEXT",
+      "BROKER_OPERATION_MISSING",
+      "BROKER_SEQUENCE_MISSING",
+      "BROKER_PAYLOAD_HASH_MISSING",
+      "BROKER_CHANNEL_NOT_IMPLEMENTED"
+    ],
+    "gateway_changes_approved": false,
+    "implementation_scope": "runtime_adapter_contracts_and_fail_closed_stubs_only",
+    "implemented_files": {
+      "tools/pankster_runtime_security/runtime_adapter_contracts.py": "49f51b5c5dad11655bba9629983ee1213b11babf3321015c5df643212a218c25",
+      "tools/tests/test_pankster_runtime_security_runtime_adapter_contracts.py": "f55fdc33bae1ee9d09e9e65e9e618dc0aefde497ab599a28bdb5573ed50a83bb"
+    },
+    "next_gate": "1D-A7_SYNTHETIC_RUNNER_PREFLIGHT_CONTRACT",
+    "phase": "1D-A6",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "purity_contract": {
+      "filesystem_writes": false,
+      "gateway_integration": false,
+      "network_calls": false,
+      "provider_sdks_used": false,
+      "reads_auth_json": false,
+      "reads_env_files": false,
+      "reads_keychain": false,
+      "reads_process_environment": false,
+      "sandbox_launch": false,
+      "subprocess_launch": false
+    },
+    "readiness_findings": {
+      "a5_dependency_satisfied": true,
+      "fail_closed_stubs_implemented": true,
+      "production_ready": false,
+      "runtime_adapter_contracts_implemented": true,
+      "runtime_execution_ready": false,
+      "targeted_tests_passed": true
+    },
+    "required_tests": {
+      "security": [
+        "stub_does_not_read_process_environment_or_auth_stores",
+        "stub_does_not_launch_sandbox_subprocess_or_broker_channel",
+        "stub_preserves_no_proxy_only_through_sanitizer",
+        "stub_denies_sensitive_environment_keys"
+      ],
+      "unit": [
+        "default_adapter_denies_without_sanitizing_or_starting_runtime",
+        "enabled_stub_sanitizes_explicit_environment_but_never_launches",
+        "missing_context_and_grants_fail_closed_before_environment_materialization",
+        "missing_command_fails_closed_without_launch",
+        "broker_forward_stub_never_starts_channel_or_calls_provider",
+        "broker_forward_requires_bound_grant_before_channel_stub"
+      ],
+      "validator_unit": [
+        "a6_requires_a5_dependency_hash",
+        "a6_implemented_files_match_hashes",
+        "a6_runtime_adapter_contract_defaults_disabled_and_unimplemented",
+        "a6_purity_contract_blocks_env_auth_keychain_network_gateway_sandbox_subprocess",
+        "a6_test_results_record_targeted_pass"
+      ]
+    },
+    "rollback": "remove_runtime_adapter_contracts_files_and_return_to_a5_fake_broker_only",
+    "runtime_adapter_contract": {
+      "broker_channel_implemented": false,
+      "default_adapter_enabled": false,
+      "default_broker_channel_enabled": false,
+      "default_sandbox_launch_enabled": false,
+      "denies_before_environment_materialization_on_invalid_context": true,
+      "explicit_environment_input_only": true,
+      "grant_binding_required_for_broker_forward": true,
+      "provider_network_calls": false,
+      "real_credentials_used": false,
+      "sandbox_launch_implemented": false,
+      "sanitizer_applied_before_launch_denial_when_enabled": true,
+      "subprocess_execution": false
+    },
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a5_content_sha256": "ea1bfa81ea2dedfcd2db87c3ac754db1dae5723239a90481cb5e85a1f75d2bd9",
+      "phase_1d_a5_file_sha256": "8d0f303ea62261dacc31e1560af4098dc3bfb0e1db0317212537614b0c443643",
+      "phase_1d_a5_path": "security/evidence/phase-1d-a5/fake-grant-registry-and-broker-implementation.json",
+      "phase_1d_a5_status": "FAKE_GRANT_REGISTRY_AND_BROKER_IMPLEMENTED_SYNTHETIC_ONLY"
+    },
+    "status": "RUNTIME_ADAPTER_INTERFACE_STUBS_IMPLEMENTED_SYNTHETIC_ONLY",
+    "test_results": {
+      "targeted_runtime_adapter_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_runtime_adapter_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    }
+  },
+  "schema_version": "pankster.phase1d-a6.runtime-adapter-interface-stubs.v1"
+}

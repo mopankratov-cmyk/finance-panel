@@ -1,0 +1,68 @@
+{
+  "approval_command": "APPROVE_PHASE_1F_RUNTIME_IMPLEMENTATION_SCOPE_LOCK:p1f-20260723-scopea1:082bc5f87eba718898e979b3e3b031f6792b248b321891d74a27c908b712a304",
+  "approval_command_sha256": "cbf30907ee949ca05f46b54b99e4f8dc827d1c60ee8c5a4e5a5900f23f116e6f",
+  "content_sha256": "082bc5f87eba718898e979b3e3b031f6792b248b321891d74a27c908b712a304",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "prepare Phase 1F-A2 runtime implementation scope lock, scope evidence, scope validator, and validator tests only; A2 must not implement runtime integration, edit Hermes core, gateway.py, web_server.py, app/lib runtime code, dependencies, subprocess, sandbox, provider/model APIs, real credentials, auth files, Keychain, OAuth refresh, start profiles, canary, deployment, or runtime process launch",
+    "approval_id": "p1f-20260723-scopea1",
+    "approval_scope": {
+      "app_or_lib_runtime_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "phase_1f_a2_scope_lock_allowed": true,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_execution_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_integration_implementation_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "blocked_actions": [
+      "attempt_to_implement_runtime_integration_before_scope_lock",
+      "attempt_to_start_profile_runtime",
+      "attempt_to_launch_runtime_subprocess_sandbox_profile_or_canary",
+      "attempt_to_call_provider_model_api",
+      "attempt_to_read_or_materialize_real_credentials",
+      "attempt_to_read_auth_files_keychain_or_process_secret_environment",
+      "attempt_to_refresh_oauth_credentials",
+      "attempt_to_change_gateway_web_server_hermes_core_or_dependencies",
+      "attempt_to_deploy_or_touch_production_profiles"
+    ],
+    "contract_state": "READY_FOR_OWNER_APPROVAL_NO_RUNTIME_SCOPE_LOCK",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_PHASE_1F_A2_SCOPE_LOCK_ONLY",
+    "future_file_scope_allowlist": [
+      "docs/program/PHASE_1F_A2_RUNTIME_IMPLEMENTATION_SCOPE_LOCK.md",
+      "security/evidence/phase-1f-a2/runtime-implementation-scope-lock.json",
+      "tools/phase_1f_a2_runtime_implementation_scope_lock_validator.py",
+      "tools/tests/test_phase_1f_a2_runtime_implementation_scope_lock_validator.py"
+    ],
+    "next_gate": "PHASE_1F_A2_RUNTIME_IMPLEMENTATION_SCOPE_LOCK_AFTER_OWNER_APPROVAL",
+    "phase": "1F-A1",
+    "source_review": {
+      "phase_1f_a0_content_sha256": "7d6a0ce18b9c20055fd5372e7f27a1977743cd191a28488187ce49713bc102b4",
+      "phase_1f_a0_file_sha256": "72449b19d3a764449f8e97412ef9deb9589c4ac3639532431eaea64539b6d5bd",
+      "phase_1f_a0_path": "security/evidence/phase-1f-a0/runtime-integration-planning.json",
+      "phase_1f_a0_verdict": "PHASE_1F_PLANNING_ONLY_NOT_READY_FOR_RUNTIME_OR_PRODUCTION"
+    },
+    "status": "PHASE_1F_A1_RUNTIME_INTEGRATION_OWNER_APPROVAL_REQUEST_READY_NO_SCOPE_LOCK"
+  },
+  "schema_version": "pankster.phase1f-a1.runtime-integration-owner-approval-request.v1"
+}

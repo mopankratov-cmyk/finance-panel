@@ -1,0 +1,44 @@
+{
+  "schema_version": "pankster.phase1b-c6.network-containment-or-reclaim-decision.v1",
+  "recorded_at": "2026-07-22T16:45:00Z",
+  "result": "CONTAINMENT_DESIGN_REQUIRED",
+  "decision": "PROCEED_TO_NETWORK_CONTAINMENT_DESIGN_BEFORE_PROFILE_RUNTIME_APPROVAL",
+  "current_backend": "lima-vz",
+  "current_instance": "pc3",
+  "current_lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+  "inputs": {
+    "c2_static_config_evidence_sha256": "56fffd2be88a0c628c52953706423bfc0201ec3262554ef0d8259b001e697c19",
+    "c3_runtime_start_evidence_sha256": "e8efcc387a1dcaa4f6f1f64fca2e1d2d0be2b360acb498d1e16b211567f3d3c4",
+    "c4_poststart_probe_evidence_sha256": "fd723c2d94d76b3e5efb4c7f5b6b539f85d63e0f4ccc63afd53d2857f2af7679",
+    "c5_egress_classification_evidence_sha256": "43e57edf2c6742340be025d99fbffddd22178de6581cd1565db12f929e7413fd"
+  },
+  "observed_security_state": {
+    "filesystem_host_mounts_absent": true,
+    "host_users_mount_absent": true,
+    "ssh_agent_socket_absent": true,
+    "host_sync_observed": false,
+    "container_runtime_binaries_in_guest_path": false,
+    "guest_dns_available": true,
+    "guest_tcp_443_available": true,
+    "egress_observed": true,
+    "no_egress_claim_blocked": true
+  },
+  "not_approved": {
+    "production_profiles": true,
+    "real_credentials": true,
+    "default_gateway_integration": true,
+    "canary": true,
+    "model_auth_materialization": true,
+    "profile_worker_execution": true
+  },
+  "separate_owner_approval_required_for": [
+    "host_firewall_or_pf_changes",
+    "guest_writes",
+    "new_vm_start",
+    "vm_reclaim_or_delete",
+    "production_profile_execution",
+    "real_credential_use",
+    "gateway_or_default_runtime_changes"
+  ],
+  "next_gate": "PHASE_1B_C7_NETWORK_CONTAINMENT_DESIGN"
+}

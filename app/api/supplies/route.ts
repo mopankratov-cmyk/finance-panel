@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
+import { resolveCabinetSelection } from "@/lib/cabinetGroups";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
+import { buildSupplyVolumeCoverage } from "@/lib/supplies/volumeCoverage";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +33,19 @@ export interface WarehouseSummary {
   skus: number;
 }
 
+export interface StockCatalogRow {
+  nmId: number;
+  /** "" — nm_id не встретился в rnp_report (нет заказов за 30д окно) */
+  article: string;
+  name: string | null;
+  quantity: number;
+  inWayToClient: number;
+  inWayFromClient: number;
+  daysLeft: number | null;
+  warehouseCount: number;
+  topWarehouses: { warehouse: string; quantity: number }[];
+}
+
 interface RpcRow {
   nm_id: number;
   article: string;
@@ -34,24 +54,97 @@ interface RpcRow {
   in_way_to_client: number;
 }
 
+// Полный постраничный фетч wb_stocks для каталога и складской сводки.
+// members (комбо-группа) → .in(), single → .eq(), оба null → без фильтра (все кабинеты).
+async function fetchAllStocks(db: SupabaseClient, single: string | null, members: string[] | null) {
+  type StockRow = { nm_id: number; cabinet_id: string | null; warehouse: string; quantity: number | null; in_way_to_client: number | null; in_way_from_client: number | null };
+  return loadAllSupabasePages<StockRow>((from, to) => {
+    let q = db.from("wb_stocks")
+      .select("nm_id, cabinet_id, warehouse, quantity, in_way_to_client, in_way_from_client")
+      .order("warehouse", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to);
+    if (members) q = q.in("cabinet_id", members);
+    else if (single) q = q.eq("cabinet_id", single);
+    return q;
+  }, { label: "Остатки WB" });
+}
+
+// rnp_report принимает один p_cabinet — для группы вызываем по каждому участнику
+// и суммируем аддитивные поля по nm_id (заказы/остаток/в пути — простые суммы,
+// без пересчёта долей/ставок, поэтому merge безопасен).
+async function fetchRpcRows(db: SupabaseClient, single: string | null, members: string[] | null): Promise<RpcRow[]> {
+  if (!members) {
+    const allowedNmIds = await requestAllowedNmIds(single);
+    return loadRnpReportRows<RpcRow>(db, single, {
+      allowedNmIds,
+      label: "Поставки WB: товары",
+    });
+  }
+  const results = await Promise.all(members.map(async (member) => {
+    const allowedNmIds = await requestAllowedNmIds(member);
+    return {
+      rows: await loadRnpReportRows<RpcRow>(db, member, {
+        allowedNmIds,
+        label: "Поставки WB: товары участника группы",
+      }),
+      allowedNmIds,
+    };
+  }));
+  const merged = new Map<number, RpcRow>();
+  for (const { rows, allowedNmIds } of results) {
+    for (const r of rows) {
+      if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
+      const cur = merged.get(r.nm_id);
+      if (!cur) { merged.set(r.nm_id, { ...r }); continue; }
+      cur.orders_month += r.orders_month;
+      cur.stock += r.stock;
+      cur.in_way_to_client += r.in_way_to_client;
+    }
+  }
+  return [...merged.values()];
+}
+
 export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) {
     return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
   }
-  const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet"));
+  const { single: p_cabinet, members } = await resolveCabinetSelection(new URL(req.url).searchParams.get("cabinet"));
+  const accessAllowed = members
+    ? (await Promise.all(members.map((member) => hasCabinetAccess(member)))).every(Boolean)
+    : await hasCabinetAccess(p_cabinet);
+  if (!accessAllowed) {
+    return NextResponse.json({ data: null, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
 
   try {
-    let stockQ = db.from("wb_stocks").select("warehouse, quantity, in_way_to_client").limit(2000);
-    if (p_cabinet) stockQ = stockQ.eq("cabinet_id", p_cabinet);
-    const [reportRes, stocksRes] = await Promise.all([
-      db.rpc("rnp_report", { p_cabinet }),
-      stockQ,
+    const scopeCabinets = members ?? (p_cabinet ? [p_cabinet] : []);
+    const scopeEntries = await Promise.all(scopeCabinets.map(async (cabinet) => [cabinet, await requestAllowedNmIds(cabinet)] as const));
+    const scopeByCabinet = new Map(scopeEntries);
+    const stockAllowed = (row: { nm_id?: unknown; cabinet_id?: unknown }) => {
+      const rowCabinet = String(row.cabinet_id ?? "");
+      const allowedNmIds = scopeByCabinet.get(rowCabinet);
+      return allowedNmIds === undefined ? true : requestAllowsNm(allowedNmIds, row.nm_id);
+    };
+    const pimRowsPromise = (members
+      ? Promise.all(members.map((member) => loadCabinetPimRowsHourly(member))).then((rows) => rows.flat())
+      : loadCabinetPimRowsHourly(p_cabinet))
+      .then((rows) => ({ rows, error: null as string | null }))
+      .catch((error: unknown) => ({
+        rows: [],
+        error: error instanceof Error ? error.message : "Габариты WB не загружены",
+      }));
+    const [rpcRows, allStockRowsRaw, costsRes, pimSnapshot] = await Promise.all([
+      fetchRpcRows(db, p_cabinet, members),
+      fetchAllStocks(db, p_cabinet, members),
+      db.from("product_costs").select("article, name"),
+      pimRowsPromise,
     ]);
-
-    if (reportRes.error) throw new Error(reportRes.error.message);
-
-    const rpcRows = (reportRes.data ?? []) as RpcRow[];
+    if (costsRes.error) throw new Error(costsRes.error.message);
+    const pimRows = pimSnapshot.rows;
+    const allStockRows = allStockRowsRaw.filter(stockAllowed);
+    const stockRows = allStockRows;
 
     const need = (avgDaily: number, stock: number, inWay: number, horizon: number) =>
       Math.max(0, Math.ceil(avgDaily * horizon - stock - inWay));
@@ -75,7 +168,7 @@ export async function GET(req: NextRequest) {
 
     // сводка по складам
     const whMap = new Map<string, WarehouseSummary>();
-    for (const s of stocksRes.data ?? []) {
+    for (const s of stockRows) {
       const name = (s.warehouse as string) || "—";
       const agg = whMap.get(name) ?? { warehouse: name, quantity: 0, inWay: 0, skus: 0 };
       agg.quantity += Number(s.quantity ?? 0);
@@ -86,6 +179,35 @@ export async function GET(req: NextRequest) {
     const warehouses = [...whMap.values()].sort((a, b) => b.quantity - a.quantity);
 
     skus.sort((a, b) => b.need45 - a.need45);
+
+    // мастер-каталог остатков — полный список SKU (не только те, что нужно дозаказать)
+    const nameByArticle = new Map((costsRes.data ?? []).map((c) => [c.article as string, c.name as string | null]));
+    const daysLeftByNm = new Map(skus.map((s) => [s.nmId, s.daysLeft]));
+    const articleByNm = new Map(skus.map((s) => [s.nmId, s.article]));
+
+    const byNm = new Map<number, { quantity: number; toClient: number; fromClient: number; wh: Map<string, number> }>();
+    for (const s of allStockRows) {
+      const e = byNm.get(s.nm_id) ?? { quantity: 0, toClient: 0, fromClient: 0, wh: new Map<string, number>() };
+      const qty = Number(s.quantity ?? 0);
+      e.quantity += qty;
+      e.toClient += Number(s.in_way_to_client ?? 0);
+      e.fromClient += Number(s.in_way_from_client ?? 0);
+      if (qty > 0) e.wh.set(s.warehouse, (e.wh.get(s.warehouse) ?? 0) + qty);
+      byNm.set(s.nm_id, e);
+    }
+
+    const catalog: StockCatalogRow[] = [...byNm.entries()].map(([nmId, e]) => {
+      const article = articleByNm.get(nmId) || "";
+      const top = [...e.wh.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .map(([warehouse, quantity]) => ({ warehouse, quantity }));
+      return {
+        nmId, article,
+        name: article ? (nameByArticle.get(article) ?? null) : null,
+        quantity: e.quantity, inWayToClient: e.toClient, inWayFromClient: e.fromClient,
+        daysLeft: daysLeftByNm.get(nmId) ?? null,
+        warehouseCount: e.wh.size, topWarehouses: top,
+      };
+    }).sort((a, b) => b.quantity - a.quantity);
 
     // --- Контракт inferno-вкладки «Поставки» (top-level) ---
     // Юрин дизайн раскладывает «готовую тару» (xlsx). Тара/WMS — отложено (docs/отложено.md),
@@ -124,17 +246,22 @@ export async function GET(req: NextRequest) {
           wb_wh: null,
         };
       });
+    const volumeCoverage = buildSupplyVolumeCoverage(infernoSkus.map((sku) => sku.nm), pimRows);
+    const infernoSkusWithVolume = infernoSkus.map((sku) => ({
+      ...sku,
+      volume_liters: volumeCoverage.litersByNm.get(sku.nm) ?? null,
+    }));
 
-    const totalsQty = whInferno.map((_, i) => infernoSkus.reduce((a, s) => a + (s.qty[i] || 0), 0));
-    const availableTotal = infernoSkus.reduce((a, s) => a + s.available, 0);
+    const totalsQty = whInferno.map((_, i) => infernoSkusWithVolume.reduce((a, s) => a + (s.qty[i] || 0), 0));
+    const availableTotal = infernoSkusWithVolume.reduce((a, s) => a + s.available, 0);
     const wbStockTotal = warehouses.reduce((a, w) => a + w.quantity, 0);
 
     return NextResponse.json({
-      data: { skus, warehouses },
+      data: { skus, warehouses, catalog },
       error: null,
       // inferno top-level
       warehouses: whInferno,
-      skus: infernoSkus,
+      skus: infernoSkusWithVolume,
       totals: { wb_stock: wbStockTotal, available: availableTotal, qty: totalsQty },
       threshold: 30,
       whEcon: [],
@@ -144,10 +271,16 @@ export async function GET(req: NextRequest) {
       wms: null,
       wb_supply_nums: {},
       wms_orders: {},
-      coverage: null,
+      coverage: {
+        volume: {
+          known: volumeCoverage.known,
+          total: volumeCoverage.total,
+          error: pimSnapshot.error,
+        },
+      },
       pallet_liters: 1230,
-      vol_known: 0,
-      vol_total: skus.length,
+      vol_known: volumeCoverage.known,
+      vol_total: volumeCoverage.total,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";

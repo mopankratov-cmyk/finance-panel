@@ -1,0 +1,51 @@
+{
+  "admin_authorization": {
+    "current_uid": 501,
+    "noninteractive_sudo_available": false,
+    "sudo_noninteractive_exit_status": 1,
+    "sudo_noninteractive_reason": "password_required"
+  },
+  "approval_record": {
+    "approval_record_path": "docs/program/PHASE_1B_B1_SYNTHETIC_APPROVAL_RECORD.json",
+    "approval_record_file_sha256": "2206cb6a582566cc0fe97ea7514a205ca3f4086bf27dde53a6d708d7a19d3b13",
+    "approval_record_canonical_sha256": "0bd1e50ecfe888f3c56c18ad424d838c977b16a8a474ab0d9118e5e695e32065",
+    "approved_by": "owner:maksimpankratov",
+    "authorization_event_id": "hgate-codex-20260722-b1",
+    "authorization_source": "pankster-human-gate",
+    "authn_context": "interactive-synthetic",
+    "real_credentials_allowed": false,
+    "synthetic_only": true
+  },
+  "forbidden_actions_not_performed": {
+    "apple_container_system_start": true,
+    "installer_execution": true,
+    "keychain_credential_creation": true,
+    "production_credentials": true,
+    "production_install": true,
+    "runtime_or_vm_start": true
+  },
+  "host_before_inventory": {
+    "apple_container_cli_present": false,
+    "container_apiserver_present": false,
+    "container_libexec_present": false,
+    "pkgutil_container_installer_present": false,
+    "uninstall_container_script_present": false
+  },
+  "manifest": {
+    "approval_id": "p1b-20260722-artifactpinningb0",
+    "manifest_content_sha256": "c37a6f727d935d1eeb746ebabe6c58a0b19eb32822c0c73561dbb5b0e34f68aa",
+    "manifest_path": "docs/program/PHASE_1B_INSTALLATION_MANIFEST.ready.json"
+  },
+  "production_install_validation": {
+    "expected_result": "DENIED",
+    "reason": "BLOCKED_AUTHENTICATION_BACKEND_PENDING"
+  },
+  "result": "BLOCKED_ADMIN_AUTHORIZATION_REQUIRED",
+  "schema_version": "pankster.phase1b-b1.preflight-summary.v1",
+  "synthetic_install_validation": {
+    "authoritative": true,
+    "expected_result": "PASS",
+    "mode": "synthetic-install",
+    "trust_anchor_status": "PINNED"
+  }
+}

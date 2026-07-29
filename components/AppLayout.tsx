@@ -1,19 +1,24 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { needsFinanceHydration } from "@/lib/navigation/financeHydration";
 import { Sidebar } from "./Sidebar";
 import { useFinance } from "./providers/FinanceProvider";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { hydrated, loadError } = useFinance();
   const pathname = usePathname();
-  // Страница входа — без сайдбара и без гейта загрузки финансов
-  if (pathname === "/login") return <>{children}</>;
-  // Главная + Ozon-аналитика — полноэкранные, без финансового сайдбара (как infernoff.ru)
+  // Страница входа и публичная политика конфиденциальности — без сайдбара и без гейта загрузки финансов
+  if (pathname === "/login" || pathname === "/privacy") return <>{children}</>;
+  // Кокпиты WB и Ozon имеют собственные shell и кабинетные контексты и не должны
+  // ждать гидрацию финансового провайдера.
+  if (pathname.startsWith("/wb") || pathname.startsWith("/ozon")) return <div className="min-h-screen bg-gray-50">{children}</div>;
+  // Главная — полноэкранная, без финансового сайдбара.
   const isLauncher = pathname === "/";
-  const isFullscreen = isLauncher || pathname.startsWith("/ozon");
+  const isFullscreen = isLauncher;
+  const requiresFinanceHydration = needsFinanceHydration(pathname);
 
-  if (!hydrated) {
+  if (requiresFinanceHydration && !hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5]">
         <div className="flex flex-col items-center gap-3">
@@ -24,7 +29,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (loadError) {
+  if (requiresFinanceHydration && loadError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5] px-4">
         <div className="max-w-md rounded-xl border border-red-200 bg-white p-6 text-center shadow-sm">
@@ -47,7 +52,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-[#F5F5F5]">
       <Sidebar />
-      <main className="flex-1 lg:ml-64">
+      <main className="min-w-0 flex-1 lg:ml-64">
         <div className="px-4 py-6 pt-16 lg:px-8 lg:py-8 lg:pt-8">
           {children}
         </div>

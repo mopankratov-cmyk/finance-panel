@@ -3,9 +3,12 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildRnpReport, type RnpRow } from "@/lib/rnp/buildRnp";
-import { getWbCommissionMerged } from "@/lib/wb/commissions";
+import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
 import { solvePrices } from "@/lib/unit/priceSolver";
 import { classifySignal, DEFAULT_THRESHOLDS, type SignalMetrics } from "@/lib/signals/classify";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,7 +24,11 @@ export async function GET(request: NextRequest) {
   }
 
   const url = new URL(request.url);
-  const cabinet = url.searchParams.get("cabinet");
+  const { cabinetId } = await resolveShopCabinet(url.searchParams.get("cabinet") ?? undefined);
+  if (!isCron && !(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
   const windowDays = Math.min(60, Math.max(1, Number(url.searchParams.get("window")) || 14));
   const persist = url.searchParams.get("persist") === "1";
 
@@ -30,20 +37,24 @@ export async function GET(request: NextRequest) {
 
   let rnp: RnpRow[];
   try {
-    rnp = await buildRnpReport(cabinet);
+    rnp = (await buildRnpReport(cabinetId)).filter((row) => requestAllowsNm(allowedNmIds, row.nmId));
   } catch (e) {
     return NextResponse.json({ error: String((e as Error)?.message || e) }, { status: 500 });
   }
-  const comm = await getWbCommissionMerged(30);
+  const comm = await getWbCommissionForCabinet(cabinetId, 30);
 
   // Воронка за окно: сумма открытий/корзин/заказов на nm.
   const fromDate = new Date(Date.now() - windowDays * 86400000).toISOString().slice(0, 10);
   const funnel = new Map<number, { opens: number; carts: number; orders: number }>();
-  const { data: frows } = await db
+  let funnelQuery = db
     .from("wb_funnel_daily")
     .select("nm_id, open_card, add_to_cart, orders")
     .gte("date", fromDate);
+  if (cabinetId) funnelQuery = funnelQuery.eq("cabinet_id", cabinetId);
+  if (allowedNmIds) funnelQuery = funnelQuery.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+  const { data: frows } = await funnelQuery;
   for (const r of (frows ?? []) as { nm_id: number; open_card: number | null; add_to_cart: number | null; orders: number | null }[]) {
+    if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const e = funnel.get(r.nm_id) ?? { opens: 0, carts: 0, orders: 0 };
     e.opens += Number(r.open_card ?? 0);
     e.carts += Number(r.add_to_cart ?? 0);

@@ -1,0 +1,336 @@
+"use client";
+
+import { BarChart3, Loader2, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Card, CardContent } from "@/components/ui/Card";
+import { formatMoney } from "@/lib/format";
+import type { PayoutReport } from "@/lib/opiu/payoutReconciliation";
+
+type PayoutMode = "standard" | "weekly";
+
+interface ForecastData {
+  cabinetId: string;
+  companyId: string;
+  companyName: string;
+  cabinets: { id: string; name: string }[];
+  planRows: number;
+  planSource: "approved_sales_plan" | "working_sales_plan" | "none";
+  planRevenue: number;
+  plannedOrders: number;
+  actualOrders: number;
+  actualRevenue: number;
+  actualDataStatus: "available" | "not_started" | "degraded";
+  expectedPayout: number | null;
+  actualPayout: number | null;
+  remainingPayout: number | null;
+  unallocatedForecastPayout: number | null;
+  reportDataStatus: "available" | "degraded" | "not_selected";
+  reconciliationDataStatus: "available" | "degraded" | "not_selected";
+  forecastDataStatus: "available" | "degraded";
+  plannedPositiveRevenueRows: number;
+  plannedPositiveRevenue: number;
+  coveredPositiveRevenueRows: number;
+  coveredPositiveRevenue: number;
+  confirmedPayouts: PayoutReport[];
+  payoutSchedule: {
+    id: string;
+    date: string;
+    amount: number;
+    source: "forecast" | "financial_report";
+  }[];
+  reconciliationQueue: {
+    bankReceiptId: string;
+    reason: "ambiguous" | "partial" | "unlinked" | "over_allocation";
+    amount?: number;
+    date: string;
+    name: string;
+    paymentAmount: number;
+  }[];
+  warnings: string[];
+  dataNotices: string[];
+  error?: string;
+}
+
+export function OzonForecastPanel({
+  year,
+  month,
+}: {
+  year: number;
+  month: number;
+}) {
+  const [cabinetId, setCabinetId] = useState("");
+  const [mode, setMode] = useState<PayoutMode>("standard");
+  const [data, setData] = useState<ForecastData | null>(null);
+  const [cabinetOptions, setCabinetOptions] = useState<ForecastData["cabinets"]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const query = new URLSearchParams({
+      year: String(year),
+      month: String(month + 1),
+      mode,
+    });
+    if (cabinetId) query.set("cabinet", cabinetId);
+    const requestedCabinetId = cabinetId;
+    const controller = new AbortController();
+    let cancelled = false;
+
+    setData(null);
+    setError("");
+    setLoading(true);
+    fetch(`/api/opiu/ozon-forecast?${query}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const result = await response.json() as ForecastData;
+        if (!response.ok) {
+          throw new Error(result.error ?? "Не удалось рассчитать прогноз Ozon");
+        }
+        if (cancelled) return;
+        setCabinetOptions(result.cabinets);
+        if (!requestedCabinetId && result.cabinetId) {
+          setCabinetId(result.cabinetId);
+          return;
+        }
+        if (
+          result.cabinetId === requestedCabinetId
+        ) {
+          setData(result);
+          setLoading(false);
+          return;
+        }
+        throw new Error(
+          "Ответ API не соответствует выбранному кабинету или компании",
+        );
+      })
+      .catch((requestError) => {
+        if (
+          requestError instanceof DOMException
+          && requestError.name === "AbortError"
+        ) return;
+        if (cancelled) return;
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Не удалось рассчитать прогноз Ozon",
+        );
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [year, month, cabinetId, mode]);
+
+  const actualMetricsUnavailable = data?.actualDataStatus !== "available";
+
+  return (
+    <Card>
+      <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-700">
+          <BarChart3 className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="font-semibold text-slate-900">Прогноз поступлений Ozon</h2>
+          <p className="text-sm text-slate-500">Отчёты, расчётный график и сверка банковских фактов.</p>
+        </div>
+      </div>
+      <CardContent className="space-y-4 pt-5">
+        <p className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-950">
+          Только просмотр: ДДС и календарь не изменяются
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="text-sm text-slate-700">
+            Кабинет
+            <select
+              value={cabinetId}
+              onChange={(event) => setCabinetId(event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3"
+            >
+              {cabinetOptions.map((cabinet) => (
+                <option key={cabinet.id} value={cabinet.id}>{cabinet.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-slate-700">
+            Компания-получатель
+            <div className="mt-1 flex min-h-11 w-full items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-900">
+              {data?.companyName ?? "Определяется по кабинету"}
+            </div>
+          </label>
+          <label className="text-sm text-slate-700">
+            Правило preview
+            <select
+              value={mode}
+              onChange={(event) => setMode(event.target.value as PayoutMode)}
+              className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3"
+            >
+              <option value="standard">Стандартный график</option>
+              <option value="weekly">Еженедельный график</option>
+            </select>
+          </label>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Считаю прогноз Ozon…
+          </div>
+        ) : error ? (
+          <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>
+        ) : data ? (
+          <>
+            {data.reportDataStatus === "degraded" && (
+              <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900">
+                Ozon не вернул полный набор отчётов. Таблица ниже диагностическая и может быть частичной; банковский факт, остаток и график недоступны.
+              </p>
+            )}
+            {data.reconciliationDataStatus === "degraded" && (
+              <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm font-bold text-rose-950">
+                Итоговые суммы и расчётный график недоступны: есть поступления Ozon с неразрешённой, частичной или неоднозначной связью с отчётами.
+              </p>
+            )}
+            {data.forecastDataStatus === "degraded" && (
+              <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900">
+                Прогноз выплаты недоступен: тарифами покрыто {data.coveredPositiveRevenueRows} из {data.plannedPositiveRevenueRows} строк
+                {" "}и {formatMoney(data.coveredPositiveRevenue)} из {formatMoney(data.plannedPositiveRevenue)} плановой выручки.
+                Частичный тарифный subtotal не показывается как итог.
+              </p>
+            )}
+            {data.actualDataStatus === "degraded" && (
+              <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900">
+                Фактические показатели Ozon недоступны. Они не считаются успешными нулевыми значениями.
+              </p>
+            )}
+            {data.actualDataStatus === "not_started" && (
+              <p className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+                Будущий месяц ещё не начался: фактические показатели пока неприменимы.
+              </p>
+            )}
+            {data.unallocatedForecastPayout !== null && data.unallocatedForecastPayout > 0 && (
+              <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+                Не распределено по будущим датам: {formatMoney(data.unallocatedForecastPayout)}. Сумма включена в остаток.
+              </p>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric label="Плановая выручка" value={formatMoney(data.planRevenue)} />
+              <Metric label="Фактическая выручка" value={actualMetricsUnavailable ? "—" : formatMoney(data.actualRevenue)} />
+              <Metric label="Ожидаемая выплата" value={formatNullableMoney(data.expectedPayout)} />
+              <Metric label="Банковский факт" value={formatNullableMoney(data.actualPayout)} />
+              <Metric label="Осталось" value={formatNullableMoney(data.remainingPayout)} green />
+              <Metric label="План заказов" value={`${Math.round(data.plannedOrders).toLocaleString("ru-RU")} шт.`} />
+              <Metric label="Факт заказов" value={actualMetricsUnavailable ? "—" : `${Math.round(data.actualOrders).toLocaleString("ru-RU")} шт.`} />
+            </div>
+            {data.planRows === 0 && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                В плане Ozon нет строк за выбранный месяц.
+              </p>
+            )}
+            <ReadOnlyTable
+              title="Подтверждённые отчёты Ozon"
+              headers={["Отчёт", "Период", "Расчётная дата", "Сумма"]}
+              rows={data.confirmedPayouts.map((report) => [
+                report.reportId,
+                `${report.periodFrom}—${report.periodTo}`,
+                report.estimatedReceiptDate,
+                formatMoney(report.amount),
+              ])}
+            />
+            <ReadOnlyTable
+              title="Расчётный график"
+              headers={["Дата", "Источник", "Сумма"]}
+              rows={data.payoutSchedule.map((row) => [
+                row.date,
+                row.source === "financial_report" ? "Подтверждённый отчёт" : "Прогноз",
+                formatMoney(row.amount),
+              ])}
+            />
+            <ReadOnlyTable
+              title="Очередь сверки"
+              headers={["Платёж", "Дата", "Сумма", "Причина"]}
+              rows={data.reconciliationQueue.map((row) => [
+                row.name || row.bankReceiptId,
+                row.date,
+                formatMoney(row.paymentAmount),
+                reconciliationReason(row.reason),
+              ])}
+            />
+            {data.warnings.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                <h3 className="font-semibold"><TriangleAlert className="mr-2 inline h-4 w-4" />Предупреждения</h3>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {data.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                </ul>
+              </div>
+            )}
+          </>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReadOnlyTable({
+  title,
+  headers,
+  rows,
+}: {
+  title: string;
+  headers: string[];
+  rows: string[][];
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200">
+      <h3 className="bg-slate-50 px-4 py-3 font-semibold text-slate-900">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="border-t border-slate-200 px-4 py-3 text-sm text-slate-500">Нет данных</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="border-t border-slate-200 bg-slate-50 text-xs text-slate-500">
+              <tr>{headers.map((header) => <th key={header} className="px-4 py-2 text-left">{header}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map((row, rowIndex) => (
+                <tr key={`${title}-${rowIndex}`}>
+                  {row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`} className="px-4 py-2">{cell}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function reconciliationReason(
+  reason: ForecastData["reconciliationQueue"][number]["reason"],
+) {
+  if (reason === "ambiguous") return "подходит несколько отчётов";
+  if (reason === "partial") return "сумма распределена частично";
+  if (reason === "over_allocation") return "связь превышает допустимую сумму";
+  return "связь с отчётом не записана";
+}
+
+function formatNullableMoney(value: number | null) {
+  return value === null ? "—" : formatMoney(value);
+}
+
+function Metric({
+  label,
+  value,
+  green,
+}: {
+  label: string;
+  value: string;
+  green?: boolean;
+}) {
+  return (
+    <div className={`rounded-xl p-4 ${green ? "bg-emerald-50" : "bg-slate-50"}`}>
+      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={`mt-1 text-xl font-bold ${green ? "text-emerald-800" : "text-slate-950"}`}>{value}</p>
+    </div>
+  );
+}

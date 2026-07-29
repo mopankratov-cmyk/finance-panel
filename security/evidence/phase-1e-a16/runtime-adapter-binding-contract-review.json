@@ -1,0 +1,93 @@
+{
+  "content_sha256": "b828543b31fa892db67fc302eb7d5c3bb6ea7d8f14dbd326d65663540f876d1b",
+  "decision_content": {
+    "binding_contract_performed": true,
+    "created_at": "2026-07-23T00:35:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1E_A15_RUNTIME_ADAPTER_BINDING_CONTRACT_REVIEWED_NO_RUNTIME_BINDING",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A17_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A16",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "host adapter integration to Hermes code is not implemented or approved",
+      "gateway/profile worker integration remains absent",
+      "real credential broker storage remains unimplemented",
+      "provider/model API boundaries remain uncalled",
+      "no sandbox or subprocess runtime has been launched",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/runtime_adapter_binding_contracts.py",
+        "sha256": "f8785fdbe935824960124a6626112cdb08dedc14cf5ec9b5086cdbd8eeef747f"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_contracts.py",
+        "sha256": "4305c67cdc03ab17f433ad23a9767b031566d5862acaf2bc580ab7f442ceacaa"
+      }
+    ],
+    "reviewed_head": "f8b939ce401565a6855df57ccf94c2857e55fdf8",
+    "reviewed_range": "800ec05c9090b67acc177515ace4d343af321de8..f8b939ce401565a6855df57ccf94c2857e55fdf8",
+    "rollback": "revert_commit_f8b939ce_to_remove_runtime_adapter_binding_contract",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "adapter_identity_capability_validation_present": true,
+      "audit_and_broker_preconditions_required": true,
+      "binding_manifest_secret_free": true,
+      "changed_files_match_a14_allowlist": true,
+      "contract_layer_only": true,
+      "disabled_by_default": true,
+      "expected_profile_backend_policy_revalidated": true,
+      "gateway_core_and_runtime_launch_flags_denied": true,
+      "integration_fail_closed_reasons_propagated": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls_performed": true,
+      "no_provider_sdks": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true
+    },
+    "source_evidence": {
+      "phase_1e_a14_approval_command_sha256": "f83335808208105b33a4b3cc6cea52a94dd1939d8c063c086b493f1a33314e3b",
+      "phase_1e_a14_content_sha256": "ab0a8855cfdd9c266ee08aac400b10eabb26f195f63ffd8c403ca46b82a34081",
+      "phase_1e_a14_file_sha256": "3ca9f49481b3070f4395ac71e170b846ef61e58142389b159d1fe13037f3f232",
+      "phase_1e_a14_path": "security/evidence/phase-1e-a14/runtime-adapter-binding-approval-request.json"
+    },
+    "status": "RUNTIME_ADAPTER_BINDING_CONTRACT_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 532
+      },
+      "targeted_1e_a16_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a16_runtime_adapter_binding_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_runtime_adapter_binding_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_runtime_adapter_binding_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    },
+    "verdict": "READY_FOR_HOST_ADAPTER_INTEGRATION_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1e-a16.runtime-adapter-binding-contract-review.v1"
+}

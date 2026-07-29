@@ -1,0 +1,116 @@
+{
+  "content_sha256": "0200b623f0e232f3261515127924c0ecc2868c7e90b22aec4dce30efb5dc7db5",
+  "decision_content": {
+    "created_at": "2026-07-23T06:25:00Z",
+    "credential_migration_approved": false,
+    "decision": "MODEL_BROKER_CONTRACT_READY_FOR_RUNTIME_ADAPTER_SPEC_NOT_CODE_OR_EXECUTION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "fail_closed_cases": [
+      "missing_policy",
+      "invalid_grant",
+      "expired_grant",
+      "attempt_mismatch",
+      "runtime_identity_mismatch",
+      "model_not_allowlisted",
+      "operation_not_allowlisted",
+      "budget_exceeded",
+      "replay_detected",
+      "audit_unavailable",
+      "credential_broker_unavailable",
+      "provider_error_sanitization_failed"
+    ],
+    "forbidden_response_fields": [
+      "api_key",
+      "access_token",
+      "refresh_token",
+      "authorization_header",
+      "raw_request_headers",
+      "raw_response_headers",
+      "provider_secret_value",
+      "root_auth_json_path",
+      "credential_pool"
+    ],
+    "gateway_changes_approved": false,
+    "model_api_calls_approved": false,
+    "model_broker_contract": {
+      "audit_unavailable_fails_closed": true,
+      "broker_unavailable_fails_closed": true,
+      "budget_enforced_before_provider_call": true,
+      "credential_broker_grant_required": true,
+      "host_side_only": true,
+      "idempotency_required": true,
+      "model_allowlist_enforced_before_provider_call": true,
+      "operation_allowlist_enforced_before_provider_call": true,
+      "provider_call_requires_valid_policy_grant_and_audit": true,
+      "provider_secret_values_never_logged": true,
+      "raw_provider_errors_sanitized": true,
+      "raw_provider_headers_never_returned": true,
+      "replay_detection_required": true
+    },
+    "next_gate": "PHASE_1E_A4_RUNTIME_ADAPTER_LAUNCH_CONTROLLER_SPEC",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A3",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a2_dependency_satisfied": true,
+      "implementation_ready": false,
+      "model_broker_spec_complete": true,
+      "production_ready": false,
+      "ready_for_runtime_adapter_spec": true,
+      "runtime_execution_ready": false
+    },
+    "request_schema_required_fields": [
+      "grant_id",
+      "profile_id",
+      "workflow_id",
+      "task_id",
+      "attempt_id",
+      "runtime_identity_hash",
+      "provider_family",
+      "model",
+      "operation",
+      "sequence_id",
+      "idempotency_key",
+      "payload_ref_or_hash",
+      "audit_context"
+    ],
+    "required_changes": [],
+    "required_tests_before_code": [
+      "provider call not attempted before policy grant audit validation",
+      "model and operation allowlists enforced before provider boundary",
+      "budget and replay denied before provider boundary",
+      "raw provider headers never appear in response logs or evidence",
+      "provider errors sanitized without secret values",
+      "broker unavailable and audit unavailable fail closed"
+    ],
+    "response_schema_allowed_fields": [
+      "allowed",
+      "reason",
+      "sanitized_output_ref_or_payload",
+      "usage",
+      "finish_reason",
+      "audit_event_id",
+      "grant_usage_hash"
+    ],
+    "rollback": "remove_phase_1e_a3_model_broker_spec_artifacts_and_return_to_phase_1e_a2_credential_broker_spec_state",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a2_content_sha256": "f750f0ead6313a0c89ed7edd0c908c7c43b3c11324ec5c013171e919874159df",
+      "phase_1e_a2_file_sha256": "508bad56c1ad28b50dccabf571257660922ed4071e73a6e1790ff9f849b3671a",
+      "phase_1e_a2_path": "security/evidence/phase-1e-a2/credential-broker-detailed-spec.json",
+      "phase_1e_a2_status": "CREDENTIAL_BROKER_DETAILED_SPEC_COMPLETE_NO_IMPLEMENTATION_APPROVAL"
+    },
+    "status": "MODEL_BROKER_DETAILED_SPEC_COMPLETE_NO_IMPLEMENTATION_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_1e_a3_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a3_model_broker_detailed_spec_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a3.model-broker-detailed-spec.v1"
+}

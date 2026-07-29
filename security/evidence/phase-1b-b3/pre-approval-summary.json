@@ -1,0 +1,45 @@
+{
+  "schema_version": "pankster.phase1b-b3.pre-approval-evidence.v1",
+  "recorded_at": "2026-07-22T14:30:59Z",
+  "approval_id": "p1b-20260722-kernelprovisionb3",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_b3": "f7d4f3f8f06517df5f63cedc512906a02d06fc73",
+  "contract_path": "docs/program/PHASE_1B_B3_KERNEL_PROVISIONING_CONTRACT.ready.json",
+  "contract_file_sha256": "746af3360565138b61a8efafd089fe5ca059b20d3763c26848ad04a369144845",
+  "contract_content_sha256": "cce75c7117000907305e9cd125502c4631554fe20e9f00789715e03a8d88d3cd",
+  "approval_packet_path": "docs/program/PHASE_1B_B3_KERNEL_PROVISIONING_APPROVAL_PACKET.md",
+  "approval_packet_sha256": "5a9e73a0b4b30084afed3c65b1b5525d1d184862d6bcedebd4819ae8909b70bc",
+  "preflight": {
+    "approval_command": "APPROVE_SYNTHETIC_KERNEL_PROVISION:p1b-20260722-kernelprovisionb3:cce75c7117000907305e9cd125502c4631554fe20e9f00789715e03a8d88d3cd",
+    "container_cli_version": "container CLI version 1.1.0 (build: release, commit: 5973b9c)",
+    "kernel_provision_executed": false,
+    "mode": "preflight",
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "result": "OWNER_APPROVAL_REQUIRED",
+    "runtime_start_executed": false,
+    "workload_started": false
+  },
+  "expected_local_artifact": {
+    "archive_name": "kata-static-3.28.0-arm64.tar.zst",
+    "archive_sha256": "f63d54507d1f18635d94475077e4c2330de4d8e05cedf25f7c38f063b0e66a91",
+    "archive_size_bytes": 596775193,
+    "expected_member_path": "opt/kata/share/kata-containers/vmlinux-6.18.15-186",
+    "inner_kernel_sha256": "2fe4a58d2885d623bcb4d705900ac8c1d4f02371152da8126b3b00c8c47fc3a1",
+    "inner_kernel_size_bytes": 16151040
+  },
+  "forbidden_actions_not_performed_by_agent": {
+    "kernel_provisioning": true,
+    "recommended_kernel_download": true,
+    "remote_tar_kernel_install": true,
+    "container_system_start": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "next_required_action": "OWNER_APPROVES_B3_KERNEL_PROVISIONING"
+}

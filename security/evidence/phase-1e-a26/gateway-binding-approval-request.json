@@ -1,0 +1,91 @@
+{
+  "content_sha256": "f4cb4be155195aae23031675fdb216c97dd3f1e2c7a6cf7d5d36cb3a6d69987e",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_gateway_binding_contract_allowed": true,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "contract_artifact": {
+      "content_sha256": "10f4a8f9a03ad8c492df2d7ac60bb73f5c13c81e9969bf8c8ce765ccaff0d123",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_GATEWAY_BINDING",
+      "file_sha256": "2dc9b5af510a66abd1c58ea95fc17036252787868ddb47526432cee81032b379",
+      "path": "docs/program/PHASE_1E_A26_GATEWAY_BINDING_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1e-a26.gateway-binding-approval-request.v1"
+    },
+    "created_at": "2026-07-23T03:05:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_GATEWAY_BINDING_CONTRACT_NOT_BOUND",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/gateway_binding_contracts.py",
+      "tools/tests/test_pankster_runtime_security_gateway_binding_contracts.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "integration_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A27_GATEWAY_BINDING_CONTRACT_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1E_GATEWAY_BINDING_CONTRACT:p1e-20260723-gatewaybindinga26:10f4a8f9a03ad8c492df2d7ac60bb73f5c13c81e9969bf8c8ce765ccaff0d123",
+      "approval_command_sha256": "b6bb3549213059b679f4aac6caf335d8f66af24aaf316917ee1b8fb28ca3ffd5",
+      "approval_id": "p1e-20260723-gatewaybindinga26",
+      "approval_required_before_next_gate_integration": true
+    },
+    "phase": "1E-A26",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a25_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "integration_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1e_a26_approval_request_artifacts_and_return_to_phase_1e_a25_review_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a25_content_sha256": "c2bbc5e59c73b80d79bce82b9ca5b78378c4a84a0f81ec62523396b4e4f6e984",
+      "phase_1e_a25_file_sha256": "46845978e9da34328e4e4062aac8c08063b7447d8ad252a088e01f5ae4e1ec26",
+      "phase_1e_a25_path": "security/evidence/phase-1e-a25/host-runtime-wiring-contract-review.json",
+      "phase_1e_a25_verdict": "READY_FOR_GATEWAY_BINDING_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "GATEWAY_BINDING_APPROVAL_REQUEST_COMPLETE_NO_BINDING",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a26_gateway_binding_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a26.gateway-binding-approval-request.v1"
+}

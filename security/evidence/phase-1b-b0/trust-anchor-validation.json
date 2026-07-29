@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-07-22T12:06:00Z",
+  "pinned_entries": [
+    {
+      "artifact_role": "backend-installer",
+      "asset_name": "container-1.1.0-installer-signed.pkg",
+      "backend": "apple-container-cli",
+      "backend_version": "1.1.0",
+      "expected_signer_identity": "Developer ID Installer: Apple Inc. - Containerization (UPBK2H6LZM)",
+      "expected_signer_team_id": "UPBK2H6LZM",
+      "observed_at": "2026-07-22T12:06:00Z",
+      "release_tag": "1.1.0",
+      "repository": "apple/container",
+      "source_status": "PINNED",
+      "trust_anchor_source": "phase-1b-b0/package-signature-evidence.json",
+      "verification_policy_id": "apple-container-installer-v1"
+    }
+  ],
+  "registry_path": "docs/security/apple_container_release_trust_anchors.json",
+  "registry_sha256": "44d3f97eb272524f4bc8d5ef0ae9c92c883553387889a0d5d0e4b7d476b7e82b",
+  "schema_version": "pankster.release-trust-anchors.v1",
+  "validation_result": "PINNED"
+}

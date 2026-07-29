@@ -2,13 +2,18 @@
 
 import { PAYMENT_CATEGORIES } from "@/lib/constants";
 import type { Account, Payment } from "@/lib/types";
+import type { DdsCompany } from "@/components/payments/ddsCompanies";
+import { cleanPaymentComment, getPaymentPriority, PRIORITY_META, setPaymentPriorityComment, suggestPaymentPriority, type PaymentPriority } from "./paymentPriority";
+import type { RecurrenceRule } from "./recurringPayments";
 
 interface InlinePaymentFormProps {
   flowType: "income" | "expense";
   date: string;
   accounts: Account[];
+  companies?: DdsCompany[];
+  companyId?: string | null;
   payment?: Payment;
-  onSubmit: (data: Omit<Payment, "id">) => void;
+  onSubmit: (data: Omit<Payment, "id">, recurrence?: RecurrenceRule, companyId?: string | null) => void;
   onCancel: () => void;
 }
 
@@ -19,6 +24,8 @@ export function InlinePaymentForm({
   flowType,
   date,
   accounts,
+  companies = [],
+  companyId = null,
   payment,
   onSubmit,
   onCancel,
@@ -28,17 +35,26 @@ export function InlinePaymentForm({
     const fd = new FormData(e.currentTarget);
     const rawAmount = Math.abs(Number(fd.get("amount")));
     const amount = flowType === "expense" ? -rawAmount : rawAmount;
+    const recurrence = fd.get("recurrence") as RecurrenceRule["frequency"];
+    const recurrenceUntil = fd.get("recurrenceUntil") as string;
+    if (!payment && recurrence !== "none" && !recurrenceUntil) {
+      alert("Укажите, до какой даты повторять платёж");
+      return;
+    }
 
     onSubmit({
-      date,
+      date: (fd.get("date") as string) || date,
       name: fd.get("name") as string,
       amount,
       category: fd.get("category") as string,
       accountId: fd.get("accountId") as string,
-      status: payment?.status ?? "planned",
+      status: fd.get("status") as Payment["status"],
       counterparty: (fd.get("counterparty") as string) || "",
-      comment: (fd.get("comment") as string) || undefined,
-    });
+      comment: setPaymentPriorityComment((fd.get("comment") as string) || undefined, fd.get("priority") as PaymentPriority),
+    }, payment ? undefined : {
+      frequency: recurrence,
+      until: recurrenceUntil,
+    }, (fd.get("companyId") as string) || null);
   };
 
   const defaultAmount = payment ? Math.abs(payment.amount) : "";
@@ -57,13 +73,24 @@ export function InlinePaymentForm({
       className={`space-y-3 rounded-lg border p-3 ${accent}`}
     >
       <div>
-        <label className="mb-1 block text-xs text-slate-400">Название</label>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Дата платежа</label>
+        <input
+          name="date"
+          type="date"
+          required
+          defaultValue={payment?.date ?? date}
+          className={inputClass}
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Назначение платежа</label>
         <input
           name="name"
           required
           defaultValue={payment?.name}
           className={inputClass}
-          placeholder="Название платежа"
+          placeholder="Текст из выписки или введите назначение самостоятельно"
         />
       </div>
 
@@ -82,7 +109,7 @@ export function InlinePaymentForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-slate-400">Категория</label>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Название</label>
         <select
           name="category"
           required
@@ -96,6 +123,22 @@ export function InlinePaymentForm({
           ))}
         </select>
       </div>
+
+      {companies.length > 0 && <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Компания</label>
+        <select
+          name="companyId"
+          defaultValue={companyId ?? ""}
+          className={inputClass}
+        >
+          <option value="">Не назначена</option>
+          {companies.filter((company) => company.isActive).map((company) => (
+            <option key={company.id} value={company.id}>
+              {company.name}
+            </option>
+          ))}
+        </select>
+      </div>}
 
       <div>
         <label className="mb-1 block text-xs text-slate-400">Счёт</label>
@@ -114,6 +157,53 @@ export function InlinePaymentForm({
       </div>
 
       <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Приоритет платежа</label>
+        <select
+          name="priority"
+          defaultValue={payment ? getPaymentPriority(payment) : suggestPaymentPriority(PAYMENT_CATEGORIES[0])}
+          className={inputClass}
+        >
+          {(Object.keys(PRIORITY_META) as PaymentPriority[]).map((priority) => (
+            <option key={priority} value={priority}>{PRIORITY_META[priority].label}</option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-slate-500">Можно изменить в любое время. A показывается первым.</p>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs text-slate-500">Состояние</label>
+        <select
+          name="status"
+          defaultValue={payment?.status ?? "planned"}
+          className={inputClass}
+        >
+          <option value="planned">План</option>
+          <option value="done">Оплачено / получено</option>
+          <option value="cancelled">Отменено</option>
+        </select>
+      </div>
+
+      {!payment && (
+        <div className="grid gap-3 rounded-lg border border-violet-200 bg-violet-50/70 p-3 sm:grid-cols-2">
+          <label className="text-xs font-medium text-violet-900">
+            Повторять
+            <select name="recurrence" defaultValue="none" className={`${inputClass} mt-1`}>
+              <option value="none">Не повторять</option>
+              <option value="weekly">Каждую неделю</option>
+              <option value="monthly">Каждый месяц</option>
+              <option value="quarterly">Каждый квартал</option>
+              <option value="yearly">Каждый год</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-violet-900">
+            Повторять до
+            <input name="recurrenceUntil" type="date" min={date} className={`${inputClass} mt-1`} />
+          </label>
+          <p className="text-xs text-violet-700 sm:col-span-2">Для регулярного платежа будут созданы отдельные плановые строки. Каждую из них можно изменить или отменить отдельно.</p>
+        </div>
+      )}
+
+      <div>
         <label className="mb-1 block text-xs text-slate-400">
           Контрагент
         </label>
@@ -126,12 +216,12 @@ export function InlinePaymentForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-slate-400">Комментарий</label>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Ваш комментарий</label>
         <input
           name="comment"
-          defaultValue={payment?.comment}
+          defaultValue={cleanPaymentComment(payment?.comment)}
           className={inputClass}
-          placeholder="Необязательно"
+          placeholder="Любое пояснение для себя или руководителя"
         />
       </div>
 

@@ -1,0 +1,188 @@
+{
+  "schema_version": "pankster.phase1b-c0.fallback-backend-selection.v1",
+  "recorded_at": "2026-07-22T14:45:10Z",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_c0": "0c86326cfdc27fec917e19961823080792fa3c01",
+  "input_state": {
+    "primary_backend": "apple-container-cli",
+    "primary_backend_status": "PAUSED_AFTER_B4",
+    "primary_backend_blocker": "Apple Container CLI local-tar kernel provisioning path requires apiserver; apiserver was not registered/running after approved noninteractive start attempt.",
+    "recommended_b4_decision": "SWITCH_TO_FALLBACK_BACKEND_SELECTION_OR_PAUSE_APPLE_CONTAINER"
+  },
+  "selected_fallback_backend": {
+    "backend": "lima-vz",
+    "selection_status": "SELECTED_FOR_C1_CONTRACT_PREPARATION",
+    "install_approval_status": "NOT_APPROVED",
+    "runtime_start_status": "NOT_APPROVED",
+    "production_profile_status": "NOT_ALLOWED"
+  },
+  "release_observation": {
+    "observed_at": "2026-07-22T14:45:10Z",
+    "source": "https://api.github.com/repos/lima-vm/lima/releases/latest",
+    "tag_name": "v2.2.0",
+    "published_at": "2026-07-21T15:05:43Z",
+    "previous_lima_observation": {
+      "version": "v2.1.1",
+      "status": "STALE_DO_NOT_APPROVE"
+    }
+  },
+  "candidate_artifacts": [
+    {
+      "role": "backend-installer",
+      "name": "lima-2.2.0-Darwin-arm64.tar.gz",
+      "version": "2.2.0",
+      "source_url": "https://github.com/lima-vm/lima/releases/download/v2.2.0/lima-2.2.0-Darwin-arm64.tar.gz",
+      "resolved_download_hosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "sha256": "bbdef91774885a0d05f7b048c4eb89ae2bcf3a0c252ae7ca7934e63df76d93c3",
+      "size_bytes": 37586365,
+      "signature_type": "sha256-only",
+      "notarization_requirement": "not_applicable",
+      "verification_policy_id": "lima-release-asset-sha256-v1",
+      "approval_status": "CANDIDATE_ONLY"
+    },
+    {
+      "role": "release-checksums",
+      "name": "SHA256SUMS",
+      "version": "2.2.0",
+      "source_url": "https://github.com/lima-vm/lima/releases/download/v2.2.0/SHA256SUMS",
+      "resolved_download_hosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "sha256": "7da5160ee9b22de8eec4222e581334ee6326881e20d5aa8eb29b22f897312a5f",
+      "size_bytes": 1396,
+      "signature_type": "sha256-only",
+      "notarization_requirement": "not_applicable",
+      "verification_policy_id": "lima-sha256sums-sha256-v1",
+      "approval_status": "CANDIDATE_ONLY"
+    },
+    {
+      "role": "lima-template",
+      "name": "ubuntu-24.04.yaml",
+      "version": "v2.2.0",
+      "source_url": "https://raw.githubusercontent.com/lima-vm/lima/v2.2.0/templates/_images/ubuntu-24.04.yaml",
+      "resolved_download_hosts": [
+        "raw.githubusercontent.com"
+      ],
+      "sha256": "abece69b9818b2b905d11bbeba84037dd6592d94fb3abdb58d01cb52c5e2f4e2",
+      "size_bytes": 3403,
+      "signature_type": "git-tagged-source-sha256",
+      "notarization_requirement": "not_applicable",
+      "verification_policy_id": "lima-release-tagged-template-sha256-v1",
+      "approval_status": "CANDIDATE_ONLY"
+    },
+    {
+      "role": "guest-image",
+      "name": "ubuntu-24.04-minimal-cloudimg-arm64.img",
+      "version": "24.04-noble-release-20260716",
+      "source_url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release-20260716/ubuntu-24.04-minimal-cloudimg-arm64.img",
+      "resolved_download_hosts": [
+        "cloud-images.ubuntu.com"
+      ],
+      "sha256": "7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934",
+      "signature_type": "sha256-only",
+      "notarization_requirement": "not_applicable",
+      "verification_policy_id": "ubuntu-cloud-image-sha256-from-lima-template-v1",
+      "approval_status": "PREFERRED_CANDIDATE_ONLY"
+    },
+    {
+      "role": "guest-image-alternative",
+      "name": "ubuntu-24.04-server-cloudimg-arm64.img",
+      "version": "24.04-noble-release-20260705",
+      "source_url": "https://cloud-images.ubuntu.com/releases/noble/release-20260705/ubuntu-24.04-server-cloudimg-arm64.img",
+      "resolved_download_hosts": [
+        "cloud-images.ubuntu.com"
+      ],
+      "sha256": "7df0201546f75b8bcc1044594c806c35749421ad3c9bc1be2a3ab806cfae39cc",
+      "signature_type": "sha256-only",
+      "notarization_requirement": "not_applicable",
+      "verification_policy_id": "ubuntu-cloud-image-sha256-from-lima-template-v1",
+      "approval_status": "ALTERNATIVE_REVIEW_ONLY"
+    },
+    {
+      "role": "additional-guestagents",
+      "name": "lima-additional-guestagents-2.2.0-Darwin-arm64.tar.gz",
+      "version": "2.2.0",
+      "source_url": "https://github.com/lima-vm/lima/releases/download/v2.2.0/lima-additional-guestagents-2.2.0-Darwin-arm64.tar.gz",
+      "resolved_download_hosts": [
+        "github.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "sha256": "3aff4453eb3c359eb4f3b458056db24f2c5c15019232531292f49e04050554ed",
+      "size_bytes": 38554314,
+      "signature_type": "sha256-only",
+      "notarization_requirement": "not_applicable",
+      "verification_policy_id": "lima-release-asset-sha256-v1",
+      "approval_status": "DENIED_UNTIL_REQUIRED"
+    }
+  ],
+  "required_c1_invariants": {
+    "vm_type": "vz",
+    "guest_architecture": "aarch64",
+    "package_manager_install": "DENIED",
+    "mutable_template_sources": "DENIED",
+    "mutable_guest_image_urls": "DENIED",
+    "default_home_mount_writable": "DENIED",
+    "production_repository_mount": "DENIED",
+    "host_credential_directory_mount": "DENIED",
+    "host_container_runtime_socket_exposure": "DENIED",
+    "automatic_startup_at_login": "DENIED",
+    "gateway_or_profile_integration": "DENIED"
+  },
+  "external_primary_sources": [
+    {
+      "url": "https://github.com/lima-vm/lima/releases",
+      "observations": [
+        "latest stable release observed as v2.2.0",
+        "release page publishes SHA256SUMS hash"
+      ]
+    },
+    {
+      "url": "https://lima-vm.io/docs/installation/",
+      "observations": [
+        "Lima supports installation by downloading a binary archive from GitHub releases and extracting it under /usr/local or another location"
+      ]
+    },
+    {
+      "url": "https://lima-vm.io/docs/config/vmtype/vz/",
+      "observations": [
+        "vz uses macOS Virtualization.framework",
+        "vz requires Lima >= 0.14 and macOS >= 13.0"
+      ]
+    },
+    {
+      "url": "https://lima-vm.io/docs/config/vmtype/",
+      "observations": [
+        "Lima v1.0 and later use VZ by default on compatible macOS hosts unless the config is incompatible"
+      ]
+    },
+    {
+      "url": "https://github.com/lima-vm/lima/blob/v2.2.0/templates/_images/ubuntu-24.04.yaml",
+      "observations": [
+        "release-tagged Ubuntu 24.04 template includes pinned arm64 minimal and server image digests",
+        "mutable fallback image entries must not be materialized in the C1 config"
+      ]
+    }
+  ],
+  "c0_actions_not_performed_by_agent": {
+    "lima_download": true,
+    "lima_installation": true,
+    "package_manager_operation": true,
+    "vm_creation": true,
+    "limactl_start": true,
+    "guest_image_download": true,
+    "additional_guestagents_download": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true,
+    "apple_container_retry": true
+  },
+  "recommendation": "PREPARE_LIMA_VZ_INSTALL_APPROVAL_CONTRACT",
+  "final_status": "FALLBACK_BACKEND_SELECTED_INSTALL_CONTRACT_NOT_READY"
+}

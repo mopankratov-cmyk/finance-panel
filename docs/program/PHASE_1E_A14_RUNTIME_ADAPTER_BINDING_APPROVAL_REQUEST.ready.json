@@ -1,0 +1,74 @@
+{
+  "content_sha256": "5b69e04525a5594d050a8ee08cbb29ac1b7be738c174fe3ae6f042b99ed2db5d",
+  "contract_content": {
+    "allowed_future_action_after_exact_owner_approval": "implement local runtime adapter binding contract and tests under tools/pankster_runtime_security only; binding remains disabled by default and must not touch Hermes core, gateway, app/lib, dependencies, subprocess, sandbox, provider/model APIs, real credentials, auth files, Keychain, OAuth refresh, profiles, canary, or deployment",
+    "approval_id": "p1e-20260723-adapterbindinga14",
+    "approval_mode": "request_only_no_runtime_adapter_binding",
+    "binding_performed_by_this_gate": false,
+    "created_at": "2026-07-23T00:15:00Z",
+    "decision": "OWNER_APPROVAL_REQUEST_PREPARED_FOR_FUTURE_LOCAL_RUNTIME_ADAPTER_BINDING_CONTRACT_ONLY",
+    "fail_closed_cases": [
+      "missing_exact_owner_approval",
+      "approval_hash_mismatch",
+      "a13_dependency_missing_or_hash_mismatch",
+      "attempt_to_edit_hermes_core_gateway_app_lib_or_dependencies",
+      "attempt_to_read_real_credentials_auth_json_or_keychain",
+      "attempt_to_read_unallowlisted_process_environment_secrets",
+      "attempt_to_launch_subprocess_sandbox_profile_or_canary",
+      "attempt_to_call_provider_model_api_or_network_client",
+      "attempt_to_enable_runtime_by_default",
+      "secret_scan_failed",
+      "unit_tests_failed"
+    ],
+    "future_binding_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_binding_contract_allowed": true,
+      "gateway_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_start_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true
+    },
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/runtime_adapter_binding_contracts.py",
+      "tools/tests/test_pankster_runtime_security_runtime_adapter_binding_contracts.py"
+    ],
+    "next_gate": "PHASE_1E_A15_RUNTIME_ADAPTER_BINDING_CONTRACT_AFTER_OWNER_APPROVAL",
+    "phase": "1E-A14",
+    "required_future_binding_evidence": {
+      "a13_evidence_hash_verified": true,
+      "binding_disabled_by_default": true,
+      "full_tools_tests_pass": true,
+      "modified_files_within_a14_allowlist": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_runtime_processes_started": true,
+      "sanitized_evidence_only": true,
+      "secret_scan_pass_before_commit": true,
+      "targeted_binding_contract_tests_pass": true
+    },
+    "source_evidence": {
+      "phase_1e_a13_content_sha256": "dc6458b62972a8075bf9394bf9a2755d7f4ebe6f86a13e839eb6c512ccea57b5",
+      "phase_1e_a13_file_sha256": "03fda5314c88ccf73185d460bc384aa5627698031f7ff83bebb0e2f7a60fc458",
+      "phase_1e_a13_path": "security/evidence/phase-1e-a13/disabled-runtime-integration-contract-review.json",
+      "phase_1e_a13_verdict": "READY_FOR_RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "RUNTIME_ADAPTER_BINDING_APPROVAL_REQUEST_READY_NO_BINDING"
+  },
+  "contract_state": "READY_FOR_OWNER_APPROVAL_NO_RUNTIME_BINDING",
+  "schema_version": "pankster.phase1e-a14.runtime-adapter-binding-approval-request.v1"
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": "pankster.phase1b-c9-r3.host-firewall-execution-precheck.v1",
+  "recorded_at": "2026-07-22T17:21:00Z",
+  "result": "EXECUTION_CONTRACT_NOT_READY",
+  "verdict": "C9_R3_BLOCKED_PENDING_PF_VISIBILITY_AND_TARGET_UNIQUENESS_PROOF",
+  "input_evidence": {
+    "c9_r2_target_discovery_summary": "security/evidence/phase-1b-c9-r2/firewall-target-discovery-execution-summary.json",
+    "target_instance": "pc9r2",
+    "target_lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc9r2",
+    "target_guest_ipv4": "192.168.5.15",
+    "target_guest_prefix": 24,
+    "before_firewall_dns": "AVAILABLE",
+    "before_firewall_tcp_443": "AVAILABLE"
+  },
+  "unproven_requirements": {
+    "macos_pf_sees_guest_private_source_before_nat": true,
+    "target_guest_ipv4_unique_to_pc9r2": true,
+    "pf_rule_instance_scoped": true,
+    "rollback_semantics_approved": true
+  },
+  "blocked_actions": {
+    "pfctl_execution": true,
+    "host_firewall_mutation": true,
+    "production_profiles": true,
+    "real_credentials": true,
+    "gateway_changes": true,
+    "canary": true
+  },
+  "minimum_next_safe_gate": "PHASE_1B_C9_R3_PF_VISIBILITY_AND_TARGET_UNIQUENESS_REVIEW"
+}

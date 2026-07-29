@@ -1,0 +1,102 @@
+{
+  "content_sha256": "4946bd1cfb55e85e5e3afac7cbd8ccbb1f118430cdc5910e737418197c6385a7",
+  "decision_content": {
+    "created_at": "2026-07-23T06:45:00Z",
+    "credential_migration_approved": false,
+    "decision": "RUNTIME_ADAPTER_LAUNCH_CONTROLLER_CONTRACT_READY_FOR_AUDIT_ROLLBACK_SPEC_NOT_CODE_OR_EXECUTION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "environment_contract": {
+      "denylist_precedence": true,
+      "mandatory_sensitive_denylist": true,
+      "preserve_no_proxy": true,
+      "profile_specific_allowlist": true,
+      "terminal_mcp_delegation_code_execution_background_sanitized": true,
+      "unknown_keys_ignored": true
+    },
+    "fail_closed_cases": [
+      "missing_owner_approval",
+      "missing_or_disabled_policy",
+      "invalid_runtime_identity",
+      "missing_network_policy",
+      "audit_unavailable",
+      "sanitizer_denied_sensitive_key",
+      "provider_secret_detected",
+      "grant_missing_or_unbound",
+      "broker_unavailable",
+      "destroy_failure",
+      "retry_or_reclaim_context_mismatch",
+      "rollback_unavailable"
+    ],
+    "gateway_changes_approved": false,
+    "launch_controller_contract": {
+      "destroy_required_on_failure": true,
+      "launch_forbidden_when_policy_missing_or_disabled": true,
+      "launch_requires_audit_sink_available": true,
+      "launch_requires_explicit_owner_approval": true,
+      "launch_requires_grant_refs_only": true,
+      "launch_requires_network_policy": true,
+      "launch_requires_no_provider_secret_in_env_argv_mounts_logs_evidence": true,
+      "launch_requires_runtime_identity": true,
+      "launch_requires_sanitized_environment": true,
+      "launch_requires_valid_profile_policy": true,
+      "retry_reclaim_restart_must_revalidate_context": true,
+      "rollback_disables_runtime_without_gateway_change": true
+    },
+    "lifecycle_states": [
+      "requested",
+      "preflight_validated",
+      "environment_sanitized",
+      "grant_refs_attached",
+      "launch_denied_or_started",
+      "running",
+      "reclaim_requested",
+      "retry_requested",
+      "destroy_requested",
+      "destroyed",
+      "rollback_disabled"
+    ],
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A5_AUDIT_AND_ROLLBACK_SPEC",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A4",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a3_dependency_satisfied": true,
+      "implementation_ready": false,
+      "production_ready": false,
+      "ready_for_audit_rollback_spec": true,
+      "runtime_adapter_launch_controller_spec_complete": true,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "required_tests_before_code": [
+      "launch denied without exact owner approval",
+      "launch denied when policy missing disabled or stale",
+      "sanitized env preserves NO_PROXY/no_proxy and denies secrets",
+      "terminal MCP delegation code_execution background envs sanitized",
+      "retry reclaim restart revalidate attempt-bound context",
+      "destroy attempted on launch failure",
+      "rollback disables runtime without gateway change"
+    ],
+    "rollback": "remove_phase_1e_a4_runtime_adapter_spec_artifacts_and_return_to_phase_1e_a3_model_broker_spec_state",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a3_content_sha256": "0200b623f0e232f3261515127924c0ecc2868c7e90b22aec4dce30efb5dc7db5",
+      "phase_1e_a3_file_sha256": "e7782da90d7ea486822d8a669a2d02eca7a0fe06d35b8c90b9072e343aa5c39d",
+      "phase_1e_a3_path": "security/evidence/phase-1e-a3/model-broker-detailed-spec.json",
+      "phase_1e_a3_status": "MODEL_BROKER_DETAILED_SPEC_COMPLETE_NO_IMPLEMENTATION_APPROVAL"
+    },
+    "status": "RUNTIME_ADAPTER_LAUNCH_CONTROLLER_SPEC_COMPLETE_NO_IMPLEMENTATION_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_1e_a4_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a4_runtime_adapter_launch_controller_spec_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a4.runtime-adapter-launch-controller-spec.v1"
+}

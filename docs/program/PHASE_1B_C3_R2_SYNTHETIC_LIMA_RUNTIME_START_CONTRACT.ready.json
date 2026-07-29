@@ -1,0 +1,29 @@
+{
+  "content_sha256": "ca488375aab8af38f144ab98a9ec1382a6df8d03f5248f215d5c2024753d4e7e",
+  "contract_content": {
+    "allowed_action": "download pinned guest image and start one synthetic Lima-vz VM using isolated shortened LIMA_HOME and the validated C2 config",
+    "approval_id": "p1b-20260722-limaruntimec3r2",
+    "backend": "lima-vz",
+    "backend_version": "2.2.0",
+    "canary_allowed": false,
+    "config_path": "docs/program/PHASE_1B_C2_LIMA_VZ_SYNTHETIC_VM_CONFIG.yaml",
+    "config_sha256": "ec4ee37801c5168f3522dbd58ab729e565918c684c415265d3079eb7a3a74008",
+    "created_at": "2026-07-22T15:55:00Z",
+    "expires_at": "2026-07-23T15:55:00Z",
+    "gateway_changes_allowed": false,
+    "guest_image_sha256": "7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934",
+    "guest_image_size_bytes": 227737600,
+    "guest_image_url": "https://cloud-images.ubuntu.com/minimal/releases/noble/release-20260716/ubuntu-24.04-minimal-cloudimg-arm64.img",
+    "install_prefix": "/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0",
+    "instance_name": "pc3",
+    "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+    "limactl_binary_sha256": "f19a4fca3875e1017a5285672be4a62699c1e55918fb6a7afce86a14199e10d9",
+    "limactl_path": "/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl",
+    "max_socket_path_length_estimate": 80,
+    "network_risk_decision": "ACCEPT_DEFAULT_LIMA_NAT_EGRESS_FOR_SYNTHETIC_BOOT_ONLY",
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false
+  },
+  "contract_state": "READY_FOR_OWNER_REVIEW",
+  "schema_version": "pankster.phase1b-c3.synthetic-runtime-start-contract.v1"
+}

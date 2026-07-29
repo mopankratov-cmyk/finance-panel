@@ -1,0 +1,216 @@
+{
+  "decision": {
+    "decision": "No OS-level backend has proven filesystem, credential, network, identity and read-only mount boundaries.",
+    "production_isolation_gate": "BLOCKED_ON_BACKEND_SELECTION",
+    "recommended_backend": "none"
+  },
+  "harness_version": "0.1.0",
+  "host_fingerprint": {
+    "machine": "arm64",
+    "probe_version": "phase1a.isolation.v1",
+    "system": "Darwin"
+  },
+  "options": [
+    {
+      "credential_boundary": "POSSIBLE",
+      "evidence": "binary inventory only; no daemon or container started",
+      "filesystem_boundary": "POSSIBLE",
+      "identity_separation": "POSSIBLE",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "medium",
+      "option": "container",
+      "read_only_mounts": "POSSIBLE",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "potentially strong if configured; not proven by command presence",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": true
+    },
+    {
+      "credential_boundary": "POSSIBLE",
+      "evidence": "binary inventory only; no daemon or container started",
+      "filesystem_boundary": "POSSIBLE",
+      "identity_separation": "POSSIBLE",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "medium-high",
+      "option": "docker",
+      "read_only_mounts": "POSSIBLE",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "potentially strong if configured; not proven by command presence",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": true
+    },
+    {
+      "credential_boundary": "POSSIBLE",
+      "evidence": "binary inventory only; no daemon or container started",
+      "filesystem_boundary": "POSSIBLE",
+      "identity_separation": "POSSIBLE",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "medium-high",
+      "option": "podman",
+      "read_only_mounts": "POSSIBLE",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "potentially strong if configured; not proven by command presence",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": true
+    },
+    {
+      "credential_boundary": "POSSIBLE",
+      "evidence": "binary inventory only; VM not started",
+      "filesystem_boundary": "POSSIBLE",
+      "identity_separation": "POSSIBLE",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "high",
+      "option": "colima",
+      "read_only_mounts": "POSSIBLE",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "potentially strong for filesystem identity; network not validated",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": true
+    },
+    {
+      "credential_boundary": "POSSIBLE",
+      "evidence": "binary inventory only; VM not started",
+      "filesystem_boundary": "POSSIBLE",
+      "identity_separation": "POSSIBLE",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "high",
+      "option": "limactl",
+      "read_only_mounts": "POSSIBLE",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "potentially strong for filesystem identity; network not validated",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": true
+    },
+    {
+      "credential_boundary": "POSSIBLE",
+      "evidence": "binary inventory only; VM not started",
+      "filesystem_boundary": "POSSIBLE",
+      "identity_separation": "POSSIBLE",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "high",
+      "option": "lima",
+      "read_only_mounts": "POSSIBLE",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "potentially strong for filesystem identity; network not validated",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": true
+    },
+    {
+      "credential_boundary": "POSSIBLE",
+      "evidence": "binary inventory only; no daemon or container started",
+      "filesystem_boundary": "POSSIBLE",
+      "identity_separation": "POSSIBLE",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "medium-high",
+      "option": "nerdctl",
+      "read_only_mounts": "POSSIBLE",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "potentially strong if configured; not proven by command presence",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": true
+    },
+    {
+      "credential_boundary": "UNVERIFIED",
+      "evidence": "command presence checked with shutil.which only; no sandbox profile executed",
+      "filesystem_boundary": "UNVERIFIED",
+      "identity_separation": "NO",
+      "installed": true,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "medium",
+      "option": "sandbox-exec",
+      "read_only_mounts": "UNVERIFIED",
+      "recommendation": "DISCOVERED_BUT_UNVALIDATED",
+      "security_strength": "command presence only; not a production isolation proof",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": true
+    },
+    {
+      "credential_boundary": "UNVERIFIED",
+      "evidence": "binary inventory only",
+      "filesystem_boundary": "UNVERIFIED",
+      "identity_separation": "UNVERIFIED",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "medium",
+      "option": "systemd-run",
+      "read_only_mounts": "UNVERIFIED",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "unverified",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": false
+    },
+    {
+      "credential_boundary": "UNVERIFIED",
+      "evidence": "binary inventory only",
+      "filesystem_boundary": "UNVERIFIED",
+      "identity_separation": "UNVERIFIED",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "medium",
+      "option": "bwrap",
+      "read_only_mounts": "UNVERIFIED",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "unverified",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": false
+    },
+    {
+      "credential_boundary": "UNVERIFIED",
+      "evidence": "binary inventory only",
+      "filesystem_boundary": "UNVERIFIED",
+      "identity_separation": "UNVERIFIED",
+      "installed": false,
+      "network_policy": "UNVERIFIED",
+      "operational_complexity": "medium",
+      "option": "firejail",
+      "read_only_mounts": "UNVERIFIED",
+      "recommendation": "UNAVAILABLE",
+      "security_strength": "unverified",
+      "separate_identity_capability": "UNVERIFIED",
+      "supported_on_host": false
+    }
+  ],
+  "production_isolation_gate": "BLOCKED_ON_BACKEND_SELECTION",
+  "results": [
+    {
+      "result": "PASS",
+      "test_id": "SEC-ISO-001",
+      "test_identity": "test_filesystem_isolation_probe.test_sec_iso_001_backend_inventory_lists_required_options",
+      "test_name": "test_sec_iso_001_backend_inventory_lists_required_options"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-ISO-002",
+      "test_identity": "test_filesystem_isolation_probe.test_sec_iso_002_filesystem_boundary_capability_is_not_claimed_from_presence_only",
+      "test_name": "test_sec_iso_002_filesystem_boundary_capability_is_not_claimed_from_presence_only"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-ISO-003",
+      "test_identity": "test_filesystem_isolation_probe.test_sec_iso_003_network_boundary_requires_explicit_policy",
+      "test_name": "test_sec_iso_003_network_boundary_requires_explicit_policy"
+    },
+    {
+      "result": "PASS",
+      "test_id": "SEC-ISO-004",
+      "test_identity": "test_filesystem_isolation_probe.test_sec_iso_004_separate_identity_capability_is_reported",
+      "test_name": "test_sec_iso_004_separate_identity_capability_is_reported"
+    }
+  ],
+  "schema_version": "phase1a.evidence.v1",
+  "scope": "synthetic-only",
+  "test_ids": [
+    "SEC-ISO-001",
+    "SEC-ISO-002",
+    "SEC-ISO-003",
+    "SEC-ISO-004"
+  ],
+  "timestamp": "2026-07-21T21:06:40Z"
+}

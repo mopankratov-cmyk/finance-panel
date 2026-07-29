@@ -1,0 +1,97 @@
+{
+  "content_sha256": "7d6a0ce18b9c20055fd5372e7f27a1977743cd191a28488187ce49713bc102b4",
+  "decision_content": {
+    "blocked_actions_without_future_explicit_owner_approval": [
+      "Hermes core integration",
+      "gateway.py or web_server.py runtime binding",
+      "profile worker runtime mutation",
+      "real host-side credential broker storage",
+      "real provider/model broker calls",
+      "OAuth refresh integration",
+      "profile runtime readiness gate opening",
+      "local precheck execution",
+      "profile runtime process launch",
+      "subprocess or sandbox launch",
+      "named profile start",
+      "canary execution",
+      "production deployment"
+    ],
+    "created_at": "2026-07-23T11:10:00Z",
+    "decision": "PHASE_1F_STARTED_WITH_PLANNING_ONLY_NO_RUNTIME_APPROVAL",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "implementation_allowed_now": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A1_RUNTIME_INTEGRATION_OWNER_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1F-A0",
+    "planned_phase_1f_sequence": [
+      "A1 owner approval request for exact Phase 1F implementation scope",
+      "A2 implementation scope lock for one narrow integration layer",
+      "A3 independent security review before code",
+      "A4 disabled-by-default integration contract update after owner approval",
+      "A5 review and evidence gate before any runtime execution approval",
+      "separate execution approval before any local precheck, sandbox, subprocess, profile, provider, OAuth, or deployment action"
+    ],
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "phase_1e_closeout_dependency_satisfied": true,
+      "phase_1f_planning_started": true,
+      "production_ready": false,
+      "runtime_execution_ready": false,
+      "separate_owner_approval_required_for_code": true,
+      "separate_owner_approval_required_for_runtime": true
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1f_a0_planning_artifacts_and_return_to_phase_1e_closeout_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_invariants": {
+      "credentials_never_materialized": true,
+      "default_profiles_remain_unchanged": true,
+      "no_app_or_lib_changes": true,
+      "no_auth_json_or_keychain_read": true,
+      "no_canary_started": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_or_hermes_core_runtime_changes": true,
+      "no_gateway_or_web_server_changes": true,
+      "no_oauth_refresh": true,
+      "no_process_env_secret_reads": true,
+      "no_profile_started": true,
+      "no_profile_worker_runtime_changes": true,
+      "no_provider_or_model_api_calls": true,
+      "no_readiness_gate_opened": true,
+      "no_real_credentials_read_or_written": true,
+      "no_runtime_process_started": true,
+      "no_sandbox_or_subprocess_started": true,
+      "planning_only": true,
+      "production_not_ready": true
+    },
+    "source_evidence": {
+      "phase_1e_closeout_content_sha256": "c7f41b5ba574bef55cb80ccd050a8225f9e81920540ca90164b8056886445a81",
+      "phase_1e_closeout_file_sha256": "6722a84ce4a21b5358fb1330aec669e11048938b0b69cf89e8d2ff946d5a6004",
+      "phase_1e_closeout_path": "security/evidence/phase-1e-closeout/phase-1e-closeout-package.json",
+      "phase_1e_closeout_verdict": "PHASE_1E_CONTRACT_RUNTIME_ARCHITECTURE_COMPLETE_NOT_PRODUCTION_READY"
+    },
+    "status": "PHASE_1F_A0_RUNTIME_INTEGRATION_PLANNING_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 755
+      },
+      "targeted_a0_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a0_runtime_integration_planning_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "verdict": "PHASE_1F_PLANNING_ONLY_NOT_READY_FOR_RUNTIME_OR_PRODUCTION"
+  },
+  "schema_version": "pankster.phase1f-a0.runtime-integration-planning.v1"
+}

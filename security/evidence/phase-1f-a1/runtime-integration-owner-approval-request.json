@@ -1,0 +1,98 @@
+{
+  "content_sha256": "555723638ab7600a4b42001c0009c5154c0312c66d56891187449ef0d0a58f93",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_runtime_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "phase_1f_a2_scope_lock_allowed": true,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_execution_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_integration_implementation_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "contract_artifact": {
+      "content_sha256": "082bc5f87eba718898e979b3e3b031f6792b248b321891d74a27c908b712a304",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_RUNTIME_SCOPE_LOCK",
+      "file_sha256": "5d17961e68f4b63f444d2b44f338a92149c429a5ca1e5241b42d6bdcd5424783",
+      "path": "docs/program/PHASE_1F_A1_RUNTIME_INTEGRATION_OWNER_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1f-a1.runtime-integration-owner-approval-request.v1"
+    },
+    "created_at": "2026-07-23T10:40:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_PHASE_1F_A2_SCOPE_LOCK_NOT_IMPLEMENTATION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "docs/program/PHASE_1F_A2_RUNTIME_IMPLEMENTATION_SCOPE_LOCK.md",
+      "security/evidence/phase-1f-a2/runtime-implementation-scope-lock.json",
+      "tools/phase_1f_a2_runtime_implementation_scope_lock_validator.py",
+      "tools/tests/test_phase_1f_a2_runtime_implementation_scope_lock_validator.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "integration_performed": false,
+    "implementation_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A2_RUNTIME_IMPLEMENTATION_SCOPE_LOCK_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1F_RUNTIME_IMPLEMENTATION_SCOPE_LOCK:p1f-20260723-scopea1:082bc5f87eba718898e979b3e3b031f6792b248b321891d74a27c908b712a304",
+      "approval_command_sha256": "cbf30907ee949ca05f46b54b99e4f8dc827d1c60ee8c5a4e5a5900f23f116e6f",
+      "approval_id": "p1f-20260723-scopea1",
+      "approval_required_before_next_gate_scope_lock": true
+    },
+    "phase": "1F-A1",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a0_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "implementation_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false,
+      "scope_lock_prepared": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1f_a1_approval_request_artifacts_and_return_to_phase_1f_a0_planning_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1f_a0_content_sha256": "7d6a0ce18b9c20055fd5372e7f27a1977743cd191a28488187ce49713bc102b4",
+      "phase_1f_a0_file_sha256": "72449b19d3a764449f8e97412ef9deb9589c4ac3639532431eaea64539b6d5bd",
+      "phase_1f_a0_path": "security/evidence/phase-1f-a0/runtime-integration-planning.json",
+      "phase_1f_a0_verdict": "PHASE_1F_PLANNING_ONLY_NOT_READY_FOR_RUNTIME_OR_PRODUCTION"
+    },
+    "status": "PHASE_1F_A1_RUNTIME_INTEGRATION_OWNER_APPROVAL_REQUEST_COMPLETE_NO_SCOPE_LOCK",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a1_runtime_integration_owner_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1f-a1.runtime-integration-owner-approval-request.v1"
+}

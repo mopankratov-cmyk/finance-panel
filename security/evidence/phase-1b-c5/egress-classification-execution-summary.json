@@ -1,0 +1,76 @@
+{
+  "schema_version": "pankster.phase1b-c5.synthetic-lima-egress-classification-execution-summary.v1",
+  "recorded_at": "2026-07-22T16:36:45Z",
+  "result": "PASS",
+  "classification_result": "EGRESS_OBSERVED",
+  "mode": "execute-probes",
+  "runner_commit": "8c35bf9a8faf9d4fe8a11d52066894f50cfd2433",
+  "runner_commit_pushed": true,
+  "approval": {
+    "approval_id": "p1b-20260722-limaegressc5",
+    "approval_record_path": "docs/program/PHASE_1B_C5_SYNTHETIC_LIMA_EGRESS_CLASSIFICATION_APPROVAL_RECORD.json",
+    "approval_record_file_sha256": "5958bcb288864b22d512cc1c104b7e8e6de0de8a7f981ddbe750b6238ce02fc6",
+    "approval_record_canonical_sha256": "71892ab88dc02cc4be3a452cb01be22dada3bda57084f62fc6e0a543f66967cb",
+    "contract_path": "docs/program/PHASE_1B_C5_SYNTHETIC_LIMA_EGRESS_CLASSIFICATION_CONTRACT.ready.json",
+    "contract_file_sha256": "af09c6907038f290c86789060b6e4d36ebae12429ef1183b1cf34a07bb7c6ede",
+    "contract_content_sha256": "7172db2bdc66461dfa5f0e2c49fd9134833889fffa53a80f546b239da38f7d1d"
+  },
+  "hard_gates": {
+    "network_probes_allowed": true,
+    "http_payloads_allowed": false,
+    "preserve_host_env_allowed": false,
+    "guest_writes_allowed": false,
+    "host_sync_allowed": false,
+    "real_credentials_allowed": false,
+    "production_profiles_allowed": false,
+    "gateway_changes_allowed": false,
+    "canary_allowed": false
+  },
+  "probe_result": {
+    "instance_name": "pc3",
+    "probe_count": 4,
+    "all_returncodes_zero": true,
+    "host_status": {
+      "name": "pc3",
+      "status": "Running",
+      "vmType": "vz",
+      "arch": "aarch64",
+      "limaHome": "/Users/maksimpankratov/.local/pankster/runtime/lc3",
+      "limaVersion": "v2.2.0",
+      "config_mounts": [],
+      "containerd_system": false,
+      "containerd_user": false,
+      "propagateProxyEnv": false,
+      "hostResolver_enabled": false,
+      "portForwards": [],
+      "networks": []
+    },
+    "guest_route_and_resolver_summary": {
+      "default_route_observed": true,
+      "guest_interface": "eth0",
+      "guest_subnet_observed": "192.168.5.0/24",
+      "resolver_observed": "192.168.5.2"
+    },
+    "network_classification": {
+      "dns_example_com": "AVAILABLE",
+      "tcp_1_1_1_1_443": "AVAILABLE",
+      "egress_observed": true
+    }
+  },
+  "conclusion": {
+    "synthetic_lima_runtime_running": true,
+    "vm_isolated_lima_home_confirmed": true,
+    "bounded_network_probe_executed": true,
+    "http_payload_sent": false,
+    "guest_write_probe_executed": false,
+    "host_sync_observed": false,
+    "real_credentials_used_or_recorded": false,
+    "default_gateway_unchanged": true,
+    "production_profiles_not_started": true,
+    "no_egress_claim_blocked": true,
+    "lima_default_guest_egress_available": true,
+    "profile_runtime_not_approved": true,
+    "next_gate_requires_separate_owner_approval": true,
+    "recommended_next_gate": "PHASE_1B_C6_NETWORK_CONTAINMENT_OR_RECLAIM_DECISION"
+  }
+}

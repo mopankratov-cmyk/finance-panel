@@ -1,0 +1,95 @@
+{
+  "content_sha256": "df1a30a56cd6cdd07cff13bd34422367968a00afc552ea54bd3296beb70d5418",
+  "decision_content": {
+    "accepted_deliverables": [
+      "disabled-by-default feature flag/config contract",
+      "pure profile policy schema validator",
+      "pure environment sanitizer with denylist precedence and NO_PROXY/no_proxy preservation",
+      "synthetic fake grant registry",
+      "synthetic fake model broker",
+      "fail-closed runtime adapter contracts/stubs",
+      "owner-approved local synthetic dry-run preflight",
+      "execution review and runtime integration scope decision"
+    ],
+    "blocked_until_phase_1e": [
+      "real sandbox runtime integration",
+      "real host-side credential broker",
+      "real provider/model broker calls",
+      "named profile runtime enablement",
+      "gateway/Hermes core integration",
+      "OAuth refresh integration",
+      "production deployment"
+    ],
+    "commit_chain": {
+      "a0": "49b868b5",
+      "a1": "8ec60af3",
+      "a10": "22949453",
+      "a11": "0c9d7b8a",
+      "a12": "d2f55589",
+      "a2": "9fc969c5",
+      "a2_correction": "5834382f",
+      "a3": "ad3e8485",
+      "a4": "91680f49",
+      "a5": "a05199ea",
+      "a6": "e98bed73",
+      "a7": "81dc2a6e",
+      "a8": "31f9ae69",
+      "a9": "e2ebbc66"
+    },
+    "created_at": "2026-07-23T05:05:00Z",
+    "decision": "CONTROLLED_IMPLEMENTATION_PHASE_1D_CLOSED_REAL_RUNTIME_REQUIRES_PHASE_1E",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "next_gate": "PHASE_1E_A0_REAL_RUNTIME_ARCHITECTURE_PLANNING",
+    "phase": "1D-A13",
+    "phase_1e_required_inputs": [
+      "architecture spec",
+      "threat model",
+      "owner approval contract",
+      "rollback plan",
+      "independent security review",
+      "real credential handling design",
+      "runtime process/sandbox launch plan"
+    ],
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "phase_1d_closed": true,
+      "phase_1e_required_for_runtime": true,
+      "production_ready": false,
+      "synthetic_baseline_complete": true
+    },
+    "required_changes": [],
+    "rollback": "remove_a13_closeout_artifacts_and_return_to_a12_scope_decision_state",
+    "sandbox_execution_approved": false,
+    "security_invariants": {
+      "no_auth_json_or_keychain_read": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_profiles_or_canary_started": true,
+      "no_provider_or_model_api_calls": true,
+      "no_real_credentials_read_or_written": true,
+      "no_sandbox_runtime_started": true,
+      "production_not_ready": true,
+      "synthetic_evidence_only": true
+    },
+    "source_evidence": {
+      "phase_1d_a12_content_sha256": "dbf93a979138eec47f2c842c2b71be201ad124a31e6995a0fe486cd1f253f104",
+      "phase_1d_a12_file_sha256": "5163c6ebb11aa30870bfa21b34d24d2a8994d14cb6fcf401e09ad9893f5dba44",
+      "phase_1d_a12_path": "security/evidence/phase-1d-a12/runtime-integration-scope-decision.json",
+      "phase_1d_a12_status": "RUNTIME_INTEGRATION_SCOPE_DECISION_COMPLETE"
+    },
+    "status": "PHASE_1D_CLOSEOUT_PACKAGE_COMPLETE",
+    "test_results": {
+      "targeted_a13_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1d_a13_closeout_package_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "verdict": "PHASE_1D_SYNTHETIC_BASELINE_COMPLETE_NOT_PRODUCTION_READY"
+  },
+  "schema_version": "pankster.phase1d-a13.phase-1d-closeout-package.v1"
+}

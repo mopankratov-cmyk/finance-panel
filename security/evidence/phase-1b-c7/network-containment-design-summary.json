@@ -1,0 +1,64 @@
+{
+  "schema_version": "pankster.phase1b-c7.network-containment-design-summary.v1",
+  "recorded_at": "2026-07-22T16:52:00Z",
+  "result": "DESIGN_COMPLETE_STATIC_REVIEW_REQUIRED",
+  "input_classification": "EGRESS_OBSERVED",
+  "backend": "lima-vz",
+  "instance": "pc3",
+  "recommended_direction": "DO_NOT_IMPLEMENT_EXISTING_VM_CONTAINMENT",
+  "design_options": [
+    {
+      "id": "A",
+      "name": "guest_firewall_or_route_delete",
+      "blast_radius": "guest_only",
+      "requires_owner_approval": true,
+      "requires_guest_writes": true,
+      "blocks_profile_runtime_approval": true,
+      "reason": "Guest-side policy is not a trusted boundary against compromised worker code or privileged guest actions."
+    },
+    {
+      "id": "B",
+      "name": "host_pf_anchor",
+      "blast_radius": "host_network",
+      "requires_owner_approval": true,
+      "requires_privileged_host_change": true,
+      "blocks_profile_runtime_approval": true,
+      "reason": "Current evidence does not prove instance-scoped firewall targeting or rollback safety."
+    },
+    {
+      "id": "C",
+      "name": "restricted_egress_proxy_only",
+      "blast_radius": "runtime_policy",
+      "requires_owner_approval": true,
+      "blocks_profile_runtime_approval": true,
+      "reason": "Proxy-only control cannot prevent direct IP/DNS/UDP bypass while direct egress exists."
+    },
+    {
+      "id": "D",
+      "name": "lima_native_no_network",
+      "blast_radius": "backend_config",
+      "requires_owner_approval": true,
+      "blocks_profile_runtime_approval": true,
+      "reason": "No proven no-network knob exists in the current local Lima 2.2.0 artifacts and C5 observed default egress."
+    },
+    {
+      "id": "E",
+      "name": "backend_replacement",
+      "blast_radius": "new_phase_1b_backend_chain",
+      "requires_owner_approval": true,
+      "blocks_profile_runtime_approval": false,
+      "reason": "A backend with native no-network or enforced network namespace is architecturally cleaner."
+    }
+  ],
+  "not_authorized_by_c7": {
+    "host_firewall_changes": true,
+    "guest_writes": true,
+    "new_vm_start": true,
+    "vm_reclaim_or_delete": true,
+    "production_profiles": true,
+    "real_credentials": true,
+    "gateway_changes": true,
+    "canary": true
+  },
+  "next_gate": "PHASE_1B_C8_STATIC_CONTAINMENT_REVIEW"
+}

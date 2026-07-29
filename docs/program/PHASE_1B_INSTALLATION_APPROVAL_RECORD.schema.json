@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PANKSTER Phase 1B Installation Approval Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approval_id",
+    "manifest_content_sha256",
+    "trust_anchor_registry_sha256",
+    "decision",
+    "approved_by",
+    "authorization_event_id",
+    "authorization_source",
+    "authn_context",
+    "approved_at",
+    "expires_at",
+    "owner_command_hash",
+    "synthetic_only",
+    "real_credentials_allowed",
+    "production_profiles_allowed",
+    "record_sha256"
+  ],
+  "properties": {
+    "approval_id": {
+      "type": "string",
+      "pattern": "^p1b-[0-9]{8}-[a-z0-9-]{8,64}$"
+    },
+    "manifest_content_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "trust_anchor_registry_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "decision": {
+      "const": "APPROVED"
+    },
+    "approved_by": {
+      "type": "string",
+      "minLength": 7,
+      "maxLength": 256,
+      "pattern": "^owner:[A-Za-z0-9._-]{1,128}$"
+    },
+    "authorization_event_id": {
+      "type": "string",
+      "minLength": 14,
+      "maxLength": 256,
+      "pattern": "^hgate-[A-Za-z0-9._-]{8,128}$"
+    },
+    "authorization_source": {
+      "const": "pankster-human-gate"
+    },
+    "authn_context": {
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^interactive-(owner|hardware-key|passkey|synthetic)$"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "owner_command_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "synthetic_only": {
+      "type": "boolean"
+    },
+    "real_credentials_allowed": {
+      "type": "boolean"
+    },
+    "production_profiles_allowed": {
+      "type": "boolean"
+    },
+    "record_sha256": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

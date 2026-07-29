@@ -1,13 +1,14 @@
 "use client";
 
 import { AlertTriangle, Bot, Info, Send, Sparkles, XCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTime } from "@/lib/analytics/format";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { normalizeSeverity, SEVERITY_LABEL, type SeverityTier } from "@/lib/agent/severity";
 import type { AgentInsight } from "@/app/api/agent/insights/route";
 
-const SEVERITY: Record<string, { color: string; icon: typeof Info }> = {
+const SEVERITY: Record<SeverityTier, { color: string; icon: typeof Info }> = {
   critical: { color: "border-red-200 bg-red-50 text-red-700", icon: XCircle },
   warning: { color: "border-amber-200 bg-amber-50 text-amber-700", icon: AlertTriangle },
   info: { color: "border-slate-200 bg-slate-50 text-slate-600", icon: Info },
@@ -17,6 +18,8 @@ export function AgentPage() {
   const [insights, setInsights] = useState<AgentInsight[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [severityFilter, setSeverityFilter] = useState<SeverityTier | "">("");
+  const [moduleFilter, setModuleFilter] = useState("");
 
   const [cabId, setCabId] = useActiveCabinet("wb");
   const [question, setQuestion] = useState("");
@@ -43,6 +46,12 @@ export function AgentPage() {
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
+
+  const modules = useMemo(() => [...new Set(insights.map((i) => i.module))].sort(), [insights]);
+  const filteredInsights = useMemo(() => insights.filter((i) =>
+    (!severityFilter || normalizeSeverity(i.severity) === severityFilter) &&
+    (!moduleFilter || i.module === moduleFilter)
+  ), [insights, severityFilter, moduleFilter]);
 
   const runAnalysis = async () => {
     setAnalyzing(true);
@@ -116,14 +125,33 @@ export function AgentPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Инсайты */}
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-slate-900">Инсайты</h2>
-          {insights.length === 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">Инсайты</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex gap-1 rounded-md bg-slate-100 p-0.5">
+                {([["", "Все"], ["critical", SEVERITY_LABEL.critical], ["warning", SEVERITY_LABEL.warning], ["info", SEVERITY_LABEL.info]] as const).map(([v, label]) => (
+                  <button key={v} onClick={() => setSeverityFilter(v)}
+                    className={`rounded px-2.5 py-1 text-xs font-semibold ${severityFilter === v ? "bg-white text-violet-700 shadow" : "text-slate-500"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {modules.length > 1 && (
+                <select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}
+                  className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600">
+                  <option value="">Все модули</option>
+                  {modules.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              )}
+            </div>
+          </div>
+          {filteredInsights.length === 0 ? (
             <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
-              Нет инсайтов. Запустите разбор.
+              {insights.length === 0 ? "Нет инсайтов. Запустите разбор." : "Нет инсайтов по фильтру."}
             </div>
           ) : (
-            insights.map((i) => {
-              const sev = SEVERITY[i.severity] ?? SEVERITY.info;
+            filteredInsights.map((i) => {
+              const sev = SEVERITY[normalizeSeverity(i.severity)];
               const Icon = sev.icon;
               return (
                 <div key={i.id} className={`rounded-xl border p-4 ${sev.color}`}>

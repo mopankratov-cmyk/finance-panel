@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const WB_ADV_TOKEN = process.env.WB_TOKEN_ADVERT;
 const ADV_BASE = "https://advert-api.wildberries.ru";
 
 const ACTIONS: Record<string, { path: string; status: number }> = {
@@ -15,9 +14,6 @@ const ACTIONS: Record<string, { path: string; status: number }> = {
 
 // Массовое действие над набором кампаний. Между запросами — пауза (rate limit WB).
 export async function POST(request: NextRequest) {
-  if (!WB_ADV_TOKEN) {
-    return NextResponse.json({ error: "WB_TOKEN_ADVERT не настроен" }, { status: 500 });
-  }
   const b = await request.json().catch(() => ({}));
   const ids: number[] = Array.isArray(b.advertIds) ? b.advertIds.filter((x: unknown) => typeof x === "number") : [];
   const action: string = typeof b.action === "string" ? b.action : "";
@@ -25,9 +21,11 @@ export async function POST(request: NextRequest) {
   if (!ids.length || !ACTIONS[action]) {
     return NextResponse.json({ error: "Неверные параметры (advertIds/action)" }, { status: 400 });
   }
+  const resolved = await resolveAdvertCabinetContext({ cabinetId: b.cabinetId, advertIds: ids });
+  if (resolved.response) return resolved.response;
+  const context = resolved.context;
 
   const { path, status } = ACTIONS[action];
-  const db = getSupabaseAdmin();
   const results: { advertId: number; ok: boolean; error?: string }[] = [];
 
   for (let i = 0; i < ids.length; i++) {
@@ -36,20 +34,29 @@ export async function POST(request: NextRequest) {
     try {
       const res = await fetch(`${ADV_BASE}${path}?id=${advertId}`, {
         method: "GET",
-        headers: { Authorization: WB_ADV_TOKEN },
+        headers: { Authorization: context.token },
         cache: "no-store",
       });
       if (res.ok) {
-        if (db) await db.from("wb_adverts").update({ status }).eq("advert_id", advertId);
+        await context.db.from("wb_adverts").update({ status }).eq("advert_id", advertId).eq("cabinet_id", context.cabinet.id);
+        await auditAdvertOperation({ context, advertId, action, status: "ok", oldValue: context.adverts.get(advertId)?.status ?? null, newValue: status, wbResult: { status: res.status } });
         results.push({ advertId, ok: true });
       } else {
+        const message = `WB ${res.status}: ${(await res.text()).slice(0, 160)}`;
+        await auditAdvertOperation({ context, advertId, action, status: "error", oldValue: context.adverts.get(advertId)?.status ?? null, newValue: status, wbResult: message });
         results.push({ advertId, ok: false, error: `WB ${res.status}` });
       }
     } catch (err) {
-      results.push({ advertId, ok: false, error: err instanceof Error ? err.message : "error" });
+      const message = err instanceof Error ? err.message : "error";
+      await auditAdvertOperation({ context, advertId, action, status: "error", oldValue: context.adverts.get(advertId)?.status ?? null, newValue: status, wbResult: message });
+      results.push({ advertId, ok: false, error: message });
     }
   }
 
   const okCount = results.filter((r) => r.ok).length;
-  return NextResponse.json({ ok: true, total: ids.length, success: okCount, results });
+  const ok = okCount === ids.length;
+  return NextResponse.json(
+    { ok, total: ids.length, success: okCount, failed: ids.length - okCount, results },
+    { status: ok ? 200 : 502 },
+  );
 }

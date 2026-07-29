@@ -13,16 +13,17 @@ export interface AgentInsight {
   created_at: string;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) {
     return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
   }
+  const limit = Math.min(200, Math.max(1, Number(new URL(request.url).searchParams.get("limit")) || 50));
   const { data, error } = await db
     .from("agent_insights")
     .select("id, module, severity, title, body, is_read, created_at")
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(limit);
 
   if (error) {
     return NextResponse.json({ data: null, error: error.message }, { status: 500 });

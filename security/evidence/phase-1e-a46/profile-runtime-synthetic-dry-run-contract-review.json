@@ -1,0 +1,105 @@
+{
+  "content_sha256": "fef3fc56937da4446c96730ea37680bfd3d065bf1dbb517e375c0691a1428626",
+  "decision_content": {
+    "created_at": "2026-07-23T08:00:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1E_A45_PROFILE_RUNTIME_SYNTHETIC_DRY_RUN_CONTRACT_REVIEWED_NO_DRY_RUN_PERFORMED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A47_PROFILE_RUNTIME_LOCAL_PRECHECK_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A46",
+    "production_profiles_approved": false,
+    "profile_runtime_synthetic_dry_run_contract_performed": true,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "profile runtime local precheck is not implemented or approved",
+      "profile runtime synthetic dry-run remains unperformed",
+      "profile worker runtime remains unmodified",
+      "gateway runtime remains unmodified",
+      "real credential broker storage remains unimplemented",
+      "provider/model API boundaries remain uncalled",
+      "OAuth refresh remains unapproved",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/profile_runtime_synthetic_dry_run_contracts.py",
+        "sha256": "97b831ce99459228afd8a4feb7a931b5a4b83b228d6c5bce1ccc80dba14d2743"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_profile_runtime_synthetic_dry_run_contracts.py",
+        "sha256": "7f1fcdc3403fe65d841b89ceef757bcc2baee99173185379fc5a60ff0bd8a76c"
+      }
+    ],
+    "reviewed_head": "2af9bf0da0223aa9a98ff47603ce03eb8e2885c0",
+    "reviewed_range": "96fb3cf8c1c0a903aec2d035ead8db5ae88084e9..2af9bf0da0223aa9a98ff47603ce03eb8e2885c0",
+    "rollback": "revert_commit_2af9bf0d_to_remove_profile_runtime_synthetic_dry_run_contract",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "changed_files_match_a44_allowlist": true,
+      "contract_layer_only": true,
+      "credentials_never_materialized": true,
+      "disabled_by_default": true,
+      "expected_profile_backend_policy_rollback_wiring_gateway_worker_activation_execution_invocation_synthetic_revalidated": true,
+      "hermes_core_dependency_and_runtime_launch_flags_denied": true,
+      "no_activation_execution": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_py_or_web_server_py_changes": true,
+      "no_gateway_runtime_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_oauth_refresh": true,
+      "no_process_env_reads": true,
+      "no_profile_start": true,
+      "no_profile_worker_runtime_changes": true,
+      "no_provider_or_model_api_calls_performed": true,
+      "no_provider_sdks": true,
+      "no_runtime_invocation": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "no_synthetic_dry_run": true,
+      "no_synthetic_invocation": true,
+      "profile_runtime_synthetic_dry_run_and_profile_start_flags_denied": true,
+      "profile_runtime_synthetic_dry_run_identity_capability_validation_present": true,
+      "profile_runtime_synthetic_dry_run_manifest_secret_free": true,
+      "profile_runtime_synthetic_invocation_fail_closed_reasons_propagated": true,
+      "provider_model_credential_and_oauth_flags_denied": true
+    },
+    "source_evidence": {
+      "phase_1e_a44_approval_command_sha256": "5b38f0502203289159ab6164e118d376423f3b07a48d316b4a7770d8499f2bf0",
+      "phase_1e_a44_content_sha256": "88debcc1fe9ca3936487ec0064a37c6fd603dfb6962af8e1e534769816535f3d",
+      "phase_1e_a44_file_sha256": "b3cbf065b5833c1f2bee9ce12547760806983c90eafb10d8832b302fd468cd65",
+      "phase_1e_a44_path": "security/evidence/phase-1e-a44/profile-runtime-synthetic-dry-run-approval-request.json"
+    },
+    "status": "PROFILE_RUNTIME_SYNTHETIC_DRY_RUN_CONTRACT_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 692
+      },
+      "targeted_1e_a46_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a46_profile_runtime_synthetic_dry_run_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_profile_runtime_synthetic_dry_run_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_profile_runtime_synthetic_dry_run_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    },
+    "verdict": "READY_FOR_PROFILE_RUNTIME_LOCAL_PRECHECK_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1e-a46.profile-runtime-synthetic-dry-run-contract-review.v1"
+}

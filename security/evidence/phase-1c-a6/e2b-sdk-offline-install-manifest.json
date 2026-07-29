@@ -1,0 +1,46 @@
+{
+  "approval_command_sha256": "130ec9330cc0600b237f498789ed778dd75f51e64f479d35855fbffc967870ac",
+  "contract_content_sha256": "e1f79f661e639380d66a7148d973ee6983cf21f3b9c7d467c4fe9592ca724000",
+  "dependency_install_scope": "isolated-user-local-venv",
+  "import_command_result": {
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "E2B_IMPORT_OK"
+  },
+  "installed_e2b_version": "2.34.0",
+  "installed_e2b_version_verified": true,
+  "mode": "execute-install",
+  "network_dependency_resolution_allowed": false,
+  "offline_import_verification_passed": true,
+  "pip_install_command_result": {
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "Looking in links: /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/e2b-2.34.0-py3-none-any.whl\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/python_dateutil-2.9.0.post0-py2.py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/wcmatch-10.2.1-py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/protobuf-7.35.1-cp310-abi3-macosx_10_9_universal2.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/httpcore-1.0.9-py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/httpx-0.28.1-py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/h2-4.3.0-py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/attrs-26.1.0-py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/packaging-26.2-py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/typing_extensions-4.16.0-py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/dockerfile_parse-2.0.1-py2.py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/rich-15.0.0-py3-none-any.whl (from e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/hyperframe-6.1.0-py3-none-any.whl (from h2<5,>=4->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/hpack-4.2.0-py3-none-any.whl (from h2<5,>=4->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/certifi-2026.7.22-py3-none-any.whl (from httpcore<2,>=1.0.5->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/h11-0.16.0-py3-none-any.whl (from httpcore<2,>=1.0.5->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/anyio-4.14.2-py3-none-any.whl (from httpx<1.0.0,>=0.27.0->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/idna-3.18-py3-none-any.whl (from httpx<1.0.0,>=0.27.0->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/bracex-3.0.1-py3-none-any.whl (from wcmatch<11,>=10.1->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/six-1.17.0-py2.py3-none-any.whl (from python-dateutil>=2.8.2->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/markdown_it_py-4.2.0-py3-none-any.whl (from rich>=14.0.0->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/pygments-2.20.0-py3-none-any.whl (from rich>=14.0.0->e2b==2.34.0)\nProcessing /Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0/mdurl-0.1.2-py3-none-any.whl (from markdown-it-py>=2.2.0->rich>=14.0.0->e2b==2.34.0)\nInstalling collected packages: typing-extensions, six, pygments, protobuf, packaging, mdurl, idna, hyperframe, hpack, h11, dockerfile-parse, certifi, bracex, attrs, wcmatch, python-dateutil, markdown-it-py, httpcore, h2, anyio, rich, httpx, e2b\n\nSuccessfully installed anyio-4.14.2 attrs-26.1.0 bracex-3.0.1 certifi-2026.7.22 dockerfile-parse-2.0.1 e2b-2.34.0 h11-0.16.0 h2-4.3.0 hpack-4.2.0 httpcore-1.0.9 httpx-0.28.1 hyperframe-6.1.0 idna-3.18 markdown-it-py-4.2.0 mdurl-0.1.2 packaging-26.2 protobuf-7.35.1 pygments-2.20.0 python-dateutil-2.9.0.post0 rich-15.0.0 six-1.17.0 typing-extensions-4.16.0 wcmatch-10.2.1"
+  },
+  "pip_install_used_locked_wheelhouse": true,
+  "pip_install_used_no_index": true,
+  "provider_api_calls_performed": false,
+  "provider_credential_presence_checked": false,
+  "provider_credential_value_printed": false,
+  "pypi_allowed": false,
+  "result": "PASS",
+  "rollback_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-venvs/2.34.0",
+  "rollback_plan_recorded": true,
+  "rollback_scope": "delete A6 venv only",
+  "sandbox_created": false,
+  "sanitized": true,
+  "schema_version": "pankster.phase1c-a6.e2b-sdk-offline-install-manifest.v1",
+  "venv_command_result": {
+    "returncode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "venv_created_under_allowed_path": true,
+  "venv_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-venvs/2.34.0",
+  "version_command_result": {
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "2.34.0"
+  },
+  "wheelhouse_path": "/Users/maksimpankratov/.local/pankster/e2b-sdk-wheelhouse/2.34.0"
+}

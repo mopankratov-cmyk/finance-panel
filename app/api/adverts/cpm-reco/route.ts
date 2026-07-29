@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
 
 export const dynamic = "force-dynamic";
 
-const WB_ADV_TOKEN = process.env.WB_TOKEN_ADVERT;
 const RECO_URL = "https://advert-api.wildberries.ru/api/advert/v0/bids/recommendations";
 
 // Рекомендованные ставки WB по кампании (advertId).
 export async function GET(request: NextRequest) {
-  if (!WB_ADV_TOKEN) return NextResponse.json({ error: "WB_TOKEN_ADVERT не настроен" }, { status: 500 });
   const sp = new URL(request.url).searchParams;
   const advertId = sp.get("advertId");
   const nmId = sp.get("nmId");
-  if (!advertId || !nmId) return NextResponse.json({ error: "Нужны advertId и nmId" }, { status: 400 });
+  const numericAdvertId = Number(advertId);
+  if (!Number.isInteger(numericAdvertId) || numericAdvertId <= 0 || !nmId) return NextResponse.json({ error: "Нужны advertId и nmId" }, { status: 400 });
+  const resolved = await resolveAdvertCabinetContext({ cabinetId: sp.get("cabinetId"), advertIds: [numericAdvertId] });
+  if (resolved.response) return resolved.response;
+  const context = resolved.context;
 
   try {
     const res = await fetch(`${RECO_URL}?advertId=${advertId}&nmId=${nmId}`, {
-      headers: { Authorization: WB_ADV_TOKEN },
+      headers: { Authorization: context.token },
       cache: "no-store",
     });
     if (!res.ok) {

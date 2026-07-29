@@ -1,0 +1,29 @@
+{
+  "approval_command_sha256": "8588f01605d122707be0a39f58640d5fa35e2302148dedbf9bc42d824e2494b9",
+  "approval_id": "p1c-20260722-e2bproofa4",
+  "contract_content_sha256": "0764a641d0e2b9dfea863eb3ce28703706ba5688d38328b7c06e6fcb85574314",
+  "contract_path": "docs/program/PHASE_1C_A4_E2B_SYNTHETIC_ISOLATION_PROOF_CONTRACT.ready.json",
+  "evidence_state": "PREPARED_FOR_OWNER_REVIEW",
+  "execution_approved": false,
+  "forbidden_before_owner_approval": [
+    "provider_api_calls",
+    "sandbox_creation",
+    "production_profiles",
+    "real_credentials",
+    "gateway_changes",
+    "canary",
+    "host_firewall_changes",
+    "auth_file_reads",
+    "keychain_reads",
+    "environment_value_dump",
+    "dependency_installation"
+  ],
+  "mode": "approval-prep",
+  "next_gate": "PHASE_1C_A4_OWNER_APPROVAL_REQUIRED",
+  "owner_approval_command": "APPROVE_PHASE_1C_E2B_SYNTHETIC_ISOLATION_PROOF:p1c-20260722-e2bproofa4:0764a641d0e2b9dfea863eb3ce28703706ba5688d38328b7c06e6fcb85574314",
+  "provider_api_calls_performed": false,
+  "result": "PASS",
+  "sandbox_created": false,
+  "sanitized": true,
+  "synthetic_only": true
+}

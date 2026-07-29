@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { loadStrategies, runRepricer, persistDecisions } from "@/lib/repricer/run";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -10,13 +12,20 @@ export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
 
-  const cabinet = new URL(request.url).searchParams.get("cabinet");
+  const requestedCabinet = new URL(request.url).searchParams.get("cabinet");
+  const { cabinetId } = await resolveShopCabinet(requestedCabinet ?? undefined);
+  if (!cabinetId) {
+    return NextResponse.json({ error: "Для прогона выберите один WB-кабинет" }, { status: 400 });
+  }
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
   const strategies = await loadStrategies();
   if (!strategies.length) {
     return NextResponse.json({ error: "Нет стратегий — применена ли миграция 20260626_repricer.sql?" }, { status: 400 });
   }
-  const rows = await runRepricer(cabinet, strategies);
+  const rows = await runRepricer(cabinetId, strategies);
   const runDate = new Date().toISOString().slice(0, 10);
-  const proposed = await persistDecisions(runDate, cabinet, rows);
-  return NextResponse.json({ runDate, cabinet, total: rows.length, proposed, skipped: rows.length - proposed });
+  const proposed = await persistDecisions(runDate, cabinetId, rows);
+  return NextResponse.json({ runDate, cabinet: cabinetId, total: rows.length, proposed, skipped: rows.length - proposed });
 }

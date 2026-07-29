@@ -1,0 +1,114 @@
+{
+  "content_sha256": "2b2f87a7b14714f7ecee3c200067100ed01871a810c60671b340536c18ea0b28",
+  "decision_content": {
+    "created_at": "2026-07-23T11:18:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1F_A0_A2_SCOPE_CHAIN_REVIEWED_FOR_SECURITY_READY_FOR_IMPLEMENTATION_APPROVAL_REQUEST_NOT_CODE",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "implementation_code_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1F_A4_IMPLEMENTATION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1F-A3",
+    "pre_code_required_controls": [
+      "implementation may not begin until a separate exact Phase 1F-A4 owner approval is issued",
+      "implement only files in the 1F-A2 future code allowlist unless a new approval expands scope",
+      "keep implementation limited to pure contract-layer code and tests",
+      "keep all new behavior disabled by default and fail closed",
+      "do not read process environment secrets, auth.json, Keychain, root credential pools, or OAuth stores",
+      "do not materialize credentials; use references/grants only if a future approved implementation introduces them",
+      "do not add network clients, provider SDKs, subprocess launch, sandbox launch, or runtime process launch",
+      "do not change gateway.py, web_server.py, profile worker runtime paths, Hermes core, app/lib runtime code, dependencies, or lockfiles",
+      "require full tools tests and static secret/runtime-surface scan before any implementation PR is eligible"
+    ],
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "Phase 1F runtime integration code is not implemented yet",
+      "future contract-layer implementation could drift from the A2 allowlist without validator enforcement in the implementation gate",
+      "real credential broker and model broker behavior remain contract-level only",
+      "OAuth refresh and root credential materialization remain explicitly unapproved and must receive separate review before any future integration",
+      "gateway, web_server, profile worker, and Hermes core integration remain unapproved",
+      "runtime execution, sandbox launch, subprocess launch, provider/model API calls, canary, and deployment remain unapproved"
+    ],
+    "reviewed_head": "77f3fa02d63d06cfa8bdf33fbf11c8d0e7ed2043",
+    "reviewed_range": "319a62723088595f0a8ebab85b2eac40da0b101c..77f3fa02d63d06cfa8bdf33fbf11c8d0e7ed2043",
+    "rollback": "remove_phase_1f_a3_review_artifacts_and_return_to_phase_1f_a2_scope_lock_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "a2_diff_limited_to_docs_evidence_validator_and_tests": true,
+      "a2_future_code_allowlist_is_narrow": true,
+      "a2_requires_independent_review_before_code": true,
+      "a2_requires_separate_a4_approval_before_implementation": true,
+      "disabled_by_default_behavior_required": true,
+      "fail_closed_behavior_required": true,
+      "no_app_components_or_lib_changes": true,
+      "no_auth_json_keychain_or_root_credential_reads_added": true,
+      "no_credential_materialization_approved": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_web_server_profile_worker_or_hermes_core_changes": true,
+      "no_network_clients_or_provider_sdks_added": true,
+      "no_provider_or_model_api_calls_performed": true,
+      "no_runtime_process_subprocess_or_sandbox_launch_added": true,
+      "no_sandbox_profile_canary_or_deployment_started": true,
+      "oauth_refresh_materialization_not_approved": true,
+      "root_auth_fallback_not_approved": true,
+      "scope_limited_to_docs_evidence_tools_and_tests": true,
+      "source_evidence_integrity_passed": true,
+      "validated_gate_chain_passed": true
+    },
+    "source_evidence": {
+      "phase_1f_a2_content_sha256": "7514aa9559a12d89793b9037922281e61d5233b88f94fd6d8b8852ac64ac485f",
+      "phase_1f_a2_file_sha256": "df1f400ea5b87ad14fe9e6f988b445c6a503d6180fe91af7412b4f579c075e33",
+      "phase_1f_a2_path": "security/evidence/phase-1f-a2/runtime-implementation-scope-lock.json",
+      "phase_1f_a2_status": "PHASE_1F_A2_RUNTIME_IMPLEMENTATION_SCOPE_LOCK_COMPLETE_NO_CODE"
+    },
+    "status": "PHASE_1F_A3_INDEPENDENT_SECURITY_REVIEW_BEFORE_CODE_COMPLETE_NO_IMPLEMENTATION_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 770
+      },
+      "phase_1f_validator_chain": {
+        "command": "python3 tools/phase_1f_a0_runtime_integration_planning_validator.py --mode validate-evidence && python3 tools/phase_1f_a1_runtime_integration_owner_approval_request_validator.py --mode validate-evidence && python3 tools/phase_1f_a2_runtime_implementation_scope_lock_validator.py --mode validate-evidence",
+        "result": "PASS",
+        "validators": 3
+      },
+      "targeted_1f_a3_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1f_a3_independent_security_review_before_code_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "validated_gate_chain": [
+      {
+        "content_sha256": "7d6a0ce18b9c20055fd5372e7f27a1977743cd191a28488187ce49713bc102b4",
+        "gate": "1F-A0",
+        "result": "PASS",
+        "validator": "tools/phase_1f_a0_runtime_integration_planning_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "555723638ab7600a4b42001c0009c5154c0312c66d56891187449ef0d0a58f93",
+        "gate": "1F-A1",
+        "result": "PASS",
+        "validator": "tools/phase_1f_a1_runtime_integration_owner_approval_request_validator.py --mode validate-evidence"
+      },
+      {
+        "content_sha256": "7514aa9559a12d89793b9037922281e61d5233b88f94fd6d8b8852ac64ac485f",
+        "gate": "1F-A2",
+        "result": "PASS",
+        "validator": "tools/phase_1f_a2_runtime_implementation_scope_lock_validator.py --mode validate-evidence"
+      }
+    ],
+    "verdict": "READY_FOR_PHASE_1F_A4_IMPLEMENTATION_APPROVAL_REQUEST_NOT_CODE"
+  },
+  "schema_version": "pankster.phase1f-a3.independent-security-review-before-code.v1"
+}

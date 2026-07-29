@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export interface RnpPeriodMetrics {
   ordersCount: number;
@@ -50,11 +52,11 @@ export async function buildRnpReport(cabinetId?: string | null): Promise<RnpRow[
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
 
-  const reportRes = await db.rpc("rnp_report", { p_cabinet: cabinetId || null });
-
-  if (reportRes.error) throw new Error(reportRes.error.message);
-
-  const rpcRows = (reportRes.data ?? []) as RpcRow[];
+  const allowedNmIds = await requestAllowedNmIds(cabinetId || null);
+  const rpcRows = (await loadRnpReportRows<RpcRow>(db, cabinetId || null, {
+    allowedNmIds,
+    label: "RNP: отчёт",
+  })).filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
 
   const rows: RnpRow[] = rpcRows.map((r) => {
     const monthSum = Number(r.orders_sum_month);

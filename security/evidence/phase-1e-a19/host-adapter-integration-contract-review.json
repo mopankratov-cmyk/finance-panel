@@ -1,0 +1,94 @@
+{
+  "schema_version": "pankster.phase1e-a19.host-adapter-integration-contract-review.v1",
+  "content_sha256": "4f3e871aaba8271da08f954421747f3bff6b7eb5f235dbdac74363d237766fb4",
+  "decision_content": {
+    "created_at": "2026-07-23T01:30:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1E_A18_HOST_ADAPTER_INTEGRATION_CONTRACT_REVIEWED_NO_HOST_RUNTIME_INTEGRATION",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "host_adapter_contract_performed": true,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A20_HOST_RUNTIME_EXECUTION_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A19",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "host adapter integration to Hermes code is not implemented or approved",
+      "gateway/profile worker integration remains absent",
+      "real credential broker storage remains unimplemented",
+      "provider/model API boundaries remain uncalled",
+      "no sandbox or subprocess runtime has been launched",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/host_adapter_integration_contracts.py",
+        "sha256": "2137033ad7521e4650e55b2e1f98d4fb4e248dd057a14a87f96e0c4a2854c9d7"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_host_adapter_integration_contracts.py",
+        "sha256": "1ca51d9762d6aa872521e5126125a44a6de45a1926f68712a5c7d4aa18bc3d47"
+      }
+    ],
+    "reviewed_head": "bbcb0b2326ff8483d4da373d0af5eb97f77e1aac",
+    "reviewed_range": "a1a795d33801359f1091f4e8460a4b4ef9c4ab4d..bbcb0b2326ff8483d4da373d0af5eb97f77e1aac",
+    "rollback": "revert_commit_bbcb0b23_to_remove_host_adapter_integration_contract",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "adapter_binding_fail_closed_reasons_propagated": true,
+      "changed_files_match_a17_allowlist": true,
+      "contract_layer_only": true,
+      "credentials_never_materialized": true,
+      "disabled_by_default": true,
+      "expected_profile_backend_policy_revalidated": true,
+      "gateway_core_and_runtime_launch_flags_denied": true,
+      "host_identity_capability_validation_present": true,
+      "host_manifest_secret_free": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_or_hermes_core_changes": true,
+      "no_network_clients": true,
+      "no_process_env_reads": true,
+      "no_provider_or_model_api_calls_performed": true,
+      "no_provider_sdks": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "rollback_policy_required": true
+    },
+    "source_evidence": {
+      "phase_1e_a17_approval_command_sha256": "da3dcc1c271d01d33251703410d2cf35169be5e51805a55d2038bdffd75685e4",
+      "phase_1e_a17_content_sha256": "68682ce1e641fde5e0c88e51fd1a72d76bf04736325f925f63705636c7b40835",
+      "phase_1e_a17_file_sha256": "87a4ba2c6cc26326818cf60ef6bc86caa14f42365d785ffd51398bee7064d26c",
+      "phase_1e_a17_path": "security/evidence/phase-1e-a17/host-adapter-integration-approval-request.json"
+    },
+    "status": "HOST_ADAPTER_INTEGRATION_CONTRACT_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 548
+      },
+      "targeted_1e_a19_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a19_host_adapter_integration_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_host_adapter_integration_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_host_adapter_integration_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    },
+    "verdict": "READY_FOR_HOST_RUNTIME_EXECUTION_APPROVAL_REQUEST_NOT_RUNTIME"
+  }
+}

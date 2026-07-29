@@ -1,0 +1,176 @@
+{
+  "content_sha256": "346de53f0268a98d52dbd9805c1a1b8e9c7851f5dce92b122ec0879c10f109d9",
+  "decision_content": {
+    "allowed_planning_scope": [
+      "define_phase_1d_gate_sequence",
+      "define_feature_flag_names_and_default_disabled_state",
+      "define_module_boundaries_for_policy_broker_adapter_sanitizer",
+      "define_test_fixture_boundaries",
+      "define_secret_scan_requirements",
+      "define_review_checkpoints"
+    ],
+    "created_at": "2026-07-23T01:05:00Z",
+    "decision": "PHASE_1D_SCOPE_READY_FOR_FEATURE_FLAGGED_IMPLEMENTATION_PLANNING_ONLY",
+    "deployment_approved": false,
+    "fail_closed_cases": [
+      "a14_dependency_missing_or_hash_mismatch",
+      "requested_code_before_scope_gate",
+      "feature_flag_default_true",
+      "module_requires_real_credentials",
+      "module_requires_provider_network",
+      "module_reads_auth_json_or_keychain",
+      "named_profile_enablement_requested",
+      "gateway_change_requested",
+      "dependency_change_requested_without_gate",
+      "secret_scan_failed"
+    ],
+    "feature_flags_default_disabled": {
+      "PANKSTER_CREDENTIAL_BROKER_ENABLED": false,
+      "PANKSTER_HOST_MODEL_BROKER_ENABLED": false,
+      "PANKSTER_NAMED_PROFILE_RUNTIME_ENABLED": false,
+      "PANKSTER_RUNTIME_ADAPTER_ENABLED": false,
+      "PANKSTER_SYNTHETIC_RUNNER_ENABLED": false
+    },
+    "forbidden_planning_scope": [
+      "modify_hermes_core_runtime_behavior",
+      "start_gateway_or_canary",
+      "start_profiles",
+      "call_real_model_or_provider_apis",
+      "read_auth_json_or_keychain",
+      "write_profile_provider_secrets",
+      "perform_oauth_refresh",
+      "enable_named_profiles",
+      "deploy_to_production"
+    ],
+    "gateway_changes_approved": false,
+    "implementation_code_approved_by_a0": false,
+    "initial_module_boundaries": {
+      "environment_sanitizer": {
+        "allowed": "derive sanitized key-value dicts from explicit inputs",
+        "forbidden": "reading process env wholesale in tests without sanitization"
+      },
+      "fake_grant_registry": {
+        "allowed": "opaque fake grants bound to profile task attempt policy runtime identity",
+        "forbidden": "real secrets or bearer-token semantics"
+      },
+      "fake_model_broker": {
+        "allowed": "deterministic fake responses and denials",
+        "forbidden": "provider SDKs or network clients"
+      },
+      "policy_schema_validator": {
+        "allowed": "pure validation of JSON-like policy objects",
+        "forbidden": "credential reads, filesystem credential paths, network calls"
+      },
+      "runtime_adapter_stubs": {
+        "allowed": "fail-closed interfaces and typed contracts",
+        "forbidden": "sandbox launch or gateway integration"
+      }
+    },
+    "next_gate": "1D-A1_IMPLEMENTATION_SCOPE_AND_BRANCH_CONTRACT",
+    "phase": "1D-A0",
+    "phase_1d_gate_sequence": [
+      {
+        "allows_code": false,
+        "gate": "1D-A1_IMPLEMENTATION_SCOPE_AND_BRANCH_CONTRACT",
+        "purpose": "lock exact implementation files, branch rules, feature flags, and non-goals before code"
+      },
+      {
+        "allows_code": false,
+        "gate": "1D-A2_FEATURE_FLAG_AND_CONFIG_SCAFFOLD_SPEC",
+        "purpose": "spec disabled-by-default flags and config reads with no runtime behavior change"
+      },
+      {
+        "allows_code": true,
+        "gate": "1D-A3_POLICY_SCHEMA_VALIDATOR_IMPLEMENTATION",
+        "purpose": "implement pure profile policy schema validator and unit tests only"
+      },
+      {
+        "allows_code": true,
+        "gate": "1D-A4_ENVIRONMENT_SANITIZER_IMPLEMENTATION",
+        "purpose": "implement pure environment allowlist-denylist sanitizer and unit tests only"
+      },
+      {
+        "allows_code": true,
+        "gate": "1D-A5_FAKE_GRANT_REGISTRY_AND_BROKER_IMPLEMENTATION",
+        "purpose": "implement fake in-memory grant registry and fake model broker for synthetic tests only"
+      },
+      {
+        "allows_code": true,
+        "gate": "1D-A6_RUNTIME_ADAPTER_INTERFACE_STUBS",
+        "purpose": "implement interfaces and fail-closed stubs without sandbox launch"
+      },
+      {
+        "allows_code": false,
+        "gate": "1D-A7_SYNTHETIC_RUNNER_PREFLIGHT_CONTRACT",
+        "purpose": "prepare but do not execute synthetic runner approval contract"
+      },
+      {
+        "allows_code": false,
+        "gate": "1D-A8_IMPLEMENTATION_SECURITY_REVIEW",
+        "purpose": "review implemented pure units before any execution approval"
+      }
+    ],
+    "planning_principles": [
+      "implementation_must_be_incremental",
+      "all_runtime_paths_behind_disabled_feature_flags",
+      "start_with_pure_policy_and_sanitizer_units",
+      "fake_brokers_before_real_brokers",
+      "synthetic_tests_before_any_sandbox_execution",
+      "no_gateway_default_profile_change",
+      "no_real_credentials_until_later_security_gate",
+      "named_profiles_remain_disabled",
+      "fail_closed_on_missing_policy_or_flag"
+    ],
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "implementation_code_ready_to_start": false,
+      "phase_1c_complete": true,
+      "phase_1d_planning_ready": true,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_preimplementation_checks": [
+      "working_tree_clean_before_each_gate",
+      "exact_files_listed_before_code_gate",
+      "no_dependency_or_lockfile_changes_without_separate_gate",
+      "no_env_or_secret_files_touched",
+      "validators_added_for_each_gate",
+      "full_tools_tests_pass",
+      "secret_scan_new_files_pass"
+    ],
+    "required_tests": {
+      "future_gate_tests": [
+        "a1_exact_file_scope_required",
+        "a2_flags_default_disabled",
+        "a3_policy_schema_pure_unit_tests",
+        "a4_environment_sanitizer_denylist_precedence",
+        "a5_fake_broker_secret_free",
+        "a6_runtime_adapter_stubs_fail_closed"
+      ],
+      "security": [
+        "no_auth_json_or_keychain_access",
+        "no_provider_secret_in_new_files",
+        "no_gateway_or_profile_start_commands",
+        "no_provider_network_clients_in_planning_artifacts"
+      ],
+      "validator_unit": [
+        "a0_requires_a14_dependency_hash",
+        "a0_forbids_runtime_deployment_provider_gateway_profile_scope",
+        "a0_declares_gate_sequence_with_code_permissions",
+        "a0_feature_flags_default_disabled",
+        "a0_module_boundaries_forbid_credentials_network_and_sandbox_launch"
+      ]
+    },
+    "rollback": "remain_on_phase_1c_closeout_and_do_not_start_phase_1d_code_gates",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1c_a14_content_sha256": "dc7374fdb34401768683f09874833ec7c3f666a569b18515ee4960a064ff1400",
+      "phase_1c_a14_file_sha256": "652284b5633d26eacc0c99c2b9f34471968f2a2f1bfdcfced6d02e0fb1505cf8",
+      "phase_1c_a14_path": "security/evidence/phase-1c-a14/final-implementation-readiness-review.json",
+      "phase_1c_a14_verdict": "READY_FOR_CONTROLLED_IMPLEMENTATION_PHASE_NOT_DEPLOYMENT"
+    },
+    "status": "CONTROLLED_IMPLEMENTATION_PLANNING_COMPLETE_NO_RUNTIME_APPROVAL"
+  },
+  "schema_version": "pankster.phase1d-a0.controlled-implementation-planning.v1"
+}

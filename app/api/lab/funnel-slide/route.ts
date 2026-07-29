@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
         system: "You write ONE concise English image prompt for a marketplace product card slide. Keep the real product intact and truthful. Output ONLY the prompt.",
         messages: [{ role: "user", content: `Product: ${body.sku_name || body.sku_art || "product"}${body.sku_dims ? ` (${body.sku_dims})` : ""}. Slide role: ${role}. Unified look/wardrobe: ${body.funnel_wardrobe || "consistent clean premium style"}. Write the prompt.` }],
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const t = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
       if (t) prompt = t;
     }

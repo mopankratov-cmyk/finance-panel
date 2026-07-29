@@ -1,0 +1,80 @@
+{
+  "content_sha256": "6c7f81b7d89118c9765360f734d1bbb8ffead126acedf4a8e8bc522f4a9b900f",
+  "decision_content": {
+    "contract_artifact": {
+      "content_sha256": "5b5daecd9c659a0f9292d8b0af828b017cfc3a266ee28487c2d03430c2b8efe8",
+      "contract_state": "READY_FOR_SECURITY_REVIEW_NO_EXECUTION_APPROVAL",
+      "execution_approval_issued": false,
+      "file_sha256": "289f9fac25ee2013e9658bc2c2deb618a693a1c8ac502b86fcf0dc3057ed76a7",
+      "future_execution_requires_new_owner_approval": true,
+      "path": "docs/program/PHASE_1D_A7_SYNTHETIC_RUNNER_PREFLIGHT_CONTRACT.ready.json",
+      "schema_version": "pankster.phase1d-a7.synthetic-runner-preflight-contract.v1"
+    },
+    "created_at": "2026-07-23T03:25:00Z",
+    "decision": "PREFLIGHT_CONTRACT_READY_FOR_IMPLEMENTATION_SECURITY_REVIEW_NOT_RUNTIME",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "fail_closed_cases": [
+      "a6_dependency_missing_or_hash_mismatch",
+      "contract_file_missing_or_hash_mismatch",
+      "contract_content_hash_mismatch",
+      "execution_approval_present_in_a7",
+      "sandbox_or_provider_scope_allowed_in_a7",
+      "real_credentials_allowed_in_a7",
+      "gateway_or_profile_start_allowed_in_a7"
+    ],
+    "gateway_changes_approved": false,
+    "implementation_scope": "synthetic_runner_preflight_contract_only_no_execution",
+    "next_gate": "1D-A8_IMPLEMENTATION_SECURITY_REVIEW",
+    "phase": "1D-A7",
+    "preflight_contract_invariants": {
+      "execution_allowed_by_this_gate": false,
+      "future_execution_requires_post_a8_owner_approval": true,
+      "gateway_or_profile_start_allowed_by_this_gate": false,
+      "preflight_contract_only": true,
+      "provider_api_calls_allowed_by_this_gate": false,
+      "real_credentials_allowed_by_this_gate": false,
+      "sandbox_creation_allowed_by_this_gate": false
+    },
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a6_dependency_satisfied": true,
+      "execution_approval_issued": false,
+      "preflight_contract_created": true,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_tests": {
+      "security": [
+        "contract_contains_no_secret_values",
+        "contract_contains_no_runtime_launch_command",
+        "contract_contains_no_provider_network_client"
+      ],
+      "validator_unit": [
+        "a7_requires_a6_dependency_hash",
+        "a7_contract_file_hash_matches",
+        "a7_contract_content_hash_matches",
+        "a7_forbids_execution_sandbox_provider_credentials_gateway_profile",
+        "a7_requires_future_post_a8_owner_approval"
+      ]
+    },
+    "rollback": "remove_a7_preflight_contract_artifacts_and_return_to_a6_runtime_adapter_stubs",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a6_content_sha256": "c4a6e7ed09e7964bac9c057a86dc0a2d6a413ff971deeab3609bf905edcda1c0",
+      "phase_1d_a6_file_sha256": "06ea35078937d094ed10072a52a8940d45df89c0047c428741a846ca7174a1e3",
+      "phase_1d_a6_path": "security/evidence/phase-1d-a6/runtime-adapter-interface-stubs.json",
+      "phase_1d_a6_status": "RUNTIME_ADAPTER_INTERFACE_STUBS_IMPLEMENTED_SYNTHETIC_ONLY"
+    },
+    "status": "SYNTHETIC_RUNNER_PREFLIGHT_CONTRACT_COMPLETE_NO_EXECUTION_APPROVAL",
+    "test_results": {
+      "targeted_preflight_contract_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1d_a7_synthetic_runner_preflight_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1d-a7.synthetic-runner-preflight-contract.v1"
+}

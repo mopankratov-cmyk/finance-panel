@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { wbTokenForNm, wbCabinetForNm } from "@/lib/wb/cabinetTokens";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -56,6 +57,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string 
   const debug = new URL(req.url).searchParams.get("debug") === "1";
   if (!nmId) return NextResponse.json({ words: [], days: [] });
 
+  const ownerCabinet = await wbCabinetForNm(nmId);
+  if (!(await hasCabinetAccess(ownerCabinet?.id ?? null))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+
   const db = getSupabaseAdmin();
   const today = mskDay();
   const fromDate = mskDay(Date.now() - HISTORY_DAYS * 86400000);
@@ -80,7 +86,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string 
       try {
         const live = await fetchLive(nmId, token, debug);
         if ("items" in live) {
-          const cab = await wbCabinetForNm(nmId);
+          const cab = ownerCabinet;
           const rows = (live.items ?? []).map((it) => ({
             nm_id: nmId,
             keyword: it.text || "",
@@ -101,7 +107,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ nm: string 
     }
   }
 
-  if (debug) return NextResponse.json({ snaps: snaps.length, haveToday, liveErr, resolved_cabinet: await wbCabinetForNm(nmId) });
+  if (debug) return NextResponse.json({ snaps: snaps.length, haveToday, liveErr, resolved_cabinet: ownerCabinet });
 
   // 3) сборка ответа из снимков (история по дням)
   if (!snaps.length) return NextResponse.json({ words: [], days: [], error: liveErr?.error });

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getWbCommissionMerged } from "@/lib/wb/commissions";
+import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
+import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,18 +24,25 @@ export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet"));
+  if (!(await hasCabinetAccess(p_cabinet))) {
+    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  const allowedNmIds = await requestAllowedNmIds(p_cabinet);
 
   const [rpcRes, costsRes, comm] = await Promise.all([
-    db.rpc("rnp_report", { p_cabinet }),
+    loadRnpReportRows<RpcRow>(db, p_cabinet, {
+      allowedNmIds,
+      label: "ABC WB: товары",
+    }),
     db.from("product_costs").select("article, name"),
-    getWbCommissionMerged(30),
+    getWbCommissionForCabinet(p_cabinet, 30),
   ]);
   const nameByArt = new Map<string, string>();
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");
   const acq = comm.avgAcqPct > 0 ? comm.avgAcqPct : 1.5;
   const commForNm = (nm: number) => comm.byNm.get(nm)?.pct ?? (comm.avgPct > 0 ? comm.avgPct : 25);
 
-  const items = ((rpcRes.data ?? []) as RpcRow[]).map((r) => {
+  const items = rpcRes.filter((r) => requestAllowsNm(allowedNmIds, r.nm_id)).map((r) => {
     const bs = Number(r.buyouts_sum_month ?? 0);
     const bc = Number(r.buyouts_month ?? 0);
     const cost = Number(r.cost ?? 0);

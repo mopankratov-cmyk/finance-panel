@@ -1,0 +1,93 @@
+{
+  "schema_version": "pankster.phase1b-c16.reclaim-only-closeout-execution-summary.v1",
+  "recorded_at": "2026-07-22T18:43:00Z",
+  "result": "PASS",
+  "mode": "execute-reclaim-only-closeout",
+  "approval": {
+    "approval_id": "p1b-20260722-reclaimonlyc16",
+    "approval_record_path": "docs/program/PHASE_1B_C16_RECLAIM_ONLY_CLOSEOUT_APPROVAL_RECORD.json",
+    "approval_record_canonical_sha256": "fa7434cbe2e1ce4b1a9719959e5750782be483c75da839a857aa9b9833ad5e70",
+    "contract_path": "docs/program/PHASE_1B_C16_RECLAIM_ONLY_CLOSEOUT_CONTRACT.ready.json",
+    "contract_content_sha256": "315f08ddf8dd4220127b33e880074c49e012941bdc1365aad7db424a5daa473d"
+  },
+  "sanitization": {
+    "raw_limactl_inventory_output_included": false,
+    "raw_process_logs_included": false,
+    "secrets_included": false,
+    "auth_files_read": false,
+    "keychain_read": false,
+    "environment_values_included": false
+  },
+  "before_inventory": {
+    "pc3": {
+      "command_sha256": "cd48666234cdac0740140714aa84fe4b2b1ae44634087b1ca38c56c32c225e2f",
+      "returncode": 0,
+      "target_confirmed": true,
+      "item_count": 1,
+      "names": [
+        "pc3"
+      ]
+    },
+    "pc9r2": {
+      "command_sha256": "2740bf331b2053e70494285f42fb37d1aee0048243d8f3e974f3466abea66e7e",
+      "returncode": 0,
+      "target_confirmed": true,
+      "item_count": 1,
+      "names": [
+        "pc9r2"
+      ]
+    }
+  },
+  "delete_execution": {
+    "pc3": {
+      "command_sha256": "d2d7d8d7f126f6bf374184112ef0735d198dcc479b1dd9bd1046b4674b3d6171",
+      "returncode": 0,
+      "stdout_present": false,
+      "stderr_sanitized_summary": "limactl emitted informational cleanup logs"
+    },
+    "pc9r2": {
+      "command_sha256": "894108902dd4e3ab561ace24311a57ab3f5e56253720d385cb45645d1af2c6bf",
+      "returncode": 0,
+      "stdout_present": false,
+      "stderr_sanitized_summary": "limactl emitted informational cleanup logs"
+    }
+  },
+  "after_inventory": {
+    "pc3_lima_home": {
+      "command_sha256": "5acdd3b54706ed718a14839c2afbc5dc5239332f23bd75fa1d0ec233fca83898",
+      "returncode": 0,
+      "item_count": 0,
+      "names": [],
+      "target_absent": true
+    },
+    "pc9r2_lima_home": {
+      "command_sha256": "5fc80fb52a4eff131658c81873d66db7a6a2af69363d94f24c2d6f321e61337a",
+      "returncode": 0,
+      "item_count": 0,
+      "names": [],
+      "target_absent": true
+    }
+  },
+  "hard_gates": {
+    "wildcard_delete_performed": false,
+    "broad_path_delete_performed": false,
+    "rm_rf_performed": false,
+    "default_lima_home_used": false,
+    "pfctl_executed": false,
+    "host_firewall_changed": false,
+    "gateway_changed": false,
+    "production_profiles_started": false,
+    "real_credentials_used": false,
+    "canary_started": false,
+    "network_probe_performed": false,
+    "auth_files_read": false,
+    "keychain_read": false,
+    "environment_values_dumped": false,
+    "evidence_deleted": false
+  },
+  "reclaim_result": {
+    "pc3_deleted": true,
+    "pc9r2_deleted": true,
+    "phase_1b_synthetic_lima_vms_remaining_in_scoped_homes": 0
+  }
+}

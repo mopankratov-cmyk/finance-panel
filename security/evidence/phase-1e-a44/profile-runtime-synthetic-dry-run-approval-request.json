@@ -1,0 +1,98 @@
+{
+  "content_sha256": "88debcc1fe9ca3936487ec0064a37c6fd603dfb6962af8e1e534769816535f3d",
+  "decision_content": {
+    "approval_scope": {
+      "app_or_lib_changes_allowed": false,
+      "auth_files_read_allowed": false,
+      "canary_allowed": false,
+      "credential_migration_allowed": false,
+      "dependency_changes_allowed": false,
+      "deployment_allowed": false,
+      "disabled_by_default_profile_runtime_synthetic_dry_run_contract_allowed": true,
+      "gateway_py_changes_allowed": false,
+      "gateway_runtime_changes_allowed": false,
+      "hermes_core_changes_allowed": false,
+      "keychain_read_allowed": false,
+      "local_static_validation_allowed": true,
+      "local_unittest_allowed": true,
+      "model_api_calls_allowed": false,
+      "oauth_refresh_allowed": false,
+      "process_env_secret_reads_allowed": false,
+      "production_profiles_allowed": false,
+      "profile_runtime_activation_allowed": false,
+      "profile_runtime_activation_execution_allowed": false,
+      "profile_runtime_invocation_allowed": false,
+      "profile_runtime_synthetic_dry_run_allowed": false,
+      "profile_runtime_synthetic_invocation_allowed": false,
+      "profile_start_allowed": false,
+      "profile_worker_runtime_changes_allowed": false,
+      "provider_api_calls_allowed": false,
+      "real_credentials_allowed": false,
+      "runtime_process_launch_allowed": false,
+      "sandbox_creation_allowed": false,
+      "subprocess_launch_allowed": false,
+      "tools_runtime_security_files_allowed": true,
+      "unit_tests_allowed": true,
+      "web_server_py_changes_allowed": false
+    },
+    "contract_artifact": {
+      "content_sha256": "b5f57f1ea1071997d7f7eb7ffa845569810b4a61bb35fcfa9e7826ef9400835e",
+      "contract_state": "READY_FOR_OWNER_APPROVAL_NO_PROFILE_RUNTIME_SYNTHETIC_DRY_RUN",
+      "file_sha256": "7c1117872dd9f87deaf2704a6eefbe496a41b9e816b4caf898cc672633543e88",
+      "path": "docs/program/PHASE_1E_A44_PROFILE_RUNTIME_SYNTHETIC_DRY_RUN_APPROVAL_REQUEST.ready.json",
+      "schema_version": "pankster.phase1e-a44.profile-runtime-synthetic-dry-run-approval-request.v1"
+    },
+    "created_at": "2026-07-23T07:40:00Z",
+    "credential_migration_approved": false,
+    "decision": "OWNER_APPROVAL_REQUEST_READY_FOR_FUTURE_PROFILE_RUNTIME_SYNTHETIC_DRY_RUN_CONTRACT_NOT_RUN",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "future_file_scope_allowlist": [
+      "tools/pankster_runtime_security/profile_runtime_synthetic_dry_run_contracts.py",
+      "tools/tests/test_pankster_runtime_security_profile_runtime_synthetic_dry_run_contracts.py"
+    ],
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "integration_performed": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A45_PROFILE_RUNTIME_SYNTHETIC_DRY_RUN_CONTRACT_AFTER_OWNER_APPROVAL",
+    "oauth_refresh_approved": false,
+    "owner_approval": {
+      "approval_command": "APPROVE_PHASE_1E_PROFILE_RUNTIME_SYNTHETIC_DRY_RUN_CONTRACT:p1e-20260723-syntheticdryruna44:b5f57f1ea1071997d7f7eb7ffa845569810b4a61bb35fcfa9e7826ef9400835e",
+      "approval_command_sha256": "5b38f0502203289159ab6164e118d376423f3b07a48d316b4a7770d8499f2bf0",
+      "approval_id": "p1e-20260723-syntheticdryruna44",
+      "approval_required_before_next_gate_integration": true
+    },
+    "phase": "1E-A44",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a43_dependency_satisfied": true,
+      "approval_request_created": true,
+      "awaiting_owner_approval_for_next_gate": true,
+      "integration_performed": false,
+      "production_ready": false,
+      "runtime_execution_ready": false
+    },
+    "required_changes": [],
+    "rollback": "remove_phase_1e_a44_approval_request_artifacts_and_return_to_phase_1e_a43_review_state",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1e_a43_content_sha256": "ba0fbc063cc202b39bf526ad870f477bfb817e95db73fcb92b0c6d0d4da27eb8",
+      "phase_1e_a43_file_sha256": "5ae837fa2c6037d4334b61a1ce5a95bef599d5912e657171a44b7a24a766e0a5",
+      "phase_1e_a43_path": "security/evidence/phase-1e-a43/profile-runtime-synthetic-invocation-contract-review.json",
+      "phase_1e_a43_verdict": "READY_FOR_PROFILE_RUNTIME_SYNTHETIC_DRY_RUN_APPROVAL_REQUEST_NOT_RUNTIME"
+    },
+    "status": "PROFILE_RUNTIME_SYNTHETIC_DRY_RUN_APPROVAL_REQUEST_COMPLETE_NO_DRY_RUN",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "targeted_approval_request_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a44_profile_runtime_synthetic_dry_run_approval_request_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    }
+  },
+  "schema_version": "pankster.phase1e-a44.profile-runtime-synthetic-dry-run-approval-request.v1"
+}

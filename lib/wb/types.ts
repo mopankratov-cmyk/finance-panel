@@ -56,6 +56,8 @@ export interface WbOrder {
   discountPercent?: number;
   isCancel?: boolean;
   finishedPrice?: number;
+  priceWithDisc?: number;
+  spp?: number;
   [key: string]: unknown;
 }
 

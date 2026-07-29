@@ -1,0 +1,209 @@
+{
+  "content_sha256": "9a69b9d6c9d9cdc8b7a9100b06fd1546038396b353181073e2abfe101a1bf7b2",
+  "decision_content": {
+    "adapter_design_principles": [
+      "host_control_plane_owns_runtime_lifecycle",
+      "sandbox_receives_only_allowlisted_environment",
+      "sandbox_receives_no_real_provider_credentials",
+      "sandbox_receives_only_non_secret_grant_references",
+      "broker_channel_is_policy_checked_and_audited",
+      "network_policy_defaults_to_deny_all",
+      "retry_reclaim_restart_preserve_attempt_binding",
+      "destroy_is_idempotent_and_audited",
+      "missing_runtime_policy_fails_closed",
+      "no_gateway_or_default_profile_change_in_design"
+    ],
+    "child_environment_contract": {
+      "background_process": "sanitized_environment_only",
+      "code_execution": "sanitized_environment_only",
+      "delegate_task": "sanitized_environment_or_unavailable_fail_closed",
+      "mcp": "sanitized_environment_or_unavailable_fail_closed",
+      "reclaim": "revalidate_runtime_identity_before_reuse",
+      "restart": "new_runtime_identity_and_policy_revalidation_required",
+      "retry": "new_attempt_new_grants_sanitized_environment",
+      "terminal": "sanitized_environment_only"
+    },
+    "created_at": "2026-07-22T23:40:00Z",
+    "credential_and_file_access_contract": {
+      "host_filesystem_mounts_default": "none_except_explicit_sanitized_artifacts",
+      "oauth_refresh_allowed_in_adapter": false,
+      "profile_auth_store_write_allowed": false,
+      "provider_secret_in_argv_allowed": false,
+      "provider_secret_in_artifacts_allowed": false,
+      "provider_secret_in_env_allowed": false,
+      "root_auth_json_fallback_allowed": false,
+      "root_auth_json_read_allowed": false,
+      "root_credential_pool_materialization_allowed": false
+    },
+    "decision": "RUNTIME_ADAPTER_DESIGN_ACCEPTED_FOR_IMPLEMENTATION_PLANNING_NOT_PRODUCTION",
+    "design_review_findings": {
+      "a9_dependency_satisfied": true,
+      "implementation_plan_ready": true,
+      "production_runtime_ready": false,
+      "requires_a11_profile_policy_contract": true,
+      "requires_a12_synthetic_integration_test_plan": true,
+      "requires_a13_operator_runbook": true,
+      "requires_a14_final_implementation_readiness_review": true
+    },
+    "fail_closed_cases": [
+      "a9_spec_missing_or_hash_mismatch",
+      "missing_runtime_security_context",
+      "profile_policy_missing_or_disabled",
+      "network_policy_missing",
+      "grant_missing_or_expired",
+      "grant_attempt_mismatch",
+      "env_denylist_violation",
+      "unexpected_secret_shaped_environment_value",
+      "broker_channel_unavailable",
+      "artifact_boundary_invalid",
+      "runtime_identity_mismatch_on_reclaim",
+      "destroy_failure",
+      "evidence_recorder_unavailable"
+    ],
+    "gateway_changes_approved": false,
+    "implementation_approved": false,
+    "launch_sequence": [
+      "load_runtime_security_context",
+      "validate_profile_policy_enabled",
+      "validate_network_policy_present",
+      "request_or_load_attempt_bound_grants",
+      "build_sanitized_environment",
+      "verify_no_denylisted_environment_keys",
+      "prepare_sanitized_artifact_boundary",
+      "prepare_broker_channel_metadata_without_credentials",
+      "launch_sandbox_future_only_after_approval",
+      "record_sanitized_launch_evidence",
+      "destroy_sandbox_idempotently_on_completion_or_failure"
+    ],
+    "next_gate": "A11_PRODUCTION_PROFILE_POLICY_CONTRACT",
+    "phase": "1C-A10",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_tests": {
+      "integration_synthetic": [
+        "synthetic_adapter_launch_receives_only_allowlisted_env",
+        "synthetic_child_terminal_env_is_sanitized",
+        "synthetic_code_execution_env_is_sanitized",
+        "synthetic_delegate_and_mcp_unavailable_fail_closed_or_sanitized",
+        "synthetic_retry_reclaim_restart_preserve_security_contract",
+        "synthetic_destroy_is_idempotent_and_audited"
+      ],
+      "security": [
+        "adapter_never_reads_root_auth_json",
+        "adapter_never_materializes_root_credential_pool",
+        "adapter_never_passes_provider_secret_to_env_argv_artifacts_or_evidence",
+        "adapter_fails_closed_when_broker_or_audit_unavailable",
+        "secret_scan_adapter_logs_journal_argv_evidence"
+      ],
+      "unit": [
+        "runtime_security_context_required_before_launch",
+        "environment_sanitizer_preserves_no_proxy_and_blocks_denylist",
+        "sandbox_launcher_denies_missing_network_policy",
+        "broker_channel_metadata_contains_no_credentials",
+        "artifact_boundary_rejects_root_auth_paths",
+        "lifecycle_manager_retry_uses_new_attempt_and_grants",
+        "reclaim_revalidates_runtime_identity",
+        "evidence_recorder_rejects_raw_env_and_secret_values"
+      ]
+    },
+    "rollback": "disable_runtime_adapter_feature_flag_reject_named_profile_launches_keep_gateway_unchanged",
+    "runtime_adapter_components": {
+      "artifact_boundary": {
+        "provider_secret_files_allowed": false,
+        "responsibility": "exchange inputs and outputs through sanitized artifact references or payload hashes, not shared credential-bearing host paths",
+        "root_auth_paths_allowed": false
+      },
+      "broker_channel_adapter": {
+        "approved_to_implement_in_a10": false,
+        "must_revalidate_policy_per_request": true,
+        "responsibility": "forward worker model/tool requests to host-side brokers using grant ids and idempotency keys without exposing credentials",
+        "secret_values_allowed": false
+      },
+      "environment_sanitizer": {
+        "applies_to": [
+          "sandbox_launch",
+          "terminal",
+          "code_execution",
+          "delegate_task",
+          "mcp",
+          "background_process",
+          "retry",
+          "reclaim",
+          "restart"
+        ],
+        "mandatory_denylist": [
+          "*_KEY",
+          "*_TOKEN",
+          "*_SECRET",
+          "*_PASSWORD",
+          "AUTHORIZATION",
+          "ANTHROPIC_*",
+          "OPENAI_*",
+          "GLM_*",
+          "GITEA_*",
+          "SUPABASE_*",
+          "TELEGRAM_*",
+          "E2B_API_KEY"
+        ],
+        "pankster_keys": [
+          "PANKSTER_PROFILE_ID",
+          "PANKSTER_WORKFLOW_ID",
+          "PANKSTER_TASK_ID",
+          "PANKSTER_ATTEMPT_ID",
+          "PANKSTER_POLICY_VERSION",
+          "PANKSTER_GRANT_IDS",
+          "PANKSTER_BROKER_MODE",
+          "PANKSTER_NETWORK_POLICY"
+        ],
+        "preserve_keys": [
+          "PATH",
+          "HOME",
+          "TMPDIR",
+          "TMP",
+          "TEMP",
+          "LANG",
+          "LC_ALL",
+          "LC_CTYPE",
+          "SHELL",
+          "NO_PROXY",
+          "no_proxy"
+        ],
+        "responsibility": "construct sandbox and child-process environments from allowlist plus mandatory denylist",
+        "secret_values_allowed": false
+      },
+      "evidence_recorder": {
+        "argv_secret_values_allowed": false,
+        "raw_env_allowed": false,
+        "responsibility": "record sanitized lifecycle, policy, broker, denial, retry, reclaim, and destroy evidence",
+        "secret_values_allowed": false
+      },
+      "lifecycle_manager": {
+        "destroy_idempotent": true,
+        "reclaim_must_revalidate_runtime_identity": true,
+        "responsibility": "coordinate launch, heartbeat, timeout, retry, reclaim, restart, destroy, and cleanup with one attempt binding",
+        "retry_changes_attempt_id": true,
+        "secret_values_allowed": false
+      },
+      "runtime_security_context_loader": {
+        "required_before_launch": true,
+        "responsibility": "load profile, workflow, task, attempt, policy version, grant ids, runtime identity hash, and network policy before launch",
+        "secret_values_allowed": false
+      },
+      "sandbox_launcher": {
+        "approved_to_execute_in_a10": false,
+        "network_policy_default": "deny_all",
+        "requires_destroy_guard": true,
+        "responsibility": "launch future E2B sandbox only after validated RuntimeSecurityContext and sanitized environment are ready"
+      }
+    },
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "a9_content_sha256": "c24d2b25bde9ec7c84126cbb37e88a2cfbffc0dceca2a534d83230d2dd42a469",
+      "a9_spec_file_sha256": "769d17a69d3c9dc9a8fa9969415a983fffc4d6d8a1b202c9b29f6ac3b62ea351",
+      "a9_spec_path": "security/evidence/phase-1c-a9/host-side-model-and-credential-broker-spec.json",
+      "a9_status": "SPEC_COMPLETE_NO_IMPLEMENTATION_APPROVED"
+    },
+    "status": "DESIGN_REVIEW_COMPLETE_NO_IMPLEMENTATION_APPROVED"
+  },
+  "schema_version": "pankster.phase1c-a10.runtime-adapter-design-review.v1"
+}

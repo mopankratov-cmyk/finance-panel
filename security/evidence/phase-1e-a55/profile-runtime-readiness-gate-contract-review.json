@@ -1,0 +1,109 @@
+{
+  "content_sha256": "1d4b15d32c020a89cbcb69911fe3311f9929b1aa8a91b9fae28f27093867d63b",
+  "decision_content": {
+    "created_at": "2026-07-23T10:05:00Z",
+    "credential_migration_approved": false,
+    "decision": "PHASE_1E_A54_PROFILE_RUNTIME_READINESS_GATE_CONTRACT_REVIEWED_NO_GATE_OPENED",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "hermes_core_changes_approved": false,
+    "model_api_calls_approved": false,
+    "next_gate": "PHASE_1E_A56_PHASE_CLOSEOUT_APPROVAL_REQUEST",
+    "oauth_refresh_approved": false,
+    "phase": "1E-A55",
+    "production_profiles_approved": false,
+    "profile_runtime_readiness_gate_contract_performed": true,
+    "provider_api_calls_approved": false,
+    "required_changes": [],
+    "residual_risks": [
+      "Phase 1E closeout package is not prepared or approved",
+      "profile runtime readiness gate remains unopened",
+      "profile runtime local precheck execution remains unperformed",
+      "profile worker runtime remains unmodified",
+      "gateway runtime remains unmodified",
+      "real credential broker storage remains unimplemented",
+      "provider/model API boundaries remain uncalled",
+      "OAuth refresh remains unapproved",
+      "deployment and production profiles remain unapproved"
+    ],
+    "reviewed_files": [
+      {
+        "path": "tools/pankster_runtime_security/profile_runtime_readiness_gate_contracts.py",
+        "sha256": "100295a651f330a0c1e396058376a0662a8af03506f2a7262ff33eb836129260"
+      },
+      {
+        "path": "tools/tests/test_pankster_runtime_security_profile_runtime_readiness_gate_contracts.py",
+        "sha256": "5323968c44b36d9196afed31b5e2adbc64c69d392eca9252f17a779fbe8a4f56"
+      }
+    ],
+    "reviewed_head": "199523a241f68b97f76381c33058b985ee2cb2da",
+    "reviewed_range": "dbde18e7e724f0f55f057b576f61578be9b53039..199523a241f68b97f76381c33058b985ee2cb2da",
+    "rollback": "revert_commit_199523a2_to_remove_profile_runtime_readiness_gate_contract",
+    "runtime_execution_approved": false,
+    "sandbox_execution_approved": false,
+    "security_review_findings": {
+      "changed_files_match_a53_allowlist": true,
+      "contract_layer_only": true,
+      "credentials_never_materialized": true,
+      "disabled_by_default": true,
+      "expected_profile_backend_policy_rollback_wiring_gateway_worker_activation_execution_invocation_synthetic_dry_run_precheck_and_precheck_execution_revalidated": true,
+      "hermes_core_dependency_and_runtime_launch_flags_denied": true,
+      "no_activation_execution": true,
+      "no_app_components_lib_changes": true,
+      "no_auth_json_or_keychain_reads": true,
+      "no_dependency_or_lockfile_changes": true,
+      "no_env_file_changes": true,
+      "no_gateway_py_or_web_server_py_changes": true,
+      "no_gateway_runtime_or_hermes_core_changes": true,
+      "no_local_precheck": true,
+      "no_local_precheck_execution": true,
+      "no_network_clients": true,
+      "no_oauth_refresh": true,
+      "no_process_env_reads": true,
+      "no_profile_start": true,
+      "no_profile_worker_runtime_changes": true,
+      "no_provider_or_model_api_calls_performed": true,
+      "no_provider_sdks": true,
+      "no_readiness_gate_opened": true,
+      "no_runtime_invocation": true,
+      "no_runtime_process_start": true,
+      "no_sandbox_launch": true,
+      "no_subprocess_launch": true,
+      "no_synthetic_dry_run": true,
+      "no_synthetic_invocation": true,
+      "profile_runtime_local_precheck_execution_fail_closed_reasons_propagated": true,
+      "profile_runtime_readiness_gate_and_profile_start_flags_denied": true,
+      "profile_runtime_readiness_gate_identity_capability_validation_present": true,
+      "profile_runtime_readiness_gate_manifest_secret_free": true,
+      "provider_model_credential_and_oauth_flags_denied": true
+    },
+    "source_evidence": {
+      "phase_1e_a53_approval_command_sha256": "eac764e65d9437023e3f0de5287a885ef7837188df0148aa6b7051be078c5999",
+      "phase_1e_a53_content_sha256": "1bbb3e223fbaea128926b848c8d1475bfb7bd5bdfeb390b21440dbf76fc51fe3",
+      "phase_1e_a53_file_sha256": "8955db1b563b764187bbebc5be2eed646faab113cc0945498d3720f77c2c7728",
+      "phase_1e_a53_path": "security/evidence/phase-1e-a53/profile-runtime-readiness-gate-approval-request.json"
+    },
+    "status": "PROFILE_RUNTIME_READINESS_GATE_CONTRACT_REVIEW_COMPLETE_NO_RUNTIME_APPROVAL",
+    "subprocess_launch_approved": false,
+    "test_results": {
+      "full_tools_unittest_discover": {
+        "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+        "result": "PASS",
+        "tests": 740
+      },
+      "targeted_1e_a55_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1e_a55_profile_runtime_readiness_gate_contract_review_validator",
+        "result": "PASS",
+        "tests": 5
+      },
+      "targeted_profile_runtime_readiness_gate_contract_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_profile_runtime_readiness_gate_contracts",
+        "result": "PASS",
+        "tests": 6
+      }
+    },
+    "verdict": "READY_FOR_PHASE_1E_CLOSEOUT_APPROVAL_REQUEST_NOT_RUNTIME"
+  },
+  "schema_version": "pankster.phase1e-a55.profile-runtime-readiness-gate-contract-review.v1"
+}

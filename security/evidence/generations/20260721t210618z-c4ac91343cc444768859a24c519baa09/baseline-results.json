@@ -1,0 +1,113 @@
+{
+  "harness_version": "0.1.0",
+  "results": [
+    {
+      "classification": "BASELINE_VULNERABILITY_CONFIRMED",
+      "evidence": {
+        "token_key_present": true
+      },
+      "execution_result": "PASS",
+      "limitations": "fixture does not start live gateway",
+      "observation": "synthetic gateway sentinel present in worker environment",
+      "observed": true,
+      "test_id": "SEC-BL-001",
+      "test_identity": "test_baseline_env_inheritance.test_sec_bl_001_gateway_env_inheritance_characterizes_vulnerability",
+      "test_name": "test_sec_bl_001_gateway_env_inheritance_characterizes_vulnerability"
+    },
+    {
+      "classification": "BASELINE_PARTIALLY_CONFIRMED",
+      "evidence": {
+        "direct": "profile-a",
+        "unwrapped": null,
+        "wrapped": "profile-a"
+      },
+      "execution_result": "PASS",
+      "limitations": "Python context fixture only",
+      "observation": "unwrapped thread loses synthetic profile context",
+      "observed": true,
+      "test_id": "SEC-BL-004",
+      "test_identity": "test_context_propagation.test_sec_bl_004_contextvar_loss_in_unwrapped_thread",
+      "test_name": "test_sec_bl_004_contextvar_loss_in_unwrapped_thread"
+    },
+    {
+      "classification": "BASELINE_VULNERABILITY_CONFIRMED",
+      "evidence": {
+        "exists": true,
+        "runtime_enabled": false
+      },
+      "execution_result": "PASS",
+      "limitations": "synthetic profile map only",
+      "observation": "profile existence check passes while runtime_enabled is false",
+      "observed": true,
+      "test_id": "SEC-BL-005",
+      "test_identity": "test_disabled_profile_gate.test_sec_bl_005_disabled_profile_without_runtime_gate_is_insufficient",
+      "test_name": "test_sec_bl_005_disabled_profile_without_runtime_gate_is_insufficient"
+    },
+    {
+      "classification": "BASELINE_VULNERABILITY_CONFIRMED",
+      "evidence": {
+        "code_execution": [
+          "HOME",
+          "LANG",
+          "PATH",
+          "SHELL",
+          "TMPDIR",
+          "no_proxy"
+        ],
+        "terminal": [
+          "HOME",
+          "LANG",
+          "NO_PROXY",
+          "PATH",
+          "SHELL",
+          "TMPDIR"
+        ]
+      },
+      "execution_result": "PASS",
+      "limitations": "modeled allowlists only",
+      "observation": "modeled allowlists preserve inconsistent NO_PROXY variants",
+      "observed": true,
+      "test_id": "SEC-BL-006",
+      "test_identity": "test_no_proxy_preservation.test_sec_bl_006_no_proxy_allowlists_are_inconsistent",
+      "test_name": "test_sec_bl_006_no_proxy_allowlists_are_inconsistent"
+    },
+    {
+      "classification": "BASELINE_VULNERABILITY_CONFIRMED",
+      "evidence": {
+        "exit_code": 0,
+        "stdout": "READ_OK"
+      },
+      "execution_result": "PASS",
+      "limitations": "synthetic temp paths only",
+      "observation": "same-UID fixture subprocess read synthetic root auth path",
+      "observed": true,
+      "test_id": "SEC-BL-002",
+      "test_identity": "test_root_fallback_fixture.test_sec_bl_002_same_uid_can_read_synthetic_root_auth",
+      "test_name": "test_sec_bl_002_same_uid_can_read_synthetic_root_auth"
+    },
+    {
+      "classification": "BASELINE_VULNERABILITY_CONFIRMED",
+      "evidence": {
+        "selected_root_provider": true
+      },
+      "execution_result": "PASS",
+      "limitations": "no OAuth or provider call",
+      "observation": "synthetic root provider selected when profile provider is absent",
+      "observed": true,
+      "test_id": "SEC-BL-003",
+      "test_identity": "test_root_fallback_fixture.test_sec_bl_003_root_credential_fallback_selects_root_provider",
+      "test_name": "test_sec_bl_003_root_credential_fallback_selects_root_provider"
+    }
+  ],
+  "schema_version": "phase1a.evidence.v1",
+  "scope": "synthetic-only",
+  "test_ids": [
+    "SEC-BL-001",
+    "SEC-BL-004",
+    "SEC-BL-005",
+    "SEC-BL-006",
+    "SEC-BL-002",
+    "SEC-BL-003"
+  ],
+  "timestamp": "2026-07-21T21:06:18Z"
+}

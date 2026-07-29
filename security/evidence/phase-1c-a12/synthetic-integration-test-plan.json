@@ -1,0 +1,206 @@
+{
+  "content_sha256": "267dc67342d617abc79c7736e9b08e29b4fbd8c69a9e0615a9627be02dd167de",
+  "decision_content": {
+    "coverage_mapping": {
+      "a10_runtime_adapter_design": [
+        "sanitized_env_all_children",
+        "network_policy_required",
+        "artifact_boundary_trap_paths",
+        "retry_reclaim_restart_destroy"
+      ],
+      "a11_profile_policy_contract": [
+        "named_profiles_disabled",
+        "allowlists_required",
+        "default_compatibility_not_inherited",
+        "credential_reference_allowlist"
+      ],
+      "a9_broker_contract": [
+        "grant_reference_only",
+        "host_side_fake_model_broker",
+        "budget_before_fake_provider_call",
+        "audit_secret_free"
+      ]
+    },
+    "created_at": "2026-07-23T00:15:00Z",
+    "decision": "SYNTHETIC_ONLY_INTEGRATION_TEST_PLAN_READY_NOT_RUNTIME_EXECUTION",
+    "design_review_findings": {
+      "a11_dependency_satisfied": true,
+      "production_runtime_ready": false,
+      "requires_a13_operator_runbook": true,
+      "requires_a14_final_implementation_readiness_review": true,
+      "synthetic_test_plan_ready": true,
+      "test_execution_ready": false
+    },
+    "execution_gate_requirements": [
+      "owner_approves_synthetic_test_execution_contract",
+      "runner_uses_isolated_synthetic_home",
+      "runner_blocks_network_or_uses_fake_broker_only",
+      "runner_prints_no_secret_values",
+      "runner_does_not_start_gateway_profiles_or_canary",
+      "runner_does_not_read_auth_json_or_keychain",
+      "runner_outputs_sanitized_evidence_pack"
+    ],
+    "fail_closed_cases": [
+      "fixture_contains_secret_shaped_value",
+      "test_requires_real_provider_credential",
+      "test_attempts_provider_network_call",
+      "test_attempts_gateway_restart",
+      "test_attempts_profile_launch",
+      "test_attempts_auth_json_read",
+      "test_attempts_keychain_read",
+      "test_attempts_oauth_refresh",
+      "test_attempts_root_pool_materialization",
+      "expected_output_contains_secret_value",
+      "evidence_recorder_unavailable"
+    ],
+    "fixture_inventory": {
+      "network_modes": [
+        "deny_all",
+        "broker_channel_fake_only"
+      ],
+      "secret_values_present": false,
+      "synthetic_artifacts": [
+        "sanitized-input-ref",
+        "sanitized-output-ref",
+        "root-auth-trap-path",
+        "credential-pool-trap-path"
+      ],
+      "synthetic_credentials": [
+        "fake-provider-reference-not-secret",
+        "fake-expired-grant",
+        "fake-replayed-grant",
+        "fake-owner-mismatch-grant"
+      ],
+      "synthetic_models": [
+        "fake-model-allowed",
+        "fake-model-denied"
+      ],
+      "synthetic_operations": [
+        "model.complete",
+        "tool.call",
+        "terminal.spawn",
+        "code.execute",
+        "delegate.spawn",
+        "mcp.spawn",
+        "background.spawn"
+      ],
+      "synthetic_profiles": [
+        "synthetic-dev-director-disabled",
+        "synthetic-content-director-disabled",
+        "synthetic-enabled-test-profile"
+      ]
+    },
+    "gateway_changes_approved": false,
+    "implementation_approved": false,
+    "next_gate": "A13_ROLLBACK_AND_OPERATOR_RUNBOOK",
+    "phase": "1C-A12",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "required_assertions": {
+      "all_tests_use_synthetic_fixtures": true,
+      "gateway_change_allowed": false,
+      "hermes_core_change_allowed_by_a12": false,
+      "production_profile_launch_allowed": false,
+      "provider_api_calls_allowed": false,
+      "raw_env_capture_allowed": false,
+      "real_provider_credentials_required": false,
+      "sandbox_execution_allowed_by_plan": false,
+      "secret_values_in_expected_outputs_allowed": false
+    },
+    "required_tests": {
+      "future_synthetic_runner": [
+        "synthetic_policy_contract_suite",
+        "synthetic_runtime_adapter_suite",
+        "synthetic_broker_suite",
+        "synthetic_child_process_suite",
+        "synthetic_lifecycle_suite",
+        "synthetic_secret_regression_suite"
+      ],
+      "security": [
+        "fixture_secret_scan",
+        "runner_secret_scan",
+        "evidence_pack_secret_scan",
+        "no_network_provider_call_probe",
+        "no_auth_json_or_keychain_access_probe"
+      ],
+      "validator_unit": [
+        "plan_rejects_provider_api_calls",
+        "plan_rejects_sandbox_execution_approval",
+        "fixture_inventory_declares_secret_values_absent",
+        "all_required_suites_present",
+        "coverage_maps_a9_a10_a11",
+        "execution_gate_forbids_gateway_profiles_auth_and_keychain"
+      ]
+    },
+    "rollback": "do_not_execute_synthetic_runner_retain_architecture_docs_only",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "a11_content_sha256": "2861465540563590d895cb99d2d1b40ce8e45512133102687c03c62c294d21cd",
+      "a11_contract_file_sha256": "4f4a035776c085a930a43a8f50d03b94895cde12b874efd3d265514edce20f93",
+      "a11_contract_path": "security/evidence/phase-1c-a11/production-profile-policy-contract.json",
+      "a11_status": "PROFILE_POLICY_CONTRACT_COMPLETE_NO_PRODUCTION_APPROVAL"
+    },
+    "status": "SYNTHETIC_INTEGRATION_TEST_PLAN_COMPLETE_NO_EXECUTION_APPROVAL",
+    "test_execution_approved": false,
+    "test_plan_principles": [
+      "synthetic_only_fixtures",
+      "no_real_credentials",
+      "no_provider_api_calls",
+      "no_production_profiles",
+      "no_gateway_or_default_runtime_change",
+      "deny_all_network_by_default",
+      "host_side_broker_is_fake_and_secret_free",
+      "root_auth_paths_are_synthetic_nonexistent_or_trap_paths",
+      "child_process_environments_are_asserted_sanitized",
+      "fail_closed_assertions_are_first_class"
+    ],
+    "test_suites": {
+      "broker_suite": [
+        "fake_model_broker_accepts_valid_attempt_bound_grant",
+        "fake_model_broker_denies_expired_grant",
+        "fake_model_broker_denies_replayed_grant",
+        "fake_model_broker_denies_owner_mismatch",
+        "fake_model_broker_denies_model_not_allowlisted",
+        "fake_model_broker_response_contains_no_provider_secret"
+      ],
+      "child_process_suite": [
+        "terminal_child_receives_sanitized_env",
+        "code_execution_child_receives_sanitized_env",
+        "delegate_task_child_sanitized_or_unavailable_fail_closed",
+        "mcp_child_sanitized_or_unavailable_fail_closed",
+        "background_process_child_receives_sanitized_env"
+      ],
+      "lifecycle_suite": [
+        "retry_uses_new_attempt_and_new_grants",
+        "reclaim_revalidates_runtime_identity",
+        "restart_uses_new_runtime_identity_and_policy_revalidation",
+        "destroy_is_idempotent_and_audited",
+        "destroy_failure_fails_closed"
+      ],
+      "policy_contract_suite": [
+        "disabled_named_profiles_deny_launch",
+        "missing_profile_policy_denies_launch",
+        "default_profile_compatibility_does_not_enable_named_profiles",
+        "model_provider_operation_allowlists_enforced",
+        "budget_required_and_enforced_before_fake_provider_call",
+        "credential_reference_allowlist_required"
+      ],
+      "runtime_adapter_suite": [
+        "runtime_security_context_required_before_launch",
+        "sanitized_env_preserves_no_proxy_and_no_proxy_lowercase",
+        "mandatory_denylist_blocks_sensitive_keys_even_if_allowlisted",
+        "sandbox_launch_metadata_contains_only_runtime_keys_and_grants",
+        "artifact_boundary_rejects_root_auth_and_pool_paths",
+        "evidence_recorder_rejects_raw_env"
+      ],
+      "secret_regression_suite": [
+        "root_auth_json_trap_path_not_read",
+        "root_credential_pool_trap_path_not_materialized",
+        "oauth_refresh_attempt_by_worker_or_adapter_denied",
+        "env_argv_logs_journal_evidence_secret_scan_passes",
+        "telegram_gitea_supabase_anthropic_glm_e2b_env_keys_denied"
+      ]
+    }
+  },
+  "schema_version": "pankster.phase1c-a12.synthetic-integration-test-plan.v1"
+}

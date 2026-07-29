@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireApiSession } from "@/lib/auth/apiGuard";
+import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
 
 export const dynamic = "force-dynamic";
 
-const WB_ADV_TOKEN = process.env.WB_TOKEN_ADVERT;
 const ADV_BASE = "https://advert-api.wildberries.ru";
 // защита: не даём поднять ставку больше чем в 2 раза за одно изменение
 const MAX_FACTOR = 2;
 const MIN_BID = 100; // минимум ₽
 
 // Текущая ставка кампании (CPM, ₽) из v2/adverts.
-async function currentBid(advertId: number): Promise<number | null> {
+async function currentBid(advertId: number, token: string): Promise<number | null> {
   try {
     const res = await fetch(`${ADV_BASE}/api/advert/v2/adverts?id=${advertId}`, {
-      headers: { Authorization: WB_ADV_TOKEN! },
+      headers: { Authorization: token },
       cache: "no-store",
     });
     if (!res.ok) return null;
@@ -27,29 +25,25 @@ async function currentBid(advertId: number): Promise<number | null> {
   }
 }
 
-async function logChange(advertId: number, oldBid: number | null, newBid: number, status: string, detail: string) {
-  const db = getSupabaseAdmin();
-  if (db) await db.from("advert_bid_changes").insert({ advert_id: advertId, old_bid: oldBid, new_bid: newBid, status, detail: detail.slice(0, 500) });
-}
-
 export async function POST(request: NextRequest) {
-  const gate = await requireApiSession();
-  if (gate) return gate;
-  if (!WB_ADV_TOKEN) return NextResponse.json({ error: "WB_TOKEN_ADVERT не настроен" }, { status: 500 });
   const b = await request.json().catch(() => ({}));
   const advertId: number | null = typeof b.advertId === "number" ? b.advertId : null;
   const newBid: number | null = typeof b.newBid === "number" ? b.newBid : null;
   if (!advertId || !newBid) return NextResponse.json({ error: "Нужны advertId и newBid" }, { status: 400 });
+  const resolved = await resolveAdvertCabinetContext({ cabinetId: b.cabinetId, advertIds: [advertId] });
+  if (resolved.response) return resolved.response;
+  const context = resolved.context;
 
-  const oldBid = await currentBid(advertId);
+  const stored = context.adverts.get(advertId);
+  const oldBid = await currentBid(advertId, context.token) ?? stored?.bid_cpm_rub ?? stored?.daily_budget ?? null;
 
   // Защита: минимум и лимит роста ×2
   if (newBid < MIN_BID) {
-    await logChange(advertId, oldBid, newBid, "rejected", `ниже минимума ${MIN_BID}₽`);
+    await auditAdvertOperation({ context, advertId, action: "bid", status: "rejected", oldValue: oldBid, newValue: newBid, wbResult: `ниже минимума ${MIN_BID}₽` });
     return NextResponse.json({ error: `Минимальная ставка ${MIN_BID}₽`, oldBid, newBid }, { status: 400 });
   }
   if (oldBid && newBid > oldBid * MAX_FACTOR) {
-    await logChange(advertId, oldBid, newBid, "rejected", `рост >×${MAX_FACTOR} (было ${oldBid})`);
+    await auditAdvertOperation({ context, advertId, action: "bid", status: "rejected", oldValue: oldBid, newValue: newBid, wbResult: `рост >×${MAX_FACTOR} (было ${oldBid})` });
     return NextResponse.json(
       { error: `Защита: нельзя поднять больше чем в ${MAX_FACTOR}× за раз (было ${oldBid}₽, лимит ${oldBid * MAX_FACTOR}₽)`, oldBid, newBid },
       { status: 400 },
@@ -61,20 +55,21 @@ export async function POST(request: NextRequest) {
   try {
     const res = await fetch(`${ADV_BASE}/api/advert/v1/bids`, {
       method: "PATCH",
-      headers: { Authorization: WB_ADV_TOKEN, "Content-Type": "application/json" },
+      headers: { Authorization: context.token, "Content-Type": "application/json" },
       body: JSON.stringify(wbBody),
       cache: "no-store",
     });
     const text = await res.text();
     if (!res.ok) {
-      await logChange(advertId, oldBid, newBid, "error", `WB ${res.status}: ${text.slice(0, 200)}`);
-      return NextResponse.json({ error: `WB ${res.status}: ${text.slice(0, 200)}`, oldBid, newBid, request: wbBody }, { status: 502 });
+      await auditAdvertOperation({ context, advertId, action: "bid", status: "error", oldValue: oldBid, newValue: newBid, wbResult: `WB ${res.status}: ${text.slice(0, 200)}` });
+      return NextResponse.json({ error: `WB ${res.status}: ${text.slice(0, 200)}`, oldBid, newBid }, { status: 502 });
     }
-    await logChange(advertId, oldBid, newBid, "ok", text.slice(0, 200));
-    return NextResponse.json({ ok: true, oldBid, newBid, request: wbBody, response: text.slice(0, 200) });
+    await context.db.from("wb_adverts").update({ bid_cpm_rub: newBid }).eq("advert_id", advertId).eq("cabinet_id", context.cabinet.id);
+    await auditAdvertOperation({ context, advertId, action: "bid", status: "ok", oldValue: oldBid, newValue: newBid, wbResult: text.slice(0, 200) });
+    return NextResponse.json({ ok: true, oldBid, newBid });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "error";
-    await logChange(advertId, oldBid, newBid, "error", msg);
+    await auditAdvertOperation({ context, advertId, action: "bid", status: "error", oldValue: oldBid, newValue: newBid, wbResult: msg });
     return NextResponse.json({ error: msg, oldBid, newBid }, { status: 500 });
   }
 }

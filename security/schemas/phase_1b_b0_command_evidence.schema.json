@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PANKSTER Phase 1B-B0 Command Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "command_id",
+    "tool",
+    "tool_version",
+    "sanitized_arguments",
+    "started_at",
+    "finished_at",
+    "exit_status",
+    "sanitized_stdout",
+    "sanitized_stderr",
+    "raw_stdout_sha256",
+    "raw_stderr_sha256",
+    "subject_artifact_sha256",
+    "subject_artifact_size_bytes",
+    "result"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "pankster.phase1b-b0.command-evidence.v1"
+    },
+    "command_id": {
+      "type": "string",
+      "pattern": "^cmd-[a-z0-9][a-z0-9._-]{3,127}$"
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "tool_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "sanitized_arguments": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 512
+      }
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "exit_status": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "sanitized_stdout": {
+      "type": "string",
+      "maxLength": 20000
+    },
+    "sanitized_stderr": {
+      "type": "string",
+      "maxLength": 20000
+    },
+    "raw_stdout_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "raw_stderr_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "subject_artifact_sha256": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "const": "not_applicable"
+        }
+      ]
+    },
+    "subject_artifact_size_bytes": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "const": "not_applicable"
+        }
+      ]
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED_KATA_ARCHIVE_INSPECTION_CAPABILITY_UNAVAILABLE"
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

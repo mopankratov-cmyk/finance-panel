@@ -1,0 +1,44 @@
+{
+  "schema_version": "pankster.phase1b-b2.pre-start-evidence.v1",
+  "recorded_at": "2026-07-22T14:09:32Z",
+  "approval_id": "p1b-20260722-syntheticruntimeb2",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_runtime_start": "83b6f203f02ab7c9fe6472555ba34e28e3ac8308",
+  "contract_path": "docs/program/PHASE_1B_B2_SYNTHETIC_RUNTIME_START_CONTRACT.ready.json",
+  "contract_file_sha256": "1acd4838d4a735c12c06f94056a1d57e151e7c88a1a9c2d1527db2e9c01a001a",
+  "contract_content_sha256": "33e69d32cc068007d5de497665b9ef3671228033763d30836bf9298908aa5665",
+  "approval_record_path": "docs/program/PHASE_1B_B2_SYNTHETIC_RUNTIME_START_APPROVAL_RECORD.json",
+  "approval_record_file_sha256": "43c654be9fb9f30b95d256f20f6f27cce8be2d7cf9f39ac671f8ba2d0b4ee3e4",
+  "approval_record_canonical_sha256": "9ec22d4449d973050f470d530b6c6171a2d1f461bd93b72bec5fd0c6290ea362",
+  "preflight": {
+    "approval_command": "APPROVE_SYNTHETIC_RUNTIME_START:p1b-20260722-syntheticruntimeb2:33e69d32cc068007d5de497665b9ef3671228033763d30836bf9298908aa5665",
+    "container_cli_version": "container CLI version 1.1.0 (build: release, commit: 5973b9c)",
+    "mode": "preflight",
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false,
+    "result": "OWNER_APPROVAL_REQUIRED",
+    "runtime_start_executed": false,
+    "runtime_status": {
+      "returncode": 1,
+      "stderr": "",
+      "stdout": "apiserver is not running and not registered with launchd"
+    },
+    "workload_started": false
+  },
+  "non_admin_execute_start_probe": {
+    "mode": "execute-start",
+    "reason": "ADMIN_AUTHORIZATION_REQUIRED",
+    "result": "DENIED"
+  },
+  "forbidden_actions_not_performed_by_agent": {
+    "container_system_start": true,
+    "container_workload_start": true,
+    "oci_pull_or_login": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "next_required_action": "OWNER_RUNS_PRINTED_ADMIN_COMMAND"
+}

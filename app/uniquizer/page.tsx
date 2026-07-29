@@ -66,7 +66,7 @@ function Uniquizer() {
   const recordOne = (rc: ReturnType<typeof makeRecipe>): Promise<string> => new Promise((resolve, reject) => {
     const v = videoRef.current, cv = canvasRef.current; if (!v || !cv) return reject("no video");
     const out = cv.captureStream(30);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const vstream = (v as any).captureStream ? (v as any).captureStream() : null;
     if (vstream) vstream.getAudioTracks().forEach((tr: MediaStreamTrack) => out.addTrack(tr));
     const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" : "video/webm";

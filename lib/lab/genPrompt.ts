@@ -64,10 +64,10 @@ export async function genLabPrompt(inp: GenPromptInput): Promise<{ prompt: strin
   const res = await client.messages.create({
     model: MODEL, max_tokens: 400,
     system: sys,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     messages: [{ role: "user", content: parts as any }],
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const prompt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
   return { prompt, imagesTotal: productBlocks.length + refBlocks.length };
 }

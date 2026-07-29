@@ -1,0 +1,44 @@
+# Phase 1B-C2 static Lima-vz synthetic VM config.
+# Do not start without a separate C3 owner approval.
+vmType: "vz"
+arch: "aarch64"
+
+images:
+  - location: "https://cloud-images.ubuntu.com/minimal/releases/noble/release-20260716/ubuntu-24.04-minimal-cloudimg-arm64.img"
+    arch: "aarch64"
+    digest: "sha256:7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934"
+    variant: "minimal"
+
+cpus: 2
+memory: "2GiB"
+disk: "20GiB"
+
+mounts: []
+mountType: "virtiofs"
+additionalDisks: []
+
+containerd:
+  system: false
+  user: false
+
+ssh:
+  localPort: 0
+  loadDotSSHPubKeys: false
+  forwardAgent: false
+  forwardX11: false
+  forwardX11Trusted: false
+
+portForwards: []
+networks: []
+propagateProxyEnv: false
+hostResolver:
+  enabled: false
+  ipv6: false
+  hosts: {}
+dns: []
+env: {}
+param: {}
+provision: []
+upgradePackages: false
+
+message: "PANKSTER Phase 1B-C2 synthetic Lima-vz VM. No host mounts, no containerd, no port forwards, no proxy env propagation."

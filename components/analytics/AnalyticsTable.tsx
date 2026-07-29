@@ -108,7 +108,7 @@ export function AnalyticsTable<T>({
               <tr
                 key={i}
                 onClick={() => onRowClick?.(row)}
-                className={`hover:bg-slate-50 ${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row) ?? ""}`}
+                className={`hover:bg-violet-50 ${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row) ?? ""}`}
               >
                 {columns.map((col) => (
                   <td

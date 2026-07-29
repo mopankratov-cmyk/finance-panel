@@ -1,0 +1,87 @@
+{
+  "schema_version": "pankster.phase1b-c1.lima-vz-install-execution.v1",
+  "recorded_at": "2026-07-22T15:08:42Z",
+  "branch": "phase/1b-b1-synthetic-install",
+  "approval_id": "p1b-20260722-limavzc1",
+  "approval_record_path": "docs/program/PHASE_1B_C1_LIMA_VZ_INSTALL_APPROVAL_RECORD.json",
+  "manifest_path": "docs/program/PHASE_1B_C1_LIMA_VZ_INSTALLATION_MANIFEST.ready.json",
+  "manifest_content_sha256": "c06a8aa4c7738ccb1bdea97ebf60f0037a426d5ca0a00ac43bf7c730556be0d9",
+  "owner_command_hash": "274a0617ff2628509a490b98f579fe8dedf76b6dda3df1fe015d7fc77cdc9e88",
+  "runner_commits": [
+    "de64e0e6",
+    "85150642",
+    "35cc5681",
+    "e9018033"
+  ],
+  "prior_denials_before_success": [
+    {
+      "reason": "DOWNLOAD_FAILED",
+      "detail": "rc=35",
+      "install_prefix_created": false
+    },
+    {
+      "reason": "ARCHIVE_MEMBER_PATH_REJECTED",
+      "detail": ".",
+      "resolution": "allow root directory member only when tar member is a directory",
+      "install_prefix_created": false
+    },
+    {
+      "reason": "ARCHIVE_LINK_TARGET_REJECTED",
+      "detail": "./share/doc/lima/templates",
+      "observed_link_target": "../../lima/templates",
+      "resolution": "allow relative link only when resolved target remains inside archive root",
+      "install_prefix_created": false
+    }
+  ],
+  "execution_result": {
+    "result": "PASS",
+    "mode": "execute-install",
+    "synthetic_gate": "PASS",
+    "production_install_state": "BLOCKED_AUTHENTICATION_BACKEND_PENDING",
+    "archive_sha256": "bbdef91774885a0d05f7b048c4eb89ae2bcf3a0c252ae7ca7934e63df76d93c3",
+    "checksums_sha256": "7da5160ee9b22de8eec4222e581334ee6326881e20d5aa8eb29b22f897312a5f",
+    "template_sha256": "abece69b9818b2b905d11bbeba84037dd6592d94fb3abdb58d01cb52c5e2f4e2",
+    "archive_inspection": {
+      "members": 213,
+      "files": 198,
+      "directories": 14,
+      "links": 1
+    },
+    "install_prefix": "/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0",
+    "limactl_path": "/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/limactl",
+    "lima_path": "/Users/maksimpankratov/.local/pankster/isolation-backends/lima-vz/2.2.0/bin/lima",
+    "guest_image_candidate_sha256": "7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934",
+    "guest_image_downloaded": false,
+    "runtime_start_executed": false,
+    "limactl_start_executed": false,
+    "vm_created": false,
+    "path_modified": false,
+    "gateway_changed": false,
+    "production_profiles_allowed": false,
+    "real_credentials_allowed": false
+  },
+  "post_install_checks": {
+    "limactl_version": "limactl version 2.2.0",
+    "lima_wrapper_version_with_temporary_path": "limactl version 2.2.0",
+    "limactl_binary_sha256": "f19a4fca3875e1017a5285672be4a62699c1e55918fb6a7afce86a14199e10d9",
+    "lima_wrapper_sha256": "88aeac60dbcb69ec675c0ce9af24d5f66255f4899fa73320402db57925500832",
+    "installed_files_maxdepth_2": 7,
+    "runtime_process_observation": "No Lima VM/QEMU/container runtime process observed; process scan matched only the post-install check commands themselves."
+  },
+  "forbidden_actions_not_performed": {
+    "limactl_start": true,
+    "vm_creation": true,
+    "guest_image_download": true,
+    "additional_guestagents_download": true,
+    "package_manager_operation": true,
+    "usr_local_write": true,
+    "path_modification": true,
+    "gateway_restart_or_change": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "canary_start": true,
+    "apple_container_retry": true
+  },
+  "final_status": "LIMA_VZ_ARCHIVE_INSTALLED_RUNTIME_NOT_STARTED"
+}

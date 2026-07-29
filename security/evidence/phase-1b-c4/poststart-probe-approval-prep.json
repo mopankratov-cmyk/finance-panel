@@ -1,0 +1,28 @@
+{
+  "schema_version": "pankster.phase1b-c4.poststart-probe-approval-prep.v1",
+  "recorded_at": "2026-07-22T16:09:09Z",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_c4_prep": "74251ff5a1958a81a4b58e4c7233a52535412e7e",
+  "contract_path": "docs/program/PHASE_1B_C4_SYNTHETIC_LIMA_POSTSTART_PROBE_CONTRACT.ready.json",
+  "approval_packet_path": "docs/program/PHASE_1B_C4_SYNTHETIC_LIMA_POSTSTART_PROBE_APPROVAL_PACKET.md",
+  "approval_id": "p1b-20260722-limaprobesc4",
+  "contract_content_sha256": "32f674f863d88570c1ee55f49ac85cca2cd2779bcdd992f3f248813048a2f92a",
+  "owner_command_hash": "cdc5c8639ed71c811c18fb3d744c3966d32fbf27f2b67988b126502b41be5089",
+  "c3_execution_evidence_sha256": "e8efcc387a1dcaa4f6f1f64fca2e1d2d0be2b360acb498d1e16b211567f3d3c4",
+  "network_probes_allowed": false,
+  "preserve_host_env_allowed": false,
+  "guest_writes_allowed": false,
+  "host_sync_allowed": false,
+  "forbidden_actions_not_performed": {
+    "guest_probe_execution": true,
+    "network_probe_execution": true,
+    "host_env_preservation": true,
+    "guest_write": true,
+    "host_sync": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "final_status": "OWNER_APPROVAL_REQUIRED_PROBES_NOT_EXECUTED"
+}

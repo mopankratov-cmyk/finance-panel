@@ -1,0 +1,116 @@
+{
+  "content_sha256": "ea1bfa81ea2dedfcd2db87c3ac754db1dae5723239a90481cb5e85a1f75d2bd9",
+  "decision_content": {
+    "created_at": "2026-07-23T02:40:00Z",
+    "decision": "SYNTHETIC_FAKE_GRANT_AND_MODEL_BROKER_READY_FOR_RUNTIME_ADAPTER_STUB_GATE_NOT_RUNTIME",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "fail_closed_cases": [
+      "missing_grant",
+      "expired_grant",
+      "profile_mismatch",
+      "task_mismatch",
+      "attempt_mismatch",
+      "runtime_identity_mismatch",
+      "provider_family_not_allowlisted",
+      "model_not_allowlisted",
+      "operation_not_allowlisted",
+      "grant_replay_detected",
+      "budget_exceeded"
+    ],
+    "fake_broker_contract": {
+      "audit_event_id_secret_free": true,
+      "denial_response_has_no_payload": true,
+      "provider_network_calls": false,
+      "provider_sdks_used": false,
+      "real_credentials_used": false,
+      "returns_synthetic_payload_only": true,
+      "usage_hash_secret_free": true
+    },
+    "fake_grant_contract": {
+      "attempt_binding_required": true,
+      "budget_enforced_before_response": true,
+      "expiry_supported": true,
+      "grant_id_deterministic_within_registry": true,
+      "grant_id_hex_length": 32,
+      "grant_id_prefix": "grant_opaque_",
+      "grant_reference_secret": false,
+      "model_allowlist_enforced": true,
+      "operation_allowlist_enforced": true,
+      "replay_detection": true,
+      "runtime_identity_binding_required": true
+    },
+    "gateway_changes_approved": false,
+    "implementation_scope": "fake_in_memory_grant_registry_and_fake_model_broker_only",
+    "implemented_files": {
+      "tools/pankster_runtime_security/fake_grants.py": "253dd3fbb5d630cc4c68e93d999d6ea68fcdddb4e6c778df0056194098dc5d78",
+      "tools/pankster_runtime_security/fake_model_broker.py": "f7ec0808d992fbec3e22bb81affec23e59d1e22dc31be7763f5c4fd6454a73f4",
+      "tools/tests/test_pankster_runtime_security_fake_grants.py": "bcde3d673600eda2ae7f2d7c781d185956c96741a4df1a6edcded11f486bd4cf",
+      "tools/tests/test_pankster_runtime_security_fake_model_broker.py": "9a07e206c5b872293c31ac5007436cae6986d95cd9065404e3c98d0ce308c5c1"
+    },
+    "next_gate": "1D-A6_RUNTIME_ADAPTER_INTERFACE_STUBS",
+    "phase": "1D-A5",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "purity_contract": {
+      "filesystem_writes": false,
+      "gateway_integration": false,
+      "network_calls": false,
+      "provider_sdks_used": false,
+      "reads_auth_json": false,
+      "reads_env_files": false,
+      "reads_keychain": false,
+      "reads_process_environment": false,
+      "sandbox_launch": false
+    },
+    "readiness_findings": {
+      "a4_dependency_satisfied": true,
+      "fake_grant_registry_implemented": true,
+      "fake_model_broker_implemented": true,
+      "production_ready": false,
+      "runtime_execution_ready": false,
+      "targeted_tests_passed": true
+    },
+    "required_tests": {
+      "security": [
+        "fake_broker_does_not_use_provider_sdks",
+        "fake_broker_does_not_read_real_credentials",
+        "denial_responses_do_not_materialize_payloads",
+        "audit_and_usage_hashes_are_secret_free"
+      ],
+      "unit": [
+        "opaque_grant_id_is_non_secret_shaped",
+        "valid_request_consumes_budget_once",
+        "replay_is_denied",
+        "identity_and_allowlist_mismatches_deny",
+        "expired_and_budgetless_grants_deny",
+        "fake_broker_returns_synthetic_payload_only",
+        "fake_broker_denies_before_payload_on_policy_failure"
+      ],
+      "validator_unit": [
+        "a5_requires_a4_dependency_hash",
+        "a5_implemented_files_match_hashes",
+        "a5_fake_grant_contract_enforces_attempt_runtime_allowlist_budget_replay",
+        "a5_fake_broker_contract_blocks_provider_network_and_credentials",
+        "a5_purity_contract_blocks_env_auth_keychain_network_gateway_sandbox"
+      ]
+    },
+    "rollback": "remove_fake_grants_and_fake_model_broker_files_and_return_to_a4_environment_sanitizer_only",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a4_content_sha256": "134354cebf43a950887d039b3bd11d244ef8eef28d19ae4370c161d32e37ed3a",
+      "phase_1d_a4_file_sha256": "780f139e4ba2e7ca0ac22cfa152944c2317e4128c9bd21e32ad0c9258ff049e9",
+      "phase_1d_a4_path": "security/evidence/phase-1d-a4/environment-sanitizer-implementation.json",
+      "phase_1d_a4_status": "ENVIRONMENT_SANITIZER_IMPLEMENTED_SYNTHETIC_ONLY"
+    },
+    "status": "FAKE_GRANT_REGISTRY_AND_BROKER_IMPLEMENTED_SYNTHETIC_ONLY",
+    "test_results": {
+      "targeted_fake_grant_and_broker_tests": {
+        "command": "python3 -m unittest tools.tests.test_pankster_runtime_security_fake_grants tools.tests.test_pankster_runtime_security_fake_model_broker",
+        "result": "PASS",
+        "tests": 10
+      }
+    }
+  },
+  "schema_version": "pankster.phase1d-a5.fake-grant-registry-and-broker-implementation.v1"
+}

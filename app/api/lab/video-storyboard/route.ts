@@ -20,12 +20,13 @@ export async function POST(req: NextRequest) {
   if (!baseImage && body.sku_art) {
     try {
       const { getSupabaseAdmin } = await import("@/lib/supabaseAdmin");
+      const { loadRnpReportRows } = await import("@/lib/rnp/rpcLoaders");
       const { wbCardImageUrl } = await import("@/lib/wb/cardImage");
       const db = getSupabaseAdmin();
       if (db) {
-        const { data } = await db.rpc("rnp_report");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const row = (data as any[] | null)?.find((r) => r.article === body.sku_art);
+        const data = await loadRnpReportRows<any>(db, null, { label: "Видео-сториборд: товары WB" });
+
+        const row = data.find((r) => r.article === body.sku_art);
         if (row?.nm_id) baseImage = wbCardImageUrl(Number(row.nm_id));
       }
     } catch { /* без фото — ошибка ниже */ }
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
           "Верни СТРОГО JSON: {\"title\":\"...\",\"beats\":[\"...\",\"...\",\"...\"],\"script\":\"короткий сценарий 2-3 предложения на русском\",\"motion\":\"<english cinematic motion prompt, keep product intact and crisp>\"}. Без преамбулы.",
         messages: [{ role: "user", content: `Товар: ${body.sku_name || body.sku_art || "товар"}${body.brief ? `. Бриф: ${body.brief}` : ""}${body.category ? `. Категория: ${body.category}` : ""}. Сделай сценарий короткого видео для карточки.` }],
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const txt = (res.content as any[]).filter((b) => b.type === "text").map((b) => b.text).join(" ");
       const m = txt.match(/\{[\s\S]*\}/);
       if (m) { const j = JSON.parse(m[0]); scenario = { title: j.title || scenario.title, beats: Array.isArray(j.beats) ? j.beats : scenario.beats, script: j.script || "", motion: j.motion || scenario.motion }; }

@@ -1,0 +1,74 @@
+{
+  "content_sha256": "df6e642748e5e09e8835ade9b805e2de6709a82137be1616cbce4e9653f09186",
+  "decision_content": {
+    "accepted_findings": {
+      "adapter_and_broker_stubs_failed_closed": true,
+      "approval_verified": true,
+      "fake_broker_replay_denied": true,
+      "local_dry_run_only": true,
+      "manifest_sanitized": true,
+      "no_auth_json_or_keychain_read": true,
+      "no_gateway_profile_canary_or_dependency_change": true,
+      "no_oauth_refresh": true,
+      "no_provider_or_model_api_calls": true,
+      "no_proxy_preserved": true,
+      "no_real_credentials_used": true,
+      "no_sandbox_created": true,
+      "no_subprocess_launch_performed": true,
+      "sensitive_key_names_denied_without_values": true,
+      "synthetic_only": true
+    },
+    "created_at": "2026-07-23T04:35:00Z",
+    "decision": "A10_SYNTHETIC_PREFLIGHT_EVIDENCE_ACCEPTED_NO_RUNTIME_OR_PRODUCTION_APPROVAL",
+    "dependency_changes_approved": false,
+    "deployment_approved": false,
+    "gateway_changes_approved": false,
+    "next_gate": "1D-A12_RUNTIME_INTEGRATION_SCOPE_DECISION",
+    "phase": "1D-A11",
+    "production_profiles_approved": false,
+    "provider_api_calls_approved": false,
+    "readiness_findings": {
+      "a10_dependency_satisfied": true,
+      "next_requires_new_scope_or_owner_approval": true,
+      "production_ready": false,
+      "runtime_side_effects_observed": false,
+      "synthetic_dry_run_review_passed": true
+    },
+    "required_changes": [],
+    "residual_risks": [
+      "A10 was an in-process synthetic dry-run only, not a real sandbox isolation run",
+      "host-side real credential broker remains unimplemented",
+      "real model broker/provider calls remain unapproved",
+      "production profiles remain disabled/not approved",
+      "future real runtime integration requires a new architecture and owner approval gate"
+    ],
+    "reviewed_manifest": {
+      "content_sha256": "868e77cd88444906f014b36d258066999fb1f1f1e135149e7fcb4d1583b84c2e",
+      "file_sha256": "9fbd66435832ffbd3d054d69f06505bbcef381ae7f7778629be716270baac5f0",
+      "path": "security/evidence/phase-1d-a10/synthetic-runner-preflight-execution.json",
+      "result": "PASS"
+    },
+    "rollback": "remove_a11_review_artifacts_and_return_to_a10_execution_evidence_state",
+    "sandbox_execution_approved": false,
+    "source_evidence": {
+      "phase_1d_a10_content_sha256": "0362ebaa610596dbd9e01db0f4cf20270c08a3543434b907e3d60496fd5cd453",
+      "phase_1d_a10_file_sha256": "13ac243a7c865caa1462e38a4ad29d009ca15f3bfdf8e1583f8fe93219fbdaed",
+      "phase_1d_a10_path": "security/evidence/phase-1d-a10/synthetic-runner-preflight-evidence.json",
+      "phase_1d_a10_status": "SYNTHETIC_RUNNER_PREFLIGHT_EXECUTION_COMPLETE_SYNTHETIC_DRY_RUN_ONLY"
+    },
+    "status": "SYNTHETIC_PREFLIGHT_EXECUTION_REVIEW_COMPLETE",
+    "test_results": {
+      "a10_validator_recheck": {
+        "command": "python3 tools/phase_1d_a10_synthetic_runner_preflight_validator.py --mode validate-evidence",
+        "result": "PASS"
+      },
+      "targeted_a11_validator_tests": {
+        "command": "python3 -m unittest tools.tests.test_phase_1d_a11_synthetic_preflight_execution_review_validator",
+        "result": "PASS",
+        "tests": 5
+      }
+    },
+    "verdict": "PASS_SYNTHETIC_DRY_RUN_REVIEW_NOT_PRODUCTION_READY"
+  },
+  "schema_version": "pankster.phase1d-a11.synthetic-preflight-execution-review.v1"
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "pankster.phase1b-c16.reclaim-only-closeout-approval-record.v1",
+  "approval_id": "p1b-20260722-reclaimonlyc16",
+  "approved_at": "2026-07-22T18:41:00Z",
+  "approved_by": "owner",
+  "decision": "APPROVED",
+  "contract_path": "docs/program/PHASE_1B_C16_RECLAIM_ONLY_CLOSEOUT_CONTRACT.ready.json",
+  "contract_content_sha256": "315f08ddf8dd4220127b33e880074c49e012941bdc1365aad7db424a5daa473d",
+  "owner_approval_command": "APPROVE_PHASE_1B_RECLAIM_ONLY_CLOSEOUT:p1b-20260722-reclaimonlyc16:315f08ddf8dd4220127b33e880074c49e012941bdc1365aad7db424a5daa473d",
+  "owner_approval_command_sha256": "5817cdcdec8dd1664c4002cc3a3547e4804510130b907a9a9517141ce949f0ef",
+  "reclaim_execution_allowed": true,
+  "targets": [
+    {
+      "instance_name": "pc3",
+      "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc3"
+    },
+    {
+      "instance_name": "pc9r2",
+      "lima_home": "/Users/maksimpankratov/.local/pankster/runtime/lc9r2"
+    }
+  ],
+  "wildcard_delete_allowed": false,
+  "broad_path_delete_allowed": false,
+  "rm_rf_allowed": false,
+  "default_lima_home_allowed": false,
+  "pfctl_execution_allowed": false,
+  "host_firewall_changes_allowed": false,
+  "gateway_changes_allowed": false,
+  "production_profiles_allowed": false,
+  "real_credentials_allowed": false,
+  "canary_allowed": false,
+  "network_probe_allowed": false,
+  "auth_files_read_allowed": false,
+  "keychain_read_allowed": false,
+  "environment_value_dump_allowed": false,
+  "evidence_deletion_allowed": false,
+  "record_sha256": "fa7434cbe2e1ce4b1a9719959e5750782be483c75da839a857aa9b9833ad5e70"
+}

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Loader2, Scale } from "lucide-react";
 import { FinanceTabs } from "@/components/FinanceTabs";
+import { useActiveCabinet } from "@/lib/useActiveCabinet";
+import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 
 interface LossItem { key: string; label: string; rub: number }
 interface Loss { retail: number; payout: number; totalDeductions: number; items: LossItem[]; error?: string; noCabinet?: boolean }
@@ -50,12 +52,15 @@ export default function SummaryPage() {
   const [weeks, setWeeks] = useState(4);
   const [wb, setWb] = useState<Loss | null>(null);
   const [oz, setOz] = useState<Loss | null>(null);
+  const [ozonCab, setOzonCab, ozonReady] = useActiveCabinet("ozon");
+  const [wbCab, setWbCab, wbReady] = useActiveCabinet("wb");
 
   useEffect(() => {
+    if (!ozonReady || !wbReady) return;
     setWb(null); setOz(null);
-    fetch(`/api/wb/losses?weeks=${weeks}`, { cache: "no-store" }).then((r) => r.json()).then(setWb).catch(() => setWb({ retail: 0, payout: 0, totalDeductions: 0, items: [], error: "сеть" }));
-    fetch(`/api/ozon/losses?weeks=${weeks}`, { cache: "no-store" }).then((r) => r.json()).then(setOz).catch(() => setOz({ retail: 0, payout: 0, totalDeductions: 0, items: [], error: "сеть" }));
-  }, [weeks]);
+    fetch(`/api/wb/losses?weeks=${weeks}${wbCab ? `&cabinet=${wbCab}` : ""}`, { cache: "no-store" }).then((r) => r.json()).then(setWb).catch(() => setWb({ retail: 0, payout: 0, totalDeductions: 0, items: [], error: "сеть" }));
+    fetch(`/api/ozon/losses?weeks=${weeks}${ozonCab ? `&cabinet=${ozonCab}` : ""}`, { cache: "no-store" }).then((r) => r.json()).then(setOz).catch(() => setOz({ retail: 0, payout: 0, totalDeductions: 0, items: [], error: "сеть" }));
+  }, [weeks, wbCab, ozonCab, wbReady, ozonReady]);
 
   const both = wb && oz && !wb.error && !oz.error && !wb.noCabinet && !oz.noCabinet;
   const totRetail = (wb?.retail ?? 0) + (oz?.retail ?? 0);
@@ -71,6 +76,8 @@ export default function SummaryPage() {
           <h1 className="text-2xl font-bold text-gray-900">Сводка по маркетплейсам</h1>
           <p className="text-sm text-gray-500">WB и Ozon рядом: выручка, удержания, к перечислению</p>
         </div>
+        <CabinetSwitcher mp="wb" accent="violet" onChange={setWbCab} />
+        <CabinetSwitcher mp="ozon" accent="sky" onChange={setOzonCab} />
         <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
           {[2, 4, 8].map((w) => (
             <button key={w} onClick={() => setWeeks(w)} className={`rounded px-3 py-1 text-xs font-semibold ${weeks === w ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{w} нед</button>

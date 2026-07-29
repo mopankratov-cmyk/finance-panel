@@ -28,15 +28,21 @@ export default function PnlPage() {
   const [tax, setTax] = useState(7);
   const [data, setData] = useState<{ wb: WB; ozon: OZ } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [ozonCab, setOzonCab] = useActiveCabinet("ozon");
-  const [wbCab, setWbCab] = useActiveCabinet("wb");
+  const [ozonCab, setOzonCab, ozonReady] = useActiveCabinet("ozon");
+  const [wbCab, setWbCab, wbReady] = useActiveCabinet("wb");
 
   useEffect(() => {
+    if (!ozonReady || !wbReady) return;
+    let ignore = false;
     setLoading(true);
     const q = `weeks=${weeks}&tax=${tax}${ozonCab ? `&cabinet=${ozonCab}` : ""}${wbCab ? `&wb_cabinet=${wbCab}` : ""}`;
     fetch(`/api/opiu/mp?${q}`, { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setData({ wb: d.wb, ozon: d.ozon })).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [weeks, tax, ozonCab, wbCab]);
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((d) => { if (!ignore) setData({ wb: d.wb, ozon: d.ozon }); })
+      .catch(() => { if (!ignore) setData(null); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, [weeks, tax, ozonCab, wbCab, ozonReady, wbReady]);
 
   const wb = data?.wb, oz = data?.ozon;
   const totProfit = (wb && !wb.error ? wb.profit : 0) + (oz && !oz.error ? oz.profit : 0);

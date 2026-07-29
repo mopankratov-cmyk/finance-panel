@@ -1,0 +1,17 @@
+{
+  "approval_id": "p1b-20260722-artifactpinningb0",
+  "approved_at": "2026-07-22T13:50:14Z",
+  "approved_by": "owner:maksimpankratov",
+  "authn_context": "interactive-synthetic",
+  "authorization_event_id": "hgate-codex-20260722-b1",
+  "authorization_source": "pankster-human-gate",
+  "decision": "APPROVED",
+  "expires_at": "2026-07-25T12:06:00Z",
+  "manifest_content_sha256": "c37a6f727d935d1eeb746ebabe6c58a0b19eb32822c0c73561dbb5b0e34f68aa",
+  "owner_command_hash": "ad677ba25108f91c3e386235e961ac3a2a2b68ff440be23adf2db27d285cf4b7",
+  "production_profiles_allowed": false,
+  "real_credentials_allowed": false,
+  "record_sha256": "0bd1e50ecfe888f3c56c18ad424d838c977b16a8a474ab0d9118e5e695e32065",
+  "synthetic_only": true,
+  "trust_anchor_registry_sha256": "44d3f97eb272524f4bc8d5ef0ae9c92c883553387889a0d5d0e4b7d476b7e82b"
+}

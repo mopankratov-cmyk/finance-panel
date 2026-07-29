@@ -1,0 +1,46 @@
+{
+  "schema_version": "pankster.phase1b-c2.lima-vz-static-config-validation.v1",
+  "recorded_at": "2026-07-22T15:12:48Z",
+  "branch": "phase/1b-b1-synthetic-install",
+  "commit_before_c2": "0892a0e6861abdf9ef591af3fe4a633320ee4f6e",
+  "validation_result": {
+    "result": "PASS",
+    "mode": "static-config-validation",
+    "config_path": "docs/program/PHASE_1B_C2_LIMA_VZ_SYNTHETIC_VM_CONFIG.yaml",
+    "config_sha256": "ec4ee37801c5168f3522dbd58ab729e565918c684c415265d3079eb7a3a74008",
+    "vm_type": "vz",
+    "arch": "aarch64",
+    "image_digest": "sha256:7e938df669e3b1923595eeda97aa28569350c5283e05a835cc912a2486a54934",
+    "host_mounts": 0,
+    "containerd_system": false,
+    "containerd_user": false,
+    "port_forwards": 0,
+    "explicit_networks": 0,
+    "proxy_env_propagation": false,
+    "host_resolver_enabled": false,
+    "guest_env_entries": 0,
+    "guest_param_entries": 0,
+    "runtime_start_executed": false,
+    "guest_image_downloaded": false
+  },
+  "unit_tests": {
+    "command": "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
+    "result": "PASS",
+    "tests_run": 185
+  },
+  "forbidden_actions_not_performed": {
+    "limactl_start": true,
+    "limactl_create": true,
+    "guest_image_download": true,
+    "vm_creation": true,
+    "runtime_healthcheck": true,
+    "workload_execution": true,
+    "production_profile_start": true,
+    "real_credentials_use": true,
+    "keychain_credential_creation": true,
+    "gateway_restart_or_change": true,
+    "canary_start": true
+  },
+  "residual_blocker_before_c3": "Lima default guest egress/NAT behavior is not yet proven to be blocked by networks: []. C3 runtime start requires an explicit network-risk decision.",
+  "final_status": "STATIC_CONFIG_READY_RUNTIME_NOT_APPROVED"
+}
