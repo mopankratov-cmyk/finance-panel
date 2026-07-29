@@ -38,6 +38,7 @@ const TABS = [
   { href: "/pnl", label: "ОПиУ (до СПП)" },
   { href: "/losses", label: "Где теряем" },
   { href: "/opiu", label: "WB недельный" },
+  { href: "/unit", label: "Маржа по артикулам" },
 ];
 
 export function FinanceTabs() {

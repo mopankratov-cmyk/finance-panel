@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
@@ -7,9 +8,13 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { formatUnitPeriod, parseUnitPeriodQuery, UNIT_PERIOD_TIMEZONE, unitPeriodCacheIdentity } from "@/lib/unit/period";
+import { parseUnitMoneyQuery } from "@/lib/unit/query";
 import { mergeScopedUnitPeriodRows, type ScopedUnitCatalogRow, type ScopedUnitDailyRow, type ScopedUnitReferenceRow } from "@/lib/unit/scopedPeriodReport";
 import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { checkCronAuth } from "@/lib/sync/helpers";
+import { parseUnitCabinetScope } from "@/lib/unit/cabinetScope";
+import { isConfiguredCronBearer } from "@/lib/unit/cronAuth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,20 +36,41 @@ interface RpcRow {
 // Целевые цены и маржу не публикуем, пока нет себестоимости и фактических ставок WB.
 // СПП %/Цена после СПП НЕ считаем — в БД нет (discount_percent ≠ СПП).
 export async function GET(req: NextRequest) {
+  const isCron = isConfiguredCronBearer(
+    req.headers.get("authorization"),
+    process.env.CRON_SECRET,
+  ) && checkCronAuth(req) === null;
+  if (!isCron) {
+    const gate = await requireApiSession(["director", "finance", "manager"]);
+    if (gate) return gate;
+  }
+
   const sp = new URL(req.url).searchParams;
   let period;
+  let money;
+  let cabinetScope;
   try {
     period = parseUnitPeriodQuery(sp);
+    money = parseUnitMoneyQuery(sp);
+    cabinetScope = parseUnitCabinetScope(sp.get("cabinet"));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Некорректный период" }, { status: 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Некорректные параметры" }, { status: 400 });
   }
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ headers: [], rows: [], img_urls: [] });
-  const num = (k: string, def: number) => { const v = Number(sp.get(k)); return Number.isFinite(v) && sp.get(k) !== null ? v : def; };
-  const taxPct = num("tax", 7);        // налог
-  const ff = num("ff", 0);             // фулфилмент ₽/ед (нет per-SKU данных)
-  const targetMargin = num("margin", 25); // целевая маржа для «цены до СПП для N% маржи»
-  const { cabinetId: p_cabinet } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
+  if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
+  let resolved = { cabinetId: null as string | null, label: undefined as string | undefined };
+  if (!cabinetScope.aggregate) {
+    try {
+      resolved = await resolveShopCabinet(cabinetScope.rawCabinet);
+    } catch {
+      return NextResponse.json({ error: "Сервис кабинетов временно недоступен" }, { status: 503 });
+    }
+    if (resolved.cabinetId !== cabinetScope.rawCabinet) {
+      return NextResponse.json({ error: "Кабинет не найден" }, { status: 404 });
+    }
+  }
+  const p_cabinet = cabinetScope.aggregate ? null : resolved.cabinetId;
+  const { taxPct, ff, targetMargin } = money;
   if (!(await hasCabinetAccess(p_cabinet))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
@@ -59,6 +85,7 @@ export async function GET(req: NextRequest) {
       getWbCommissionForCabinet(p_cabinet, 30),
     ]);
     if (rpcRes.error) throw new Error(rpcRes.error.message);
+    if (costsRes.error) throw new Error(costsRes.error.message);
     const meta = new Map<string, { name: string; cat: string; storage: number; cost: number | null }>();
     for (const c of costsRes.data ?? []) meta.set(c.article as string, {
       name: (c.name as string) ?? "",
@@ -212,7 +239,7 @@ export async function GET(req: NextRequest) {
       );
     }
     return NextResponse.json(payload);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось рассчитать юнит-экономику" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
   }
 }

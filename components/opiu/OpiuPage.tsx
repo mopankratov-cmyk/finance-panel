@@ -141,7 +141,7 @@ export function OpiuPage() {
   };
 
   const report = tab === "report_date"
-    ? (data?.reportByReportDate ?? data?.report)
+    ? data?.reportByReportDate
     : data?.report;
   const weekCount = report?.weeks.length ?? 4;
   const colCount = weekCount + 2;
@@ -223,6 +223,10 @@ export function OpiuPage() {
 
       {loading ? (
         <OpiuTableSkeleton cols={colCount} />
+      ) : tab === "report_date" && !report ? (
+        <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-6 text-sm text-amber-200">
+          Данные по дате отчёта пока недоступны: источник не синхронизирован
+        </div>
       ) : report ? (
         <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#1a1a2e] shadow-lg">
           <table className="w-full min-w-[720px] border-collapse text-sm">

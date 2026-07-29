@@ -9,6 +9,7 @@ import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useSort, sortGlyph } from "@/lib/useSort";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { FinanceTabs } from "@/components/FinanceTabs";
 
 interface UnitData {
   headers: string[];
@@ -76,6 +77,7 @@ export default function UnitPage() {
       </header>
 
       <main className="mx-auto max-w-[110rem] px-3 py-6 sm:px-6">
+        <FinanceTabs />
         {loading ? (
           <>
             <LoadingBanner seconds={elapsed} hint="юнит-экономика WB" />
