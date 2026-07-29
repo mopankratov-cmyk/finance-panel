@@ -1,4 +1,4 @@
-import { addDays, toISODate } from "@/lib/analytics/format";
+import { addDays } from "@/lib/analytics/format";
 
 export interface MonthWeek {
   weekStart: string;
@@ -7,8 +7,15 @@ export interface MonthWeek {
   label: string;
 }
 
-function formatShort(iso: string): string {
-  const d = new Date(iso);
+function toLocalISODate(d: Date): string {
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function formatShort(d: Date): string {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
@@ -26,17 +33,12 @@ export function weeksInMonth(year: number, monthIndex: number): MonthWeek[] {
   while (cursor <= monthEnd) {
     const weekStart = new Date(cursor);
     const weekEnd = addDays(weekStart, 6);
-    const rangeFrom = weekStart < monthStart ? monthStart : weekStart;
-    const rangeTo = weekEnd > monthEnd ? monthEnd : weekEnd;
-
-    if (rangeFrom <= rangeTo) {
-      weeks.push({
-        weekStart: toISODate(weekStart),
-        rangeFrom: toISODate(rangeFrom),
-        rangeTo: toISODate(rangeTo),
-        label: `${formatShort(toISODate(rangeFrom))} – ${formatShort(toISODate(rangeTo))}`,
-      });
-    }
+    weeks.push({
+      weekStart: toLocalISODate(weekStart),
+      rangeFrom: toLocalISODate(weekStart < monthStart ? monthStart : weekStart),
+      rangeTo: toLocalISODate(weekEnd > monthEnd ? monthEnd : weekEnd),
+      label: `${formatShort(weekStart)} – ${formatShort(weekEnd)}`,
+    });
 
     cursor.setDate(cursor.getDate() + 7);
   }
