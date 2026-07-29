@@ -1,9 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import {
-  barrier, close, connection, expectRpcError, expectSqlState, pool, rpc, scalar, sql,
+  close, connection, expectRpcError, expectSqlState, pool, rpc, scalar, sql,
 } from './harness.mjs';
 import { ids, identity, line, preview, requestId } from './fixtures.mjs';
+
+/*
+Gate map (each label below names its substantive test):
+01 constraints/FKs/partial uniques + route immutability; 02 preview coexistence;
+03 DB revision allocation/CAS; 04 actor-scoped idempotency; 05 input limits;
+06 finance allow/deny matrix; 07 actor transport; 08 snapshot rehash/immutability;
+09 initial publish; 10 fault rollback; 11 replacement; 12 replacement blockers;
+13 provider-report correction identity; 14 cross-series report uniqueness;
+15 allocation lifecycle; 16 allocation rollback; 17 correction snapshot;
+18 shared payer identity + unresolved scope; 19 publish/replace concurrency;
+20 same-receipt/two-receipt concurrency; 21 replace/reconcile lock order;
+22 every-table ACL; 23 every-RPC ACL; 24 search_path; 25 audit append-only;
+26 done-receipt byte identity after failed RPC categories; 27 legacy numeric;
+28 guarded PostgreSQL 17 runner.
+*/
+const payoutTables = [
+  'marketplace_payout_routes',
+  'marketplace_payout_series',
+  'marketplace_payout_forecast_revisions',
+  'marketplace_payout_forecast_lines',
+  'marketplace_payout_receipt_reconciliations',
+  'marketplace_payout_receipt_allocations',
+  'marketplace_payout_audit',
+];
+const payoutRpcs = [
+  'preview_marketplace_payout',
+  'approve_marketplace_payout',
+  'publish_marketplace_payout',
+  'reconcile_marketplace_payout',
+];
 
 async function reset() {
   await sql('select test_support.install_fixtures()');
@@ -76,6 +107,49 @@ test('gate 01: DDL CHECK, FK, composite FK and partial unique invariants reject 
     ) values('wb',$1,$2,'bad',1)`, [ids.cabinet, ids.company]),
     '23514',
   );
+  await expectSqlState(
+    () => sql(`insert into public.marketplace_payout_routes(
+      marketplace,cabinet_id,company_id,receiving_account_id,payer_inn,payer_legal_name,
+      account_kind,require_exact_payer_inn,created_by
+    ) values('wb',$1,$2,$3,'9714053621','payer','shared',true,$4)`,
+    ['ffffffff-ffff-4fff-8fff-ffffffffffff', ids.company, ids.account, ids.director]),
+    '23503',
+  );
+  const p = await previewRevision();
+  await expectSqlState(
+    () => sql(`update public.marketplace_payout_forecast_revisions
+      set route_id=$2 where id=$1`, [p.result.versionId, '97000000-0000-4000-8000-000000000099']),
+    'P0001',
+  );
+  await expectSqlState(
+    () => sql(`insert into public.marketplace_payout_routes(
+      marketplace,cabinet_id,company_id,receiving_account_id,payer_inn,payer_legal_name,
+      account_kind,require_exact_payer_inn,valid_from,created_by
+    ) select marketplace,cabinet_id,company_id,receiving_account_id,'9714053622',
+      payer_legal_name,account_kind,require_exact_payer_inn,valid_from,created_by
+      from public.marketplace_payout_routes where id=$1`, ['97000000-0000-4000-8000-000000000001']),
+    '23505',
+  );
+  await sql(`update public.marketplace_payout_routes set is_active=false,
+    retired_at=pg_catalog.clock_timestamp() where id=$1`, ['97000000-0000-4000-8000-000000000001']);
+  for (const statement of [
+    `update public.marketplace_payout_routes set is_active=true,retired_at=null where id=$1`,
+    `update public.marketplace_payout_routes set retired_at=retired_at+interval '1 second' where id=$1`,
+    `update public.marketplace_payout_routes set payer_legal_name=payer_legal_name||' changed' where id=$1`,
+    `delete from public.marketplace_payout_routes where id=$1`,
+  ]) {
+    await expectSqlState(
+      () => sql(statement, ['97000000-0000-4000-8000-000000000001']),
+      'P0001',
+    );
+  }
+  await sql(`insert into public.marketplace_payout_routes(
+    id,marketplace,cabinet_id,company_id,receiving_account_id,payer_inn,payer_kpp,
+    payer_legal_name,account_kind,require_exact_payer_inn,valid_from,created_by
+  ) values('97000000-0000-4000-8000-000000000002','wb',$1,$2,$3,
+    '9714053621','507401001','ООО «РВБ»','shared',true,'2026-08-01T00:00:00Z',$4)`,
+  [ids.cabinet, ids.company, ids.account, ids.director]);
+  await expectRpcError(() => previewRevision(), 'ROUTE_NOT_YET_VALID');
 });
 
 test('gate 02: preview coexists with the current published revision', async () => {
@@ -99,6 +173,18 @@ test('gate 03: DB assigns monotonic revisions and stale expectedPublishedRevisio
     expectedPublishedRevision: 0,
     lines: [line({ lineKey: 'stale', providerReportId: 'stale' })],
   }), 'CAS_CONFLICT');
+  const second = await previewRevision(ids.finance, {
+    expectedPublishedRevision: 1,
+    lines: [line({ lineKey: 'revision-2', providerReportId: 'revision-2' })],
+  });
+  assert.equal(second.result.revision, 2);
+  await approveRevision(second.result.versionId, second.result.payloadHash);
+  await publishRevision(second.result.versionId, second.result.payloadHash, 1);
+  const third = await previewRevision(ids.finance, {
+    expectedPublishedRevision: 2,
+    lines: [line({ lineKey: 'revision-3', providerReportId: 'revision-3' })],
+  });
+  assert.equal(third.result.revision, 3);
 });
 
 test('gate 04: request replay is actor-scoped and operation/hash conflicts fail closed', async () => {
@@ -115,6 +201,44 @@ test('gate 04: request replay is actor-scoped and operation/hash conflicts fail 
   assert.equal(await scalar(
     'select count(*) from public.marketplace_payout_audit where request_id=$1',
     [request.requestId]), '2');
+});
+
+test('gate 04 reconcile: canonical replay ignores allocation order and money representation', async () => {
+  const p = await published({
+    lines: [
+      line({ amount: '400.00' }),
+      line({ lineKey: 'line-2', providerReportId: 'synthetic-report-2', amount: '600.00' }),
+    ],
+  });
+  const lines = (await sql(
+    `select id from public.marketplace_payout_forecast_lines where version_id=$1 order by line_key`,
+    [p.versionId],
+  )).rows.map((row) => row.id);
+  await receipt();
+  const request = await reconcileRequest(lines[0], {
+    allocations: [
+      { forecastLineId: lines[0], allocatedAmount: '400' },
+      { forecastLineId: lines[1], allocatedAmount: '600.0' },
+    ],
+  });
+  const first = await rpc('reconcile_marketplace_payout', request, ids.finance);
+  const replay = await rpc('reconcile_marketplace_payout', {
+    ...request,
+    expectedReceiptAmount: '1000.0',
+    unresolvedAmount: '0',
+    allocations: [...request.allocations].reverse(),
+  }, ids.finance);
+  assert.deepEqual(replay, first);
+  await expectRpcError(
+    () => rpc('reconcile_marketplace_payout', {
+      ...request,
+      allocations: [
+        { forecastLineId: lines[0], allocatedAmount: '399.00' },
+        { forecastLineId: lines[1], allocatedAmount: '601.00' },
+      ],
+    }, ids.finance),
+    'IDEMPOTENCY_CONFLICT',
+  );
 });
 
 test('gate 05: duplicate/empty lines, unknown keys, oversized request and invalid money fail', async () => {
@@ -143,6 +267,13 @@ test('gate 06: finance may preview/reconcile but may not approve/publish', async
     () => approveRevision(p.result.versionId, p.result.payloadHash, ids.finance),
     'FORBIDDEN',
   );
+  await publishRevision(p.result.versionId, p.result.payloadHash);
+  await receipt();
+  const forecastLine = await lineId(p.result.versionId);
+  assert.equal(
+    (await rpc('reconcile_marketplace_payout', await reconcileRequest(forecastLine), ids.finance)).ok,
+    true,
+  );
   await approveRevision(p.result.versionId, p.result.payloadHash);
   await expectRpcError(
     () => publishRevision(p.result.versionId, p.result.payloadHash, 0, ids.finance),
@@ -165,7 +296,33 @@ test('gate 08: approve requires exact hash and revision payload/lines are immuta
       where version_id=$1`, [p.result.versionId]),
     'P0001',
   );
-  assert.equal((await approveRevision(p.result.versionId, p.result.payloadHash)).result.publicationState, 'approved');
+  for (const statement of [
+    `update public.marketplace_payout_forecast_revisions set source_observed_at=source_observed_at+interval '1 second' where id=$1`,
+    `update public.marketplace_payout_forecast_revisions set route_id=pg_catalog.gen_random_uuid() where id=$1`,
+    `update public.marketplace_payout_forecast_revisions set payload_hash=decode(repeat('00',32),'hex') where id=$1`,
+    `delete from public.marketplace_payout_forecast_revisions where id=$1`,
+    `update public.marketplace_payout_forecast_lines set line_key=line_key||'-changed' where version_id=$1`,
+    `update public.marketplace_payout_forecast_lines set expected_receipt_date=expected_receipt_date+1 where version_id=$1`,
+    `delete from public.marketplace_payout_forecast_lines where version_id=$1`,
+  ]) {
+    await expectSqlState(() => sql(statement, [p.result.versionId]), 'P0001');
+  }
+  const corrupt = await connection('test-corruption-bypass');
+  try {
+    await corrupt.query('begin');
+    await corrupt.query(`set local payout.test_corruption_bypass='on'`);
+    await corrupt.query(
+      `update public.marketplace_payout_forecast_lines set amount=amount+1 where version_id=$1`,
+      [p.result.versionId],
+    );
+    await corrupt.query('commit');
+  } finally {
+    await corrupt.end();
+  }
+  await expectRpcError(
+    () => approveRevision(p.result.versionId, p.result.payloadHash),
+    'SNAPSHOT_CORRUPTION',
+  );
 });
 
 test('gate 09: initial multi-line publish creates matching planned income payments atomically', async () => {
@@ -272,8 +429,9 @@ test('gate 13: provider report correction may change period/date/amount only in 
     retired_at=pg_catalog.clock_timestamp() where cabinet_id=$1 and is_active`, [ids.cabinet]);
   await sql(`insert into public.marketplace_payout_routes(
     marketplace,cabinet_id,company_id,receiving_account_id,payer_inn,payer_kpp,
-    payer_legal_name,account_kind,require_exact_payer_inn,created_by
-  ) values('wb',$1,$2,$3,'9714053621','507401001','ООО «РВБ»','shared',true,$4)`,
+    payer_legal_name,account_kind,require_exact_payer_inn,valid_from,created_by
+  ) values('wb',$1,$2,$3,'9714053621','507401001','ООО «РВБ»','shared',true,
+    '2026-07-08T00:00:00Z',$4)`,
   [ids.cabinet, ids.company, ids.account2, ids.director]);
   const next = await previewRevision(ids.finance, {
     expectedPublishedRevision: 1,
@@ -282,6 +440,20 @@ test('gate 13: provider report correction may change period/date/amount only in 
       expectedReceiptDate: '2026-07-12', amount: '1001.00' })],
   });
   assert.equal(next.result.revision, 2);
+  await approveRevision(next.result.versionId, next.result.payloadHash);
+  await publishRevision(next.result.versionId, next.result.payloadHash, 1);
+  const corrected = (await sql(
+    `select provider_report_id,period_from,period_to,expected_receipt_date,amount
+     from public.marketplace_payout_forecast_lines where version_id=$1`,
+    [next.result.versionId],
+  )).rows[0];
+  assert.deepEqual(corrected, {
+    provider_report_id: 'synthetic-report-1',
+    period_from: '2026-07-02',
+    period_to: '2026-07-09',
+    expected_receipt_date: '2026-07-12',
+    amount: '1001.00',
+  });
   assert.equal(await scalar(
     `select receiving_account_id=$2 from public.marketplace_payout_forecast_revisions where id=$1`,
     [old.versionId, ids.account]), true);
@@ -382,6 +554,42 @@ test('gate 18: shared account requires exact structured verified WB payer INN', 
       'PAYER_IDENTITY_MISMATCH',
     );
   }
+  await reset();
+  await receipt();
+  const unresolved = await reconcileRequest('98000000-0000-4000-8000-000000000001', {
+    unresolvedAmount: '1000.00',
+    unresolvedReason: 'unlinked',
+    allocations: [],
+  });
+  assert.equal(
+    (await rpc('reconcile_marketplace_payout', unresolved, ids.finance)).ok,
+    true,
+  );
+  await reset();
+  await sql(`insert into public.marketplace_payout_routes(
+    id,marketplace,cabinet_id,company_id,receiving_account_id,payer_inn,payer_kpp,
+    payer_legal_name,account_kind,require_exact_payer_inn,valid_from,created_by
+  ) values('97000000-0000-4000-8000-000000000002','wb',$1,$2,$3,
+    '9714053621','507401001','ООО «РВБ»','shared',true,'2026-01-01T00:00:00Z',$4)`,
+  [ids.cabinet2, ids.company, ids.account2, ids.director]);
+  await receipt('1000.00', ids.receipt);
+  await sql('update public.payments set account_id=$2 where id=$1', [ids.receipt, ids.account2]);
+  const foreign = {
+    ...unresolved,
+    requestId: requestId(),
+    expectedAccountId: ids.account2,
+  };
+  await expectRpcError(
+    () => rpc('reconcile_marketplace_payout', foreign, ids.finance),
+    'ROUTE_MISMATCH',
+  );
+  assert.equal(
+    (await rpc('reconcile_marketplace_payout', {
+      ...foreign,
+      requestId: requestId(),
+    }, ids.director)).ok,
+    true,
+  );
 });
 
 test('gate 19: concurrent publish CAS has exactly one winner on physical connections', async () => {
@@ -404,6 +612,35 @@ test('gate 19: concurrent publish CAS has exactly one winner on physical connect
     assert.ok(['INVALID_STATE', 'CAS_CONFLICT'].includes(loser.error?.message));
   } finally {
     await Promise.allSettled([a.end(), b.end()]);
+  }
+  await reset();
+  await published();
+  const replacement = await previewRevision(ids.finance, {
+    expectedPublishedRevision: 1,
+    lines: [line({ lineKey: 'concurrent-replace', providerReportId: 'concurrent-replace' })],
+  });
+  await approveRevision(replacement.result.versionId, replacement.result.payloadHash);
+  const replaceA = await connection('replace-a');
+  const replaceB = await connection('replace-b');
+  try {
+    await replaceA.query('begin');
+    await replaceA.query(`select 1 from public.marketplace_payout_series where id=(
+      select series_id from public.marketplace_payout_forecast_revisions where id=$1) for update`,
+    [replacement.result.versionId]);
+    const blocked = publishRevision(
+      replacement.result.versionId, replacement.result.payloadHash, 1, ids.otherDirector, replaceB,
+    ).then((value) => ({ value }), (error) => ({ error }));
+    const winner = await publishRevision(
+      replacement.result.versionId, replacement.result.payloadHash, 1, ids.director, replaceA,
+    );
+    await replaceA.query('commit');
+    assert.equal(winner.result.operation, 'replace');
+    assert.ok(['INVALID_STATE', 'CAS_CONFLICT'].includes((await blocked).error?.message));
+    assert.equal(await scalar(
+      `select count(*) from public.marketplace_payout_forecast_revisions
+       where publication_state='published'`), '1');
+  } finally {
+    await Promise.allSettled([replaceA.end(), replaceB.end()]);
   }
 });
 
@@ -429,6 +666,39 @@ test('gate 20: concurrent receipt reconciliation cannot oversubscribe one line',
     assert.equal((await blocked).error?.message, 'FORECAST_OVERALLOCATED');
   } finally {
     await Promise.allSettled([a.end(), b.end()]);
+  }
+  await reset();
+  const same = await published();
+  const sameLine = await lineId(same.versionId);
+  await receipt();
+  const sameA = await connection('same-receipt-a');
+  const sameB = await connection('same-receipt-b');
+  try {
+    await sameA.query('begin');
+    await sameA.query(`select 1 from public.marketplace_payout_series where id=(
+      select r.series_id from public.marketplace_payout_forecast_revisions r
+      join public.marketplace_payout_forecast_lines l on l.version_id=r.id where l.id=$1
+    ) for update`, [sameLine]);
+    const blocked = rpc(
+      'reconcile_marketplace_payout',
+      await reconcileRequest(sameLine),
+      ids.finance,
+      sameB,
+    ).then((value) => ({ value }), (error) => ({ error }));
+    const winner = await rpc(
+      'reconcile_marketplace_payout',
+      await reconcileRequest(sameLine),
+      ids.finance,
+      sameA,
+    );
+    await sameA.query('commit');
+    assert.equal(winner.ok, true);
+    assert.equal((await blocked).error?.message, 'CORRECTION_REASON_REQUIRED');
+    assert.equal(await scalar(
+      `select count(*) from public.marketplace_payout_receipt_reconciliations
+       where receipt_payment_id=$1 and state='active'`, [ids.receipt]), '1');
+  } finally {
+    await Promise.allSettled([sameA.end(), sameB.end()]);
   }
 });
 
@@ -467,28 +737,32 @@ test('gate 21: simultaneous replace/reconcile follows lock order and does not de
 
 test('gate 22: anon/authenticated/service_role cannot SELECT or mutate payout tables', async () => {
   for (const role of ['anon', 'authenticated', 'service_role']) {
-    assert.equal(await scalar(`select not pg_catalog.has_table_privilege($1,
-      'public.marketplace_payout_routes','SELECT,INSERT,UPDATE,DELETE')`, [role]), true);
-    const client = await connection(`acl-${role}`);
-    try {
-      await client.query('begin');
-      await client.query(`set local role ${role}`);
-      await assert.rejects(
-        () => client.query('select * from public.marketplace_payout_routes'),
-        (error) => error.code === '42501',
-      );
-      await client.query('rollback');
-    } finally {
-      await client.end();
+    for (const table of payoutTables) {
+      assert.equal(await scalar(`select not pg_catalog.has_table_privilege(
+        $1,$2,'SELECT,INSERT,UPDATE,DELETE')`, [role, `public.${table}`]), true);
+      const client = await connection(`acl-${role}-${table}`);
+      try {
+        await client.query('begin');
+        await client.query(`set local role ${role}`);
+        await assert.rejects(
+          () => client.query(`select * from public.${table}`),
+          (error) => error.code === '42501',
+        );
+        await client.query('rollback');
+      } finally {
+        await client.end();
+      }
     }
   }
 });
 
 test('gate 23: generic service_role cannot execute RPC; only executor can', async () => {
-  assert.equal(await scalar(`select not pg_catalog.has_function_privilege(
-    'service_role','public.preview_marketplace_payout(jsonb,uuid)','EXECUTE')`), true);
-  assert.equal(await scalar(`select pg_catalog.has_function_privilege(
-    'payout_rpc_executor','public.preview_marketplace_payout(jsonb,uuid)','EXECUTE')`), true);
+  for (const rpcName of payoutRpcs) {
+    assert.equal(await scalar(`select not pg_catalog.has_function_privilege(
+      'service_role',$1,'EXECUTE')`, [`public.${rpcName}(jsonb,uuid)`]), true);
+    assert.equal(await scalar(`select pg_catalog.has_function_privilege(
+      'payout_rpc_executor',$1,'EXECUTE')`, [`public.${rpcName}(jsonb,uuid)`]), true);
+  }
   const client = await connection('rpc-acl');
   try {
     await client.query('begin');
@@ -544,18 +818,44 @@ test('gate 25: audit UPDATE and DELETE are denied even to executor', async () =>
 });
 
 test('gate 26: failed RPC leaves existing done receipt byte-identical', async () => {
+  const p = await published();
+  const forecastLine = await lineId(p.versionId);
   await receipt();
   const before = await scalar('select pg_catalog.to_jsonb(p)::text from public.payments p where id=$1', [ids.receipt]);
-  const invalidRequest = await reconcileRequest('98000000-0000-4000-8000-000000000001');
-  await expectRpcError(
-    () => rpc('reconcile_marketplace_payout', {
-      ...invalidRequest,
-      expectedReceiptAmount: '999.00',
-    }, ids.finance),
-    'RECEIPT_DRIFT',
-  );
-  const after = await scalar('select pg_catalog.to_jsonb(p)::text from public.payments p where id=$1', [ids.receipt]);
-  assert.equal(after, before);
+  const failures = [
+    [
+      async () => rpc('reconcile_marketplace_payout', {
+        ...await reconcileRequest(forecastLine),
+        expectedReceiptAmount: '999.00',
+      }, ids.finance),
+      'RECEIPT_DRIFT',
+    ],
+    [
+      async () => rpc('reconcile_marketplace_payout', {
+        ...await reconcileRequest(forecastLine),
+        allocations: [{ forecastLineId: forecastLine, allocatedAmount: '999.00' }],
+      }, ids.finance),
+      'RECEIPT_SUM_MISMATCH',
+    ],
+    [
+      async () => rpc('reconcile_marketplace_payout', {
+        ...await reconcileRequest(forecastLine),
+        identity: identity({ payerInn: '0000000000' }),
+      }, ids.finance),
+      'ROUTE_MISMATCH',
+    ],
+    [
+      () => rpc('preview_marketplace_payout', preview({ actorId: ids.director }), ids.finance),
+      'UNKNOWN_KEY:actorId',
+    ],
+  ];
+  for (const [operation, error] of failures) {
+    await expectRpcError(operation, error);
+    assert.equal(
+      await scalar('select pg_catalog.to_jsonb(p)::text from public.payments p where id=$1', [ids.receipt]),
+      before,
+    );
+  }
 });
 
 test('gate 27: legacy finance_forecast_versions.actual_payout is numeric NOT NULL', async () => {
@@ -585,4 +885,19 @@ test('gate 28: runtime is real PostgreSQL and major matches explicit production-
     'set PAYOUT_PRODUCTION_POSTGRES_MAJOR to the verified production major',
   );
   assert.equal(await scalar(`select version() like 'PostgreSQL%'`), true);
+  for (const env of [
+    { TEST_DATABASE_URL: '', EXPECTED_TEST_DATABASE_REF: '' },
+    {
+      TEST_DATABASE_URL: ['postgresql:/', '/postgres.wrongref@pooler.invalid/postgres'].join(''),
+      EXPECTED_TEST_DATABASE_REF: 'expectedref',
+    },
+  ]) {
+    const guarded = spawnSync(
+      process.execPath,
+      ['test/payout-contract/harness.mjs', '--run'],
+      { cwd: process.cwd(), env: { ...process.env, ...env }, encoding: 'utf8' },
+    );
+    assert.notEqual(guarded.status, 0);
+    assert.match(`${guarded.stderr}${guarded.stdout}`, /required|ref mismatch/);
+  }
 });

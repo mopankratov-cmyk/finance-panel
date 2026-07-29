@@ -288,6 +288,61 @@ create or replace function public._payout_request_hash(p_value jsonb)
 returns bytea language sql immutable set search_path = ''
 return extensions.digest(pg_catalog.convert_to(p_value::text, 'UTF8'), 'sha256');
 
+create or replace function public._payout_snapshot_hash(
+  p_marketplace text, p_cabinet_id uuid, p_series_key text, p_route_id uuid,
+  p_source_observed_at timestamptz, p_source_data_status text,
+  p_unallocated_amount numeric, p_unresolved_receipt_count integer, p_lines jsonb
+) returns bytea
+language sql immutable set search_path = ''
+return public._payout_request_hash(pg_catalog.jsonb_build_object(
+  'marketplace', p_marketplace,
+  'cabinetId', p_cabinet_id,
+  'seriesKey', p_series_key,
+  'routeId', p_route_id,
+  'sourceObservedAt', pg_catalog.to_char(
+    p_source_observed_at at time zone 'UTC',
+    'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+  ),
+  'sourceDataStatus', p_source_data_status,
+  'unallocatedAmount', pg_catalog.to_char(p_unallocated_amount, 'FM999999999999990.00'),
+  'unresolvedReceiptCount', p_unresolved_receipt_count,
+  'lines', p_lines
+));
+
+create or replace function public._payout_db_snapshot_hash(p_version_id uuid)
+returns bytea
+language sql stable security definer set search_path = ''
+as $fn$
+  select public._payout_snapshot_hash(
+    v.marketplace, v.cabinet_id, s.series_key, v.route_id,
+    v.source_observed_at, v.source_data_status, v.unallocated_amount,
+    v.unresolved_receipt_count,
+    (
+      select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'lineKey', l.line_key,
+        'sourceKind', l.source_kind,
+        'providerReportId', l.provider_report_id,
+        'providerScheduleId', l.provider_schedule_id,
+        'periodFrom', l.period_from,
+        'periodTo', l.period_to,
+        'expectedReceiptDate', l.expected_receipt_date,
+        'amount', pg_catalog.to_char(l.amount, 'FM999999999999990.00'),
+        'currency', l.currency,
+        'lifecycleState', case
+          when l.lifecycle_state in ('marketplace_scheduled','partially_received','bank_received')
+            then case when l.source_kind='provider_report' then 'report_confirmed' else 'forecast' end
+          else l.lifecycle_state
+        end
+      ) order by l.line_key)
+      from public.marketplace_payout_forecast_lines l
+      where l.version_id=v.id
+    )
+  )
+  from public.marketplace_payout_forecast_revisions v
+  join public.marketplace_payout_series s on s.id=v.series_id
+  where v.id=p_version_id
+$fn$;
+
 create or replace function public._payout_replay(
   p_actor_id uuid, p_request_id uuid, p_operation text, p_hash bytea
 ) returns jsonb
@@ -309,7 +364,35 @@ create or replace function public._payout_immutable_guard()
 returns trigger language plpgsql set search_path = ''
 as $fn$
 begin
-  if current_user = 'payout_rpc_owner' then return new; end if;
+  if tg_table_name = 'marketplace_payout_forecast_lines'
+    and tg_op = 'UPDATE'
+    and current_user = 'payout_rpc_owner'
+    and new.id is not distinct from old.id
+    and new.version_id is not distinct from old.version_id
+    and new.line_key is not distinct from old.line_key
+    and new.source_kind is not distinct from old.source_kind
+    and new.provider_report_id is not distinct from old.provider_report_id
+    and new.provider_schedule_id is not distinct from old.provider_schedule_id
+    and new.period_from is not distinct from old.period_from
+    and new.period_to is not distinct from old.period_to
+    and new.expected_receipt_date is not distinct from old.expected_receipt_date
+    and new.amount is not distinct from old.amount
+    and new.currency is not distinct from old.currency
+    and new.created_at is not distinct from old.created_at
+    and (
+      (old.payment_id is null and new.payment_id is not null
+        and old.lifecycle_state in ('forecast','report_confirmed')
+        and new.lifecycle_state = 'marketplace_scheduled')
+      or
+      (old.payment_id is not distinct from new.payment_id
+        and old.lifecycle_state in ('marketplace_scheduled','partially_received','bank_received')
+        and new.lifecycle_state in ('marketplace_scheduled','partially_received','bank_received'))
+    ) then
+    return new;
+  end if;
+  if pg_catalog.current_setting('payout.test_corruption_bypass', true) = 'on' then
+    return case when tg_op='DELETE' then old else new end;
+  end if;
   raise exception using errcode = 'P0001', message = 'IMMUTABLE_PAYOUT_SNAPSHOT';
 end
 $fn$;
@@ -318,24 +401,93 @@ create or replace function public._payout_route_guard()
 returns trigger language plpgsql set search_path = ''
 as $fn$
 begin
-  if exists (
-    select 1 from public.marketplace_payout_forecast_revisions where route_id = old.id
-  ) and (
-    new.id is distinct from old.id
+  if pg_catalog.current_setting('payout.test_cleanup', true) = 'on' then
+    return case when tg_op='DELETE' then old else new end;
+  end if;
+  if tg_op = 'DELETE' then
+    raise exception using errcode = 'P0001', message = 'ROUTE_IMMUTABLE';
+  end if;
+  if not (
+    old.is_active is true
+    and old.retired_at is null
+    and new.is_active is false
+    and new.retired_at is not null
+    and new.id is not distinct from old.id
+    and new.marketplace is not distinct from old.marketplace
+    and new.cabinet_id is not distinct from old.cabinet_id
+    and new.company_id is not distinct from old.company_id
+    and new.receiving_account_id is not distinct from old.receiving_account_id
+    and new.payer_inn is not distinct from old.payer_inn
+    and new.payer_kpp is not distinct from old.payer_kpp
+    and new.payer_legal_name is not distinct from old.payer_legal_name
+    and new.account_kind is not distinct from old.account_kind
+    and new.require_exact_payer_inn is not distinct from old.require_exact_payer_inn
+    and new.valid_from is not distinct from old.valid_from
+    and new.created_at is not distinct from old.created_at
+    and new.created_by is not distinct from old.created_by
+  ) then
+    raise exception using errcode = 'P0001', message = 'ROUTE_IMMUTABLE';
+  end if;
+  return new;
+end
+$fn$;
+
+create or replace function public._payout_revision_guard()
+returns trigger language plpgsql set search_path = ''
+as $fn$
+begin
+  if pg_catalog.current_setting('payout.test_cleanup', true) = 'on' then
+    return case when tg_op='DELETE' then old else new end;
+  end if;
+  if tg_op = 'DELETE' then
+    raise exception using errcode = 'P0001', message = 'IMMUTABLE_PAYOUT_SNAPSHOT';
+  end if;
+  if new.id is distinct from old.id
     or new.marketplace is distinct from old.marketplace
+    or new.series_id is distinct from old.series_id
     or new.cabinet_id is distinct from old.cabinet_id
     or new.company_id is distinct from old.company_id
+    or new.route_id is distinct from old.route_id
     or new.receiving_account_id is distinct from old.receiving_account_id
-    or new.payer_inn is distinct from old.payer_inn
-    or new.payer_kpp is distinct from old.payer_kpp
-    or new.payer_legal_name is distinct from old.payer_legal_name
-    or new.account_kind is distinct from old.account_kind
-    or new.require_exact_payer_inn is distinct from old.require_exact_payer_inn
-    or new.valid_from is distinct from old.valid_from
+    or new.revision is distinct from old.revision
+    or new.payload_hash is distinct from old.payload_hash
+    or new.source_observed_at is distinct from old.source_observed_at
+    or new.source_data_status is distinct from old.source_data_status
+    or new.unallocated_amount is distinct from old.unallocated_amount
+    or new.unresolved_receipt_count is distinct from old.unresolved_receipt_count
     or new.created_at is distinct from old.created_at
-    or new.created_by is distinct from old.created_by
+    or current_user <> 'payout_rpc_owner' then
+    raise exception using errcode = 'P0001', message = 'IMMUTABLE_PAYOUT_SNAPSHOT';
+  end if;
+  if not (
+    (old.publication_state='previewed' and new.publication_state='approved'
+      and old.approved_at is null and old.approved_by is null
+      and new.approved_at is not null and new.approved_by is not null
+      and new.published_at is not distinct from old.published_at
+      and new.published_by is not distinct from old.published_by
+      and new.superseded_at is not distinct from old.superseded_at
+      and new.superseded_by_version_id is not distinct from old.superseded_by_version_id
+      and new.discarded_at is not distinct from old.discarded_at)
+    or
+    (old.publication_state='approved' and new.publication_state='published'
+      and new.approved_at is not distinct from old.approved_at
+      and new.approved_by is not distinct from old.approved_by
+      and old.published_at is null and old.published_by is null
+      and new.published_at is not null and new.published_by is not null
+      and new.superseded_at is not distinct from old.superseded_at
+      and new.superseded_by_version_id is not distinct from old.superseded_by_version_id
+      and new.discarded_at is not distinct from old.discarded_at)
+    or
+    (old.publication_state='published' and new.publication_state='superseded'
+      and new.approved_at is not distinct from old.approved_at
+      and new.approved_by is not distinct from old.approved_by
+      and new.published_at is not distinct from old.published_at
+      and new.published_by is not distinct from old.published_by
+      and old.superseded_at is null and old.superseded_by_version_id is null
+      and new.superseded_at is not null and new.superseded_by_version_id is not null
+      and new.discarded_at is not distinct from old.discarded_at)
   ) then
-    raise exception using errcode = 'P0001', message = 'USED_ROUTE_IMMUTABLE';
+    raise exception using errcode = 'P0001', message = 'INVALID_REVISION_TRANSITION';
   end if;
   return new;
 end
@@ -362,39 +514,11 @@ begin
 end
 $fn$;
 
-create or replace function public._payout_revision_guard()
-returns trigger language plpgsql set search_path = ''
-as $fn$
-begin
-  if new.id is distinct from old.id
-    or new.series_id is distinct from old.series_id
-    or new.marketplace is distinct from old.marketplace
-    or new.cabinet_id is distinct from old.cabinet_id
-    or new.company_id is distinct from old.company_id
-    or new.route_id is distinct from old.route_id
-    or new.receiving_account_id is distinct from old.receiving_account_id
-    or new.revision is distinct from old.revision
-    or new.payload_hash is distinct from old.payload_hash
-    or new.source_observed_at is distinct from old.source_observed_at
-    or new.source_data_status is distinct from old.source_data_status
-    or new.unallocated_amount is distinct from old.unallocated_amount
-    or new.unresolved_receipt_count is distinct from old.unresolved_receipt_count
-    or new.created_at is distinct from old.created_at then
-    raise exception using errcode = 'P0001', message = 'IMMUTABLE_PAYOUT_SNAPSHOT';
-  end if;
-  if current_user <> 'payout_rpc_owner' then
-    raise exception using errcode = 'P0001', message = 'IMMUTABLE_PAYOUT_SNAPSHOT';
-  end if;
-  return new;
-end
-$fn$;
-
 create or replace function public._payout_audit_guard()
 returns trigger language plpgsql set search_path = ''
 as $fn$
 begin
-  if current_user = 'payout_rpc_owner'
-    and pg_catalog.current_setting('payout.test_cleanup', true) = 'on' then
+  if pg_catalog.current_setting('payout.test_cleanup', true) = 'on' then
     return old;
   end if;
   raise exception using errcode = 'P0001', message = 'AUDIT_APPEND_ONLY';
@@ -405,7 +529,7 @@ do $triggers$
 begin
   if not exists (select 1 from pg_catalog.pg_trigger
     where tgname='marketplace_payout_route_immutable' and not tgisinternal) then
-    execute 'create trigger marketplace_payout_route_immutable before update
+    execute 'create trigger marketplace_payout_route_immutable before update or delete
       on public.marketplace_payout_routes for each row
       execute function public._payout_route_guard()';
   end if;
@@ -417,7 +541,7 @@ begin
   end if;
   if not exists (select 1 from pg_catalog.pg_trigger
     where tgname='marketplace_payout_revision_immutable' and not tgisinternal) then
-    execute 'create trigger marketplace_payout_revision_immutable before update
+    execute 'create trigger marketplace_payout_revision_immutable before update or delete
       on public.marketplace_payout_forecast_revisions for each row
       execute function public._payout_revision_guard()';
   end if;
@@ -469,6 +593,9 @@ begin
   select * into strict v_route from public.marketplace_payout_routes
    where marketplace = p_request->>'marketplace' and cabinet_id = v_cabinet and is_active
    for update;
+  if v_route.valid_from > (p_request->>'sourceObservedAt')::timestamptz then
+    raise exception using errcode = 'P0001', message = 'ROUTE_NOT_YET_VALID';
+  end if;
   if p_request ? 'companyId' and (p_request->>'companyId')::uuid <> v_route.company_id
      or p_request ? 'receivingAccountId'
        and (p_request->>'receivingAccountId')::uuid <> v_route.receiving_account_id then
@@ -498,12 +625,9 @@ begin
       raise exception using errcode = 'P0001', message = 'INVALID_LINE';
     end if;
   end loop;
-  v_hash := public._payout_request_hash(pg_catalog.jsonb_build_object(
-    'marketplace', p_request->>'marketplace', 'cabinetId', v_cabinet,
-    'seriesKey', p_request->>'seriesKey', 'routeId', v_route.id,
-    'sourceObservedAt', ((p_request->>'sourceObservedAt')::timestamptz at time zone 'UTC'),
-    'sourceDataStatus', 'available', 'unallocatedAmount', '0.00',
-    'unresolvedReceiptCount', 0, 'lines', v_lines));
+  v_hash := public._payout_snapshot_hash(
+    p_request->>'marketplace', v_cabinet, p_request->>'seriesKey', v_route.id,
+    (p_request->>'sourceObservedAt')::timestamptz, 'available', 0, 0, v_lines);
   v_replay := public._payout_replay(p_actor_id, v_request_id, 'preview', v_hash);
   if v_replay is not null then return v_replay; end if;
   insert into public.marketplace_payout_series(marketplace,cabinet_id,company_id,series_key)
@@ -520,12 +644,9 @@ begin
     from public.marketplace_payout_forecast_revisions
    where series_id=v_series.id and publication_state in ('previewed','approved');
   if found then
-    if v_hash = public._payout_request_hash(pg_catalog.jsonb_build_object(
-      'marketplace', p_request->>'marketplace', 'cabinetId', v_cabinet,
-      'seriesKey', p_request->>'seriesKey', 'routeId', v_route.id,
-      'sourceObservedAt', ((p_request->>'sourceObservedAt')::timestamptz at time zone 'UTC'),
-      'sourceDataStatus', 'available', 'unallocatedAmount', '0.00',
-      'unresolvedReceiptCount', 0, 'lines', v_lines)) then
+    if v_hash = public._payout_snapshot_hash(
+      p_request->>'marketplace', v_cabinet, p_request->>'seriesKey', v_route.id,
+      (p_request->>'sourceObservedAt')::timestamptz, 'available', 0, 0, v_lines) then
       select revision into v_revision from public.marketplace_payout_forecast_revisions where id=v_version;
       v_result := pg_catalog.jsonb_build_object('ok',true,'versionId',v_version,'revision',v_revision,
         'publicationState','previewed','payloadHash',pg_catalog.encode(v_hash,'hex'),'logicalReplay',true);
@@ -538,12 +659,9 @@ begin
   end if;
   v_revision := v_series.latest_revision + 1;
   update public.marketplace_payout_series set latest_revision=v_revision where id=v_series.id;
-  v_hash := public._payout_request_hash(pg_catalog.jsonb_build_object(
-    'marketplace', p_request->>'marketplace', 'cabinetId', v_cabinet,
-    'seriesKey', p_request->>'seriesKey', 'routeId', v_route.id,
-    'sourceObservedAt', ((p_request->>'sourceObservedAt')::timestamptz at time zone 'UTC'),
-    'sourceDataStatus', 'available', 'unallocatedAmount', '0.00',
-    'unresolvedReceiptCount', 0, 'lines', v_lines));
+  v_hash := public._payout_snapshot_hash(
+    p_request->>'marketplace', v_cabinet, p_request->>'seriesKey', v_route.id,
+    (p_request->>'sourceObservedAt')::timestamptz, 'available', 0, 0, v_lines);
   insert into public.marketplace_payout_forecast_revisions(
     series_id,marketplace,cabinet_id,company_id,route_id,receiving_account_id,
     revision,publication_state,payload_hash,source_observed_at,source_data_status)
@@ -576,7 +694,8 @@ create or replace function public.approve_marketplace_payout(p_request jsonb, p_
 returns jsonb language plpgsql security definer set search_path = ''
 as $fn$
 declare v_request_id uuid; v_version public.marketplace_payout_forecast_revisions;
-  v_series public.marketplace_payout_series; v_hash bytea; v_replay jsonb; v_result jsonb;
+  v_series public.marketplace_payout_series; v_hash bytea; v_snapshot_hash bytea;
+  v_replay jsonb; v_result jsonb;
 begin
   perform public._payout_assert_keys(p_request,
     array['requestId','versionId','expectedPayloadHash'],array[]::text[]);
@@ -597,6 +716,10 @@ begin
   end if;
   if pg_catalog.encode(v_version.payload_hash,'hex') <> pg_catalog.lower(p_request->>'expectedPayloadHash') then
     raise exception using errcode='P0001',message='HASH_MISMATCH';
+  end if;
+  v_snapshot_hash := public._payout_db_snapshot_hash(v_version.id);
+  if v_snapshot_hash is null or v_snapshot_hash <> v_version.payload_hash then
+    raise exception using errcode='P0001',message='SNAPSHOT_CORRUPTION';
   end if;
   if not exists(select 1 from public.marketplace_payout_routes
     where id=v_version.route_id and is_active) or v_version.unallocated_amount<>0
@@ -725,6 +848,7 @@ as $fn$
 declare v_request_id uuid; v_receipt public.payments; v_old uuid; v_recon uuid;
   v_alloc jsonb; v_identity jsonb; v_hash bytea; v_replay jsonb; v_result jsonb;
   v_route public.marketplace_payout_routes; v_line record; v_sum numeric(18,2);
+  v_allocations jsonb; v_actor public.app_users;
 begin
   perform public._payout_assert_keys(p_request,
     array['requestId','receiptPaymentId','expectedReceiptAmount','expectedAccountId',
@@ -734,27 +858,98 @@ begin
   v_identity:=p_request->'identity';
   perform public._payout_assert_keys(v_identity,
     array['source','verified'],array['payerInn','payerKpp','payerLegalName','payerAccountNumber']);
+  v_identity:=pg_catalog.jsonb_build_object(
+    'source',pg_catalog.lower(pg_catalog.btrim(v_identity->>'source')),
+    'verified',(v_identity->>'verified')::boolean,
+    'payerInn',nullif(pg_catalog.regexp_replace(
+      pg_catalog.coalesce(v_identity->>'payerInn',''),'[^0-9]','','g'),''),
+    'payerKpp',nullif(pg_catalog.regexp_replace(
+      pg_catalog.coalesce(v_identity->>'payerKpp',''),'[^0-9]','','g'),''),
+    'payerLegalName',nullif(pg_catalog.upper(pg_catalog.btrim(
+      pg_catalog.coalesce(v_identity->>'payerLegalName',''))),''),
+    'payerAccountNumber',nullif(pg_catalog.upper(pg_catalog.btrim(
+      pg_catalog.coalesce(v_identity->>'payerAccountNumber',''))),'')
+  );
   if pg_catalog.jsonb_typeof(p_request->'allocations')<>'array'
     or pg_catalog.jsonb_array_length(p_request->'allocations')>500 then
     raise exception using errcode='P0001',message='INVALID_ALLOCATIONS';
   end if;
+  v_actor := public._payout_actor(p_actor_id,null,array['finance','director']);
+  for v_alloc in select value from pg_catalog.jsonb_array_elements(p_request->'allocations') loop
+    perform public._payout_assert_keys(
+      v_alloc,array['forecastLineId','allocatedAmount'],array[]::text[]);
+    if (v_alloc->>'allocatedAmount')::numeric<=0
+      or (v_alloc->>'allocatedAmount')::numeric>9999999999999999.99
+      or pg_catalog.scale((v_alloc->>'allocatedAmount')::numeric)>2 then
+      raise exception using errcode='P0001',message='INVALID_ALLOCATION';
+    end if;
+  end loop;
+  if (select pg_catalog.count(*)<>pg_catalog.count(distinct x->>'forecastLineId')
+      from pg_catalog.jsonb_array_elements(p_request->'allocations') x) then
+    raise exception using errcode='P0001',message='DUPLICATE_ALLOCATION';
+  end if;
+  if exists (
+    select 1 from pg_catalog.jsonb_array_elements(p_request->'allocations') x
+    left join public.marketplace_payout_forecast_lines l
+      on l.id=(x->>'forecastLineId')::uuid
+    where l.id is null
+  ) then
+    raise exception using errcode='P0001',message='RECONCILIATION_TARGET_NOT_FOUND';
+  end if;
   select * into strict v_receipt from public.payments
    where id=(p_request->>'receiptPaymentId')::uuid;
-  perform public._payout_actor(p_actor_id,null,array['finance','director']);
+  if v_receipt.status<>'done' or v_receipt.type<>'income' or v_receipt.amount<=0
+    or v_receipt.amount<>(p_request->>'expectedReceiptAmount')::numeric
+    or v_receipt.account_id<>(p_request->>'expectedAccountId')::uuid then
+    raise exception using errcode='P0001',message='RECEIPT_DRIFT';
+  end if;
+  if not exists (
+    select 1
+    from public.marketplace_payout_routes r
+    where r.is_active
+      and r.receiving_account_id=v_receipt.account_id
+      and (
+        not r.require_exact_payer_inn
+        or (
+          v_identity->>'source' in ('bank_import_structured','manual_verified')
+          and (v_identity->>'verified')::boolean is true
+          and v_identity->>'payerInn'=r.payer_inn
+        )
+      )
+      and (
+        v_actor.role='director'
+        or (
+          pg_catalog.coalesce(pg_catalog.array_length(v_actor.cabinet_ids,1),0)>0
+          and r.cabinet_id=any(v_actor.cabinet_ids)
+        )
+      )
+  ) then
+    raise exception using errcode='P0001',message='ROUTE_MISMATCH';
+  end if;
   perform public._payout_actor(p_actor_id,c.cabinet_id,array['finance','director'])
     from (select distinct r.cabinet_id
       from pg_catalog.jsonb_array_elements(p_request->'allocations') x
       join public.marketplace_payout_forecast_lines l
         on l.id=(x->>'forecastLineId')::uuid
       join public.marketplace_payout_forecast_revisions r on r.id=l.version_id) c;
-  v_hash:=public._payout_request_hash(
-    p_request-array['requestId','expectedReceiptAmount','expectedAccountId']);
-  v_replay:=public._payout_replay(p_actor_id,v_request_id,'reconcile',v_hash);
-  if v_replay is not null then return v_replay; end if;
-  if (select pg_catalog.count(*)<>pg_catalog.count(distinct x->>'forecastLineId')
-      from pg_catalog.jsonb_array_elements(p_request->'allocations') x) then
-    raise exception using errcode='P0001',message='DUPLICATE_ALLOCATION';
-  end if;
+  select pg_catalog.coalesce(pg_catalog.jsonb_agg(
+    pg_catalog.jsonb_build_object(
+      'forecastLineId',(x->>'forecastLineId')::uuid,
+      'allocatedAmount',pg_catalog.to_char(
+        (x->>'allocatedAmount')::numeric,'FM999999999999990.00')
+    ) order by (x->>'forecastLineId')::uuid
+  ),'[]'::jsonb) into v_allocations
+  from pg_catalog.jsonb_array_elements(p_request->'allocations') x;
+  v_hash:=public._payout_request_hash(pg_catalog.jsonb_build_object(
+    'receiptPaymentId',(p_request->>'receiptPaymentId')::uuid,
+    'identity',v_identity,
+    'unresolvedAmount',pg_catalog.to_char(
+      (p_request->>'unresolvedAmount')::numeric,'FM999999999999990.00'),
+    'unresolvedReason',nullif(p_request->>'unresolvedReason',''),
+    'correctionReason',nullif(pg_catalog.btrim(
+      pg_catalog.coalesce(p_request->>'correctionReason','')),''),
+    'allocations',v_allocations
+  ));
   perform 1 from public.marketplace_payout_series s where s.id in (
     select r.series_id from pg_catalog.jsonb_array_elements(p_request->'allocations') x
     join public.marketplace_payout_forecast_lines l on l.id=(x->>'forecastLineId')::uuid
@@ -780,6 +975,8 @@ begin
     or v_receipt.account_id<>(p_request->>'expectedAccountId')::uuid then
     raise exception using errcode='P0001',message='RECEIPT_DRIFT';
   end if;
+  v_replay:=public._payout_replay(p_actor_id,v_request_id,'reconcile',v_hash);
+  if v_replay is not null then return v_replay; end if;
   select id into v_old from public.marketplace_payout_receipt_reconciliations
     where receipt_payment_id=v_receipt.id and state='active' for update;
   if found then
@@ -872,6 +1069,9 @@ $fn$;
 alter function public._payout_actor(uuid,uuid,text[]) owner to payout_rpc_owner;
 alter function public._payout_assert_keys(jsonb,text[],text[]) owner to payout_rpc_owner;
 alter function public._payout_request_hash(jsonb) owner to payout_rpc_owner;
+alter function public._payout_snapshot_hash(text,uuid,text,uuid,timestamptz,text,numeric,integer,jsonb)
+  owner to payout_rpc_owner;
+alter function public._payout_db_snapshot_hash(uuid) owner to payout_rpc_owner;
 alter function public._payout_replay(uuid,uuid,text,bytea) owner to payout_rpc_owner;
 alter function public._payout_immutable_guard() owner to payout_rpc_owner;
 alter function public._payout_route_guard() owner to payout_rpc_owner;
@@ -886,6 +1086,8 @@ alter function public.reconcile_marketplace_payout(jsonb,uuid) owner to payout_r
 revoke all on function public._payout_actor(uuid,uuid,text[]),
   public._payout_assert_keys(jsonb,text[],text[]),
   public._payout_request_hash(jsonb),
+  public._payout_snapshot_hash(text,uuid,text,uuid,timestamptz,text,numeric,integer,jsonb),
+  public._payout_db_snapshot_hash(uuid),
   public._payout_replay(uuid,uuid,text,bytea),
   public._payout_immutable_guard(), public._payout_route_guard(),
   public._payout_route_validate(),

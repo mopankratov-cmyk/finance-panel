@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "find lib tests -name '*.test.mts' -type f -print0 | xargs -0 node --import tsx --test",
-    "test:payout-contract": "node --test --test-concurrency=1 test/payout-contract/*.test.mjs"
+    "test:payout-contract": "node test/payout-contract/harness.mjs --run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
