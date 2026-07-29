@@ -47,6 +47,21 @@ export function deriveWbLegacySnapshotPayout(
   };
 }
 
+export function allocateWbPayoutSchedule(remainingPayout: number, dates: string[]) {
+  const totalCents = Number.isFinite(remainingPayout)
+    ? Math.max(0, Math.round(remainingPayout * 100))
+    : 0;
+  const bucketCount = Math.min(dates.length, totalCents);
+  if (bucketCount === 0) return [];
+
+  const baseCents = Math.floor(totalCents / bucketCount);
+  const remainder = totalCents % bucketCount;
+  return dates.slice(0, bucketCount).map((date, index) => ({
+    date,
+    amount: (baseCents + (index < remainder ? 1 : 0)) / 100,
+  }));
+}
+
 function aggregateByArticle(report: Awaited<ReturnType<typeof fetchSalesFromCache>>) {
   const result = new Map<string, { revenue: number; payout: number }>();
   for (const row of report) {
@@ -207,6 +222,9 @@ export async function buildMarketplacePayoutForecast(
   const futurePayoutDays = targetEnd < today
     ? []
     : payoutDays.filter((day) => targetStart > today || day > actualEnd.getDate());
+  const futurePayoutDates = futurePayoutDays.map(
+    (day) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+  );
   const result = {
     historyFrom: iso(historyStart),
     historyTo: iso(historyEnd),
@@ -230,12 +248,7 @@ export async function buildMarketplacePayoutForecast(
     automaticAdjustmentApplied,
     currentDeviation,
     ...payoutSummary,
-    payoutSchedule: futurePayoutDays.map((day, index) => ({
-      date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-      amount: index === futurePayoutDays.length - 1
-        ? payoutSummary.remainingPayout - Math.round(payoutSummary.remainingPayout / futurePayoutDays.length) * (futurePayoutDays.length - 1)
-        : Math.round(payoutSummary.remainingPayout / futurePayoutDays.length),
-    })),
+    payoutSchedule: allocateWbPayoutSchedule(payoutSummary.remainingPayout, futurePayoutDates),
   };
   const legacySnapshotPayout = deriveWbLegacySnapshotPayout(payoutSummary);
   await client.from("finance_forecast_versions").upsert({
