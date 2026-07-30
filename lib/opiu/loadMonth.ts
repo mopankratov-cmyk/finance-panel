@@ -1,7 +1,5 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
-import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
-import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
+import type { WbAdStat } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
 import { OPIU_ENTITY, OPIU_WB_CABINET_ID } from "./constants";
@@ -13,6 +11,7 @@ import {
   type OpiuOrder,
   type ProductCostRow,
 } from "./metrics";
+import { fetchReportRows, rowsBySaleDate } from "./reportRows";
 
 export async function fetchOrders(
   dateFrom: string,
@@ -55,51 +54,6 @@ export async function fetchOrders(
     regionName: row.region ?? undefined,
   }));
   return overlayFunnelOrders(cachedOrders, funnelFacts, OPIU_WB_CABINET_ID);
-}
-
-export async function fetchSalesFromCache(dateFrom: string, dateTo: string): Promise<WbReportRow[]> {
-  const client = getSupabaseAdmin() ?? supabase;
-  const [sales, stocks, commission] = await Promise.all([
-    loadAllSupabasePages<{
-      nm_id: number; date: string; sale_id: string; for_pay: number | null;
-      finished_price: number | null; price_with_disc: number | null; spp: number | null;
-    }>((from, to) => client
-      .from("wb_sales")
-      .select("nm_id, date, sale_id, for_pay, finished_price, price_with_disc, spp")
-      .eq("cabinet_id", OPIU_WB_CABINET_ID)
-      .gte("date", dateFrom)
-      .lte("date", `${dateTo}T23:59:59.999Z`)
-      .order("date", { ascending: true })
-      .order("sale_id", { ascending: true })
-      .range(from, to), { maxPages: 300, label: "ОПиУ: продажи WB" }),
-    loadRnpReportRows<{ nm_id: number; article: string | null }>(client, OPIU_WB_CABINET_ID, { label: "ОПиУ: товары WB" }),
-    getWbCommissionForCabinet(OPIU_WB_CABINET_ID, 30, { allowLiveFallback: false }),
-  ]);
-  const articleByNm = new Map<number, string>();
-  for (const row of stocks) {
-    const article = String(row.article || "").trim();
-    if (article && !articleByNm.has(Number(row.nm_id))) articleByNm.set(Number(row.nm_id), article);
-  }
-  return sales.map((row) => {
-    const amount = Math.abs(Number(row.price_with_disc ?? row.finished_price ?? row.for_pay ?? 0));
-    const returned = String(row.sale_id || "").toUpperCase().startsWith("R");
-    const rates = resolveWbRatesForNm(commission, Number(row.nm_id));
-    return {
-      rr_dt: row.date,
-      nm_id: row.nm_id,
-      sa_name: articleByNm.get(Number(row.nm_id)) ?? "",
-      quantity: 1,
-      doc_type_name: returned ? "Возврат" : "Продажа",
-      supplier_oper_name: returned ? "Возврат" : "Продажа",
-      retail_amount: returned ? 0 : amount,
-      retail_price_withdisc_rub: returned ? 0 : amount,
-      spp: row.spp ?? null,
-      ppvz_for_pay: Number(row.for_pay ?? 0),
-      ppvz_sales_commission: returned ? 0 : amount * rates.commissionPct / 100,
-      acquiring_fee: returned ? 0 : amount * rates.acquiringPct / 100,
-      deduction: returned ? 0 : amount * (rates.extraPct + rates.overheadPct) / 100,
-    } satisfies WbReportRow;
-  });
 }
 
 // Расход на рекламу берём из синхронизированной таблицы wb_advert_nm_daily (cron),
@@ -183,13 +137,20 @@ export async function loadOpiuMonth(
   year: number,
   monthIndex: number,
   refresh = false,
-): Promise<{ month: string; report: OpiuReport; timestamp: string; meta: OpiuLoadMeta }> {
+): Promise<{
+  month: string;
+  report: OpiuReport;
+  reportByReportDate: OpiuReport;
+  timestamp: string;
+  meta: OpiuLoadMeta;
+}> {
   const month = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
   const weeks = weeksInMonth(year, monthIndex);
   if (weeks.length === 0) {
     return {
       month,
       report: { weeks: [], rows: [], warehouseByWeek: {} },
+      reportByReportDate: { weeks: [], rows: [], warehouseByWeek: {} },
       timestamp: new Date().toISOString(),
       meta: { salesRows: 0, ordersCount: 0, costsCount: 0, adCampaigns: 0 },
     };
@@ -197,22 +158,51 @@ export async function loadOpiuMonth(
 
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
-  const [sales, orders, adStats, costs, warehouseByWeek] = await Promise.all([
-    fetchSalesFromCache(dateFrom, dateTo),
+  const [
+    saleDateRows,
+    reportDateRows,
+    orders,
+    adStats,
+    costs,
+    warehouseByWeek,
+  ] = await Promise.all([
+    fetchReportRows(dateFrom, dateTo, "sale"),
+    fetchReportRows(dateFrom, dateTo, "report"),
     fetchOrders(dateFrom, dateTo, refresh),
     fetchAdStats(dateFrom, dateTo),
     fetchProductCosts(),
     fetchWarehouseCosts(month, weeks),
   ]);
 
-  const report = buildOpiuReport(weeks, sales, orders, adStats, costs, warehouseByWeek);
+  const report = buildOpiuReport(
+    weeks,
+    rowsBySaleDate(saleDateRows),
+    orders,
+    adStats,
+    costs,
+    warehouseByWeek,
+  );
+  const reportByReportDate = buildOpiuReport(
+    weeks,
+    reportDateRows,
+    orders,
+    adStats,
+    costs,
+    warehouseByWeek,
+  );
+  const reportRowIds = new Set(
+    [...saleDateRows, ...reportDateRows]
+      .map((row) => Number(row.rrd_id))
+      .filter((id) => Number.isSafeInteger(id) && id > 0),
+  );
 
   return {
     month,
     report,
+    reportByReportDate,
     timestamp: new Date().toISOString(),
     meta: {
-      salesRows: sales.length,
+      salesRows: reportRowIds.size,
       ordersCount: orders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
       costsCount: costs.length,
       adCampaigns: adStats.length,

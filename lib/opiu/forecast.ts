@@ -1,7 +1,8 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabase } from "@/lib/supabase";
 import { calculateWeatherImpacts, type SeasonalProductRule } from "@/lib/opiu/weatherImpact";
-import { fetchOrders, fetchSalesFromCache } from "@/lib/opiu/loadMonth";
+import { fetchOrders } from "@/lib/opiu/loadMonth";
+import { fetchReportRows } from "@/lib/opiu/reportRows";
 
 const num = (value: unknown) => {
   const parsed = Number(value);
@@ -74,7 +75,7 @@ export function allocateWbPayoutSchedule(remainingPayout: number, dates: string[
   }));
 }
 
-function aggregateByArticle(report: Awaited<ReturnType<typeof fetchSalesFromCache>>) {
+function aggregateByArticle(report: Awaited<ReturnType<typeof fetchReportRows>>) {
   const result = new Map<string, { revenue: number; payout: number }>();
   for (const row of report) {
     const article = String(row.sa_name ?? "").trim().toUpperCase();
@@ -140,8 +141,10 @@ export async function buildMarketplacePayoutForecast(
   const orderRegionFrom = new Date(historyEnd);
   orderRegionFrom.setDate(orderRegionFrom.getDate() - 27);
   const [report, currentReport, recentOrders] = await Promise.all([
-    fetchSalesFromCache(iso(historyStart), iso(historyEnd)),
-    hasStarted ? fetchSalesFromCache(iso(targetStart), iso(actualEnd)) : Promise.resolve([]),
+    fetchReportRows(iso(historyStart), iso(historyEnd), "sale"),
+    hasStarted
+      ? fetchReportRows(iso(targetStart), iso(actualEnd), "sale")
+      : Promise.resolve([]),
     fetchOrders(iso(orderRegionFrom), iso(historyEnd), false),
   ]);
   const actualByArticle = aggregateByArticle(report);

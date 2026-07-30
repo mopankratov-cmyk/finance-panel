@@ -5,19 +5,22 @@ import { rotatingSyncTargets, stalestSyncTargets } from "../lib/sync/rotation";
 import { mergeSklejkiPayloads, type SklejkiPayload } from "../lib/wb/sklejki";
 
 test("finance screens use synced WB facts and the multi-cabinet Ozon resolver", async () => {
-  const [marketplacePnl, wbLosses, opiuMonth] = await Promise.all([
+  const [marketplacePnl, wbLosses, opiuMonth, opiuReportRows] = await Promise.all([
     readFile(new URL("../app/api/opiu/mp/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/wb/losses/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/opiu/loadMonth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/opiu/reportRows.ts", import.meta.url), "utf8"),
   ]);
   assert.match(marketplacePnl, /loadWbCachedFinance/);
   assert.match(marketplacePnl, /getOzonCabinetScope/);
   assert.doesNotMatch(marketplacePnl, /fetchWbReportRows|getActiveOzonCreds/);
   assert.match(wbLosses, /loadWbCachedFinance/);
   assert.doesNotMatch(wbLosses, /fetchWbReportRows/);
-  assert.match(opiuMonth, /from\("wb_sales"\)/);
+  assert.match(opiuMonth, /fetchReportRows/);
   assert.match(opiuMonth, /from\("wb_orders"\)/);
   assert.doesNotMatch(opiuMonth, /fetchSalesReport|statistics-api\.wildberries\.ru/);
+  assert.match(opiuReportRows, /from\("wb_report_rows"\)/);
+  assert.doesNotMatch(opiuReportRows, /from\("wb_sales"\)/);
 });
 
 test("hourly long-running sync jobs rotate across cabinets", () => {
