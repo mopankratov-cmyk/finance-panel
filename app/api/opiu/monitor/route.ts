@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { runServerFinancialAnalysis } from "@/lib/opiu/telegramBot";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { buildMarketplacePayoutForecast } from "@/lib/opiu/forecast";
+import {
+  opiuReportRefreshPeriod,
+  syncOpiuReportPeriod,
+} from "@/lib/opiu/reportSync";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function authorized(request: Request) {
   const supplied = request.headers.get("authorization");
@@ -16,17 +20,33 @@ async function runFinancialMonitor(request: Request) {
   if (!authorized(request)) return NextResponse.json({ error: "Нет доступа" }, { status: 401 });
   try {
     const now = new Date();
-    const forecast = await buildMarketplacePayoutForecast(now.getFullYear(), now.getMonth() + 1);
+    const reportPeriod = opiuReportRefreshPeriod(now);
+    const forecastYear = Number(reportPeriod.dateTo.slice(0, 4));
+    const forecastMonth = Number(reportPeriod.dateTo.slice(5, 7));
+    let reportSync = null;
+    let reportSyncError: string | null = null;
+    try {
+      reportSync = await syncOpiuReportPeriod(reportPeriod);
+    } catch (error) {
+      reportSyncError = error instanceof Error
+        ? error.message
+        : "Не удалось обновить финансовый отчёт WB";
+    }
+    const forecast = await buildMarketplacePayoutForecast(forecastYear, forecastMonth);
     const result = await runServerFinancialAnalysis({ notify: true });
     const db = getSupabaseAdmin();
     if (db) {
       const signals = [
+        ...(reportSyncError ? [{
+          key: "wb-report-sync",
+          text: `⚠️ <b>Не обновился финансовый отчёт WB</b>\n${reportSyncError}\nОПиУ продолжает работать на последнем успешном снимке.`,
+        }] : []),
         ...forecast.weatherWarnings.map((warning) => ({
-          key: `weather:${warning.article}:${now.getFullYear()}-${now.getMonth() + 1}`,
+          key: `weather:${warning.article}:${forecastYear}-${forecastMonth}`,
           text: `🌦️ <b>Погода влияет на ${warning.article}</b>\n${warning.reason}\nКорректировка прогноза: +${warning.adjustmentPercent.toFixed(1)}%`,
         })),
         ...(forecast.stableDeviationDays >= 3 ? [{
-          key: `sales-deviation:${now.getFullYear()}-${now.getMonth() + 1}:${Math.sign(forecast.currentDeviation)}`,
+          key: `sales-deviation:${forecastYear}-${forecastMonth}:${Math.sign(forecast.currentDeviation)}`,
           text: `📉 <b>Устойчивое отклонение продаж</b>\nОтклонение ${(forecast.currentDeviation * 100).toFixed(1)}% держится ${forecast.stableDeviationDays} дня. Адаптивный план пересчитан.`,
         }] : []),
       ];
@@ -43,8 +63,25 @@ async function runFinancialMonitor(request: Request) {
         }, { onConflict: "alert_key" });
         if (!existing) await sendTelegramMessage(signal.text);
       }
+      if (!reportSyncError) {
+        await db
+          .from("finance_alerts")
+          .update({
+            status: "resolved",
+            last_seen_at: new Date().toISOString(),
+          })
+          .eq("alert_key", "wb-report-sync")
+          .eq("status", "open");
+      }
     }
-    return NextResponse.json({ finance: result, forecast });
+    return NextResponse.json({
+      finance: result,
+      forecast,
+      reportSync: reportSync
+        ? { period: reportPeriod, ...reportSync }
+        : null,
+      reportSyncError,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ошибка финансового мониторинга" },
