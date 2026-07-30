@@ -2,6 +2,12 @@
 -- Normative matrix SHA-256:
 -- cd5c2e7a9cce73304418f080055b840bd8104cea31be8ac8f731325242d973df
 -- Implemented families: C-*, T-*, ACL-*.
+-- Hosted Supabase PostgreSQL 17 compatibility amendment:
+-- ACL-M-01/02 forbid every effective/runtime membership. The only accepted
+-- catalog exception is the platform-created ADMIN-only edge from each payout
+-- role to MIGRATION_ADMIN, granted by supabase_admin with INHERIT=false and
+-- SET=false. It does not expand MIGRATION_ADMIN's existing authority and gives
+-- no application role access. Every other edge still fails closed.
 -- Runtime orchestration contract: GATE-* (implemented by the separate runner).
 -- Deferred family: OP-* business RPC operations.
 --
@@ -97,8 +103,11 @@ create role payout_rpc_executor
   nobypassrls
   noinherit;
 
--- PostgreSQL 17 automatically grants a role created by a non-superuser back
--- to its creator. The executor must never retain that membership.
+-- PostgreSQL 17 grants a role created by a CREATEROLE user back to its
+-- creator. Revoke the portable/current-grantor edge immediately. Hosted
+-- Supabase records a separate, non-inheritable/non-settable administrative
+-- edge granted by supabase_admin; the final postcondition below permits only
+-- that exact platform edge.
 revoke payout_rpc_executor from current_user;
 
 grant payout_rpc_owner to current_user
@@ -1435,24 +1444,78 @@ revoke payout_rpc_owner from current_user;
 
 do $marketplace_payout_postconditions$
 declare
+  payout_membership_count integer;
   role_name text;
 begin
-  if exists (
-    select 1
-    from pg_catalog.pg_auth_members as membership
-    join pg_catalog.pg_roles as granted_role
-      on granted_role.oid = membership.roleid
-    join pg_catalog.pg_roles as member_role
-      on member_role.oid = membership.member
-    where granted_role.rolname in (
+  select pg_catalog.count(*)::integer
+  into payout_membership_count
+  from pg_catalog.pg_auth_members as membership
+  join pg_catalog.pg_roles as granted_role
+    on granted_role.oid = membership.roleid
+  join pg_catalog.pg_roles as member_role
+    on member_role.oid = membership.member
+  where granted_role.rolname in (
+    'payout_rpc_owner',
+    'payout_rpc_executor'
+  )
+    or member_role.rolname in (
       'payout_rpc_owner',
       'payout_rpc_executor'
-    )
-      or member_role.rolname in (
-        'payout_rpc_owner',
-        'payout_rpc_executor'
+    );
+
+  -- A vanilla superuser migration leaves zero edges. Supabase PostgreSQL 17
+  -- necessarily leaves exactly one administrative edge for each created role:
+  -- payout role -> migration admin, granted by supabase_admin, with ADMIN only.
+  -- The edge cannot confer runtime privileges because INHERIT and SET are both
+  -- false. Any other member, grantor, option set, direction, or partial state
+  -- fails closed.
+  if payout_membership_count not in (0, 2)
+    or exists (
+      select 1
+      from pg_catalog.pg_auth_members as membership
+      join pg_catalog.pg_roles as granted_role
+        on granted_role.oid = membership.roleid
+      join pg_catalog.pg_roles as member_role
+        on member_role.oid = membership.member
+      join pg_catalog.pg_roles as grantor_role
+        on grantor_role.oid = membership.grantor
+      where (
+        granted_role.rolname in (
+          'payout_rpc_owner',
+          'payout_rpc_executor'
+        )
+        or member_role.rolname in (
+          'payout_rpc_owner',
+          'payout_rpc_executor'
+        )
       )
-  ) then
+        and not (
+          payout_membership_count = 2
+          and granted_role.rolname in (
+            'payout_rpc_owner',
+            'payout_rpc_executor'
+          )
+          and member_role.rolname = current_user
+          and grantor_role.rolname = 'supabase_admin'
+          and membership.admin_option
+          and not membership.inherit_option
+          and not membership.set_option
+        )
+    )
+    or (
+      payout_membership_count = 2
+      and (
+        select pg_catalog.count(distinct granted_role.rolname)
+        from pg_catalog.pg_auth_members as membership
+        join pg_catalog.pg_roles as granted_role
+          on granted_role.oid = membership.roleid
+        where granted_role.rolname in (
+          'payout_rpc_owner',
+          'payout_rpc_executor'
+        )
+      ) <> 2
+    )
+  then
     raise exception using
       errcode = '42501',
       message = 'PAYOUT_ROLE_MEMBERSHIP_POSTCONDITION_FAILED';

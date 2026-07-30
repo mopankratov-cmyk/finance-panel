@@ -357,12 +357,28 @@ function assertMigrationSource(source) {
     7,
     "RLS must be enabled on all seven payout tables",
   );
+  assert.match(
+    source,
+    /payout_membership_count not in \(0, 2\)/,
+    "role postcondition must reject partial hosted-role state",
+  );
+  assert.match(
+    source,
+    /grantor_role\.rolname = 'supabase_admin'/,
+    "hosted PostgreSQL role edge must require the Supabase admin grantor",
+  );
+  assert.match(
+    source,
+    /membership\.admin_option[\s\S]{0,120}not membership\.inherit_option[\s\S]{0,120}not membership\.set_option/,
+    "hosted PostgreSQL role edge must be ADMIN-only and non-effective",
+  );
 
   return {
     tables: 7,
     helpers: 6,
     policies: 19,
     requiredObjects: REQUIRED_OBJECT_NAMES.length,
+    hostedPg17RoleEdges: "zero-or-exact-admin-only-pair",
   };
 }
 
