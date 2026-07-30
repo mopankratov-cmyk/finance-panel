@@ -86,61 +86,39 @@ export function buildOpiuReport(
   const pctCols = (fn: (d: ReturnType<typeof derived>) => number | null) =>
     rowValues(weekMetrics, (_m, d) => fn(d));
 
+  const zero = weeks.map(() => null as number | null).concat([null]);
+  const sep = (id: string): OpiuTableRow => ({ id, label: "", kind: "separator", values: zero });
+
   const rows: OpiuTableRow[] = [
-    { id: "orders", label: "Заказы, руб", kind: "metric", values: cols((m) => m.ordersRub) },
-    {
-      id: "buyout",
-      label: "% выкупа",
-      kind: "percent",
-      values: pctCols((d) => d.buyoutPct),
-    },
-    { id: "revenue", label: "Выручка, руб", kind: "metric", values: cols((m) => m.revenue) },
-    { id: "cogs", label: "Себестоимость", kind: "metric", expense: true, values: cols((m) => m.cogs) },
-    {
-      id: "warehouse",
-      label: "Склад / упаковка",
-      kind: "metric",
-      values: cols((m) => m.warehousePackaging),
-      editable: true,
-      expense: true,
-    },
-    { id: "commission", label: "Комиссия ВБ", kind: "metric", expense: true, values: cols((m) => m.commission) },
-    { id: "logistics", label: "Логистика ВБ", kind: "metric", expense: true, values: cols((m) => m.logistics) },
-    {
-      id: "other",
-      label: "Прочие удержания",
-      kind: "metric",
-      expense: true,
-      values: cols((m) => m.otherDeductions),
-    },
-    { id: "sep1", label: "", kind: "separator", values: weeks.map(() => null).concat([null]) },
-    {
-      id: "marginal",
-      label: "Маржинальный доход",
-      kind: "metric",
-      values: rowValues(weekMetrics, (_m, d) => d.marginal),
-    },
-    {
-      id: "marginal_pct",
-      label: "Рентабельность МД, %",
-      kind: "percent",
-      values: pctCols((d) => d.marginalPct),
-    },
-    { id: "sep2", label: "", kind: "separator", values: weeks.map(() => null).concat([null]) },
-    { id: "ads", label: "Реклама на МП", kind: "metric", expense: true, values: cols((m) => m.adsSpend) },
-    { id: "sep3", label: "", kind: "separator", values: weeks.map(() => null).concat([null]) },
-    {
-      id: "gross",
-      label: "Валовая прибыль",
-      kind: "metric",
-      values: rowValues(weekMetrics, (_m, d) => d.gross),
-    },
-    {
-      id: "gross_pct",
-      label: "Рентабельность ВП, %",
-      kind: "percent",
-      values: pctCols((d) => d.grossPct),
-    },
+    { id: "orders",         label: "Заказы, руб",                                     kind: "metric",  values: cols((m) => m.ordersRub) },
+    { id: "revenue",        label: "Выручка без СПП, руб",                            kind: "metric",  values: cols((m) => m.revenue) },
+    { id: "loyalty_comp",   label: "Компенсация скидки по программе лояльности, руб", kind: "metric",  values: zero },
+    { id: "buyout",         label: "% выкупа",                                        kind: "percent", values: pctCols((d) => d.buyoutPct) },
+    { id: "for_pay",        label: "К перечислению продавцу, руб",                    kind: "metric",  values: cols((m) => m.forPay) },
+    sep("sep0"),
+    { id: "commission",     label: "Комиссия ВБ, руб",                                kind: "metric",  expense: true, values: cols((m) => m.commission) },
+    { id: "commission_pct", label: "% комиссии",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.commission, m.revenue)) },
+    { id: "logistics",      label: "Логистика, руб",                                  kind: "metric",  expense: true, values: cols((m) => m.logistics) },
+    { id: "logistics_pct",  label: "% логистики",                                     kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.logistics, m.revenue)) },
+    { id: "cogs",           label: "Себестоимость, руб",                              kind: "metric",  expense: true, values: cols((m) => m.cogs) },
+    { id: "cogs_pct",       label: "% себестоимости",                                 kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.cogs, m.revenue)) },
+    { id: "warehouse",      label: "Хранение / упаковка склада, руб",                 kind: "metric",  expense: true, editable: true, values: cols((m) => m.warehousePackaging) },
+    { id: "storage_pct",    label: "% хранения",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.warehousePackaging, m.revenue)) },
+    { id: "other",          label: "Прочие удержания, руб",                           kind: "metric",  expense: true, values: cols((m) => m.otherDeductions) },
+    { id: "transit",        label: "Транзитные поставки, руб",                        kind: "metric",  expense: true, values: zero },
+    { id: "acceptance",     label: "Платная приёмка, руб",                            kind: "metric",  expense: true, values: zero },
+    sep("sep1"),
+    { id: "marginal",       label: "Маржинальный доход",                              kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.marginal) },
+    { id: "marginal_pct",   label: "Рентабельность по МД, %",                         kind: "percent", values: pctCols((d) => d.marginalPct) },
+    sep("sep2"),
+    { id: "ads",            label: "ВБ продвижение, руб",                             kind: "metric",  expense: true, values: cols((m) => m.adsSpend) },
+    { id: "drr",            label: "ДРР, %",                                          kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.adsSpend, m.revenue)) },
+    sep("sep3"),
+    { id: "gross",          label: "Валовая прибыль",                                 kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.gross) },
+    { id: "gross_pct",      label: "Рентабельность, %",                               kind: "percent", values: pctCols((d) => d.grossPct) },
+    sep("sep4"),
+    { id: "loan_transfer",  label: "Перевод на баланс заёмщика (займ/кредит)",        kind: "metric",  expense: true, values: zero },
+    { id: "penalty_loan",   label: "Пени",                                            kind: "metric",  expense: true, values: zero },
   ];
 
   return { weeks, rows, warehouseByWeek };

@@ -27,6 +27,7 @@ export interface WeekRawMetrics {
   orders: number;
   ordersRub: number;
   revenue: number;
+  forPay: number;
   cogs: number;
   commission: number;
   logistics: number;
@@ -276,6 +277,7 @@ export function aggregateWeek(
     orders: weekOrders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
     ordersRub: weekOrders.reduce((s, o) => s + orderRub(o), 0),
     revenue: saleRows.reduce((s, r) => s + revenueRub(r), 0),
+    forPay: weekSales.reduce((s, r) => s + num(r.ppvz_for_pay), 0),
     cogs: cogsForSales(weekSales, costLookup),
     commission: weekSales.reduce((s, r) => s + expenseRub(r.ppvz_sales_commission), 0),
     logistics: weekSales.reduce(
@@ -304,6 +306,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       orders: acc.orders + w.orders,
       ordersRub: acc.ordersRub + w.ordersRub,
       revenue: acc.revenue + w.revenue,
+      forPay: acc.forPay + w.forPay,
       cogs: acc.cogs + w.cogs,
       commission: acc.commission + w.commission,
       logistics: acc.logistics + w.logistics,
@@ -315,6 +318,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       orders: 0,
       ordersRub: 0,
       revenue: 0,
+      forPay: 0,
       cogs: 0,
       commission: 0,
       logistics: 0,
