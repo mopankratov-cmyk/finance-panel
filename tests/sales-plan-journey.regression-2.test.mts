@@ -21,7 +21,7 @@ test("empty approved and plan-fact states return the employee to the working pla
   assert.match(pageSource, /Открыть черновик/);
   assert.match(factSource, /onOpenPlan: \(\) => void/);
   assert.match(factSource, />Открыть план<\/button>/);
-  assert.match(pageSource, /\{mode === "edit" \? !plan \?/);
+  assert.match(pageSource, /\{canWrite && mode === "edit" \? !plan \?/);
 });
 
 test("selected month must contain orders before submission or approval", () => {

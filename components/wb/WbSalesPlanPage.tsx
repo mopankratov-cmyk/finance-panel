@@ -4,7 +4,7 @@ import { SalesPlanPage } from "@/components/planning/SalesPlanPage";
 import { useWbCabinet } from "./WbCabinetContext";
 
 export function WbSalesPlanPage() {
-  const { cabinetId, activeCabinet, ready, loading, error, canWrite, user } = useWbCabinet();
+  const { cabinetId, activeCabinet, ready, loading, error, hasExactCabinet, canWrite, user } = useWbCabinet();
   return (
     <SalesPlanPage
       marketplace="wb"
@@ -13,6 +13,7 @@ export function WbSalesPlanPage() {
       ready={ready}
       cabinetLoading={loading}
       cabinetError={error}
+      canRead={hasExactCabinet}
       canWrite={canWrite}
       user={user}
     />

@@ -5,6 +5,8 @@ import { decodeWbToken, probeWbScope, probeWbScopes, type ScopeStatus } from "@/
 import { validateOzon } from "@/lib/ozon/api";
 import { cabinetBrandFilters } from "@/lib/wb/productScope";
 import { getServerSession } from "@/lib/auth/server";
+import { requireApiSession } from "@/lib/auth/apiGuard";
+import { claimMarketplaceSeller } from "@/lib/auth/tenantClaim";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -13,9 +15,11 @@ const mask = (t: string) => (t ? "••••" + t.slice(-4) : "");
 
 // GET — список кабинетов (токены замаскированы).
 export async function GET(request: NextRequest) {
+  const session = await getServerSession();
+  if (!session) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ cabinets: [] });
-  const cols = "id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, is_active, created_at";
+  const cols = "id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, organization_id, is_active, created_at";
   const legacyCols = "id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, is_active, created_at";
   type CabinetRow = Record<string, unknown> & { brand_filters?: unknown };
   const primary = await db
@@ -52,17 +56,26 @@ export async function GET(request: NextRequest) {
     has_feedbacks: !!c.token_feedbacks,
     brand_filters: cabinetBrandFilters(`${String(c.name ?? "")} ${String(c.trade_mark ?? "")}`, c.brand_filters),
     product_scope_count: scopeCount.get(String(c.id)) ?? 0,
+    organization_id: typeof c.organization_id === "string" ? c.organization_id : null,
   }));
   const accessibleOnly = new URL(request.url).searchParams.get("accessible") === "1";
-  const session = accessibleOnly ? await getServerSession() : null;
-  const cabinets = accessibleOnly && session?.role === "manager"
-    ? allCabinets.filter((cabinet) => session.cabinet_ids.includes(String(cabinet.id)))
-    : allCabinets;
+  const cabinets = session.role === "seller"
+    ? allCabinets.filter((cabinet) => (
+      session.organization_id !== null
+      && cabinet.organization_id === session.organization_id
+      && session.cabinet_ids.includes(String(cabinet.id))
+    ))
+    : accessibleOnly && session.role === "manager" && session.cabinet_ids.length > 0
+      ? allCabinets.filter((cabinet) => session.cabinet_ids.includes(String(cabinet.id)))
+      : allCabinets;
   return NextResponse.json({ cabinets, count: cabinets.length });
 }
 
 // POST — добавить кабинет. WB: {token,...}. Ozon: {marketplace:'ozon', client_id, token=api_key, name?}.
 export async function POST(request: NextRequest) {
+  const gate = await requireApiSession(["director"]);
+  if (gate) return gate;
+  const session = await getServerSession();
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const b = (await request.json().catch(() => ({}))) as {
@@ -73,6 +86,8 @@ export async function POST(request: NextRequest) {
   };
   const marketplace = b.marketplace === "ozon" ? "ozon" : "wb";
   const token = (b.token || "").trim();
+  const organizationId = session?.organization_id ?? null;
+  if (!organizationId) return NextResponse.json({ error: "У директора не задана организация" }, { status: 409 });
 
   let row: Record<string, unknown>;
   // Отчёт по WB-токену для формы: какие категории доступны + срок действия.
@@ -98,6 +113,7 @@ export async function POST(request: NextRequest) {
       perf_client_id: perfId || null,
       perf_secret: perfSecret || null,
       is_active: true,
+      organization_id: organizationId,
     };
   } else {
     if (!token) return NextResponse.json({ error: "Укажите API-токен WB" }, { status: 400 });
@@ -124,6 +140,7 @@ export async function POST(request: NextRequest) {
       token_content: contTok || null,
       token_feedbacks: feedbTok || null,
       is_active: true,
+      organization_id: organizationId,
     };
     const cabinetName = String(row.name ?? "");
     if (b.brand_filters !== undefined || cabinetBrandFilters(cabinetName, []).length > 0) {
@@ -131,12 +148,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const claim = await claimMarketplaceSeller(db, marketplace, String(row.seller_id ?? ""), organizationId);
+  if (!claim.ok) return NextResponse.json({ error: claim.error }, { status: claim.status });
+
   // без ON CONFLICT (уникальный индекс частичный): проверяем существование и обновляем/вставляем
   const { data: existing } = await db
     .from("wb_cabinets")
-    .select("id")
+    .select("id,organization_id")
     .eq("marketplace", marketplace)
     .eq("seller_id", row.seller_id as string)
+    .eq("organization_id", organizationId)
+    .limit(1)
     .maybeSingle();
 
   let data, error;

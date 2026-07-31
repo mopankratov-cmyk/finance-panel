@@ -7,6 +7,7 @@ export interface AppUser {
   email: string;
   role: Role;
   cabinet_ids: string[];
+  organization_id: string | null;
   is_active: boolean;
 }
 
@@ -32,21 +33,28 @@ export async function authenticate(
 
   const total = await countUsers();
   if (total === 0) {
+    if (password.length < 10) return { ok: false, error: "Пароль должен содержать не менее 10 символов" };
     const password_hash = await hashPassword(password);
+    let organization = await db.from("organizations").select("id").eq("kind", "internal").order("created_at").limit(1).maybeSingle();
+    if (organization.error) return { ok: false, error: organization.error.message };
+    if (!organization.data) {
+      organization = await db.from("organizations").insert({ name: "Finance Panel", kind: "internal" }).select("id").single();
+      if (organization.error || !organization.data) return { ok: false, error: organization.error?.message ?? "Не удалось создать организацию" };
+    }
     const { data, error } = await db
       .from("app_users")
-      .insert({ email, password_hash, role: "director", cabinet_ids: [], is_active: true })
-      .select("id, email, role, cabinet_ids, is_active").single();
+      .insert({ email, password_hash, role: "director", cabinet_ids: [], organization_id: organization.data.id, is_active: true })
+      .select("id, email, role, cabinet_ids, organization_id, is_active").single();
     if (error) return { ok: false, error: error.message };
     return { ok: true, user: data as AppUser };
   }
 
   const { data: u } = await db
     .from("app_users")
-    .select("id, email, role, cabinet_ids, is_active, password_hash")
+    .select("id, email, role, cabinet_ids, organization_id, is_active, password_hash")
     .eq("email", email).maybeSingle();
   if (!u || !u.is_active) return { ok: false, error: "Неверный email или пароль" };
   const match = await bcrypt.compare(password, u.password_hash as string);
   if (!match) return { ok: false, error: "Неверный email или пароль" };
-  return { ok: true, user: { id: u.id, email: u.email, role: u.role, cabinet_ids: u.cabinet_ids ?? [], is_active: u.is_active } as AppUser };
+  return { ok: true, user: { id: u.id, email: u.email, role: u.role, cabinet_ids: u.cabinet_ids ?? [], organization_id: u.organization_id ?? null, is_active: u.is_active } as AppUser };
 }

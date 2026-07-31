@@ -35,6 +35,45 @@ function isPublicApi(pathname: string, method: string): boolean {
   );
 }
 
+// Внешний WB-селлер — deny-by-default. Разрешаем только чтение аналитики
+// и отдельный endpoint подключения собственного токена. Проверка конкретного
+// cabinet_id всё равно выполняется рядом с данными в route handler.
+const SELLER_READ_API_EXACT = [
+  "/api/abc",
+  "/api/adverts/list",
+  "/api/cabinets",
+  "/api/ctrtest/adv-analysis",
+  "/api/ctrtest/list",
+  "/api/design/day-metrics",
+  "/api/operational-health",
+  "/api/pim",
+  "/api/reviews",
+  "/api/sales-plan",
+  "/api/signals",
+  "/api/sklejki",
+  "/api/supplies",
+  "/api/trends",
+  "/api/unit/price-solver",
+  "/api/unit/table",
+  "/api/wb/losses",
+  "/api/wb/sync-health",
+] as const;
+
+const SELLER_READ_API_PREFIXES = [
+  "/api/market/",
+  "/api/pim/",
+  "/api/planning/",
+  "/api/rnp/",
+  "/api/seo/",
+] as const;
+
+function isSellerApiAllowed(pathname: string, method: string): boolean {
+  if (pathname === "/api/cabinets/self-service") return method === "GET" || method === "POST";
+  if (method !== "GET") return false;
+  return SELLER_READ_API_EXACT.includes(pathname as (typeof SELLER_READ_API_EXACT)[number])
+    || SELLER_READ_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -47,7 +86,12 @@ export async function proxy(req: NextRequest) {
     if (isPublicApi(pathname, req.method)) return NextResponse.next();
     // 2) залогиненный пользователь — кука fp_session уходит автоматически
     //    на same-origin fetch() и подзапросы <img>/<video src="/api/...">
-    if (session) return NextResponse.next();
+    if (session) {
+      if (session.role === "seller" && !isSellerApiAllowed(pathname, req.method)) {
+        return NextResponse.json({ error: "Внешнему селлеру доступна только WB-аналитика" }, { status: 403 });
+      }
+      return NextResponse.next();
+    }
     // 3) машинные/cron-вызовы и внутренний фан-аут (route→route): Bearer CRON_SECRET
     const secret = process.env.CRON_SECRET;
     if (secret && req.headers.get("authorization") === `Bearer ${secret}`) {

@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { Role } from "@/lib/auth/session";
 
 export interface WbCabinet {
   id: string;
@@ -27,8 +28,9 @@ export interface WbCabinet {
 
 interface SessionUser {
   email: string;
-  role: "director" | "finance" | "manager";
+  role: Role;
   cabinet_ids: string[];
+  organization_id?: string | null;
 }
 
 interface WbCabinetContextValue {
@@ -40,6 +42,7 @@ interface WbCabinetContextValue {
   loading: boolean;
   error: string | null;
   canUseAll: boolean;
+  hasExactCabinet: boolean;
   canWrite: boolean;
   setCabinetId: (cabinetId: string) => void;
   refreshCabinets: () => void;
@@ -101,7 +104,8 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
   }, [refreshKey]);
 
   const canUseAll = !(
-    user?.role === "manager" && Array.isArray(user.cabinet_ids) && user.cabinet_ids.length > 0
+    user?.role === "seller"
+    || (user?.role === "manager" && Array.isArray(user.cabinet_ids) && user.cabinet_ids.length > 0)
   );
 
   const isAllowed = useCallback(
@@ -143,7 +147,7 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
       // Используем URL/первый доступный кабинет.
     }
 
-    const fallback = cabinets[0]?.id ?? "all";
+    const fallback = cabinets[0]?.id ?? (user?.role === "seller" ? "" : "all");
     const next = isAllowed(requestedCabinet)
       ? requestedCabinet!
       : isAllowed(cabinetId)
@@ -152,6 +156,11 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
           ? stored
           : fallback;
 
+    if (!next) {
+      if (cabinetId) setCabinetIdState("");
+      setReady(true);
+      return;
+    }
     if (next !== cabinetId) {
       setCabinetIdState(next);
       remember(next);
@@ -171,6 +180,7 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
     remember,
     replaceCabinetInUrl,
     requestedCabinet,
+    user?.role,
   ]);
 
   const setCabinetId = useCallback(
@@ -188,6 +198,7 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
     () => cabinets.find((cabinet) => cabinet.id === cabinetId) ?? null,
     [cabinetId, cabinets],
   );
+  const hasExactCabinet = cabinetId !== "all" && Boolean(activeCabinet);
 
   const value = useMemo<WbCabinetContextValue>(
     () => ({
@@ -199,7 +210,8 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
       loading,
       error,
       canUseAll,
-      canWrite: cabinetId !== "all" && Boolean(activeCabinet),
+      hasExactCabinet,
+      canWrite: user?.role !== "seller" && hasExactCabinet,
       setCabinetId,
       refreshCabinets: () => setRefreshKey((key) => key + 1),
     }),
@@ -209,6 +221,7 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
       cabinets,
       canUseAll,
       error,
+      hasExactCabinet,
       loading,
       ready,
       setCabinetId,

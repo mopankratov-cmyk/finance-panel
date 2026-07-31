@@ -54,7 +54,7 @@ function testResult(test: CtrTestView) {
 }
 
 export function WbCtrPage() {
-  const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, canWrite } = useWbCabinet();
+  const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet, canWrite } = useWbCabinet();
   const [days, setDays] = useState(7);
   const [data, setData] = useState<CtrData | null>(null);
   const [tests, setTests] = useState<CtrTestView[]>([]);
@@ -84,7 +84,7 @@ export function WbCtrPage() {
     const current = ++requestId.current;
     setLoading(true);
     setError(null);
-    const analysis = canWrite
+    const analysis = hasExactCabinet
       ? fetch(`/api/ctrtest/adv-analysis?days=${days}&cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
         .then(async (response) => {
           const body = await response.json() as CtrData;
@@ -92,7 +92,7 @@ export function WbCtrPage() {
           return body;
         })
       : Promise.resolve({ items: [], count: 0, days } as CtrData);
-    const lifecycle = canWrite
+    const lifecycle = hasExactCabinet
       ? fetch(`/api/ctrtest/list?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal }).then((response) => responseJson<{ tests: CtrTestView[] }>(response))
       : Promise.resolve({ tests: [] as CtrTestView[] });
     Promise.all([analysis, lifecycle])
@@ -107,7 +107,7 @@ export function WbCtrPage() {
       })
       .finally(() => { if (current === requestId.current) setLoading(false); });
     return () => controller.abort();
-  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, canWrite, days, ready, retryKey]);
+  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, days, hasExactCabinet, ready, retryKey]);
 
   const candidates = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");

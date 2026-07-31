@@ -30,7 +30,8 @@ interface SuppliesResponse {
 const format = (value: number) => Math.round(value).toLocaleString("ru-RU");
 
 export function WbSuppliesPage() {
-  const { activeCabinet, cabinetId, canWrite, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
+  const { activeCabinet, cabinetId, canWrite, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, user } = useWbCabinet();
+  const sellerReadOnly = user?.role === "seller";
   const [tab, setTab] = useState<Tab>("orders");
   const [data, setData] = useState<SuppliesResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,13 +71,19 @@ export function WbSuppliesPage() {
     return () => controller?.abort();
   }, [load, retryKey]);
 
+  useEffect(() => {
+    if (sellerReadOnly && !["reorder", "stock"].includes(tab)) setTab("reorder");
+  }, [sellerReadOnly, tab]);
+
   const reorderRows = useMemo(() => {
     const needKey = `need${horizon}` as "need30" | "need45" | "need60";
     const needle = query.trim().toLocaleLowerCase("ru-RU");
     return (data?.data?.skus ?? []).map((row) => ({ ...row, need: minBatch > 0 ? Math.ceil(row[needKey] / minBatch) * minBatch : row[needKey] })).filter((row) => row.need > 0 && (!needle || `${row.nmId} ${row.article}`.toLocaleLowerCase("ru-RU").includes(needle))).sort((a, b) => b.need - a.need);
   }, [data?.data?.skus, horizon, minBatch, query]);
 
-  const tabs: [Tab, string][] = [["orders", "Заказы фабрике"], ["distribution", "Распределение"], ["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"], ["source", "Источник"]];
+  const tabs: [Tab, string][] = sellerReadOnly
+    ? [["reorder", "К поставке"], ["stock", "Остатки"]]
+    : [["orders", "Заказы фабрике"], ["distribution", "Распределение"], ["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"], ["source", "Источник"]];
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
@@ -84,7 +91,9 @@ export function WbSuppliesPage() {
         icon={Truck}
         title="Поставки"
         description={data ? `${data.data?.catalog.length ?? data.skus.length} SKU · ${data.data?.warehouses.length ?? data.warehouses.length} складов · мин. партия ${minBatch} шт` : "Потребность, склады, ограничения и приёмка"}
-        actions={
+        actions={sellerReadOnly ? (
+          <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 sm:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить данные</button>
+        ) :
           <>
             <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 sm:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Boxes className="h-3.5 w-3.5" />} Загрузить остатки WB</button>
             <button type="button" onClick={() => setTab("source")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-500 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-600 sm:min-h-8"><PackageCheck className="h-3.5 w-3.5" /> Источник готовой тары</button>

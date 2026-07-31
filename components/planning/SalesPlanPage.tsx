@@ -66,7 +66,7 @@ interface SalesPlanApiResponse {
 
 interface SalesPlanUser {
   email: string;
-  role: "director" | "finance" | "manager";
+  role: "director" | "finance" | "manager" | "seller";
 }
 
 const number = (value: number) => Math.round(value || 0).toLocaleString("ru-RU");
@@ -79,6 +79,7 @@ export function SalesPlanPage({
   ready,
   cabinetLoading,
   cabinetError,
+  canRead,
   canWrite,
   user,
 }: {
@@ -88,6 +89,7 @@ export function SalesPlanPage({
   ready: boolean;
   cabinetLoading: boolean;
   cabinetError: string | null;
+  canRead?: boolean;
   canWrite: boolean;
   user: SalesPlanUser | null;
 }) {
@@ -131,7 +133,7 @@ export function SalesPlanPage({
   currentCatalogContextScope.current = catalogContextScope;
   const editSerial = useRef(0);
   const serverRevision = useRef(0);
-  const exactCabinet = canWrite && Boolean(cabinetId) && cabinetId !== "all" && !cabinetId.startsWith("group:");
+  const exactCabinet = (canRead ?? canWrite) && Boolean(cabinetId) && cabinetId !== "all" && !cabinetId.startsWith("group:");
   const elevated = canModerateSalesPlan(user);
   const accent = marketplace === "wb" ? "violet" : "sky";
 
@@ -176,7 +178,7 @@ export function SalesPlanPage({
   }, [cabinetId, exactCabinet, marketplace, ready, reloadKey, year]);
 
   const persist = useCallback(async (action: SaveAction, source: SalesPlanDocument | null, autosave = false, options?: { comment?: string }) => {
-    if (!exactCabinet || saving) return null;
+    if (!exactCabinet || !canWrite || saving) return null;
     const serial = editSerial.current;
     setSaving(true);
     if (!autosave) {
@@ -216,7 +218,7 @@ export function SalesPlanPage({
     } finally {
       setSaving(false);
     }
-  }, [activeMonth, cabinetId, exactCabinet, marketplace, saving, year]);
+  }, [activeMonth, cabinetId, canWrite, exactCabinet, marketplace, saving, year]);
 
   useEffect(() => {
     if (!dirty || !plan || getSalesPlanMonthState(plan, activeMonth).status !== "draft" || saving || conflict) return;
@@ -453,7 +455,7 @@ export function SalesPlanPage({
   const activeApprovedMonthState = activeApprovedPlan ? getSalesPlanMonthState(activeApprovedPlan, activeMonth) : null;
   const displayPlan = mode === "approved" ? activeApprovedPlan : plan;
   const displayMonthState = displayPlan ? getSalesPlanMonthState(displayPlan, activeMonth) : null;
-  const readOnly = mode !== "edit" || displayMonthState?.status !== "draft";
+  const readOnly = !canWrite || mode !== "edit" || displayMonthState?.status !== "draft";
   const summary = displayPlan ? calculateSalesPlanSummary(displayPlan, visibleMonths) : null;
   const stockRisk = displayPlan ? calculateSalesPlanStockRiskSummary(displayPlan, activeMonth) : null;
   const monthCountWord = visibleMonths.length === 1 ? "месяц" : visibleMonths.length < 5 ? "месяца" : "месяцев";
@@ -566,7 +568,7 @@ export function SalesPlanPage({
           <div className="flex flex-wrap items-center gap-2">
             {plan ? <span aria-live="polite" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium ${saveError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : dirty ? <Clock3 className="h-3.5 w-3.5 text-amber-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}{saving ? "Сохраняем…" : saveError ? "Ошибка автосохранения" : dirty ? "Есть изменения" : "Сохранено автоматически"}</span> : null}
             {activeMonthState?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => void returnPlan()} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9">Вернуть</button> : null}
-            {mode === "edit" ? !plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
+            {canWrite && mode === "edit" ? !plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
               : activeMonthState?.status === "draft" ? <ActionButton primary={primary} disabled={submitDisabled} title={submitDisabledHint} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
                 : activeMonthState?.status === "review" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void approvePlan()} icon={FileCheck2}>Утвердить</ActionButton>
                   : activeMonthState?.status === "approved" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void newVersion()} icon={RefreshCw}>Новая версия</ActionButton>
@@ -595,7 +597,9 @@ export function SalesPlanPage({
               </section> : null}
               <SalesPlanFactView marketplace={marketplace} cabinetId={cabinetId} monthKey={activeMonth} approvedPlan={activeApprovedPlan} onOpenPlan={() => setMode("edit")} />
             </>
-              : !displayPlan ? <EmptyPlan mode={mode} marketplace={marketplace} workingStatus={activeMonthState?.status ?? null} onCreate={() => void createPlan()} onOpenEdit={() => setMode("edit")} />
+              : !displayPlan ? canWrite
+                ? <EmptyPlan mode={mode} marketplace={marketplace} workingStatus={activeMonthState?.status ?? null} onCreate={() => void createPlan()} onOpenEdit={() => setMode("edit")} />
+                : <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Утверждённый план ещё не создан.</div>
                 : <>
                   {summary ? <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5" aria-label="Показатели плана">
                     <Metric label="План заказов" value={`${number(summary.orders)} шт.`} detail={`${summary.variants} цветов · ${visibleMonths.length} ${monthCountWord}`} />

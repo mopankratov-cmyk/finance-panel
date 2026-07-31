@@ -36,7 +36,7 @@ function LoginForm() {
       const j = await r.json();
       if (!r.ok || j.error) { setErr(j.error || `Ошибка ${r.status}`); return; }
       const from = sp.get("from");
-      router.push(from && from !== "/login" ? from : "/");
+      router.push(from && from !== "/login" ? from : String(j.home || "/"));
       router.refresh();
     } catch (e2) { setErr("Сеть: " + String(e2)); }
     finally { setBusy(false); }
@@ -60,7 +60,7 @@ function LoginForm() {
         <label className="mb-1 block text-xs text-gray-500">Email</label>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus
           className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500" />
-        <label className="mb-1 block text-xs text-gray-500">{firstRun ? "Придумайте пароль (≥6)" : "Пароль"}</label>
+        <label className="mb-1 block text-xs text-gray-500">{firstRun ? "Придумайте пароль (≥10)" : "Пароль"}</label>
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={firstRun ? "new-password" : "current-password"}
           className="mb-4 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500" />
         {err && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{err}</div>}

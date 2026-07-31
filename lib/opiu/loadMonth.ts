@@ -1,7 +1,6 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import type { WbAdStat } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { supabase } from "@/lib/supabase";
 import { OPIU_ENTITY, OPIU_WB_CABINET_ID } from "./constants";
 import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { loadReadyFunnelFacts } from "./loadFunnelOrders";
@@ -13,12 +12,18 @@ import {
 } from "./metrics";
 import { fetchReportRows, rowsBySaleDate } from "./reportRows";
 
+function financeDb() {
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Supabase service role не настроен");
+  return db;
+}
+
 export async function fetchOrders(
   dateFrom: string,
   dateTo: string,
   _refresh = false,
 ): Promise<OpiuOrder[]> {
-  const client = getSupabaseAdmin() ?? supabase;
+  const client = financeDb();
   const rowsPromise = loadAllSupabasePages<{
       id: number; cabinet_id: string; nm_id: number; supplier_article: string | null; date: string; total_price: number | null;
       discount_percent: number | null; finished_price: number | null; price_with_disc: number | null; spp: number | null; is_cancel: boolean | null; warehouse: string | null; region: string | null;
@@ -62,7 +67,7 @@ async function fetchAdStats(
   dateFrom: string,
   dateTo: string,
 ): Promise<WbAdStat[]> {
-  const client = getSupabaseAdmin() ?? supabase;
+  const client = financeDb();
   const { data, error } = await client
     .from("wb_advert_nm_daily")
     .select("date, spent")
@@ -87,7 +92,7 @@ async function fetchAdStats(
 }
 
 async function fetchProductCosts(): Promise<ProductCostRow[]> {
-  const client = getSupabaseAdmin() ?? supabase;
+  const client = financeDb();
   const { data, error } = await client
     .from("product_costs")
     .select("article, wb_barcode, cost_rub")
@@ -102,7 +107,7 @@ async function fetchWarehouseCosts(
   weeks: MonthWeek[],
 ): Promise<Record<string, number>> {
   const map: Record<string, number> = {};
-  const client = getSupabaseAdmin() ?? supabase;
+  const client = financeDb();
   const { data, error } = await client
     .from("opiu_warehouse_costs")
     .select("week_start, amount")
@@ -215,7 +220,7 @@ export async function saveWarehouseCost(
   weekStart: string,
   amount: number,
 ): Promise<void> {
-  const client = getSupabaseAdmin() ?? supabase;
+  const client = financeDb();
   const { error } = await client.from("opiu_warehouse_costs").upsert(
     {
       entity: OPIU_ENTITY,

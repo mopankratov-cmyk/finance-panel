@@ -1,7 +1,5 @@
 "use client";
 
-import { supabase } from "@/lib/supabase";
-
 export interface DdsCompany {
   id: string;
   name: string;
@@ -14,74 +12,41 @@ export interface PaymentCompanyLink {
   companyId: string | null;
 }
 
-const PAGE_SIZE = 1000;
+interface CompaniesResponse {
+  companies?: Array<{ id: string; name: string; group_name: string; is_active: boolean }>;
+  payment_links?: Array<{ id: string; company_id: string | null }>;
+  company?: { id: string; name: string; group_name: string; is_active: boolean };
+  error?: string;
+}
+
+async function json<T extends { error?: string }>(response: Response): Promise<T> {
+  const body = await response.json().catch(() => ({})) as T;
+  if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
+  return body;
+}
+
+async function load(): Promise<CompaniesResponse> {
+  return fetch("/api/finance/companies", { cache: "no-store" }).then(json<CompaniesResponse>);
+}
 
 export async function loadDdsCompanies(): Promise<DdsCompany[]> {
-  const { data, error } = await supabase
-    .from("companies")
-    .select("id,name,group_name,is_active")
-    .order("group_name")
-    .order("name");
-
-  if (error) throw new Error(`Не удалось загрузить компании: ${error.message}`);
-
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    groupName: row.group_name,
-    isActive: row.is_active,
-  }));
+  const body = await load();
+  return (body.companies ?? []).map((row) => ({ id: row.id, name: row.name, groupName: row.group_name, isActive: row.is_active }));
 }
 
 export async function loadPaymentCompanyLinks(): Promise<PaymentCompanyLink[]> {
-  const rows: PaymentCompanyLink[] = [];
-
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("id,company_id")
-      .range(from, from + PAGE_SIZE - 1);
-
-    if (error) throw new Error(`Не удалось загрузить компании платежей: ${error.message}`);
-
-    const page = (data ?? []).map((row) => ({
-      paymentId: row.id,
-      companyId: row.company_id,
-    }));
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) break;
-  }
-
-  return rows;
+  const body = await load();
+  return (body.payment_links ?? []).map((row) => ({ paymentId: row.id, companyId: row.company_id }));
 }
 
 export async function createDdsCompany(name: string, groupName: string): Promise<DdsCompany> {
-  const cleanName = name.trim();
-  const cleanGroup = groupName.trim();
-  if (!cleanName || !cleanGroup) throw new Error("Укажите название юрлица и группу");
-
-  const { data: existing, error: lookupError } = await supabase
-    .from("companies")
-    .select("id")
-    .ilike("name", cleanName)
-    .limit(1);
-  if (lookupError) throw new Error(`Не удалось проверить юрлицо: ${lookupError.message}`);
-  if ((existing ?? []).length > 0) throw new Error("Юрлицо с таким названием уже существует");
-
-  const { data, error } = await supabase
-    .from("companies")
-    .insert({ name: cleanName, group_name: cleanGroup, is_active: true })
-    .select("id,name,group_name,is_active")
-    .single();
-
-  if (error) throw new Error(`Не удалось добавить юрлицо: ${error.message}`);
-
-  return {
-    id: data.id,
-    name: data.name,
-    groupName: data.group_name,
-    isActive: data.is_active,
-  };
+  const body = await fetch("/api/finance/companies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "create", name, group_name: groupName }),
+  }).then(json<CompaniesResponse>);
+  if (!body.company) throw new Error("Юрлицо не вернулось после сохранения");
+  return { id: body.company.id, name: body.company.name, groupName: body.company.group_name, isActive: body.company.is_active };
 }
 
 export async function savePaymentWithCompany(
@@ -98,37 +63,17 @@ export async function savePaymentWithCompany(
   },
   companyId: string,
 ): Promise<void> {
-  const { error } = await supabase.from("payments").upsert({
-    id: payment.id,
-    name: payment.name,
-    amount: payment.amount,
-    type: payment.amount >= 0 ? "income" : "expense",
-    category: payment.category,
-    account_id: payment.accountId,
-    date: payment.date,
-    status: payment.status,
-    counterparty: payment.counterparty,
-    comment: payment.comment ?? null,
-    company_id: companyId,
-  });
-
-  if (error) throw new Error(`Не удалось сохранить платёж: ${error.message}`);
+  await fetch("/api/finance/companies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "payment", payment, company_id: companyId }),
+  }).then(json<{ error?: string; ok?: boolean }>);
 }
 
-export async function updatePaymentCompany(
-  paymentId: string,
-  companyId: string | null,
-): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const { data, error } = await supabase
-      .from("payments")
-      .update({ company_id: companyId })
-      .eq("id", paymentId)
-      .select("id");
-
-    if (error) throw new Error(`Не удалось изменить компанию платежа: ${error.message}`);
-    if ((data ?? []).length > 0) return;
-    await new Promise((resolve) => window.setTimeout(resolve, 120));
-  }
-  throw new Error("Платёж сохранён, но компанию назначить не удалось. Обновите страницу и повторите.");
+export async function updatePaymentCompany(paymentId: string, companyId: string | null): Promise<void> {
+  await fetch("/api/finance/companies", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payment_id: paymentId, company_id: companyId }),
+  }).then(json<{ error?: string; ok?: boolean }>);
 }

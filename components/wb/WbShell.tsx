@@ -12,6 +12,7 @@ import {
   Home,
   Link2,
   LogOut,
+  KeyRound,
   Megaphone,
   MessageSquareText,
   PackageSearch,
@@ -60,10 +61,14 @@ const WORK_NAV = WB_NAVIGATION_ITEMS.map((item) => ({ ...item, icon: ITEM_ICONS[
 
 const MOBILE_NAV = WB_MOBILE_NAVIGATION.map((item) => ({ ...item, icon: ITEM_ICONS[item.href] ?? BarChart3, target: true }));
 
-const SYSTEM_NAV: NavItem[] = [
+const INTERNAL_SYSTEM_NAV: NavItem[] = [
   { label: "Общая главная", href: "/", icon: Home },
   { label: "Кабинеты", href: "/cabinets", icon: Settings },
   { label: "Сотрудники", href: "/users", icon: Users },
+];
+
+const SELLER_SYSTEM_NAV: NavItem[] = [
+  { label: "Подключение WB", href: "/wb/connect", icon: KeyRound },
 ];
 
 function RailLink({ item, active, cabinetId, expanded, onNavigate }: { item: NavItem; active: boolean; cabinetId: string; expanded: boolean; onNavigate?: () => void }) {
@@ -94,7 +99,16 @@ function RailLink({ item, active, cabinetId, expanded, onNavigate }: { item: Nav
 export function WbShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { cabinetId, user } = useWbCabinet();
+  const { cabinetId, cabinets, user } = useWbCabinet();
+  const systemNav = user?.role === "seller" ? SELLER_SYSTEM_NAV : INTERNAL_SYSTEM_NAV;
+  const workNav = user?.role === "seller" && cabinets.length === 0
+    ? []
+    : user?.role === "seller"
+    ? WORK_NAV.map((item) => item.href === "/wb/funnel" ? { ...item, label: "Воронка" } : item)
+    : WORK_NAV;
+  const mobileNav = user?.role === "seller" && cabinets.length === 0
+    ? SELLER_SYSTEM_NAV
+    : MOBILE_NAV;
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
 
@@ -130,7 +144,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
     <>
       <div className={`flex h-[54px] shrink-0 items-center border-b border-slate-200 ${expanded ? "gap-2.5 px-3" : "justify-center"}`}>
         <Link
-          href={`/wb/rnp?cabinet=${encodeURIComponent(cabinetId || "all")}`}
+          href={user?.role === "seller" && cabinets.length === 0 ? "/wb/connect" : `/wb/rnp?cabinet=${encodeURIComponent(cabinetId || "all")}`}
           aria-label="Управление WB"
           className="grid h-7 w-7 place-items-center rounded-[9px] bg-gradient-to-br from-violet-500 to-violet-800 text-[10px] font-black text-white shadow-sm"
         >
@@ -153,7 +167,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
 
       <nav aria-label="Инструменты Wildberries" className="flex-1 overflow-y-auto overflow-x-visible py-2">
         <div className="space-y-0.5">
-          {WORK_NAV.map((item) => (
+          {workNav.map((item) => (
             <RailLink
               key={item.href}
               item={item}
@@ -166,7 +180,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="mx-3 my-2 border-t border-slate-200" />
         <div className="space-y-0.5">
-          {SYSTEM_NAV.map((item) => (
+          {systemNav.map((item) => (
             <RailLink
               key={`${item.label}-${item.href}`}
               item={item}
@@ -187,6 +201,9 @@ export function WbShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#f6f7f9] text-slate-800">
+      <a href="#wb-main-content" className="fixed left-3 top-2 z-[100] -translate-y-20 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-transform focus:translate-y-0">
+        Перейти к содержимому
+      </a>
       <aside className={`fixed inset-y-0 left-0 z-[70] hidden flex-col border-r border-slate-200 bg-white transition-[width] duration-200 md:flex ${sidebarExpanded ? "w-[216px]" : "w-[55px]"}`}>
         {renderNav(sidebarExpanded)}
       </aside>
@@ -219,6 +236,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
           <span>Управление Wildberries</span>
         </div>
         <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
+          {user?.role === "seller" ? <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500 lg:inline">Только просмотр</span> : null}
           <WbCabinetSwitcher />
           <div className="hidden h-5 w-px bg-slate-200 sm:block" />
           <div className="hidden min-w-0 items-center gap-2 sm:flex">
@@ -239,10 +257,10 @@ export function WbShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className={`min-h-screen pt-[54px] transition-[margin] duration-200 ${sidebarExpanded ? "md:ml-[216px]" : "md:ml-[55px]"}`}>{children}</main>
+      <main id="wb-main-content" tabIndex={-1} className={`min-h-screen pt-[54px] transition-[margin] duration-200 ${sidebarExpanded ? "md:ml-[216px]" : "md:ml-[55px]"}`}>{children}</main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-14 items-center justify-around border-t border-slate-200 bg-white md:hidden" aria-label="Быстрая навигация">
-        {MOBILE_NAV.map((item) => {
+        {mobileNav.map((item) => {
           const Icon = item.icon;
           const href = item.target ? `${item.href}?cabinet=${encodeURIComponent(cabinetId || "all")}` : item.href;
           const active = isWbNavigationItemActive(pathname, item.href);

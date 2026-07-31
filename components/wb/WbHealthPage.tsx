@@ -146,7 +146,7 @@ function CheckCard({ check, cabinetId }: { check: HealthCheck; cabinetId: string
 }
 
 export function WbHealthPage() {
-  const { activeCabinet, cabinetId, canWrite, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
+  const { activeCabinet, cabinetId, hasExactCabinet, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
   const [response, setResponse] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,7 +155,7 @@ export function WbHealthPage() {
 
   useEffect(() => {
     if (!ready || cabinetsLoading) return;
-    if (!canWrite) { setResponse(null); setError(cabinetsError || "Для operational health выберите один реальный WB-кабинет"); return; }
+    if (!hasExactCabinet) { setResponse(null); setError(cabinetsError || "Для operational health выберите один реальный WB-кабинет"); return; }
     const controller = new AbortController();
     let cancelled = false;
     let timedOut = false;
@@ -171,7 +171,7 @@ export function WbHealthPage() {
       .catch((cause: unknown) => { if (cancelled) return; setError(timedOut ? "Operational health не ответил за 35 секунд. Повторите запрос." : cause instanceof Error ? cause.message : "Не удалось загрузить operational health"); })
       .finally(() => { window.clearTimeout(timeout); if (!cancelled) setLoading(false); });
     return () => { cancelled = true; window.clearTimeout(timeout); controller.abort(); };
-  }, [cabinetId, cabinetsError, cabinetsLoading, canWrite, ready, retryKey]);
+  }, [cabinetId, cabinetsError, cabinetsLoading, hasExactCabinet, ready, retryKey]);
 
   const data = response?.data ?? null;
   const selectedOrder = data?.orders.find((order) => order.id === selectedId) ?? data?.orders[0] ?? null;
@@ -187,7 +187,7 @@ export function WbHealthPage() {
       />
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
-        {!canWrite ? <WbErrorState message={error || "Выберите один реальный кабинет"} /> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
+        {!hasExactCabinet ? <WbErrorState message={error || "Выберите один реальный кабинет"} /> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
         {loading && !data ? <div className="grid min-h-[440px] place-items-center rounded-xl border border-slate-200 bg-white"><div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />Собираю сроки заказов и статусы сервисов…</div></div> : null}
         {data ? (
           <>

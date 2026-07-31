@@ -109,7 +109,7 @@ export function assertUnitScopeAccess(
   session: Pick<Session, "role" | "cabinet_ids"> | null,
   scope: UnitResolvedScope,
 ): void {
-  if (!session || session.role !== "manager") return;
+  if (!session || (session.role !== "manager" && session.role !== "seller")) return;
   if (scope.mode === "all") throw new UnitScopeError(403, "Нет доступа к кабинетам");
   const members = scope.mode === "single" ? [scope.cabinetId] : scope.members;
   const allowed = new Set(session.cabinet_ids.map((member) => member.toLowerCase()));
@@ -122,7 +122,7 @@ export function assertUnitMemberAccess(
   session: Pick<Session, "role" | "cabinet_ids"> | null,
   members: string[],
 ): void {
-  if (!session || session.role !== "manager") return;
+  if (!session || (session.role !== "manager" && session.role !== "seller")) return;
   const allowed = new Set(session.cabinet_ids.map((member) => member.toLowerCase()));
   if (members.some((member) => !allowed.has(member.toLowerCase()))) {
     throw new UnitScopeError(403, "Нет доступа ко всем кабинетам группы");

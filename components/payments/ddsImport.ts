@@ -2,9 +2,8 @@
 //  • точные дубли (дата+сумма+статья+кошелёк+название уже есть) — пропускаются молча;
 //  • «под вопросом» (совпали дата+сумма+кошелёк, но не точь-в-точь) — спрашиваем у пользователя;
 //  • остальные — точно новые.
-// Счета сверяются по названию. Пишем напрямую через supabase-клиент пачками.
+// Счета сверяются по названию. Чтение и запись идут через закрытый серверный API.
 
-import { supabase } from "@/lib/supabase";
 import type { Account, Payment } from "@/lib/types";
 import type { DdsParseResult } from "./ddsCsv";
 import type { DdsCompany } from "./ddsCompanies";
@@ -182,22 +181,18 @@ export function buildImportPlan(
 
 // Свежий снимок базы — чтобы проверка работала даже при повторном импорте без перезагрузки.
 async function fetchExisting(): Promise<ExistingData> {
-  const accRes = await supabase.from("accounts").select("id,name");
-  if (accRes.error) throw new Error(`Не удалось прочитать счета: ${accRes.error.message}`);
-
-  const accounts = (accRes.data ?? []).map(
+  const response = await fetch("/api/finance/import", { cache: "no-store" });
+  const body = await response.json().catch(() => ({})) as {
+    accounts?: Array<{ id: string; name: string }>;
+    payments?: Array<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null }>;
+    error?: string;
+  };
+  if (!response.ok) throw new Error(body.error || `Не удалось прочитать данные: ${response.status}`);
+  const accounts = (body.accounts ?? []).map(
     (a: { id: string; name: string }) =>
       ({ id: a.id, name: a.name, type: "bank", currency: "RUB", balance: 0 }) as Account,
   );
-  const payments: Array<Payment & { companyId?: string | null }> = [];
-  const pageSize = 1000;
-  for (let from = 0; ; from += pageSize) {
-    const payRes = await supabase
-      .from("payments")
-      .select("id,name,amount,category,account_id,date,company_id")
-      .range(from, from + pageSize - 1);
-    if (payRes.error) throw new Error(`Не удалось прочитать платежи: ${payRes.error.message}`);
-    const page = (payRes.data ?? []).map(
+  const payments = (body.payments ?? []).map(
       (p) =>
         ({
           id: p.id,
@@ -211,9 +206,6 @@ async function fetchExisting(): Promise<ExistingData> {
           companyId: p.company_id,
         }) as Payment & { companyId?: string | null },
     );
-    payments.push(...page);
-    if (page.length < pageSize) break;
-  }
   return { accounts, payments };
 }
 
@@ -223,39 +215,6 @@ export async function planImport(
   assignment: CompanyAssignment,
 ): Promise<ImportPlan> {
   return buildImportPlan(result, await fetchExisting(), assignment);
-}
-
-async function insertChunked(table: string, rows: object[], size: number): Promise<number> {
-  let inserted = 0;
-  for (let i = 0; i < rows.length; i += size) {
-    const chunk = rows.slice(i, i + size);
-    const { error } = await supabase.from(table).insert(chunk as never);
-    if (error) {
-      throw new Error(
-        `Ошибка при вставке в «${table}» (строки ${i + 1}–${i + chunk.length}): ${error.message}`,
-      );
-    }
-    inserted += chunk.length;
-  }
-  return inserted;
-}
-
-async function upsertPaymentsChunked(rows: PaymentRow[], size: number): Promise<number> {
-  let inserted = 0;
-  for (let i = 0; i < rows.length; i += size) {
-    const chunk = rows.slice(i, i + size);
-    const { data, error } = await supabase
-      .from("payments")
-      .upsert(chunk, { onConflict: "import_source", ignoreDuplicates: true })
-      .select("id");
-    if (error) {
-      throw new Error(
-        `Ошибка при вставке в «payments» (строки ${i + 1}–${i + chunk.length}): ${error.message}`,
-      );
-    }
-    inserted += data?.length ?? 0;
-  }
-  return inserted;
 }
 
 // Вставляет счета + точно новые платежи + выбранные пользователем «под вопросом».
@@ -269,54 +228,28 @@ export async function commitImport(
   duplicatesSkipped: number;
   suspectedSkipped: number;
 }> {
-  const accepted = plan.suspectedRows.filter((s) => acceptedSuspectedIds.has(s.row.id)).map((s) => s.row);
-  const payments = [...plan.newPaymentRows, ...accepted];
-
-  const accountsCreated = await insertChunked("accounts", plan.accountRows, 100);
-  for (let i = 0; i < plan.companyUpdates.length; i += 100) {
-    const chunk = plan.companyUpdates.slice(i, i + 100);
-    const byCompany = new Map<string, string[]>();
-    for (const update of chunk) {
-      const ids = byCompany.get(update.companyId) ?? [];
-      ids.push(update.paymentId);
-      byCompany.set(update.companyId, ids);
-    }
-    for (const [companyId, ids] of byCompany) {
-      const { error } = await supabase.from("payments").update({ company_id: companyId }).in("id", ids);
-      if (error) throw new Error(`Не удалось назначить компанию платежам: ${error.message}`);
-    }
-  }
-  const paymentsCreated = await upsertPaymentsChunked(payments, 500);
+  const response = await fetch("/api/finance/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan, accepted_suspected_ids: [...acceptedSuspectedIds] }),
+  });
+  const body = await response.json().catch(() => ({})) as {
+    accountsCreated?: number; paymentsCreated?: number; companiesAssigned?: number;
+    duplicatesSkipped?: number; suspectedSkipped?: number; error?: string;
+  };
+  if (!response.ok) throw new Error(body.error || `Ошибка импорта ${response.status}`);
   return {
-    accountsCreated,
-    paymentsCreated,
-    companiesAssigned: plan.companyUpdates.length,
-    duplicatesSkipped: plan.duplicatePayments,
-    suspectedSkipped: plan.suspectedRows.length - accepted.length,
+    accountsCreated: Number(body.accountsCreated ?? 0),
+    paymentsCreated: Number(body.paymentsCreated ?? 0),
+    companiesAssigned: Number(body.companiesAssigned ?? 0),
+    duplicatesSkipped: Number(body.duplicatesSkipped ?? 0),
+    suspectedSkipped: Number(body.suspectedSkipped ?? 0),
   };
 }
 
-// Стартовые демо-счета (из DEFAULT_ACCOUNTS) — удаляем их и связанные платежи.
-const DEMO_ACCOUNT_NAMES = ["WB Счёт 1", "WB Счёт 2", "Ozon", "Банковский счёт", "Наличные"];
-
 export async function cleanDemoData(): Promise<{ accountsDeleted: number; paymentsDeleted: number }> {
-  const { data: accs, error } = await supabase
-    .from("accounts")
-    .select("id")
-    .in("name", DEMO_ACCOUNT_NAMES);
-  if (error) throw new Error(`Не удалось найти демо-счета: ${error.message}`);
-
-  const ids = (accs ?? []).map((a: { id: string }) => a.id);
-  if (ids.length === 0) return { accountsDeleted: 0, paymentsDeleted: 0 };
-
-  const { data: pays } = await supabase.from("payments").select("id").in("account_id", ids);
-  const paymentsDeleted = pays?.length ?? 0;
-
-  const { error: pe } = await supabase.from("payments").delete().in("account_id", ids);
-  if (pe) throw new Error(`Не удалось удалить демо-платежи: ${pe.message}`);
-
-  const { error: ae } = await supabase.from("accounts").delete().in("id", ids);
-  if (ae) throw new Error(`Не удалось удалить демо-счета: ${ae.message}`);
-
-  return { accountsDeleted: ids.length, paymentsDeleted };
+  const response = await fetch("/api/finance/import", { method: "DELETE" });
+  const body = await response.json().catch(() => ({})) as { accountsDeleted?: number; paymentsDeleted?: number; error?: string };
+  if (!response.ok) throw new Error(body.error || `Ошибка очистки ${response.status}`);
+  return { accountsDeleted: Number(body.accountsDeleted ?? 0), paymentsDeleted: Number(body.paymentsDeleted ?? 0) };
 }

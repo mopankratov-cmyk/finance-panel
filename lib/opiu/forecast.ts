@@ -1,5 +1,4 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { supabase } from "@/lib/supabase";
 import { calculateWeatherImpacts, type SeasonalProductRule } from "@/lib/opiu/weatherImpact";
 import { fetchOrders } from "@/lib/opiu/loadMonth";
 import { fetchReportRows } from "@/lib/opiu/reportRows";
@@ -13,6 +12,12 @@ const isSale = (value: unknown) => {
   const text = String(value ?? "").toLowerCase();
   return text.includes("продаж") || text.includes("sale");
 };
+
+function financeDb() {
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Supabase service role не настроен");
+  return db;
+}
 
 export interface ArticlePayoutForecast {
   article: string;
@@ -105,7 +110,7 @@ export async function buildMarketplacePayoutForecast(
   month: number,
   options: { forceRecalculate?: boolean } = {},
 ) {
-  const client = getSupabaseAdmin() ?? supabase;
+  const client = financeDb();
   const { data: planRows, error } = await client
     .from("sales_plan")
     .select("article,plan_revenue")

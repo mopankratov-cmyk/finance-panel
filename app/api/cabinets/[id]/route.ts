@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const dynamic = "force-dynamic";
 
 // PATCH — переименовать / вкл-выкл кабинет: {name?, is_active?}.
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const gate = await requireApiSession(["director"]);
+  if (gate) return gate;
   const { id } = await ctx.params;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
@@ -20,6 +23,8 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
 // DELETE — удалить кабинет.
 export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const gate = await requireApiSession(["director"]);
+  if (gate) return gate;
   const { id } = await ctx.params;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });

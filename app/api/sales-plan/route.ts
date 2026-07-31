@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import {
   appendSalesPlanEvent,
@@ -100,7 +100,7 @@ async function resolveContext(request: NextRequest) {
   if (!cabinetId || cabinetId === "all" || cabinetId.startsWith("group:")) {
     return { error: "Для плана выберите один кабинет", status: 400 } as const;
   }
-  if (!sessionHasCabinetAccess(session, cabinetId)) return { error: "Нет доступа к кабинету", status: 403 } as const;
+  if (!(await hasCabinetAccess(cabinetId))) return { error: "Нет доступа к кабинету", status: 403 } as const;
   const db = getSupabaseAdmin();
   if (!db) return { error: "Supabase не настроен", status: 500 } as const;
   const { data: cabinet, error } = await db

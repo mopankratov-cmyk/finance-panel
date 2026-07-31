@@ -218,11 +218,11 @@ export async function GET(req: NextRequest) {
   ) && checkCronAuth(req) === null;
   let session = null;
   if (!isCron) {
-    const gate = await requireApiSession(["director", "finance", "manager"]);
+    const gate = await requireApiSession(["director", "finance", "manager", "seller"]);
     if (gate) return gate;
     session = await getServerSession();
     if (!session) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
-    if (!["director", "finance", "manager"].includes(session.role)) {
+    if (!["director", "finance", "manager", "seller"].includes(session.role)) {
       return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
     }
   }

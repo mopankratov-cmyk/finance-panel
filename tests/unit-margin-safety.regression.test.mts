@@ -88,7 +88,7 @@ test("unit table dual auth and explicit cabinet resolution fail closed before da
   ]);
   const handlerIndex = route.indexOf("export async function GET");
   const cronIndex = route.indexOf("checkCronAuth(req)", handlerIndex);
-  const guardIndex = route.indexOf('requireApiSession(["director", "finance", "manager"])');
+  const guardIndex = route.indexOf('requireApiSession(["director", "finance", "manager", "seller"])');
   const queryValidationIndex = route.indexOf("parseUnitPeriodQuery(sp)", handlerIndex);
   const queryValidationCatchIndex = route.indexOf("} catch (error) {", queryValidationIndex);
   const dbIndex = route.indexOf("getSupabaseAdmin()", handlerIndex);
@@ -109,8 +109,8 @@ test("unit table dual auth and explicit cabinet resolution fail closed before da
   assert.ok(guardIndex < refreshIndex);
   assert.ok(resolveIndex < accessIndex);
   assert.ok(refreshIndex < dbIndex);
-  assert.match(route, /if \(!isCron\)\s*\{\s*const gate = await requireApiSession\(\["director", "finance", "manager"\]\)/);
-  assert.match(route, /\["director", "finance", "manager"\]\.includes\(session\.role\)/);
+  assert.match(route, /if \(!isCron\)\s*\{\s*const gate = await requireApiSession\(\["director", "finance", "manager", "seller"\]\)/);
+  assert.match(route, /\["director", "finance", "manager", "seller"\]\.includes\(session\.role\)/);
   assert.match(route, /const p_cabinet = scope\.mode === "single" \? scope\.cabinetId : null/);
   assert.doesNotMatch(route, /if \(!db\) return NextResponse\.json\(\{ headers: \[\], rows: \[\], img_urls: \[\] \}\)/);
   assert.match(route, /if \(costsRes\.error\) throw/);

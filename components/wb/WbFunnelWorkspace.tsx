@@ -13,8 +13,9 @@ export function WbFunnelWorkspace() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { activeCabinet, cabinetId } = useWbCabinet();
-  const view: WorkspaceView = searchParams.get("view") === "repricer" ? "repricer" : "funnel";
+  const { activeCabinet, cabinetId, user } = useWbCabinet();
+  const sellerReadOnly = user?.role === "seller";
+  const view: WorkspaceView = !sellerReadOnly && searchParams.get("view") === "repricer" ? "repricer" : "funnel";
 
   const selectView = (nextView: WorkspaceView) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -30,9 +31,9 @@ export function WbFunnelWorkspace() {
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Icon}
-        title="Воронка / Репрайсер"
-        description={`${cabinetLabel} · единый контур метрик и решений цены`}
-        actions={(
+        title={sellerReadOnly ? "Воронка" : "Воронка / Репрайсер"}
+        description={`${cabinetLabel} · ${sellerReadOnly ? "показы, переходы, корзины и заказы" : "единый контур метрик и решений цены"}`}
+        actions={sellerReadOnly ? undefined : (
           <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8" role="tablist" aria-label="Раздел воронки">
             <button
               type="button"

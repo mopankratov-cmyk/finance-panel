@@ -55,9 +55,9 @@ test("manager cabinet metadata listing fails closed and the switcher requests ac
   const cabinetsPost = cabinetsRoute.slice(cabinetsRoute.indexOf("export async function POST"));
 
   assert.match(switcher, /fetch\("\/api\/cabinets\?accessible=1"/);
-  assert.match(cabinetsGet, /accessibleOnly && session\?\.role === "manager"\s*\?\s*allCabinets\.filter/);
+  assert.match(cabinetsGet, /session\.role === "seller"[\s\S]+accessibleOnly && session\.role === "manager"/);
   assert.match(cabinetsGet, /session\.cabinet_ids\.includes\(String\(cabinet\.id\)\)/);
-  assert.doesNotMatch(cabinetsGet, /session\.cabinet_ids\.length\s*>\s*0/);
+  assert.match(cabinetsGet, /session\.organization_id !== null/);
   assert.match(groupsRoute, /const groups = filterCabinetGroups\([\s\S]+session\);/);
   assert.doesNotMatch(cabinetsPost, /accessibleOnly|session\?\.role|cabinet_ids/);
 });

@@ -5,12 +5,14 @@ export const ROLE_HOME: Record<Role, string> = {
   director: "/",
   finance: "/pnl",
   manager: "/ozon",
+  seller: "/wb/connect",
 };
 
 export const ROLE_LABEL: Record<Role, string> = {
   director: "Директор",
   finance: "Финотдел / аналитик",
   manager: "Менеджер МП",
+  seller: "Внешний селлер WB",
 };
 
 // Доступные префиксы путей по роли. director — всё.
@@ -18,6 +20,9 @@ const ACCESS: Record<Role, string[]> = {
   director: ["*"],
   finance: ["/", "/calendar", "/payments", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
   manager: ["/", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/costs", "/agent", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
+  // Внешний селлер работает только в собственном WB-контуре. Управляющие
+  // инструменты (публикация контента, цены, системные настройки) не открываем.
+  seller: ["/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect"],
 };
 
 export function canAccess(role: Role, path: string): boolean {

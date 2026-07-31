@@ -5,7 +5,7 @@ import { Loader2, Users as UsersIcon, Plus, Trash2 } from "lucide-react";
 
 interface U { id: string; email: string; role: string; cabinet_ids: string[]; is_active: boolean }
 interface Cab { id: string; name: string; marketplace: string }
-const ROLES = [["director", "Директор"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"]] as const;
+const ROLES = [["director", "Директор"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"], ["seller", "Внешний селлер WB"]] as const;
 const roleLabel = (r: string) => ROLES.find(([k]) => k === r)?.[1] ?? r;
 
 export default function UsersPage() {
@@ -40,7 +40,7 @@ export default function UsersPage() {
     });
     const j = await r.json();
     if (!r.ok || j.error) setMsg({ ok: false, t: j.error || `Ошибка ${r.status}` });
-    else { setMsg({ ok: true, t: `Сотрудник ${email} сохранён` }); setEmail(""); setPassword(""); setSel([]); await load(); }
+    else { setMsg({ ok: true, t: `${role === "seller" ? "Внешний селлер" : "Сотрудник"} ${email} сохранён` }); setEmail(""); setPassword(""); setSel([]); await load(); }
     setBusy(false);
   };
   const patch = async (id: string, body: object) => { await fetch(`/api/users/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); await load(); };
@@ -52,18 +52,19 @@ export default function UsersPage() {
     <div className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700"><UsersIcon className="h-5 w-5" /></div>
-        <div><h1 className="text-2xl font-bold text-gray-900">Сотрудники</h1><p className="text-sm text-gray-500">Доступы по ролям и кабинетам</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">Пользователи</h1><p className="text-sm text-gray-500">Сотрудники и внешние WB-селлеры</p></div>
       </div>
 
       <div className="mb-5 rounded-xl border border-gray-200 bg-white p-5">
-        <div className="mb-3 text-sm font-semibold text-gray-700">Добавить сотрудника</div>
+        <div className="mb-3 text-sm font-semibold text-gray-700">Добавить пользователя</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="email" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="пароль (≥6)" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="пароль (≥10)" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
           <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none">
             {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </div>
+        {role === "seller" ? <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">После первого входа селлер сам подключит свой WB-кабинет проверенным API-токеном.</div> : null}
         {role === "manager" && cabs.length > 0 && (
           <div className="mt-2">
             <div className="mb-1 text-xs text-gray-500">Кабинеты менеджера (пусто = все):</div>
@@ -78,7 +79,7 @@ export default function UsersPage() {
           </div>
         )}
         <div className="mt-3 flex items-center gap-3">
-          <button onClick={add} disabled={busy || !email || password.length < 6} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+          <button onClick={add} disabled={busy || !email || password.length < 10} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Сохранить
           </button>
           {msg && <span className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-600"}`}>{msg.t}</span>}
@@ -86,13 +87,13 @@ export default function UsersPage() {
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-100 px-5 py-3 text-sm font-semibold text-gray-700">Сотрудники {!loading && `(${users.length})`}</div>
+        <div className="border-b border-gray-100 px-5 py-3 text-sm font-semibold text-gray-700">Пользователи {!loading && `(${users.length})`}</div>
         {loading ? <div className="py-10 text-center text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
           : <div className="divide-y divide-gray-100">
               {users.map((u) => (
                 <div key={u.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
                   <span className={`h-2.5 w-2.5 rounded-full ${u.is_active ? "bg-emerald-500" : "bg-gray-300"}`} />
-                  <div className="min-w-0 flex-1"><div className="font-medium text-gray-900">{u.email}</div><div className="text-xs text-gray-400">{roleLabel(u.role)}{u.role === "manager" && u.cabinet_ids?.length ? ` · ${u.cabinet_ids.length} каб.` : ""}</div></div>
+                  <div className="min-w-0 flex-1"><div className="font-medium text-gray-900">{u.email}</div><div className="text-xs text-gray-400">{roleLabel(u.role)}{(u.role === "manager" || u.role === "seller") && u.cabinet_ids?.length ? ` · ${u.cabinet_ids.length} каб.` : ""}</div></div>
                   <select value={u.role} onChange={(e) => patch(u.id, { role: e.target.value })} className="rounded-md border border-gray-200 px-2 py-1 text-xs">
                     {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>

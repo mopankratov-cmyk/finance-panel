@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { requireApiSession } from "@/lib/auth/apiGuard";
-import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { hasCabinetAccess, sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { wbSyncHealthStatus } from "@/lib/sync/wbSyncHealthStatus";
@@ -86,7 +86,9 @@ export async function GET() {
   const session = await getServerSession();
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const cabinets = (await getActiveWbCabinets()).filter((cabinet) => sessionHasCabinetAccess(session, cabinet.id));
+  const sessionScoped = (await getActiveWbCabinets()).filter((cabinet) => sessionHasCabinetAccess(session, cabinet.id));
+  const cabinetAccess = await Promise.all(sessionScoped.map((cabinet) => hasCabinetAccess(cabinet.id)));
+  const cabinets = sessionScoped.filter((_cabinet, index) => cabinetAccess[index]);
   const cabinetIds = cabinets.map((cabinet) => cabinet.id);
   if (!cabinetIds.length) return NextResponse.json({ generatedAt: new Date().toISOString(), cabinets: [], warnings: [] });
 

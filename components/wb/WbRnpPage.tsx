@@ -526,7 +526,7 @@ function toneClass(metric: Metric, value: number | null) {
 }
 
 export function WbRnpPage() {
-  const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, canWrite, setCabinetId } = useWbCabinet();
+  const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet, canWrite, setCabinetId } = useWbCabinet();
   const [range, setRange] = useState<DateRange>(() => rangeFor("week"));
   const [data, setData] = useState<RnpTable | null>(null);
   const [previousData, setPreviousData] = useState<RnpTable | null>(null);
@@ -729,7 +729,7 @@ export function WbRnpPage() {
   }, [activeCabinet, cabinetId, cabinets.length, cabinetsError, cabinetsLoading, range.from, range.to, ready, retryKey, turnoverWindowDays]);
 
   useEffect(() => {
-    if (!canWrite) {
+    if (!hasExactCabinet) {
       setPlan({});
       return;
     }
@@ -748,10 +748,10 @@ export function WbRnpPage() {
         if (!controller.signal.aborted) setPlanMessage(cause instanceof Error ? cause.message : "Не удалось загрузить план");
       });
     return () => controller.abort();
-  }, [cabinetId, canWrite, month]);
+  }, [cabinetId, hasExactCabinet, month]);
 
   useEffect(() => {
-    if (!canWrite || cabinetId === "all") {
+    if (!hasExactCabinet || cabinetId === "all") {
       setOperationsAvailable(false);
       setTags([]);
       setTagAssignments([]);
@@ -784,7 +784,7 @@ export function WbRnpPage() {
         if (!controller.signal.aborted) setOperationsLoading(false);
       });
     return () => controller.abort();
-  }, [cabinetId, canWrite]);
+  }, [cabinetId, hasExactCabinet]);
 
   const previousSkuByNm = useMemo(
     () => new Map((previousData?.skus ?? []).map((sku) => [sku.nm, sku])),
