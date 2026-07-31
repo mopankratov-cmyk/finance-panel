@@ -44,6 +44,7 @@ import {
   type RnpMetricField,
   type RnpViewId,
 } from "@/lib/rnp/operatingMatrix";
+import { RNP_DEFAULT_TURNOVER_WINDOW_DAYS } from "@/lib/rnp/warmupPlan";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import {
   RnpOperatingToolbar,
@@ -376,7 +377,7 @@ function readMatrixPreferences(): RnpMatrixPreferences {
     sparklinesEnabled: true,
     compactNumbers: false,
     anomalyThreshold: 30,
-    turnoverWindowDays: 7,
+    turnoverWindowDays: RNP_DEFAULT_TURNOVER_WINDOW_DAYS,
   };
   try {
     const raw = window.localStorage.getItem(RNP_MATRIX_STORAGE_KEY);
@@ -390,7 +391,7 @@ function readMatrixPreferences(): RnpMatrixPreferences {
       sparklinesEnabled: value.sparklinesEnabled !== false,
       compactNumbers: value.compactNumbers === true,
       anomalyThreshold: Math.max(10, Math.min(100, Number(value.anomalyThreshold) || 30)),
-      turnoverWindowDays: [7, 14, 30, 60, 90].includes(Number(value.turnoverWindowDays)) ? Number(value.turnoverWindowDays) : 7,
+      turnoverWindowDays: [7, 14, 30, 60, 90].includes(Number(value.turnoverWindowDays)) ? Number(value.turnoverWindowDays) : RNP_DEFAULT_TURNOVER_WINDOW_DAYS,
     };
   } catch {
     return fallback;
@@ -560,7 +561,7 @@ export function WbRnpPage() {
   const [compactNumbers, setCompactNumbers] = useState(false);
   const [anomalyMode, setAnomalyMode] = useState<"off" | RnpAnomalyDirection>("off");
   const [anomalyThreshold, setAnomalyThreshold] = useState(30);
-  const [turnoverWindowDays, setTurnoverWindowDays] = useState(7);
+  const [turnoverWindowDays, setTurnoverWindowDays] = useState(RNP_DEFAULT_TURNOVER_WINDOW_DAYS);
   const [operationsAvailable, setOperationsAvailable] = useState(false);
   const [operationsMessage, setOperationsMessage] = useState<string | null>(null);
   const [operationsLoading, setOperationsLoading] = useState(false);
@@ -663,11 +664,11 @@ export function WbRnpPage() {
     const previousController = new AbortController();
     const currentRequest = ++requestId.current;
     let timedOut = false;
+    let previousDeadline: number | null = null;
     const deadline = window.setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, 65_000);
-    const previousDeadline = window.setTimeout(() => previousController.abort(), 45_000);
 
     setLoading(true);
     setError(null);
@@ -688,15 +689,6 @@ export function WbRnpPage() {
     };
     const previousRange = previousEqualRange(range.from, range.to);
 
-    loadTable(previousRange.from, previousRange.to, "РНП за предыдущий период", previousController.signal)
-      .then((previous) => {
-        if (currentRequest === requestId.current) setPreviousData(previous.error ? null : previous);
-      })
-      .catch(() => {
-        if (currentRequest === requestId.current) setPreviousData(null);
-      })
-      .finally(() => window.clearTimeout(previousDeadline));
-
     loadTable(range.from, range.to, "РНП", controller.signal)
       .then((body) => {
         if (currentRequest !== requestId.current) return;
@@ -704,6 +696,20 @@ export function WbRnpPage() {
         setData(body);
         dataKeyRef.current = requestKey;
         setDataKey(requestKey);
+        // Сравнение не конкурирует с основным экраном за тяжёлые запросы Retail
+        // Family. Сначала пользователь получает текущий период, затем в фоне
+        // догружается предыдущий период для дельт.
+        previousDeadline = window.setTimeout(() => previousController.abort(), 45_000);
+        void loadTable(previousRange.from, previousRange.to, "РНП за предыдущий период", previousController.signal)
+          .then((previous) => {
+            if (currentRequest === requestId.current) setPreviousData(previous.error ? null : previous);
+          })
+          .catch(() => {
+            if (currentRequest === requestId.current) setPreviousData(null);
+          })
+          .finally(() => {
+            if (previousDeadline !== null) window.clearTimeout(previousDeadline);
+          });
       })
       .catch((cause: unknown) => {
         if (currentRequest !== requestId.current || (controller.signal.aborted && !timedOut)) return;
@@ -722,7 +728,7 @@ export function WbRnpPage() {
 
     return () => {
       window.clearTimeout(deadline);
-      window.clearTimeout(previousDeadline);
+      if (previousDeadline !== null) window.clearTimeout(previousDeadline);
       controller.abort();
       previousController.abort();
     };

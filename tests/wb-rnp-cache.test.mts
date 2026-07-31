@@ -11,6 +11,10 @@ import {
   wbRnpCacheTag,
   wbRnpRevalidationProfile,
 } from "../lib/rnp/tableCache";
+import {
+  buildRnpWarmupBatches,
+  RNP_DEFAULT_TURNOVER_WINDOW_DAYS,
+} from "../lib/rnp/warmupPlan";
 
 test("WB RNP snapshot isolates cabinets and periods", () => {
   const all = wbRnpCacheIdentity({ from: "2026-07-01", to: "2026-07-31", cabinetId: null });
@@ -70,12 +74,47 @@ test("WB RNP hourly warmup keeps the previous snapshot while refreshing", () => 
   assert.equal(wbRnpRevalidationProfile({}), null);
 });
 
+test("WB RNP warmup prioritizes the exact default cabinet snapshot before aggregate work", () => {
+  const scopes = [
+    { cabinetId: null, label: "Все кабинеты" },
+    { cabinetId: "retail", label: "Retail Family" },
+    { cabinetId: "optima", label: "Optima" },
+  ];
+  const periods = [
+    { from: "2026-07-25", to: "2026-07-31" },
+    { from: "2026-07-01", to: "2026-07-31" },
+  ];
+  const batches = buildRnpWarmupBatches(scopes, periods, 3);
+  const tasks = batches.flat();
+
+  assert.deepEqual(tasks.map((task) => `${task.label}:${task.from}`), [
+    "Retail Family:2026-07-25",
+    "Optima:2026-07-25",
+    "Retail Family:2026-07-01",
+    "Optima:2026-07-01",
+    "Все кабинеты:2026-07-25",
+    "Все кабинеты:2026-07-01",
+  ]);
+  assert.ok(tasks.every((task) => task.turnoverWindowDays === RNP_DEFAULT_TURNOVER_WINDOW_DAYS));
+  assert.equal(RNP_DEFAULT_TURNOVER_WINDOW_DAYS, 7);
+});
+
 test("marketplace cron waits for fresh WB and Ozon snapshots before returning", async () => {
   const source = await readFile(new URL("../app/api/sync/dashboard-cache/route.ts", import.meta.url), "utf8");
   assert.match(source, /const BLOCKING_SNAPSHOT_REFRESH = \{ forceRefresh: true \} as const/);
   assert.doesNotMatch(source, /WB_RNP_BACKGROUND_REFRESH|OZON_COCKPIT_BACKGROUND_REFRESH/);
   assert.match(source, /loadCachedWbRnp\([\s\S]+?BLOCKING_SNAPSHOT_REFRESH\)/);
   assert.match(source, /loadCachedOzonCockpit\([\s\S]+?BLOCKING_SNAPSHOT_REFRESH\)/);
+});
+
+test("RNP loads the current period before starting the background comparison", async () => {
+  const source = await readFile(new URL("../components/wb/WbRnpPage.tsx", import.meta.url), "utf8");
+  const currentLoad = source.indexOf('loadTable(range.from, range.to, "РНП", controller.signal)');
+  const currentReady = source.indexOf("setDataKey(requestKey)", currentLoad);
+  const comparisonLoad = source.indexOf('loadTable(previousRange.from, previousRange.to, "РНП за предыдущий период"', currentLoad);
+  assert.ok(currentLoad >= 0);
+  assert.ok(currentReady > currentLoad);
+  assert.ok(comparisonLoad > currentReady);
 });
 
 test("RNP loader drains every PostgREST page instead of stopping at 1,000 rows", async () => {

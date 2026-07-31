@@ -7,6 +7,7 @@ import {
   listWbRnpScopes,
   loadCachedWbRnp,
 } from "@/lib/rnp/tableCache";
+import { buildRnpWarmupBatches, type RnpWarmupTask } from "@/lib/rnp/warmupPlan";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { warmWbSecondaryDashboards } from "@/lib/wb/dashboardWarmup";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -51,22 +52,17 @@ async function warmWbRnp() {
   const periods = [...new Map(
     [currentMoscowWeek(), currentMoscowMonth()].map((period) => [`${period.from}:${period.to}`, period]),
   ).values()];
-  const snapshots: Array<{ scope: string; from: string; to: string; ok: boolean; generatedAt?: string; error?: string }> = [];
-  const warm = async (scope: (typeof scopes)[number], period: (typeof periods)[number]) => {
+  const snapshots: Array<{ scope: string; from: string; to: string; turnoverWindowDays: number; ok: boolean; generatedAt?: string; error?: string }> = [];
+  const warm = async (task: RnpWarmupTask) => {
     try {
-      await loadCachedWbRnp({ ...period, ...scope }, BLOCKING_SNAPSHOT_REFRESH);
-      snapshots.push({ scope: scope.label, ...period, ok: true, generatedAt: new Date().toISOString(), error: undefined });
+      await loadCachedWbRnp(task, BLOCKING_SNAPSHOT_REFRESH);
+      snapshots.push({ scope: task.label, from: task.from, to: task.to, turnoverWindowDays: task.turnoverWindowDays, ok: true, generatedAt: new Date().toISOString(), error: undefined });
     } catch (error) {
-      snapshots.push({ scope: scope.label, ...period, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      snapshots.push({ scope: task.label, from: task.from, to: task.to, turnoverWindowDays: task.turnoverWindowDays, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
     }
   };
-  if (scopes.length) {
-    for (const period of periods) await warm(scopes[0], period);
-    for (let offset = 1; offset < scopes.length; offset += 3) {
-      await Promise.all(scopes.slice(offset, offset + 3).map(async (scope) => {
-        for (const period of periods) await warm(scope, period);
-      }));
-    }
+  for (const batch of buildRnpWarmupBatches(scopes, periods)) {
+    await Promise.all(batch.map(warm));
   }
   return {
     ok: snapshots.every((snapshot) => snapshot.ok),
