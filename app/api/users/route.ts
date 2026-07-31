@@ -30,7 +30,15 @@ export async function GET() {
   if (!(await requireDirector())) return NextResponse.json({ error: "Доступ только для директора" }, { status: 403 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ users: [] });
-  const { data } = await db.from("app_users").select("id, email, role, cabinet_ids, organization_id, is_active, created_at").order("created_at");
+  const primary = await db.from("app_users").select("id, email, role, cabinet_ids, organization_id, is_active, created_at").order("created_at");
+  let data = primary.data;
+  if (primary.error?.code === "42703") {
+    const legacy = await db.from("app_users").select("id, email, role, cabinet_ids, is_active, created_at").order("created_at");
+    if (legacy.error) return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+    data = (legacy.data ?? []).map((user) => ({ ...user, organization_id: null }));
+  } else if (primary.error) {
+    return NextResponse.json({ error: primary.error.message }, { status: 500 });
+  }
   return NextResponse.json({ users: data ?? [] });
 }
 

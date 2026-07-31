@@ -49,10 +49,22 @@ export async function authenticate(
     return { ok: true, user: data as AppUser };
   }
 
-  const { data: u } = await db
+  const primary = await db
     .from("app_users")
     .select("id, email, role, cabinet_ids, organization_id, is_active, password_hash")
     .eq("email", email).maybeSingle();
+  let u = primary.data as Record<string, unknown> | null;
+  if (primary.error?.code === "42703") {
+    const legacy = await db
+      .from("app_users")
+      .select("id, email, role, cabinet_ids, is_active, password_hash")
+      .eq("email", email)
+      .maybeSingle();
+    if (legacy.error) return { ok: false, error: legacy.error.message };
+    u = legacy.data ? { ...legacy.data, organization_id: null } : null;
+  } else if (primary.error) {
+    return { ok: false, error: primary.error.message };
+  }
   if (!u || !u.is_active) return { ok: false, error: "Неверный email или пароль" };
   const match = await bcrypt.compare(password, u.password_hash as string);
   if (!match) return { ok: false, error: "Неверный email или пароль" };

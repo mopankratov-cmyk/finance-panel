@@ -25,6 +25,18 @@ test("production sessions fail closed without AUTH_SECRET", async () => {
   assert.match(source, /AUTH_SECRET обязателен в production/);
 });
 
+test("internal login survives the short deployment window before tenant migration", async () => {
+  const sources = await Promise.all([
+    readFile(new URL("../lib/auth/server.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/auth/users.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/users/route.ts", import.meta.url), "utf8"),
+  ]);
+  for (const source of sources) {
+    assert.match(source, /error\?\.code === "42703"/);
+    assert.match(source, /organization_id: null/);
+  }
+});
+
 test("external seller cabinet access is exact and empty never means all", () => {
   const seller = { role: "seller" as const, cabinet_ids: [OWN] };
   assert.equal(sessionHasCabinetAccess(seller, OWN), true);
