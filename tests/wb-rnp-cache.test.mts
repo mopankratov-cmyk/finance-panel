@@ -31,8 +31,8 @@ test("WB RNP snapshot tag is compact", () => {
   assert.equal(tag.includes("Optima"), false);
 });
 
-test("WB RNP data-integrity schema invalidates the previous snapshot", () => {
-  assert.equal(WB_RNP_CACHE_VERSION, "v11-product-facets");
+test("WB RNP net-buyout schema invalidates the previous snapshot", () => {
+  assert.equal(WB_RNP_CACHE_VERSION, "v12-net-buyouts");
 });
 
 test("WB RNP last-good snapshot survives short cron gaps", () => {

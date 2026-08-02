@@ -4,6 +4,7 @@ import {
   applyFunnelOrdersOverlay,
   applyRnpScopeCutoff,
   applyRnpSourceCutoffs,
+  applySalesReturnsAdjustment,
   moscowDateFromIso,
   sourceCutoffFromSyncState,
 } from "../lib/rnp/buildTable";
@@ -102,6 +103,41 @@ test("WB RNP creates a daily order row from WB funnel when supplier events are m
     orders_sum: 21_990,
     buyouts_count: 0,
     buyouts_sum: 0,
+    ad_spent: 0,
+  });
+});
+
+test("WB RNP subtracts return quantity and amount from buyouts", () => {
+  const [row] = applySalesReturnsAdjustment([
+    { nm_id: 7, d: "2026-07-20", orders_count: 20, orders_sum: 120_000, buyouts_count: 12, buyouts_sum: 80_000, ad_spent: 3_000 },
+  ], [
+    { nm_id: 7, date: "2026-07-20T12:00:00.000Z", price_with_disc: -6_400, finished_price: -5_200, sale_id: "R-return-1" },
+    { nm_id: 7, date: "2026-07-20T13:00:00.000Z", price_with_disc: 6_200, finished_price: 5_000, sale_id: "R-return-2" },
+  ]);
+
+  assert.deepEqual(row, {
+    nm_id: 7,
+    d: "2026-07-20",
+    orders_count: 20,
+    orders_sum: 120_000,
+    buyouts_count: 10,
+    buyouts_sum: 67_400,
+    ad_spent: 3_000,
+  });
+});
+
+test("WB RNP creates a negative net-buyout row when a day contains only a return", () => {
+  const [row] = applySalesReturnsAdjustment([], [
+    { nm_id: 8, date: "2026-07-21T09:00:00.000Z", price_with_disc: -4_500, finished_price: -4_000, sale_id: "R-return-only" },
+  ]);
+
+  assert.deepEqual(row, {
+    nm_id: 8,
+    d: "2026-07-21",
+    orders_count: 0,
+    orders_sum: 0,
+    buyouts_count: -1,
+    buyouts_sum: -4_500,
     ad_spent: 0,
   });
 });

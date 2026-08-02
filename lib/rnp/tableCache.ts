@@ -8,7 +8,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 // холодным тяжёлым расчётом, если почасовой прогрев задержался из-за WB/БД.
 // Сам прогрев всё равно принудительно пересобирает снимки каждый час.
 export const WB_RNP_CACHE_SECONDS = 12 * 60 * 60;
-export const WB_RNP_CACHE_VERSION = "v11-product-facets";
+export const WB_RNP_CACHE_VERSION = "v12-net-buyouts";
 
 export interface WbRnpCacheRequest {
   from: string;

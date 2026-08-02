@@ -625,6 +625,48 @@ export function applyFunnelOrdersOverlay(rows: SkuDailyRow[], funnelRows: Funnel
   return [...dailyRows.values()].sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id);
 }
 
+export function applySalesReturnsAdjustment(rows: SkuDailyRow[], returnRows: ScopedSaleSourceRow[]): SkuDailyRow[] {
+  const dailyRows = new Map<string, SkuDailyRow>();
+  for (const row of rows) {
+    const nmId = Number(row.nm_id);
+    const date = readDate(row.d);
+    if (!Number.isFinite(nmId) || !date) continue;
+    dailyRows.set(scopedDailyKey(nmId, date), {
+      d: date,
+      nm_id: nmId,
+      orders_count: Number(row.orders_count ?? 0),
+      orders_sum: Number(row.orders_sum ?? 0),
+      buyouts_count: Number(row.buyouts_count ?? 0),
+      buyouts_sum: Number(row.buyouts_sum ?? 0),
+      ad_spent: Number(row.ad_spent ?? 0),
+    });
+  }
+
+  for (const returnRow of returnRows) {
+    const nmId = Number(returnRow.nm_id);
+    const date = readDate(returnRow.date);
+    if (!Number.isFinite(nmId) || !date || !String(returnRow.sale_id ?? "").startsWith("R")) continue;
+    const key = scopedDailyKey(nmId, date);
+    const current = dailyRows.get(key) ?? {
+      d: date,
+      nm_id: nmId,
+      orders_count: 0,
+      orders_sum: 0,
+      buyouts_count: 0,
+      buyouts_sum: 0,
+      ad_spent: 0,
+    };
+    const amount = Number(returnRow.price_with_disc ?? returnRow.finished_price ?? 0);
+    dailyRows.set(key, {
+      ...current,
+      buyouts_count: current.buyouts_count - 1,
+      buyouts_sum: current.buyouts_sum - (Number.isFinite(amount) ? Math.abs(amount) : 0),
+    });
+  }
+
+  return [...dailyRows.values()].sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id);
+}
+
 function touchScopedDailyRow(rows: Map<string, SkuDailyRow>, nmId: number, date: string) {
   const key = scopedDailyKey(nmId, date);
   const current = rows.get(key) ?? {
@@ -804,6 +846,31 @@ async function loadScopedBaseFacts(
   return buildScopedBaseFactsFromRows({ allowedNmIds: allowed, orders, sales, advertSpend, stocks, products, costs });
 }
 
+async function loadSalesReturns(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  allowed: number[] | null,
+  from: string,
+  to: string,
+) {
+  const dateFrom = `${from}T00:00:00.000Z`;
+  const dateTo = `${nextIsoDate(to)}T00:00:00.000Z`;
+  return loadAllPages<ScopedSaleSourceRow>((start, end) => {
+    let query = db
+      .from("wb_sales")
+      .select("nm_id, date, price_with_disc, finished_price, sale_id")
+      .gte("date", dateFrom)
+      .lt("date", dateTo)
+      .like("sale_id", "R%")
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(start, end);
+    if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+    if (allowed) query = query.in("nm_id", allowed);
+    return query;
+  });
+}
+
 export async function buildRnpTable(
   from: string,
   to: string,
@@ -875,6 +942,7 @@ export async function buildRnpTable(
             totals: [] as RpcTotal[],
             adRows: [] as AdNmRow[],
             funnelRows: [] as FunnelRow[],
+            returnRows: [] as ScopedSaleSourceRow[],
             ordersCutoff: null as string | null,
             salesCutoff: null as string | null,
             advertsCutoff: null as string | null,
@@ -888,6 +956,7 @@ export async function buildRnpTable(
           baseFacts,
           adRows,
           funnelRows,
+          returnRows,
           ordersRowCutoff,
           salesRowCutoff,
           ordersSyncCutoff,
@@ -932,6 +1001,7 @@ export async function buildRnpTable(
             if (allowed) query = query.in("nm_id", allowed);
             return query;
           }),
+          loadSalesReturns(db, scope, allowed, from, to),
           latestSourceDate("wb_orders", scope),
           latestSourceDate("wb_sales", scope),
           latestSyncStateDate(scope, "orders"),
@@ -948,6 +1018,7 @@ export async function buildRnpTable(
           totals: baseFacts.totals,
           adRows,
           funnelRows,
+          returnRows,
           ordersCutoff,
           salesCutoff,
           advertsCutoff,
@@ -969,7 +1040,10 @@ export async function buildRnpTable(
     ]);
 
     const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(
-      applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
+      applySalesReturnsAdjustment(
+        applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
+        item.returnRows,
+      ),
       {
         orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]),
         sales: item.salesCutoff,
