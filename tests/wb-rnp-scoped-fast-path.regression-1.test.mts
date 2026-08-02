@@ -1,6 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildScopedBaseFactsFromRows } from "../lib/rnp/buildTable";
+import { buildLightweightProductTotals, buildScopedBaseFactsFromRows } from "../lib/rnp/buildTable";
+
+test("unscoped RNP builds the SKU list and current stock without the full 30-day report", () => {
+  const totals = buildLightweightProductTotals(
+    [
+      { nm_id: 101 },
+      { nm_id: 202 },
+      { nm_id: 101 },
+    ],
+    [
+      { nm_id: 101, quantity: 3 },
+      { nm_id: 101, quantity: 2 },
+      { nm_id: 303, quantity: 7 },
+    ],
+  );
+
+  assert.deepEqual(totals, [
+    { nm_id: 101, article: "", stock: 5, cost: null },
+    { nm_id: 202, article: "", stock: 0, cost: null },
+    { nm_id: 303, article: "", stock: 7, cost: null },
+  ]);
+});
 
 test("scoped RNP base facts aggregate only allowlisted SKU without full-cabinet RPC", () => {
   const result = buildScopedBaseFactsFromRows({

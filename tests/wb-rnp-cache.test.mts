@@ -31,7 +31,7 @@ test("WB RNP snapshot tag is compact", () => {
   assert.equal(tag.includes("Optima"), false);
 });
 
-test("WB RNP net-buyout schema invalidates the previous snapshot", () => {
+test("WB RNP keeps the current net-buyout snapshot shape", () => {
   assert.equal(WB_RNP_CACHE_VERSION, "v12-net-buyouts");
 });
 
@@ -42,6 +42,8 @@ test("WB RNP last-good snapshot survives short cron gaps", () => {
 test("WB RNP interactive loader does not start slow live WB commission reports", async () => {
   const source = await readFile(new URL("../lib/rnp/buildTable.ts", import.meta.url), "utf8");
   assert.match(source, /getWbCommissionForCabinet\(p_cabinet,\s*30,\s*\{\s*allowLiveFallback:\s*false\s*\}\)/);
+  assert.doesNotMatch(source, /loadRnpReportRows/);
+  assert.match(source, /from\("wb_stocks"\)/);
 });
 
 test("WB dashboard facts have selected-cabinet query indexes", async () => {
@@ -99,11 +101,11 @@ test("WB RNP warmup prioritizes the exact default cabinet snapshot before aggreg
   assert.equal(RNP_DEFAULT_TURNOVER_WINDOW_DAYS, 7);
 });
 
-test("marketplace cron waits for fresh WB and Ozon snapshots before returning", async () => {
+test("marketplace cron keeps last-good WB snapshots while refreshing them", async () => {
   const source = await readFile(new URL("../app/api/sync/dashboard-cache/route.ts", import.meta.url), "utf8");
   assert.match(source, /const BLOCKING_SNAPSHOT_REFRESH = \{ forceRefresh: true \} as const/);
-  assert.doesNotMatch(source, /WB_RNP_BACKGROUND_REFRESH|OZON_COCKPIT_BACKGROUND_REFRESH/);
-  assert.match(source, /loadCachedWbRnp\([\s\S]+?BLOCKING_SNAPSHOT_REFRESH\)/);
+  assert.match(source, /WB_RNP_BACKGROUND_REFRESH/);
+  assert.match(source, /loadCachedWbRnp\([\s\S]+?WB_RNP_BACKGROUND_REFRESH\)/);
   assert.match(source, /loadCachedOzonCockpit\([\s\S]+?BLOCKING_SNAPSHOT_REFRESH\)/);
 });
 

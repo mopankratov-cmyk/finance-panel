@@ -13,7 +13,7 @@ import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commiss
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
-import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
+import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 
 const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
@@ -88,6 +88,32 @@ export interface ScopedStockSourceRow {
 export interface ScopedProductSourceRow {
   nm_id: number;
   article: string | null;
+}
+
+export function buildLightweightProductTotals(
+  skuRows: Array<{ nm_id: number }>,
+  stockRows: ScopedStockSourceRow[],
+): RpcTotal[] {
+  const nmIds = new Set<number>();
+  const stockByNm = new Map<number, number>();
+  for (const row of skuRows) {
+    const nmId = Number(row.nm_id);
+    if (Number.isFinite(nmId) && nmId > 0) nmIds.add(nmId);
+  }
+  for (const row of stockRows) {
+    const nmId = Number(row.nm_id);
+    if (!Number.isFinite(nmId) || nmId <= 0) continue;
+    nmIds.add(nmId);
+    stockByNm.set(nmId, (stockByNm.get(nmId) ?? 0) + Number(row.quantity ?? 0));
+  }
+  return [...nmIds]
+    .sort((left, right) => left - right)
+    .map((nmId) => ({
+      nm_id: nmId,
+      article: "",
+      stock: stockByNm.get(nmId) ?? 0,
+      cost: null,
+    }));
 }
 
 interface PageResult<Row> {
@@ -871,6 +897,18 @@ async function loadSalesReturns(
   });
 }
 
+async function loadCurrentStockRows(db: SupabaseAdmin, scope: CabinetScope) {
+  return loadAllPages<ScopedStockSourceRow>((start, end) => {
+    let query = db
+      .from("wb_stocks")
+      .select("nm_id, quantity")
+      .order("nm_id", { ascending: true })
+      .range(start, end);
+    if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+    return query;
+  });
+}
+
 export async function buildRnpTable(
   from: string,
   to: string,
@@ -973,8 +1011,11 @@ export async function buildRnpTable(
                 cabinetId: scope.cabinetId,
                 label: `${scope.label}: RNP по дням`,
               }),
-              loadRnpReportRows<RpcTotal>(db, scope.cabinetId, { label: `${scope.label}: RNP товары` }),
-            ]).then(([skuRows, totals]) => ({ skuRows, totals })),
+              loadCurrentStockRows(db, scope),
+            ]).then(([skuRows, stockRows]) => ({
+              skuRows,
+              totals: buildLightweightProductTotals(skuRows, stockRows),
+            })),
           loadAllPages<AdNmRow>((start, end) => {
             let query = db
               .from("wb_advert_nm_daily")
@@ -1135,6 +1176,29 @@ export async function buildRnpTable(
         stock: Number(existing.stock ?? 0) + Number(total.stock ?? 0),
         cost: existing.cost ?? total.cost,
       } : total);
+    }
+    // Каталог даёт артикул и сохраняет в РНП новые/нулевые SKU, которых ещё нет
+    // в фактах периода и текущих остатках. Это намного дешевле 30-дневного
+    // rnp_report и уже загружается выше через часовой PIM-кэш.
+    for (const card of catalog) {
+      const existing = totalByNm.get(card.nmId);
+      totalByNm.set(card.nmId, existing ? {
+        ...existing,
+        article: existing.article || card.article || "",
+      } : {
+        nm_id: card.nmId,
+        article: card.article || "",
+        stock: 0,
+        cost: null,
+      });
+    }
+    for (const [nmId, total] of totalByNm) {
+      const article = total.article || cardByNm.get(nmId)?.article || "";
+      totalByNm.set(nmId, {
+        ...total,
+        article,
+        cost: total.cost ?? (article ? (costByArt.get(article)?.cost_rub ?? null) : null),
+      });
     }
     const stockTotal = [...totalByNm.values()].reduce((sum, row) => sum + Number(row.stock ?? 0), 0);
     const stockMoneyTotal = [...totalByNm.values()].reduce((sum, row) => sum + Number(row.stock ?? 0) * Number(row.cost ?? 0), 0);

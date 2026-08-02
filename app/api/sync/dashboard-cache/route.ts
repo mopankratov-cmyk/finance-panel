@@ -6,6 +6,7 @@ import {
   currentMoscowMonth,
   listWbRnpScopes,
   loadCachedWbRnp,
+  WB_RNP_BACKGROUND_REFRESH,
 } from "@/lib/rnp/tableCache";
 import { buildRnpWarmupBatches, type RnpWarmupTask } from "@/lib/rnp/warmupPlan";
 import { checkCronAuth } from "@/lib/sync/helpers";
@@ -55,7 +56,7 @@ async function warmWbRnp() {
   const snapshots: Array<{ scope: string; from: string; to: string; turnoverWindowDays: number; ok: boolean; generatedAt?: string; error?: string }> = [];
   const warm = async (task: RnpWarmupTask) => {
     try {
-      await loadCachedWbRnp(task, BLOCKING_SNAPSHOT_REFRESH);
+      await loadCachedWbRnp(task, WB_RNP_BACKGROUND_REFRESH);
       snapshots.push({ scope: task.label, from: task.from, to: task.to, turnoverWindowDays: task.turnoverWindowDays, ok: true, generatedAt: new Date().toISOString(), error: undefined });
     } catch (error) {
       snapshots.push({ scope: task.label, from: task.from, to: task.to, turnoverWindowDays: task.turnoverWindowDays, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
