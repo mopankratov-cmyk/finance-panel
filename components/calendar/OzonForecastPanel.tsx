@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
 import type { PayoutReport } from "@/lib/opiu/payoutReconciliation";
+import { readForecastJson } from "@/lib/opiu/forecastRequest";
 
 type PayoutMode = "standard" | "weekly";
 
@@ -74,6 +75,7 @@ export function OzonForecastPanel({
     if (cabinetId) query.set("cabinet", cabinetId);
     const requestedCabinetId = cabinetId;
     const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 55_000);
     let cancelled = false;
 
     setData(null);
@@ -84,10 +86,10 @@ export function OzonForecastPanel({
       signal: controller.signal,
     })
       .then(async (response) => {
-        const result = await response.json() as ForecastData;
-        if (!response.ok) {
-          throw new Error(result.error ?? "Не удалось рассчитать прогноз Ozon");
-        }
+        const result = await readForecastJson<ForecastData>(
+          response,
+          "Не удалось рассчитать прогноз Ozon",
+        );
         if (cancelled) return;
         setCabinetOptions(result.cabinets);
         if (!requestedCabinetId && result.cabinetId) {
@@ -109,7 +111,13 @@ export function OzonForecastPanel({
         if (
           requestError instanceof DOMException
           && requestError.name === "AbortError"
-        ) return;
+        ) {
+          if (!cancelled) {
+            setError("Расчёт занял слишком много времени. Повторите запрос через минуту.");
+            setLoading(false);
+          }
+          return;
+        }
         if (cancelled) return;
         setError(
           requestError instanceof Error
@@ -117,9 +125,11 @@ export function OzonForecastPanel({
             : "Не удалось рассчитать прогноз Ozon",
         );
         setLoading(false);
-      });
+      })
+      .finally(() => window.clearTimeout(timeout));
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
       controller.abort();
     };
   }, [year, month, cabinetId, mode]);
@@ -186,7 +196,7 @@ export function OzonForecastPanel({
                 Ozon не вернул полный набор отчётов. Таблица ниже диагностическая и может быть частичной; банковский факт, остаток и график недоступны.
               </p>
             )}
-            {data.reconciliationDataStatus === "degraded" && (
+            {data.reconciliationDataStatus === "degraded" && data.reconciliationQueue.length > 0 && (
               <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm font-bold text-rose-950">
                 Итоговые суммы и расчётный график недоступны: есть поступления Ozon с неразрешённой, частичной или неоднозначной связью с отчётами.
               </p>

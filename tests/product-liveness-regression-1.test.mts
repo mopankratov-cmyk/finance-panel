@@ -6,8 +6,11 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 
 test("finance payout forecast uses synchronized cabinet data instead of revoked ENV tokens", () => {
   const source = read("../lib/opiu/forecast.ts");
-  assert.match(source, /import \{ fetchReportRows \} from "@\/lib\/opiu\/reportRows"/);
-  assert.match(source, /fetchReportRows\(iso\(historyStart\),\s*iso\(historyEnd\),\s*"sale"\)/);
+  assert.match(source, /import \{ fetchForecastReportRows \} from "@\/lib\/opiu\/reportRows"/);
+  assert.match(
+    source,
+    /fetchForecastReportRows\(iso\(historyStart\),\s*iso\(historyEnd\),\s*planArticles,\s*options\.signal\)/,
+  );
   assert.doesNotMatch(source, /fetchSalesReport/);
   assert.doesNotMatch(source, /fetchSalesFromCache/);
 });

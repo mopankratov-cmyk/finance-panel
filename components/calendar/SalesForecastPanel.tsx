@@ -4,6 +4,7 @@ import { BarChart3, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
+import { readForecastJson } from "@/lib/opiu/forecastRequest";
 
 interface ForecastItem {
   article: string;
@@ -55,11 +56,18 @@ export function SalesForecastPanel({ year, month }: {
   const [changeReason, setChangeReason] = useState("");
 
   useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 55_000);
     let cancelled = false;
-    fetch(`/api/opiu/forecast?year=${year}&month=${month + 1}`, { cache: "no-store" })
+    fetch(`/api/opiu/forecast?year=${year}&month=${month + 1}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then(async (response) => {
-        const result = await response.json() as ForecastResponse;
-        if (!response.ok) throw new Error(result.error ?? "Ошибка расчёта");
+        const result = await readForecastJson<ForecastResponse>(
+          response,
+          "Не удалось рассчитать прогноз WB",
+        );
         if (!cancelled) {
           setData(result);
           setError("");
@@ -68,11 +76,22 @@ export function SalesForecastPanel({ year, month }: {
       })
       .catch((requestError) => {
         if (!cancelled) {
-          setError(requestError instanceof Error ? requestError.message : "Не удалось рассчитать прогноз");
+          setError(
+            requestError instanceof DOMException && requestError.name === "AbortError"
+              ? "Расчёт занял слишком много времени. Повторите запрос через минуту."
+              : requestError instanceof Error
+                ? requestError.message
+                : "Не удалось рассчитать прогноз",
+          );
           setLoading(false);
         }
-      });
-    return () => { cancelled = true; };
+      })
+      .finally(() => window.clearTimeout(timeout));
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [year, month]);
 
   const expectedPayout = (data?.forecastPayout ?? 0) + adjustment;

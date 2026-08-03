@@ -115,6 +115,26 @@ test("missing and blank external ids are excluded and counted as degradation", a
   assert.equal(result.degraded, true);
 });
 
+test("non-positive cash-flow statements are ignored without degrading payout reports", async () => {
+  const result = await loadOzonCashFlowReports({
+    ...cashFlowInput,
+    fetchImpl: async () => jsonResponse({
+      result: {
+        page_count: 1,
+        details: [
+          detail("zero", 0),
+          detail("negative", -100),
+          detail("valid", 100),
+        ],
+      },
+    }),
+  });
+
+  assert.deepEqual(result.reports.map((row) => row.reportId), ["valid"]);
+  assert.equal(result.rejectedRows, 0);
+  assert.equal(result.degraded, false);
+});
+
 test("cash-flow parser accepts singleton and array details", async () => {
   const singleton = await loadOzonCashFlowReports({
     ...cashFlowInput,
@@ -829,6 +849,15 @@ test("every unresolved receipt reason gates definitive payout money", () => {
       forecastRemainder: null,
     });
   }
+});
+
+test("report completeness and receipt reconciliation remain independent statuses", () => {
+  assert.equal(deriveReconciliationDataStatus("degraded", []), "available");
+  assert.equal(deriveReconciliationDataStatus("not_selected", []), "not_selected");
+  assert.equal(
+    deriveReconciliationDataStatus("degraded", [{ reason: "unlinked" }]),
+    "degraded",
+  );
 });
 
 test("mixed linked and unresolved receipts cannot expose linked subtotal as bank fact", () => {

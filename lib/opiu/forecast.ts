@@ -1,7 +1,8 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { calculateWeatherImpacts, type SeasonalProductRule } from "@/lib/opiu/weatherImpact";
-import { fetchOrders } from "@/lib/opiu/loadMonth";
-import { fetchReportRows } from "@/lib/opiu/reportRows";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { OPIU_WB_CABINET_ID } from "@/lib/opiu/constants";
+import { fetchForecastReportRows } from "@/lib/opiu/reportRows";
 
 const num = (value: unknown) => {
   const parsed = Number(value);
@@ -80,7 +81,7 @@ export function allocateWbPayoutSchedule(remainingPayout: number, dates: string[
   }));
 }
 
-function aggregateByArticle(report: Awaited<ReturnType<typeof fetchReportRows>>) {
+function aggregateByArticle(report: Awaited<ReturnType<typeof fetchForecastReportRows>>) {
   const result = new Map<string, { revenue: number; payout: number }>();
   for (const row of report) {
     const article = String(row.sa_name ?? "").trim().toUpperCase();
@@ -105,10 +106,48 @@ function aggregateByArticle(report: Awaited<ReturnType<typeof fetchReportRows>>)
   return result;
 }
 
+async function fetchForecastOrderRegions(
+  dateFrom: string,
+  dateTo: string,
+  articles: string[],
+  signal?: AbortSignal,
+) {
+  const client = financeDb();
+  const candidates = [...new Set(articles.flatMap((value) => {
+    const article = String(value ?? "").trim();
+    return article ? [article, article.toUpperCase()] : [];
+  }))];
+  if (candidates.length === 0) return [];
+
+  return loadAllSupabasePages<{
+    supplier_article: string | null;
+    region: string | null;
+    is_cancel: boolean | null;
+  }>(async (from, to) => {
+    const query = client
+      .from("wb_orders")
+      .select("supplier_article,region,is_cancel")
+      .eq("cabinet_id", OPIU_WB_CABINET_ID)
+      .gte("date", dateFrom)
+      .lte("date", `${dateTo}T23:59:59.999Z`)
+      .in("supplier_article", candidates)
+      .order("date", { ascending: true })
+      .range(from, to);
+    const result = signal ? await query.abortSignal(signal) : await query;
+    return {
+      data: result.data,
+      error: result.error ? { message: result.error.message } : null,
+    };
+  }, {
+    maxPages: 100,
+    label: "Прогноз выплат WB: регионы сезонных товаров",
+  });
+}
+
 export async function buildMarketplacePayoutForecast(
   year: number,
   month: number,
-  options: { forceRecalculate?: boolean } = {},
+  options: { forceRecalculate?: boolean; signal?: AbortSignal } = {},
 ) {
   const client = financeDb();
   const { data: planRows, error } = await client
@@ -145,26 +184,35 @@ export async function buildMarketplacePayoutForecast(
   const actualEnd = targetEnd < today ? targetEnd : today;
   const orderRegionFrom = new Date(historyEnd);
   orderRegionFrom.setDate(orderRegionFrom.getDate() - 27);
+  const planArticles = (planRows ?? []).map((row) => String(row.article ?? "").trim()).filter(Boolean);
+  const { data: seasonalRows } = await client
+    .from("finance_seasonal_products")
+    .select("article,weather_mode,threshold,impact_percent_per_unit,max_adjustment_percent")
+    .eq("is_active", true);
+  const planArticleSet = new Set(planArticles.map((article) => article.toUpperCase()));
+  const seasonalRules = ((seasonalRows ?? []) as SeasonalProductRule[])
+    .filter((row) => planArticleSet.has(String(row.article ?? "").trim().toUpperCase()));
   const [report, currentReport, recentOrders] = await Promise.all([
-    fetchReportRows(iso(historyStart), iso(historyEnd), "sale"),
+    fetchForecastReportRows(iso(historyStart), iso(historyEnd), planArticles, options.signal),
     hasStarted
-      ? fetchReportRows(iso(targetStart), iso(actualEnd), "sale")
+      ? fetchForecastReportRows(iso(targetStart), iso(actualEnd), planArticles, options.signal)
       : Promise.resolve([]),
-    fetchOrders(iso(orderRegionFrom), iso(historyEnd), false),
+    fetchForecastOrderRegions(
+      iso(orderRegionFrom),
+      iso(historyEnd),
+      seasonalRules.map((row) => row.article),
+      options.signal,
+    ),
   ]);
   const actualByArticle = aggregateByArticle(report);
   const currentByArticle = aggregateByArticle(currentReport);
   const daysInMonth = targetEnd.getDate();
   const elapsedDays = hasStarted ? Math.max(1, actualEnd.getDate()) : 0;
-  const { data: seasonalRows } = await client
-    .from("finance_seasonal_products")
-    .select("article,weather_mode,threshold,impact_percent_per_unit,max_adjustment_percent")
-    .eq("is_active", true);
   const regionCounts = new Map<string, Map<string, number>>();
   for (const order of recentOrders) {
-    if (order.isCancel) continue;
-    const article = String(order.supplierArticle ?? "").trim().toUpperCase();
-    const region = String(order.oblast ?? order.regionName ?? "").trim();
+    if (order.is_cancel) continue;
+    const article = String(order.supplier_article ?? "").trim().toUpperCase();
+    const region = String(order.region ?? "").trim();
     if (!article || !region) continue;
     const byRegion = regionCounts.get(article) ?? new Map<string, number>();
     byRegion.set(region, (byRegion.get(region) ?? 0) + 1);
@@ -174,7 +222,7 @@ export async function buildMarketplacePayoutForecast(
     const total = [...byRegion.values()].reduce((sum, count) => sum + count, 0);
     return [...byRegion.entries()].map(([region, count]) => ({ article, region, share: count / total }));
   });
-  const weatherImpacts = await calculateWeatherImpacts((seasonalRows ?? []) as SeasonalProductRule[], orderRegions);
+  const weatherImpacts = await calculateWeatherImpacts(seasonalRules, orderRegions, options.signal);
 
   let items = (planRows ?? []).map((row) => {
     const article = String(row.article).trim().toUpperCase();

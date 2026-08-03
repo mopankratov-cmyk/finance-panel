@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { WbReportRow } from "@/lib/wb/types";
 import type { OpiuReportDateMode } from "./reportRows";
@@ -119,4 +120,14 @@ test("invalid WB finance row fails closed instead of corrupting totals", () => {
     () => reportRowForStorage("", { rrd_id: 1, rr_dt: "2026-07-21" }),
     /cabinet_id/,
   );
+});
+
+test("WB payout forecast reads exact report rows only for planned articles", () => {
+  const reportRowsSource = readFileSync(new URL("./reportRows.ts", import.meta.url), "utf8");
+  const forecastSource = readFileSync(new URL("./forecast.ts", import.meta.url), "utf8");
+
+  assert.match(reportRowsSource, /export async function fetchForecastReportRows/);
+  assert.match(reportRowsSource, /\.in\("sa_name", articleBatch\)/);
+  assert.match(forecastSource, /fetchForecastReportRows/);
+  assert.doesNotMatch(forecastSource, /fetchOrders\(/);
 });

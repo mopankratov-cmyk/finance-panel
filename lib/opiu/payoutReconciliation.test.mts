@@ -225,6 +225,10 @@ test("forecast panels and calendar wiring expose no publication or reconciliatio
   assert.match(ozonPanel, /actualDataStatus === "not_started"/);
   assert.match(ozonPanel, /value=\{actualMetricsUnavailable \? "—"/);
   assert.match(ozonPanel, /forecastDataStatus === "degraded"/);
+  assert.match(
+    ozonPanel,
+    /reconciliationDataStatus === "degraded"\s*&&\s*data\.reconciliationQueue\.length > 0/,
+  );
   assert.doesNotMatch(ozonPanel, /reportDataStatus === "not_selected"/);
   assert.match(ozonPanel, /formatNullableMoney/);
   assert.match(ozonPanel, /const controller = new AbortController\(\)/);

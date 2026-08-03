@@ -32,6 +32,39 @@ const REPORT_COLUMNS = [
   "rrd_id",
 ].join(",");
 
+const FORECAST_REPORT_COLUMNS = [
+  "sale_dt",
+  "sa_name",
+  "doc_type_name",
+  "supplier_oper_name",
+  "quantity",
+  "retail_price_withdisc_rub",
+  "retail_amount",
+  "ppvz_for_pay",
+  "delivery_rub",
+  "rebill_logistic_cost",
+  "penalty",
+  "deduction",
+  "additional_payment",
+  "storage_fee",
+  "acceptance",
+  "acquiring_fee",
+  "rrd_id",
+].join(",");
+
+const FORECAST_ARTICLE_BATCH_SIZE = 50;
+
+function forecastArticleCandidates(articles: string[]) {
+  const candidates = new Set<string>();
+  for (const value of articles) {
+    const article = String(value ?? "").trim();
+    if (!article) continue;
+    candidates.add(article);
+    candidates.add(article.toUpperCase());
+  }
+  return [...candidates];
+}
+
 function reportDateColumn(mode: OpiuReportDateMode): "sale_dt" | "rr_dt" {
   return mode === "sale" ? "sale_dt" : "rr_dt";
 }
@@ -66,6 +99,49 @@ export async function fetchReportRows(
         ? "ОПиУ: финансовый отчёт WB по дате продажи"
         : "ОПиУ: финансовый отчёт WB по дате отчёта",
     });
+}
+
+export async function fetchForecastReportRows(
+  dateFrom: string,
+  dateTo: string,
+  articles: string[],
+  signal?: AbortSignal,
+): Promise<WbReportRow[]> {
+  const client = getSupabaseAdmin();
+  if (!client) throw new Error("Supabase service role is not configured");
+  const candidates = forecastArticleCandidates(articles);
+  if (candidates.length === 0) return [];
+
+  const batches: string[][] = [];
+  for (let index = 0; index < candidates.length; index += FORECAST_ARTICLE_BATCH_SIZE) {
+    batches.push(candidates.slice(index, index + FORECAST_ARTICLE_BATCH_SIZE));
+  }
+
+  const rows = await Promise.all(batches.map((articleBatch) =>
+    loadAllSupabasePages<WbReportRow>(async (from, to) => {
+      const query = client
+        .from("wb_report_rows")
+        .select(FORECAST_REPORT_COLUMNS)
+        .eq("cabinet_id", OPIU_WB_CABINET_ID)
+        .not("sale_dt", "is", null)
+        .gte("sale_dt", dateFrom)
+        .lte("sale_dt", dateTo)
+        .in("sa_name", articleBatch)
+        .order("sale_dt", { ascending: true })
+        .order("rrd_id", { ascending: true })
+        .range(from, to);
+      const result = signal ? await query.abortSignal(signal) : await query;
+      return {
+        data: result.data as unknown as WbReportRow[] | null,
+        error: result.error ? { message: result.error.message } : null,
+      };
+    }, {
+      maxPages: 300,
+      label: "Прогноз выплат WB: финансовый отчёт по артикулам плана",
+    }),
+  ));
+
+  return rows.flat();
 }
 
 function dateOnly(value: unknown): string | null {

@@ -28,28 +28,26 @@ interface ForecastDaily {
 const average = (values: number[] | undefined) =>
   values?.length ? values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length : 0;
 
-async function coordinates(region: string) {
+function requestSignal(parent?: AbortSignal) {
+  const timeout = AbortSignal.timeout(5_000);
+  return parent ? AbortSignal.any([parent, timeout]) : timeout;
+}
+
+async function coordinates(region: string, signal?: AbortSignal) {
   const params = new URLSearchParams({ name: region, count: "1", language: "ru", countryCode: "RU" });
-  const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`, { next: { revalidate: 604_800 } });
+  const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`, {
+    next: { revalidate: 604_800 },
+    signal: requestSignal(signal),
+  });
   if (!response.ok) return null;
   const body = await response.json() as { results?: { latitude: number; longitude: number; name: string }[] };
   return body.results?.[0] ?? null;
 }
 
-export async function calculateWeatherImpacts(
-  rules: SeasonalProductRule[],
-  orderRegions: ArticleOrderRegion[],
-): Promise<Map<string, WeatherImpact>> {
-  const result = new Map<string, WeatherImpact>();
-  await Promise.all(rules.map(async (rule) => {
-    const article = rule.article.trim().toUpperCase();
-    const relevantRegions = orderRegions.filter((item) => item.article === article && item.share >= 0.05);
-    if (!relevantRegions.length) return;
-    let weightedAdjustment = 0;
-    const reasons: string[] = [];
-    await Promise.all(relevantRegions.map(async ({ region, share }) => {
-    const location = await coordinates(region);
-    if (!location) return;
+async function forecastForRegion(region: string, signal?: AbortSignal) {
+  try {
+    const location = await coordinates(region, signal);
+    if (!location) return null;
     const params = new URLSearchParams({
       latitude: String(location.latitude),
       longitude: String(location.longitude),
@@ -57,10 +55,43 @@ export async function calculateWeatherImpacts(
       timezone: "auto",
       forecast_days: "16",
     });
-    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { next: { revalidate: 21_600 } });
-    if (!response.ok) return;
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, {
+      next: { revalidate: 21_600 },
+      signal: requestSignal(signal),
+    });
+    if (!response.ok) return null;
     const data = await response.json() as { daily?: ForecastDaily };
-    const daily = data.daily ?? {};
+    return data.daily ?? {};
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? error;
+    return null;
+  }
+}
+
+export async function calculateWeatherImpacts(
+  rules: SeasonalProductRule[],
+  orderRegions: ArticleOrderRegion[],
+  signal?: AbortSignal,
+): Promise<Map<string, WeatherImpact>> {
+  const result = new Map<string, WeatherImpact>();
+  const forecasts = new Map<string, Promise<ForecastDaily | null>>();
+  const loadForecast = (region: string) => {
+    const cached = forecasts.get(region);
+    if (cached) return cached;
+    const pending = forecastForRegion(region, signal);
+    forecasts.set(region, pending);
+    return pending;
+  };
+  await Promise.all(rules.map(async (rule) => {
+    signal?.throwIfAborted();
+    const article = rule.article.trim().toUpperCase();
+    const relevantRegions = orderRegions.filter((item) => item.article === article && item.share >= 0.05);
+    if (!relevantRegions.length) return;
+    let weightedAdjustment = 0;
+    const reasons: string[] = [];
+    await Promise.all(relevantRegions.map(async ({ region, share }) => {
+    const daily = await loadForecast(region);
+    if (!daily) return;
     let units = 0;
     let metric = "";
     if (rule.weather_mode === "hot") {

@@ -23,11 +23,8 @@ export function deriveReconciliationDataStatus(
     reason: "unlinked" | "ambiguous" | "partial" | "over_allocation";
   }>,
 ) {
-  return reportDataStatus !== "available"
-    ? reportDataStatus
-    : unresolved.length > 0
-      ? "degraded" as const
-      : "available" as const;
+  if (reportDataStatus === "not_selected") return "not_selected" as const;
+  return unresolved.length > 0 ? "degraded" as const : "available" as const;
 }
 
 export interface RequestDeadline {
@@ -546,11 +543,11 @@ export async function loadOzonCashFlowReports({
       };
       const reportId = String(detail.period?.id ?? "").trim();
       const amount = numberOrZero(detail.payments?.payment);
+      if (amount <= 0) continue;
       const parsedFrom = parseIsoDate(detail.period?.begin);
       const parsedTo = parseIsoDate(detail.period?.end);
       if (
         !reportId
-        || amount <= 0
         || !parsedFrom
         || !parsedTo
         || parsedFrom.iso > parsedTo.iso
