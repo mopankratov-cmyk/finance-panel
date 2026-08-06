@@ -94,6 +94,7 @@ export function SalesForecastPanel({ year, month }: {
 }) {
   const [cabinetId, setCabinetId] = useState("");
   const [cabinetOptions, setCabinetOptions] = useState<ForecastResponse["cabinets"]>([]);
+  const [forceRecalc, setForceRecalc] = useState(false);
   const [data, setData] = useState<ForecastResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -104,6 +105,7 @@ export function SalesForecastPanel({ year, month }: {
   useEffect(() => {
     const query = new URLSearchParams({ year: String(year), month: String(month + 1) });
     if (cabinetId) query.set("cabinet", cabinetId);
+    if (forceRecalc) query.set("force", "1");
     const requestedCabinetId = cabinetId;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 55_000);
@@ -155,7 +157,7 @@ export function SalesForecastPanel({ year, month }: {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [year, month, cabinetId]);
+  }, [year, month, cabinetId, forceRecalc]);
 
   const expectedPayout = (data?.forecastPayout ?? 0) + adjustment;
   const articleRows = useMemo(() => data?.items.slice().sort((a, b) => b.planRevenue - a.planRevenue) ?? [], [data]);
@@ -180,7 +182,7 @@ export function SalesForecastPanel({ year, month }: {
             Кабинет WB
             <select
               value={cabinetId}
-              onChange={(event) => setCabinetId(event.target.value)}
+              onChange={(event) => { setCabinetId(event.target.value); setForceRecalc(false); }}
               className="min-h-11 rounded-lg border border-slate-200 px-3"
             >
               {cabinetOptions.map((cabinet) => (
@@ -274,8 +276,20 @@ export function SalesForecastPanel({ year, month }: {
               </div>
             )}
             {!data.automaticAdjustmentApplied && data.stableDeviationDays > 0 && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                Отклонение продаж держится {data.stableDeviationDays} дн. Автоматический пересчёт будет применён после трёх последовательных дней либо сразу по команде руководителя.
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <p>Отклонение продаж держится {data.stableDeviationDays} дн. Автоматический пересчёт будет применён после трёх последовательных дней либо сразу по команде руководителя.</p>
+                <button
+                  type="button"
+                  onClick={() => setForceRecalc(true)}
+                  className="mt-2 inline-flex min-h-9 items-center rounded-lg border border-amber-300 bg-white px-3 font-medium text-amber-900 hover:bg-amber-100"
+                >
+                  Пересчитать сейчас по фактическому темпу
+                </button>
+              </div>
+            )}
+            {data.automaticAdjustmentApplied && forceRecalc && (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                Пересчёт по фактическому темпу применён вручную. План менеджера при этом не изменяется — пересчитан только финансовый прогноз.
               </p>
             )}
             {gapRows.length > 0 && (
