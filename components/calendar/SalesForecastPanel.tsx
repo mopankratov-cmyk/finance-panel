@@ -6,8 +6,16 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
 import { readForecastJson } from "@/lib/opiu/forecastRequest";
 
+interface ForecastGap {
+  field: string;
+  source: string;
+  impact: "payout" | "profit";
+}
+
 interface ForecastItem {
   article: string;
+  externalId: string;
+  model: string;
   planRevenue: number;
   historicalRevenue: number;
   historicalPayout: number;
@@ -18,6 +26,9 @@ interface ForecastItem {
   adaptiveRevenue: number;
   weatherAdjustmentPercent: number;
   weatherReason: string | null;
+  gaps: ForecastGap[];
+  affectsPayout: boolean;
+  includedInForecast: boolean;
 }
 
 type WbPlanSource = "approved_sales_plan" | "working_sales_plan" | "none";
@@ -35,6 +46,7 @@ interface ForecastResponse {
   planRevenue: number;
   forecastPayout: number;
   articlesWithoutHistory: number;
+  articlesAffectingPayout: number;
   actualRevenue: number;
   projectedRevenue: number;
   adaptiveRevenue: number;
@@ -127,6 +139,10 @@ export function SalesForecastPanel({ year, month }: {
 
   const expectedPayout = (data?.forecastPayout ?? 0) + adjustment;
   const articleRows = useMemo(() => data?.items.slice().sort((a, b) => b.planRevenue - a.planRevenue) ?? [], [data]);
+  const gapRows = useMemo(
+    () => data?.items.filter((item) => item.gaps.length > 0).sort((a, b) => Number(b.affectsPayout) - Number(a.affectsPayout)) ?? [],
+    [data],
+  );
 
   return (
     <Card>
@@ -194,10 +210,46 @@ export function SalesForecastPanel({ year, month }: {
                 Отклонение продаж держится {data.stableDeviationDays} дн. Автоматический пересчёт будет применён после трёх последовательных дней либо сразу по команде руководителя.
               </p>
             )}
-            {data.articlesWithoutHistory > 0 && (
-              <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                <TriangleAlert className="h-5 w-5 shrink-0" />
-                Для {data.articlesWithoutHistory} артикулов нет достаточной истории. Они не включены в прогноз и требуют ручной оценки.
+            {gapRows.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50">
+                <div className="flex gap-2 px-4 py-3 text-sm text-amber-900">
+                  <TriangleAlert className="h-5 w-5 shrink-0" />
+                  <span>
+                    По <b>{gapRows.length}</b> артикулам не хватает данных
+                    {data.articlesAffectingPayout > 0
+                      ? <> · из них <b>{data.articlesAffectingPayout}</b> влияют на сумму выплаты — итог показан как неполный.</>
+                      : <> · влияют только на расчёт прибыли, сумма выплаты полная.</>}
+                  </span>
+                </div>
+                <details className="border-t border-amber-200">
+                  <summary className="cursor-pointer px-4 py-2 text-sm font-semibold text-amber-900">Показать, чего не хватает</summary>
+                  <div className="max-h-72 overflow-auto border-t border-amber-200 bg-white">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead className="bg-amber-50 text-xs text-amber-800"><tr>
+                        <th className="px-3 py-2 text-left">Артикул</th>
+                        <th className="px-3 py-2 text-left">Внешний ID</th>
+                        <th className="px-3 py-2 text-left">Модель</th>
+                        <th className="px-3 py-2 text-left">Чего не хватает</th>
+                        <th className="px-3 py-2 text-left">Источник</th>
+                        <th className="px-3 py-2 text-left">Влияет на</th>
+                        <th className="px-3 py-2 text-center">В итоге</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {gapRows.flatMap((item) => item.gaps.map((gap, index) => (
+                          <tr key={`${item.article}-${gap.field}`}>
+                            {index === 0 && <td rowSpan={item.gaps.length} className="px-3 py-2 align-top font-medium">{item.article}</td>}
+                            {index === 0 && <td rowSpan={item.gaps.length} className="px-3 py-2 align-top tabular-nums text-slate-500">{item.externalId || "—"}</td>}
+                            {index === 0 && <td rowSpan={item.gaps.length} className="px-3 py-2 align-top text-slate-500">{item.model || "—"}</td>}
+                            <td className="px-3 py-2">{gap.field}</td>
+                            <td className="px-3 py-2 text-slate-500">{gap.source}</td>
+                            <td className="px-3 py-2">{gap.impact === "payout" ? "выплату" : "прибыль"}</td>
+                            {index === 0 && <td rowSpan={item.gaps.length} className="px-3 py-2 text-center align-top">{item.includedInForecast ? "да" : "нет"}</td>}
+                          </tr>
+                        )))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
               </div>
             )}
             {data.weatherWarnings.length > 0 && (

@@ -9,6 +9,7 @@ import {
   listWbPlanMonths,
   type WbPlanSource,
 } from "@/lib/opiu/wbPlan";
+import { classifyForecastArticleGaps, type ForecastGap } from "@/lib/opiu/forecastGaps";
 
 const num = (value: unknown) => {
   const parsed = Number(value);
@@ -171,6 +172,7 @@ export async function buildMarketplacePayoutForecast(
   const cabinetPlan = planningState.data.sales_plan_v1?.wb?.[cabinetId];
   const planSelection = deriveWbPlanForMonth(cabinetPlan, monthKey);
   const planSource: WbPlanSource = planSelection.source;
+  const planMeta = new Map(planSelection.articles.map((item) => [item.article, item]));
   const planRows = planSelection.articles.map((item) => ({
     article: item.article,
     plan_revenue: item.planRevenue,
@@ -246,8 +248,14 @@ export async function buildMarketplacePayoutForecast(
       : planRevenue;
     const weather = weatherImpacts.get(article);
     const weatherAdjustedRevenue = adaptiveRevenue * (1 + (weather?.adjustmentPercent ?? 0) / 100);
+    const meta = planMeta.get(article);
+    // §9: причины нехватки данных по артикулу (пока по доступным сигналам —
+    // плановая выручка и история фин.отчётов; §6 добавит комиссию/логистику/себестоимость).
+    const gapResult = classifyForecastArticleGaps({ planRevenue, payoutRate });
     return {
       article,
+      externalId: meta?.externalId ?? "",
+      model: meta?.model ?? "",
       planRevenue,
       historicalRevenue: actual.revenue,
       historicalPayout: actual.payout,
@@ -258,6 +266,9 @@ export async function buildMarketplacePayoutForecast(
       adaptiveRevenue: weatherAdjustedRevenue,
       weatherAdjustmentPercent: weather?.adjustmentPercent ?? 0,
       weatherReason: weather?.reason ?? null,
+      gaps: gapResult.gaps,
+      affectsPayout: gapResult.affectsPayout,
+      includedInForecast: gapResult.includedInForecast,
     };
   });
   const preliminaryPlan = items.reduce((sum, item) => sum + item.planRevenue, 0);
@@ -319,6 +330,8 @@ export async function buildMarketplacePayoutForecast(
     planRevenue: items.reduce((sum, item) => sum + item.planRevenue, 0),
     forecastPayout,
     articlesWithoutHistory: items.filter((item) => item.payoutRate === null).length,
+    // §9/§19: сколько артикулов имеют пробел, влияющий на выплату — при >0 итог неполный.
+    articlesAffectingPayout: items.filter((item) => item.affectsPayout).length,
     weatherWarnings: items.filter((item) => item.weatherAdjustmentPercent > 0).map((item) => ({
       article: item.article,
       adjustmentPercent: item.weatherAdjustmentPercent,
