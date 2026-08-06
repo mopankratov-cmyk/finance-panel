@@ -12,10 +12,21 @@ interface ForecastGap {
   impact: "payout" | "profit";
 }
 
+interface ArticleBreakdown {
+  revenue: number;
+  withholdings: number | null;
+  payout: number | null;
+  cost: number | null;
+  profit: number | null;
+}
+
 interface ForecastItem {
   article: string;
   externalId: string;
   model: string;
+  planBuyouts: number;
+  costPerUnit: number | null;
+  breakdown: ArticleBreakdown;
   planRevenue: number;
   historicalRevenue: number;
   historicalPayout: number;
@@ -47,6 +58,15 @@ interface ForecastResponse {
   forecastPayout: number;
   articlesWithoutHistory: number;
   articlesAffectingPayout: number;
+  breakdownTotals: {
+    revenue: number;
+    withholdings: number;
+    payout: number;
+    cost: number;
+    profit: number;
+    costComplete: boolean;
+    payoutComplete: boolean;
+  };
   actualRevenue: number;
   projectedRevenue: number;
   adaptiveRevenue: number;
@@ -184,6 +204,27 @@ export function SalesForecastPanel({ year, month }: {
               Кабинет: <b>{data.cabinetName || data.cabinetId}</b> · Источник плана: <b>{PLAN_SOURCE_LABEL[data.planSource]}</b>
               {data.planSource === "working_sales_plan" && " — план не утверждён, используется только для предварительного просмотра"}
             </p>
+            {data.planRowsCount > 0 && (
+              <div className="rounded-xl border border-slate-200 p-4">
+                <h3 className="font-semibold text-slate-900">Экономика прогноза</h3>
+                <p className="mt-1 text-xs text-slate-500">Себестоимость влияет на прибыль, но не вычитается из выплаты маркетплейса. Выплата — по текущей модели прогноза (не по юнит-экономике; формула на согласовании).</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  <Metric label="Плановая выручка" value={data.breakdownTotals.revenue} />
+                  <Metric label="Ожидаемые удержания МП" value={data.breakdownTotals.withholdings} />
+                  <Metric label="Ожидаемая выплата" value={data.breakdownTotals.payout} green />
+                  <Metric label="Себестоимость" value={data.breakdownTotals.cost} />
+                  <Metric label="Ожидаемая прибыль" value={data.breakdownTotals.profit} green={data.breakdownTotals.profit >= 0} />
+                </div>
+                {(!data.breakdownTotals.payoutComplete || !data.breakdownTotals.costComplete) && (
+                  <p className="mt-2 text-xs text-amber-700">
+                    Итог неполный:{" "}
+                    {!data.breakdownTotals.payoutComplete && "у части артикулов неизвестна выплата"}
+                    {!data.breakdownTotals.payoutComplete && !data.breakdownTotals.costComplete && "; "}
+                    {!data.breakdownTotals.costComplete && "у части артикулов нет себестоимости (см. список нехватки данных)"}.
+                  </p>
+                )}
+              </div>
+            )}
             {data.planRowsCount === 0 && (
               <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
                 <p className="font-semibold">План продаж за {String(month + 1).padStart(2, "0")}.{year} не найден</p>

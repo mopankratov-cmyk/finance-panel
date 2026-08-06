@@ -10,6 +10,7 @@ import {
   type WbPlanSource,
 } from "@/lib/opiu/wbPlan";
 import { classifyForecastArticleGaps, type ForecastGap } from "@/lib/opiu/forecastGaps";
+import { deriveArticleBreakdown, sumBreakdowns } from "@/lib/opiu/unitEconomics";
 
 const num = (value: unknown) => {
   const parsed = Number(value);
@@ -152,6 +153,43 @@ async function fetchForecastOrderRegions(
   });
 }
 
+// §6. Себестоимость из раздела «Затраты» (product_costs). Таблица ключуется по
+// артикулу (без cabinet_id), поэтому сопоставляем по нормализованному артикулу.
+// При ошибке чтения возвращаем available:false — тогда себестоимость помечается
+// «не оценивалась», а не ложным «нет данных» (§19).
+async function fetchArticleCosts(
+  client: ReturnType<typeof financeDb>,
+  signal?: AbortSignal,
+): Promise<{ map: Map<string, number>; available: boolean }> {
+  try {
+    const rows = await loadAllSupabasePages<{ article: string | null; cost_rub: number | null }>(
+      async (from, to) => {
+        const query = client
+          .from("product_costs")
+          .select("article,cost_rub")
+          .order("article", { ascending: true })
+          .range(from, to);
+        const result = signal ? await query.abortSignal(signal) : await query;
+        return {
+          data: result.data,
+          error: result.error ? { message: result.error.message } : null,
+        };
+      },
+      { maxPages: 200, label: "Прогноз выплат WB: себестоимость (product_costs)" },
+    );
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      const article = String(row.article ?? "").trim().toUpperCase();
+      const cost = Number(row.cost_rub);
+      if (article && Number.isFinite(cost) && cost > 0) map.set(article, cost);
+    }
+    return { map, available: true };
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return { map: new Map(), available: false };
+  }
+}
+
 export async function buildMarketplacePayoutForecast(
   year: number,
   month: number,
@@ -202,7 +240,7 @@ export async function buildMarketplacePayoutForecast(
   const planArticleSet = new Set(planArticles.map((article) => article.toUpperCase()));
   const seasonalRules = ((seasonalRows ?? []) as SeasonalProductRule[])
     .filter((row) => planArticleSet.has(String(row.article ?? "").trim().toUpperCase()));
-  const [report, currentReport, recentOrders] = await Promise.all([
+  const [report, currentReport, recentOrders, articleCosts] = await Promise.all([
     fetchForecastReportRows(iso(historyStart), iso(historyEnd), planArticles, options.signal, cabinetId),
     hasStarted
       ? fetchForecastReportRows(iso(targetStart), iso(actualEnd), planArticles, options.signal, cabinetId)
@@ -214,6 +252,7 @@ export async function buildMarketplacePayoutForecast(
       options.signal,
       cabinetId,
     ),
+    fetchArticleCosts(client, options.signal),
   ]);
   const actualByArticle = aggregateByArticle(report);
   const currentByArticle = aggregateByArticle(currentReport);
@@ -249,14 +288,22 @@ export async function buildMarketplacePayoutForecast(
     const weather = weatherImpacts.get(article);
     const weatherAdjustedRevenue = adaptiveRevenue * (1 + (weather?.adjustmentPercent ?? 0) / 100);
     const meta = planMeta.get(article);
-    // §9: причины нехватки данных по артикулу (пока по доступным сигналам —
-    // плановая выручка и история фин.отчётов; §6 добавит комиссию/логистику/себестоимость).
-    const gapResult = classifyForecastArticleGaps({ planRevenue, payoutRate });
+    const planBuyouts = meta?.planBuyouts ?? 0;
+    const costPerUnit = articleCosts.map.get(article) ?? null;
+    // §6: наличие себестоимости. available:false (ошибка чтения) → undefined,
+    // чтобы не выдавать ложное «нет себестоимости» (§19). Комиссия/логистика
+    // (join артикул→nmId) вынесены в отдельное согласование — здесь не оцениваются.
+    const costPresence = costPerUnit !== null ? true : (articleCosts.available ? false : undefined);
+    // §9: причины нехватки данных по артикулу (плановая выручка, история
+    // фин.отчётов, себестоимость). Себестоимость влияет только на прибыль.
+    const gapResult = classifyForecastArticleGaps({ planRevenue, payoutRate, cost: costPresence });
     return {
       article,
       externalId: meta?.externalId ?? "",
       model: meta?.model ?? "",
       planRevenue,
+      planBuyouts,
+      costPerUnit,
       historicalRevenue: actual.revenue,
       historicalPayout: actual.payout,
       payoutRate,
@@ -309,6 +356,21 @@ export async function buildMarketplacePayoutForecast(
     });
   }
 
+  // §6: разбивка считается после финализации adaptiveRevenue/forecastPayout.
+  // Выплата НЕ пересчитывается по юнит-экономике (формула на согласовании) —
+  // удержания и прибыль честно выводятся из уже известных чисел и себестоимости.
+  const itemsWithBreakdown = items.map((item) => ({
+    ...item,
+    breakdown: deriveArticleBreakdown({
+      revenue: item.adaptiveRevenue,
+      forecastPayout: item.forecastPayout,
+      planBuyouts: item.planBuyouts,
+      costPerUnit: item.costPerUnit,
+    }),
+  }));
+  const breakdownTotals = sumBreakdowns(itemsWithBreakdown.map((item) => item.breakdown));
+  items = itemsWithBreakdown;
+
   const forecastPayout = items.reduce((sum, item) => sum + (item.forecastPayout ?? 0), 0);
   const payoutDays = [7, 14, 21, Math.min(28, daysInMonth)];
   const reportAccruedPayout = [...currentByArticle.values()].reduce((sum, item) => sum + item.payout, 0);
@@ -332,6 +394,8 @@ export async function buildMarketplacePayoutForecast(
     articlesWithoutHistory: items.filter((item) => item.payoutRate === null).length,
     // §9/§19: сколько артикулов имеют пробел, влияющий на выплату — при >0 итог неполный.
     articlesAffectingPayout: items.filter((item) => item.affectsPayout).length,
+    // §6: раздельная разбивка (выручка/удержания/выплата/себестоимость/прибыль).
+    breakdownTotals,
     weatherWarnings: items.filter((item) => item.weatherAdjustmentPercent > 0).map((item) => ({
       article: item.article,
       adjustmentPercent: item.weatherAdjustmentPercent,
