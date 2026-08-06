@@ -26,6 +26,8 @@ interface ForecastResponse {
   historyFrom: string;
   historyTo: string;
   cabinetId: string;
+  cabinetName: string;
+  cabinets: { id: string; name: string }[];
   planSource: WbPlanSource;
   items: ForecastItem[];
   planRowsCount: number;
@@ -58,6 +60,8 @@ export function SalesForecastPanel({ year, month }: {
   year: number;
   month: number;
 }) {
+  const [cabinetId, setCabinetId] = useState("");
+  const [cabinetOptions, setCabinetOptions] = useState<ForecastResponse["cabinets"]>([]);
   const [data, setData] = useState<ForecastResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -66,10 +70,17 @@ export function SalesForecastPanel({ year, month }: {
   const [changeReason, setChangeReason] = useState("");
 
   useEffect(() => {
+    const query = new URLSearchParams({ year: String(year), month: String(month + 1) });
+    if (cabinetId) query.set("cabinet", cabinetId);
+    const requestedCabinetId = cabinetId;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 55_000);
     let cancelled = false;
-    fetch(`/api/opiu/forecast?year=${year}&month=${month + 1}`, {
+
+    setData(null);
+    setError("");
+    setLoading(true);
+    fetch(`/api/opiu/forecast?${query}`, {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -78,11 +89,21 @@ export function SalesForecastPanel({ year, month }: {
           response,
           "Не удалось рассчитать прогноз WB",
         );
-        if (!cancelled) {
+        if (cancelled) return;
+        setCabinetOptions(result.cabinets ?? []);
+        // Первый заход без выбранного кабинета — сервер вернул дефолтный, фиксируем его.
+        if (!requestedCabinetId && result.cabinetId) {
+          setCabinetId(result.cabinetId);
+          return;
+        }
+        // §19: показываем данные только если ответ строго про запрошенный кабинет.
+        if (result.cabinetId === requestedCabinetId) {
           setData(result);
           setError("");
           setLoading(false);
+          return;
         }
+        throw new Error("Ответ API не соответствует выбранному кабинету");
       })
       .catch((requestError) => {
         if (!cancelled) {
@@ -102,7 +123,7 @@ export function SalesForecastPanel({ year, month }: {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [year, month]);
+  }, [year, month, cabinetId]);
 
   const expectedPayout = (data?.forecastPayout ?? 0) + adjustment;
   const articleRows = useMemo(() => data?.items.slice().sort((a, b) => b.planRevenue - a.planRevenue) ?? [], [data]);
@@ -118,6 +139,20 @@ export function SalesForecastPanel({ year, month }: {
       </div>
       <CardContent className="space-y-4 pt-5">
         <p className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm font-semibold text-violet-950">Только просмотр: прогноз не публикуется в платёжный календарь.</p>
+        {cabinetOptions.length > 0 && (
+          <label className="flex flex-col gap-1 text-sm text-slate-600 sm:max-w-xs">
+            Кабинет WB
+            <select
+              value={cabinetId}
+              onChange={(event) => setCabinetId(event.target.value)}
+              className="min-h-11 rounded-lg border border-slate-200 px-3"
+            >
+              {cabinetOptions.map((cabinet) => (
+                <option key={cabinet.id} value={cabinet.id}>{cabinet.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         {loading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Считаю по отчётам…</div>
           : error ? <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>
           : data && <>
@@ -130,7 +165,7 @@ export function SalesForecastPanel({ year, month }: {
               {adjustment !== 0 && <Metric label="После изменений МП" value={expectedPayout} green={expectedPayout >= data.forecastPayout} />}
             </div>
             <p className="text-sm text-slate-600">
-              Источник плана: <b>{PLAN_SOURCE_LABEL[data.planSource]}</b>
+              Кабинет: <b>{data.cabinetName || data.cabinetId}</b> · Источник плана: <b>{PLAN_SOURCE_LABEL[data.planSource]}</b>
               {data.planSource === "working_sales_plan" && " — план не утверждён, используется только для предварительного просмотра"}
             </p>
             {data.planRowsCount === 0 && (

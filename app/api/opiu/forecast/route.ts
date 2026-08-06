@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildMarketplacePayoutForecast } from "@/lib/opiu/forecast";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getServerSession } from "@/lib/auth/server";
+import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
+import { resolveForecastCabinet } from "@/lib/opiu/forecastCabinet";
+import { OPIU_WB_CABINET_ID } from "@/lib/opiu/constants";
 import { ForecastTimeoutError, runForecastWithin } from "@/lib/opiu/forecastRequest";
 
 export const maxDuration = 60;
@@ -14,14 +19,33 @@ export async function GET(request: NextRequest) {
   if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
     return NextResponse.json({ error: "Некорректный период" }, { status: 400 });
   }
+
+  // §3. Прогноз считается строго по одному WB-кабинету. Список кабинетов —
+  // read-only источник истины wb_cabinets (только id/имя, без токенов), с учётом
+  // доступа сессии. Смешивание кабинетов запрещено (§19).
+  const session = await getServerSession();
+  const cabinets = (await getActiveWbCabinets())
+    .filter((cabinet) => sessionHasCabinetAccess(session, cabinet.id))
+    .map((cabinet) => ({ id: cabinet.id, name: cabinet.name }));
+  const resolved = resolveForecastCabinet(
+    cabinets,
+    request.nextUrl.searchParams.get("cabinet"),
+    OPIU_WB_CABINET_ID,
+  );
+  if (!resolved.ok) {
+    return NextResponse.json({ error: resolved.error, cabinets }, { status: resolved.status });
+  }
+
   try {
-    return NextResponse.json(await runForecastWithin(
+    const forecast = await runForecastWithin(
       (signal) => buildMarketplacePayoutForecast(year, month, {
         forceRecalculate: request.nextUrl.searchParams.get("force") === "1",
         signal,
+        cabinetId: resolved.cabinetId,
       }),
       FORECAST_BUDGET_MS,
-    ));
+    );
+    return NextResponse.json({ ...forecast, cabinetName: resolved.cabinetName, cabinets });
   } catch (error) {
     if (error instanceof ForecastTimeoutError) {
       return NextResponse.json({ error: error.message }, { status: 504 });

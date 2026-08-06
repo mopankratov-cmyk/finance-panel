@@ -263,14 +263,20 @@ export async function buildMarketplacePayoutForecast(
   const preliminaryPlan = items.reduce((sum, item) => sum + item.planRevenue, 0);
   const preliminaryProjection = items.reduce((sum, item) => sum + item.projectedRevenue, 0);
   const currentDeviation = preliminaryPlan > 0 ? (preliminaryProjection - preliminaryPlan) / preliminaryPlan : 0;
-  const { data: previousSnapshots } = await client
-    .from("finance_forecast_versions")
-    .select("plan_revenue,projected_revenue,snapshot_date")
-    .eq("year", year)
-    .eq("month", month)
-    .neq("snapshot_date", iso(today))
-    .order("snapshot_date", { ascending: false })
-    .limit(2);
+  // §19: finance_forecast_versions пока без cabinet_id в ключе. Историю отклонений
+  // читаем/пишем только для дефолтного кабинета, иначе снапшоты кабинетов смешаются.
+  // Для остальных кабинетов история пуста до owner-миграции (cabinet_id+company_id).
+  const persistSnapshot = cabinetId === OPIU_WB_CABINET_ID;
+  const { data: previousSnapshots } = persistSnapshot
+    ? await client
+        .from("finance_forecast_versions")
+        .select("plan_revenue,projected_revenue,snapshot_date")
+        .eq("year", year)
+        .eq("month", month)
+        .neq("snapshot_date", iso(today))
+        .order("snapshot_date", { ascending: false })
+        .limit(2)
+    : { data: [] as Array<{ plan_revenue: number; projected_revenue: number; snapshot_date: string }> };
   const previousDeviations = (previousSnapshots ?? []).map((snapshot) => {
     const plan = num(snapshot.plan_revenue);
     return plan > 0 ? (num(snapshot.projected_revenue) - plan) / plan : 0;
@@ -330,21 +336,24 @@ export async function buildMarketplacePayoutForecast(
     payoutSchedule: allocateWbPayoutSchedule(payoutSummary.remainingPayout, futurePayoutDates),
   };
   const legacySnapshotPayout = deriveWbLegacySnapshotPayout(payoutSummary);
-  // §19/§3 follow-up (owner): ключ снапшота — year/month/snapshot_date без cabinet_id.
-  // Пока прогноз работает по одному кабинету (OPIU_WB_CABINET_ID) коллизий нет.
-  // Для мультикабинетного выбора нужна owner-миграция finance_forecast_versions
-  // с cabinet_id + company_id в уникальном ключе, иначе снапшоты кабинетов затрут друг друга.
-  await client.from("finance_forecast_versions").upsert({
-    year,
-    month,
-    snapshot_date: iso(today),
-    plan_revenue: result.planRevenue,
-    actual_revenue: result.actualRevenue,
-    projected_revenue: result.projectedRevenue,
-    adaptive_revenue: result.adaptiveRevenue,
-    forecast_payout: result.forecastPayout,
-    ...legacySnapshotPayout,
-    details: result.items,
-  }, { onConflict: "year,month,snapshot_date" });
+  // §19/§3 (owner follow-up): ключ снапшота — year/month/snapshot_date без cabinet_id.
+  // Пишем снапшот только для дефолтного кабинета (persistSnapshot), чтобы выбор
+  // другого кабинета не затирал историю COSMOS в общей строке. Для полноценной
+  // мультикабинетной истории нужна owner-миграция finance_forecast_versions
+  // с cabinet_id + company_id в уникальном ключе.
+  if (persistSnapshot) {
+    await client.from("finance_forecast_versions").upsert({
+      year,
+      month,
+      snapshot_date: iso(today),
+      plan_revenue: result.planRevenue,
+      actual_revenue: result.actualRevenue,
+      projected_revenue: result.projectedRevenue,
+      adaptive_revenue: result.adaptiveRevenue,
+      forecast_payout: result.forecastPayout,
+      ...legacySnapshotPayout,
+      details: result.items,
+    }, { onConflict: "year,month,snapshot_date" });
+  }
   return result;
 }
