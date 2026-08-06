@@ -246,6 +246,33 @@ export function SalesForecastPanel({ year, month }: {
             <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
               Адаптивный план продаж: <b>{formatMoney(data.adaptiveRevenue)}</b>. Банковский факт: недоступен — сверка с ДДС ещё не подключена. Осталось запланировать: <b>{formatMoney(data.remainingPayout)}</b>. Чем больше дней месяца прошло, тем сильнее прогноз опирается на фактический темп.
             </p>
+            {data.payoutSchedule.length > 0 && (
+              <div className="rounded-xl border border-slate-200 p-4">
+                <h3 className="font-semibold text-slate-900">Расчётные даты поступлений</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Это <b>расчётные</b> даты, а не подтверждённые. Подтверждённая дата появится из финансового отчёта или кабинета маркетплейса, фактическая — после поступления в ДДС.
+                </p>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[320px] text-sm">
+                    <thead className="bg-slate-50 text-xs text-slate-500"><tr>
+                      <th className="px-3 py-2 text-left">Расчётная дата</th>
+                      <th className="px-3 py-2 text-right">Сумма</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.payoutSchedule.map((row) => (
+                        <tr key={row.date}>
+                          <td className="px-3 py-2">{new Date(row.date).toLocaleDateString("ru-RU")}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-xs text-amber-700">
+                  Даты пока распределены упрощённо (недельные интервалы). Точная цепочка «заказ → отчёт → вывод → банк» с настройками сроков по кабинету — следующий шаг.
+                </p>
+              </div>
+            )}
             {!data.automaticAdjustmentApplied && data.stableDeviationDays > 0 && (
               <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 Отклонение продаж держится {data.stableDeviationDays} дн. Автоматический пересчёт будет применён после трёх последовательных дней либо сразу по команде руководителя.
