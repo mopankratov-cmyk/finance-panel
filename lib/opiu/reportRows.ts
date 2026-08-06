@@ -106,6 +106,7 @@ export async function fetchForecastReportRows(
   dateTo: string,
   articles: string[],
   signal?: AbortSignal,
+  cabinetId: string = OPIU_WB_CABINET_ID,
 ): Promise<WbReportRow[]> {
   const client = getSupabaseAdmin();
   if (!client) throw new Error("Supabase service role is not configured");
@@ -122,7 +123,7 @@ export async function fetchForecastReportRows(
       const query = client
         .from("wb_report_rows")
         .select(FORECAST_REPORT_COLUMNS)
-        .eq("cabinet_id", OPIU_WB_CABINET_ID)
+        .eq("cabinet_id", cabinetId)
         .not("sale_dt", "is", null)
         .gte("sale_dt", dateFrom)
         .lte("sale_dt", dateTo)

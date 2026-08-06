@@ -20,9 +20,13 @@ interface ForecastItem {
   weatherReason: string | null;
 }
 
+type WbPlanSource = "approved_sales_plan" | "working_sales_plan" | "none";
+
 interface ForecastResponse {
   historyFrom: string;
   historyTo: string;
+  cabinetId: string;
+  planSource: WbPlanSource;
   items: ForecastItem[];
   planRowsCount: number;
   availablePlanPeriods: { year: number; month: number }[];
@@ -43,6 +47,12 @@ interface ForecastResponse {
   automaticAdjustmentApplied: boolean;
   error?: string;
 }
+
+const PLAN_SOURCE_LABEL: Record<WbPlanSource, string> = {
+  approved_sales_plan: "Утверждённый план",
+  working_sales_plan: "Рабочий план",
+  none: "План не найден",
+};
 
 export function SalesForecastPanel({ year, month }: {
   year: number;
@@ -119,21 +129,26 @@ export function SalesForecastPanel({ year, month }: {
               <Metric label="Подтверждено отчётом WB" value={data.reportAccruedPayout} />
               {adjustment !== 0 && <Metric label="После изменений МП" value={expectedPayout} green={expectedPayout >= data.forecastPayout} />}
             </div>
+            <p className="text-sm text-slate-600">
+              Источник плана: <b>{PLAN_SOURCE_LABEL[data.planSource]}</b>
+              {data.planSource === "working_sales_plan" && " — план не утверждён, используется только для предварительного просмотра"}
+            </p>
             {data.planRowsCount === 0 && (
               <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
                 <p className="font-semibold">План продаж за {String(month + 1).padStart(2, "0")}.{year} не найден</p>
                 <p className="mt-1 text-amber-800">
-                  Расчёт не запускается без строк этого месяца в таблице <code>sales_plan</code>.
+                  Прогноз читает план из раздела «План» (рабочая или утверждённая версия выбранного кабинета).
+                  Для этого месяца заказов в плане нет.
                   {data.availablePlanPeriods.length > 0
-                    ? ` Сервер видит планы за периоды: ${data.availablePlanPeriods.map((period) => `${String(period.month).padStart(2, "0")}.${period.year}`).join(", ")}.`
-                    : " Сервер не видит в этой таблице ни одного периода — нужно проверить подключение к базе и права доступа."}
+                    ? ` В плане этого кабинета заполнены периоды: ${data.availablePlanPeriods.map((period) => `${String(period.month).padStart(2, "0")}.${period.year}`).join(", ")}.`
+                    : " В плане этого кабинета за год нет ни одного заполненного месяца — проверьте, что план сохранён для нужного кабинета."}
                 </p>
               </div>
             )}
             {data.planRowsCount > 0 && data.planRevenue === 0 && (
               <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
                 <p className="font-semibold">План найден, но плановая выручка равна нулю</p>
-                <p className="mt-1 text-amber-800">Заполните поле <code>plan_revenue</code> у артикулов выбранного месяца.</p>
+                <p className="mt-1 text-amber-800">В разделе «План» у артикулов этого месяца заполните заказы, цену и процент выкупа.</p>
               </div>
             )}
             <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">

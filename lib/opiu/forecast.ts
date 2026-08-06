@@ -3,6 +3,12 @@ import { calculateWeatherImpacts, type SeasonalProductRule } from "@/lib/opiu/we
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { OPIU_WB_CABINET_ID } from "@/lib/opiu/constants";
 import { fetchForecastReportRows } from "@/lib/opiu/reportRows";
+import { loadPlanningState } from "@/lib/planning/stateStore";
+import {
+  deriveWbPlanForMonth,
+  listWbPlanMonths,
+  type WbPlanSource,
+} from "@/lib/opiu/wbPlan";
 
 const num = (value: unknown) => {
   const parsed = Number(value);
@@ -111,6 +117,7 @@ async function fetchForecastOrderRegions(
   dateTo: string,
   articles: string[],
   signal?: AbortSignal,
+  cabinetId: string = OPIU_WB_CABINET_ID,
 ) {
   const client = financeDb();
   const candidates = [...new Set(articles.flatMap((value) => {
@@ -127,7 +134,7 @@ async function fetchForecastOrderRegions(
     const query = client
       .from("wb_orders")
       .select("supplier_article,region,is_cancel")
-      .eq("cabinet_id", OPIU_WB_CABINET_ID)
+      .eq("cabinet_id", cabinetId)
       .gte("date", dateFrom)
       .lte("date", `${dateTo}T23:59:59.999Z`)
       .in("supplier_article", candidates)
@@ -147,28 +154,29 @@ async function fetchForecastOrderRegions(
 export async function buildMarketplacePayoutForecast(
   year: number,
   month: number,
-  options: { forceRecalculate?: boolean; signal?: AbortSignal } = {},
+  options: {
+    forceRecalculate?: boolean;
+    signal?: AbortSignal;
+    cabinetId?: string;
+  } = {},
 ) {
   const client = financeDb();
-  const { data: planRows, error } = await client
-    .from("sales_plan")
-    .select("article,plan_revenue")
-    .eq("year", year)
-    .eq("month", month);
-  if (error) throw new Error(error.message);
-  let availablePlanPeriods: Array<{ year: number; month: number }> = [];
-  if (!(planRows ?? []).length) {
-    const { data: availableRows } = await client
-      .from("sales_plan")
-      .select("year,month")
-      .order("year", { ascending: false })
-      .order("month", { ascending: false })
-      .limit(36);
-    availablePlanPeriods = [...new Map((availableRows ?? []).map((row) => [
-      `${row.year}-${row.month}`,
-      { year: Number(row.year), month: Number(row.month) },
-    ])).values()];
-  }
+  const cabinetId = options.cabinetId ?? OPIU_WB_CABINET_ID;
+  // §2. План берём из planning_state → sales_plan_v1 → wb → cabinetId
+  // (раздел «План»), а не из устаревшей пустой таблицы sales_plan.
+  const monthKey = String(month).padStart(2, "0");
+  const planningState = await loadPlanningState<{
+    sales_plan_v1?: { wb?: Record<string, unknown> };
+  }>(client, year, { signal: options.signal });
+  const cabinetPlan = planningState.data.sales_plan_v1?.wb?.[cabinetId];
+  const planSelection = deriveWbPlanForMonth(cabinetPlan, monthKey);
+  const planSource: WbPlanSource = planSelection.source;
+  const planRows = planSelection.articles.map((item) => ({
+    article: item.article,
+    plan_revenue: item.planRevenue,
+  }));
+  const availablePlanPeriods: Array<{ year: number; month: number }> =
+    planRows.length ? [] : listWbPlanMonths(cabinetPlan, year);
 
   const targetStart = new Date(year, month - 1, 1);
   const historyEnd = new Date(targetStart);
@@ -193,15 +201,16 @@ export async function buildMarketplacePayoutForecast(
   const seasonalRules = ((seasonalRows ?? []) as SeasonalProductRule[])
     .filter((row) => planArticleSet.has(String(row.article ?? "").trim().toUpperCase()));
   const [report, currentReport, recentOrders] = await Promise.all([
-    fetchForecastReportRows(iso(historyStart), iso(historyEnd), planArticles, options.signal),
+    fetchForecastReportRows(iso(historyStart), iso(historyEnd), planArticles, options.signal, cabinetId),
     hasStarted
-      ? fetchForecastReportRows(iso(targetStart), iso(actualEnd), planArticles, options.signal)
+      ? fetchForecastReportRows(iso(targetStart), iso(actualEnd), planArticles, options.signal, cabinetId)
       : Promise.resolve([]),
     fetchForecastOrderRegions(
       iso(orderRegionFrom),
       iso(historyEnd),
       seasonalRules.map((row) => row.article),
       options.signal,
+      cabinetId,
     ),
   ]);
   const actualByArticle = aggregateByArticle(report);
@@ -296,8 +305,10 @@ export async function buildMarketplacePayoutForecast(
   const result = {
     historyFrom: iso(historyStart),
     historyTo: iso(historyEnd),
+    cabinetId,
+    planSource,
     items,
-    planRowsCount: (planRows ?? []).length,
+    planRowsCount: planRows.length,
     availablePlanPeriods,
     planRevenue: items.reduce((sum, item) => sum + item.planRevenue, 0),
     forecastPayout,
@@ -319,6 +330,10 @@ export async function buildMarketplacePayoutForecast(
     payoutSchedule: allocateWbPayoutSchedule(payoutSummary.remainingPayout, futurePayoutDates),
   };
   const legacySnapshotPayout = deriveWbLegacySnapshotPayout(payoutSummary);
+  // §19/§3 follow-up (owner): ключ снапшота — year/month/snapshot_date без cabinet_id.
+  // Пока прогноз работает по одному кабинету (OPIU_WB_CABINET_ID) коллизий нет.
+  // Для мультикабинетного выбора нужна owner-миграция finance_forecast_versions
+  // с cabinet_id + company_id в уникальном ключе, иначе снапшоты кабинетов затрут друг друга.
   await client.from("finance_forecast_versions").upsert({
     year,
     month,

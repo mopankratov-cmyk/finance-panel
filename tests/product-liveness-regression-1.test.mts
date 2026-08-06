@@ -9,8 +9,11 @@ test("finance payout forecast uses synchronized cabinet data instead of revoked 
   assert.match(source, /import \{ fetchForecastReportRows \} from "@\/lib\/opiu\/reportRows"/);
   assert.match(
     source,
-    /fetchForecastReportRows\(iso\(historyStart\),\s*iso\(historyEnd\),\s*planArticles,\s*options\.signal\)/,
+    /fetchForecastReportRows\(iso\(historyStart\),\s*iso\(historyEnd\),\s*planArticles,\s*options\.signal,\s*cabinetId\)/,
   );
+  // §2/§19: план и финансовый отчёт читаются по одному cabinet_id, без смешивания кабинетов.
+  assert.match(source, /deriveWbPlanForMonth\(cabinetPlan,\s*monthKey\)/);
+  assert.match(source, /sales_plan_v1\?\.wb\?\.\[cabinetId\]/);
   assert.doesNotMatch(source, /fetchSalesReport/);
   assert.doesNotMatch(source, /fetchSalesFromCache/);
 });
