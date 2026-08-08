@@ -236,6 +236,7 @@ const ADDITIVE_FORECAST_FIELDS = new Set([
 
 const RATIO_FORECAST_FIELDS: Record<string, { numerator: string; denominator: string }> = {
   ctr: { numerator: "clicks", denominator: "views" },
+  cart_cr: { numerator: "cart", denominator: "open_card" },
   buyout_pct: { numerator: "buyouts_count", denominator: "orders_count" },
   drr: { numerator: "ad_spent", denominator: "orders_sum" },
   margin_pct: { numerator: "gross", denominator: "buyouts_sum" },
@@ -350,20 +351,29 @@ export function buildFunnelMetrics(
   const ctr = days.map((_, index) => Number(views[index]) > 0 && clicks[index] != null
     ? Math.round((Number(clicks[index]) / Number(views[index])) * 1000) / 10
     : null);
+  // Конверсия в корзину: доля переходов, дошедших до корзины. Пустой день
+  // источника остаётся null, а не нулём, чтобы не занижать конверсию.
+  const cartCr = days.map((_, index) => Number(openCard[index]) > 0 && cart[index] != null
+    ? Math.round((Number(cart[index]) / Number(openCard[index])) * 1000) / 10
+    : null);
   const totalViews = knownSum(views);
   const totalClicks = knownSum(clicks);
+  const totalOpenCard = knownSum(openCard);
+  const totalCart = knownSum(cart);
   const metrics: Metric[] = [
     { field: "views", label: "Рекламные показы", kind: "int", daily: views, total: totalViews, forecast: null, source: "WB Реклама", group_start: true },
     { field: "clicks", label: "Рекламные клики", kind: "int", daily: clicks, total: totalClicks, forecast: null, source: "WB Реклама" },
     { field: "ctr", label: "Рекламный CTR, %", kind: "pct", daily: ctr, total: totalViews && totalClicks != null ? Math.round((totalClicks / totalViews) * 1000) / 10 : null, forecast: null, source: "WB Реклама", note: "Рекламные клики / рекламные показы. Пустые даты источника не считаются нулём." },
     { field: "open_card", label: "Переходы в карточку", kind: "int", daily: openCard, total: knownSum(openCard), forecast: null, source: "WB Воронка", group_start: true },
-    { field: "cart", label: "В корзину", kind: "int", daily: cart, total: knownSum(cart), forecast: null, source: "WB Воронка" },
+    { field: "cart", label: "В корзину", kind: "int", daily: cart, total: totalCart, forecast: null, source: "WB Воронка" },
+    { field: "cart_cr", label: "Конв. в корзину, %", kind: "pct", daily: cartCr, total: totalOpenCard && totalCart != null ? Math.round((totalCart / totalOpenCard) * 1000) / 10 : null, forecast: null, source: "WB Воронка", note: "Корзины / переходы в карточку. Пустые даты источника не считаются нулём." },
   ];
   return applyMetricForecasts(metrics, days, asOf, {
     views: cutoffAsOf(cutoffs.adverts, asOf),
     clicks: cutoffAsOf(cutoffs.adverts, asOf),
     open_card: cutoffAsOf(cutoffs.funnel, asOf),
     cart: cutoffAsOf(cutoffs.funnel, asOf),
+    cart_cr: cutoffAsOf(cutoffs.funnel, asOf),
   });
 }
 

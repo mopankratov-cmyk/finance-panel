@@ -4,6 +4,7 @@ export const RNP_METRIC_FIELDS = [
   "ctr",
   "open_card",
   "cart",
+  "cart_cr",
   "orders_sum",
   "orders_count",
   "buyouts_sum",
@@ -74,7 +75,7 @@ export interface RnpAnomalyThresholds {
 }
 
 /** Метрики, отклонение которых меряется в пунктах, а не в процентах. */
-const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct"]);
+const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr"]);
 
 export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
   byField: {
@@ -82,6 +83,7 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     clicks: 30,
     open_card: 30,
     cart: 30,
+    cart_cr: 2,
     orders_count: 30,
     orders_sum: 30,
     buyouts_count: 30,
@@ -112,7 +114,7 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
     id: "conversion",
     label: "Конверсии",
     description: "Показы, переходы, корзины и выкуп",
-    fields: ["views", "clicks", "ctr", "open_card", "cart", "orders_count", "buyout_pct"],
+    fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "orders_count", "buyout_pct"],
   },
   {
     id: "ads",
@@ -140,6 +142,7 @@ const POSITIVE_WHEN_UP = new Set([
   "ctr",
   "open_card",
   "cart",
+  "cart_cr",
   "orders_sum",
   "orders_count",
   "buyouts_sum",
@@ -158,6 +161,7 @@ const METRIC_LABELS: Record<string, string> = {
   ctr: "CTR",
   open_card: "Переходы",
   cart: "Корзины",
+  cart_cr: "Конверсия в корзину",
   orders_sum: "Заказы, ₽",
   orders_count: "Заказы, шт",
   buyouts_sum: "Выкупы, ₽",
@@ -183,6 +187,7 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   ctr: "CTR",
   open_card: "переходы",
   cart: "корзины",
+  cart_cr: "конв. в корзину",
   orders_sum: "заказы ₽",
   orders_count: "заказы",
   buyouts_sum: "выкупы ₽",
