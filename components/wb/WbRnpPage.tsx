@@ -166,6 +166,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   open_card: { label: "Переходы в карточку", kind: "int" },
   cart: { label: "Корзины", kind: "int" },
   cart_cr: { label: "Конв. в корзину, %", kind: "pct" },
+  order_cr: { label: "Конв. в заказ, %", kind: "pct" },
   orders_sum: { label: "Заказы, ₽", kind: "money" },
   orders_count: { label: "Заказы, шт", kind: "int" },
   buyouts_sum: { label: "Продажи, ₽", kind: "money" },
@@ -229,7 +230,7 @@ const PRESETS = [
 const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: readonly RnpMetricField[]; expanded: boolean }> = [
   { id: "main", label: "Основное", fields: ["orders_count", "buyout_pct", "buyouts_count", "ad_spent", "drr"], expanded: true },
   { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "buyouts_sum"], expanded: false },
-  { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr"], expanded: false },
+  { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
   { id: "economy", label: "Экономика", fields: ["gross", "margin_pct", "gmroi"], expanded: false },
   { id: "stock", label: "Остатки", fields: ["stock", "turnover", "money"], expanded: false },
 ];

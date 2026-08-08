@@ -377,6 +377,46 @@ export function buildFunnelMetrics(
   });
 }
 
+/**
+ * Конверсия в заказ: доля переходов в карточку, дошедших до заказа.
+ * Считается уже после слияния наборов — воронка и заказы строятся раздельно
+ * (разные источники и cutoff'ы), поэтому метрику нельзя собрать внутри одного из них.
+ * Покрытие берём по слабейшему из двух источников, чтобы не завышать достоверность.
+ */
+export function appendOrderConversion(metrics: Metric[]): Metric[] {
+  const openCard = metrics.find((metric) => metric.field === "open_card");
+  const orders = metrics.find((metric) => metric.field === "orders_count");
+  if (!openCard || !orders) return metrics;
+  if (metrics.some((metric) => metric.field === "order_cr")) return metrics;
+
+  const daily = openCard.daily.map((visits, index) => {
+    const ordered = orders.daily[index];
+    return Number(visits) > 0 && ordered != null
+      ? Math.round((Number(ordered) / Number(visits)) * 1000) / 10
+      : null;
+  });
+  const total = openCard.total && orders.total != null
+    ? Math.round((orders.total / openCard.total) * 1000) / 10
+    : null;
+  const coveragePct = Math.min(openCard.coveragePct ?? 0, orders.coveragePct ?? 0);
+  const metric: Metric = {
+    field: "order_cr",
+    label: "Конв. в заказ, %",
+    kind: "pct",
+    daily,
+    total,
+    forecast: null,
+    source: "WB Воронка",
+    coveragePct,
+    status: statusForCoverage(coveragePct),
+    note: "Заказы / переходы в карточку. Пустые даты источника не считаются нулём.",
+  };
+  const anchor = metrics.findIndex((item) => item.field === "cart_cr");
+  if (anchor >= 0) metrics.splice(anchor + 1, 0, metric);
+  else metrics.push(metric);
+  return metrics;
+}
+
 export function calculateTurnoverDays(
   stock: number,
   values: Array<number | null>,
@@ -1233,6 +1273,7 @@ export async function buildRnpTable(
         const cost = costByArt.get(t.article);
         const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays);
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
+        appendOrderConversion(metrics);
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
         return {
           nm: t.nm_id,
@@ -1251,6 +1292,7 @@ export async function buildRnpTable(
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
     const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays);
     summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs));
+    appendOrderConversion(summary);
     const sumDaily = (field: string) => days.map((_, i) => {
       let acc = 0, any = false;
       for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }
