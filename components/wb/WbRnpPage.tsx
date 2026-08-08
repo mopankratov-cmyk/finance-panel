@@ -30,6 +30,9 @@ import {
   RNP_METRIC_FIELDS,
   RNP_VIEW_PRESETS,
   anomalyDirection,
+  detectSkuSignals,
+  formatAnomalyBadge,
+  scaleAnomalyThresholds,
   dayOverDayBaseline,
   detectSkuAnomalies,
   filterAnomalies,
@@ -816,8 +819,10 @@ export function WbRnpPage() {
   }, [journal]);
   const anomalyByNm = useMemo(() => {
     const map = new Map<number, RnpAnomaly[]>();
+    // Пороги по каждой метрике + дефицит остатка + серии падения подряд.
+    const thresholds = scaleAnomalyThresholds(anomalyThreshold);
     for (const sku of activeData?.skus ?? []) {
-      const anomalies = detectSkuAnomalies(sku, previousSkuByNm.get(sku.nm), anomalyThreshold);
+      const anomalies = detectSkuSignals(sku, previousSkuByNm.get(sku.nm), thresholds, anomalyThreshold);
       if (anomalies.length) map.set(sku.nm, anomalies);
     }
     return map;
@@ -2502,8 +2507,6 @@ function ProductCell({
   onSelectedChange?: (selected: boolean) => void;
   onOpenOperations?: () => void;
 }) {
-  const riskCount = anomalies.filter((anomaly) => anomaly.direction === "negative").length;
-  const growthCount = anomalies.filter((anomaly) => anomaly.direction === "positive").length;
   return (
     <td rowSpan={rowSpan} className="sticky left-0 z-20 w-28 min-w-28 border-b border-r border-slate-200 bg-white p-2 align-top">
       <div className="space-y-1">
@@ -2536,10 +2539,28 @@ function ProductCell({
             {tags.length > 2 ? <span className="text-[8px] text-slate-400">+{tags.length - 2}</span> : null}
           </div>
         ) : null}
-        {riskCount || growthCount ? (
+        {anomalies.length ? (
           <div className="flex flex-wrap gap-1 pt-0.5">
-            {riskCount ? <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[8px] font-bold text-rose-700" title={anomalies.filter((item) => item.direction === "negative").map((item) => item.label).join(", ")}>↓ риск {riskCount}</span> : null}
-            {growthCount ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[8px] font-bold text-emerald-700" title={anomalies.filter((item) => item.direction === "positive").map((item) => item.label).join(", ")}>↑ рост {growthCount}</span> : null}
+            {/* Конкретика вместо счётчика: сразу видно, что именно просело. */}
+            {anomalies.slice(0, 3).map((anomaly) => (
+              <span
+                key={`${anomaly.field}-${anomaly.kind}`}
+                title={`${anomaly.label} · ${anomaly.direction === "negative" ? "риск" : "рост"}`}
+                className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${
+                  anomaly.direction === "negative" ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"
+                }`}
+              >
+                {formatAnomalyBadge(anomaly)}
+              </span>
+            ))}
+            {anomalies.length > 3 ? (
+              <span
+                className="rounded bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold text-slate-600"
+                title={anomalies.slice(3).map(formatAnomalyBadge).join(", ")}
+              >
+                +{anomalies.length - 3}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>

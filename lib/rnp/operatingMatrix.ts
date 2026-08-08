@@ -44,12 +44,57 @@ export interface RnpMetricDelta {
   direction: "up" | "down" | "flat";
 }
 
+export type RnpAnomalyKind = "delta" | "coverage" | "streak";
+
 export interface RnpAnomaly {
   field: string;
   label: string;
   direction: "positive" | "negative";
-  delta: RnpMetricDelta;
+  /** Отклонение к прошлому периоду. Для сигналов покрытия/серии — null. */
+  delta: RnpMetricDelta | null;
+  kind: RnpAnomalyKind;
+  /** Тип метрики ("pct" — отклонение измеряется в пунктах, иначе в процентах). */
+  metricKind?: string;
+  /** Дней покрытия (kind=coverage) или длина серии в днях (kind=streak). */
+  days?: number;
 }
+
+/**
+ * Пороги детектора по каждой метрике (как в отраслевых кокпитах): для абсолютных
+ * метрик — в процентах, для процентных — в пунктах. Значения ниже порога не
+ * попадают в список, поэтому больше порог — меньше артикулов.
+ */
+export interface RnpAnomalyThresholds {
+  /** Порог отклонения по метрике: % для абсолютных, п.п. для процентных. */
+  byField: Partial<Record<RnpMetricField, number>>;
+  /** Сигнал, если остатка хватает меньше чем на столько дней. */
+  stockCoverageDays: number;
+  /** Сигнал, если метрика падает столько дней подряд. */
+  streakDays: number;
+}
+
+/** Метрики, отклонение которых меряется в пунктах, а не в процентах. */
+const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct"]);
+
+export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
+  byField: {
+    views: 30,
+    clicks: 30,
+    open_card: 30,
+    cart: 30,
+    orders_count: 30,
+    orders_sum: 30,
+    buyouts_count: 30,
+    buyouts_sum: 30,
+    turnover: 30,
+    buyout_pct: 5,
+    drr: 5,
+    ctr: 2,
+    margin_pct: 5,
+  },
+  stockCoverageDays: 7,
+  streakDays: 3,
+};
 
 export const RNP_VIEW_PRESETS: ReadonlyArray<{
   id: Exclude<RnpViewId, "custom">;
@@ -125,6 +170,31 @@ const METRIC_LABELS: Record<string, string> = {
   stock: "Остаток",
   turnover: "Оборачиваемость",
   money: "Деньги в остатках",
+  gmroi: "GMROI",
+};
+
+/**
+ * Короткие подписи для бейджей аномалий (в строку на карточке артикула).
+ * Регистр задан явно: аббревиатуры остаются заглавными.
+ */
+const METRIC_BADGE_LABELS: Record<string, string> = {
+  views: "показы",
+  clicks: "клики",
+  ctr: "CTR",
+  open_card: "переходы",
+  cart: "корзины",
+  orders_sum: "заказы ₽",
+  orders_count: "заказы",
+  buyouts_sum: "выкупы ₽",
+  buyouts_count: "выкупы",
+  buyout_pct: "выкуп",
+  gross: "прибыль",
+  margin_pct: "маржа",
+  ad_spent: "реклама",
+  drr: "ДРР",
+  stock: "остаток",
+  turnover: "оборач.",
+  money: "деньги в остатках",
   gmroi: "GMROI",
 };
 
@@ -226,6 +296,7 @@ export function detectSkuAnomalies(
   previous: RnpOperatingSku | null | undefined,
   thresholdPct = 30,
   ratioThresholdPoints = 5,
+  byField: RnpAnomalyThresholds["byField"] = {},
 ): RnpAnomaly[] {
   if (!previous) return [];
   const previousByField = new Map(previous.metrics.map((metric) => [metric.field, metric]));
@@ -235,7 +306,9 @@ export function detectSkuAnomalies(
     const delta = metricDelta(metric.total, previousMetric?.total);
     if (!delta) continue;
     const changeMagnitude = metric.kind === "pct" ? Math.abs(delta.absolute) : Math.abs(delta.percent ?? 0);
-    const threshold = metric.kind === "pct" ? ratioThresholdPoints : thresholdPct;
+    // Порог берём по конкретной метрике, иначе — общий (проценты vs пункты).
+    const threshold = byField[metric.field as RnpMetricField]
+      ?? (metric.kind === "pct" ? ratioThresholdPoints : thresholdPct);
     if (changeMagnitude < threshold) continue;
     const direction = anomalyDirection(metric.field, delta);
     if (!direction) continue;
@@ -244,15 +317,135 @@ export function detectSkuAnomalies(
       label: METRIC_LABELS[metric.field] ?? metric.field,
       direction,
       delta,
+      kind: "delta",
+      metricKind: metric.kind,
     });
   }
-  return anomalies.sort((left, right) => {
-    const leftMagnitude = Math.abs(left.delta.percent ?? left.delta.absolute);
-    const rightMagnitude = Math.abs(right.delta.percent ?? right.delta.absolute);
-    return rightMagnitude - leftMagnitude;
-  });
+  return anomalies.sort(compareAnomalyMagnitude);
+}
+
+function anomalyMagnitude(anomaly: RnpAnomaly) {
+  if (anomaly.delta) return Math.abs(anomaly.delta.percent ?? anomaly.delta.absolute);
+  return anomaly.days ?? 0;
+}
+
+function compareAnomalyMagnitude(left: RnpAnomaly, right: RnpAnomaly) {
+  return anomalyMagnitude(right) - anomalyMagnitude(left);
+}
+
+/**
+ * Пороги от общего ползунка: процентные метрики тянутся за ним, а метрики в
+ * пунктах (выкуп, ДРР, CTR, маржа) сохраняют свою точную чувствительность —
+ * иначе ползунок 100% полностью выключил бы сигналы по ним.
+ */
+export function scaleAnomalyThresholds(
+  basePct: number,
+  base: RnpAnomalyThresholds = DEFAULT_RNP_ANOMALY_THRESHOLDS,
+): RnpAnomalyThresholds {
+  const byField: RnpAnomalyThresholds["byField"] = {};
+  for (const [field, value] of Object.entries(base.byField)) {
+    byField[field as RnpMetricField] = POINT_THRESHOLD_FIELDS.has(field) ? value : basePct;
+  }
+  return { ...base, byField };
+}
+
+/**
+ * Сигнал дефицита: остатка хватает меньше чем на N дней.
+ * Опирается на уже рассчитанную оборачиваемость (дней покрытия).
+ */
+export function detectStockCoverageSignal(
+  sku: RnpOperatingSku,
+  maxDays: number,
+): RnpAnomaly | null {
+  const turnover = sku.metrics.find((metric) => metric.field === "turnover");
+  const days = turnover?.total;
+  if (!finite(days) || days < 0 || days >= maxDays) return null;
+  return {
+    field: "stock",
+    label: METRIC_LABELS.stock,
+    direction: "negative",
+    delta: null,
+    kind: "coverage",
+    days: Math.round(days),
+  };
+}
+
+/**
+ * Серия подряд: метрика падает N дней и больше. Один день — не тренд,
+ * поэтому устойчивость считается по последовательным дням в конце периода.
+ */
+export function detectDeclineStreakSignal(
+  sku: RnpOperatingSku,
+  field: RnpMetricField,
+  minDays: number,
+): RnpAnomaly | null {
+  if (minDays < 2) return null;
+  const metric = sku.metrics.find((item) => item.field === field);
+  const daily = metric?.daily;
+  if (!daily || daily.length < minDays + 1) return null;
+
+  let streak = 0;
+  for (let index = daily.length - 1; index > 0; index -= 1) {
+    const currentValue = daily[index];
+    const previousValue = daily[index - 1];
+    if (!finite(currentValue) || !finite(previousValue)) break;
+    if (currentValue >= previousValue) break;
+    streak += 1;
+  }
+  if (streak < minDays) return null;
+  return {
+    field,
+    label: METRIC_LABELS[field] ?? field,
+    direction: "negative",
+    delta: null,
+    kind: "streak",
+    days: streak,
+  };
+}
+
+/**
+ * Полный набор сигналов по артикулу: отклонения к прошлому периоду + дефицит
+ * остатка + устойчивые серии падения по ключевым метрикам спроса.
+ */
+export function detectSkuSignals(
+  current: RnpOperatingSku,
+  previous: RnpOperatingSku | null | undefined,
+  thresholds: RnpAnomalyThresholds = DEFAULT_RNP_ANOMALY_THRESHOLDS,
+  basePct = 30,
+  basePoints = 5,
+): RnpAnomaly[] {
+  const signals = detectSkuAnomalies(current, previous, basePct, basePoints, thresholds.byField);
+  const coverage = detectStockCoverageSignal(current, thresholds.stockCoverageDays);
+  if (coverage) signals.push(coverage);
+  for (const field of ["orders_count", "open_card", "views"] as RnpMetricField[]) {
+    // Не дублируем метрику, уже отмеченную отклонением.
+    if (signals.some((signal) => signal.field === field)) continue;
+    const streak = detectDeclineStreakSignal(current, field, thresholds.streakDays);
+    if (streak) signals.push(streak);
+  }
+  return signals.sort(compareAnomalyMagnitude);
 }
 
 export function filterAnomalies(anomalies: RnpAnomaly[], direction: RnpAnomalyDirection) {
   return direction === "all" ? anomalies : anomalies.filter((anomaly) => anomaly.direction === direction);
+}
+
+/** Фильтр списка по конкретному показателю ("all" — без фильтра). */
+export function filterAnomaliesByField(anomalies: RnpAnomaly[], field: string) {
+  return field === "all" ? anomalies : anomalies.filter((anomaly) => anomaly.field === field);
+}
+
+/** Короткая подпись бейджа: «ДРР +5.2 п.п.», «заказы −47%», «остаток ~1 дн», «заказы 3 дн». */
+export function formatAnomalyBadge(anomaly: RnpAnomaly): string {
+  const label = METRIC_BADGE_LABELS[anomaly.field] ?? anomaly.label;
+  if (anomaly.kind === "coverage") return `остаток ~${anomaly.days} дн`;
+  if (anomaly.kind === "streak") return `${label} ${anomaly.days} дн`;
+  const delta = anomaly.delta;
+  if (!delta) return label;
+  // Процентные метрики меряем в пунктах, остальные — в процентах к прошлому периоду.
+  const isPoints = anomaly.metricKind === "pct" || delta.percent === null;
+  const value = isPoints ? delta.absolute : delta.percent ?? 0;
+  const sign = value > 0 ? "+" : "−";
+  const magnitude = Math.abs(Math.round(value * 10) / 10);
+  return `${label} ${sign}${magnitude}${isPoints ? " п.п." : "%"}`;
 }
