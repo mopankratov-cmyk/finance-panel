@@ -533,6 +533,101 @@ export function calculateTurnoverDays(
 }
 
 // cost > 0 → добавляем прибыль и маржу после расходов МП. Для сводки эти метрики вклеиваются агрегатом по SKU.
+/**
+ * Состав экономики. Держим отдельным списком, чтобы строки таблицы существовали
+ * даже когда факта нет: пустая строка с причиной честнее исчезнувшей метрики.
+ */
+const EMPTY_ECONOMY_FIELDS = [
+  { field: "cogs", label: "Себестоимость проданного, ₽", kind: "money" },
+  { field: "commission_rub", label: "Комиссия WB, ₽", kind: "money" },
+  { field: "acquiring_rub", label: "Эквайринг, ₽", kind: "money" },
+  { field: "logistics_rub", label: "Логистика и прочие удержания, ₽", kind: "money" },
+  { field: "mp_cost_rub", label: "Расходы МП всего, ₽", kind: "money" },
+  { field: "profit_per_unit", label: "Прибыль на единицу, ₽", kind: "money" },
+  { field: "romi", label: "ROMI, %", kind: "pct" },
+] as const;
+
+interface EconomyBreakdownInput {
+  buyoutsSum: (number | null)[];
+  buyoutsCount: (number | null)[];
+  adSpend: (number | null)[];
+  gross: (number | null)[];
+  cost: number;
+  wbCostPct: number;
+  rates: { commissionPct: number; acquiringPct: number; extraPct: number; overheadPct: number } | null;
+}
+
+/**
+ * Разбирает прибыль на статьи расхода. Инвариант, который держим:
+ * `gross = выкупы₽ − себестоимость − расходы МП − реклама`, поэтому
+ * `mp_cost_rub` считается той же ставкой `wbCostPct`, что и сам `gross`,
+ * а комиссия/эквайринг/прочее — её слагаемые.
+ *
+ * Разбивку прочих удержаний по типам (логистика, хранение, штрафы, приёмка)
+ * дать нельзя: кэш ставок `wb_nm_commissions` хранит их одним `extra_pct`.
+ */
+function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Metric[] {
+  const { buyoutsSum, buyoutsCount, adSpend, gross, cost, wbCostPct, rates } = input;
+  const r1 = (value: number) => Math.round(value * 10) / 10;
+  const share = (pct: number | null) => days.map((_, index) =>
+    pct == null || buyoutsSum[index] == null ? null : Math.round(buyoutsSum[index] * pct / 100));
+  const otherPct = rates ? rates.extraPct + rates.overheadPct : null;
+  const cogs = days.map((_, index) => buyoutsCount[index] == null ? null : Math.round(cost * buyoutsCount[index]));
+  const commission = share(rates?.commissionPct ?? null);
+  const acquiring = share(rates?.acquiringPct ?? null);
+  const other = share(otherPct);
+  const marketplace = share(wbCostPct);
+  const totalGross = knownSum(gross);
+  const totalBuyoutsCount = knownSum(buyoutsCount);
+  const totalAdSpend = knownSum(adSpend);
+  // Ставки по статьям приходят вместе; если их нет — молчат только они,
+  // общая сумма расходов МП остаётся, она считается из wbCostPct.
+  const ratesReason: Metric["qualityReason"] = rates ? undefined : "missing_rates";
+  const money = (field: string, label: string, daily: (number | null)[], note: string, qualityReason?: Metric["qualityReason"]) => ({
+    field,
+    label,
+    kind: "money",
+    daily,
+    total: knownSum(daily) == null ? null : Math.round(knownSum(daily)!),
+    forecast: null,
+    source: "WB Финотчёт + себестоимость",
+    note,
+    qualityReason,
+  } satisfies Metric);
+
+  return [
+    money("cogs", "Себестоимость проданного, ₽", cogs, "Себестоимость × выкупы, шт. Выкупы нетто — возвраты уже вычтены."),
+    money("commission_rub", "Комиссия WB, ₽", commission, "Выкупы × фактическая ставка комиссии из финотчёта.", ratesReason),
+    money("acquiring_rub", "Эквайринг, ₽", acquiring, "Выкупы × фактическая ставка эквайринга из финотчёта.", ratesReason),
+    money("logistics_rub", "Логистика и прочие удержания, ₽", other, "Логистика, хранение, штрафы, приёмка и прочие удержания одной суммой: кэш ставок хранит их без разбивки по типам.", ratesReason),
+    money("mp_cost_rub", "Расходы МП всего, ₽", marketplace, "Комиссия + эквайринг + прочие удержания. Та же ставка, которой считается прибыль."),
+    {
+      field: "profit_per_unit",
+      label: "Прибыль на единицу, ₽",
+      kind: "money",
+      daily: days.map((_, index) => gross[index] != null && buyoutsCount[index] != null && buyoutsCount[index] > 0
+        ? Math.round(gross[index] / buyoutsCount[index])
+        : null),
+      total: totalGross != null && totalBuyoutsCount != null && totalBuyoutsCount > 0 ? Math.round(totalGross / totalBuyoutsCount) : null,
+      forecast: null,
+      source: "WB Финотчёт + себестоимость + WB Реклама",
+      note: "Прибыль после расходов МП / выкупы, шт.",
+    },
+    {
+      field: "romi",
+      label: "ROMI, %",
+      kind: "pct",
+      daily: days.map((_, index) => gross[index] != null && adSpend[index] != null && adSpend[index] > 0
+        ? r1((gross[index] / adSpend[index]) * 100)
+        : null),
+      total: totalGross != null && totalAdSpend != null && totalAdSpend > 0 ? r1((totalGross / totalAdSpend) * 100) : null,
+      forecast: null,
+      source: "WB Финотчёт + себестоимость + WB Реклама",
+      note: "Прибыль после расходов МП (реклама уже вычтена) / рекламный расход. 0% — реклама вышла в ноль, ниже нуля — не окупилась. Без рекламы метрика молчит.",
+    },
+  ];
+}
+
 export function buildMetrics(
   days: string[],
   asOf: string,
@@ -551,8 +646,16 @@ export function buildMetrics(
    *
    * `inWayToClient` / `inWayFromClient` — снимок товара в пути из `wb_stocks`,
    * приходит вместе с остатком и живёт в той же точке времени.
+   *
+   * `rates` — те же ставки, из которых собран `wbCostPct`, но не схлопнутые: нужны,
+   * чтобы показать расходы МП по статьям, а не одной суммой.
    */
-  options: { primaryFacts?: boolean; inWayToClient?: number; inWayFromClient?: number } = {},
+  options: {
+    primaryFacts?: boolean;
+    inWayToClient?: number;
+    inWayFromClient?: number;
+    rates?: { commissionPct: number; acquiringPct: number; extraPct: number; overheadPct: number } | null;
+  } = {},
 ): Metric[] {
   const pick = (key: keyof DailyRow, cutoff: string | null) => days.map((day) =>
     !cutoff || day > asOf || day > cutoff ? null : Number(byDate.get(day)?.[key] ?? 0));
@@ -781,12 +884,23 @@ export function buildMetrics(
     out.push(
       { field: "gross", label: "Прибыль после расходов МП, ₽", kind: "money", daily: gross, total: totalGross == null ? null : Math.round(totalGross), forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", group_start: true },
       { field: "margin_pct", label: "Расчётная маржа после рекламы, %", kind: "pct", daily: marginPct, total: grossBuyoutsSum != null && totalGross != null && grossBuyoutsSum > 0 ? r1((totalGross / grossBuyoutsSum) * 100) : null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама" },
+      ...buildEconomyBreakdown(days, { buyoutsSum, buyoutsCount, adSpend, gross, cost, wbCostPct, rates: options.rates ?? null }),
     );
   } else {
     const qualityReason: Metric["qualityReason"] = cost <= 0 ? "missing_cost" : "missing_rates";
     out.push(
       { field: "gross", label: "Прибыль после расходов МП, ₽", kind: "money", daily: days.map(() => null), total: null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason, group_start: true },
       { field: "margin_pct", label: "Расчётная маржа после рекламы, %", kind: "pct", daily: days.map(() => null), total: null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason },
+      ...EMPTY_ECONOMY_FIELDS.map((item) => ({
+        field: item.field,
+        label: item.label,
+        kind: item.kind,
+        daily: days.map(() => null),
+        total: null,
+        forecast: null,
+        source: "WB Финотчёт + себестоимость + WB Реклама",
+        qualityReason,
+      } satisfies Metric)),
     );
   }
   // Оборачиваемость, дней = остаток / средние дневные выкупы за выбранное
@@ -1562,6 +1676,18 @@ export async function buildRnpTable(
       const rates = resolveWbRatesForNm(comm, nm);
       return rates.factual ? rates.marketplacePct + rates.acquiringPct : null;
     };
+    // Те же ставки, но по статьям: marketplacePct = комиссия + прочие + overhead,
+    // поэтому для разбивки берём слагаемые, а не готовую сумму.
+    const wbRatesForNm = (nm: number) => {
+      const rates = resolveWbRatesForNm(comm, nm);
+      if (!rates.factual) return null;
+      return {
+        commissionPct: rates.commissionPct,
+        acquiringPct: rates.acquiringPct,
+        extraPct: rates.extraPct,
+        overheadPct: rates.overheadPct,
+      };
+    };
 
     const days: string[] = [];
     const cur = new Date(from), end = new Date(to);
@@ -1645,7 +1771,7 @@ export async function buildRnpTable(
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
         const card = cardByNm.get(t.nm_id);
         const cost = costByArt.get(t.article);
-        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0) });
+        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0), rates: wbRatesForNm(t.nm_id) });
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
         appendOrderConversion(metrics);
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
@@ -1715,6 +1841,42 @@ export async function buildRnpTable(
       forecast: null,
       source: "WB Финотчёт + себестоимость + WB Реклама",
     });
+    // Экономика сводки складывается по SKU: себестоимость и ставки WB у каждого свои,
+    // общей ставки для всего кабинета не существует.
+    for (const field of ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub"]) {
+      const metric = summary.find((item) => item.field === field);
+      if (!metric) continue;
+      const daily = sumDaily(field);
+      const total = knownSum(daily);
+      Object.assign(metric, { daily, total: total == null ? null : Math.round(total), forecast: null });
+    }
+    const summaryTotal = (field: string) => summary.find((item) => item.field === field)?.total ?? null;
+    const summaryBuyoutsCount = summaryTotal("buyouts_count");
+    const summaryAdSpend = summaryTotal("ad_spent");
+    const profitPerUnitMetric = summary.find((item) => item.field === "profit_per_unit");
+    if (profitPerUnitMetric) Object.assign(profitPerUnitMetric, {
+      daily: days.map((_, index) => {
+        const gross = grossDaily[index];
+        const buyouts = summary.find((item) => item.field === "buyouts_count")?.daily[index];
+        return gross != null && buyouts != null && buyouts > 0 ? Math.round(gross / buyouts) : null;
+      }),
+      total: grossTotal != null && summaryBuyoutsCount != null && summaryBuyoutsCount > 0
+        ? Math.round(grossTotal / summaryBuyoutsCount)
+        : null,
+      forecast: null,
+    });
+    const romiMetric = summary.find((item) => item.field === "romi");
+    if (romiMetric) Object.assign(romiMetric, {
+      daily: days.map((_, index) => {
+        const gross = grossDaily[index];
+        const ads = summary.find((item) => item.field === "ad_spent")?.daily[index];
+        return gross != null && ads != null && ads > 0 ? Math.round((gross / ads) * 1000) / 10 : null;
+      }),
+      total: grossTotal != null && summaryAdSpend != null && summaryAdSpend > 0
+        ? Math.round((grossTotal / summaryAdSpend) * 1000) / 10
+        : null,
+      forecast: null,
+    });
     applyMetricForecasts(summary, days, asOf);
     // Повторный проход прогнозов сбросил бы покрытие производных долей на 100%.
     applyDerivedRatioCoverage(summary, "cancel_pct", ["cancels_count", "orders_count"]);
@@ -1741,7 +1903,11 @@ export async function buildRnpTable(
       gmroiM.total = costedSkuCount && grossTotal != null && stockMoneyTotal > 0 ? Math.round(Math.min(999, (grossTotal / stockMoneyTotal) * 100) * 10) / 10 : null;
       gmroiM.daily = pointInTimeMetricDaily(days, asOf, gmroiM.total);
     }
-    for (const metric of summary.filter((item) => ["gross", "margin_pct", "money", "gmroi"].includes(item.field))) {
+    const economyCoverageFields = [
+      "gross", "margin_pct", "money", "gmroi",
+      ...EMPTY_ECONOMY_FIELDS.map((item) => item.field),
+    ];
+    for (const metric of summary.filter((item) => economyCoverageFields.includes(item.field))) {
       applyEconomyMetricCoverage(
         metric,
         economyCoveragePct,

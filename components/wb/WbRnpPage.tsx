@@ -183,6 +183,13 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   final_price: { label: "Цена для покупателя, ₽", kind: "money" },
   spp_pct: { label: "СПП, %", kind: "pct" },
   gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
+  cogs: { label: "Себестоимость проданного, ₽", kind: "money" },
+  commission_rub: { label: "Комиссия WB, ₽", kind: "money" },
+  acquiring_rub: { label: "Эквайринг, ₽", kind: "money" },
+  logistics_rub: { label: "Логистика и прочие удержания, ₽", kind: "money" },
+  mp_cost_rub: { label: "Расходы МП всего, ₽", kind: "money" },
+  profit_per_unit: { label: "Прибыль на единицу, ₽", kind: "money" },
+  romi: { label: "ROMI, %", kind: "pct" },
   margin_pct: { label: `${MARKETPLACE_METRICS.marginAfterMarketplace.label}, %`, kind: "pct" },
   ad_spent: { label: "Рекл. расход, ₽", kind: "money" },
   drr: { label: `${MARKETPLACE_METRICS.drrOrders.label}, %`, kind: "pct" },
@@ -211,6 +218,11 @@ const MONTHLY_FLOW_FIELDS = new Set([
   "returns_count",
   "returns_sum",
   "gross",
+  "cogs",
+  "commission_rub",
+  "acquiring_rub",
+  "logistics_rub",
+  "mp_cost_rub",
   "ad_spent",
 ]);
 
@@ -248,7 +260,7 @@ const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: re
   { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "cancels_count", "cancel_pct", "buyouts_sum", "returns_count", "returns_sum", "return_pct"], expanded: false },
   { id: "price", label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"], expanded: false },
   { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
-  { id: "economy", label: "Экономика", fields: ["gross", "margin_pct", "gmroi"], expanded: false },
+  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "gross", "margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
   { id: "stock", label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"], expanded: false },
 ];
 
@@ -474,6 +486,13 @@ function findMetric(metrics: Metric[], field: string) {
   return metrics.find((metric) => metric.field === field);
 }
 
+// Метрики, которым для расчёта нужна себестоимость: без неё строка остаётся
+// пустой с внятной причиной, а не выглядит как «активности не было».
+const ECONOMY_FALLBACK_FIELDS = new Set([
+  "gross", "margin_pct", "money", "gmroi",
+  "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "profit_per_unit", "romi",
+]);
+
 function completeMetrics(metrics: Metric[], periodLength: number, fields: readonly string[] = METRIC_ORDER) {
   return fields.map((field) => {
     const existing = findMetric(metrics, field);
@@ -488,7 +507,7 @@ function completeMetrics(metrics: Metric[], periodLength: number, fields: readon
       forecast: null,
       status: "unavailable",
       coveragePct: 0,
-      qualityReason: ["gross", "margin_pct", "money", "gmroi"].includes(field) ? "missing_cost" : "no_activity",
+      qualityReason: ECONOMY_FALLBACK_FIELDS.has(field) ? "missing_cost" : "no_activity",
     } satisfies Metric;
   });
 }

@@ -361,3 +361,105 @@ test("метрики склада показывают снимок только
   assert.equal(find("stock_total").daily[0], null);
   assert.equal(find("stock_total").daily[1], 17);
 });
+
+const ECONOMY_RATES = { commissionPct: 20, acquiringPct: 2, extraPct: 8, overheadPct: 0 };
+const economyDay = { d: "2026-08-01", orders_count: 0, orders_sum: 0, buyouts_count: 10, buyouts_sum: 10_000, ad_spent: 1_000 };
+
+test("расходы по статьям сходятся с прибылью до копейки", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", economyDay]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    300,                                    // себестоимость единицы
+    ECONOMY_RATES.commissionPct + ECONOMY_RATES.extraPct + ECONOMY_RATES.overheadPct + ECONOMY_RATES.acquiringPct,
+    30,
+    { rates: ECONOMY_RATES },
+  );
+  const total = (field: string) => metrics.find((item) => item.field === field)!.total!;
+  assert.equal(total("cogs"), 3_000);              // 300 × 10
+  assert.equal(total("commission_rub"), 2_000);    // 10 000 × 20%
+  assert.equal(total("acquiring_rub"), 200);       // 10 000 × 2%
+  assert.equal(total("logistics_rub"), 800);       // 10 000 × 8%
+  assert.equal(total("mp_cost_rub"), 3_000);       // комиссия + эквайринг + прочее
+  // Инвариант: выкупы − себестоимость − расходы МП − реклама = прибыль.
+  assert.equal(10_000 - total("cogs") - total("mp_cost_rub") - 1_000, total("gross"));
+  assert.equal(total("commission_rub") + total("acquiring_rub") + total("logistics_rub"), total("mp_cost_rub"));
+});
+
+test("прибыль на единицу и ROMI считаются от прибыли после рекламы", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", economyDay]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    300,
+    30,
+    30,
+    { rates: ECONOMY_RATES },
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  // gross = 10 000 − 3 000 − 3 000 − 1 000 = 3 000.
+  assert.equal(find("gross").total, 3_000);
+  assert.equal(find("profit_per_unit").total, 300);   // 3 000 / 10 шт
+  assert.equal(find("romi").total, 300);              // 3 000 / 1 000 расхода
+});
+
+test("без рекламы ROMI молчит, а не делится на ноль", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", { ...economyDay, ad_spent: 0 }]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    300,
+    30,
+    30,
+    { rates: ECONOMY_RATES },
+  );
+  assert.equal(metrics.find((item) => item.field === "romi")!.total, null);
+  assert.equal(metrics.find((item) => item.field === "romi")!.daily[0], null);
+});
+
+test("без разбивки ставок статьи молчат, но общая сумма расходов остаётся", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", economyDay]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    300,
+    30,
+    30,
+    { rates: null },
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  assert.equal(find("commission_rub").total, null);
+  assert.equal(find("commission_rub").qualityReason, "missing_rates");
+  assert.equal(find("mp_cost_rub").total, 3_000);
+  assert.equal(find("cogs").total, 3_000);
+});
+
+test("без себестоимости строки экономики остаются с причиной", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", economyDay]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    0,
+    30,
+  );
+  for (const field of ["cogs", "commission_rub", "mp_cost_rub", "profit_per_unit", "romi"]) {
+    const metric = metrics.find((item) => item.field === field)!;
+    assert.equal(metric.total, null, field);
+    assert.equal(metric.qualityReason, "missing_cost", field);
+  }
+});

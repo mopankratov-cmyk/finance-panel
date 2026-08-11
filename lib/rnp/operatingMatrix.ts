@@ -23,6 +23,13 @@ export const RNP_METRIC_FIELDS = [
   "spp_pct",
   "gross",
   "margin_pct",
+  "cogs",
+  "commission_rub",
+  "acquiring_rub",
+  "logistics_rub",
+  "mp_cost_rub",
+  "profit_per_unit",
+  "romi",
   "ad_spent",
   "drr",
   "stock",
@@ -122,6 +129,13 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     stock_in_way_to_client: 30,
     stock_in_way_from_client: 30,
     stock_total: 30,
+    cogs: 30,
+    commission_rub: 30,
+    acquiring_rub: 30,
+    logistics_rub: 30,
+    mp_cost_rub: 30,
+    profit_per_unit: 20,
+    romi: 30,
     drr: 5,
     ctr: 2,
     margin_pct: 5,
@@ -175,8 +189,8 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
   {
     id: "economy",
     label: "Юнит-экономика",
-    description: "Выручка, прибыль, маржа и GMROI",
-    fields: ["orders_sum", "buyouts_sum", "gross", "margin_pct", "ad_spent", "drr", "money", "gmroi"],
+    description: "Выручка, расходы по статьям, прибыль и отдача",
+    fields: ["buyouts_sum", "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "ad_spent", "gross", "margin_pct", "profit_per_unit", "romi", "gmroi"],
   },
 ];
 
@@ -200,6 +214,8 @@ const POSITIVE_WHEN_UP = new Set([
   "avg_order_price",
   "avg_buyout_price",
   "final_price",
+  "profit_per_unit",
+  "romi",
   // Товар в пути к клиенту — это уже проданное: рост означает продажи, а не залёж.
   "stock_in_way_to_client",
   // СПП — скидка WB, а не продавца: растёт СПП → покупателю дешевле при той же
@@ -245,6 +261,13 @@ const METRIC_LABELS: Record<string, string> = {
   spp_pct: "СПП",
   gross: "Прибыль",
   margin_pct: "Маржа",
+  cogs: "Себестоимость проданного",
+  commission_rub: "Комиссия WB",
+  acquiring_rub: "Эквайринг",
+  logistics_rub: "Логистика и удержания",
+  mp_cost_rub: "Расходы МП",
+  profit_per_unit: "Прибыль на единицу",
+  romi: "ROMI",
   ad_spent: "Реклама",
   drr: "ДРР",
   stock: "Остаток",
@@ -285,6 +308,13 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   spp_pct: "СПП",
   gross: "прибыль",
   margin_pct: "маржа",
+  cogs: "себестоимость",
+  commission_rub: "комиссия",
+  acquiring_rub: "эквайринг",
+  logistics_rub: "логистика и удержания",
+  mp_cost_rub: "расходы МП",
+  profit_per_unit: "прибыль на единицу",
+  romi: "ROMI",
   ad_spent: "реклама",
   drr: "ДРР",
   stock: "остаток",
@@ -382,8 +412,22 @@ export function isOpenMoscowDayLabel(label: string, now = new Date()) {
   return Boolean(day && month && label === `${day}.${month}`);
 }
 
+/**
+ * Метрики, у которых рост сам по себе ничего не значит: расходы в рублях растут
+ * вместе с продажами. Сигналом служат их доли (ДРР, маржа), а не абсолютные суммы.
+ */
+const VOLUME_SCALED_FIELDS = new Set([
+  "ad_spent",
+  "money",
+  "cogs",
+  "commission_rub",
+  "acquiring_rub",
+  "logistics_rub",
+  "mp_cost_rub",
+]);
+
 export function anomalyDirection(field: string, delta: RnpMetricDelta): "positive" | "negative" | null {
-  if (delta.direction === "flat" || field === "ad_spent" || field === "money") return null;
+  if (delta.direction === "flat" || VOLUME_SCALED_FIELDS.has(field)) return null;
   if (POSITIVE_WHEN_DOWN.has(field)) return delta.direction === "down" ? "positive" : "negative";
   if (POSITIVE_WHEN_UP.has(field)) return delta.direction === "up" ? "positive" : "negative";
   return null;
