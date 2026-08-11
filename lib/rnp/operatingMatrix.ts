@@ -8,8 +8,13 @@ export const RNP_METRIC_FIELDS = [
   "order_cr",
   "orders_sum",
   "orders_count",
+  "cancels_count",
+  "cancel_pct",
   "buyouts_sum",
   "buyouts_count",
+  "returns_count",
+  "returns_sum",
+  "return_pct",
   "buyout_pct",
   "gross",
   "margin_pct",
@@ -22,7 +27,7 @@ export const RNP_METRIC_FIELDS = [
 ] as const;
 
 export type RnpMetricField = (typeof RNP_METRIC_FIELDS)[number];
-export type RnpViewId = "main" | "conversion" | "ads" | "stock" | "economy" | "custom";
+export type RnpViewId = "main" | "sales" | "conversion" | "ads" | "stock" | "economy" | "custom";
 export type RnpDeltaMode = "percent" | "absolute";
 export type RnpAnomalyDirection = "all" | "negative" | "positive";
 
@@ -76,7 +81,7 @@ export interface RnpAnomalyThresholds {
 }
 
 /** Метрики, отклонение которых меряется в пунктах, а не в процентах. */
-const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr"]);
+const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct"]);
 
 export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
   byField: {
@@ -88,10 +93,17 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     order_cr: 2,
     orders_count: 30,
     orders_sum: 30,
+    cancels_count: 30,
     buyouts_count: 30,
     buyouts_sum: 30,
+    returns_count: 30,
+    returns_sum: 30,
     turnover: 30,
     buyout_pct: 5,
+    // Отмены и возвраты живут в единицах процента, а не десятках: порог как у CTR,
+    // иначе реальный рост доли возвратов с 2% до 5% детектор бы не заметил.
+    cancel_pct: 2,
+    return_pct: 2,
     drr: 5,
     ctr: 2,
     margin_pct: 5,
@@ -111,6 +123,12 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
     label: "Основное",
     description: "Заказы, выкупы, прибыль и реклама",
     fields: ["orders_sum", "orders_count", "buyouts_sum", "buyouts_count", "buyout_pct", "gross", "margin_pct", "ad_spent", "drr"],
+  },
+  {
+    id: "sales",
+    label: "Продажи и возвраты",
+    description: "Заказы, отмены, выкупы и возвраты",
+    fields: ["orders_sum", "orders_count", "cancels_count", "cancel_pct", "buyouts_sum", "buyouts_count", "returns_count", "returns_sum", "return_pct", "buyout_pct"],
   },
   {
     id: "conversion",
@@ -156,7 +174,8 @@ const POSITIVE_WHEN_UP = new Set([
   "stock",
   "gmroi",
 ]);
-const POSITIVE_WHEN_DOWN = new Set(["drr", "turnover"]);
+// Рост отмен и возвратов — всегда плохая новость, направление сигнала обратное.
+const POSITIVE_WHEN_DOWN = new Set(["drr", "turnover", "cancels_count", "cancel_pct", "returns_count", "returns_sum", "return_pct"]);
 
 const METRIC_LABELS: Record<string, string> = {
   views: "Показы",
@@ -168,8 +187,13 @@ const METRIC_LABELS: Record<string, string> = {
   order_cr: "Конверсия в заказ",
   orders_sum: "Заказы, ₽",
   orders_count: "Заказы, шт",
+  cancels_count: "Отмены, шт",
+  cancel_pct: "Доля отмен",
   buyouts_sum: "Выкупы, ₽",
   buyouts_count: "Выкупы, шт",
+  returns_count: "Возвраты, шт",
+  returns_sum: "Возвраты, ₽",
+  return_pct: "Доля возвратов",
   buyout_pct: "Выкуп",
   gross: "Прибыль",
   margin_pct: "Маржа",
@@ -195,8 +219,13 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   order_cr: "конв. в заказ",
   orders_sum: "заказы ₽",
   orders_count: "заказы",
+  cancels_count: "отмены",
+  cancel_pct: "доля отмен",
   buyouts_sum: "выкупы ₽",
   buyouts_count: "выкупы",
+  returns_count: "возвраты",
+  returns_sum: "возвраты ₽",
+  return_pct: "доля возвратов",
   buyout_pct: "выкуп",
   gross: "прибыль",
   margin_pct: "маржа",

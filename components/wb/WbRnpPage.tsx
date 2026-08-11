@@ -75,7 +75,7 @@ interface Metric {
   status?: "ready" | "partial" | "unavailable";
   source?: string;
   note?: string;
-  qualityReason?: "no_activity" | "missing_cost" | "missing_rates" | "stale_source" | "api_error";
+  qualityReason?: "no_activity" | "missing_cost" | "missing_rates" | "stale_source" | "api_error" | "unsupported_source";
   group_start?: boolean;
 }
 
@@ -169,8 +169,13 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   order_cr: { label: "Конв. в заказ, %", kind: "pct" },
   orders_sum: { label: "Заказы, ₽", kind: "money" },
   orders_count: { label: "Заказы, шт", kind: "int" },
+  cancels_count: { label: "Отмены, шт", kind: "int" },
+  cancel_pct: { label: "Доля отмен, %", kind: "pct" },
   buyouts_sum: { label: "Продажи, ₽", kind: "money" },
   buyouts_count: { label: "Продажи, шт", kind: "int" },
+  returns_count: { label: "Возвраты, шт", kind: "int" },
+  returns_sum: { label: "Возвраты, ₽", kind: "money" },
+  return_pct: { label: "Доля возвратов, %", kind: "pct" },
   buyout_pct: { label: "Выкуп потока, %", kind: "pct" },
   gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
   margin_pct: { label: `${MARKETPLACE_METRICS.marginAfterMarketplace.label}, %`, kind: "pct" },
@@ -192,8 +197,11 @@ const MONTHLY_FLOW_FIELDS = new Set([
   "cart",
   "orders_sum",
   "orders_count",
+  "cancels_count",
   "buyouts_sum",
   "buyouts_count",
+  "returns_count",
+  "returns_sum",
   "gross",
   "ad_spent",
 ]);
@@ -229,7 +237,7 @@ const PRESETS = [
 
 const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: readonly RnpMetricField[]; expanded: boolean }> = [
   { id: "main", label: "Основное", fields: ["orders_count", "buyout_pct", "buyouts_count", "ad_spent", "drr"], expanded: true },
-  { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "buyouts_sum"], expanded: false },
+  { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "cancels_count", "cancel_pct", "buyouts_sum", "returns_count", "returns_sum", "return_pct"], expanded: false },
   { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
   { id: "economy", label: "Экономика", fields: ["gross", "margin_pct", "gmroi"], expanded: false },
   { id: "stock", label: "Остатки", fields: ["stock", "turnover", "money"], expanded: false },
@@ -2617,7 +2625,8 @@ function MetricRow({
     : metric.qualityReason === "missing_rates" ? "Причина: нет фактических ставок WB"
       : metric.qualityReason === "stale_source" ? "Причина: источник загружен не полностью или устарел"
         : metric.qualityReason === "api_error" ? "Причина: ошибка источника"
-          : metric.qualityReason === "no_activity" ? "Причина: активности за период нет" : null;
+          : metric.qualityReason === "unsupported_source" ? "Причина: источник не отдаёт этот факт для выбранного кабинета"
+            : metric.qualityReason === "no_activity" ? "Причина: активности за период нет" : null;
   const metricHelp = [
     metric.source ? `Источник: ${metric.source}` : null,
     metric.coveragePct != null ? `Покрытие: ${metric.coveragePct}%` : null,

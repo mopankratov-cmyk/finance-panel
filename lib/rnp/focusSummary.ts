@@ -2,7 +2,7 @@ export interface RnpFocusMetric {
   field: string;
   total: number | null;
   status?: "ready" | "partial" | "unavailable";
-  qualityReason?: "no_activity" | "missing_cost" | "missing_rates" | "stale_source" | "api_error";
+  qualityReason?: "no_activity" | "missing_cost" | "missing_rates" | "stale_source" | "api_error" | "unsupported_source";
 }
 
 export interface RnpFocusSku {

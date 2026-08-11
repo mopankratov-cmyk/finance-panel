@@ -70,5 +70,8 @@ test("scoped RNP base facts aggregate only allowlisted SKU without full-cabinet 
     buyouts_count: 1,
     buyouts_sum: 880,
     ad_spent: 77,
+    // Отменённый заказ по-прежнему не входит в поток заказов, но теперь виден отдельно.
+    cancels_count: 1,
+    cancels_sum: 500,
   });
 });

@@ -123,6 +123,9 @@ test("WB RNP subtracts return quantity and amount from buyouts", () => {
     buyouts_count: 10,
     buyouts_sum: 67_400,
     ad_spent: 3_000,
+    // Тот же вычет, но возвраты больше не растворяются в выкупах.
+    returns_count: 2,
+    returns_sum: 12_600,
   });
 });
 
@@ -139,6 +142,8 @@ test("WB RNP creates a negative net-buyout row when a day contains only a return
     buyouts_count: -1,
     buyouts_sum: -4_500,
     ad_spent: 0,
+    returns_count: 1,
+    returns_sum: 4_500,
   });
 });
 
