@@ -49,8 +49,21 @@ export interface ReportRow {
   deduction?: number;
 }
 
+/** Состав прочих удержаний. Держим по статьям — сумма остаётся в `extra`. */
+export interface DeductionParts {
+  delivery: number;
+  storage: number;
+  penalty: number;
+  acceptance: number;
+  deduction: number;
+}
+
+export const DEDUCTION_PART_KEYS = ["delivery", "storage", "penalty", "acceptance", "deduction"] as const;
+
+export const EMPTY_DEDUCTION_PARTS: DeductionParts = { delivery: 0, storage: 0, penalty: 0, acceptance: 0, deduction: 0 };
+
 export interface CommissionAccumulator extends Record<string, unknown> {
-  byNm: Record<string, { wpct: number; acq: number; extra: number; rev: number }>;
+  byNm: Record<string, { wpct: number; acq: number; extra: number; rev: number; parts?: DeductionParts }>;
   totalWeightedCommission: number;
   totalAcquiring: number;
   totalRevenue: number;
@@ -58,7 +71,17 @@ export interface CommissionAccumulator extends Record<string, unknown> {
   noNmExtra: number;
 }
 
-export interface NmRates { pct: number; acqPct: number; extraPct: number; rev: number }
+export interface NmRates {
+  pct: number;
+  acqPct: number;
+  extraPct: number;
+  rev: number;
+  /** Состав `extraPct` в тех же процентах. Отсутствует/null — источник состав не отдал. */
+  parts?: DeductionPartsPct | null;
+}
+
+/** Те же статьи, но в процентах от выручки. */
+export type DeductionPartsPct = Record<keyof DeductionParts, number>;
 export interface WbCommission {
   byNm: Map<number, NmRates>;
   avgPct: number;      // средневзвеш. комиссия — фолбэк
@@ -73,6 +96,11 @@ export interface ResolvedWbRates {
   extraPct: number;
   overheadPct: number;
   marketplacePct: number;
+  /**
+   * Состав `extraPct` по статьям. null — кэш ставок ещё не знает разбивки
+   * (строка записана прежним синком): показывать нули вместо неё нельзя.
+   */
+  extraParts: DeductionPartsPct | null;
   factual: boolean;
   source: "nm" | "mixed" | "avg" | "missing";
 }
@@ -116,17 +144,21 @@ export function accumulateCommissionRows(
     let deduction = num(r.deduction);
     const bonusType = (r.bonus_type_name ?? "").toLowerCase();
     if (bonusType.includes("продвижени") || bonusType.includes("реклам")) deduction = 0;
-    const extraRow = Math.abs(num(r.delivery_rub))
-      + Math.abs(num(r.storage_fee))
-      + Math.abs(num(r.penalty))
-      + Math.abs(num(r.acceptance))
-      + Math.max(0, deduction);
+    const partsRow: DeductionParts = {
+      delivery: Math.abs(num(r.delivery_rub)),
+      storage: Math.abs(num(r.storage_fee)),
+      penalty: Math.abs(num(r.penalty)),
+      acceptance: Math.abs(num(r.acceptance)),
+      deduction: Math.max(0, deduction),
+    };
+    // Сумма собирается из тех же слагаемых — состав и итог не могут разъехаться.
+    const extraRow = partsRow.delivery + partsRow.storage + partsRow.penalty + partsRow.acceptance + partsRow.deduction;
 
     if (nm) {
       const key = String(nm);
       const entry = next.byNm[key]
-        ? { ...next.byNm[key] }
-        : { wpct: 0, acq: 0, extra: 0, rev: 0 };
+        ? { ...next.byNm[key], parts: { ...(next.byNm[key].parts ?? EMPTY_DEDUCTION_PARTS) } }
+        : { wpct: 0, acq: 0, extra: 0, rev: 0, parts: { ...EMPTY_DEDUCTION_PARTS } };
       if (isSale && rev > 0) {
         let pct = Math.abs(num(r.commission_percent));
         if (pct <= 0) pct = (Math.abs(num(r.ppvz_sales_commission)) / rev) * 100;
@@ -139,6 +171,7 @@ export function accumulateCommissionRows(
         next.totalRevenue += rev;
       }
       entry.extra += extraRow;
+      for (const part of DEDUCTION_PART_KEYS) entry.parts![part] += partsRow[part];
       next.byNm[key] = entry;
       next.totalExtra += extraRow;
     } else {
@@ -156,6 +189,7 @@ export function commissionFromAccumulator(accumulator: CommissionAccumulator): W
       acqPct: entry.rev > 0 ? r1((entry.acq / entry.rev) * 100) : 0,
       extraPct: entry.rev > 0 ? r1((entry.extra / entry.rev) * 100) : 0,
       rev: entry.rev,
+      parts: entry.parts && entry.rev > 0 ? partsToPct(entry.parts, entry.rev) : null,
     });
   }
   const totalRevenue = accumulator.totalRevenue;
@@ -165,6 +199,16 @@ export function commissionFromAccumulator(accumulator: CommissionAccumulator): W
     avgAcqPct: totalRevenue > 0 ? r1((accumulator.totalAcquiring / totalRevenue) * 100) : 0,
     avgExtraPct: totalRevenue > 0 ? r1((accumulator.totalExtra / totalRevenue) * 100) : 0,
     overheadPct: totalRevenue > 0 ? r1((accumulator.noNmExtra / totalRevenue) * 100) : 0,
+  };
+}
+
+function partsToPct(parts: DeductionParts, revenue: number): DeductionPartsPct {
+  return {
+    delivery: r1((parts.delivery / revenue) * 100),
+    storage: r1((parts.storage / revenue) * 100),
+    penalty: r1((parts.penalty / revenue) * 100),
+    acceptance: r1((parts.acceptance / revenue) * 100),
+    deduction: r1((parts.deduction / revenue) * 100),
   };
 }
 
@@ -187,6 +231,9 @@ export function resolveWbRatesForNm(comm: WbCommission, nm: number): ResolvedWbR
     extraPct,
     overheadPct,
     marketplacePct: commissionPct + extraPct + overheadPct,
+    // Состав отдаём только вместе с «своей» суммой удержаний: разбивка одного SKU
+    // поверх средней ставки другого не сошлась бы с итогом.
+    extraParts: extraFromNm ? (row!.parts ?? null) : null,
     factual,
     source: !factual ? "missing" : nmParts === 3 ? "nm" : nmParts > 0 ? "mixed" : "avg",
   };
@@ -261,10 +308,41 @@ export async function getWbCommissionForCabinet(
   });
 }
 
+interface CachedNmRow {
+  nm_id: number;
+  pct: number;
+  acq_pct: number;
+  extra_pct: number;
+  rev: number;
+  delivery_pct?: number | null;
+  storage_pct?: number | null;
+  penalty_pct?: number | null;
+  acceptance_pct?: number | null;
+  deduction_pct?: number | null;
+}
+
+/**
+ * Состав удержаний из кэша. Строки, записанные до появления колонок, отдают NULL —
+ * это «состав неизвестен», а не «удержаний не было», поэтому возвращаем null целиком,
+ * а не собираем частично заполненный объект с нулями.
+ */
+function cachedPartsPct(row: CachedNmRow): DeductionPartsPct | null {
+  const values = [row.delivery_pct, row.storage_pct, row.penalty_pct, row.acceptance_pct, row.deduction_pct];
+  if (values.some((value) => value == null)) return null;
+  return {
+    delivery: Number(row.delivery_pct),
+    storage: Number(row.storage_pct),
+    penalty: Number(row.penalty_pct),
+    acceptance: Number(row.acceptance_pct),
+    deduction: Number(row.deduction_pct),
+  };
+}
+
 async function getWbCommissionFromCache(cabinetId: string | null = null): Promise<WbCommission | null> {
   const db = getSupabaseAdmin();
   if (!db) return null;
-  let nmQuery = db.from("wb_nm_commissions").select("cabinet_id, nm_id, pct, acq_pct, extra_pct, rev");
+  let nmQuery = db.from("wb_nm_commissions")
+    .select("cabinet_id, nm_id, pct, acq_pct, extra_pct, rev, delivery_pct, storage_pct, penalty_pct, acceptance_pct, deduction_pct");
   let overheadQuery = db.from("wb_cabinet_commission_overhead").select("cabinet_id, overhead_pct, rev");
   if (cabinetId) {
     nmQuery = nmQuery.eq("cabinet_id", cabinetId);
@@ -279,11 +357,17 @@ async function getWbCommissionFromCache(cabinetId: string | null = null): Promis
 
   // один nm в нескольких кабинетах — берём строку с большей выручкой (как в live-мердже)
   const byNm = new Map<number, NmRates>();
-  for (const r of nmRows as { nm_id: number; pct: number; acq_pct: number; extra_pct: number; rev: number }[]) {
+  for (const r of nmRows as CachedNmRow[]) {
     const nm = Number(r.nm_id);
     const rev = Number(r.rev ?? 0);
     const ex = byNm.get(nm);
-    if (!ex || rev > ex.rev) byNm.set(nm, { pct: Number(r.pct ?? 0), acqPct: Number(r.acq_pct ?? 0), extraPct: Number(r.extra_pct ?? 0), rev });
+    if (!ex || rev > ex.rev) byNm.set(nm, {
+      pct: Number(r.pct ?? 0),
+      acqPct: Number(r.acq_pct ?? 0),
+      extraPct: Number(r.extra_pct ?? 0),
+      rev,
+      parts: cachedPartsPct(r),
+    });
   }
   let totW = 0, totAcq = 0, totExtra = 0, totRev = 0;
   for (const e of byNm.values()) { totW += e.pct * e.rev; totAcq += e.acqPct * e.rev; totExtra += e.extraPct * e.rev; totRev += e.rev; }

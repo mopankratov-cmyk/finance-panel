@@ -519,3 +519,54 @@ test("без прибыли в наборе налоговые строки не
   appendTaxMetrics(metrics, 7);
   assert.equal(metrics.some((item) => item.field === "tax_rub"), false);
 });
+
+test("расходы МП раскладываются по статьям и сходятся с общей суммой удержаний", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", economyDay]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    300,
+    30,
+    30,
+    {
+      rates: {
+        ...ECONOMY_RATES,
+        extraParts: { delivery: 5, storage: 1.5, penalty: 0.5, acceptance: 0.5, deduction: 0.5 },
+      },
+    },
+  );
+  const total = (field: string) => metrics.find((item) => item.field === field)!.total!;
+  assert.equal(total("delivery_rub"), 500);      // 10 000 × 5%
+  assert.equal(total("storage_rub"), 150);
+  assert.equal(total("penalty_rub"), 50);
+  assert.equal(total("acceptance_rub"), 50);
+  assert.equal(total("deduction_rub"), 50);
+  // Состав сходится с зонтичной строкой (extraPct 8% = 800).
+  const parts = ["delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub"];
+  assert.equal(parts.reduce((sum, field) => sum + total(field), 0), total("logistics_rub"));
+});
+
+test("кэш без разбивки: состав молчит, общая сумма удержаний остаётся", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", economyDay]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    300,
+    30,
+    30,
+    { rates: { ...ECONOMY_RATES, extraParts: null } },
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  for (const field of ["delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub"]) {
+    assert.equal(find(field).total, null, field);
+    assert.equal(find(field).qualityReason, "unsupported_source", field);
+  }
+  assert.equal(find("logistics_rub").total, 800);
+  assert.equal(find("mp_cost_rub").total, 3_000);
+});

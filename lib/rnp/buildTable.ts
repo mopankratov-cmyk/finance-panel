@@ -542,6 +542,11 @@ const EMPTY_ECONOMY_FIELDS = [
   { field: "commission_rub", label: "Комиссия WB, ₽", kind: "money" },
   { field: "acquiring_rub", label: "Эквайринг, ₽", kind: "money" },
   { field: "logistics_rub", label: "Логистика и прочие удержания, ₽", kind: "money" },
+  { field: "delivery_rub", label: "Логистика, ₽", kind: "money" },
+  { field: "storage_rub", label: "Хранение, ₽", kind: "money" },
+  { field: "penalty_rub", label: "Штрафы, ₽", kind: "money" },
+  { field: "acceptance_rub", label: "Приёмка, ₽", kind: "money" },
+  { field: "deduction_rub", label: "Прочие удержания, ₽", kind: "money" },
   { field: "mp_cost_rub", label: "Расходы МП всего, ₽", kind: "money" },
   { field: "profit_per_unit", label: "Прибыль на единицу, ₽", kind: "money" },
   { field: "romi", label: "ROMI, %", kind: "pct" },
@@ -554,7 +559,13 @@ interface EconomyBreakdownInput {
   gross: (number | null)[];
   cost: number;
   wbCostPct: number;
-  rates: { commissionPct: number; acquiringPct: number; extraPct: number; overheadPct: number } | null;
+  rates: {
+    commissionPct: number;
+    acquiringPct: number;
+    extraPct: number;
+    overheadPct: number;
+    extraParts?: { delivery: number; storage: number; penalty: number; acceptance: number; deduction: number } | null;
+  } | null;
 }
 
 /**
@@ -572,6 +583,10 @@ function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Me
   const share = (pct: number | null) => days.map((_, index) =>
     pct == null || buyoutsSum[index] == null ? null : Math.round(buyoutsSum[index] * pct / 100));
   const otherPct = rates ? rates.extraPct + rates.overheadPct : null;
+  // Состав приходит из финотчёта; у строк кэша, записанных до разбивки, его нет.
+  const parts = rates?.extraParts ?? null;
+  const part = (key: "delivery" | "storage" | "penalty" | "acceptance" | "deduction") => share(parts ? parts[key] : null);
+  const partsReason: Metric["qualityReason"] = rates ? (parts ? undefined : "unsupported_source") : "missing_rates";
   const cogs = days.map((_, index) => buyoutsCount[index] == null ? null : Math.round(cost * buyoutsCount[index]));
   const commission = share(rates?.commissionPct ?? null);
   const acquiring = share(rates?.acquiringPct ?? null);
@@ -599,7 +614,12 @@ function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Me
     money("cogs", "Себестоимость проданного, ₽", cogs, "Себестоимость × выкупы, шт. Выкупы нетто — возвраты уже вычтены."),
     money("commission_rub", "Комиссия WB, ₽", commission, "Выкупы × фактическая ставка комиссии из финотчёта.", ratesReason),
     money("acquiring_rub", "Эквайринг, ₽", acquiring, "Выкупы × фактическая ставка эквайринга из финотчёта.", ratesReason),
-    money("logistics_rub", "Логистика и прочие удержания, ₽", other, "Логистика, хранение, штрафы, приёмка и прочие удержания одной суммой: кэш ставок хранит их без разбивки по типам.", ratesReason),
+    money("logistics_rub", "Логистика и прочие удержания, ₽", other, "Логистика, хранение, штрафы, приёмка и прочие удержания одной суммой. Ниже — состав по статьям.", ratesReason),
+    money("delivery_rub", "Логистика, ₽", part("delivery"), "Платная логистика из финотчёта.", partsReason),
+    money("storage_rub", "Хранение, ₽", part("storage"), "Платное хранение из финотчёта.", partsReason),
+    money("penalty_rub", "Штрафы, ₽", part("penalty"), "Штрафы из финотчёта.", partsReason),
+    money("acceptance_rub", "Приёмка, ₽", part("acceptance"), "Платная приёмка из финотчёта.", partsReason),
+    money("deduction_rub", "Прочие удержания, ₽", part("deduction"), "Прочие удержания, кроме рекламы: она вычитается отдельной строкой. Удержания без привязки к SKU сюда не входят — они размазаны по всем товарам внутри общей суммы.", partsReason),
     money("mp_cost_rub", "Расходы МП всего, ₽", marketplace, "Комиссия + эквайринг + прочие удержания. Та же ставка, которой считается прибыль."),
     {
       field: "profit_per_unit",
@@ -654,7 +674,13 @@ export function buildMetrics(
     primaryFacts?: boolean;
     inWayToClient?: number;
     inWayFromClient?: number;
-    rates?: { commissionPct: number; acquiringPct: number; extraPct: number; overheadPct: number } | null;
+    rates?: {
+      commissionPct: number;
+      acquiringPct: number;
+      extraPct: number;
+      overheadPct: number;
+      extraParts?: { delivery: number; storage: number; penalty: number; acceptance: number; deduction: number } | null;
+    } | null;
   } = {},
 ): Metric[] {
   const pick = (key: keyof DailyRow, cutoff: string | null) => days.map((day) =>
@@ -1686,6 +1712,7 @@ export async function buildRnpTable(
         acquiringPct: rates.acquiringPct,
         extraPct: rates.extraPct,
         overheadPct: rates.overheadPct,
+        extraParts: rates.extraParts,
       };
     };
 

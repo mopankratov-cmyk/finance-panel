@@ -179,6 +179,13 @@ export async function GET(request: NextRequest) {
       const synced_at = new Date().toISOString();
       const rows = [...comm.byNm.entries()].map(([nm_id, r]) => ({
         cabinet_id: cab.id, nm_id, pct: r.pct, acq_pct: r.acqPct, extra_pct: r.extraPct, rev: r.rev, synced_at,
+        // Состав удержаний: null, если финотчёт по этому SKU его не дал, — колонки
+        // nullable именно для того, чтобы «неизвестно» не превращалось в ноль.
+        delivery_pct: r.parts?.delivery ?? null,
+        storage_pct: r.parts?.storage ?? null,
+        penalty_pct: r.parts?.penalty ?? null,
+        acceptance_pct: r.parts?.acceptance ?? null,
+        deduction_pct: r.parts?.deduction ?? null,
       }));
       const totalRev = rows.reduce((s, r) => s + r.rev, 0);
 

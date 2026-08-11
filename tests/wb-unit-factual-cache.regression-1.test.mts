@@ -40,6 +40,8 @@ test("zero per-SKU rates fall back to factual cabinet averages instead of masque
     extraPct: 3,
     overheadPct: 2,
     marketplacePct: 26,
+    // Строка кэша без разбивки удержаний отдаёт null, а не нули по статьям.
+    extraParts: null,
     factual: true,
     source: "mixed",
   });

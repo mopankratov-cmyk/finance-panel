@@ -192,6 +192,11 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   commission_rub: { label: "Комиссия WB, ₽", kind: "money" },
   acquiring_rub: { label: "Эквайринг, ₽", kind: "money" },
   logistics_rub: { label: "Логистика и прочие удержания, ₽", kind: "money" },
+  delivery_rub: { label: "Логистика, ₽", kind: "money" },
+  storage_rub: { label: "Хранение, ₽", kind: "money" },
+  penalty_rub: { label: "Штрафы, ₽", kind: "money" },
+  acceptance_rub: { label: "Приёмка, ₽", kind: "money" },
+  deduction_rub: { label: "Прочие удержания, ₽", kind: "money" },
   mp_cost_rub: { label: "Расходы МП всего, ₽", kind: "money" },
   profit_per_unit: { label: "Прибыль на единицу, ₽", kind: "money" },
   romi: { label: "ROMI, %", kind: "pct" },
@@ -227,6 +232,11 @@ const MONTHLY_FLOW_FIELDS = new Set([
   "commission_rub",
   "acquiring_rub",
   "logistics_rub",
+  "delivery_rub",
+  "storage_rub",
+  "penalty_rub",
+  "acceptance_rub",
+  "deduction_rub",
   "mp_cost_rub",
   "tax_rub",
   "net_profit",
@@ -267,7 +277,7 @@ const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: re
   { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "cancels_count", "cancel_pct", "buyouts_sum", "returns_count", "returns_sum", "return_pct"], expanded: false },
   { id: "price", label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"], expanded: false },
   { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
-  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "gross", "margin_pct", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
+  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
   { id: "stock", label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"], expanded: false },
 ];
 
@@ -502,6 +512,7 @@ function findMetric(metrics: Metric[], field: string) {
 const ECONOMY_FALLBACK_FIELDS = new Set([
   "gross", "margin_pct", "money", "gmroi",
   "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "profit_per_unit", "romi",
+  "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub",
   "tax_rub", "net_profit", "net_margin_pct",
 ]);
 
