@@ -307,6 +307,7 @@ const ADDITIVE_FORECAST_FIELDS = new Set([
   "cancels_count",
   "buyouts_count",
   "buyouts_sum",
+  "buyouts_gross_count",
   "returns_count",
   "returns_sum",
   "ad_spent",
@@ -718,6 +719,19 @@ export function buildMetrics(
       : null);
   // СПП — скидка WB поверх цены продавца: продавец получает price_with_disc,
   // покупатель платит finished_price. Считаем от брутто-выкупов, не от нетто.
+  // Заказы по цене для покупателя: та же СПП, что применилась к продажам дня.
+  const ordersSppSum = days.map((_, index) => {
+    if (ordersSum[index] == null || buyoutsGrossSum[index] == null || buyoutsFinishedSum[index] == null) return null;
+    if (!(buyoutsGrossSum[index] > 0)) return null;
+    return Math.round(ordersSum[index] * (buyoutsFinishedSum[index] / buyoutsGrossSum[index]));
+  });
+  // Фактический % выкупа = выкуплено / доставлено = выкупы / (выкупы + возвраты).
+  // Знаменатель — брутто-выкупы плюс возвраты: это и есть доставленное покупателю.
+  const actualBuyoutPct = days.map((_, index) => {
+    if (grossBuyoutsCount[index] == null || returnsCount[index] == null) return null;
+    const delivered = grossBuyoutsCount[index] + returnsCount[index];
+    return delivered > 0 ? r1((grossBuyoutsCount[index] / delivered) * 100) : null;
+  });
   const sppPct = days.map((_, index) =>
     buyoutsGrossSum[index] != null && buyoutsFinishedSum[index] != null && buyoutsGrossSum[index] > 0
       ? r1((1 - buyoutsFinishedSum[index] / buyoutsGrossSum[index]) * 100)
@@ -752,6 +766,8 @@ export function buildMetrics(
   const totalReturnsSum = knownSum(returnsSum);
   const totalPlaced = totalOrdersCount != null && totalCancelsCount != null ? totalOrdersCount + totalCancelsCount : null;
   const totalGrossBuyouts = totalBuyoutsCount != null && totalReturnsCount != null ? totalBuyoutsCount + totalReturnsCount : null;
+  const totalOrdersSppSum = knownSum(ordersSppSum);
+  const totalDelivered = totalGrossBuyouts != null && totalReturnsCount != null ? totalGrossBuyouts + totalReturnsCount : null;
   const primaryQualityReason: Metric["qualityReason"] = primaryFacts ? undefined : "unsupported_source";
   const totalOrdersGrossSum = knownSum(ordersGrossSum);
   const totalBuyoutsGrossSum = knownSum(buyoutsGrossSum);
@@ -791,6 +807,27 @@ export function buildMetrics(
     { field: "buyouts_count", label: "Выкупы, шт", kind: "int", daily: buyoutsCount, total: totalBuyoutsCount, forecast: null, source: "WB Статистика", group_start: true },
     { field: "buyouts_sum", label: "Выкупы, ₽", kind: "money", daily: buyoutsSum, total: totalBuyoutsSum == null ? null : Math.round(totalBuyoutsSum), forecast: null, source: "WB Статистика" },
     {
+      field: "buyouts_gross_count",
+      label: "Выкуплено, шт",
+      kind: "int",
+      daily: grossBuyoutsCount,
+      total: totalGrossBuyouts,
+      forecast: null,
+      source: "WB Статистика",
+      note: "Фактические выкупы до вычета возвратов — строки продаж WB. Отличается от «Выкупы, шт», где возвраты уже вычтены.",
+    },
+    {
+      field: "buyouts_gross_rub",
+      label: "Выкуплено, ₽",
+      kind: "money",
+      daily: buyoutsGrossSum,
+      total: totalBuyoutsGrossSum == null ? null : Math.round(totalBuyoutsGrossSum),
+      forecast: null,
+      source: "WB Статистика",
+      note: "Сумма выкупов до вычета возвратов, по цене продавца (до СПП).",
+      qualityReason: primaryQualityReason,
+    },
+    {
       field: "returns_count",
       label: "Возвраты, шт",
       kind: "int",
@@ -819,6 +856,30 @@ export function buildMetrics(
       forecast: null,
       source: "WB Статистика",
       note: "Возвраты / выкупы до вычета возвратов. Возврат приходит в дату оформления, а покупка могла быть раньше, поэтому дневное значение может превышать 100%.",
+    },
+    {
+      field: "actual_buyout_pct",
+      label: "Фактический % выкупа, %",
+      kind: "pct",
+      daily: actualBuyoutPct,
+      total: totalGrossBuyouts != null && totalDelivered != null && totalDelivered > 0
+        ? r1((totalGrossBuyouts / totalDelivered) * 100)
+        : null,
+      forecast: null,
+      source: "WB Статистика",
+      note: "Выкуплено / доставлено = выкупы / (выкупы + возвраты). В отличие от «Выкуп потока» считается по факту доставки, а не к заказам другой когорты.",
+    },
+    {
+      field: "orders_spp_sum",
+      label: "Заказы с СПП, ₽",
+      kind: "money",
+      daily: ordersSppSum,
+      total: totalOrdersSppSum == null ? null : Math.round(totalOrdersSppSum),
+      forecast: null,
+      source: "WB Воронка/Статистика + WB Статистика",
+      note: "Сумма заказов по цене для покупателя: заказы × (1 − СПП дня). «Заказы, ₽» — выручка до СПП.",
+      qualityReason: primaryQualityReason,
+      group_start: true,
     },
     {
       field: "avg_order_price",
@@ -991,6 +1052,9 @@ export function buildMetrics(
   });
   applyDerivedRatioCoverage(withForecasts, "cancel_pct", ["cancels_count", "orders_count"]);
   applyDerivedRatioCoverage(withForecasts, "return_pct", ["returns_count", "buyouts_count"]);
+  applyDerivedRatioCoverage(withForecasts, "actual_buyout_pct", ["buyouts_count", "returns_count"]);
+  applyDerivedRatioCoverage(withForecasts, "orders_spp_sum", ["orders_sum", "buyouts_sum"]);
+  applyDerivedRatioCoverage(withForecasts, "buyouts_gross_count", ["buyouts_count", "returns_count"]);
   applyDerivedRatioCoverage(withForecasts, "avg_order_price", ["orders_sum", "orders_count"]);
   applyDerivedRatioCoverage(withForecasts, "seller_discount_pct", ["orders_sum"]);
   applyDerivedRatioCoverage(withForecasts, "avg_buyout_price", ["buyouts_sum", "buyouts_count"]);
@@ -1908,6 +1972,9 @@ export async function buildRnpTable(
     // Повторный проход прогнозов сбросил бы покрытие производных долей на 100%.
     applyDerivedRatioCoverage(summary, "cancel_pct", ["cancels_count", "orders_count"]);
     applyDerivedRatioCoverage(summary, "return_pct", ["returns_count", "buyouts_count"]);
+    applyDerivedRatioCoverage(summary, "actual_buyout_pct", ["buyouts_count", "returns_count"]);
+    applyDerivedRatioCoverage(summary, "orders_spp_sum", ["orders_sum", "buyouts_sum"]);
+    applyDerivedRatioCoverage(summary, "buyouts_gross_count", ["buyouts_count", "returns_count"]);
     applyDerivedRatioCoverage(summary, "avg_order_price", ["orders_sum", "orders_count"]);
     applyDerivedRatioCoverage(summary, "seller_discount_pct", ["orders_sum"]);
     applyDerivedRatioCoverage(summary, "avg_buyout_price", ["buyouts_sum", "buyouts_count"]);

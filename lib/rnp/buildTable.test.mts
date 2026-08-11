@@ -570,3 +570,46 @@ test("кэш без разбивки: состав молчит, общая су
   assert.equal(find("logistics_rub").total, 800);
   assert.equal(find("mp_cost_rub").total, 3_000);
 });
+
+test("выкуплено — брутто, а фактический % выкупа считается к доставленному", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    // 8 нетто-выкупов + 2 возврата = 10 выкуплено, доставлено 12.
+    new Map([["2026-08-01", salesDay({})]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  assert.equal(find("buyouts_gross_count").total, 10);
+  assert.equal(find("buyouts_count").total, 8);          // нетто не изменилось
+  // 10 / (10 + 2) = 83.3%
+  assert.equal(find("actual_buyout_pct").daily[0], 83.3);
+  assert.equal(find("actual_buyout_pct").total, 83.3);
+});
+
+test("заказы с СПП берут скидку WB того же дня", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    // СПП дня: 2880 / 3600 → покупатель платит 80% цены продавца.
+    new Map([["2026-08-01", priceDay({ orders_sum: 10_000 })]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+  );
+  assert.equal(metrics.find((item) => item.field === "orders_spp_sum")!.total, 8_000);
+});
+
+test("без продаж дня заказы с СПП молчат, а не равны заказам", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", priceDay({ orders_sum: 10_000, buyouts_gross_sum: 0, buyouts_finished_sum: 0 })]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+  );
+  assert.equal(metrics.find((item) => item.field === "orders_spp_sum")!.daily[0], null);
+});
