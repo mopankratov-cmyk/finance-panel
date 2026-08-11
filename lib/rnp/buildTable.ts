@@ -559,7 +559,7 @@ interface EconomyBreakdownInput {
   adSpend: (number | null)[];
   gross: (number | null)[];
   cost: number;
-  wbCostPct: number;
+  wbCostPct: number | null;
   rates: {
     commissionPct: number;
     acquiringPct: number;
@@ -580,6 +580,11 @@ interface EconomyBreakdownInput {
  */
 function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Metric[] {
   const { buyoutsSum, buyoutsCount, adSpend, gross, cost, wbCostPct, rates } = input;
+  // Каждая статья молчит по СВОЕЙ причине: расходы маркетплейса упираются в ставки,
+  // себестоимость и прибыль — в справочник себестоимости.
+  const costReason: Metric["qualityReason"] = cost > 0 ? undefined : "missing_cost";
+  const rateReason: Metric["qualityReason"] = wbCostPct != null ? undefined : "missing_rates";
+  const profitReason: Metric["qualityReason"] = cost > 0 && wbCostPct != null ? undefined : (cost > 0 ? "missing_rates" : "missing_cost");
   const r1 = (value: number) => Math.round(value * 10) / 10;
   const share = (pct: number | null) => days.map((_, index) =>
     pct == null || buyoutsSum[index] == null ? null : Math.round(buyoutsSum[index] * pct / 100));
@@ -588,17 +593,20 @@ function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Me
   const parts = rates?.extraParts ?? null;
   const part = (key: "delivery" | "storage" | "penalty" | "acceptance" | "deduction") => share(parts ? parts[key] : null);
   const partsReason: Metric["qualityReason"] = rates ? (parts ? undefined : "unsupported_source") : "missing_rates";
-  const cogs = days.map((_, index) => buyoutsCount[index] == null ? null : Math.round(cost * buyoutsCount[index]));
+  const cogs = cost > 0
+    ? days.map((_, index) => buyoutsCount[index] == null ? null : Math.round(cost * buyoutsCount[index]))
+    : days.map(() => null);
   const commission = share(rates?.commissionPct ?? null);
   const acquiring = share(rates?.acquiringPct ?? null);
   const other = share(otherPct);
-  const marketplace = share(wbCostPct);
+  const marketplace = share(wbCostPct ?? null);
   const totalGross = knownSum(gross);
   const totalBuyoutsCount = knownSum(buyoutsCount);
   const totalAdSpend = knownSum(adSpend);
   // Ставки по статьям приходят вместе; если их нет — молчат только они,
   // общая сумма расходов МП остаётся, она считается из wbCostPct.
-  const ratesReason: Metric["qualityReason"] = rates ? undefined : "missing_rates";
+  // Разбивка по статьям требует состава ставок; общая сумма — только самих ставок.
+  const ratesReason: Metric["qualityReason"] = wbCostPct == null ? "missing_rates" : (rates ? undefined : "missing_rates");
   const money = (field: string, label: string, daily: (number | null)[], note: string, qualityReason?: Metric["qualityReason"]) => ({
     field,
     label,
@@ -612,7 +620,7 @@ function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Me
   } satisfies Metric);
 
   return [
-    money("cogs", "Себестоимость проданного, ₽", cogs, "Себестоимость × выкупы, шт. Выкупы нетто — возвраты уже вычтены."),
+    money("cogs", "Себестоимость проданного, ₽", cogs, "Себестоимость × выкупы, шт. Выкупы нетто — возвраты уже вычтены.", costReason),
     money("commission_rub", "Комиссия WB, ₽", commission, "Выкупы × фактическая ставка комиссии из финотчёта.", ratesReason),
     money("acquiring_rub", "Эквайринг, ₽", acquiring, "Выкупы × фактическая ставка эквайринга из финотчёта.", ratesReason),
     money("logistics_rub", "Логистика и прочие удержания, ₽", other, "Логистика, хранение, штрафы, приёмка и прочие удержания одной суммой. Ниже — состав по статьям.", ratesReason),
@@ -621,7 +629,7 @@ function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Me
     money("penalty_rub", "Штрафы, ₽", part("penalty"), "Штрафы из финотчёта.", partsReason),
     money("acceptance_rub", "Приёмка, ₽", part("acceptance"), "Платная приёмка из финотчёта.", partsReason),
     money("deduction_rub", "Прочие удержания, ₽", part("deduction"), "Прочие удержания, кроме рекламы: она вычитается отдельной строкой. Удержания без привязки к SKU сюда не входят — они размазаны по всем товарам внутри общей суммы.", partsReason),
-    money("mp_cost_rub", "Расходы МП всего, ₽", marketplace, "Комиссия + эквайринг + прочие удержания. Та же ставка, которой считается прибыль."),
+    money("mp_cost_rub", "Расходы МП всего, ₽", marketplace, "Комиссия + эквайринг + прочие удержания. Та же ставка, которой считается прибыль. Себестоимость для этой строки не нужна.", rateReason),
     {
       field: "profit_per_unit",
       label: "Прибыль на единицу, ₽",
@@ -633,6 +641,7 @@ function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Me
       forecast: null,
       source: "WB Финотчёт + себестоимость + WB Реклама",
       note: "Прибыль после расходов МП / выкупы, шт.",
+      qualityReason: profitReason,
     },
     {
       field: "romi",
@@ -645,6 +654,7 @@ function buildEconomyBreakdown(days: string[], input: EconomyBreakdownInput): Me
       forecast: null,
       source: "WB Финотчёт + себестоимость + WB Реклама",
       note: "Прибыль после расходов МП (реклама уже вычтена) / рекламный расход. 0% — реклама вышла в ноль, ниже нуля — не окупилась. Без рекламы метрика молчит.",
+      qualityReason: profitReason,
     },
   ];
 }
@@ -949,47 +959,35 @@ export function buildMetrics(
     { field: "drr", label: "ДРР к заказам, %", kind: "pct", daily: drr, total: totalOrdersSum != null && totalAdSpend != null && totalOrdersSum > 0 ? r1((totalAdSpend / totalOrdersSum) * 100) : null, forecast: null, source: "WB Реклама + WB Воронка/Статистика", note: "Рекламный расход / сумма заказов календарного периода." },
   ];
   let grossTotalForGmroi: number | null = null;
-  if (cost > 0 && wbCostPct != null) {
-    // Маржа после ВСЕХ расходов МП: выкупы₽ − себес×выкупы − wbCost%(комиссия+эквайринг+логистика+
-    // хранение+штрафы+приёмка+прочие) − реклама. Всё из ФАКТ-финотчёта. Маржа % = это / выкупы₽.
-    const marketplaceCost = wbCostPct / 100;
-    const gross = days.map((_, index) =>
+  // Прибыль требует себестоимости, расходы маркетплейса — нет: они считаются как
+  // выкупы × ставка из финотчёта. Раньше весь блок жил под одним условием, и
+  // незаполненный справочник себестоимости прятал в том числе комиссию с
+  // логистикой, которые к нему отношения не имеют.
+  const hasCost = cost > 0;
+  const hasRates = wbCostPct != null;
+  const gross = hasCost && hasRates
+    ? days.map((_, index) =>
       buyoutsSum[index] == null || buyoutsCount[index] == null || adSpend[index] == null
         ? null
         : Math.round(
           buyoutsSum[index]
           - cost * buyoutsCount[index]
-          - buyoutsSum[index] * marketplaceCost
+          - buyoutsSum[index] * (wbCostPct / 100)
           - adSpend[index],
-        ));
-    const totalGross = knownSum(gross);
-    const grossBuyoutsSum = knownSum(buyoutsSum.map((value, index) => gross[index] == null ? null : value));
-    grossTotalForGmroi = totalGross;
-    const marginPct = days.map((_, index) => buyoutsSum[index] != null && buyoutsSum[index] > 0 && gross[index] != null
-      ? r1((gross[index] / buyoutsSum[index]) * 100)
-      : null);
-    out.push(
-      { field: "gross", label: "Прибыль после расходов МП, ₽", kind: "money", daily: gross, total: totalGross == null ? null : Math.round(totalGross), forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", group_start: true },
-      { field: "margin_pct", label: "Расчётная маржа после рекламы, %", kind: "pct", daily: marginPct, total: grossBuyoutsSum != null && totalGross != null && grossBuyoutsSum > 0 ? r1((totalGross / grossBuyoutsSum) * 100) : null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама" },
-      ...buildEconomyBreakdown(days, { buyoutsSum, buyoutsCount, adSpend, gross, cost, wbCostPct, rates: options.rates ?? null }),
-    );
-  } else {
-    const qualityReason: Metric["qualityReason"] = cost <= 0 ? "missing_cost" : "missing_rates";
-    out.push(
-      { field: "gross", label: "Прибыль после расходов МП, ₽", kind: "money", daily: days.map(() => null), total: null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason, group_start: true },
-      { field: "margin_pct", label: "Расчётная маржа после рекламы, %", kind: "pct", daily: days.map(() => null), total: null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason },
-      ...EMPTY_ECONOMY_FIELDS.map((item) => ({
-        field: item.field,
-        label: item.label,
-        kind: item.kind,
-        daily: days.map(() => null),
-        total: null,
-        forecast: null,
-        source: "WB Финотчёт + себестоимость + WB Реклама",
-        qualityReason,
-      } satisfies Metric)),
-    );
-  }
+        ))
+    : days.map(() => null);
+  const totalGross = knownSum(gross);
+  const grossBuyoutsSum = knownSum(buyoutsSum.map((value, index) => gross[index] == null ? null : value));
+  grossTotalForGmroi = totalGross;
+  const marginPct = days.map((_, index) => buyoutsSum[index] != null && buyoutsSum[index] > 0 && gross[index] != null
+    ? r1((gross[index] / buyoutsSum[index]) * 100)
+    : null);
+  const profitReason: Metric["qualityReason"] = hasCost && hasRates ? undefined : (!hasCost ? "missing_cost" : "missing_rates");
+  out.push(
+    { field: "gross", label: "Прибыль после расходов МП, ₽", kind: "money", daily: gross, total: totalGross == null ? null : Math.round(totalGross), forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason: profitReason, group_start: true },
+    { field: "margin_pct", label: "Расчётная маржа после рекламы, %", kind: "pct", daily: marginPct, total: grossBuyoutsSum != null && totalGross != null && grossBuyoutsSum > 0 ? r1((totalGross / grossBuyoutsSum) * 100) : null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason: profitReason },
+    ...buildEconomyBreakdown(days, { buyoutsSum, buyoutsCount, adSpend, gross, cost, wbCostPct, rates: options.rates ?? null }),
+  );
   // Оборачиваемость, дней = остаток / средние дневные выкупы за выбранное
   // пользователем окно. Будущие/не загруженные дни не попадают в знаменатель.
   const turnoverValues = days

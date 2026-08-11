@@ -447,7 +447,7 @@ test("без разбивки ставок статьи молчат, но об�
   assert.equal(find("cogs").total, 3_000);
 });
 
-test("без себестоимости строки экономики остаются с причиной", () => {
+test("без себестоимости молчит только то, чему она нужна", () => {
   const metrics = buildMetrics(
     ["2026-08-01"],
     "2026-08-01",
@@ -455,14 +455,40 @@ test("без себестоимости строки экономики оста
     0,
     0,
     { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
-    0,
+    0,                       // себестоимости нет
+    30,                      // ставки WB известны
     30,
+    { rates: ECONOMY_RATES },
   );
-  for (const field of ["cogs", "commission_rub", "mp_cost_rub", "profit_per_unit", "romi"]) {
-    const metric = metrics.find((item) => item.field === field)!;
-    assert.equal(metric.total, null, field);
-    assert.equal(metric.qualityReason, "missing_cost", field);
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  // Расходы маркетплейса считаются от выкупов и ставки — себестоимость им не нужна.
+  assert.equal(find("mp_cost_rub").total, 3_000);
+  assert.equal(find("commission_rub").total, 2_000);
+  assert.equal(find("acquiring_rub").total, 200);
+  assert.equal(find("logistics_rub").total, 800);
+  // А это без справочника себестоимости посчитать нельзя.
+  for (const field of ["cogs", "gross", "profit_per_unit", "romi"]) {
+    assert.equal(find(field).total, null, field);
+    assert.equal(find(field).qualityReason, "missing_cost", field);
   }
+});
+
+test("без ставок WB молчат расходы маркетплейса, а себестоимость остаётся", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", economyDay]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    300,                     // себестоимость есть
+    null,                    // ставок нет
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  assert.equal(find("cogs").total, 3_000);
+  assert.equal(find("mp_cost_rub").total, null);
+  assert.equal(find("mp_cost_rub").qualityReason, "missing_rates");
+  assert.equal(find("gross").qualityReason, "missing_rates");
 });
 
 function economyMetric(field: string, daily: Array<number | null>, total: number | null, coveragePct = 100): Metric {
