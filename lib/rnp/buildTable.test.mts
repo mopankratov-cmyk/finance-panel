@@ -7,6 +7,7 @@ import {
   applySalesReturnsAdjustment,
   buildFunnelMetrics,
   buildMetrics,
+  buildLightweightProductTotals,
   buildScopedBaseFactsFromRows,
   type Metric,
 } from "./buildTable";
@@ -318,4 +319,45 @@ test("агрегатный источник молчит по ценам, но �
   // Средние чеки выводятся из потоков, доступных на обоих путях.
   assert.equal(find("avg_order_price").daily[0], 1800);
   assert.equal(find("avg_buyout_price").daily[0], 1800);
+});
+
+test("товар в пути складывается по складам и не попадает в остаток к продаже", () => {
+  const totals = buildLightweightProductTotals([{ nm_id: 1 }], [
+    { nm_id: 1, quantity: 4, in_way_to_client: 3, in_way_from_client: 1 },
+    { nm_id: 1, quantity: 6, in_way_to_client: 2, in_way_from_client: 0 },
+  ]);
+  assert.equal(totals.length, 1);
+  assert.equal(totals[0].stock, 10);
+  assert.equal(totals[0].in_way_to_client, 5);
+  assert.equal(totals[0].in_way_from_client, 1);
+});
+
+test("остатки без колонок в пути не ломаются и дают ноль", () => {
+  const totals = buildLightweightProductTotals([], [{ nm_id: 1, quantity: 7 }]);
+  assert.equal(totals[0].stock, 7);
+  assert.equal(totals[0].in_way_to_client, 0);
+  assert.equal(totals[0].in_way_from_client, 0);
+});
+
+test("метрики склада показывают снимок только в дате факта", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01", "2026-08-02"],
+    "2026-08-02",
+    new Map(),
+    10,
+    0,
+    { orders: "2026-08-02", sales: "2026-08-02", adverts: "2026-08-02" },
+    0,
+    null,
+    30,
+    { inWayToClient: 5, inWayFromClient: 2 },
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  assert.equal(find("stock_in_way_to_client").total, 5);
+  assert.equal(find("stock_in_way_from_client").total, 2);
+  // Всего на складах = остаток к продаже + обе дороги.
+  assert.equal(find("stock_total").total, 17);
+  // Прошлый день не подменяется сегодняшним снимком.
+  assert.equal(find("stock_total").daily[0], null);
+  assert.equal(find("stock_total").daily[1], 17);
 });

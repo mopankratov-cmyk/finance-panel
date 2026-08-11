@@ -26,6 +26,9 @@ export const RNP_METRIC_FIELDS = [
   "ad_spent",
   "drr",
   "stock",
+  "stock_in_way_to_client",
+  "stock_in_way_from_client",
+  "stock_total",
   "turnover",
   "money",
   "gmroi",
@@ -116,6 +119,9 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     final_price: 10,
     seller_discount_pct: 3,
     spp_pct: 3,
+    stock_in_way_to_client: 30,
+    stock_in_way_from_client: 30,
+    stock_total: 30,
     drr: 5,
     ctr: 2,
     margin_pct: 5,
@@ -163,8 +169,8 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
   {
     id: "stock",
     label: "Остатки",
-    description: "Остаток, оборачиваемость и деньги на складе",
-    fields: ["orders_count", "buyouts_count", "stock", "turnover", "money"],
+    description: "Остаток, товар в пути, оборачиваемость и деньги на складе",
+    fields: ["orders_count", "buyouts_count", "stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"],
   },
   {
     id: "economy",
@@ -194,6 +200,8 @@ const POSITIVE_WHEN_UP = new Set([
   "avg_order_price",
   "avg_buyout_price",
   "final_price",
+  // Товар в пути к клиенту — это уже проданное: рост означает продажи, а не залёж.
+  "stock_in_way_to_client",
   // СПП — скидка WB, а не продавца: растёт СПП → покупателю дешевле при той же
   // выручке продавца. Для кабинета это хорошая новость.
   "spp_pct",
@@ -208,6 +216,8 @@ const POSITIVE_WHEN_DOWN = new Set([
   "returns_sum",
   "return_pct",
   "seller_discount_pct",
+  // Обратный поток со склада — это возвраты в дороге, ранний сигнал проблемы.
+  "stock_in_way_from_client",
 ]);
 
 const METRIC_LABELS: Record<string, string> = {
@@ -238,6 +248,9 @@ const METRIC_LABELS: Record<string, string> = {
   ad_spent: "Реклама",
   drr: "ДРР",
   stock: "Остаток",
+  stock_in_way_to_client: "В пути к клиенту",
+  stock_in_way_from_client: "В пути от клиента",
+  stock_total: "Всего на складах",
   turnover: "Оборачиваемость",
   money: "Деньги в остатках",
   gmroi: "GMROI",
@@ -275,6 +288,9 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   ad_spent: "реклама",
   drr: "ДРР",
   stock: "остаток",
+  stock_in_way_to_client: "в пути к клиенту",
+  stock_in_way_from_client: "в пути от клиента",
+  stock_total: "всего на складах",
   turnover: "оборач.",
   money: "деньги в остатках",
   gmroi: "GMROI",

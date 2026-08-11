@@ -17,9 +17,9 @@ test("unscoped RNP builds the SKU list and current stock without the full 30-day
   );
 
   assert.deepEqual(totals, [
-    { nm_id: 101, article: "", stock: 5, cost: null },
-    { nm_id: 202, article: "", stock: 0, cost: null },
-    { nm_id: 303, article: "", stock: 7, cost: null },
+    { nm_id: 101, article: "", stock: 5, in_way_to_client: 0, in_way_from_client: 0, cost: null },
+    { nm_id: 202, article: "", stock: 0, in_way_to_client: 0, in_way_from_client: 0, cost: null },
+    { nm_id: 303, article: "", stock: 7, in_way_to_client: 0, in_way_from_client: 0, cost: null },
   ]);
 });
 
@@ -58,8 +58,8 @@ test("scoped RNP base facts aggregate only allowlisted SKU without full-cabinet 
   });
 
   assert.deepEqual(result.totals, [
-    { nm_id: 101, article: "NOR-101", stock: 5, cost: 100 },
-    { nm_id: 202, article: "RIO-202", stock: 0, cost: 250 },
+    { nm_id: 101, article: "NOR-101", stock: 5, in_way_to_client: 0, in_way_from_client: 0, cost: 100 },
+    { nm_id: 202, article: "RIO-202", stock: 0, in_way_to_client: 0, in_way_from_client: 0, cost: 250 },
   ]);
   assert.equal(result.skuRows.length, 1);
   assert.deepEqual(result.skuRows[0], {

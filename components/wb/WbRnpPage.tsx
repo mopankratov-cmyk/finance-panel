@@ -187,6 +187,9 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   ad_spent: { label: "Рекл. расход, ₽", kind: "money" },
   drr: { label: `${MARKETPLACE_METRICS.drrOrders.label}, %`, kind: "pct" },
   stock: { label: "Остаток, шт", kind: "int" },
+  stock_in_way_to_client: { label: "В пути к клиенту, шт", kind: "int" },
+  stock_in_way_from_client: { label: "В пути от клиента, шт", kind: "int" },
+  stock_total: { label: "Всего на складах, шт", kind: "int" },
   turnover: { label: "Оборачиваемость, дней", kind: "int" },
   money: { label: "Деньги в остатках, ₽", kind: "money" },
   gmroi: { label: "GMROI, %", kind: "pct" },
@@ -246,7 +249,7 @@ const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: re
   { id: "price", label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"], expanded: false },
   { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
   { id: "economy", label: "Экономика", fields: ["gross", "margin_pct", "gmroi"], expanded: false },
-  { id: "stock", label: "Остатки", fields: ["stock", "turnover", "money"], expanded: false },
+  { id: "stock", label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"], expanded: false },
 ];
 
 const RNP_FILTER_PRESETS_STORAGE_KEY = "finance-panel:wb-rnp-filter-presets:v1";

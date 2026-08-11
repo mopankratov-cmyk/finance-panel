@@ -77,6 +77,9 @@ interface RpcTotal {
   nm_id: number;
   article: string;
   stock: number;
+  /** Товар в пути: к покупателю (продан, ещё не доставлен) и обратно (возврат едет на склад). */
+  in_way_to_client: number;
+  in_way_from_client: number;
   cost: number | null;
 }
 interface AdNmRow { nm_id: number; date: string; views: number | null; clicks: number | null }
@@ -127,6 +130,8 @@ export interface ScopedAdvertSpendRow {
 export interface ScopedStockSourceRow {
   nm_id: number;
   quantity: number | null;
+  in_way_to_client?: number | null;
+  in_way_from_client?: number | null;
 }
 
 export interface ScopedProductSourceRow {
@@ -139,7 +144,7 @@ export function buildLightweightProductTotals(
   stockRows: ScopedStockSourceRow[],
 ): RpcTotal[] {
   const nmIds = new Set<number>();
-  const stockByNm = new Map<number, number>();
+  const stockByNm = new Map<number, StockPosition>();
   for (const row of skuRows) {
     const nmId = Number(row.nm_id);
     if (Number.isFinite(nmId) && nmId > 0) nmIds.add(nmId);
@@ -148,16 +153,34 @@ export function buildLightweightProductTotals(
     const nmId = Number(row.nm_id);
     if (!Number.isFinite(nmId) || nmId <= 0) continue;
     nmIds.add(nmId);
-    stockByNm.set(nmId, (stockByNm.get(nmId) ?? 0) + Number(row.quantity ?? 0));
+    stockByNm.set(nmId, addStockRow(stockByNm.get(nmId), row));
   }
   return [...nmIds]
     .sort((left, right) => left - right)
     .map((nmId) => ({
       nm_id: nmId,
       article: "",
-      stock: stockByNm.get(nmId) ?? 0,
+      ...(stockByNm.get(nmId) ?? EMPTY_STOCK_POSITION),
       cost: null,
     }));
+}
+
+interface StockPosition {
+  stock: number;
+  in_way_to_client: number;
+  in_way_from_client: number;
+}
+
+const EMPTY_STOCK_POSITION: StockPosition = { stock: 0, in_way_to_client: 0, in_way_from_client: 0 };
+
+/** Остатки WB приходят построчно по складам — позиция SKU складывается из строк. */
+function addStockRow(current: StockPosition | undefined, row: ScopedStockSourceRow): StockPosition {
+  const base = current ?? EMPTY_STOCK_POSITION;
+  return {
+    stock: base.stock + Number(row.quantity ?? 0),
+    in_way_to_client: base.in_way_to_client + Number(row.in_way_to_client ?? 0),
+    in_way_from_client: base.in_way_from_client + Number(row.in_way_from_client ?? 0),
+  };
 }
 
 interface PageResult<Row> {
@@ -525,8 +548,11 @@ export function buildMetrics(
    * строки, а агрегат (RPC `rnp_daily`). Он не отдаёт ни отмены, ни цены до скидки,
    * ни фактическую цену покупателя. Такие метрики молчат, а не показывают
    * заниженный ноль.
+   *
+   * `inWayToClient` / `inWayFromClient` — снимок товара в пути из `wb_stocks`,
+   * приходит вместе с остатком и живёт в той же точке времени.
    */
-  options: { primaryFacts?: boolean } = {},
+  options: { primaryFacts?: boolean; inWayToClient?: number; inWayFromClient?: number } = {},
 ): Metric[] {
   const pick = (key: keyof DailyRow, cutoff: string | null) => days.map((day) =>
     !cutoff || day > asOf || day > cutoff ? null : Number(byDate.get(day)?.[key] ?? 0));
@@ -773,8 +799,41 @@ export function buildMetrics(
   const gmroi = grossTotalForGmroi != null && stockMoney > 0 ? r1(Math.min(999, (grossTotalForGmroi / stockMoney) * 100)) : null;
   const knownStockMoney = stockMoney > 0 || stock === 0 ? Math.round(stockMoney) : null;
   const snapshotNote = `Текущий снимок показан в дате факта; прошлые дни не подменяются сегодняшним остатком. Оборачиваемость рассчитана по последним ${Math.max(1, turnoverWindowDays)} доступным дням.`;
+  const inWayToClient = Math.round(Number(options.inWayToClient ?? 0));
+  const inWayFromClient = Math.round(Number(options.inWayFromClient ?? 0));
+  const stockTotalWithInWay = stock + inWayToClient + inWayFromClient;
   out.push(
-    { field: "stock", label: "Остаток, шт", kind: "int", daily: pointInTimeMetricDaily(days, asOf, stock), total: stock, forecast: null, source: "WB Остатки", note: snapshotNote, group_start: true },
+    { field: "stock", label: "Остаток, шт", kind: "int", daily: pointInTimeMetricDaily(days, asOf, stock), total: stock, forecast: null, source: "WB Остатки", note: `Доступно к продаже на складах. ${snapshotNote}`, group_start: true },
+    {
+      field: "stock_in_way_to_client",
+      label: "В пути к клиенту, шт",
+      kind: "int",
+      daily: pointInTimeMetricDaily(days, asOf, inWayToClient),
+      total: inWayToClient,
+      forecast: null,
+      source: "WB Остатки",
+      note: `Уже продано, но ещё не доставлено — в остаток к продаже не входит. ${snapshotNote}`,
+    },
+    {
+      field: "stock_in_way_from_client",
+      label: "В пути от клиента, шт",
+      kind: "int",
+      daily: pointInTimeMetricDaily(days, asOf, inWayFromClient),
+      total: inWayFromClient,
+      forecast: null,
+      source: "WB Остатки",
+      note: `Возвраты, которые едут обратно на склад, — ранний признак роста возвратов. ${snapshotNote}`,
+    },
+    {
+      field: "stock_total",
+      label: "Всего на складах, шт",
+      kind: "int",
+      daily: pointInTimeMetricDaily(days, asOf, stockTotalWithInWay),
+      total: stockTotalWithInWay,
+      forecast: null,
+      source: "WB Остатки",
+      note: `Остаток к продаже плюс товар в пути в обе стороны. ${snapshotNote}`,
+    },
     { field: "money", label: "Деньги в остатках, ₽", kind: "money", daily: pointInTimeMetricDaily(days, asOf, knownStockMoney), total: knownStockMoney, forecast: null, source: "WB Остатки + себестоимость", note: snapshotNote, qualityReason: knownStockMoney == null && stock > 0 ? "missing_cost" : undefined },
     { field: "turnover", label: "Оборачиваемость, дней", kind: "int", daily: pointInTimeMetricDaily(days, asOf, turnover), total: turnover, forecast: null, source: "WB Остатки + выкупы", note: snapshotNote, qualityReason: turnover == null ? "no_activity" : undefined },
     { field: "gmroi", label: "GMROI, %", kind: "pct", daily: pointInTimeMetricDaily(days, asOf, gmroi), total: gmroi, forecast: null, source: "Расчётная прибыль / деньги в остатках", note: snapshotNote, qualityReason: cost <= 0 && stock > 0 ? "missing_cost" : wbCostPct == null ? "missing_rates" : gmroi == null ? "no_activity" : undefined },
@@ -1048,7 +1107,7 @@ export function buildScopedBaseFactsFromRows(input: {
   const allowed = new Set(input.allowedNmIds);
   const dailyRows = new Map<string, SkuDailyRow>();
   const articleByNm = new Map<number, string>();
-  const stockByNm = new Map<number, number>();
+  const stockByNm = new Map<number, StockPosition>();
   const costByArticle = new Map<string, number | null>();
 
   for (const product of input.products) {
@@ -1102,7 +1161,7 @@ export function buildScopedBaseFactsFromRows(input: {
   for (const stock of input.stocks) {
     const nmId = Number(stock.nm_id);
     if (!allowed.has(nmId)) continue;
-    stockByNm.set(nmId, (stockByNm.get(nmId) ?? 0) + Number(stock.quantity ?? 0));
+    stockByNm.set(nmId, addStockRow(stockByNm.get(nmId), stock));
   }
 
   const totals = input.allowedNmIds.map((nmId) => {
@@ -1110,7 +1169,7 @@ export function buildScopedBaseFactsFromRows(input: {
     return {
       nm_id: nmId,
       article,
-      stock: stockByNm.get(nmId) ?? 0,
+      ...(stockByNm.get(nmId) ?? EMPTY_STOCK_POSITION),
       cost: article ? (costByArticle.get(article) ?? null) : null,
     };
   });
@@ -1186,7 +1245,7 @@ async function loadScopedBaseFacts(
     loadAllPages<ScopedStockSourceRow>((start, end) => {
       let query = db
         .from("wb_stocks")
-        .select("nm_id, quantity")
+        .select("nm_id, quantity, in_way_to_client, in_way_from_client")
         .in("nm_id", allowed)
         .order("nm_id", { ascending: true })
         .range(start, end);
@@ -1249,7 +1308,7 @@ async function loadCurrentStockRows(db: SupabaseAdmin, scope: CabinetScope) {
   return loadAllPages<ScopedStockSourceRow>((start, end) => {
     let query = db
       .from("wb_stocks")
-      .select("nm_id, quantity")
+      .select("nm_id, quantity, in_way_to_client, in_way_from_client")
       .order("nm_id", { ascending: true })
       .range(start, end);
     if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
@@ -1534,6 +1593,8 @@ export async function buildRnpTable(
         nm_id: total.nm_id,
         article: existing.article || total.article,
         stock: Number(existing.stock ?? 0) + Number(total.stock ?? 0),
+        in_way_to_client: Number(existing.in_way_to_client ?? 0) + Number(total.in_way_to_client ?? 0),
+        in_way_from_client: Number(existing.in_way_from_client ?? 0) + Number(total.in_way_from_client ?? 0),
         cost: existing.cost ?? total.cost,
       } : total);
     }
@@ -1548,7 +1609,7 @@ export async function buildRnpTable(
       } : {
         nm_id: card.nmId,
         article: card.article || "",
-        stock: 0,
+        ...EMPTY_STOCK_POSITION,
         cost: null,
       });
     }
@@ -1562,6 +1623,8 @@ export async function buildRnpTable(
     }
     const stockTotal = [...totalByNm.values()].reduce((sum, row) => sum + Number(row.stock ?? 0), 0);
     const stockMoneyTotal = [...totalByNm.values()].reduce((sum, row) => sum + Number(row.stock ?? 0) * Number(row.cost ?? 0), 0);
+    const inWayToClientTotal = [...totalByNm.values()].reduce((sum, row) => sum + Number(row.in_way_to_client ?? 0), 0);
+    const inWayFromClientTotal = [...totalByNm.values()].reduce((sum, row) => sum + Number(row.in_way_from_client ?? 0), 0);
     const byNm = new Map<number, Map<string, DailyRow>>();
     for (const row of skuDailyRows) {
       const date = String(row.d).slice(0, 10);
@@ -1582,7 +1645,7 @@ export async function buildRnpTable(
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
         const card = cardByNm.get(t.nm_id);
         const cost = costByArt.get(t.article);
-        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary });
+        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0) });
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
         appendOrderConversion(metrics);
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
@@ -1601,7 +1664,7 @@ export async function buildRnpTable(
       .map(({ _o, ...rest }) => { void _o; return rest; });
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
-    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary });
+    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal });
     summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs));
     appendOrderConversion(summary);
     const sumDaily = (field: string) => days.map((_, i) => {
