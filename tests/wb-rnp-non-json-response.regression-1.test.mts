@@ -36,7 +36,9 @@ test("WB RNP page does not parse table and plan responses with raw response.json
 
 test("WB RNP page keeps a same-scope last-good table when refresh times out", () => {
   const source = readFileSync(new URL("../components/wb/WbRnpPage.tsx", import.meta.url), "utf8");
-  assert.match(source, /const activeData = dataKey === currentDataKey \? data : null;/);
+  // Сторожим само правило «показываем данные только своего scope», а не форму
+  // выражения: поверх снимка теперь применяется ставка налога.
+  assert.match(source, /dataKey === currentDataKey \? data : null/);
   assert.match(source, /error && activeData/);
   assert.doesNotMatch(source, /setLoading\(true\);\s*setData\(null\);\s*setError\(null\);/);
 });

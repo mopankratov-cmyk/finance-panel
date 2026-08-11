@@ -10,7 +10,7 @@ import {
   Pencil,
   RefreshCw,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ActionableError } from "@/components/ui/ActionableError";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
@@ -48,6 +48,7 @@ import {
   type RnpViewId,
 } from "@/lib/rnp/operatingMatrix";
 import { RNP_DEFAULT_TURNOVER_WINDOW_DAYS } from "@/lib/rnp/warmupPlan";
+import { appendTaxMetrics, RNP_DEFAULT_TAX_PCT } from "@/lib/rnp/taxMetrics";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import {
   RnpOperatingToolbar,
@@ -155,6 +156,7 @@ interface RnpMatrixPreferences {
   compactNumbers: boolean;
   anomalyThreshold: number;
   turnoverWindowDays: number;
+  taxPct: number;
 }
 
 const METRIC_ORDER = [...RNP_METRIC_FIELDS];
@@ -183,6 +185,9 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   final_price: { label: "Цена для покупателя, ₽", kind: "money" },
   spp_pct: { label: "СПП, %", kind: "pct" },
   gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
+  tax_rub: { label: "Налог, ₽", kind: "money" },
+  net_profit: { label: "Чистая прибыль, ₽", kind: "money" },
+  net_margin_pct: { label: "Чистая маржа, %", kind: "pct" },
   cogs: { label: "Себестоимость проданного, ₽", kind: "money" },
   commission_rub: { label: "Комиссия WB, ₽", kind: "money" },
   acquiring_rub: { label: "Эквайринг, ₽", kind: "money" },
@@ -223,6 +228,8 @@ const MONTHLY_FLOW_FIELDS = new Set([
   "acquiring_rub",
   "logistics_rub",
   "mp_cost_rub",
+  "tax_rub",
+  "net_profit",
   "ad_spent",
 ]);
 
@@ -260,7 +267,7 @@ const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: re
   { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "cancels_count", "cancel_pct", "buyouts_sum", "returns_count", "returns_sum", "return_pct"], expanded: false },
   { id: "price", label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"], expanded: false },
   { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
-  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "gross", "margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
+  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "gross", "margin_pct", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
   { id: "stock", label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"], expanded: false },
 ];
 
@@ -412,6 +419,7 @@ function readMatrixPreferences(): RnpMatrixPreferences {
     compactNumbers: false,
     anomalyThreshold: 30,
     turnoverWindowDays: RNP_DEFAULT_TURNOVER_WINDOW_DAYS,
+    taxPct: RNP_DEFAULT_TAX_PCT,
   };
   try {
     const raw = window.localStorage.getItem(RNP_MATRIX_STORAGE_KEY);
@@ -426,6 +434,9 @@ function readMatrixPreferences(): RnpMatrixPreferences {
       compactNumbers: value.compactNumbers === true,
       anomalyThreshold: Math.max(10, Math.min(100, Number(value.anomalyThreshold) || 30)),
       turnoverWindowDays: [7, 14, 30, 60, 90].includes(Number(value.turnoverWindowDays)) ? Number(value.turnoverWindowDays) : RNP_DEFAULT_TURNOVER_WINDOW_DAYS,
+      taxPct: Number.isFinite(Number(value.taxPct)) && Number(value.taxPct) >= 0 && Number(value.taxPct) <= 50
+        ? Number(value.taxPct)
+        : RNP_DEFAULT_TAX_PCT,
     };
   } catch {
     return fallback;
@@ -491,6 +502,7 @@ function findMetric(metrics: Metric[], field: string) {
 const ECONOMY_FALLBACK_FIELDS = new Set([
   "gross", "margin_pct", "money", "gmroi",
   "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "profit_per_unit", "romi",
+  "tax_rub", "net_profit", "net_margin_pct",
 ]);
 
 function completeMetrics(metrics: Metric[], periodLength: number, fields: readonly string[] = METRIC_ORDER) {
@@ -603,6 +615,7 @@ export function WbRnpPage() {
   const [anomalyMode, setAnomalyMode] = useState<"off" | RnpAnomalyDirection>("off");
   const [anomalyThreshold, setAnomalyThreshold] = useState(30);
   const [turnoverWindowDays, setTurnoverWindowDays] = useState(RNP_DEFAULT_TURNOVER_WINDOW_DAYS);
+  const [taxPct, setTaxPct] = useState(RNP_DEFAULT_TAX_PCT);
   const [operationsAvailable, setOperationsAvailable] = useState(false);
   const [operationsMessage, setOperationsMessage] = useState<string | null>(null);
   const [operationsLoading, setOperationsLoading] = useState(false);
@@ -623,7 +636,22 @@ export function WbRnpPage() {
   const [category, setCategory] = useState("");
   const month = range.from.slice(0, 7);
   const currentDataKey = `${cabinetId || "all"}:${range.from}:${range.to}:${turnoverWindowDays}`;
-  const activeData = dataKey === currentDataKey ? data : null;
+  // Ставка налога применяется поверх готового снимка, а не на сервере: снимок
+  // кэшируется на 12 часов по периоду, и ставка в ключе размножила бы кэш.
+  // Копируем массивы метрик — исходный ответ остаётся без налоговых строк,
+  // поэтому смена ставки всегда пересчитывается от чистого источника.
+  const withTax = useCallback((source: RnpTable | null) => {
+    if (!source) return null;
+    return {
+      ...source,
+      summary: appendTaxMetrics([...source.summary], taxPct),
+      skus: source.skus.map((sku) => ({ ...sku, metrics: appendTaxMetrics([...sku.metrics], taxPct) })),
+    };
+  }, [taxPct]);
+  const activeData = useMemo(
+    () => withTax(dataKey === currentDataKey ? data : null),
+    [currentDataKey, data, dataKey, withTax],
+  );
 
   useEffect(() => {
     setUserFilterPresets(readUserFilterPresets());
@@ -636,6 +664,7 @@ export function WbRnpPage() {
     setCompactNumbers(preferences.compactNumbers);
     setAnomalyThreshold(preferences.anomalyThreshold);
     setTurnoverWindowDays(preferences.turnoverWindowDays);
+    setTaxPct(preferences.taxPct);
     const preset = RNP_VIEW_PRESETS.find((view) =>
       view.fields.length === preferences.metricFields.length
       && view.fields.every((field, index) => field === preferences.metricFields[index]));
@@ -654,8 +683,9 @@ export function WbRnpPage() {
       compactNumbers,
       anomalyThreshold,
       turnoverWindowDays,
+      taxPct,
     });
-  }, [anomalyThreshold, compactNumbers, deltaMode, heatmapEnabled, matrixReady, metricFields, showDeltas, sparklinesEnabled, turnoverWindowDays]);
+  }, [anomalyThreshold, compactNumbers, deltaMode, heatmapEnabled, matrixReady, metricFields, showDeltas, sparklinesEnabled, taxPct, turnoverWindowDays]);
 
   useEffect(() => {
     setPlanning(false);
@@ -834,8 +864,10 @@ export function WbRnpPage() {
   }, [cabinetId, hasExactCabinet]);
 
   const previousSkuByNm = useMemo(
-    () => new Map((previousData?.skus ?? []).map((sku) => [sku.nm, sku])),
-    [previousData?.skus],
+    // Прошлый период тоже считаем по текущей ставке — иначе дельта по чистой
+    // прибыли сравнивала бы налог с его отсутствием.
+    () => new Map((withTax(previousData)?.skus ?? []).map((sku) => [sku.nm, sku])),
+    [previousData, withTax],
   );
   const tagsByNm = useMemo(() => {
     const map = new Map<number, string[]>();
@@ -990,8 +1022,8 @@ export function WbRnpPage() {
     [],
   );
   const previousSummaryByField = useMemo(
-    () => new Map((previousData?.summary ?? []).map((metric) => [metric.field, metric])),
-    [previousData?.summary],
+    () => new Map((withTax(previousData)?.summary ?? []).map((metric) => [metric.field, metric])),
+    [previousData, withTax],
   );
   const metricRowHeight = showDeltas ? DELTA_METRIC_ROW_HEIGHT : METRIC_ROW_HEIGHT;
   const skuBlockHeight = metricFields.length * metricRowHeight;
@@ -1321,6 +1353,19 @@ export function WbRnpPage() {
               max={180}
               value={turnoverWindowDays}
               onChange={(event) => setTurnoverWindowDays(Math.max(1, Math.min(180, Number(event.target.value) || 7)))}
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-[11px] tabular-nums text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
+          </label>
+          <label>
+            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Налог, %</span>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              step={0.5}
+              value={taxPct}
+              onChange={(event) => setTaxPct(Math.max(0, Math.min(50, Number(event.target.value) || 0)))}
+              title="Ставка налога с выручки. Влияет только на чистую прибыль и чистую маржу; прибыль после расходов МП остаётся до налога."
               className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-[11px] tabular-nums text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             />
           </label>
@@ -1736,7 +1781,7 @@ export function WbRnpPage() {
               subtitle={`${sortedSkus.length} артикулов · ${activeData.shop_label} · данные на ${formatAsOf(activeData.generated_at)}`}
               period={activeData.period}
               metrics={completeMetrics(activeData.summary, activeData.period.length, metricFields)}
-              previousMetrics={previousData?.summary ?? []}
+              previousMetrics={[...previousSummaryByField.values()]}
               showDeltas={showDeltas}
               deltaMode={deltaMode}
               heatmapEnabled={heatmapEnabled}

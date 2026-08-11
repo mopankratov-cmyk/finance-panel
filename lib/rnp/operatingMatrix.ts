@@ -23,6 +23,9 @@ export const RNP_METRIC_FIELDS = [
   "spp_pct",
   "gross",
   "margin_pct",
+  "tax_rub",
+  "net_profit",
+  "net_margin_pct",
   "cogs",
   "commission_rub",
   "acquiring_rub",
@@ -96,7 +99,7 @@ export interface RnpAnomalyThresholds {
 }
 
 /** Метрики, отклонение которых меряется в пунктах, а не в процентах. */
-const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct", "seller_discount_pct", "spp_pct"]);
+const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct", "seller_discount_pct", "spp_pct", "net_margin_pct"]);
 
 export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
   byField: {
@@ -136,6 +139,8 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     mp_cost_rub: 30,
     profit_per_unit: 20,
     romi: 30,
+    net_profit: 30,
+    net_margin_pct: 5,
     drr: 5,
     ctr: 2,
     margin_pct: 5,
@@ -190,7 +195,7 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
     id: "economy",
     label: "Юнит-экономика",
     description: "Выручка, расходы по статьям, прибыль и отдача",
-    fields: ["buyouts_sum", "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "ad_spent", "gross", "margin_pct", "profit_per_unit", "romi", "gmroi"],
+    fields: ["buyouts_sum", "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub", "ad_spent", "gross", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"],
   },
 ];
 
@@ -261,6 +266,9 @@ const METRIC_LABELS: Record<string, string> = {
   spp_pct: "СПП",
   gross: "Прибыль",
   margin_pct: "Маржа",
+  tax_rub: "Налог",
+  net_profit: "Чистая прибыль",
+  net_margin_pct: "Чистая маржа",
   cogs: "Себестоимость проданного",
   commission_rub: "Комиссия WB",
   acquiring_rub: "Эквайринг",
@@ -308,6 +316,9 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   spp_pct: "СПП",
   gross: "прибыль",
   margin_pct: "маржа",
+  tax_rub: "налог",
+  net_profit: "чистая прибыль",
+  net_margin_pct: "чистая маржа",
   cogs: "себестоимость",
   commission_rub: "комиссия",
   acquiring_rub: "эквайринг",
@@ -424,6 +435,8 @@ const VOLUME_SCALED_FIELDS = new Set([
   "acquiring_rub",
   "logistics_rub",
   "mp_cost_rub",
+  // Налог считается от выручки — растёт вместе с ней, сигналом служит чистая маржа.
+  "tax_rub",
 ]);
 
 export function anomalyDirection(field: string, delta: RnpMetricDelta): "positive" | "negative" | null {

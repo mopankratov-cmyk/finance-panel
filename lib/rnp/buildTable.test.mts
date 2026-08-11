@@ -11,6 +11,7 @@ import {
   buildScopedBaseFactsFromRows,
   type Metric,
 } from "./buildTable";
+import { appendTaxMetrics } from "./taxMetrics";
 
 test("конверсия в корзину: пустой день источника не считается нулём", () => {
   const days = ["2026-08-01", "2026-08-02", "2026-08-03"];
@@ -462,4 +463,59 @@ test("без себестоимости строки экономики оста
     assert.equal(metric.total, null, field);
     assert.equal(metric.qualityReason, "missing_cost", field);
   }
+});
+
+function economyMetric(field: string, daily: Array<number | null>, total: number | null, coveragePct = 100): Metric {
+  return { field, label: field, kind: "money", daily, total, forecast: null, coveragePct };
+}
+
+test("налог и чистая прибыль считаются от выручки, не трогая прибыль до налога", () => {
+  const metrics: Metric[] = [
+    economyMetric("buyouts_sum", [10_000, 5_000], 15_000),
+    economyMetric("margin_pct", [30, 30], 30),
+    economyMetric("gross", [3_000, 1_500], 4_500),
+  ];
+  appendTaxMetrics(metrics, 7);
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  assert.equal(find("tax_rub").daily[0], 700);          // 10 000 × 7%
+  assert.equal(find("tax_rub").total, 1_050);           // 15 000 × 7%
+  assert.equal(find("net_profit").daily[0], 2_300);     // 3 000 − 700
+  assert.equal(find("net_profit").total, 3_450);        // 4 500 − 1 050
+  assert.equal(find("net_margin_pct").daily[0], 23);    // 2 300 / 10 000
+  assert.equal(find("net_margin_pct").total, 23);       // 3 450 / 15 000
+  // Прибыль до налога не меняется — её семантика опубликована.
+  assert.equal(find("gross").total, 4_500);
+  // Встают сразу после маржи.
+  assert.equal(metrics.findIndex((item) => item.field === "tax_rub"), 2);
+});
+
+test("нулевая ставка даёт чистую прибыль, равную прибыли", () => {
+  const metrics: Metric[] = [
+    economyMetric("buyouts_sum", [10_000], 10_000),
+    economyMetric("gross", [3_000], 3_000),
+  ];
+  appendTaxMetrics(metrics, 0);
+  assert.equal(metrics.find((item) => item.field === "tax_rub")!.total, 0);
+  assert.equal(metrics.find((item) => item.field === "net_profit")!.total, 3_000);
+});
+
+test("налог молчит там, где молчит прибыль, и не дублируется", () => {
+  const metrics: Metric[] = [
+    economyMetric("buyouts_sum", [10_000, null], 10_000),
+    { field: "gross", label: "gross", kind: "money", daily: [null, null], total: null, forecast: null, coveragePct: 0, qualityReason: "missing_cost" },
+  ];
+  appendTaxMetrics(metrics, 7);
+  appendTaxMetrics(metrics, 7);
+  assert.equal(metrics.filter((item) => item.field === "tax_rub").length, 1);
+  assert.equal(metrics.find((item) => item.field === "net_profit")!.total, null);
+  assert.equal(metrics.find((item) => item.field === "net_profit")!.qualityReason, "missing_cost");
+  // Налог считается от выручки и без себестоимости остаётся известным.
+  assert.equal(metrics.find((item) => item.field === "tax_rub")!.daily[0], 700);
+  assert.equal(metrics.find((item) => item.field === "tax_rub")!.daily[1], null);
+});
+
+test("без прибыли в наборе налоговые строки не появляются", () => {
+  const metrics: Metric[] = [economyMetric("buyouts_sum", [10_000], 10_000)];
+  appendTaxMetrics(metrics, 7);
+  assert.equal(metrics.some((item) => item.field === "tax_rub"), false);
 });
