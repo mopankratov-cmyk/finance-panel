@@ -10,10 +10,10 @@ const tableRoute = readFileSync(new URL("../app/api/rnp/[shop]/table/route.ts", 
 const operationsRoute = readFileSync(new URL("../app/api/rnp/[shop]/operations/route.ts", import.meta.url), "utf8");
 const operationsMigration = readFileSync(new URL("../supabase/migrations/20260726_wb_rnp_operations.sql", import.meta.url), "utf8");
 
-test("WB RNP exposes six configurable metric views and persists a custom order", () => {
+test("WB RNP exposes seven configurable metric views and persists a custom order", () => {
   assert.deepEqual(
     RNP_VIEW_PRESETS.map((preset) => preset.label),
-    ["Основное", "Продажи и возвраты", "Конверсии", "Реклама", "Остатки", "Юнит-экономика"],
+    ["Основное", "Продажи и возвраты", "Цены", "Конверсии", "Реклама", "Остатки", "Юнит-экономика"],
   );
   assert.match(page, /RNP_MATRIX_STORAGE_KEY/);
   assert.match(page, /setMetricViewId\("custom"\)/);

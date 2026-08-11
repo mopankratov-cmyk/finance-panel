@@ -73,5 +73,10 @@ test("scoped RNP base facts aggregate only allowlisted SKU without full-cabinet 
     // Отменённый заказ по-прежнему не входит в поток заказов, но теперь виден отдельно.
     cancels_count: 1,
     cancels_sum: 500,
+    // Ценовые базы: цена до скидки продавца по неотменённым заказам (1000),
+    // выкупы до вычета возвратов (880) и фактическая цена покупателя (700).
+    orders_gross_sum: 1000,
+    buyouts_gross_sum: 880,
+    buyouts_finished_sum: 700,
   });
 });

@@ -35,10 +35,27 @@ interface DailyRow {
   /** Возвраты (`wb_sales`, `sale_id` на R…). Загружаются на обоих путях. */
   returns_count?: number;
   returns_sum?: number;
+  /** Сумма `total_price` неотменённых заказов — цена ДО скидки продавца. */
+  orders_gross_sum?: number;
+  /**
+   * Выкупы до вычета возвратов: `price_with_disc` (после скидки продавца, до СПП)
+   * и `finished_price` (фактическая цена покупателя, после СПП). Держим отдельно
+   * от `buyouts_sum`, который уже нетто, — иначе СПП считалась бы от нетто-базы.
+   */
+  buyouts_gross_sum?: number;
+  buyouts_finished_sum?: number;
 }
 
 /** Факты, которых может не быть: складываем их отдельно, чтобы не выдать undefined за ноль. */
-const OPTIONAL_FACT_FIELDS = ["cancels_count", "cancels_sum", "returns_count", "returns_sum"] as const;
+const OPTIONAL_FACT_FIELDS = [
+  "cancels_count",
+  "cancels_sum",
+  "returns_count",
+  "returns_sum",
+  "orders_gross_sum",
+  "buyouts_gross_sum",
+  "buyouts_finished_sum",
+] as const;
 
 /**
  * Переносит/суммирует необязательные факты. Вызывается везде, где строка пересобирается
@@ -210,6 +227,8 @@ export function applyRnpScopeCutoff<Row extends DailyRow>(rows: Row[], asOf: str
     // Обнуляем только те необязательные факты, которые источник вообще отдал.
     ...(row.cancels_count == null ? {} : { cancels_count: 0, cancels_sum: 0 }),
     ...(row.returns_count == null ? {} : { returns_count: 0, returns_sum: 0 }),
+    ...(row.orders_gross_sum == null ? {} : { orders_gross_sum: 0 }),
+    ...(row.buyouts_gross_sum == null ? {} : { buyouts_gross_sum: 0, buyouts_finished_sum: 0 }),
   } as Row));
 }
 
@@ -224,8 +243,10 @@ export function applyRnpSourceCutoffs<Row extends DailyRow>(
       ...row,
       ...(isAfter(date, cutoffs.orders) ? { orders_count: 0, orders_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.orders) && row.cancels_count != null ? { cancels_count: 0, cancels_sum: 0 } : {}),
+      ...(isAfter(date, cutoffs.orders) && row.orders_gross_sum != null ? { orders_gross_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.sales) ? { buyouts_count: 0, buyouts_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.sales) && row.returns_count != null ? { returns_count: 0, returns_sum: 0 } : {}),
+      ...(isAfter(date, cutoffs.sales) && row.buyouts_gross_sum != null ? { buyouts_gross_sum: 0, buyouts_finished_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.adverts) ? { ad_spent: 0 } : {}),
     };
   });
@@ -500,10 +521,12 @@ export function buildMetrics(
   wbCostPct: number | null = null,
   turnoverWindowDays = 30,
   /**
-   * `cancelFacts: false` — среди источников есть путь, который отмены не отдаёт
-   * (RPC `rnp_daily`). Тогда метрики отмен молчат, а не показывают заниженный ноль.
+   * `primaryFacts: false` — среди источников есть путь, который читает не первичные
+   * строки, а агрегат (RPC `rnp_daily`). Он не отдаёт ни отмены, ни цены до скидки,
+   * ни фактическую цену покупателя. Такие метрики молчат, а не показывают
+   * заниженный ноль.
    */
-  options: { cancelFacts?: boolean } = {},
+  options: { primaryFacts?: boolean } = {},
 ): Metric[] {
   const pick = (key: keyof DailyRow, cutoff: string | null) => days.map((day) =>
     !cutoff || day > asOf || day > cutoff ? null : Number(byDate.get(day)?.[key] ?? 0));
@@ -513,12 +536,37 @@ export function buildMetrics(
   const buyoutsCount = pick("buyouts_count", cutoffs.sales);
   const buyoutsSum = pick("buyouts_sum", cutoffs.sales);
   const adSpend = pick("ad_spent", cutoffs.adverts);
-  const cancelFacts = options.cancelFacts !== false;
+  const primaryFacts = options.primaryFacts !== false;
   const blank = days.map(() => null);
-  const cancelsCount = cancelFacts ? pick("cancels_count", cutoffs.orders) : blank;
-  const cancelsSum = cancelFacts ? pick("cancels_sum", cutoffs.orders) : blank;
+  const cancelsCount = primaryFacts ? pick("cancels_count", cutoffs.orders) : blank;
+  const cancelsSum = primaryFacts ? pick("cancels_sum", cutoffs.orders) : blank;
   const returnsCount = pick("returns_count", cutoffs.sales);
   const returnsSum = pick("returns_sum", cutoffs.sales);
+  const ordersGrossSum = primaryFacts ? pick("orders_gross_sum", cutoffs.orders) : blank;
+  const buyoutsGrossSum = primaryFacts ? pick("buyouts_gross_sum", cutoffs.sales) : blank;
+  const buyoutsFinishedSum = primaryFacts ? pick("buyouts_finished_sum", cutoffs.sales) : blank;
+  // Средние цены: считаем по факту дня, деление на ноль отдаём как «нет данных».
+  const perUnit = (sum: (number | null)[], count: (number | null)[]) => days.map((_, index) =>
+    sum[index] != null && count[index] != null && count[index] > 0 ? Math.round(sum[index] / count[index]) : null);
+  const avgOrderPrice = perUnit(ordersSum, ordersCount);
+  const avgBuyoutPrice = perUnit(buyoutsSum, buyoutsCount);
+  // Брутто-выкупы = нетто + возвраты: R-строка приходит в свою дату, и нетто-выкупы
+  // уже уменьшены на неё, поэтому сумма восстанавливает исходное число S-строк.
+  const grossBuyoutsCount = days.map((_, index) => buyoutsCount[index] != null && returnsCount[index] != null
+    ? buyoutsCount[index] + returnsCount[index]
+    : null);
+  const finalPrice = perUnit(buyoutsFinishedSum, grossBuyoutsCount);
+  // Скидка продавца: насколько цена заказа ниже цены до скидки.
+  const sellerDiscountPct = days.map((_, index) =>
+    ordersGrossSum[index] != null && ordersSum[index] != null && ordersGrossSum[index] > 0
+      ? r1((1 - ordersSum[index] / ordersGrossSum[index]) * 100)
+      : null);
+  // СПП — скидка WB поверх цены продавца: продавец получает price_with_disc,
+  // покупатель платит finished_price. Считаем от брутто-выкупов, не от нетто.
+  const sppPct = days.map((_, index) =>
+    buyoutsGrossSum[index] != null && buyoutsFinishedSum[index] != null && buyoutsGrossSum[index] > 0
+      ? r1((1 - buyoutsFinishedSum[index] / buyoutsGrossSum[index]) * 100)
+      : null);
   // Доля отмен считается к оформленным заказам = доставленный поток + отмены.
   const cancelPct = days.map((_, index) => {
     if (cancelsCount[index] == null || ordersCount[index] == null) return null;
@@ -549,7 +597,16 @@ export function buildMetrics(
   const totalReturnsSum = knownSum(returnsSum);
   const totalPlaced = totalOrdersCount != null && totalCancelsCount != null ? totalOrdersCount + totalCancelsCount : null;
   const totalGrossBuyouts = totalBuyoutsCount != null && totalReturnsCount != null ? totalBuyoutsCount + totalReturnsCount : null;
-  const cancelsQualityReason: Metric["qualityReason"] = cancelFacts ? undefined : "unsupported_source";
+  const primaryQualityReason: Metric["qualityReason"] = primaryFacts ? undefined : "unsupported_source";
+  const totalOrdersGrossSum = knownSum(ordersGrossSum);
+  const totalBuyoutsGrossSum = knownSum(buyoutsGrossSum);
+  const totalBuyoutsFinishedSum = knownSum(buyoutsFinishedSum);
+  const ratio = (part: number | null, whole: number | null) => part != null && whole != null && whole > 0
+    ? r1((1 - part / whole) * 100)
+    : null;
+  const perUnitTotal = (sum: number | null, count: number | null) => sum != null && count != null && count > 0
+    ? Math.round(sum / count)
+    : null;
   const out: Metric[] = [
     { field: "orders_count", label: "Заказы, шт", kind: "int", daily: ordersCount, total: totalOrdersCount, forecast: null, source: "WB Воронка/Статистика", note: "WB Analytics → Этапы воронки продаж; WB Статистика используется как fallback, если воронка ещё не загрузилась.", group_start: true },
     { field: "orders_sum", label: "Заказы, ₽", kind: "money", daily: ordersSum, total: totalOrdersSum == null ? null : Math.round(totalOrdersSum), forecast: null, source: "WB Воронка/Статистика", note: "WB Analytics → Этапы воронки продаж; WB Статистика используется как fallback, если воронка ещё не загрузилась." },
@@ -562,7 +619,7 @@ export function buildMetrics(
       forecast: null,
       source: "WB Статистика заказов",
       note: "Заказы с признаком отмены. В поток заказов они не входят.",
-      qualityReason: cancelsQualityReason,
+      qualityReason: primaryQualityReason,
       group_start: true,
     },
     {
@@ -574,7 +631,7 @@ export function buildMetrics(
       forecast: null,
       source: "WB Статистика заказов",
       note: "Отмены / (заказы + отмены). Заказы могут приходить из воронки WB, а отмены — из статистики заказов, поэтому при расхождении источников доля приблизительная.",
-      qualityReason: cancelsQualityReason,
+      qualityReason: primaryQualityReason,
     },
     { field: "buyouts_count", label: "Выкупы, шт", kind: "int", daily: buyoutsCount, total: totalBuyoutsCount, forecast: null, source: "WB Статистика", group_start: true },
     { field: "buyouts_sum", label: "Выкупы, ₽", kind: "money", daily: buyoutsSum, total: totalBuyoutsSum == null ? null : Math.round(totalBuyoutsSum), forecast: null, source: "WB Статистика" },
@@ -607,6 +664,60 @@ export function buildMetrics(
       forecast: null,
       source: "WB Статистика",
       note: "Возвраты / выкупы до вычета возвратов. Возврат приходит в дату оформления, а покупка могла быть раньше, поэтому дневное значение может превышать 100%.",
+    },
+    {
+      field: "avg_order_price",
+      label: "Средняя цена заказа, ₽",
+      kind: "money",
+      daily: avgOrderPrice,
+      total: perUnitTotal(totalOrdersSum, totalOrdersCount),
+      forecast: null,
+      source: "WB Воронка/Статистика",
+      note: "Сумма заказов / количество заказов. Цена после скидки продавца, до СПП.",
+      group_start: true,
+    },
+    {
+      field: "seller_discount_pct",
+      label: "Скидка продавца, %",
+      kind: "pct",
+      daily: sellerDiscountPct,
+      total: ratio(totalOrdersSum, totalOrdersGrossSum),
+      forecast: null,
+      source: "WB Статистика заказов",
+      note: "Насколько цена заказа ниже цены до скидки продавца. Скидка WB (СПП) сюда не входит.",
+      qualityReason: primaryQualityReason,
+    },
+    {
+      field: "avg_buyout_price",
+      label: "Средняя цена выкупа, ₽",
+      kind: "money",
+      daily: avgBuyoutPrice,
+      total: perUnitTotal(totalBuyoutsSum, totalBuyoutsCount),
+      forecast: null,
+      source: "WB Статистика",
+      note: "Выкупы, ₽ / выкупы, шт — обе величины нетто, возвраты уже вычтены.",
+    },
+    {
+      field: "final_price",
+      label: "Цена для покупателя, ₽",
+      kind: "money",
+      daily: finalPrice,
+      total: perUnitTotal(totalBuyoutsFinishedSum, totalGrossBuyouts),
+      forecast: null,
+      source: "WB Статистика",
+      note: "Фактическая цена оплаты покупателем — после СПП. Продавец получает цену до СПП.",
+      qualityReason: primaryQualityReason,
+    },
+    {
+      field: "spp_pct",
+      label: "СПП, %",
+      kind: "pct",
+      daily: sppPct,
+      total: ratio(totalBuyoutsFinishedSum, totalBuyoutsGrossSum),
+      forecast: null,
+      source: "WB Статистика",
+      note: "Скидка WB поверх цены продавца: 1 − цена покупателя / цена продавца. Выручку продавца не уменьшает.",
+      qualityReason: primaryQualityReason,
     },
     {
       field: "buyout_pct",
@@ -681,6 +792,11 @@ export function buildMetrics(
   });
   applyDerivedRatioCoverage(withForecasts, "cancel_pct", ["cancels_count", "orders_count"]);
   applyDerivedRatioCoverage(withForecasts, "return_pct", ["returns_count", "buyouts_count"]);
+  applyDerivedRatioCoverage(withForecasts, "avg_order_price", ["orders_sum", "orders_count"]);
+  applyDerivedRatioCoverage(withForecasts, "seller_discount_pct", ["orders_sum"]);
+  applyDerivedRatioCoverage(withForecasts, "avg_buyout_price", ["buyouts_sum", "buyouts_count"]);
+  applyDerivedRatioCoverage(withForecasts, "final_price", ["buyouts_count", "returns_count"]);
+  applyDerivedRatioCoverage(withForecasts, "spp_pct", ["buyouts_sum"]);
   return withForecasts;
 }
 
@@ -957,6 +1073,9 @@ export function buildScopedBaseFactsFromRows(input: {
     if (order.is_cancel === true) continue;
     row.orders_count += 1;
     row.orders_sum += orderPriceBeforeSpp(order);
+    // Цена до скидки продавца: база для «Скидка продавца, %».
+    const grossPrice = Number(order.total_price);
+    row.orders_gross_sum = (row.orders_gross_sum ?? 0) + (Number.isFinite(grossPrice) ? grossPrice : orderPriceBeforeSpp(order));
   }
   for (const sale of input.sales) {
     const nmId = Number(sale.nm_id);
@@ -964,8 +1083,13 @@ export function buildScopedBaseFactsFromRows(input: {
     const date = readDate(sale.date);
     if (!date) continue;
     const row = touchScopedDailyRow(dailyRows, nmId, date);
+    const priceWithDisc = Number(sale.price_with_disc ?? sale.finished_price ?? 0);
+    const finishedPrice = Number(sale.finished_price ?? sale.price_with_disc ?? 0);
     row.buyouts_count += 1;
-    row.buyouts_sum += Number(sale.price_with_disc ?? sale.finished_price ?? 0);
+    row.buyouts_sum += priceWithDisc;
+    // Брутто-выкупы (до вычета возвратов) и фактическая цена покупателя — база для СПП.
+    row.buyouts_gross_sum = (row.buyouts_gross_sum ?? 0) + priceWithDisc;
+    row.buyouts_finished_sum = (row.buyouts_finished_sum ?? 0) + (Number.isFinite(finishedPrice) ? finishedPrice : 0);
   }
   for (const advert of input.advertSpend) {
     const nmId = Number(advert.nm_id);
@@ -992,11 +1116,18 @@ export function buildScopedBaseFactsFromRows(input: {
   });
 
   return {
-    // Этот путь читает первичные строки заказов, поэтому факт отмен известен для
-    // КАЖДОГО дня, который он построил, — включая дни без единой отмены. Явный ноль
-    // отличает «отмен не было» от «источник отмены не отдаёт» (RPC-путь).
+    // Этот путь читает первичные строки заказов и продаж, поэтому отмены и цены
+    // известны для КАЖДОГО дня, который он построил, — включая дни без единой
+    // отмены. Явный ноль отличает «отмен не было» от «источник их не отдаёт» (RPC).
     skuRows: [...dailyRows.values()]
-      .map((row) => ({ ...row, cancels_count: row.cancels_count ?? 0, cancels_sum: row.cancels_sum ?? 0 }))
+      .map((row) => ({
+        ...row,
+        cancels_count: row.cancels_count ?? 0,
+        cancels_sum: row.cancels_sum ?? 0,
+        orders_gross_sum: row.orders_gross_sum ?? 0,
+        buyouts_gross_sum: row.buyouts_gross_sum ?? 0,
+        buyouts_finished_sum: row.buyouts_finished_sum ?? 0,
+      }))
       .sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id),
     totals,
   };
@@ -1202,7 +1333,7 @@ export async function buildRnpTable(
             salesCutoff: null as string | null,
             advertsCutoff: null as string | null,
             funnelCutoff: null as string | null,
-            hasCancelFacts: true,
+            hasPrimaryFacts: true,
             scope,
             asOf: periodEnd,
           };
@@ -1282,9 +1413,9 @@ export async function buildRnpTable(
           salesCutoff,
           advertsCutoff,
           funnelCutoff,
-          // Отмены знает только путь по первичным строкам заказов. RPC-агрегат
-          // rnp_daily их не отдаёт, и подменять их нулём нельзя.
-          hasCancelFacts: !!allowed,
+          // Отмены и цены знает только путь по первичным строкам заказов и продаж.
+          // RPC-агрегат rnp_daily их не отдаёт, и подменять их нулём нельзя.
+          hasPrimaryFacts: !!allowed,
           scope,
           asOf: earliestKnownDate([latestKnownDate([funnelCutoff, ordersCutoff]), salesCutoff], periodEnd),
         };
@@ -1322,17 +1453,17 @@ export async function buildRnpTable(
     const advertsCutoff = latestKnownDate(scopeData.map((item) => item.advertsCutoff));
     const funnelCutoff = latestKnownDate(scopeData.map((item) => item.funnelCutoff));
     const cutoffsByNm = new Map<number, MetricCutoffs>();
-    const cancelFactsByNm = new Map<number, boolean>();
+    const primaryFactsByNm = new Map<number, boolean>();
     for (const item of scopeData) {
       const cutoffs = { orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]), sales: item.salesCutoff, adverts: item.advertsCutoff };
       for (const total of item.totals) {
         cutoffsByNm.set(Number(total.nm_id), cutoffs);
-        cancelFactsByNm.set(Number(total.nm_id), item.hasCancelFacts);
+        primaryFactsByNm.set(Number(total.nm_id), item.hasPrimaryFacts);
       }
     }
-    // Сводка складывает все кабинеты: если хотя бы один не отдаёт отмены,
-    // общая цифра была бы занижена, поэтому метрика молчит целиком.
-    const cancelFactsInSummary = scopeData.every((item) => item.hasCancelFacts);
+    // Сводка складывает все кабинеты: если хотя бы один не отдаёт первичные факты,
+    // общая цифра была бы занижена, поэтому такие метрики молчат целиком.
+    const primaryFactsInSummary = scopeData.every((item) => item.hasPrimaryFacts);
 
     // рекламный и товарный трафик по (nm_id, date) — отдельно от rnp_daily(_sku) RPC
     const viewsByNm = new Map<number, Map<string, number>>();
@@ -1451,7 +1582,7 @@ export async function buildRnpTable(
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
         const card = cardByNm.get(t.nm_id);
         const cost = costByArt.get(t.article);
-        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { cancelFacts: cancelFactsByNm.get(t.nm_id) ?? cancelFactsInSummary });
+        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary });
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
         appendOrderConversion(metrics);
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
@@ -1470,7 +1601,7 @@ export async function buildRnpTable(
       .map(({ _o, ...rest }) => { void _o; return rest; });
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
-    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays, { cancelFacts: cancelFactsInSummary });
+    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary });
     summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs));
     appendOrderConversion(summary);
     const sumDaily = (field: string) => days.map((_, i) => {
@@ -1525,6 +1656,11 @@ export async function buildRnpTable(
     // Повторный проход прогнозов сбросил бы покрытие производных долей на 100%.
     applyDerivedRatioCoverage(summary, "cancel_pct", ["cancels_count", "orders_count"]);
     applyDerivedRatioCoverage(summary, "return_pct", ["returns_count", "buyouts_count"]);
+    applyDerivedRatioCoverage(summary, "avg_order_price", ["orders_sum", "orders_count"]);
+    applyDerivedRatioCoverage(summary, "seller_discount_pct", ["orders_sum"]);
+    applyDerivedRatioCoverage(summary, "avg_buyout_price", ["buyouts_sum", "buyouts_count"]);
+    applyDerivedRatioCoverage(summary, "final_price", ["buyouts_count", "returns_count"]);
+    applyDerivedRatioCoverage(summary, "spp_pct", ["buyouts_sum"]);
     if (marginMetric) {
       applyForecast(
         marginMetric,

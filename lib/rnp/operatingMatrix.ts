@@ -16,6 +16,11 @@ export const RNP_METRIC_FIELDS = [
   "returns_sum",
   "return_pct",
   "buyout_pct",
+  "avg_order_price",
+  "seller_discount_pct",
+  "avg_buyout_price",
+  "final_price",
+  "spp_pct",
   "gross",
   "margin_pct",
   "ad_spent",
@@ -27,7 +32,7 @@ export const RNP_METRIC_FIELDS = [
 ] as const;
 
 export type RnpMetricField = (typeof RNP_METRIC_FIELDS)[number];
-export type RnpViewId = "main" | "sales" | "conversion" | "ads" | "stock" | "economy" | "custom";
+export type RnpViewId = "main" | "sales" | "price" | "conversion" | "ads" | "stock" | "economy" | "custom";
 export type RnpDeltaMode = "percent" | "absolute";
 export type RnpAnomalyDirection = "all" | "negative" | "positive";
 
@@ -81,7 +86,7 @@ export interface RnpAnomalyThresholds {
 }
 
 /** Метрики, отклонение которых меряется в пунктах, а не в процентах. */
-const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct"]);
+const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct", "seller_discount_pct", "spp_pct"]);
 
 export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
   byField: {
@@ -104,6 +109,13 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     // иначе реальный рост доли возвратов с 2% до 5% детектор бы не заметил.
     cancel_pct: 2,
     return_pct: 2,
+    // Цены двигаются мельче потоков: 10% по чеку — это уже смена ценовой политики,
+    // а 3 п.п. по скидке/СПП — заметный сдвиг для покупателя.
+    avg_order_price: 10,
+    avg_buyout_price: 10,
+    final_price: 10,
+    seller_discount_pct: 3,
+    spp_pct: 3,
     drr: 5,
     ctr: 2,
     margin_pct: 5,
@@ -129,6 +141,12 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
     label: "Продажи и возвраты",
     description: "Заказы, отмены, выкупы и возвраты",
     fields: ["orders_sum", "orders_count", "cancels_count", "cancel_pct", "buyouts_sum", "buyouts_count", "returns_count", "returns_sum", "return_pct", "buyout_pct"],
+  },
+  {
+    id: "price",
+    label: "Цены",
+    description: "Чек, скидка продавца и СПП",
+    fields: ["orders_count", "avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"],
   },
   {
     id: "conversion",
@@ -173,9 +191,24 @@ const POSITIVE_WHEN_UP = new Set([
   "margin_pct",
   "stock",
   "gmroi",
+  "avg_order_price",
+  "avg_buyout_price",
+  "final_price",
+  // СПП — скидка WB, а не продавца: растёт СПП → покупателю дешевле при той же
+  // выручке продавца. Для кабинета это хорошая новость.
+  "spp_pct",
 ]);
-// Рост отмен и возвратов — всегда плохая новость, направление сигнала обратное.
-const POSITIVE_WHEN_DOWN = new Set(["drr", "turnover", "cancels_count", "cancel_pct", "returns_count", "returns_sum", "return_pct"]);
+// Рост отмен, возвратов и собственной скидки — плохая новость, направление обратное.
+const POSITIVE_WHEN_DOWN = new Set([
+  "drr",
+  "turnover",
+  "cancels_count",
+  "cancel_pct",
+  "returns_count",
+  "returns_sum",
+  "return_pct",
+  "seller_discount_pct",
+]);
 
 const METRIC_LABELS: Record<string, string> = {
   views: "Показы",
@@ -195,6 +228,11 @@ const METRIC_LABELS: Record<string, string> = {
   returns_sum: "Возвраты, ₽",
   return_pct: "Доля возвратов",
   buyout_pct: "Выкуп",
+  avg_order_price: "Средняя цена заказа",
+  seller_discount_pct: "Скидка продавца",
+  avg_buyout_price: "Средняя цена выкупа",
+  final_price: "Цена для покупателя",
+  spp_pct: "СПП",
   gross: "Прибыль",
   margin_pct: "Маржа",
   ad_spent: "Реклама",
@@ -227,6 +265,11 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   returns_sum: "возвраты ₽",
   return_pct: "доля возвратов",
   buyout_pct: "выкуп",
+  avg_order_price: "цена заказа",
+  seller_discount_pct: "скидка продавца",
+  avg_buyout_price: "цена выкупа",
+  final_price: "цена покупателя",
+  spp_pct: "СПП",
   gross: "прибыль",
   margin_pct: "маржа",
   ad_spent: "реклама",
