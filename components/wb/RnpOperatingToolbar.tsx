@@ -85,24 +85,37 @@ interface Props {
   onCategoryChange: (category: string) => void;
 }
 
-const METRIC_GROUPS: Array<{ label: string; fields: RnpMetricField[] }> = [
-  { label: "Основное", fields: ["orders_count", "buyout_pct", "buyouts_count", "ad_spent", "drr"] },
-  { label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart"] },
-  { label: "Экономика", fields: ["orders_sum", "buyouts_sum", "gross", "margin_pct", "money", "gmroi"] },
-  { label: "Остатки", fields: ["stock", "turnover"] },
+// Группы пикера показателей. Порядок и состав совпадают с группами таблицы.
+// ВАЖНО: сюда должно попадать КАЖДОЕ поле из RNP_METRIC_FIELDS — иначе метрику
+// нельзя выбрать руками, она доступна только через готовое отображение.
+// Полноту сторожит тест tests/wb-rnp-metric-picker.regression.test.mts.
+export const METRIC_GROUPS: Array<{ label: string; fields: RnpMetricField[] }> = [
+  { label: "Основное", fields: ["orders_count", "orders_sum", "buyout_pct", "buyouts_count", "buyouts_sum", "ad_spent", "drr"] },
+  { label: "Продажи и возвраты", fields: ["orders_spp_sum", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "returns_count", "returns_sum", "return_pct", "actual_buyout_pct"] },
+  { label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"] },
+  { label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"] },
+  { label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"] },
+  { label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"] },
+];
+
+const PERCENT_FIELDS: RnpMetricField[] = [
+  "ctr", "buyout_pct", "actual_buyout_pct", "margin_pct", "drr", "gmroi",
+  "cart_cr", "order_cr", "cancel_pct", "return_pct",
+  "seller_discount_pct", "spp_pct", "net_margin_pct", "romi",
+];
+
+const RUBLE_FIELDS: RnpMetricField[] = [
+  "orders_sum", "orders_spp_sum", "buyouts_sum", "buyouts_gross_rub", "returns_sum",
+  "avg_order_price", "avg_buyout_price", "final_price",
+  "gross", "tax_rub", "net_profit", "profit_per_unit",
+  "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub",
+  "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub",
+  "ad_spent", "money",
 ];
 
 const UNITS: Partial<Record<RnpMetricField, string>> = {
-  ctr: "%",
-  buyout_pct: "%",
-  margin_pct: "%",
-  drr: "%",
-  gmroi: "%",
-  orders_sum: "₽",
-  buyouts_sum: "₽",
-  gross: "₽",
-  ad_spent: "₽",
-  money: "₽",
+  ...Object.fromEntries(PERCENT_FIELDS.map((field) => [field, "%"])),
+  ...Object.fromEntries(RUBLE_FIELDS.map((field) => [field, "₽"])),
   turnover: "дн.",
 };
 
@@ -512,7 +525,7 @@ export function RnpOperatingToolbar(props: Props) {
       ) : null}
 
       {props.metricsOpen ? (
-        <div className="absolute right-0 top-[132px] z-50 max-h-[470px] w-[270px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.2)]">
+        <div className="absolute right-0 top-[132px] z-50 max-h-[min(70vh,560px)] w-[270px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.2)]">
           <div className="sticky top-0 z-10 -mx-1 -mt-1 flex items-start justify-between bg-white px-1 pb-2 pt-1">
             <div>
               <h3 className="text-[10px] font-bold text-slate-800">Показатели · тяните ⠿ для порядка</h3>
