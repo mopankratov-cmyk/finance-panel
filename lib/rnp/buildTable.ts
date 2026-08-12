@@ -13,6 +13,7 @@ import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commiss
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
+import { wbSchemeFromWarehouseType } from "@/lib/wb/scheme";
 import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 
@@ -38,6 +39,14 @@ interface DailyRow {
   /** Сумма `total_price` неотменённых заказов — цена ДО скидки продавца. */
   orders_gross_sum?: number;
   /**
+   * Заказы в разрезе схемы отгрузки. Заказ с неизвестным типом склада не попадает
+   * ни в одну корзину, поэтому FBS + FBW может быть меньше общего числа заказов.
+   */
+  orders_fbs_count?: number;
+  orders_fbs_sum?: number;
+  orders_fbw_count?: number;
+  orders_fbw_sum?: number;
+  /**
    * Выкупы до вычета возвратов: `price_with_disc` (после скидки продавца, до СПП)
    * и `finished_price` (фактическая цена покупателя, после СПП). Держим отдельно
    * от `buyouts_sum`, который уже нетто, — иначе СПП считалась бы от нетто-базы.
@@ -53,6 +62,10 @@ const OPTIONAL_FACT_FIELDS = [
   "returns_count",
   "returns_sum",
   "orders_gross_sum",
+  "orders_fbs_count",
+  "orders_fbs_sum",
+  "orders_fbw_count",
+  "orders_fbw_sum",
   "buyouts_gross_sum",
   "buyouts_finished_sum",
 ] as const;
@@ -105,6 +118,8 @@ type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
 export interface ScopedOrderSourceRow {
   nm_id: number;
+  /** Сырой тип склада WB. undefined — колонки ещё нет в базе (миграция не применена). */
+  warehouse_type?: string | null;
   supplier_article: string | null;
   date: string;
   total_price: number | null;
@@ -304,6 +319,10 @@ const ADDITIVE_FORECAST_FIELDS = new Set([
   "cart",
   "orders_count",
   "orders_sum",
+  "orders_fbs_count",
+  "orders_fbs_sum",
+  "orders_fbw_count",
+  "orders_fbw_sum",
   "cancels_count",
   "buyouts_count",
   "buyouts_sum",
@@ -683,6 +702,8 @@ export function buildMetrics(
    */
   options: {
     primaryFacts?: boolean;
+    /** `false` — тип склада недоступен: колонки нет в базе либо источник её не отдаёт. */
+    schemeFacts?: boolean;
     inWayToClient?: number;
     inWayFromClient?: number;
     rates?: {
@@ -709,6 +730,19 @@ export function buildMetrics(
   const returnsCount = pick("returns_count", cutoffs.sales);
   const returnsSum = pick("returns_sum", cutoffs.sales);
   const ordersGrossSum = primaryFacts ? pick("orders_gross_sum", cutoffs.orders) : blank;
+  // Схема известна, только если её отдал путь первичных строк И колонка есть в базе.
+  const schemeFacts = primaryFacts && options.schemeFacts !== false;
+  const ordersFbsCount = schemeFacts ? pick("orders_fbs_count", cutoffs.orders) : blank;
+  const ordersFbsSum = schemeFacts ? pick("orders_fbs_sum", cutoffs.orders) : blank;
+  const ordersFbwCount = schemeFacts ? pick("orders_fbw_count", cutoffs.orders) : blank;
+  const ordersFbwSum = schemeFacts ? pick("orders_fbw_sum", cutoffs.orders) : blank;
+  // Доля считается от заказов с ИЗВЕСТНОЙ схемой, а не от всех: иначе заказы без
+  // типа склада молча занижали бы долю FBS.
+  const fbsSharePct = days.map((_, index) => {
+    if (ordersFbsSum[index] == null || ordersFbwSum[index] == null) return null;
+    const known = ordersFbsSum[index] + ordersFbwSum[index];
+    return known > 0 ? r1((ordersFbsSum[index] / known) * 100) : null;
+  });
   const buyoutsGrossSum = primaryFacts ? pick("buyouts_gross_sum", cutoffs.sales) : blank;
   const buyoutsFinishedSum = primaryFacts ? pick("buyouts_finished_sum", cutoffs.sales) : blank;
   // Средние цены: считаем по факту дня, деление на ноль отдаём как «нет данных».
@@ -780,6 +814,10 @@ export function buildMetrics(
   const totalDelivered = totalGrossBuyouts != null && totalReturnsCount != null ? totalGrossBuyouts + totalReturnsCount : null;
   const primaryQualityReason: Metric["qualityReason"] = primaryFacts ? undefined : "unsupported_source";
   const totalOrdersGrossSum = knownSum(ordersGrossSum);
+  const totalFbsSum = knownSum(ordersFbsSum);
+  const totalFbwSum = knownSum(ordersFbwSum);
+  const totalKnownScheme = totalFbsSum != null && totalFbwSum != null ? totalFbsSum + totalFbwSum : null;
+  const schemeQualityReason: Metric["qualityReason"] = schemeFacts ? undefined : "unsupported_source";
   const totalBuyoutsGrossSum = knownSum(buyoutsGrossSum);
   const totalBuyoutsFinishedSum = knownSum(buyoutsFinishedSum);
   const ratio = (part: number | null, whole: number | null) => part != null && whole != null && whole > 0
@@ -791,6 +829,62 @@ export function buildMetrics(
   const out: Metric[] = [
     { field: "orders_count", label: "Заказы, шт", kind: "int", daily: ordersCount, total: totalOrdersCount, forecast: null, source: "WB Воронка/Статистика", note: "WB Analytics → Этапы воронки продаж; WB Статистика используется как fallback, если воронка ещё не загрузилась.", group_start: true },
     { field: "orders_sum", label: "Заказы, ₽", kind: "money", daily: ordersSum, total: totalOrdersSum == null ? null : Math.round(totalOrdersSum), forecast: null, source: "WB Воронка/Статистика", note: "WB Analytics → Этапы воронки продаж; WB Статистика используется как fallback, если воронка ещё не загрузилась." },
+    {
+      field: "orders_fbs_count",
+      label: "Заказы FBS, шт",
+      kind: "int",
+      daily: ordersFbsCount,
+      total: knownSum(ordersFbsCount),
+      forecast: null,
+      source: "WB Статистика заказов",
+      note: "Отгрузка со склада продавца (FBS и DBS — по типу склада они не различаются). Заказы с неизвестным типом склада не попадают ни в FBS, ни в FBW.",
+      qualityReason: schemeQualityReason,
+      group_start: true,
+    },
+    {
+      field: "orders_fbs_sum",
+      label: "Заказы FBS, ₽",
+      kind: "money",
+      daily: ordersFbsSum,
+      total: totalFbsSum == null ? null : Math.round(totalFbsSum),
+      forecast: null,
+      source: "WB Статистика заказов",
+      qualityReason: schemeQualityReason,
+    },
+    {
+      field: "orders_fbw_count",
+      label: "Заказы FBW, шт",
+      kind: "int",
+      daily: ordersFbwCount,
+      total: knownSum(ordersFbwCount),
+      forecast: null,
+      source: "WB Статистика заказов",
+      note: "Отгрузка со склада Wildberries.",
+      qualityReason: schemeQualityReason,
+    },
+    {
+      field: "orders_fbw_sum",
+      label: "Заказы FBW, ₽",
+      kind: "money",
+      daily: ordersFbwSum,
+      total: totalFbwSum == null ? null : Math.round(totalFbwSum),
+      forecast: null,
+      source: "WB Статистика заказов",
+      qualityReason: schemeQualityReason,
+    },
+    {
+      field: "fbs_share_pct",
+      label: "Доля FBS в заказах, %",
+      kind: "pct",
+      daily: fbsSharePct,
+      total: totalKnownScheme != null && totalKnownScheme > 0 && totalFbsSum != null
+        ? r1((totalFbsSum / totalKnownScheme) * 100)
+        : null,
+      forecast: null,
+      source: "WB Статистика заказов",
+      note: "FBS / (FBS + FBW) по сумме заказов. Считается только по заказам с известным типом склада, поэтому знаменатель может быть меньше общей суммы заказов.",
+      qualityReason: schemeQualityReason,
+    },
     {
       field: "cancels_count",
       label: "Отмены, шт",
@@ -1050,6 +1144,7 @@ export function buildMetrics(
   });
   applyDerivedRatioCoverage(withForecasts, "cancel_pct", ["cancels_count", "orders_count"]);
   applyDerivedRatioCoverage(withForecasts, "return_pct", ["returns_count", "buyouts_count"]);
+  applyDerivedRatioCoverage(withForecasts, "fbs_share_pct", ["orders_fbs_sum", "orders_fbw_sum"]);
   applyDerivedRatioCoverage(withForecasts, "actual_buyout_pct", ["buyouts_count", "returns_count"]);
   applyDerivedRatioCoverage(withForecasts, "orders_spp_sum", ["orders_sum", "buyouts_sum"]);
   applyDerivedRatioCoverage(withForecasts, "buyouts_gross_count", ["buyouts_count", "returns_count"]);
@@ -1307,6 +1402,9 @@ export function buildScopedBaseFactsFromRows(input: {
   costs: ProductCostRow[];
 }): { skuRows: SkuDailyRow[]; totals: RpcTotal[] } {
   const allowed = new Set(input.allowedNmIds);
+  // PostgREST не возвращает поле, если колонки нет в таблице. Значит наличие ключа
+  // (пусть даже со значением null) — признак того, что миграция применена.
+  const schemeKnown = input.orders.some((order) => order.warehouse_type !== undefined);
   const dailyRows = new Map<string, SkuDailyRow>();
   const articleByNm = new Map<number, string>();
   const stockByNm = new Map<number, StockPosition>();
@@ -1337,6 +1435,16 @@ export function buildScopedBaseFactsFromRows(input: {
     // Цена до скидки продавца: база для «Скидка продавца, %».
     const grossPrice = Number(order.total_price);
     row.orders_gross_sum = (row.orders_gross_sum ?? 0) + (Number.isFinite(grossPrice) ? grossPrice : orderPriceBeforeSpp(order));
+    // Схема известна не всегда: строки прежнего синка и заказы без типа склада
+    // остаются вне обеих корзин, а не приписываются складу WB по умолчанию.
+    const scheme = wbSchemeFromWarehouseType(order.warehouse_type);
+    if (scheme === "fbs") {
+      row.orders_fbs_count = (row.orders_fbs_count ?? 0) + 1;
+      row.orders_fbs_sum = (row.orders_fbs_sum ?? 0) + orderPriceBeforeSpp(order);
+    } else if (scheme === "fbw") {
+      row.orders_fbw_count = (row.orders_fbw_count ?? 0) + 1;
+      row.orders_fbw_sum = (row.orders_fbw_sum ?? 0) + orderPriceBeforeSpp(order);
+    }
   }
   for (const sale of input.sales) {
     const nmId = Number(sale.nm_id);
@@ -1385,6 +1493,14 @@ export function buildScopedBaseFactsFromRows(input: {
         ...row,
         cancels_count: row.cancels_count ?? 0,
         cancels_sum: row.cancels_sum ?? 0,
+        // Нули по схемам ставим, только если колонка типа склада реально пришла:
+        // иначе «схема неизвестна» превратилось бы в «FBS-заказов не было».
+        ...(schemeKnown ? {
+          orders_fbs_count: row.orders_fbs_count ?? 0,
+          orders_fbs_sum: row.orders_fbs_sum ?? 0,
+          orders_fbw_count: row.orders_fbw_count ?? 0,
+          orders_fbw_sum: row.orders_fbw_sum ?? 0,
+        } : {}),
         orders_gross_sum: row.orders_gross_sum ?? 0,
         buyouts_gross_sum: row.buyouts_gross_sum ?? 0,
         buyouts_finished_sum: row.buyouts_finished_sum ?? 0,
@@ -1392,6 +1508,47 @@ export function buildScopedBaseFactsFromRows(input: {
       .sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id),
     totals,
   };
+}
+
+const ORDER_COLUMNS = "nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel";
+
+/** PostgREST сообщает об отсутствующей колонке текстом «column … does not exist». */
+function isMissingColumnError(error: unknown, column: string): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message.includes(column) && /does not exist/i.test(message);
+}
+
+/**
+ * Заказы вместе с типом склада. Если колонки ещё нет (миграция не применена),
+ * повторяем запрос без неё: непринятая миграция не должна ронять весь РНП.
+ * Симметрично chunkedUpsertWithOptionalColumns на стороне записи.
+ */
+async function loadScopedOrders(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  allowed: number[],
+  dateFrom: string,
+  dateTo: string,
+): Promise<ScopedOrderSourceRow[]> {
+  const load = (columns: string) => loadAllPages<ScopedOrderSourceRow>((start, end) => {
+    let query = db
+      .from("wb_orders")
+      .select(columns)
+      .gte("date", dateFrom)
+      .lt("date", dateTo)
+      .in("nm_id", allowed)
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(start, end);
+    if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+    return query as unknown as PromiseLike<PageResult<ScopedOrderSourceRow>>;
+  });
+  try {
+    return await load(`${ORDER_COLUMNS}, warehouse_type`);
+  } catch (error) {
+    if (!isMissingColumnError(error, "warehouse_type")) throw error;
+    return load(ORDER_COLUMNS);
+  }
 }
 
 async function loadScopedBaseFacts(
@@ -1404,19 +1561,7 @@ async function loadScopedBaseFacts(
   const dateFrom = `${from}T00:00:00.000Z`;
   const dateTo = `${nextIsoDate(to)}T00:00:00.000Z`;
   const [orders, sales, advertSpend, stocks, products] = await Promise.all([
-    loadAllPages<ScopedOrderSourceRow>((start, end) => {
-      let query = db
-        .from("wb_orders")
-        .select("nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel")
-        .gte("date", dateFrom)
-        .lt("date", dateTo)
-        .in("nm_id", allowed)
-        .order("date", { ascending: true })
-        .order("nm_id", { ascending: true })
-        .range(start, end);
-      if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
-      return query;
-    }),
+    loadScopedOrders(db, scope, allowed, dateFrom, dateTo),
     loadAllPages<ScopedSaleSourceRow>((start, end) => {
       let query = db
         .from("wb_sales")
@@ -1713,14 +1858,21 @@ export async function buildRnpTable(
     const salesCutoff = latestKnownDate(scopeData.map((item) => item.salesCutoff));
     const advertsCutoff = latestKnownDate(scopeData.map((item) => item.advertsCutoff));
     const funnelCutoff = latestKnownDate(scopeData.map((item) => item.funnelCutoff));
+    let schemeFactsInSummary = true;
     const cutoffsByNm = new Map<number, MetricCutoffs>();
     const primaryFactsByNm = new Map<number, boolean>();
+    const schemeFactsByNm = new Map<number, boolean>();
     for (const item of scopeData) {
       const cutoffs = { orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]), sales: item.salesCutoff, adverts: item.advertsCutoff };
+      // Пустой кабинет схему не «теряет»: терять нечего, поэтому он не гасит метрику.
+      const hasScheme = item.hasPrimaryFacts
+        && (item.skuRows.length === 0 || item.skuRows.some((row) => row.orders_fbs_count !== undefined));
       for (const total of item.totals) {
         cutoffsByNm.set(Number(total.nm_id), cutoffs);
         primaryFactsByNm.set(Number(total.nm_id), item.hasPrimaryFacts);
+        schemeFactsByNm.set(Number(total.nm_id), hasScheme);
       }
+      if (!hasScheme) schemeFactsInSummary = false;
     }
     // Сводка складывает все кабинеты: если хотя бы один не отдаёт первичные факты,
     // общая цифра была бы занижена, поэтому такие метрики молчат целиком.
@@ -1860,7 +2012,7 @@ export async function buildRnpTable(
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
         const card = cardByNm.get(t.nm_id);
         const cost = costByArt.get(t.article);
-        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0), rates: wbRatesForNm(t.nm_id) });
+        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, schemeFacts: schemeFactsByNm.get(t.nm_id) ?? schemeFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0), rates: wbRatesForNm(t.nm_id) });
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
         appendOrderConversion(metrics);
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
@@ -1879,7 +2031,7 @@ export async function buildRnpTable(
       .map(({ _o, ...rest }) => { void _o; return rest; });
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
-    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal });
+    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, schemeFacts: schemeFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal });
     summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs));
     appendOrderConversion(summary);
     const sumDaily = (field: string) => days.map((_, i) => {
@@ -1970,6 +2122,7 @@ export async function buildRnpTable(
     // Повторный проход прогнозов сбросил бы покрытие производных долей на 100%.
     applyDerivedRatioCoverage(summary, "cancel_pct", ["cancels_count", "orders_count"]);
     applyDerivedRatioCoverage(summary, "return_pct", ["returns_count", "buyouts_count"]);
+    applyDerivedRatioCoverage(summary, "fbs_share_pct", ["orders_fbs_sum", "orders_fbw_sum"]);
     applyDerivedRatioCoverage(summary, "actual_buyout_pct", ["buyouts_count", "returns_count"]);
     applyDerivedRatioCoverage(summary, "orders_spp_sum", ["orders_sum", "buyouts_sum"]);
     applyDerivedRatioCoverage(summary, "buyouts_gross_count", ["buyouts_count", "returns_count"]);
