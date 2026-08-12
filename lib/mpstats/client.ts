@@ -144,9 +144,19 @@ export interface SubjectAnnualSeasonality {
   season_sales?: number;
 }
 
+/**
+ * MPSTATS по умолчанию отдаёт ряды ниши ТОЛЬКО по FBW: без этого флага предмет 311
+ * за 10.08.2026 показывал выручку 8,0 млн вместо 23,3 млн и 615 продавцов вместо
+ * 1 474 (проверено вызовом обоих вариантов). Наши продажи считаются из wb_orders,
+ * где обе схемы вместе, поэтому доля в нише завышалась втрое: полный числитель
+ * делился на урезанный знаменатель.
+ * Ключевые слова от флага не зависят — это спрос, а не схема продажи.
+ */
+const WITH_FBS = "fbs=1";
+
 // Ниша по дням (рост): продажи/выручка предмета по датам.
 export async function subjectByDate(subjectPath: string, d1: string, d2: string): Promise<SubjectDay[]> {
-  const data = await post<SubjectDay[]>("/category/by_date", `d1=${d1}&d2=${d2}&path=${enc(subjectPath)}`, {});
+  const data = await post<SubjectDay[]>("/category/by_date", `d1=${d1}&d2=${d2}&path=${enc(subjectPath)}&${WITH_FBS}`, {});
   return Array.isArray(data) ? data : [];
 }
 
@@ -173,7 +183,7 @@ export async function itemSubject(nmId: number): Promise<{ id: number; name: str
 
 // Ниша по дням по subject_id (предмет целиком, все деревья — точнее, чем category path).
 export async function subjectByDateId(subjectId: number | string, d1: string, d2: string): Promise<SubjectDay[]> {
-  const data = await post<SubjectDay[]>("/subject/by_date", `d1=${d1}&d2=${d2}&path=${subjectId}`, {});
+  const data = await post<SubjectDay[]>("/subject/by_date", `d1=${d1}&d2=${d2}&path=${subjectId}&${WITH_FBS}`, {});
   return Array.isArray(data) ? data : [];
 }
 
