@@ -142,7 +142,10 @@ export async function GET(request: NextRequest) {
   };
 
   const skus = [...bySku.entries()]
-    .map(([sku, v]) => ({ sku, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay, stockOfSku(sku), adBySku.has(sku) ? adBySku.get(sku) : undefined), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
+    // art — артикул продавца (offer_id). Без него план продаж не находил факт:
+    // план ведётся по артикулам, а аналитика Ozon отдаёт только числовой sku.
+    // Карта sku→offer уже загружена выше для остатков, просто не попадала в ответ.
+    .map(([sku, v]) => ({ sku, art: skuToOffer[sku] ?? null, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay, stockOfSku(sku), adBySku.has(sku) ? adBySku.get(sku) : undefined), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
     .sort((a, b) => b._o - a._o)
     .map(({ _o, ...rest }) => { void _o; return rest; });
 
