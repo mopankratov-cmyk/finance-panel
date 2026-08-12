@@ -8,11 +8,13 @@ test("WB order and sale sync persist SPP as nullable provider facts", () => {
 
   assert.match(orders, /price_with_disc:\s*priceWithDiscFromOrder\(order\)/);
   assert.match(orders, /spp:\s*numericOrNull\(order\.spp\)/);
-  assert.match(orders, /chunkedUpsertWithOptionalColumns\("wb_orders", rows, "srid", \["price_with_disc", "spp"\]/);
+  // Сторожим, что СПП остаётся в списке НЕОБЯЗАТЕЛЬНЫХ колонок, а не то, что список
+  // состоит ровно из двух элементов: в него добавляются новые провайдерские факты.
+  assert.match(orders, /chunkedUpsertWithOptionalColumns\("wb_orders", rows, "srid", \[[^\]]*"price_with_disc"[^\]]*"spp"[^\]]*\]/);
 
   assert.match(sales, /price_with_disc:\s*priceWithDiscFromSale\(sale\)/);
   assert.match(sales, /spp:\s*numericOrNull\(sale\.spp\)/);
-  assert.match(sales, /chunkedUpsertWithOptionalColumns\("wb_sales", rows, "sale_id", \["price_with_disc", "spp"\]/);
+  assert.match(sales, /chunkedUpsertWithOptionalColumns\("wb_sales", rows, "sale_id", \[[^\]]*"price_with_disc"[^\]]*"spp"[^\]]*\]/);
 });
 
 test("WB SPP migration adds nullable columns without rewriting existing facts", () => {
