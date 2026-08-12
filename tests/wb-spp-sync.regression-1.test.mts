@@ -46,7 +46,10 @@ test("WB RNP uses stored order price before SPP instead of recalculating it", ()
     "utf8",
   );
 
-  assert.match(tableBuilder, /\.select\("nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel"\)/);
+  // Сторожим, что РНП ЧИТАЕТ price_with_disc из базы, а не пересчитывает его.
+  // Список колонок вынесен в константу, поэтому проверяем её состав, а не литерал select.
+  assert.match(tableBuilder, /const ORDER_COLUMNS = "[^"]*\bprice_with_disc\b[^"]*";/);
+  assert.match(tableBuilder, /\.select\(columns\)/);
   assert.match(tableBuilder, /row\.orders_sum \+= orderPriceBeforeSpp\(order\)/);
   assert.match(migration, /coalesce\(price_with_disc,\s*coalesce\(total_price,\s*0\)\s*\*\s*\(1\s*-\s*coalesce\(discount_percent,\s*0\)\s*\/\s*100\.0\),\s*0\)/i);
   assert.match(migration, /now\(\) at time zone 'Europe\/Moscow'/i);

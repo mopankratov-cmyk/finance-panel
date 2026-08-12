@@ -639,3 +639,108 @@ test("без продаж дня заказы с СПП молчат, а не р
   );
   assert.equal(metrics.find((item) => item.field === "orders_spp_sum")!.daily[0], null);
 });
+
+const schemeOrder = (isCancel: boolean, warehouseType: string | null | undefined, price = 1000) => ({
+  nm_id: 1,
+  supplier_article: "A-1",
+  date: "2026-08-01",
+  total_price: price,
+  discount_percent: 0,
+  price_with_disc: price,
+  is_cancel: isCancel,
+  ...(warehouseType === undefined ? {} : { warehouse_type: warehouseType }),
+});
+
+test("заказы разносятся по схеме отгрузки, отменённые не считаются", () => {
+  const { skuRows } = buildScopedBaseFactsFromRows({
+    allowedNmIds: [1],
+    orders: [
+      schemeOrder(false, "Склад продавца", 1000),
+      schemeOrder(false, "Склад WB", 2000),
+      schemeOrder(false, "Склад WB", 3000),
+      schemeOrder(true, "Склад продавца", 9000),
+    ],
+    sales: [],
+    ...NO_FACTS,
+  });
+  assert.equal(skuRows[0].orders_fbs_count, 1);
+  assert.equal(skuRows[0].orders_fbs_sum, 1000);
+  assert.equal(skuRows[0].orders_fbw_count, 2);
+  assert.equal(skuRows[0].orders_fbw_sum, 5000);
+});
+
+test("заказ без типа склада не попадает ни в FBS, ни в FBW", () => {
+  const { skuRows } = buildScopedBaseFactsFromRows({
+    allowedNmIds: [1],
+    // Колонка в базе есть (ключ присутствует), но WB прислал пусто.
+    orders: [schemeOrder(false, null, 1000), schemeOrder(false, "Склад продавца", 500)],
+    sales: [],
+    ...NO_FACTS,
+  });
+  assert.equal(skuRows[0].orders_count, 2);
+  assert.equal(skuRows[0].orders_fbs_count, 1);
+  assert.equal(skuRows[0].orders_fbw_count, 0);
+});
+
+test("без колонки типа склада разбивка не выдумывает нули", () => {
+  const { skuRows } = buildScopedBaseFactsFromRows({
+    allowedNmIds: [1],
+    // warehouse_type отсутствует как ключ — миграция ещё не применена.
+    orders: [schemeOrder(false, undefined, 1000)],
+    sales: [],
+    ...NO_FACTS,
+  });
+  assert.equal(skuRows[0].orders_count, 1);
+  assert.equal(skuRows[0].orders_fbs_count, undefined);
+  assert.equal(skuRows[0].orders_fbw_count, undefined);
+});
+
+test("доля FBS считается от заказов с известной схемой", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", {
+      d: "2026-08-01",
+      orders_count: 10,
+      orders_sum: 10_000,
+      buyouts_count: 0,
+      buyouts_sum: 0,
+      ad_spent: 0,
+      // Схему знаем только у части заказов: 2 000 FBS + 6 000 FBW из 10 000.
+      orders_fbs_sum: 2_000,
+      orders_fbs_count: 2,
+      orders_fbw_sum: 6_000,
+      orders_fbw_count: 6,
+    }]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  assert.equal(find("orders_fbs_sum").total, 2_000);
+  assert.equal(find("orders_fbw_sum").total, 6_000);
+  // 2 000 / (2 000 + 6 000) = 25%, а не 2 000 / 10 000 = 20%.
+  assert.equal(find("fbs_share_pct").total, 25);
+});
+
+test("без признака схемы метрики разбивки молчат", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", { d: "2026-08-01", orders_count: 10, orders_sum: 10_000, buyouts_count: 0, buyouts_sum: 0, ad_spent: 0 }]]),
+    0,
+    0,
+    { orders: "2026-08-01", sales: "2026-08-01", adverts: "2026-08-01" },
+    0,
+    null,
+    30,
+    { schemeFacts: false },
+  );
+  for (const field of ["orders_fbs_count", "orders_fbw_count", "fbs_share_pct"]) {
+    const metric = metrics.find((item) => item.field === field)!;
+    assert.equal(metric.total, null, field);
+    assert.equal(metric.qualityReason, "unsupported_source", field);
+  }
+  // Общие заказы при этом остаются на месте.
+  assert.equal(metrics.find((item) => item.field === "orders_count")!.total, 10);
+});

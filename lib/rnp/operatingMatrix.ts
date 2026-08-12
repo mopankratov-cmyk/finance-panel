@@ -8,6 +8,11 @@ export const RNP_METRIC_FIELDS = [
   "order_cr",
   "orders_sum",
   "orders_count",
+  "orders_fbs_count",
+  "orders_fbs_sum",
+  "orders_fbw_count",
+  "orders_fbw_sum",
+  "fbs_share_pct",
   "cancels_count",
   "cancel_pct",
   "buyouts_sum",
@@ -108,7 +113,7 @@ export interface RnpAnomalyThresholds {
 }
 
 /** Метрики, отклонение которых меряется в пунктах, а не в процентах. */
-const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct", "seller_discount_pct", "spp_pct", "net_margin_pct"]);
+const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct", "seller_discount_pct", "spp_pct", "net_margin_pct", "fbs_share_pct"]);
 
 export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
   byField: {
@@ -130,6 +135,12 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     // Отмены и возвраты живут в единицах процента, а не десятках: порог как у CTR,
     // иначе реальный рост доли возвратов с 2% до 5% детектор бы не заметил.
     cancel_pct: 2,
+    orders_fbs_count: 30,
+    orders_fbs_sum: 30,
+    orders_fbw_count: 30,
+    orders_fbw_sum: 30,
+    // Сдвиг доли схем на 5 п.п. — это уже смена модели торговли, а не шум.
+    fbs_share_pct: 5,
     return_pct: 2,
     actual_buyout_pct: 5,
     buyouts_gross_count: 30,
@@ -183,7 +194,7 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
     id: "sales",
     label: "Продажи и возвраты",
     description: "Заказы, отмены, выкупы и возвраты",
-    fields: ["orders_sum", "orders_spp_sum", "orders_count", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "buyouts_sum", "buyouts_count", "returns_count", "returns_sum", "return_pct", "buyout_pct", "actual_buyout_pct"],
+    fields: ["orders_sum", "orders_spp_sum", "orders_count", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "buyouts_sum", "buyouts_count", "returns_count", "returns_sum", "return_pct", "buyout_pct", "actual_buyout_pct"],
   },
   {
     id: "price",
@@ -273,6 +284,11 @@ const METRIC_LABELS: Record<string, string> = {
   order_cr: "Конверсия в заказ",
   orders_sum: "Заказы, ₽",
   orders_count: "Заказы, шт",
+  orders_fbs_count: "Заказы FBS, шт",
+  orders_fbs_sum: "Заказы FBS, ₽",
+  orders_fbw_count: "Заказы FBW, шт",
+  orders_fbw_sum: "Заказы FBW, ₽",
+  fbs_share_pct: "Доля FBS",
   cancels_count: "Отмены, шт",
   cancel_pct: "Доля отмен",
   buyouts_sum: "Выкупы, ₽",
@@ -332,6 +348,11 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   order_cr: "конв. в заказ",
   orders_sum: "заказы ₽",
   orders_count: "заказы",
+  orders_fbs_count: "заказы FBS",
+  orders_fbs_sum: "заказы FBS ₽",
+  orders_fbw_count: "заказы FBW",
+  orders_fbw_sum: "заказы FBW ₽",
+  fbs_share_pct: "доля FBS",
   cancels_count: "отмены",
   cancel_pct: "доля отмен",
   buyouts_sum: "выкупы ₽",
