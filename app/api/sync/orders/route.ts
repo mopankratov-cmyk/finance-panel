@@ -150,13 +150,15 @@ export async function GET(request: NextRequest) {
             spp: numericOrNull(order.spp),
             is_cancel: (order.isCancel as boolean) ?? false,
             warehouse: order.warehouseName as string | null,
+            // Сырой тип склада WB — единственный достоверный признак схемы отгрузки.
+            warehouse_type: (order.warehouseType as string | null) ?? null,
             region: order.regionName as string | null,
             cabinet_id: target.cabinetId,
             synced_at: syncedAt,
           }))
           .filter((row) => row.srid)
           .filter((row) => !toDate || String(row.date) < toDate);
-        const upsertResult = await chunkedUpsertWithOptionalColumns("wb_orders", rows, "srid", ["price_with_disc", "spp"], forceFrom ? 100_000 : undefined);
+        const upsertResult = await chunkedUpsertWithOptionalColumns("wb_orders", rows, "srid", ["price_with_disc", "spp", "warehouse_type"], forceFrom ? 100_000 : undefined);
         if (upsertResult.skippedColumns.length) {
           deferred.push(`${target.name}: примените SQL-миграцию WB СПП, временно не записаны ${upsertResult.skippedColumns.join(", ")}`);
         }
