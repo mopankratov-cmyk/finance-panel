@@ -38,3 +38,22 @@ test("верный баскет стоит одним из первых канд
     assert.ok(index >= 0 && index <= 2, `${nm}: верный баскет на позиции ${index}, значит до него будет ${index} промахов`);
   }
 });
+
+// Проверка баскета у WB — сеть, поэтому здесь тестируем только контракт функции:
+// она обязана вернуть URL на каждый nmID и не падать целиком, если WB не ответил.
+test("резолвер отдаёт ссылку на каждую карточку даже без ответа WB", async (t) => {
+  const { wbCardImageUrlsByNmIds } = await import("../lib/wb/cardImage");
+  const original = globalThis.fetch;
+  // WB «молчит»: все проверки падают — значит должен сработать откат на таблицу.
+  globalThis.fetch = (async () => { throw new Error("network down"); }) as typeof fetch;
+  t.after(() => { globalThis.fetch = original; });
+
+  const nmIds = [1338781109, 1239272678, 755558105];
+  const urls = await wbCardImageUrlsByNmIds(nmIds);
+  assert.equal(urls.size, nmIds.length);
+  for (const nm of nmIds) {
+    assert.match(String(urls.get(nm)), /^https:\/\/basket-\d{2}\.wbbasket\.ru\/vol\d+\/part\d+\/\d+\/images\//, `нет ссылки для ${nm}`);
+  }
+  // Откат идёт на подтверждённую таблицу, а не на пустоту.
+  assert.match(String(urls.get(1338781109)), /basket-45\./);
+});

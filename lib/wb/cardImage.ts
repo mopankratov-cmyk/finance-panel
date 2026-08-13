@@ -103,6 +103,65 @@ async function exists(url: string): Promise<boolean> {
   }
 }
 
+/**
+ * Реальный номер баскета для тома, спрошенный у WB, а не вычисленный.
+ *
+ * Формула по таблице диапазонов протухает при каждой новой разрезке WB — за месяц
+ * это уже третья заплатка. Здесь мы один раз проверяем HEAD-запросом и запоминаем.
+ * Ключ — ТОМ, а не карточка: все карточки одного тома лежат в одном баскете,
+ * поэтому на кабинет уходит 3-5 проверок вместо тысячи.
+ *
+ * Проверяем ПОСЛЕДОВАТЕЛЬНО с паузой: параллельные запросы WB режет, и они
+ * возвращают ложное «фото не найдено» — на этом легко построить неверный вывод.
+ */
+const basketByVol = new Map<number, number>();
+
+async function probeBasket(vol: number, nmId: number): Promise<number> {
+  const part = Math.floor(nmId / 1000);
+  for (const basket of wbCardImageBasketCandidates(nmId, 8)) {
+    const url = `https://basket-${String(basket).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/c246x328/1.webp`;
+    if (await exists(url)) return basket;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+  return 0;
+}
+
+/**
+ * Возвращает номер баскета тома. 0 — проверить не удалось: вызывающий должен
+ * откатиться на оценку по таблице, а не показывать пустоту.
+ */
+export async function resolveWbBasketForVol(nmId: number): Promise<number> {
+  const vol = Math.floor(nmId / 100000);
+  const cached = basketByVol.get(vol);
+  if (cached != null) return cached;
+  const basket = await probeBasket(vol, nmId);
+  if (basket) basketByVol.set(vol, basket);
+  return basket;
+}
+
+/**
+ * URL миниатюр для набора карточек с проверкой баскета по томам.
+ * Ошибка проверки не роняет список — такие карточки получают оценку по таблице.
+ */
+export async function wbCardImageUrlsByNmIds(nmIds: number[], size = "c246x328"): Promise<Map<number, string>> {
+  const byVol = new Map<number, number>();
+  for (const nmId of nmIds) {
+    const vol = Math.floor(nmId / 100000);
+    if (!byVol.has(vol)) byVol.set(vol, nmId);
+  }
+  await Promise.all([...byVol.values()].map((nmId) => resolveWbBasketForVol(nmId).catch(() => 0)));
+
+  const out = new Map<number, string>();
+  for (const nmId of nmIds) {
+    const vol = Math.floor(nmId / 100000);
+    const part = Math.floor(nmId / 1000);
+    const basket = basketByVol.get(vol) ?? estimateBasket(vol);
+    out.set(nmId, `https://basket-${String(basket).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/${size}/1.webp`);
+  }
+  return out;
+}
+
+
 /** Найти рабочий номер basket для nmId (по фото 1), либо 0. */
 async function resolveBasket(nmId: number): Promise<number> {
   const vol = Math.floor(nmId / 100000);
