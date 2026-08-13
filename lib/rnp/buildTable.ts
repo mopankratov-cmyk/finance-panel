@@ -8,7 +8,7 @@ import {
   type RnpMetricForecast,
   type RnpMetricStatus,
 } from "@/lib/rnp/forecast";
-import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { wbCardImageUrl, wbCardImageUrlsByNmIds } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
@@ -2007,6 +2007,9 @@ export async function buildRnpTable(
       byNm.set(row.nm_id, dateMap);
     }
 
+    // Баскет фото проверяется у WB по томам (обычно 3-5 на кабинет), а не вычисляется
+    // формулой: та протухает при каждой новой разрезке и даёт пустые миниатюры.
+    const imageByNm = await wbCardImageUrlsByNmIds([...totalByNm.keys()]).catch(() => new Map<number, string>());
     const skus = [...totalByNm.values()]
       .map((t) => {
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
@@ -2022,7 +2025,7 @@ export async function buildRnpTable(
           name: card?.name || cost?.name || t.article || String(t.nm_id),
           brand: card?.brand || cost?.brand || "",
           subject: card?.subject || cost?.category || "",
-          img_url: wbCardImageUrl(t.nm_id),
+          img_url: imageByNm.get(t.nm_id) ?? wbCardImageUrl(t.nm_id),
           metrics,
           _o: orders,
         };
