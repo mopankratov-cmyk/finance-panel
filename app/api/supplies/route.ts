@@ -44,6 +44,8 @@ export interface StockCatalogRow {
   daysLeft: number | null;
   warehouseCount: number;
   topWarehouses: { warehouse: string; quantity: number }[];
+  /** Полная разбивка остатка по складам — нужна, чтобы исключить конкретные склады (например сгоревшие). */
+  warehouses: { warehouse: string; quantity: number }[];
 }
 
 interface RpcRow {
@@ -198,14 +200,15 @@ export async function GET(req: NextRequest) {
 
     const catalog: StockCatalogRow[] = [...byNm.entries()].map(([nmId, e]) => {
       const article = articleByNm.get(nmId) || "";
-      const top = [...e.wh.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+      const all = [...e.wh.entries()].sort((a, b) => b[1] - a[1])
         .map(([warehouse, quantity]) => ({ warehouse, quantity }));
+      const top = all.slice(0, 5);
       return {
         nmId, article,
         name: article ? (nameByArticle.get(article) ?? null) : null,
         quantity: e.quantity, inWayToClient: e.toClient, inWayFromClient: e.fromClient,
         daysLeft: daysLeftByNm.get(nmId) ?? null,
-        warehouseCount: e.wh.size, topWarehouses: top,
+        warehouseCount: e.wh.size, topWarehouses: top, warehouses: all,
       };
     }).sort((a, b) => b.quantity - a.quantity);
 

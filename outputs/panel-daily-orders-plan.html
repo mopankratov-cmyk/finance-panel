@@ -1,0 +1,1986 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Panel Daily Orders Plan</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(245 245 245), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:1800px;min-height:1320px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Panel Daily Orders Plan" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Panel Daily Orders Plan&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;panel-daily-orders-plan&quot;&gt;
+  &lt;style&gt;
+    #panel-daily-orders-plan {
+      --p-bg: light-dark(rgb(245 245 245), rgb(24 24 27));
+      --p-card: light-dark(rgb(255 255 255), rgb(31 31 44));
+      --p-soft: light-dark(rgb(248 250 252), rgb(39 39 52));
+      --p-border: light-dark(rgb(226 232 240), rgb(63 63 70));
+      --p-border-soft: light-dark(rgb(241 245 249), rgb(47 47 59));
+      --p-text: light-dark(rgb(15 23 42), rgb(241 245 249));
+      --p-muted: light-dark(rgb(100 116 139), rgb(161 161 170));
+      --p-violet: light-dark(rgb(124 58 237), rgb(167 139 250));
+      --p-violet-soft: light-dark(rgb(245 243 255), rgb(46 34 78));
+      --p-amber: light-dark(rgb(217 119 6), rgb(251 191 36));
+      --p-amber-soft: light-dark(rgb(255 251 235), rgb(69 45 16));
+      --p-blue: light-dark(rgb(37 99 235), rgb(96 165 250));
+      --p-blue-soft: light-dark(rgb(239 246 255), rgb(30 58 138));
+      --p-red: light-dark(rgb(220 38 38), rgb(248 113 113));
+      --p-red-soft: light-dark(rgb(254 242 242), rgb(69 26 26));
+      --p-green: light-dark(rgb(5 150 105), rgb(52 211 153));
+      --p-green-soft: light-dark(rgb(236 253 245), rgb(20 83 45));
+      --p-side: rgb(26 26 46);
+      color: var(--p-text);
+      font-size: var(--font-size-base);
+    }
+
+    #panel-daily-orders-plan * {
+      box-sizing: border-box;
+    }
+
+    #panel-daily-orders-plan button,
+    #panel-daily-orders-plan select,
+    #panel-daily-orders-plan input {
+      font: inherit;
+    }
+
+    #panel-daily-orders-plan .shell {
+      display: grid;
+      grid-template-columns: 256px minmax(0, 1fr);
+      min-height: 1040px;
+      background: var(--p-bg);
+      border: 1px solid var(--p-border);
+      overflow: hidden;
+    }
+
+    #panel-daily-orders-plan .sidebar {
+      background: var(--p-side);
+      color: rgb(203 213 225);
+      display: flex;
+      flex-direction: column;
+    }
+
+    #panel-daily-orders-plan .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 24px 16px;
+      border-bottom: 1px solid rgb(255 255 255 / 10%);
+    }
+
+    #panel-daily-orders-plan .logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: rgb(196 181 253);
+      background: rgb(124 58 237 / 24%);
+    }
+
+    #panel-daily-orders-plan .brand strong {
+      color: white;
+      font-weight: 500;
+      display: block;
+    }
+
+    #panel-daily-orders-plan .brand span,
+    #panel-daily-orders-plan .group {
+      color: rgb(148 163 184);
+    }
+
+    #panel-daily-orders-plan .nav {
+      padding: 14px 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    #panel-daily-orders-plan .group {
+      margin-top: 8px;
+      padding: 0 12px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    #panel-daily-orders-plan .link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      color: rgb(203 213 225);
+      text-decoration: none;
+    }
+
+    #panel-daily-orders-plan .link.active {
+      background: rgb(124 58 237 / 20%);
+      color: rgb(196 181 253);
+    }
+
+    #panel-daily-orders-plan .user {
+      margin-top: auto;
+      padding: 14px;
+      border-top: 1px solid rgb(255 255 255 / 10%);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #panel-daily-orders-plan .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: rgb(124 58 237 / 30%);
+      color: rgb(221 214 254);
+      font-weight: 500;
+    }
+
+    #panel-daily-orders-plan .main {
+      min-width: 0;
+      padding: 24px 32px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    #panel-daily-orders-plan .mobile-brand {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border: 1px solid var(--p-border);
+      border-radius: 12px;
+      background: var(--p-card);
+    }
+
+    #panel-daily-orders-plan .head,
+    #panel-daily-orders-plan .row,
+    #panel-daily-orders-plan .toolbar,
+    #panel-daily-orders-plan .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    #panel-daily-orders-plan .head {
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    #panel-daily-orders-plan h2,
+    #panel-daily-orders-plan h3 {
+      margin: 0;
+      font-weight: 500;
+    }
+
+    #panel-daily-orders-plan .muted {
+      color: var(--p-muted);
+    }
+
+    #panel-daily-orders-plan .btn,
+    #panel-daily-orders-plan .select,
+    #panel-daily-orders-plan .input {
+      min-height: 36px;
+      border: 1px solid var(--p-border);
+      border-radius: 9px;
+      background: var(--p-card);
+      color: var(--p-text);
+      padding: 8px 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+
+    #panel-daily-orders-plan .btn {
+      cursor: pointer;
+    }
+
+    #panel-daily-orders-plan .btn:hover {
+      background: var(--p-soft);
+    }
+
+    #panel-daily-orders-plan .btn.primary {
+      background: var(--p-violet);
+      border-color: var(--p-violet);
+      color: white;
+    }
+
+    #panel-daily-orders-plan .card {
+      border: 1px solid var(--p-border);
+      border-radius: 12px;
+      background: var(--p-card);
+      box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
+      overflow: hidden;
+    }
+
+    #panel-daily-orders-plan .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    #panel-daily-orders-plan .kpi {
+      padding: 14px;
+      display: grid;
+      gap: 6px;
+    }
+
+    #panel-daily-orders-plan .kpi strong {
+      font-size: 20px;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #panel-daily-orders-plan .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      border: 1px solid var(--p-border);
+      border-radius: 999px;
+      background: var(--p-card);
+      padding: 4px 9px;
+      white-space: nowrap;
+    }
+
+    #panel-daily-orders-plan .pill.input {
+      border-color: color-mix(in srgb, var(--p-amber) 45%, var(--p-border));
+      background: var(--p-amber-soft);
+    }
+
+    #panel-daily-orders-plan .pill.auto {
+      border-color: color-mix(in srgb, var(--p-blue) 40%, var(--p-border));
+      background: var(--p-blue-soft);
+    }
+
+    #panel-daily-orders-plan .pill.risk {
+      border-color: color-mix(in srgb, var(--p-red) 40%, var(--p-border));
+      background: var(--p-red-soft);
+      color: var(--p-red);
+    }
+
+    #panel-daily-orders-plan .pill.good {
+      border-color: color-mix(in srgb, var(--p-green) 40%, var(--p-border));
+      background: var(--p-green-soft);
+      color: var(--p-green);
+    }
+
+    #panel-daily-orders-plan .toolbar {
+      justify-content: space-between;
+      padding: 12px;
+      border-bottom: 1px solid var(--p-border);
+    }
+
+    #panel-daily-orders-plan .month-jump {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--p-border);
+      background: var(--p-soft);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    #panel-daily-orders-plan .work {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    #panel-daily-orders-plan .table-card {
+      min-width: 0;
+    }
+
+    #panel-daily-orders-plan .table-head {
+      padding: 13px 14px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--p-border);
+    }
+
+    #panel-daily-orders-plan .table-wrap {
+      max-width: 100%;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+    }
+
+    #panel-daily-orders-plan table {
+      width: max-content;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #panel-daily-orders-plan th,
+    #panel-daily-orders-plan td {
+      border-right: 1px solid var(--p-border-soft);
+      border-bottom: 1px solid var(--p-border-soft);
+      background: var(--p-card);
+      white-space: nowrap;
+      padding: 7px 8px;
+      text-align: right;
+      min-width: 42px;
+      vertical-align: middle;
+    }
+
+    #panel-daily-orders-plan th {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      color: var(--p-muted);
+      background: var(--p-soft);
+      font-weight: 500;
+    }
+
+    #panel-daily-orders-plan th.month {
+      text-align: center;
+      color: var(--p-text);
+      background: var(--p-blue-soft);
+      border-top: 1px solid var(--p-border-soft);
+    }
+
+    #panel-daily-orders-plan th.day.weekend,
+    #panel-daily-orders-plan td.weekend {
+      background: color-mix(in srgb, var(--p-blue-soft) 55%, var(--p-card));
+    }
+
+    #panel-daily-orders-plan .left {
+      text-align: left;
+    }
+
+    #panel-daily-orders-plan .sticky-1,
+    #panel-daily-orders-plan .sticky-2,
+    #panel-daily-orders-plan .sticky-3,
+    #panel-daily-orders-plan .sticky-4,
+    #panel-daily-orders-plan .sticky-5 {
+      position: sticky;
+      z-index: 5;
+      text-align: left;
+    }
+
+    #panel-daily-orders-plan .sticky-1 {
+      left: 0;
+      min-width: 108px;
+    }
+
+    #panel-daily-orders-plan .sticky-2 {
+      left: 108px;
+      min-width: 106px;
+    }
+
+    #panel-daily-orders-plan .sticky-3 {
+      left: 214px;
+      min-width: 138px;
+    }
+
+    #panel-daily-orders-plan .sticky-4 {
+      left: 352px;
+      min-width: 74px;
+      text-align: right;
+    }
+
+    #panel-daily-orders-plan .sticky-5 {
+      left: 426px;
+      min-width: 74px;
+      text-align: right;
+    }
+
+    #panel-daily-orders-plan th.sticky-1,
+    #panel-daily-orders-plan th.sticky-2,
+    #panel-daily-orders-plan th.sticky-3,
+    #panel-daily-orders-plan th.sticky-4,
+    #panel-daily-orders-plan th.sticky-5 {
+      z-index: 8;
+      background: var(--p-soft);
+    }
+
+    #panel-daily-orders-plan td.sticky-1,
+    #panel-daily-orders-plan td.sticky-2,
+    #panel-daily-orders-plan td.sticky-3,
+    #panel-daily-orders-plan td.sticky-4,
+    #panel-daily-orders-plan td.sticky-5 {
+      background: var(--p-card);
+    }
+
+    #panel-daily-orders-plan tr.group td {
+      background: var(--p-soft);
+      color: var(--p-muted);
+      text-align: left;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    #panel-daily-orders-plan tr.total td {
+      background: var(--p-violet-soft);
+      font-weight: 500;
+    }
+
+    #panel-daily-orders-plan tr.selected td {
+      background: color-mix(in srgb, var(--p-violet) 8%, var(--p-card));
+    }
+
+    #panel-daily-orders-plan td.plan {
+      cursor: pointer;
+    }
+
+    #panel-daily-orders-plan td.plan:hover {
+      background: var(--p-amber-soft);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-amber) 55%, transparent);
+    }
+
+    #panel-daily-orders-plan td.cell-selected {
+      background: var(--p-amber-soft);
+      box-shadow: inset 0 0 0 2px var(--p-amber);
+    }
+
+    #panel-daily-orders-plan td.risk {
+      background: var(--p-red-soft);
+      color: var(--p-red);
+    }
+
+    #panel-daily-orders-plan td.auto {
+      background: var(--p-blue-soft);
+    }
+
+    #panel-daily-orders-plan .sku-button {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      display: grid;
+      gap: 2px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    #panel-daily-orders-plan .sku-button strong {
+      font-weight: 500;
+      color: var(--p-text);
+    }
+
+    #panel-daily-orders-plan .mini {
+      color: var(--p-muted);
+      font-size: 11px;
+    }
+
+    #panel-daily-orders-plan .drawer {
+      display: grid;
+      gap: 0;
+    }
+
+    #panel-daily-orders-plan .drawer-block {
+      padding: 13px;
+      border-bottom: 1px solid var(--p-border);
+      display: grid;
+      gap: 10px;
+    }
+
+    #panel-daily-orders-plan .drawer-block:last-child {
+      border-bottom: 0;
+    }
+
+    #panel-daily-orders-plan .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    #panel-daily-orders-plan .detail {
+      border: 1px solid var(--p-border);
+      border-radius: 10px;
+      background: var(--p-soft);
+      padding: 9px;
+      display: grid;
+      gap: 3px;
+    }
+
+    #panel-daily-orders-plan .detail strong {
+      font-weight: 500;
+    }
+
+    #panel-daily-orders-plan .editor-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    #panel-daily-orders-plan .input {
+      width: 100%;
+      justify-content: flex-start;
+      background: var(--p-card);
+    }
+
+    #panel-daily-orders-plan .scroll-hint {
+      padding: 9px 12px;
+      display: none;
+      border: 1px solid color-mix(in srgb, var(--p-blue) 34%, var(--p-border));
+      border-radius: 10px;
+      background: var(--p-blue-soft);
+    }
+
+    @media (max-width: 1100px) {
+      #panel-daily-orders-plan .shell {
+        grid-template-columns: 1fr;
+      }
+
+      #panel-daily-orders-plan .sidebar {
+        display: none;
+      }
+
+      #panel-daily-orders-plan .mobile-brand {
+        display: flex;
+      }
+
+      #panel-daily-orders-plan .main {
+        padding: 14px;
+      }
+
+      #panel-daily-orders-plan .work {
+        grid-template-columns: 1fr;
+      }
+
+      #panel-daily-orders-plan .scroll-hint {
+        display: block;
+      }
+    }
+
+    @media (max-width: 760px) {
+      #panel-daily-orders-plan .kpis {
+        grid-template-columns: 1fr;
+      }
+
+      #panel-daily-orders-plan .actions,
+      #panel-daily-orders-plan .toolbar &gt; .row {
+        width: 100%;
+      }
+
+      #panel-daily-orders-plan .btn,
+      #panel-daily-orders-plan .select {
+        flex: 1 1 auto;
+      }
+
+      #panel-daily-orders-plan th,
+      #panel-daily-orders-plan td {
+        min-width: 38px;
+      }
+
+      #panel-daily-orders-plan .sticky-1,
+      #panel-daily-orders-plan .sticky-3,
+      #panel-daily-orders-plan .sticky-4,
+      #panel-daily-orders-plan .sticky-5 {
+        display: none;
+      }
+
+      #panel-daily-orders-plan .sticky-2 {
+        left: 0;
+        min-width: 112px;
+      }
+    }
+  &lt;/style&gt;
+
+  &lt;div class=&quot;shell&quot;&gt;
+    &lt;aside class=&quot;sidebar&quot; aria-label=&quot;Навигация панели&quot;&gt;
+      &lt;div class=&quot;brand&quot;&gt;
+        &lt;div class=&quot;logo&quot;&gt;&lt;i data-lucide=&quot;bar-chart-3&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/div&gt;
+        &lt;div&gt;
+          &lt;strong&gt;Финансы МП&lt;/strong&gt;
+          &lt;span&gt;WB Analytics &amp;amp; Finance&lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;nav class=&quot;nav&quot;&gt;
+        &lt;a class=&quot;link&quot; href=&quot;#&quot;&gt;&lt;i data-lucide=&quot;layout-dashboard&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;Дашборд&lt;/a&gt;
+        &lt;div class=&quot;group&quot;&gt;Операции&lt;/div&gt;
+        &lt;a class=&quot;link&quot; href=&quot;#&quot;&gt;&lt;i data-lucide=&quot;truck&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;Закупки&lt;/a&gt;
+        &lt;a class=&quot;link active&quot; href=&quot;#&quot;&gt;&lt;i data-lucide=&quot;calendar-days&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;План продаж&lt;/a&gt;
+        &lt;a class=&quot;link&quot; href=&quot;#&quot;&gt;&lt;i data-lucide=&quot;coins&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;Себестоимость&lt;/a&gt;
+        &lt;div class=&quot;group&quot;&gt;Система&lt;/div&gt;
+        &lt;a class=&quot;link&quot; href=&quot;#&quot;&gt;&lt;i data-lucide=&quot;building-2&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;Кабинеты&lt;/a&gt;
+        &lt;a class=&quot;link&quot; href=&quot;#&quot;&gt;&lt;i data-lucide=&quot;refresh-cw&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;Синхронизация&lt;/a&gt;
+      &lt;/nav&gt;
+      &lt;div class=&quot;user&quot;&gt;
+        &lt;div class=&quot;avatar&quot;&gt;MP&lt;/div&gt;
+        &lt;div&gt;
+          &lt;div&gt;owner@finance&lt;/div&gt;
+          &lt;div class=&quot;mini&quot;&gt;Владелец&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/aside&gt;
+
+    &lt;main class=&quot;main&quot;&gt;
+      &lt;div class=&quot;mobile-brand&quot;&gt;
+        &lt;span class=&quot;row&quot;&gt;&lt;i data-lucide=&quot;bar-chart-3&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;strong&gt;Финансы МП&lt;/strong&gt;&lt;/span&gt;
+        &lt;span class=&quot;pill&quot;&gt;План продаж&lt;/span&gt;
+      &lt;/div&gt;
+
+      &lt;header class=&quot;head&quot;&gt;
+        &lt;div&gt;
+          &lt;div class=&quot;muted&quot;&gt;Операции / План продаж / Wildberries&lt;/div&gt;
+          &lt;h2&gt;Дневной план заказов Q3–Q4 2026&lt;/h2&gt;
+          &lt;div class=&quot;muted&quot;&gt;Формат как в ваших планах: строки SKU × дни месяца × итого/дозаказ&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;actions&quot;&gt;
+          &lt;button class=&quot;btn&quot; type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;upload&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;Импорт Excel/Sheets&lt;/button&gt;
+          &lt;button class=&quot;btn&quot; type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;save&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;Сохранить&lt;/button&gt;
+          &lt;button class=&quot;btn primary&quot; type=&quot;button&quot;&gt;&lt;i data-lucide=&quot;send&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;На согласование&lt;/button&gt;
+        &lt;/div&gt;
+      &lt;/header&gt;
+
+      &lt;section class=&quot;kpis&quot; aria-label=&quot;Сводка плана&quot;&gt;
+        &lt;div class=&quot;card kpi&quot;&gt;
+          &lt;span class=&quot;muted&quot;&gt;Выручка плана&lt;/span&gt;
+          &lt;strong&gt;604,8 млн ₽&lt;/strong&gt;
+          &lt;span class=&quot;pill good&quot;&gt;Q3+Q4 NORVIA&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;card kpi&quot;&gt;
+          &lt;span class=&quot;muted&quot;&gt;Дневных ячеек&lt;/span&gt;
+          &lt;strong&gt;920&lt;/strong&gt;
+          &lt;span class=&quot;pill input&quot;&gt;5 SKU × 184 дня&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;card kpi&quot;&gt;
+          &lt;span class=&quot;muted&quot;&gt;Дозаказ&lt;/span&gt;
+          &lt;strong&gt;38 106 шт&lt;/strong&gt;
+          &lt;span class=&quot;pill input&quot;&gt;август / сентябрь / октябрь&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;card kpi&quot;&gt;
+          &lt;span class=&quot;muted&quot;&gt;Контроль OOS&lt;/span&gt;
+          &lt;strong&gt;7 SKU&lt;/strong&gt;
+          &lt;span class=&quot;pill risk&quot;&gt;минус по остаткам&lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/section&gt;
+
+      &lt;section class=&quot;card&quot;&gt;
+        &lt;div class=&quot;toolbar&quot;&gt;
+          &lt;div class=&quot;row&quot;&gt;
+            &lt;select class=&quot;select&quot; aria-label=&quot;Кабинет&quot;&gt;
+              &lt;option&gt;WB · NORVIA&lt;/option&gt;
+              &lt;option&gt;WB · Пеналы&lt;/option&gt;
+            &lt;/select&gt;
+            &lt;select class=&quot;select&quot; aria-label=&quot;Категория&quot;&gt;
+              &lt;option&gt;Все категории&lt;/option&gt;
+              &lt;option&gt;Ветровки&lt;/option&gt;
+              &lt;option&gt;Демисезон&lt;/option&gt;
+              &lt;option&gt;Зима&lt;/option&gt;
+            &lt;/select&gt;
+            &lt;select class=&quot;select&quot; aria-label=&quot;Режим&quot;&gt;
+              &lt;option&gt;Заказы в день&lt;/option&gt;
+              &lt;option&gt;Выкупы в день&lt;/option&gt;
+              &lt;option&gt;Остаток по дням&lt;/option&gt;
+            &lt;/select&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;row&quot;&gt;
+            &lt;span class=&quot;pill input&quot;&gt;жёлтые ячейки — ввод сотрудника&lt;/span&gt;
+            &lt;span class=&quot;pill auto&quot;&gt;синие — авто&lt;/span&gt;
+            &lt;span class=&quot;pill risk&quot;&gt;красные — риск&lt;/span&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;month-jump&quot;&gt;
+          &lt;div class=&quot;row&quot; id=&quot;month-buttons&quot; aria-label=&quot;Быстрый переход к месяцу&quot;&gt;&lt;/div&gt;
+          &lt;span class=&quot;muted&quot;&gt;Последний импорт плана: 10.07.2026 · факт WB: 15.07.2026 06:00&lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/section&gt;
+
+      &lt;div class=&quot;scroll-hint&quot;&gt;Таблица специально широкая: как в вашем плане, дни идут по горизонтали. На телефоне прокрутка внутри таблицы.&lt;/div&gt;
+
+      &lt;div class=&quot;work&quot;&gt;
+        &lt;section class=&quot;card table-card&quot; aria-label=&quot;Таблица дневных заказов&quot;&gt;
+          &lt;div class=&quot;table-head&quot;&gt;
+            &lt;div&gt;
+              &lt;h3&gt;Заказы по дням&lt;/h3&gt;
+              &lt;div class=&quot;muted&quot;&gt;Слева закреплены категория, артикул, модель, цена и % выкупа; дальше дни 01.07–31.12.&lt;/div&gt;
+            &lt;/div&gt;
+            &lt;div class=&quot;row&quot;&gt;
+              &lt;span class=&quot;pill&quot;&gt;формат планов&lt;/span&gt;
+              &lt;span class=&quot;pill&quot;&gt;итого по месяцу&lt;/span&gt;
+              &lt;span class=&quot;pill&quot;&gt;дозаказ&lt;/span&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;table-wrap&quot; id=&quot;daily-table-wrap&quot;&gt;
+            &lt;table id=&quot;daily-table&quot; aria-label=&quot;Дневной план заказов&quot;&gt;&lt;/table&gt;
+          &lt;/div&gt;
+        &lt;/section&gt;
+
+        &lt;aside class=&quot;card drawer&quot; aria-label=&quot;Редактор дневной ячейки&quot;&gt;
+          &lt;div class=&quot;drawer-block&quot;&gt;
+            &lt;div class=&quot;muted&quot;&gt;Выбранная ячейка&lt;/div&gt;
+            &lt;h3 id=&quot;edit-title&quot;&gt;NV-08-35 · 01.07&lt;/h3&gt;
+            &lt;div class=&quot;row&quot;&gt;
+              &lt;span class=&quot;pill input&quot;&gt;заказы в день&lt;/span&gt;
+              &lt;span class=&quot;pill risk&quot; id=&quot;edit-risk&quot;&gt;OOS риск&lt;/span&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;drawer-block&quot;&gt;
+            &lt;div class=&quot;detail-grid&quot;&gt;
+              &lt;div class=&quot;detail&quot;&gt;&lt;span class=&quot;muted&quot;&gt;Артикул&lt;/span&gt;&lt;strong id=&quot;edit-sku&quot;&gt;NV-08-35&lt;/strong&gt;&lt;/div&gt;
+              &lt;div class=&quot;detail&quot;&gt;&lt;span class=&quot;muted&quot;&gt;Дата&lt;/span&gt;&lt;strong id=&quot;edit-date&quot;&gt;01.07&lt;/strong&gt;&lt;/div&gt;
+              &lt;div class=&quot;detail&quot;&gt;&lt;span class=&quot;muted&quot;&gt;Заказов&lt;/span&gt;&lt;strong id=&quot;edit-orders&quot;&gt;1&lt;/strong&gt;&lt;/div&gt;
+              &lt;div class=&quot;detail&quot;&gt;&lt;span class=&quot;muted&quot;&gt;Месяц&lt;/span&gt;&lt;strong id=&quot;edit-month&quot;&gt;ИЮЛЬ&lt;/strong&gt;&lt;/div&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;drawer-block editor-grid&quot;&gt;
+            &lt;label&gt;
+              &lt;span class=&quot;muted&quot;&gt;План заказов на день&lt;/span&gt;
+              &lt;input class=&quot;input&quot; id=&quot;edit-input&quot; value=&quot;1&quot; aria-label=&quot;План заказов на день&quot; /&gt;
+            &lt;/label&gt;
+            &lt;label&gt;
+              &lt;span class=&quot;muted&quot;&gt;Комментарий&lt;/span&gt;
+              &lt;input class=&quot;input&quot; value=&quot;Старт месяца&quot; aria-label=&quot;Комментарий&quot; /&gt;
+            &lt;/label&gt;
+            &lt;button class=&quot;btn primary&quot; type=&quot;button&quot;&gt;Применить к дню&lt;/button&gt;
+          &lt;/div&gt;
+          &lt;div class=&quot;drawer-block&quot;&gt;
+            &lt;strong&gt;Сценарий ввода&lt;/strong&gt;
+            &lt;div class=&quot;mini&quot;&gt;Менеджер меняет не месячный итог, а конкретные дневные ячейки. Итоги, выкупы, выручка и OOS пересчитываются автоматически.&lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/aside&gt;
+      &lt;/div&gt;
+    &lt;/main&gt;
+  &lt;/div&gt;
+
+  &lt;script&gt;
+    (function () {
+      const root = document.getElementById(&quot;panel-daily-orders-plan&quot;);
+      const months = [
+        { key: &quot;jul&quot;, label: &quot;ИЮЛЬ&quot;, short: &quot;07&quot;, days: 31 },
+        { key: &quot;aug&quot;, label: &quot;АВГУСТ&quot;, short: &quot;08&quot;, days: 31 },
+        { key: &quot;sep&quot;, label: &quot;СЕНТЯБРЬ&quot;, short: &quot;09&quot;, days: 30 },
+        { key: &quot;oct&quot;, label: &quot;ОКТЯБРЬ&quot;, short: &quot;10&quot;, days: 31 },
+        { key: &quot;nov&quot;, label: &quot;НОЯБРЬ&quot;, short: &quot;11&quot;, days: 30 },
+        { key: &quot;dec&quot;, label: &quot;ДЕКАБРЬ&quot;, short: &quot;12&quot;, days: 31 }
+      ];
+
+      function ramp(total, days, start, peak, decay) {
+        const values = [];
+        let sum = 0;
+        for (let i = 0; i &lt; days; i += 1) {
+          const position = i / Math.max(days - 1, 1);
+          const raw = position &lt; 0.55
+            ? start + (peak - start) * (position / 0.55)
+            : peak - (peak - decay) * ((position - 0.55) / 0.45);
+          const value = Math.max(0, Math.round(raw));
+          values.push(value);
+          sum += value;
+        }
+        const diff = total - sum;
+        values[values.length - 1] = Math.max(0, values[values.length - 1] + diff);
+        return values;
+      }
+
+      function flat(days, value) {
+        return Array.from({ length: days }, () =&gt; value);
+      }
+
+      const rows = [
+        { type: &quot;group&quot;, label: &quot;ВЕТРОВКИ · ПЛАН: 29 354 ЗАКАЗА · ДОЗАКАЗ 2 000 ШТ&quot; },
+        {
+          category: &quot;Ветровки&quot;,
+          sku: &quot;HT-80-11&quot;,
+          meta: &quot;HT-80 · бежевый&quot;,
+          price: &quot;6 000&quot;,
+          buyout: &quot;28%&quot;,
+          stock: &quot;52&quot;,
+          way: &quot;98&quot;,
+          reorder: &quot;1 020&quot;,
+          values: {
+            jul: ramp(348, 31, 4, 18, 18),
+            aug: ramp(1520, 31, 26, 73, 73),
+            sep: ramp(784, 30, 30, 29, 23),
+            oct: flat(31, 0),
+            nov: flat(30, 0),
+            dec: flat(31, 0)
+          }
+        },
+        {
+          category: &quot;Ветровки&quot;,
+          sku: &quot;HT-80-02&quot;,
+          meta: &quot;HT-80 · светло-беж&quot;,
+          price: &quot;6 000&quot;,
+          buyout: &quot;27%&quot;,
+          stock: &quot;119&quot;,
+          way: &quot;108&quot;,
+          reorder: &quot;749&quot;,
+          values: {
+            jul: ramp(269, 31, 3, 14, 14),
+            aug: ramp(1180, 31, 20, 57, 57),
+            sep: ramp(612, 30, 23, 23, 17),
+            oct: flat(31, 0),
+            nov: flat(30, 0),
+            dec: flat(31, 0)
+          }
+        },
+        { type: &quot;total&quot;, category: &quot;Итого&quot;, sku: &quot;Ветровки&quot;, meta: &quot;3 821 / 16 893 / 8 640&quot;, price: &quot;&quot;, buyout: &quot;28,6%&quot;, stock: &quot;7 281&quot;, way: &quot;—&quot;, reorder: &quot;2 000&quot;, totals: [&quot;3 821&quot;, &quot;16 893&quot;, &quot;8 640&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;] },
+        { type: &quot;group&quot;, label: &quot;ДЕМИСЕЗОН · ПЛАН: 104 794 ЗАКАЗА · ДОЗАКАЗ 14 406 ШТ&quot; },
+        {
+          category: &quot;Демисезон&quot;,
+          sku: &quot;NV-08-35&quot;,
+          meta: &quot;NV-08 · шоколад&quot;,
+          price: &quot;13 500&quot;,
+          buyout: &quot;29%&quot;,
+          stock: &quot;325&quot;,
+          way: &quot;0&quot;,
+          reorder: &quot;1 646&quot;,
+          riskFrom: { month: &quot;sep&quot;, day: 21 },
+          values: {
+            jul: ramp(159, 31, 1, 10, 10),
+            aug: ramp(372, 31, 6, 17, 17),
+            sep: ramp(1189, 30, 22, 80, 61),
+            oct: ramp(2231, 31, 80, 82, 61),
+            nov: ramp(1785, 30, 62, 74, 49),
+            dec: ramp(943, 31, 45, 46, 15)
+          }
+        },
+        {
+          category: &quot;Демисезон&quot;,
+          sku: &quot;NV-01-35&quot;,
+          meta: &quot;NV-01 · шоколад&quot;,
+          price: &quot;13 500&quot;,
+          buyout: &quot;22%&quot;,
+          stock: &quot;787&quot;,
+          way: &quot;1&quot;,
+          reorder: &quot;828&quot;,
+          riskFrom: { month: &quot;oct&quot;, day: 15 },
+          values: {
+            jul: ramp(159, 31, 1, 10, 10),
+            aug: ramp(337, 31, 5, 15, 15),
+            sep: ramp(1076, 30, 19, 54, 56),
+            oct: ramp(2018, 31, 72, 74, 56),
+            nov: ramp(1615, 30, 56, 74, 47),
+            dec: ramp(943, 31, 42, 44, 15)
+          }
+        },
+        { type: &quot;total&quot;, category: &quot;Итого&quot;, sku: &quot;Демисезон&quot;, meta: &quot;NV-01 / NV-08 / NV-816 / NV-836&quot;, price: &quot;&quot;, buyout: &quot;19,9%&quot;, stock: &quot;11 388&quot;, way: &quot;—&quot;, reorder: &quot;14 406&quot;, totals: [&quot;3 035&quot;, &quot;5 718&quot;, &quot;18 295&quot;, &quot;34 302&quot;, &quot;27 436&quot;, &quot;16 008&quot;] },
+        { type: &quot;group&quot;, label: &quot;ЗИМА · ПЛАН: 59 726 ЗАКАЗОВ · ДОЗАКАЗ 21 700 ШТ&quot; },
+        {
+          category: &quot;Зима&quot;,
+          sku: &quot;ZW-01-35&quot;,
+          meta: &quot;Зимняя 1 · шоколад&quot;,
+          price: &quot;17 000&quot;,
+          buyout: &quot;25%&quot;,
+          stock: &quot;0&quot;,
+          way: &quot;0&quot;,
+          reorder: &quot;2 000&quot;,
+          riskFrom: { month: &quot;sep&quot;, day: 1 },
+          values: {
+            jul: flat(31, 0),
+            aug: flat(31, 0),
+            sep: ramp(2890, 30, 0, 150, 30),
+            oct: ramp(14846, 31, 420, 560, 30),
+            nov: ramp(25667, 30, 780, 900, 500),
+            dec: ramp(16323, 31, 500, 520, 9)
+          }
+        },
+        { type: &quot;total&quot;, category: &quot;Итого&quot;, sku: &quot;Все категории&quot;, meta: &quot;Q3+Q4&quot;, price: &quot;&quot;, buyout: &quot;&quot;, stock: &quot;18 669&quot;, way: &quot;—&quot;, reorder: &quot;38 106&quot;, totals: [&quot;6 856&quot;, &quot;22 611&quot;, &quot;29 825&quot;, &quot;49 148&quot;, &quot;53 103&quot;, &quot;32 331&quot;] }
+      ];
+
+      const table = root.querySelector(&quot;#daily-table&quot;);
+      const wrap = root.querySelector(&quot;#daily-table-wrap&quot;);
+      const monthButtons = root.querySelector(&quot;#month-buttons&quot;);
+
+      function isWeekend(dayIndex) {
+        return dayIndex % 7 === 5 || dayIndex % 7 === 6;
+      }
+
+      function monthTotal(row, month) {
+        if (row.totals) return row.totals[months.findIndex((m) =&gt; m.key === month.key)];
+        return row.values[month.key].reduce((sum, value) =&gt; sum + value, 0).toLocaleString(&quot;ru-RU&quot;);
+      }
+
+      function buildHeader() {
+        const monthCells = months.map((month) =&gt; `&lt;th class=&quot;month&quot; data-month-start=&quot;${month.key}&quot; colspan=&quot;${month.days + 2}&quot;&gt;${month.label}&lt;/th&gt;`).join(&quot;&quot;);
+        const dayCells = months.map((month) =&gt; {
+          const days = Array.from({ length: month.days }, (_, i) =&gt; {
+            const day = i + 1;
+            return `&lt;th class=&quot;day${isWeekend(i) ? &quot; weekend&quot; : &quot;&quot;}&quot; data-month=&quot;${month.key}&quot; data-day=&quot;${day}&quot;&gt;${String(day).padStart(2, &quot;0&quot;)}.${month.short}&lt;/th&gt;`;
+          }).join(&quot;&quot;);
+          return `${days}&lt;th class=&quot;auto&quot;&gt;Итого&lt;/th&gt;&lt;th class=&quot;auto&quot;&gt;Дозак.&lt;/th&gt;`;
+        }).join(&quot;&quot;);
+        return `&lt;thead&gt;&lt;tr&gt;&lt;th class=&quot;sticky-1 left&quot; rowspan=&quot;2&quot;&gt;Категория&lt;/th&gt;&lt;th class=&quot;sticky-2 left&quot; rowspan=&quot;2&quot;&gt;Артикул&lt;/th&gt;&lt;th class=&quot;sticky-3 left&quot; rowspan=&quot;2&quot;&gt;Модель / цвет&lt;/th&gt;&lt;th class=&quot;sticky-4&quot; rowspan=&quot;2&quot;&gt;Цена&lt;/th&gt;&lt;th class=&quot;sticky-5&quot; rowspan=&quot;2&quot;&gt;% выкуп&lt;/th&gt;${monthCells}&lt;/tr&gt;&lt;tr&gt;${dayCells}&lt;/tr&gt;&lt;/thead&gt;`;
+      }
+
+      function buildRow(row) {
+        if (row.type === &quot;group&quot;) {
+          const colCount = 5 + months.reduce((sum, month) =&gt; sum + month.days + 2, 0);
+          return `&lt;tr class=&quot;group&quot;&gt;&lt;td colspan=&quot;${colCount}&quot;&gt;${row.label}&lt;/td&gt;&lt;/tr&gt;`;
+        }
+        const daily = months.map((month) =&gt; {
+          if (row.type === &quot;total&quot;) {
+            const blankDays = Array.from({ length: month.days }, () =&gt; `&lt;td class=&quot;auto&quot;&gt;—&lt;/td&gt;`).join(&quot;&quot;);
+            return `${blankDays}&lt;td class=&quot;auto&quot;&gt;${monthTotal(row, month)}&lt;/td&gt;&lt;td class=&quot;auto&quot;&gt;${month.key === &quot;jul&quot; ? row.reorder : &quot;&quot;}&lt;/td&gt;`;
+          }
+          const values = row.values[month.key];
+          const cells = values.map((value, i) =&gt; {
+            const day = i + 1;
+            const risk = row.riskFrom &amp;&amp; (months.findIndex((m) =&gt; m.key === month.key) &gt; months.findIndex((m) =&gt; m.key === row.riskFrom.month) || (month.key === row.riskFrom.month &amp;&amp; day &gt;= row.riskFrom.day));
+            const classes = [&quot;plan&quot;];
+            if (isWeekend(i)) classes.push(&quot;weekend&quot;);
+            if (risk &amp;&amp; value &gt; 0) classes.push(&quot;risk&quot;);
+            return `&lt;td class=&quot;${classes.join(&quot; &quot;)}&quot; data-sku=&quot;${row.sku}&quot; data-month=&quot;${month.key}&quot; data-month-label=&quot;${month.label}&quot; data-day=&quot;${day}&quot; data-value=&quot;${value}&quot;&gt;${value || &quot;&quot;}&lt;/td&gt;`;
+          }).join(&quot;&quot;);
+          return `${cells}&lt;td class=&quot;auto&quot;&gt;${monthTotal(row, month)}&lt;/td&gt;&lt;td class=&quot;auto&quot;&gt;${month.key === &quot;jul&quot; ? row.reorder : &quot;&quot;}&lt;/td&gt;`;
+        }).join(&quot;&quot;);
+        const rowClass = row.type === &quot;total&quot; ? &quot;total&quot; : &quot;&quot;;
+        return `&lt;tr class=&quot;${rowClass}&quot; data-row=&quot;${row.sku || &quot;&quot;}&quot;&gt;&lt;td class=&quot;sticky-1&quot;&gt;${row.category}&lt;/td&gt;&lt;td class=&quot;sticky-2&quot;&gt;&lt;button class=&quot;sku-button&quot; type=&quot;button&quot; data-sku-row=&quot;${row.sku || &quot;&quot;}&quot;&gt;&lt;strong&gt;${row.sku}&lt;/strong&gt;&lt;span class=&quot;mini&quot;&gt;${row.stock ? `WB ${row.stock} · в пути ${row.way}` : &quot;&quot;}&lt;/span&gt;&lt;/button&gt;&lt;/td&gt;&lt;td class=&quot;sticky-3&quot;&gt;${row.meta}&lt;/td&gt;&lt;td class=&quot;sticky-4&quot;&gt;${row.price}&lt;/td&gt;&lt;td class=&quot;sticky-5&quot;&gt;${row.buyout}&lt;/td&gt;${daily}&lt;/tr&gt;`;
+      }
+
+      table.innerHTML = `${buildHeader()}&lt;tbody&gt;${rows.map(buildRow).join(&quot;&quot;)}&lt;/tbody&gt;`;
+
+      monthButtons.innerHTML = months.map((month) =&gt; `&lt;button class=&quot;btn&quot; type=&quot;button&quot; data-jump=&quot;${month.key}&quot;&gt;${month.label}&lt;/button&gt;`).join(&quot;&quot;);
+      monthButtons.querySelectorAll(&quot;[data-jump]&quot;).forEach((button) =&gt; {
+        button.addEventListener(&quot;click&quot;, () =&gt; {
+          const key = button.getAttribute(&quot;data-jump&quot;);
+          const target = table.querySelector(`[data-month-start=&quot;${key}&quot;]`);
+          if (target) wrap.scrollLeft = Math.max(0, target.offsetLeft - 520);
+        });
+      });
+
+      const edit = {
+        title: root.querySelector(&quot;#edit-title&quot;),
+        sku: root.querySelector(&quot;#edit-sku&quot;),
+        date: root.querySelector(&quot;#edit-date&quot;),
+        orders: root.querySelector(&quot;#edit-orders&quot;),
+        month: root.querySelector(&quot;#edit-month&quot;),
+        input: root.querySelector(&quot;#edit-input&quot;),
+        risk: root.querySelector(&quot;#edit-risk&quot;)
+      };
+
+      function selectCell(cell) {
+        root.querySelectorAll(&quot;.cell-selected&quot;).forEach((item) =&gt; item.classList.remove(&quot;cell-selected&quot;));
+        root.querySelectorAll(&quot;tr.selected&quot;).forEach((item) =&gt; item.classList.remove(&quot;selected&quot;));
+        cell.classList.add(&quot;cell-selected&quot;);
+        const row = cell.closest(&quot;tr&quot;);
+        row.classList.add(&quot;selected&quot;);
+        const sku = cell.getAttribute(&quot;data-sku&quot;);
+        const day = cell.getAttribute(&quot;data-day&quot;).padStart(2, &quot;0&quot;);
+        const monthKey = cell.getAttribute(&quot;data-month&quot;);
+        const month = months.find((item) =&gt; item.key === monthKey);
+        const value = cell.getAttribute(&quot;data-value&quot;);
+        edit.title.textContent = `${sku} · ${day}.${month.short}`;
+        edit.sku.textContent = sku;
+        edit.date.textContent = `${day}.${month.short}`;
+        edit.orders.textContent = value;
+        edit.month.textContent = cell.getAttribute(&quot;data-month-label&quot;);
+        edit.input.value = value;
+        edit.risk.textContent = cell.classList.contains(&quot;risk&quot;) ? &quot;OOS риск&quot; : &quot;OK&quot;;
+        edit.risk.classList.toggle(&quot;risk&quot;, cell.classList.contains(&quot;risk&quot;));
+        edit.risk.classList.toggle(&quot;good&quot;, !cell.classList.contains(&quot;risk&quot;));
+      }
+
+      table.querySelectorAll(&quot;td.plan&quot;).forEach((cell) =&gt; {
+        cell.addEventListener(&quot;click&quot;, () =&gt; selectCell(cell));
+      });
+
+      table.querySelectorAll(&quot;[data-sku-row]&quot;).forEach((button) =&gt; {
+        button.addEventListener(&quot;click&quot;, () =&gt; {
+          const sku = button.getAttribute(&quot;data-sku-row&quot;);
+          const first = table.querySelector(`td.plan[data-sku=&quot;${sku}&quot;][data-value]:not([data-value=&quot;0&quot;])`);
+          if (first) selectCell(first);
+        });
+      });
+
+      const initial = table.querySelector(&#x27;td.plan[data-sku=&quot;NV-08-35&quot;][data-month=&quot;jul&quot;][data-day=&quot;1&quot;]&#x27;);
+      if (initial) selectCell(initial);
+      if (window.lucide) {
+        window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+      }
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>
