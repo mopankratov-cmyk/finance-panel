@@ -220,6 +220,64 @@ export async function ozonAnalyticsDaily(
   };
 }
 
+/**
+ * Отчёт о реализации за месяц. Единственное место в Seller API, где Ozon показывает
+ * обе цены разом: свою цену продавца и цену, по которой товар ушёл покупателю.
+ * Ни прайс кабинета, ни financial_data отправлений цену покупателя не отдают.
+ */
+export interface OzonRealizationRow {
+  sku: string;
+  offerId: string;
+  name: string;
+  quantity: number;
+  /** Цена реализации за единицу — то, что заплатил покупатель. */
+  pricePerInstance: number;
+  /** Цена продавца за единицу. */
+  sellerPricePerInstance: number;
+  raw?: Record<string, unknown>;
+}
+
+export async function ozonRealization(
+  c: OzonCreds,
+  year: number,
+  month: number,
+  options: OzonRequestOptions = {},
+): Promise<{ ok: true; rows: OzonRealizationRow[]; rawSample: unknown } | { ok: false; error: string }> {
+  try {
+    const res = await tfetch(`${BASE}/v2/finance/realization`, {
+      method: "POST",
+      headers: headers(c),
+      body: JSON.stringify({ year, month }),
+      ...financialFetchPolicy(options, 3600),
+      signal: options.signal,
+    });
+    if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
+    const json = (await res.json()) as { result?: { rows?: unknown[] } };
+    const rawRows = json.result?.rows ?? [];
+    const rows: OzonRealizationRow[] = [];
+    for (const entry of rawRows) {
+      if (!entry || typeof entry !== "object") continue;
+      const row = entry as Record<string, unknown>;
+      const item = row.item && typeof row.item === "object" ? row.item as Record<string, unknown> : {};
+      const delivery = row.delivery_commission && typeof row.delivery_commission === "object"
+        ? row.delivery_commission as Record<string, unknown>
+        : {};
+      rows.push({
+        sku: String(item.sku ?? ""),
+        offerId: String(item.offer_id ?? ""),
+        name: String(item.name ?? ""),
+        quantity: Number(delivery.quantity ?? 0),
+        pricePerInstance: Number(delivery.price_per_instance ?? 0),
+        sellerPricePerInstance: Number(delivery.seller_price_per_instance ?? 0),
+        raw: row,
+      });
+    }
+    return { ok: true, rows, rawSample: rawRows.slice(0, 2) };
+  } catch (error) {
+    return { ok: false, error: String(error).slice(0, 150) };
+  }
+}
+
 export interface OzonPosting {
   scheme: "FBO" | "FBS";
   postingNumber: string;

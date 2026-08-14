@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import { ozonPrices, ozonImages, ozonAnalytics, ozonStocks, ozonPostings } from "@/lib/ozon/api";
+import { ozonPrices, ozonImages, ozonAnalytics, ozonStocks, ozonPostings, ozonRealization } from "@/lib/ozon/api";
 import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 
@@ -120,5 +120,25 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     postingFinanceSample = { ошибка: String(error).slice(0, 200) };
   }
-  return NextResponse.json({ cabinet: cab.name, taxPct, rows, count: rows.length, priceFieldsSample, postingFinanceSample });
+  // Отчёт о реализации — последнее место, где Ozon может показать цену покупателя.
+  let realizationSample: unknown = null;
+  try {
+    const now = new Date();
+    const probe = await ozonRealization(cab.creds, now.getUTCFullYear(), now.getUTCMonth() + 1);
+    realizationSample = probe.ok
+      ? {
+        строк: probe.rows.length,
+        позиции: probe.rows.slice(0, 5).map((row) => ({
+          offer: row.offerId,
+          штук: row.quantity,
+          цена_покупателя: row.pricePerInstance,
+          цена_продавца: row.sellerPricePerInstance,
+        })),
+        сырьё: probe.rawSample,
+      }
+      : { ошибка: probe.error };
+  } catch (error) {
+    realizationSample = { ошибка: String(error).slice(0, 200) };
+  }
+  return NextResponse.json({ cabinet: cab.name, taxPct, rows, count: rows.length, priceFieldsSample, postingFinanceSample, realizationSample });
 }
