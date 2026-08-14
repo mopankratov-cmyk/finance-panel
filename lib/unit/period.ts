@@ -1,5 +1,7 @@
 export const UNIT_PERIOD_TIMEZONE = "Europe/Moscow";
-export const UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v3";
+// v4 — налог считается с цены после СПП, в таблице появилась колонка «Цена с СПП ₽».
+// Версия входит в ключ часового кэша: без неё экран отдавал бы старые снимки со старой формулой.
+export const UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v4";
 
 export interface UnitPeriod {
   from: string;

@@ -11,6 +11,11 @@ export interface UnitContribution {
   marketplacePct: number | null;
   acquiringPct: number | null;
   ratesFactual: boolean;
+  /**
+   * Доля СПП (0..1) по факту продаж периода. `null` — фактов нет, СПП неизвестна,
+   * и налог придётся считать от цены продавца (это завышает его на величину СПП).
+   */
+  sppShare?: number | null;
 }
 
 export interface AggregatedUnitRow {
@@ -27,6 +32,10 @@ export interface AggregatedUnitRow {
   marketplacePerUnit: number | null;
   acquiringRub: number | null;
   taxRub: number;
+  /** Выручка по цене покупателя (после СПП) — с неё и считается налог. */
+  taxableRevenue: number;
+  /** Есть ли факт СПП хотя бы по одному кабинету этого SKU. */
+  sppKnown: boolean;
   drrPct: number | null;
   buyoutPct: number | null;
   marginPerUnit: number | null;
@@ -69,7 +78,12 @@ export function aggregateUnitContributions(
       : null;
     const cogs = costKnown ? sum((row) => row.orders * (row.costPerUnit ?? 0)) : null;
     const fulfillment = orders * options.ff;
-    const taxRub = revenue * options.taxPct / 100;
+    // Налог — с цены покупателя, то есть с выручки за вычетом СПП каждого кабинета.
+    // Кабинет без факта СПП входит в базу целиком: занизить налог догадкой хуже, чем
+    // оставить его прежним и показать это в покрытии.
+    const taxableRevenue = sum((row) => row.revenue * (1 - (row.sppShare ?? 0)));
+    const sppKnown = rows.some((row) => row.sppShare != null);
+    const taxRub = taxableRevenue * options.taxPct / 100;
     const marginBeforeAd = cogs != null && marketplaceRub != null && acquiringRub != null
       ? revenue - cogs - fulfillment - marketplaceRub - acquiringRub - taxRub
       : null;
@@ -88,6 +102,8 @@ export function aggregateUnitContributions(
       marketplacePerUnit: marketplaceRub != null && revenue > 0 && orders > 0 ? marketplaceRub / orders : null,
       acquiringRub,
       taxRub,
+      taxableRevenue,
+      sppKnown,
       drrPct: revenue > 0 ? adSpend / revenue * 100 : null,
       buyoutPct: orders > 0 ? buyouts / orders * 100 : null,
       marginPerUnit: margin != null && orders > 0 ? margin / orders : null,
