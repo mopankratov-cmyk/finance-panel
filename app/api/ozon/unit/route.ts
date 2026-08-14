@@ -98,5 +98,8 @@ export async function GET(request: NextRequest) {
       return (b.margin ?? -999) - (a.margin ?? -999);
     });
 
-  return NextResponse.json({ cabinet: cab.name, taxPct, rows, count: rows.length });
+  // Временная диагностика: какие поля цен Ozon реально присылает.
+  const priceFieldsSample = pricesRes.rows.filter((p) => p.rawPrice).slice(0, 3)
+    .map((p) => ({ offer: p.offer_id, price: p.rawPrice }));
+  return NextResponse.json({ cabinet: cab.name, taxPct, rows, count: rows.length, priceFieldsSample });
 }

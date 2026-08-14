@@ -343,6 +343,12 @@ export interface OzonPriceRow {
   marketingPrice: number;
   /** Цена с учётом только акций продавца — то, от чего Ozon считает свою добавку. */
   marketingSellerPrice: number;
+  /**
+   * Сырой блок цен как его прислал Ozon — временно, чтобы на живых данных увидеть,
+   * какие поля цен реально приходят: marketing_price в ответе кабинета пустой,
+   * а price.price расходится с фактической ценой продажи в разы.
+   */
+  rawPrice?: Record<string, unknown>;
 }
 export async function ozonPrices(
   c: OzonCreds,
@@ -363,7 +369,7 @@ export async function ozonPrices(
       const j = (await res.json()) as {
         items?: {
           offer_id: string; product_id: number; acquiring?: number;
-          price?: { price?: string | number; marketing_price?: string | number; marketing_seller_price?: string | number };
+          price?: Record<string, unknown> & { price?: string | number; marketing_price?: string | number; marketing_seller_price?: string | number };
           commissions?: Record<string, number>;
         }[];
         cursor?: string;
@@ -376,6 +382,7 @@ export async function ozonPrices(
           price: Number(it.price?.price ?? 0),
           marketingPrice: Number(it.price?.marketing_price ?? 0),
           marketingSellerPrice: Number(it.price?.marketing_seller_price ?? 0),
+          rawPrice: rows.length < 3 ? (it.price as Record<string, unknown> | undefined) : undefined,
           commissionPct: Number(cm.sales_percent_fbo ?? cm.sales_percent_fbs ?? 0),
           logistics: Number(cm.fbo_deliv_to_customer_amount ?? 0) + Number(cm.fbo_direct_flow_trans_min_amount ?? 0),
           returnLogistics: Number(cm.fbo_return_flow_amount ?? 0),
