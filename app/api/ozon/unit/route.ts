@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import { ozonPrices, ozonImages, ozonAnalytics, ozonStocks } from "@/lib/ozon/api";
+import { ozonPrices, ozonImages, ozonAnalytics, ozonStocks, ozonPostings } from "@/lib/ozon/api";
 import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 
@@ -99,7 +99,26 @@ export async function GET(request: NextRequest) {
     });
 
   // Временная диагностика: какие поля цен Ozon реально присылает.
+  // В прайсе кабинета цены покупателя нет — ищем её в финансовом блоке отправлений.
   const priceFieldsSample = pricesRes.rows.filter((p) => p.rawPrice).slice(0, 3)
     .map((p) => ({ offer: p.offer_id, price: p.rawPrice }));
-  return NextResponse.json({ cabinet: cab.name, taxPct, rows, count: rows.length, priceFieldsSample });
+  let postingFinanceSample: unknown = null;
+  try {
+    const probeFrom = new Date(Date.now() - 3 * 86400000).toISOString();
+    const probe = await ozonPostings(cab.creds, probeFrom, new Date().toISOString());
+    const withFinance = probe.postings.flatMap((posting) => posting.products)
+      .filter((product) => product.finance).slice(0, 3);
+    postingFinanceSample = {
+      отправлений: probe.postings.length,
+      ошибки: probe.errors,
+      позиции: withFinance.map((product) => ({
+        offer: product.offerId,
+        цена_в_products: product.price,
+        финблок: product.finance?.raw,
+      })),
+    };
+  } catch (error) {
+    postingFinanceSample = { ошибка: String(error).slice(0, 200) };
+  }
+  return NextResponse.json({ cabinet: cab.name, taxPct, rows, count: rows.length, priceFieldsSample, postingFinanceSample });
 }

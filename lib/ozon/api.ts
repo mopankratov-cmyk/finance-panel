@@ -231,21 +231,73 @@ export interface OzonPosting {
   cancelReason: string | null;
   units: number;
   amount: number;
-  products: { sku: string; offerId: string; name: string; quantity: number; price: number }[];
+  products: {
+    sku: string; offerId: string; name: string; quantity: number; price: number;
+    /** Финансовый блок отправления по этому товару, если Ozon его прислал. */
+    finance?: OzonPostingProductFinance;
+  }[];
+}
+
+/**
+ * Цены товара из `financial_data` отправления. Прайс кабинета цену покупателя не
+ * отдаёт вовсе (в `/v5/product/info/prices` поля `marketing_price` просто нет),
+ * поэтому скидку Ozon видно только здесь: продавец получает свою цену, покупатель
+ * платит меньше на величину софинансирования площадки.
+ */
+export interface OzonPostingProductFinance {
+  /** Цена продажи по версии Ozon (цена продавца после его собственных акций). */
+  price: number;
+  /** Цена до скидок. */
+  oldPrice: number;
+  /** Сумма скидки на позицию. */
+  totalDiscountValue: number;
+  /** Доля скидки, % — как её считает Ozon. */
+  totalDiscountPercent: number;
+  /** К выплате продавцу за позицию. */
+  payout: number;
+  /** Комиссия Ozon по позиции. */
+  commissionAmount: number;
+  /** Сырой блок — на случай, если цена покупателя лежит в поле, которого мы не ждём. */
+  raw?: Record<string, unknown>;
 }
 
 function postingFromUnknown(value: unknown, scheme: "FBO" | "FBS"): OzonPosting | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   const rawProducts = Array.isArray(row.products) ? row.products : [];
-  const products = rawProducts.map((product) => {
+  const financial = row.financial_data && typeof row.financial_data === "object"
+    ? row.financial_data as Record<string, unknown>
+    : {};
+  const financeBySku = new Map<string, Record<string, unknown>>();
+  const financeProducts = Array.isArray(financial.products) ? financial.products : [];
+  for (const entry of financeProducts) {
+    if (!entry || typeof entry !== "object") continue;
+    const item = entry as Record<string, unknown>;
+    const key = String(item.product_id ?? item.sku ?? "");
+    if (key) financeBySku.set(key, item);
+  }
+  const products = rawProducts.map((product, index) => {
     const item = product as Record<string, unknown>;
+    const sku = String(item.sku ?? "");
+    const fin = financeBySku.get(sku)
+      ?? (financeProducts.length === rawProducts.length ? financeProducts[index] as Record<string, unknown> | undefined : undefined);
     return {
-      sku: String(item.sku ?? ""),
+      sku,
       offerId: String(item.offer_id ?? ""),
       name: String(item.name ?? item.offer_id ?? item.sku ?? "Товар"),
       quantity: Number(item.quantity ?? 0),
       price: Number(item.price ?? 0),
+      finance: fin
+        ? {
+          price: Number(fin.price ?? 0),
+          oldPrice: Number(fin.old_price ?? 0),
+          totalDiscountValue: Number(fin.total_discount_value ?? 0),
+          totalDiscountPercent: Number(fin.total_discount_percent ?? 0),
+          payout: Number(fin.payout ?? 0),
+          commissionAmount: Number(fin.commission_amount ?? 0),
+          raw: fin,
+        }
+        : undefined,
     };
   });
   const analytics = row.analytics_data && typeof row.analytics_data === "object"
