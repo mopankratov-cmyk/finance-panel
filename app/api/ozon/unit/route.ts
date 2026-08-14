@@ -85,6 +85,9 @@ export async function GET(request: NextRequest) {
     return {
       art: off, product_id: p.product_id, name: productName || costMatch?.name || off, img_url: imgs.byOffer[off] ?? null,
       price, cost: Math.round(cost), units,
+      catalog_price: Math.round(p.price),
+      marketing_price: Math.round(p.marketingPrice),
+      marketing_seller_price: Math.round(p.marketingSellerPrice),
       commission_pct: p.commissionPct, commission_rub: commissionRub,
       logistics, acquiring, ad: adPerUnit, drr, tax: taxRub,
       profit, margin,

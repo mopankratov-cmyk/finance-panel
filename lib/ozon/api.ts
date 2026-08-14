@@ -336,6 +336,13 @@ export async function ozonPostings(
 export interface OzonPriceRow {
   offer_id: string; product_id: number; price: number; commissionPct: number;
   logistics: number; returnLogistics: number; acquiring: number;
+  /**
+   * Цена для покупателя с учётом акций Ozon (аналог цены после СПП на WB).
+   * 0 — Ozon поле не отдал. Нужна как база налога: платим с того, что заплатил покупатель.
+   */
+  marketingPrice: number;
+  /** Цена с учётом только акций продавца — то, от чего Ozon считает свою добавку. */
+  marketingSellerPrice: number;
 }
 export async function ozonPrices(
   c: OzonCreds,
@@ -354,7 +361,11 @@ export async function ozonPrices(
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
       const j = (await res.json()) as {
-        items?: { offer_id: string; product_id: number; acquiring?: number; price?: { price?: string | number }; commissions?: Record<string, number> }[];
+        items?: {
+          offer_id: string; product_id: number; acquiring?: number;
+          price?: { price?: string | number; marketing_price?: string | number; marketing_seller_price?: string | number };
+          commissions?: Record<string, number>;
+        }[];
         cursor?: string;
       };
       const items = j.items ?? [];
@@ -363,6 +374,8 @@ export async function ozonPrices(
         rows.push({
           offer_id: it.offer_id, product_id: it.product_id,
           price: Number(it.price?.price ?? 0),
+          marketingPrice: Number(it.price?.marketing_price ?? 0),
+          marketingSellerPrice: Number(it.price?.marketing_seller_price ?? 0),
           commissionPct: Number(cm.sales_percent_fbo ?? cm.sales_percent_fbs ?? 0),
           logistics: Number(cm.fbo_deliv_to_customer_amount ?? 0) + Number(cm.fbo_direct_flow_trans_min_amount ?? 0),
           returnLogistics: Number(cm.fbo_return_flow_amount ?? 0),
