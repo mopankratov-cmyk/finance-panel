@@ -121,24 +121,31 @@ export async function GET(request: NextRequest) {
     postingFinanceSample = { ошибка: String(error).slice(0, 200) };
   }
   // Отчёт о реализации — последнее место, где Ozon может показать цену покупателя.
-  let realizationSample: unknown = null;
-  try {
-    const now = new Date();
-    const probe = await ozonRealization(cab.creds, now.getUTCFullYear(), now.getUTCMonth() + 1);
-    realizationSample = probe.ok
-      ? {
-        строк: probe.rows.length,
-        позиции: probe.rows.slice(0, 5).map((row) => ({
-          offer: row.offerId,
-          штук: row.quantity,
-          цена_покупателя: row.pricePerInstance,
-          цена_продавца: row.sellerPricePerInstance,
-        })),
-        сырьё: probe.rawSample,
-      }
-      : { ошибка: probe.error };
-  } catch (error) {
-    realizationSample = { ошибка: String(error).slice(0, 200) };
+  // Отчёт закрывается по итогам месяца, поэтому за текущий Ozon отвечает 404 —
+  // пробуем и прошлый, и позапрошлый, чтобы отличить «нет отчёта» от «нет метода».
+  const realizationSample: Record<string, unknown> = {};
+  const now = new Date();
+  for (const back of [0, 1, 2]) {
+    const probeDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+    const year = probeDate.getUTCFullYear();
+    const month = probeDate.getUTCMonth() + 1;
+    try {
+      const probe = await ozonRealization(cab.creds, year, month);
+      realizationSample[`${year}-${String(month).padStart(2, "0")}`] = probe.ok
+        ? {
+          строк: probe.rows.length,
+          позиции: probe.rows.slice(0, 5).map((row) => ({
+            offer: row.offerId,
+            штук: row.quantity,
+            цена_покупателя: row.pricePerInstance,
+            цена_продавца: row.sellerPricePerInstance,
+          })),
+          сырьё: probe.rawSample,
+        }
+        : { ошибка: probe.error };
+    } catch (error) {
+      realizationSample[`${year}-${String(month).padStart(2, "0")}`] = { ошибка: String(error).slice(0, 200) };
+    }
   }
   return NextResponse.json({ cabinet: cab.name, taxPct, rows, count: rows.length, priceFieldsSample, postingFinanceSample, realizationSample });
 }
