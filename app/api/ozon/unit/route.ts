@@ -109,9 +109,9 @@ export async function GET(request: NextRequest) {
     taxPct,
     rows,
     count: rows.length,
-    // Скидка Ozon берётся из последнего закрытого отчёта о реализации: за текущий месяц
-    // Ozon его не отдаёт. Показываем период, чтобы лаг был виден, а не подразумевался.
-    buyerDiscountPeriod: buyerDiscount.period,
+    // Из каких отчётов собрана скидка: реализация по дням свежее, закрытые месяцы
+    // добирают остальное. Показываем источники, чтобы лаг был виден, а не подразумевался.
+    buyerDiscountSources: buyerDiscount.sources,
     buyerDiscountCovered: buyerDiscount.covered,
   });
 }

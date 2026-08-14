@@ -236,6 +236,107 @@ export interface OzonRealizationRow {
   sellerPricePerInstance: number;
 }
 
+/** Достаёт число по имени поля на любом уровне вложенности строки отчёта. */
+function deepNumber(value: unknown, keys: readonly string[], depth = 0): number {
+  if (!value || typeof value !== "object" || depth > 3) return 0;
+  const row = value as Record<string, unknown>;
+  for (const key of keys) {
+    const found = row[key];
+    if (typeof found === "number" && Number.isFinite(found)) return found;
+    if (typeof found === "string" && found.trim() !== "" && Number.isFinite(Number(found))) return Number(found);
+  }
+  for (const nested of Object.values(row)) {
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const found = deepNumber(nested, keys, depth + 1);
+      if (found) return found;
+    }
+  }
+  return 0;
+}
+
+function deepString(value: unknown, keys: readonly string[], depth = 0): string {
+  if (!value || typeof value !== "object" || depth > 3) return "";
+  const row = value as Record<string, unknown>;
+  for (const key of keys) {
+    const found = row[key];
+    if (typeof found === "string" && found) return found;
+    if (typeof found === "number" && found) return String(found);
+  }
+  for (const nested of Object.values(row)) {
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const found = deepString(nested, keys, depth + 1);
+      if (found) return found;
+    }
+  }
+  return "";
+}
+
+/**
+ * Реализация по дням. Свежее месячного отчёта — тот закрывается только по итогам
+ * месяца, и за текущий Ozon отвечает 404. Метод доступен не всем тарифам, поэтому
+ * вызывающая сторона обязана уметь откатиться на месячный отчёт.
+ *
+ * Точную форму запроса Ozon в открытой документации не приводит, поэтому пробуем
+ * известные варианты тела и разбираем строки по именам полей, а не по вложенности.
+ */
+export async function ozonRealizationByDay(
+  c: OzonCreds,
+  from: string,
+  to: string,
+  options: OzonRequestOptions = {},
+): Promise<{ ok: true; rows: OzonRealizationRow[]; shape: string } | { ok: false; error: string }> {
+  const bodies: Array<{ shape: string; body: Record<string, unknown> }> = [
+    { shape: "date_from/date_to", body: { date_from: from, date_to: to } },
+    { shape: "from/to", body: { from, to } },
+    { shape: "date.from/date.to", body: { date: { from, to } } },
+  ];
+  const errors: string[] = [];
+  for (const { shape, body } of bodies) {
+    try {
+      const res = await tfetch(`${BASE}/v1/finance/realization/by-day`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify(body),
+        ...financialFetchPolicy(options, 1800),
+        signal: options.signal,
+      });
+      if (!res.ok) {
+        errors.push(`${shape}: ${res.status}`);
+        // 403/404 — метода нет на тарифе, перебор тел не поможет.
+        if (res.status === 403 || res.status === 404) break;
+        continue;
+      }
+      const json = (await res.json()) as { result?: unknown; rows?: unknown };
+      const container = json.result ?? json.rows;
+      const rawRows = Array.isArray(container)
+        ? container
+        : container && typeof container === "object" && Array.isArray((container as Record<string, unknown>).rows)
+          ? (container as Record<string, unknown>).rows as unknown[]
+          : [];
+      const rows: OzonRealizationRow[] = [];
+      for (const entry of rawRows) {
+        if (!entry || typeof entry !== "object") continue;
+        const offerId = deepString(entry, ["offer_id", "offerId"]);
+        const buyer = deepNumber(entry, ["price_per_instance", "pricePerInstance"]);
+        const seller = deepNumber(entry, ["seller_price_per_instance", "sellerPricePerInstance"]);
+        if (!offerId || !(buyer > 0) || !(seller > 0)) continue;
+        rows.push({
+          sku: deepString(entry, ["sku"]),
+          offerId,
+          name: deepString(entry, ["name"]),
+          quantity: deepNumber(entry, ["quantity"]) || 1,
+          pricePerInstance: buyer,
+          sellerPricePerInstance: seller,
+        });
+      }
+      return { ok: true, rows, shape };
+    } catch (error) {
+      errors.push(`${shape}: ${String(error).slice(0, 60)}`);
+    }
+  }
+  return { ok: false, error: errors.join("; ") || "нет ответа" };
+}
+
 export async function ozonRealization(
   c: OzonCreds,
   year: number,
