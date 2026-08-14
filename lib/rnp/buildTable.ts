@@ -1171,6 +1171,12 @@ export interface RnpTable {
     funnel_as_of: string | null;
   }>;
   forecast_note: string;
+  /**
+   * Снимок карточек WB не был прогрет, поэтому название, бренд и предмет собраны
+   * из справочника себестоимости. Метрики от этого не страдают, но такой снимок
+   * не должен лежать в кэше полсуток — см. lib/rnp/tableCache.ts.
+   */
+  pim_cold?: boolean;
   period: { label: string; period_type: string }[];
   summary: Metric[];
   skus: {
@@ -1835,7 +1841,9 @@ export async function buildRnpTable(
       // Бренд и предмет WB принадлежат карточке товара, а не кабинету.
       // Ошибка/лимит Content API не должны ломать сам РНП: в таком случае
       // ниже остаётся безопасный fallback на справочник себестоимости.
-      loadCabinetPimRowsHourly(p_cabinet).catch(() => []),
+      // Читаем ТОЛЬКО прогретый снимок: холодный обход Content API на крупном
+      // кабинете идёт минуту, и экран целиком отваливался по таймауту функции.
+      loadCabinetPimRowsHourly(p_cabinet, { cacheOnly: true }).catch(() => "cold" as const),
     ]);
 
     const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(
@@ -1952,7 +1960,9 @@ export async function buildRnpTable(
     }
 
     const costByArt = new Map(costs.map((cost) => [cost.article, cost]));
-    const cardByNm = new Map(catalog.map((card) => [card.nmId, card]));
+    const pimCold = catalog === "cold";
+    const cards = pimCold ? [] : catalog;
+    const cardByNm = new Map(cards.map((card) => [card.nmId, card]));
     const totalByNm = new Map<number, RpcTotal>();
     for (const total of totals) {
       const existing = totalByNm.get(total.nm_id);
@@ -1968,7 +1978,7 @@ export async function buildRnpTable(
     // Каталог даёт артикул и сохраняет в РНП новые/нулевые SKU, которых ещё нет
     // в фактах периода и текущих остатках. Это намного дешевле 30-дневного
     // rnp_report и уже загружается выше через часовой PIM-кэш.
-    for (const card of catalog) {
+    for (const card of cards) {
       const existing = totalByNm.get(card.nmId);
       totalByNm.set(card.nmId, existing ? {
         ...existing,
@@ -2167,6 +2177,7 @@ export async function buildRnpTable(
     return {
       shop_label: shopLabel || "Все кабинеты",
       sku_count: skus.length,
+      ...(pimCold ? { pim_cold: true } : {}),
       generated_at: new Date().toISOString(),
       as_of: asOf,
       scope_freshness: scopeData.map((item) => ({

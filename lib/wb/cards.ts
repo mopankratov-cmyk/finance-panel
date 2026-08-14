@@ -125,10 +125,33 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
 // Это убирает повторный обход Content API при открытии PIM, поставок и других
 // модулей, а параллельный fetch выше ограничивает холодный старт самым медленным
 // кабинетом вместо суммы времени по всем кабинетам.
+/**
+ * Снимка карточек в кэше нет. Бросаем, а не возвращаем пустоту: пустой список
+ * попал бы в кэш на час и обесточил бы названия там, где они есть.
+ */
+export class PimSnapshotColdError extends Error {
+  constructor() {
+    super("Снимок карточек WB ещё не прогрет");
+    this.name = "PimSnapshotColdError";
+  }
+}
+
 export function loadCabinetPimRowsHourly(
   cabinetId: string | null,
-  options: HourlyDashboardCacheOptions = {},
+  options: HourlyDashboardCacheOptions & { cacheOnly?: boolean } = {},
 ): Promise<PimRow[]> {
+  // Холодный обход Content API занимает до минуты на крупном кабинете и не
+  // укладывается в лимит пользовательской функции — экран отдавал 504 целиком.
+  // Пользовательский путь читает только готовый снимок; греет его cron, где
+  // лимит времени в пять раз больше.
+  if (options.cacheOnly) {
+    return loadHourlyDashboard(
+      "wb-pim-cards",
+      { cabinetId, schema: 4 },
+      async () => { throw new PimSnapshotColdError(); },
+      options,
+    );
+  }
   return loadHourlyDashboard(
     "wb-pim-cards",
     { cabinetId, schema: 4 },

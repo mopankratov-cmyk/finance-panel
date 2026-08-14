@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
+import { after } from "next/server";
 import { decodeCompressedJson, encodeCompressedJson } from "@/lib/cache/compressedJson";
 import { buildRnpTable, type RnpTable } from "@/lib/rnp/buildTable";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 
 // Пользовательский экран должен читать last-good снимок, а не становиться
 // холодным тяжёлым расчётом, если почасовой прогрев задержался из-за WB/БД.
@@ -73,7 +75,15 @@ export async function loadCachedWbRnp(
     [`wb-rnp-snapshot-${WB_RNP_CACHE_VERSION}-compressed`, identity],
     { revalidate: WB_RNP_CACHE_SECONDS, tags: [tag] },
   );
-  return decodeCompressedJson<RnpTable>(await loadSnapshot());
+  const snapshot = decodeCompressedJson<RnpTable>(await loadSnapshot());
+  // Снимок собран без карточек WB: названия и бренды в нём пустые. Держать такой
+  // полсуток нельзя — сбрасываем ключ, чтобы следующий заход пересобрался уже с
+  // прогретым PIM, и заодно прогреваем сам PIM после ответа.
+  if (snapshot.pim_cold) {
+    revalidateTag(tag, { expire: 0 });
+    after(() => loadCabinetPimRowsHourly(input.cabinetId).catch(() => []));
+  }
+  return snapshot;
 }
 
 export async function listWbRnpScopes(): Promise<Array<{ cabinetId: string | null; label: string }>> {

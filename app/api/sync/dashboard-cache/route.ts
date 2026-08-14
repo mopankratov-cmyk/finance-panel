@@ -11,6 +11,7 @@ import {
 import { buildRnpWarmupBatches, type RnpWarmupTask } from "@/lib/rnp/warmupPlan";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { warmWbSecondaryDashboards } from "@/lib/wb/dashboardWarmup";
+import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import {
@@ -47,6 +48,19 @@ function currentMoscowWeek(now = new Date()) {
 async function warmWbRnp() {
   const startedAt = Date.now();
   const scopes = await listWbRnpScopes();
+  // Карточки греем ДО снимков РНП. Пользовательский путь читает PIM только из
+  // кэша (холодный обход Content API не укладывается в лимит его функции), значит
+  // прогреть снимок обязан cron — иначе РНП соберётся без названий и брендов.
+  // Здесь лимит 300 секунд, а тёплый кэш возвращается мгновенно.
+  const pimWarm: Array<{ scope: string; ok: boolean; error?: string }> = [];
+  for (const scope of scopes) {
+    try {
+      await loadCabinetPimRowsHourly(scope.cabinetId);
+      pimWarm.push({ scope: scope.label, ok: true });
+    } catch (error) {
+      pimWarm.push({ scope: scope.label, ok: false, error: error instanceof Error ? error.message : "Карточки WB не загружены" });
+    }
+  }
   // Интерфейс открывает последние 7 дней, а раньше cron грел только календарный
   // месяц. Из-за несовпадающего ключа кэша первый пользователь запускал тяжёлый
   // расчёт сам. Греем оба реально используемых периода.
@@ -70,6 +84,7 @@ async function warmWbRnp() {
     marketplace: "wb",
     view: "rnp",
     periods,
+    pim: pimWarm,
     snapshots,
     durationMs: Date.now() - startedAt,
   };
