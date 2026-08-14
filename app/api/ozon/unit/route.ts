@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
-import { ozonPrices, ozonImages, ozonAnalytics, ozonStocks, ozonPostings, ozonRealization } from "@/lib/ozon/api";
+import { ozonPrices, ozonImages, ozonAnalytics, ozonStocks } from "@/lib/ozon/api";
+import { buyerDiscountForOffer, loadOzonBuyerDiscount, taxableOzonPrice } from "@/lib/ozon/buyerDiscount";
 import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 
@@ -21,11 +22,12 @@ export async function GET(request: NextRequest) {
   const to = new Date().toISOString().slice(0, 10);
   const from = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
 
-  const [pricesRes, an, imgs, stocks] = await Promise.all([
+  const [pricesRes, an, imgs, stocks, buyerDiscount] = await Promise.all([
     ozonPrices(cab.creds),
     ozonAnalytics(cab.creds, from, to),
     ozonImages(cab.creds),
     ozonStocks(cab.creds),
+    loadOzonBuyerDiscount(cab.creds),
   ]);
   if (!pricesRes.ok) return NextResponse.json({ rows: [], error: pricesRes.error }, { status: 502 });
 
@@ -79,15 +81,19 @@ export async function GET(request: NextRequest) {
     const acquiring = Math.round(p.acquiring);
     const adPerUnit = units > 0 ? Math.round((adByOffer[off] ?? 0) / units) : 0;
     const drr = price > 0 ? Math.round((adPerUnit / price) * 1000) / 10 : 0;
-    const taxRub = Math.round((price * taxPct) / 100);
+    // Налог — с того, что заплатил покупатель: цена продавца минус скидка Ozon.
+    // Комиссия, логистика и эквайринг остаются на цене продавца: Ozon считает их от неё.
+    const discountShare = buyerDiscountForOffer(buyerDiscount, off);
+    const buyerPrice = taxableOzonPrice(price, discountShare);
+    const taxRub = Math.round((buyerPrice * taxPct) / 100);
     const profit = Math.round(price - cost - commissionRub - logistics - acquiring - adPerUnit - taxRub);
     const margin = price > 0 ? Math.round((profit / price) * 1000) / 10 : null;
     return {
       art: off, product_id: p.product_id, name: productName || costMatch?.name || off, img_url: imgs.byOffer[off] ?? null,
       price, cost: Math.round(cost), units,
-      catalog_price: Math.round(p.price),
-      marketing_price: Math.round(p.marketingPrice),
-      marketing_seller_price: Math.round(p.marketingSellerPrice),
+      // Цена покупателя пустая, если отчёт о реализации по этому товару фактов не дал.
+      buyer_price: discountShare == null ? null : Math.round(buyerPrice),
+      ozon_discount_pct: discountShare == null ? null : Math.round(discountShare * 1000) / 10,
       commission_pct: p.commissionPct, commission_rub: commissionRub,
       logistics, acquiring, ad: adPerUnit, drr, tax: taxRub,
       profit, margin,
@@ -98,54 +104,14 @@ export async function GET(request: NextRequest) {
       return (b.margin ?? -999) - (a.margin ?? -999);
     });
 
-  // Временная диагностика: какие поля цен Ozon реально присылает.
-  // В прайсе кабинета цены покупателя нет — ищем её в финансовом блоке отправлений.
-  const priceFieldsSample = pricesRes.rows.filter((p) => p.rawPrice).slice(0, 3)
-    .map((p) => ({ offer: p.offer_id, price: p.rawPrice }));
-  let postingFinanceSample: unknown = null;
-  try {
-    const probeFrom = new Date(Date.now() - 3 * 86400000).toISOString();
-    const probe = await ozonPostings(cab.creds, probeFrom, new Date().toISOString());
-    const withFinance = probe.postings.flatMap((posting) => posting.products)
-      .filter((product) => product.finance).slice(0, 3);
-    postingFinanceSample = {
-      отправлений: probe.postings.length,
-      ошибки: probe.errors,
-      позиции: withFinance.map((product) => ({
-        offer: product.offerId,
-        цена_в_products: product.price,
-        финблок: product.finance?.raw,
-      })),
-    };
-  } catch (error) {
-    postingFinanceSample = { ошибка: String(error).slice(0, 200) };
-  }
-  // Отчёт о реализации — последнее место, где Ozon может показать цену покупателя.
-  // Отчёт закрывается по итогам месяца, поэтому за текущий Ozon отвечает 404 —
-  // пробуем и прошлый, и позапрошлый, чтобы отличить «нет отчёта» от «нет метода».
-  const realizationSample: Record<string, unknown> = {};
-  const now = new Date();
-  for (const back of [0, 1, 2]) {
-    const probeDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
-    const year = probeDate.getUTCFullYear();
-    const month = probeDate.getUTCMonth() + 1;
-    try {
-      const probe = await ozonRealization(cab.creds, year, month);
-      realizationSample[`${year}-${String(month).padStart(2, "0")}`] = probe.ok
-        ? {
-          строк: probe.rows.length,
-          позиции: probe.rows.slice(0, 5).map((row) => ({
-            offer: row.offerId,
-            штук: row.quantity,
-            цена_покупателя: row.pricePerInstance,
-            цена_продавца: row.sellerPricePerInstance,
-          })),
-          сырьё: probe.rawSample,
-        }
-        : { ошибка: probe.error };
-    } catch (error) {
-      realizationSample[`${year}-${String(month).padStart(2, "0")}`] = { ошибка: String(error).slice(0, 200) };
-    }
-  }
-  return NextResponse.json({ cabinet: cab.name, taxPct, rows, count: rows.length, priceFieldsSample, postingFinanceSample, realizationSample });
+  return NextResponse.json({
+    cabinet: cab.name,
+    taxPct,
+    rows,
+    count: rows.length,
+    // Скидка Ozon берётся из последнего закрытого отчёта о реализации: за текущий месяц
+    // Ozon его не отдаёт. Показываем период, чтобы лаг был виден, а не подразумевался.
+    buyerDiscountPeriod: buyerDiscount.period,
+    buyerDiscountCovered: buyerDiscount.covered,
+  });
 }

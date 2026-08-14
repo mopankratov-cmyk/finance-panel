@@ -16,6 +16,7 @@ import {
 import { getPerfToken, isOzonPerformanceReportDeferredMessage, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
 import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
+import { buyerDiscountForOffer, loadOzonBuyerDiscount, taxableOzonPrice } from "@/lib/ozon/buyerDiscount";
 import {
   calculateOzonEconomyUnit,
   ozonAdCacheStatus,
@@ -759,13 +760,14 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
   const serviceTotals: Record<string, number> = {};
   const warnings: string[] = [];
   await Promise.all(scope.cabinets.map(async (cabinet) => {
-    const [prices, analytics, images, finance, services, stocks] = await Promise.all([
+    const [prices, analytics, images, finance, services, stocks, buyerDiscount] = await Promise.all([
       ozonPrices(cabinet.creds),
       ozonAnalytics(cabinet.creds, range.from, range.to),
       ozonImages(cabinet.creds),
       ozonTransactionTotals(cabinet.creds, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
       ozonServiceBreakdown(cabinet.creds, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
       ozonStocks(cabinet.creds),
+      loadOzonBuyerDiscount(cabinet.creds),
     ]);
     if (!prices.ok) warnings.push(`${cabinet.name}: ${prices.error}`);
     if (!analytics.ok) warnings.push(`${cabinet.name}: ${analytics.error}`);
@@ -808,7 +810,11 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
       const logistics = priceRow.logistics;
       const acquiring = priceRow.acquiring;
       const adPerUnit = sales.units > 0 ? (adsByOffer.get(offerId) ?? 0) / sales.units : 0;
-      const tax = salePrice * taxPct / 100;
+      // Налог — с цены покупателя: Ozon добивает часть цены за него, и с этой доли
+      // налога нет. Комиссия и логистика остаются на цене продавца — их считает Ozon.
+      const discountShare = buyerDiscountForOffer(buyerDiscount, offerId);
+      const buyerPrice = taxableOzonPrice(salePrice, discountShare);
+      const tax = buyerPrice * taxPct / 100;
       const economy = calculateOzonEconomyUnit({
         price: salePrice,
         cost,

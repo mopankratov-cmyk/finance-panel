@@ -234,7 +234,6 @@ export interface OzonRealizationRow {
   pricePerInstance: number;
   /** Цена продавца за единицу. */
   sellerPricePerInstance: number;
-  raw?: Record<string, unknown>;
 }
 
 export async function ozonRealization(
@@ -267,9 +266,9 @@ export async function ozonRealization(
         offerId: String(item.offer_id ?? ""),
         name: String(item.name ?? ""),
         quantity: Number(delivery.quantity ?? 0),
+        // Цена покупателя лежит в блоке доставки, цена продавца — на верхнем уровне строки.
         pricePerInstance: Number(delivery.price_per_instance ?? 0),
-        sellerPricePerInstance: Number(delivery.seller_price_per_instance ?? 0),
-        raw: row,
+        sellerPricePerInstance: Number(row.seller_price_per_instance ?? 0),
       });
     }
     return { ok: true, rows, rawSample: rawRows.slice(0, 2) };
