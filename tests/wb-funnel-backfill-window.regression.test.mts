@@ -14,12 +14,12 @@ const at = (iso: string) => new Date(`${iso}T09:00:00.000Z`).getTime();
 test("обычный прогон забирает окно дозаписи, а не один вчерашний день", () => {
   const period = syncFunnelPeriod("https://app/api/sync/funnel", at("2026-08-15"));
   assert.equal(period.end, "2026-08-14");
-  assert.equal(period.begin, "2026-08-12");
+  assert.equal(period.begin, "2026-08-08");
   assert.equal(period.mode, "recent");
 });
 
 test("окно дозаписи не длиннее лимита WB в семь дней", () => {
-  assert.ok(FUNNEL_BACKFILL_DAYS >= 2, "одного дня недостаточно: WB дописывает данные позже");
+  assert.ok(FUNNEL_BACKFILL_DAYS >= 3, "узкое окно не чинит дни, занижённые пару дней назад");
   assert.ok(FUNNEL_BACKFILL_DAYS <= 7, "history принимает максимум 7 дней одним запросом");
 });
 

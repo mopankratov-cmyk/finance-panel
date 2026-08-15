@@ -6,8 +6,13 @@ export interface FunnelSyncPeriod { begin: string; end: string; mode: string }
  * Сколько последних закрытых дней перезабирать каждый прогон. WB дописывает
  * воронку с задержкой, и одного «вчера» недостаточно: сверка с кабинетом
  * показывала расхождение до 18% на отдельных днях.
+ *
+ * Берём всё окно, которое history отдаёт за один запрос. Трёх дней хватало для
+ * свежей дозаписи, но не чинило уже занижённые дни постарше — они ждали
+ * понедельничного восстановления, то есть до недели жили с неверными числами.
+ * Стоимость от ширины окна не зависит: это один запрос на батч SKU.
  */
-export const FUNNEL_BACKFILL_DAYS = 3;
+export const FUNNEL_BACKFILL_DAYS = 7;
 export interface FunnelCoverageRow { nm_id: number; date: string }
 
 function dateOnly(date: Date): string {
