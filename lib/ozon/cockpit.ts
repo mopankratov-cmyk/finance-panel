@@ -17,6 +17,7 @@ import { getPerfToken, isOzonPerformanceReportDeferredMessage, perfDailySpend, p
 import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 import { buyerDiscountForOffer, loadOzonBuyerDiscount, taxableOzonPrice } from "@/lib/ozon/buyerDiscount";
+import { loadCabinetUnitSettings, type CabinetUnitSettings } from "@/lib/unit/cabinetSettings";
 import {
   calculateOzonEconomyUnit,
   ozonAdCacheStatus,
@@ -749,6 +750,13 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
   const range = period(days);
   const cache = await loadAdCache(scope, days);
   const costs = await loadCosts();
+  // Налог и комиссия посредника задаются вручную на кабинет: у каждой компании
+  // свой режим, а посредник есть не везде. Кабинет без настройки считается по
+  // ставке экрана — прежнее поведение.
+  const db = getSupabaseAdmin();
+  const unitSettings = db
+    ? await loadCabinetUnitSettings(db, scope.cabinets.map((cabinet) => cabinet.id)).catch(() => new Map<string, CabinetUnitSettings>())
+    : new Map<string, CabinetUnitSettings>();
   const rows: Array<Record<string, unknown> & {
     units: number;
     revenue: number;
@@ -814,11 +822,15 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
       // налога нет. Комиссия и логистика остаются на цене продавца — их считает Ozon.
       const discountShare = buyerDiscountForOffer(buyerDiscount, offerId);
       const buyerPrice = taxableOzonPrice(salePrice, discountShare);
-      const tax = buyerPrice * taxPct / 100;
+      const cabinetSettings = unitSettings.get(cabinet.id);
+      const cabinetTaxPct = cabinetSettings?.taxPct ?? taxPct;
+      const extraCommissionPct = cabinetSettings?.extraCommissionPct ?? 0;
+      const extraCommission = salePrice * extraCommissionPct / 100;
+      const tax = buyerPrice * cabinetTaxPct / 100;
       const economy = calculateOzonEconomyUnit({
         price: salePrice,
         cost,
-        commission,
+        commission: commission + extraCommission,
         logistics,
         acquiring,
         ad: adPerUnit,
@@ -839,6 +851,12 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
         commission: r0(commission),
         logistics: r0(logistics),
         acquiring: r0(acquiring),
+        extraCommission: extraCommissionPct > 0 ? r0(extraCommission) : null,
+        // База налога: сколько заплатил покупатель после скидки Ozon. null —
+        // отчёт о реализации по этому товару фактов не дал.
+        buyerPrice: discountShare == null ? null : r0(buyerPrice),
+        ozonDiscountPct: discountShare == null ? null : r1(discountShare * 100),
+        taxPct: r1(cabinetTaxPct),
         ad: r0(adPerUnit),
         drr: pct(adPerUnit, salePrice),
         tax: r0(tax),
@@ -853,11 +871,24 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
   if (quality.missingCost > 0) {
     warnings.push(`Расчётная прибыль исключает ${quality.missingCost} SKU без себестоимости.`);
   }
+  // Панель настроек работает по одному кабинету: у разных компаний ставки разные,
+  // и показать их одной строкой на группу значило бы соврать про обе.
+  const singleCabinet = scope.cabinets.length === 1 ? scope.cabinets[0] : null;
+  const singleSettings = singleCabinet ? unitSettings.get(singleCabinet.id) : null;
   return {
     view: "economy",
     scope: publicScope(scope),
     period: { ...range, days },
     generatedAt: new Date().toISOString(),
+    settings: singleCabinet
+      ? {
+        cabinetId: singleCabinet.id,
+        taxPct: singleSettings?.taxPct ?? taxPct,
+        taxSource: singleSettings?.taxPct != null ? "cabinet" as const : "request" as const,
+        extraCommissionPct: singleSettings?.extraCommissionPct ?? 0,
+        extraCommissionSource: singleSettings?.extraCommissionPct != null ? "cabinet" as const : "none" as const,
+      }
+      : null,
     taxPct,
     summary: {
       ...financial,

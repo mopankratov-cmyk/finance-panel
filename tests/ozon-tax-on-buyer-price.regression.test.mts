@@ -103,8 +103,9 @@ test("юнит и кокпит Ozon считают налог от цены по
   ]);
   assert.match(route, /const taxRub = Math\.round\(\(buyerPrice \* taxPct\) \/ 100\)/);
   assert.doesNotMatch(route, /const taxRub = Math\.round\(\(price \* taxPct\) \/ 100\)/);
-  assert.match(cockpit, /const tax = buyerPrice \* taxPct \/ 100/);
-  assert.doesNotMatch(cockpit, /const tax = salePrice \* taxPct \/ 100/);
+  // Ставка берётся из настройки кабинета, но база остаётся ценой покупателя.
+  assert.match(cockpit, /const tax = buyerPrice \* cabinetTaxPct \/ 100/);
+  assert.doesNotMatch(cockpit, /const tax = salePrice \* /);
 });
 
 test("временная диагностика убрана из ответа юнита", async () => {

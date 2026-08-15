@@ -16,6 +16,13 @@ export interface UnitContribution {
    * и налог придётся считать от цены продавца (это завышает его на величину СПП).
    */
   sppShare?: number | null;
+  /**
+   * Ставка налога кабинета, %. `null` — не настроена, берётся общая ставка группы.
+   * У кабинетов разных юрлиц режимы разные, поэтому в группе нельзя считать одной.
+   */
+  taxPct?: number | null;
+  /** Дополнительная комиссия кабинета (посредник), % от цены продавца. */
+  extraCommissionPct?: number | null;
 }
 
 export interface AggregatedUnitRow {
@@ -31,6 +38,8 @@ export interface AggregatedUnitRow {
   marketplacePct: number | null;
   marketplacePerUnit: number | null;
   acquiringRub: number | null;
+  /** Дополнительная комиссия кабинетов группы, ₽. 0 — ни у кого не настроена. */
+  extraCommissionRub: number;
   taxRub: number;
   /** Выручка по цене покупателя (после СПП) — с неё и считается налог. */
   taxableRevenue: number;
@@ -83,9 +92,12 @@ export function aggregateUnitContributions(
     // оставить его прежним и показать это в покрытии.
     const taxableRevenue = sum((row) => row.revenue * (1 - (row.sppShare ?? 0)));
     const sppKnown = rows.some((row) => row.sppShare != null);
-    const taxRub = taxableRevenue * options.taxPct / 100;
+    // Ставка своя у каждого кабинета: одно юрлицо на УСН, другое на ОСНО — общая
+    // ставка на группу исказила бы обе стороны.
+    const taxRub = sum((row) => row.revenue * (1 - (row.sppShare ?? 0)) * (row.taxPct ?? options.taxPct) / 100);
+    const extraCommissionRub = sum((row) => row.revenue * (row.extraCommissionPct ?? 0) / 100);
     const marginBeforeAd = cogs != null && marketplaceRub != null && acquiringRub != null
-      ? revenue - cogs - fulfillment - marketplaceRub - acquiringRub - taxRub
+      ? revenue - cogs - fulfillment - marketplaceRub - acquiringRub - extraCommissionRub - taxRub
       : null;
     const margin = marginBeforeAd == null ? null : marginBeforeAd - adSpend;
     return {
@@ -101,6 +113,7 @@ export function aggregateUnitContributions(
       marketplacePct: marketplaceRub != null && revenue > 0 ? marketplaceRub / revenue * 100 : null,
       marketplacePerUnit: marketplaceRub != null && revenue > 0 && orders > 0 ? marketplaceRub / orders : null,
       acquiringRub,
+      extraCommissionRub,
       taxRub,
       taxableRevenue,
       sppKnown,

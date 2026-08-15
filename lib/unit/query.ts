@@ -1,11 +1,23 @@
+// Значение по умолчанию для кабинета, у которого налог не настроен.
+export const UNIT_DEFAULT_TAX_PCT = 7;
+
 export interface UnitMoneyQuery {
+  /** Эффективная ставка налога, если настройка кабинета не задана. */
   taxPct: number;
+  /**
+   * Ставка из запроса или null, если параметра не было. Отличать «прислали 7»
+   * от «не прислали» обязательно: иначе настройка кабинета никогда не сработает —
+   * её всегда перебивало бы значение по умолчанию.
+   */
+  taxPctRequested: number | null;
+  /** Дополнительная комиссия из запроса, % от цены продавца. null — параметра не было. */
+  extraCommissionPctRequested: number | null;
   ff: number;
   targetMargin: number;
 }
 
 export function validateUnitSingletonQuery(searchParams: URLSearchParams): void {
-  for (const name of ["cabinet", "from", "to", "tax", "ff", "margin", "refresh", "background"]) {
+  for (const name of ["cabinet", "from", "to", "tax", "extra", "ff", "margin", "refresh", "background"]) {
     if (searchParams.getAll(name).length > 1) {
       throw new Error(`Параметр ${name} должен быть указан один раз`);
     }
@@ -54,9 +66,22 @@ function singletonNumber(
 }
 
 export function parseUnitMoneyQuery(searchParams: URLSearchParams): UnitMoneyQuery {
+  const isPct = (value: number) => value >= 0 && value <= 100;
+  const taxPctRequested = optionalNumber(searchParams, "tax", isPct);
   return {
-    taxPct: singletonNumber(searchParams, "tax", 7, (value) => value >= 0 && value <= 100),
+    taxPct: taxPctRequested ?? UNIT_DEFAULT_TAX_PCT,
+    taxPctRequested,
+    extraCommissionPctRequested: optionalNumber(searchParams, "extra", isPct),
     ff: singletonNumber(searchParams, "ff", 0, (value) => value >= 0 && value <= 1_000_000),
     targetMargin: singletonNumber(searchParams, "margin", 25, (value) => value >= 0 && value < 100),
   };
+}
+
+function optionalNumber(
+  searchParams: URLSearchParams,
+  name: string,
+  isValid: (value: number) => boolean,
+): number | null {
+  if (searchParams.getAll(name).length === 0) return null;
+  return singletonNumber(searchParams, name, 0, isValid);
 }

@@ -43,6 +43,10 @@ const SELLER_READ_API_EXACT = [
   "/api/abc",
   "/api/adverts/list",
   "/api/cabinets",
+  // Настройки налога и доп. комиссии кабинета: читать нужно всем, кто смотрит
+  // юнит-экономику, менять — только director/finance (проверка в самом роуте,
+  // а сюда попадает только GET).
+  "/api/cabinet-settings/unit",
   "/api/ctrtest/adv-analysis",
   "/api/ctrtest/list",
   "/api/design/day-metrics",

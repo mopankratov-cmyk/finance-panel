@@ -19,6 +19,7 @@ import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 import { formatUnitPeriod, getDefaultUnitPeriod, parseUnitPeriodQuery } from "@/lib/unit/period";
+import { CabinetUnitSettings, type AppliedUnitSettings } from "@/components/unit/CabinetUnitSettings";
 
 interface UnitData {
   headers: string[];
@@ -26,6 +27,7 @@ interface UnitData {
   img_urls: string[];
   names: string[];
   meta_text: string;
+  settings?: AppliedUnitSettings;
   error?: string;
 }
 
@@ -271,6 +273,15 @@ export function WbUnitPage() {
       />
 
       <div className="px-2 py-3 sm:px-6">
+        <div className="mb-3">
+          <CabinetUnitSettings
+            cabinetId={cabinetId || null}
+            cabinetName={activeCabinet?.name}
+            canWrite={canWrite}
+            applied={data?.settings ?? null}
+            onSaved={() => setRetryKey((value) => value + 1)}
+          />
+        </div>
         <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3">
           <label className="text-[11px] font-medium text-slate-600">С
             <input type="date" value={draftPeriod.from} onChange={(event) => setDraftPeriod((current) => ({ ...current, from: event.target.value }))} className="mt-1 block min-h-10 rounded-lg border border-slate-200 px-2 text-xs" />

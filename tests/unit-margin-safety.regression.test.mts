@@ -14,13 +14,19 @@ test("unit cron auth requires a configured exact bearer", () => {
 });
 
 test("unit money controls preserve explicit zero and apply documented defaults", () => {
+  // Без параметров ставка налога не запрошена: только так роут поймёт, что можно
+  // взять настройку кабинета, а не перебивать её значением по умолчанию.
   assert.deepEqual(parseUnitMoneyQuery(new URLSearchParams()), {
     taxPct: 7,
+    taxPctRequested: null,
+    extraCommissionPctRequested: null,
     ff: 0,
     targetMargin: 25,
   });
-  assert.deepEqual(parseUnitMoneyQuery(new URLSearchParams("tax=0&ff=0&margin=0")), {
+  assert.deepEqual(parseUnitMoneyQuery(new URLSearchParams("tax=0&extra=0&ff=0&margin=0")), {
     taxPct: 0,
+    taxPctRequested: 0,
+    extraCommissionPctRequested: 0,
     ff: 0,
     targetMargin: 0,
   });

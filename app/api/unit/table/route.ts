@@ -7,7 +7,7 @@ import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commiss
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { formatUnitPeriod, parseUnitPeriodQuery, UNIT_PERIOD_TIMEZONE, unitPeriodCacheIdentity } from "@/lib/unit/period";
-import { parseUnitMoneyQuery, parseUnitRefreshQuery, validateUnitSingletonQuery } from "@/lib/unit/query";
+import { parseUnitMoneyQuery, parseUnitRefreshQuery, UNIT_DEFAULT_TAX_PCT, validateUnitSingletonQuery } from "@/lib/unit/query";
 import { mergeScopedUnitPeriodRows, type ScopedUnitCatalogRow, type ScopedUnitDailyRow, type ScopedUnitReferenceRow } from "@/lib/unit/scopedPeriodReport";
 import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -26,6 +26,12 @@ import { aggregateUnitContributions, type UnitContribution } from "@/lib/unit/gr
 import { mapLimitAllOrThrow } from "@/lib/unit/mapLimit";
 import { loadUnitProductScope } from "@/lib/unit/productScope";
 import { loadUnitSppRates, sppShareForNm, taxableUnitPrice } from "@/lib/unit/sppRates";
+import {
+  loadCabinetUnitSettings,
+  resolveExtraCommissionPct,
+  resolveTaxPct,
+  type CabinetUnitSettings,
+} from "@/lib/unit/cabinetSettings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -50,6 +56,9 @@ async function loadGroupPayload(
   scope: Extract<UnitResolvedScope, { mode: "group" }>,
   period: { from: string; to: string },
   money: { taxPct: number; ff: number; targetMargin: number },
+  // Налог у каждой компании свой, поэтому в группе он берётся по кабинету вклада,
+  // а не одной ставкой на всю группу.
+  cabinetSettings: Map<string, CabinetUnitSettings>,
 ) {
   const costsRes = await db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses");
   if (costsRes.error) throw new Error(costsRes.error.message);
@@ -158,6 +167,8 @@ async function loadGroupPayload(
         acquiringPct: rates.acquiringPct,
         ratesFactual: rates.factual,
         sppShare: sppShareForNm(sppRates, row.nm_id),
+        taxPct: cabinetSettings.get(cabinetId)?.taxPct ?? null,
+        extraCommissionPct: cabinetSettings.get(cabinetId)?.extraCommissionPct ?? null,
       };
     });
   });
@@ -183,6 +194,7 @@ async function loadGroupPayload(
       blank(row.marketplacePct == null ? null : round1(row.marketplacePct)),
       blank(row.marketplacePerUnit == null ? null : round0(row.marketplacePerUnit)),
       blank(row.acquiringRub == null || row.revenue <= 0 || row.orders <= 0 ? null : round0(row.acquiringRub / row.orders)),
+      blank(row.extraCommissionRub > 0 && row.orders > 0 ? round0(row.extraCommissionRub / row.orders) : null),
       round0(row.adSpend),
       blank(row.drrPct == null ? null : round1(row.drrPct)),
       blank(row.revenue > 0 && row.orders > 0 ? round0(row.taxRub / row.orders) : null),
@@ -201,7 +213,7 @@ async function loadGroupPayload(
     headers: [
       "", "", "Артикул", "Юрлицо", "SKU",
       "Текущий остаток + в пути", "Себес ₽/ед", "Цена до СПП ₽/ед", "Цена с СПП ₽/ед", "Заказы", "Выручка ₽",
-      "Продажи / заказы %", "Удержания WB %", "Удержания WB ₽/ед", "Эквайринг ₽/ед", "Реклама ₽",
+      "Продажи / заказы %", "Удержания WB %", "Удержания WB ₽/ед", "Эквайринг ₽/ед", "Комиссия кабинета ₽/ед", "Реклама ₽",
       "ДРР %", "Налог ₽/ед", "Маржа ₽/ед", "Маржа % до ДРР", "Вал % ПОСЛЕ ДРР",
       `Цена до СПП ₽/ед для ${money.targetMargin}% маржи`, "Дельта %",
     ],
@@ -284,13 +296,38 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Сервис кабинетов временно недоступен" }, { status: 503 });
   }
   const p_cabinet = scope.mode === "single" ? scope.cabinetId : null;
-  const { taxPct, ff, targetMargin } = money;
+  const { ff, targetMargin } = money;
   const allowedNmIds = scope.mode === "group" ? null : await requestAllowedNmIds(p_cabinet);
   const { forceRefresh, backgroundRefresh } = refresh;
 
+  // Налог и дополнительная комиссия задаются владельцем на кабинет: у каждой
+  // компании свой режим, а посредник есть не везде. Параметр запроса важнее
+  // настройки — на экране должно работать «а что если».
+  let cabinetSettings: Map<string, CabinetUnitSettings>;
+  try {
+    cabinetSettings = await loadCabinetUnitSettings(
+      db,
+      scope.mode === "group" ? scope.members : p_cabinet ? [p_cabinet] : null,
+    );
+  } catch {
+    cabinetSettings = new Map();
+  }
+  const settingsFor = (cabinetId: string | null) => (cabinetId ? cabinetSettings.get(cabinetId) ?? null : null);
+  const scopeSettings = settingsFor(p_cabinet);
+  const tax = resolveTaxPct({
+    requested: money.taxPctRequested,
+    cabinet: scopeSettings?.taxPct ?? null,
+    fallback: UNIT_DEFAULT_TAX_PCT,
+  });
+  const extraCommission = resolveExtraCommissionPct({
+    requested: money.extraCommissionPctRequested,
+    cabinet: scopeSettings?.extraCommissionPct ?? null,
+  });
+  const taxPct = tax.taxPct;
+
   const buildPayload = async () => {
     if (scope.mode === "group") {
-      return loadGroupPayload(db, scope, period, money);
+      return loadGroupPayload(db, scope, period, money, cabinetSettings);
     }
     const [rpcRes, costsRes, comm, sppRates] = await Promise.all([
       db.rpc("unit_report_period", { p_cabinet, p_from: period.from, p_to: period.to }),
@@ -378,6 +415,8 @@ export async function GET(req: NextRequest) {
       if (rates.factual) factualRatesKnown++;
       const marketplaceRub = price * rates.marketplacePct / 100;
       const acqRub = price * rates.acquiringPct / 100;
+      // Комиссия посредника берётся с цены продавца — как и комиссия площадки.
+      const extraCommissionRub = price * extraCommission.extraCommissionPct / 100;
       // Налог платится с того, что заплатил покупатель, — с цены ПОСЛЕ СПП.
       // Удержания WB и эквайринг остаются на цене продавца: их WB считает от неё.
       const sppShare = sppShareForNm(sppRates, r.nm_id);
@@ -386,7 +425,7 @@ export async function GET(req: NextRequest) {
       const taxRub = priceWithSpp * taxPct / 100;
       const canCalculate = price > 0 && costKnown && rates.factual;
       // Маржа ДО ДРР (без рекламы)
-      const marginBeforeDrr = canCalculate ? price - cost - ff - marketplaceRub - acqRub - taxRub : null;
+      const marginBeforeDrr = canCalculate ? price - cost - ff - marketplaceRub - acqRub - extraCommissionRub - taxRub : null;
       const marginBeforeDrrPct = marginBeforeDrr != null ? (marginBeforeDrr / price) * 100 : null;
       // Маржа/ед и вал % ПОСЛЕ ДРР (минус реклама)
       const marginUnit = marginBeforeDrr != null ? marginBeforeDrr - adPerUnit : null;
@@ -395,7 +434,7 @@ export async function GET(req: NextRequest) {
       // Налог берётся с цены после СПП, значит к цене продавца его ставка эффективно
       // ниже в (1 − СПП) раз — иначе решатель требовал бы цену выше нужной.
       const effectiveTaxPct = taxPct * (price > 0 ? priceWithSpp / price : 1);
-      const den = 1 - (rates.marketplacePct + rates.acquiringPct + effectiveTaxPct + drr + targetMargin) / 100;
+      const den = 1 - (rates.marketplacePct + rates.acquiringPct + extraCommission.extraCommissionPct + effectiveTaxPct + drr + targetMargin) / 100;
       const targetPrice = canCalculate && den > 0 ? (cost + ff) / den : null;
       const deltaPct = targetPrice && price > 0 ? ((price - targetPrice) / targetPrice) * 100 : null;
 
@@ -415,14 +454,15 @@ export async function GET(req: NextRequest) {
         blank(rates.factual ? r1(rates.marketplacePct) : null), // 12 комиссия + логистика/хранение/прочие WB
         blank(price > 0 && rates.factual ? r0(marketplaceRub) : null), // 13 удержания WB ₽
         blank(price > 0 && rates.factual ? r0(acqRub) : null), // 14 Эквайринг ₽
-        r0(ad),                               // 15 Реклама ₽
-        r1(drr),                              // 16 ДРР %
-        blank(price > 0 ? r0(taxRub) : null), // 17 Налог ₽
-        blank(marginUnit != null ? r0(marginUnit) : null), // 18 Маржа/ед ₽
-        marginBeforeDrrPct != null ? r1(marginBeforeDrrPct) : "", // 19 Маржа % до ДРР
-        valAfterDrrPct != null ? r1(valAfterDrrPct) : "",          // 20 Вал % ПОСЛЕ ДРР
-        targetPrice != null ? r0(targetPrice) : "",                // 21 Цена до СПП для N% маржи
-        deltaPct != null ? r1(deltaPct) : "",                      // 22 Дельта %
+        blank(price > 0 && extraCommission.extraCommissionPct > 0 ? r0(extraCommissionRub) : null), // 15 Комиссия кабинета ₽
+        r0(ad),                               // 16 Реклама ₽
+        r1(drr),                              // 17 ДРР %
+        blank(price > 0 ? r0(taxRub) : null), // 18 Налог ₽
+        blank(marginUnit != null ? r0(marginUnit) : null), // 19 Маржа/ед ₽
+        marginBeforeDrrPct != null ? r1(marginBeforeDrrPct) : "", // 20 Маржа % до ДРР
+        valAfterDrrPct != null ? r1(valAfterDrrPct) : "",          // 21 Вал % ПОСЛЕ ДРР
+        targetPrice != null ? r0(targetPrice) : "",                // 22 Цена до СПП для N% маржи
+        deltaPct != null ? r1(deltaPct) : "",                      // 23 Дельта %
       ]);
       img_urls.push(wbCardImageUrl(r.nm_id));
       names.push(m?.name || "");
@@ -434,7 +474,7 @@ export async function GET(req: NextRequest) {
       headers: [
         "", "", "Артикул", "Юрлицо", "SKU",
         "Остаток + в пути", "Себес ₽", "Цена до СПП ₽", "Цена с СПП ₽", "Заказы", "Выручка ₽",
-        "Выкуп %", "Удержания WB %", "Удержания WB ₽", "Эквайринг ₽", "Реклама ₽",
+        "Выкуп %", "Удержания WB %", "Удержания WB ₽", "Эквайринг ₽", "Комиссия кабинета ₽", "Реклама ₽",
         "ДРР %", "Налог ₽", "Маржа/ед ₽", "Маржа % до ДРР", "Вал % ПОСЛЕ ДРР",
         `Цена до СПП для ${targetMargin}% маржи`, "Дельта %",
       ],
@@ -443,7 +483,14 @@ export async function GET(req: NextRequest) {
       names,
       source_url: null,
       coverage: { total: totalRows, costsKnown, factualRatesKnown, complete: completeRows, sppKnown },
-      meta_text: `Юнит по ${totalRows} SKU · полный факт ${completeRows}/${totalRows} · себестоимость ${costsKnown}/${totalRows} · ставки WB ${factualRatesKnown}/${totalRows} · налог ${taxPct}% с цены после СПП, СПП по факту продаж периода ${sppKnown}/${totalRows} · ${formatUnitPeriod(period)}`,
+      settings: {
+        taxPct,
+        taxSource: tax.source,
+        extraCommissionPct: extraCommission.extraCommissionPct,
+        extraCommissionSource: extraCommission.source,
+        cabinetId: p_cabinet,
+      },
+      meta_text: `Юнит по ${totalRows} SKU · полный факт ${completeRows}/${totalRows} · себестоимость ${costsKnown}/${totalRows} · ставки WB ${factualRatesKnown}/${totalRows} · налог ${taxPct}%${tax.source === "cabinet" ? " (настройка кабинета)" : ""} с цены после СПП, СПП по факту продаж периода ${sppKnown}/${totalRows}${extraCommission.extraCommissionPct > 0 ? ` · комиссия кабинета ${extraCommission.extraCommissionPct}%` : ""} · ${formatUnitPeriod(period)}`,
       periodFrom: period.from,
       periodTo: period.to,
       timezone: UNIT_PERIOD_TIMEZONE,
@@ -456,6 +503,9 @@ export async function GET(req: NextRequest) {
       from: period.from,
       to: period.to,
       taxPct,
+      // Ставка налога и комиссия кабинета входят в ключ: иначе после смены
+      // настройки экран отдал бы снимок, посчитанный по прежней ставке.
+      extraCommissionPct: extraCommission.extraCommissionPct,
       ff,
       targetMargin,
     });

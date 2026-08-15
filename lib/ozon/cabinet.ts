@@ -196,7 +196,7 @@ export async function listOzonScopeDescriptors(): Promise<OzonCabinetScopeDescri
 
 // Креды активного Ozon-кабинета из БД (общий для всех Ozon-эндпоинтов).
 export async function getActiveOzonCreds(cabinetId?: string | null): Promise<
-  { ok: true; creds: OzonCreds; name: string; perf: { clientId: string; secret: string } | null } | { ok: false; error: string }
+  { ok: true; id: string; creds: OzonCreds; name: string; perf: { clientId: string; secret: string } | null } | { ok: false; error: string }
 > {
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "Supabase не настроен" };
@@ -210,5 +210,6 @@ export async function getActiveOzonCreds(cabinetId?: string | null): Promise<
   const cab = data?.[0];
   if (!cab?.client_id || !cab?.token) return { ok: false, error: "Нет подключённого Ozon-кабинета" };
   const perf = cab.perf_client_id && cab.perf_secret ? { clientId: cab.perf_client_id as string, secret: cab.perf_secret as string } : null;
-  return { ok: true, creds: { clientId: cab.client_id as string, apiKey: cab.token as string }, name: cab.name as string, perf };
+  // id нужен для настроек кабинета (налог, комиссия посредника) — они хранятся по нему.
+  return { ok: true, id: String(cab.id), creds: { clientId: cab.client_id as string, apiKey: cab.token as string }, name: cab.name as string, perf };
 }

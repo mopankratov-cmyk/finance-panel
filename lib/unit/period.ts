@@ -1,7 +1,9 @@
 export const UNIT_PERIOD_TIMEZONE = "Europe/Moscow";
+// v5 — налог и дополнительная комиссия берутся из настроек кабинета, в таблице
+// появилась колонка «Комиссия кабинета ₽».
 // v4 — налог считается с цены после СПП, в таблице появилась колонка «Цена с СПП ₽».
 // Версия входит в ключ часового кэша: без неё экран отдавал бы старые снимки со старой формулой.
-export const UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v4";
+export const UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v5";
 
 export interface UnitPeriod {
   from: string;
@@ -62,6 +64,8 @@ export function unitPeriodCacheIdentity(input: {
   from: string;
   to: string;
   taxPct: number;
+  /** Дополнительная комиссия кабинета, % — тоже меняет числа, значит и ключ снимка. */
+  extraCommissionPct?: number;
   ff: number;
   targetMargin: number;
 }) {
