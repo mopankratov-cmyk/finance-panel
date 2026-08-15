@@ -884,7 +884,9 @@ export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct:
       ? {
         cabinetId: singleCabinet.id,
         taxPct: singleSettings?.taxPct ?? taxPct,
-        taxSource: singleSettings?.taxPct != null ? "cabinet" as const : "request" as const,
+        // Экран ставку не передаёт: без настройки кабинета работает значение по
+        // умолчанию, и подписывать его «введено на экране» было бы неправдой.
+        taxSource: singleSettings?.taxPct != null ? "cabinet" as const : "default" as const,
         extraCommissionPct: singleSettings?.extraCommissionPct ?? 0,
         extraCommissionSource: singleSettings?.extraCommissionPct != null ? "cabinet" as const : "none" as const,
       }
