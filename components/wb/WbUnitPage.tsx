@@ -6,6 +6,7 @@ import {
   Gem,
   Loader2,
   RefreshCw,
+  Search,
   WalletCards,
   X,
 } from "lucide-react";
@@ -65,6 +66,44 @@ const show = (value: string | number) => {
 
 const rub = (value: number | null | undefined) => value == null ? "—" : `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 
+// Колонки в шапке сгруппированы по смыслу: сколько получили, сколько отдали,
+// что осталось. Без этого 18 одинаковых столбцов читаются как сплошная стена.
+const COLUMN_GROUPS: Array<{ title: string; headers: string[]; tone: string }> = [
+  { title: "Товар", headers: ["Юрлицо", "SKU", "Остаток + в пути", "Себес ₽"], tone: "text-slate-500" },
+  { title: "Продажи", headers: ["Цена до СПП ₽", "Цена с СПП ₽", "Заказы", "Выручка ₽", "Выкуп %"], tone: "text-sky-700" },
+  { title: "Расходы", headers: ["Удержания WB %", "Удержания WB ₽", "Эквайринг ₽", "Комиссия кабинета ₽", "Реклама ₽", "ДРР %", "Налог ₽"], tone: "text-amber-700" },
+  { title: "Итог", headers: ["Маржа/ед ₽", "Маржа % до ДРР", "Вал % ПОСЛЕ ДРР"], tone: "text-emerald-700" },
+];
+
+function groupSpans(headers: string[]): Array<{ title: string; span: number; tone: string }> {
+  const spans: Array<{ title: string; span: number; tone: string }> = [];
+  for (const header of headers) {
+    const group = COLUMN_GROUPS.find((candidate) => candidate.headers.includes(header));
+    const title = group?.title ?? "Цель";
+    const tone = group?.tone ?? "text-violet-700";
+    const last = spans[spans.length - 1];
+    if (last && last.title === title) last.span += 1;
+    else spans.push({ title, span: 1, tone });
+  }
+  return spans;
+}
+
+function SummaryCard({ label, value, detail, tone = "slate" }: { label: string; value: string; detail?: string; tone?: "slate" | "emerald" | "rose" | "violet" }) {
+  const toneClass = {
+    slate: "text-slate-900",
+    emerald: "text-emerald-700",
+    rose: "text-rose-600",
+    violet: "text-violet-700",
+  }[tone];
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
+      <div className={`mt-0.5 text-lg font-bold tabular-nums ${toneClass}`}>{value}</div>
+      {detail ? <div className="mt-0.5 text-[10px] text-slate-400">{detail}</div> : null}
+    </div>
+  );
+}
+
 function valueTone(header: string, value: string | number) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "text-slate-600";
@@ -83,6 +122,8 @@ export function WbUnitPage() {
   const [refreshing, setRefreshing] = useState<"prices" | "stocks" | "cogs" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [category, setCategory] = useDashboardFilter<string>("category", "");
+  const [query, setQuery] = useState("");
+  const [onlyProblem, setOnlyProblem] = useState(false);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 18 });
   const [solverOpen, setSolverOpen] = useState(false);
   const [solver, setSolver] = useState<PriceSolverData | null>(null);
@@ -152,11 +193,83 @@ export function WbUnitPage() {
     }
   };
 
-  const filteredIndices = useMemo(() => (data?.rows ?? []).map((_, index) => index).filter((index) => {
-    if (!category) return true;
-    const article = String(data!.rows[index][2]);
-    return category === "__none" ? !byArticle[article] : byArticle[article] === category;
-  }), [byArticle, category, data]);
+  // Индексы колонок ищем по заголовку, а не по позиции: набор колонок меняется
+  // (появились «Цена с СПП» и «Комиссия кабинета»), а сводка должна оставаться верной.
+  const columns = useMemo(() => {
+    const headers = data?.headers ?? [];
+    const find = (label: string) => headers.findIndex((header) => header === label);
+    return {
+      cost: find("Себес ₽"),
+      orders: find("Заказы"),
+      revenue: find("Выручка ₽"),
+      marginUnit: find("Маржа/ед ₽"),
+      marginPct: find("Маржа % до ДРР"),
+    };
+  }, [data?.headers]);
+
+  const numberAt = (row: (string | number)[], index: number): number | null => {
+    if (index < 0) return null;
+    const value = Number(row[index]);
+    return Number.isFinite(value) ? value : null;
+  };
+
+  const filteredIndices = useMemo(() => {
+    const rows = data?.rows ?? [];
+    const needle = query.trim().toLocaleLowerCase("ru-RU");
+    return rows.map((_, index) => index).filter((index) => {
+      const row = rows[index];
+      const article = String(row[2]);
+      if (category) {
+        const matches = category === "__none" ? !byArticle[article] : byArticle[article] === category;
+        if (!matches) return false;
+      }
+      if (onlyProblem) {
+        const margin = numberAt(row, columns.marginUnit);
+        const cost = numberAt(row, columns.cost);
+        // Проблемный SKU — либо в минусе, либо считать нечем: без себестоимости
+        // маржа не рассчитана, и такую строку тоже надо уметь быстро найти.
+        if (!(margin != null && margin < 0) && !(cost == null || cost <= 0)) return false;
+      }
+      if (!needle) return true;
+      const name = String(data?.names[index] ?? "");
+      return `${article} ${name}`.toLocaleLowerCase("ru-RU").includes(needle);
+    });
+  }, [byArticle, category, columns.cost, columns.marginUnit, data, onlyProblem, query]);
+
+  // Сводка считается по отфильтрованным строкам: цифры наверху должны совпадать
+  // с тем, что человек видит в таблице, а не с полным кабинетом.
+  const summary = useMemo(() => {
+    const rows = data?.rows ?? [];
+    let revenue = 0;
+    let profit = 0;
+    let profitRevenue = 0;
+    let negative = 0;
+    let costKnown = 0;
+    for (const index of filteredIndices) {
+      const row = rows[index];
+      const rowRevenue = numberAt(row, columns.revenue) ?? 0;
+      const orders = numberAt(row, columns.orders) ?? 0;
+      const marginUnit = numberAt(row, columns.marginUnit);
+      const cost = numberAt(row, columns.cost);
+      revenue += rowRevenue;
+      if (cost != null && cost > 0) costKnown++;
+      if (marginUnit != null) {
+        profit += marginUnit * orders;
+        profitRevenue += rowRevenue;
+        if (marginUnit < 0) negative++;
+      }
+    }
+    return {
+      sku: filteredIndices.length,
+      revenue,
+      profit,
+      // Маржа считается только по SKU, где она вообще посчитана, иначе процент
+      // размывался бы выручкой строк без себестоимости.
+      marginPct: profitRevenue > 0 ? (profit / profitRevenue) * 100 : null,
+      negative,
+      costKnown,
+    };
+  }, [columns.cost, columns.marginUnit, columns.orders, columns.revenue, data?.rows, filteredIndices]);
 
   const { sorted: indices, sortField, sortDir, toggleSort } = useSort(filteredIndices, (rowIndex, field) => {
     const value = data?.rows[rowIndex]?.[Number(field)];
@@ -282,15 +395,47 @@ export function WbUnitPage() {
             onSaved={() => setRetryKey((value) => value + 1)}
           />
         </div>
-        <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3">
-          <label className="text-[11px] font-medium text-slate-600">С
-            <input type="date" value={draftPeriod.from} onChange={(event) => setDraftPeriod((current) => ({ ...current, from: event.target.value }))} className="mt-1 block min-h-10 rounded-lg border border-slate-200 px-2 text-xs" />
+        {data && !loading && !error ? (
+          <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <SummaryCard label="SKU" value={summary.sku.toLocaleString("ru-RU")} detail={`себестоимость у ${summary.costKnown}`} />
+            <SummaryCard label="Выручка" value={rub(summary.revenue)} detail={formatUnitPeriod(appliedPeriod)} />
+            <SummaryCard label="Прибыль" value={rub(summary.profit)} detail="после ДРР и налога" tone={summary.profit < 0 ? "rose" : "emerald"} />
+            <SummaryCard
+              label="Маржа"
+              value={summary.marginPct == null ? "—" : `${summary.marginPct.toFixed(1)}%`}
+              detail="по SKU с себестоимостью"
+              tone={summary.marginPct != null && summary.marginPct < 0 ? "rose" : "emerald"}
+            />
+            <SummaryCard label="В минусе" value={summary.negative.toLocaleString("ru-RU")} detail="SKU с отрицательной маржой" tone={summary.negative ? "rose" : "emerald"} />
+          </div>
+        ) : null}
+
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+          <label className="relative min-w-[200px] flex-1 sm:max-w-xs">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Поиск по артикулу или названию"
+              aria-label="Поиск товара"
+              className="h-10 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+            />
           </label>
-          <label className="text-[11px] font-medium text-slate-600">По
-            <input type="date" value={draftPeriod.to} onChange={(event) => setDraftPeriod((current) => ({ ...current, to: event.target.value }))} className="mt-1 block min-h-10 rounded-lg border border-slate-200 px-2 text-xs" />
+          <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-[11px] font-medium text-slate-600">
+            <input type="checkbox" checked={onlyProblem} onChange={(event) => setOnlyProblem(event.target.checked)} className="h-3.5 w-3.5 accent-violet-600" />
+            Только проблемные
           </label>
-          <button type="button" onClick={applyPeriod} className="min-h-10 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-700">Применить</button>
-          <span className="pb-2 text-xs text-slate-500">{formatUnitPeriod(appliedPeriod)}</span>
+          <span className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />
+          <label className="flex h-10 items-center gap-1.5 text-[11px] font-medium text-slate-500">
+            С
+            <input type="date" value={draftPeriod.from} onChange={(event) => setDraftPeriod((current) => ({ ...current, from: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-violet-400" />
+          </label>
+          <label className="flex h-10 items-center gap-1.5 text-[11px] font-medium text-slate-500">
+            по
+            <input type="date" value={draftPeriod.to} onChange={(event) => setDraftPeriod((current) => ({ ...current, to: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-violet-400" />
+          </label>
+          <button type="button" onClick={applyPeriod} className="h-10 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">Применить</button>
+          <span className="ml-auto text-[11px] text-slate-400">{formatUnitPeriod(appliedPeriod)}</span>
           {periodError ? <span role="alert" className="w-full text-xs text-rose-600">{periodError}</span> : null}
         </div>
         {message ? <div role="status" className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{message}</div> : null}
@@ -305,17 +450,44 @@ export function WbUnitPage() {
           <WbEmptyState>Нет данных. Проверьте синхронизацию WB и себестоимость.</WbEmptyState>
         ) : (
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-              Юнит-экономика по {indices.length} SKU · {activeCabinet?.name ?? "все кабинеты"}
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2 text-[11px] text-slate-500">
+              <span className="font-semibold text-slate-700">{activeCabinet?.name ?? "Все кабинеты"}</span>
+              <span className="text-slate-300">·</span>
+              <span>{indices.length === (data.rows.length) ? `${indices.length} SKU` : `${indices.length} из ${data.rows.length} SKU`}</span>
+              {summary.negative ? (
+                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">{summary.negative} в минусе</span>
+              ) : null}
+              <span className="ml-auto text-[10px] text-slate-400">Клик по заголовку — сортировка</span>
             </div>
-            <div className="max-h-[calc(100vh-190px)] min-h-[360px] overflow-auto overscroll-contain" onScroll={(event) => updateRowWindow(event.currentTarget)}>
-              <table className="hidden w-full min-w-[1500px] border-collapse text-[11px] md:table">
-                <thead className="sticky top-0 z-30 bg-slate-800 text-white">
-                  <tr className="h-[34px]">
-                    <th onClick={() => toggleSort("2")} className="sticky left-0 z-40 w-[245px] min-w-[245px] cursor-pointer select-none border-r border-slate-600 bg-slate-800 px-3 text-left font-semibold hover:bg-slate-700">Артикул{sortGlyph(sortField === "2", sortDir)}</th>
+            <div className="max-h-[calc(100vh-260px)] min-h-[360px] overflow-auto overscroll-contain" onScroll={(event) => updateRowWindow(event.currentTarget)}>
+              <table className="hidden w-full min-w-[1560px] border-collapse text-[11px] md:table">
+                <thead className="sticky top-0 z-30">
+                  <tr className="h-[26px] bg-slate-100/90 backdrop-blur">
+                    <th className="sticky left-0 z-40 w-[245px] min-w-[245px] border-b border-r border-slate-200 bg-slate-100/90 px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">Товар</th>
+                    {groupSpans(data.headers.slice(FIRST_DATA_COL)).map((group, index) => (
+                      <th
+                        key={`${group.title}-${index}`}
+                        colSpan={group.span}
+                        className={`border-b border-r border-slate-200 px-2 text-center text-[10px] font-semibold uppercase tracking-wide last:border-r-0 ${group.tone}`}
+                      >
+                        {group.title}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr className="h-[34px] bg-white">
+                    <th onClick={() => toggleSort("2")} className="sticky left-0 z-40 w-[245px] min-w-[245px] cursor-pointer select-none border-b border-r border-slate-200 bg-white px-3 text-left font-semibold text-slate-600 hover:text-violet-700">Артикул{sortGlyph(sortField === "2", sortDir)}</th>
                     {data.headers.slice(FIRST_DATA_COL).map((header, index) => {
                       const field = String(FIRST_DATA_COL + index);
-                      return <th key={`${header}-${index}`} onClick={() => toggleSort(field)} className="min-w-[80px] cursor-pointer select-none border-r border-slate-600 px-2 text-right font-semibold last:border-r-0 hover:bg-slate-700">{header}{sortGlyph(sortField === field, sortDir)}</th>;
+                      const active = sortField === field;
+                      return (
+                        <th
+                          key={`${header}-${index}`}
+                          onClick={() => toggleSort(field)}
+                          className={`min-w-[84px] cursor-pointer select-none border-b border-r border-slate-200 px-2 text-right font-semibold last:border-r-0 hover:text-violet-700 ${active ? "text-violet-700" : "text-slate-500"}`}
+                        >
+                          {header}{sortGlyph(active, sortDir)}
+                        </th>
+                      );
                     })}
                   </tr>
                 </thead>
@@ -323,15 +495,33 @@ export function WbUnitPage() {
                   {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={data.headers.length} /></tr> : null}
                   {indices.slice(rowWindow.start, rowWindow.end).map((rowIndex) => {
                     const row = data.rows[rowIndex];
+                    const marginUnit = numberAt(row, columns.marginUnit);
+                    const negative = marginUnit != null && marginUnit < 0;
                     return (
-                      <tr key={`${row[2]}-${rowIndex}`} className="group h-[49px] border-b border-slate-200 hover:bg-violet-50/30">
-                        <td className="sticky left-0 z-20 border-r border-slate-200 bg-white px-2 group-hover:bg-[#fbfaff]">
+                      <tr key={`${row[2]}-${rowIndex}`} className={`group h-[49px] border-b border-slate-100 transition-colors hover:bg-violet-50/40 ${negative ? "bg-rose-50/40" : ""}`}>
+                        <td className={`sticky left-0 z-20 border-r border-slate-200 px-2 shadow-[1px_0_0_rgba(226,232,240,0.9)] ${negative ? "bg-rose-50/80" : "bg-white"} group-hover:bg-[#fbfaff]`}>
                           <div className="flex min-w-0 items-center gap-2">
-                            <WbProductImage nm={Number(row[4])} src={data.img_urls[rowIndex]} className="h-8 w-8 shrink-0 rounded border border-slate-100 bg-slate-50 object-cover" />
-                            <div className="min-w-0"><div className="truncate font-semibold text-slate-700">{show(row[2])}</div><div className="max-w-[185px] truncate text-[9px] text-slate-400">{data.names[rowIndex]}</div></div>
+                            <WbProductImage nm={Number(row[4])} src={data.img_urls[rowIndex]} className="h-9 w-9 shrink-0 rounded-md border border-slate-100 bg-slate-50 object-cover" />
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-slate-700">{show(row[2])}</div>
+                              <div className="max-w-[185px] truncate text-[9px] text-slate-400">{data.names[rowIndex]}</div>
+                            </div>
                           </div>
                         </td>
-                        {row.slice(FIRST_DATA_COL).map((value, columnIndex) => <td key={columnIndex} className={`border-r border-slate-200 px-2 text-right tabular-nums whitespace-nowrap last:border-r-0 ${valueTone(data.headers[FIRST_DATA_COL + columnIndex] || "", value)}`}>{show(value)}</td>)}
+                        {row.slice(FIRST_DATA_COL).map((value, columnIndex) => {
+                          const header = data.headers[FIRST_DATA_COL + columnIndex] || "";
+                          // Итоговые колонки выделены: глаз должен цепляться за маржу,
+                          // а не за середину строки с удержаниями.
+                          const strong = /маржа|вал %/i.test(header);
+                          return (
+                            <td
+                              key={columnIndex}
+                              className={`border-r border-slate-100 px-2 text-right tabular-nums whitespace-nowrap last:border-r-0 ${strong ? "font-semibold" : ""} ${valueTone(header, value)}`}
+                            >
+                              {show(value)}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}
