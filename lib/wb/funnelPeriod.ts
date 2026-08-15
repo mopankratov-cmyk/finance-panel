@@ -1,6 +1,13 @@
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 export interface FunnelSyncPeriod { begin: string; end: string; mode: string }
+
+/**
+ * Сколько последних закрытых дней перезабирать каждый прогон. WB дописывает
+ * воронку с задержкой, и одного «вчера» недостаточно: сверка с кабинетом
+ * показывала расхождение до 18% на отдельных днях.
+ */
+export const FUNNEL_BACKFILL_DAYS = 3;
 export interface FunnelCoverageRow { nm_id: number; date: string }
 
 function dateOnly(date: Date): string {
@@ -37,7 +44,17 @@ export function syncFunnelPeriod(url: string, nowMs = Date.now()): FunnelSyncPer
     };
   }
 
-  return { begin: dateOnly(yesterday), end: dateOnly(yesterday), mode: "yesterday" };
+  // WB дописывает заказы в воронке задним числом: день, забранный сразу после
+  // полуночи, через сутки подрастает. Раньше синк тянул ровно «вчера» и больше к
+  // этому дню не возвращался — проверка покрытия видит строку и считает день
+  // закрытым, даже если в ней заниженное число. Из-за этого отдельные дни
+  // навсегда оставались меньше кабинета на 8-18%.
+  //
+  // Просим окно дозаписи целиком. Стоимость та же: history принимает диапазон до
+  // 7 дней одним запросом, а upsert перезаписывает уже сохранённые дни свежими.
+  const begin = new Date(yesterday);
+  begin.setUTCDate(begin.getUTCDate() - (FUNNEL_BACKFILL_DAYS - 1));
+  return { begin: dateOnly(begin), end: dateOnly(yesterday), mode: "recent" };
 }
 
 /**
