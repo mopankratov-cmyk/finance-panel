@@ -52,6 +52,7 @@ import {
 } from "@/lib/rnp/operatingMatrix";
 import { RNP_DEFAULT_TURNOVER_WINDOW_DAYS } from "@/lib/rnp/warmupPlan";
 import { appendTaxMetrics, RNP_DEFAULT_TAX_PCT } from "@/lib/rnp/taxMetrics";
+import { composeRnpSummaryFromSkus } from "@/lib/rnp/summaryFromSkus";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import {
   RnpOperatingToolbar,
@@ -958,11 +959,21 @@ export function WbRnpPage() {
     return () => controller.abort();
   }, [cabinetId, hasExactCabinet]);
 
-  const previousSkuByNm = useMemo(
+  const activePrevious = useMemo(
     // Прошлый период тоже считаем по текущей ставке — иначе дельта по чистой
-    // прибыли сравнивала бы налог с его отсутствием.
-    () => new Map((withTax(previousData)?.skus ?? []).map((sku) => [sku.nm, sku])),
-    [previousData, withTax],
+    // прибыли сравнивала бы налог с его отсутствием. И в той же гранулярности,
+    // что текущий — иначе первая недельная колонка сравнивалась бы с одним днём.
+    () => {
+      const base = withTax(previousData);
+      if (!base || granularity === "day") return base;
+      const previous = previousEqualRange(range.from, range.to);
+      return aggregateRnpWeekly(base, previous.from);
+    },
+    [granularity, previousData, range.from, range.to, withTax],
+  );
+  const previousSkuByNm = useMemo(
+    () => new Map((activePrevious?.skus ?? []).map((sku) => [sku.nm, sku])),
+    [activePrevious],
   );
   const tagsByNm = useMemo(() => {
     const map = new Map<number, string[]>();
@@ -984,6 +995,9 @@ export function WbRnpPage() {
   }, [journal]);
   const anomalyByNm = useMemo(() => {
     const map = new Map<number, RnpAnomaly[]>();
+    // Пороги откалиброваны по ДНЕВНЫМ колонкам — в недельной гранулярности
+    // детектор молчит целиком (и чип выключен, и значки на карточках).
+    if (granularity === "week") return map;
     // Пороги по каждой метрике + дефицит остатка + серии падения подряд.
     const thresholds = scaleAnomalyThresholds(anomalyThreshold);
     for (const sku of activeData?.skus ?? []) {
@@ -991,7 +1005,7 @@ export function WbRnpPage() {
       if (anomalies.length) map.set(sku.nm, anomalies);
     }
     return map;
-  }, [activeData?.skus, anomalyThreshold, previousSkuByNm]);
+  }, [activeData?.skus, anomalyThreshold, granularity, previousSkuByNm]);
 
   const brands = useMemo(
     () => rnpBrandOptions(activeData?.skus ?? []),
@@ -1128,10 +1142,23 @@ export function WbRnpPage() {
     () => RNP_METRIC_FIELDS.map((field) => ({ field, label: METRIC_FALLBACKS[field]?.label ?? field })),
     [],
   );
-  const previousSummaryByField = useMemo(
-    () => new Map((withTax(previousData)?.summary ?? []).map((metric) => [metric.field, metric])),
-    [previousData, withTax],
-  );
+  // Сводка честна к фильтрам: выбран бренд/категория/тег — и сводка, и её
+  // дельты пересобираются по тому же набору артикулов, а не по всему кабинету.
+  const summaryFiltered = activeData != null && sortedSkus.length !== activeData.skus.length;
+  const displaySummary = useMemo(() => {
+    if (!activeData) return [];
+    if (!summaryFiltered) return activeData.summary;
+    return composeRnpSummaryFromSkus(activeData.summary, sortedSkus, turnoverWindowDays);
+  }, [activeData, sortedSkus, summaryFiltered, turnoverWindowDays]);
+  const previousSummaryByField = useMemo(() => {
+    const summary = activePrevious?.summary ?? [];
+    if (!summaryFiltered || !activePrevious) {
+      return new Map(summary.map((metric) => [metric.field, metric]));
+    }
+    const visibleNms = new Set(sortedSkus.map((sku) => sku.nm));
+    const previousSkus = activePrevious.skus.filter((sku) => visibleNms.has(sku.nm));
+    return new Map(composeRnpSummaryFromSkus(summary, previousSkus, turnoverWindowDays).map((metric) => [metric.field, metric]));
+  }, [activePrevious, sortedSkus, summaryFiltered, turnoverWindowDays]);
   const metricRowHeight = showDeltas ? DELTA_METRIC_ROW_HEIGHT : METRIC_ROW_HEIGHT;
   const skuBlockHeight = metricFields.length * metricRowHeight;
   const tablePrefixHeight = 38 + 34 + metricFields.length * metricRowHeight + 34;
@@ -1825,9 +1852,9 @@ export function WbRnpPage() {
           <div className="hidden space-y-4 md:block">
             <OptimaMatrixCard
               title="Общая сводка"
-              subtitle={`${sortedSkus.length} артикулов · ${activeData.shop_label} · данные на ${formatAsOf(activeData.generated_at)}`}
+              subtitle={`${sortedSkus.length} артикулов${summaryFiltered ? ` из ${activeData.skus.length} · сводка по фильтру` : ""} · ${activeData.shop_label} · данные на ${formatAsOf(activeData.generated_at)}`}
               period={activeData.period}
-              metrics={completeMetrics(activeData.summary, activeData.period.length, metricFields)}
+              metrics={completeMetrics(displaySummary, activeData.period.length, metricFields)}
               previousMetrics={[...previousSummaryByField.values()]}
               showDeltas={showDeltas}
               deltaMode={deltaMode}
