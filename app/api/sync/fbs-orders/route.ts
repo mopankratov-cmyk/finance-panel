@@ -64,7 +64,6 @@ export async function GET(request: NextRequest) {
           : startedAt.getTime() - INITIAL_DAYS * 86_400_000;
       const rows: Array<Record<string, unknown>> = [];
       let next = 0;
-      let newestMs = fromMs;
       for (let page = 0; page < 60; page++) {
         const url = new URL(ORDERS_URL);
         url.searchParams.set("limit", String(PAGE_LIMIT));
@@ -88,8 +87,6 @@ export async function GET(request: NextRequest) {
           const nmId = Number(order.nmId);
           if (!srid || !Number.isFinite(nmId)) continue;
           if (!allowsNm(target.productScope, nmId)) continue;
-          const createdMs = order.createdAt ? Date.parse(order.createdAt) : NaN;
-          if (Number.isFinite(createdMs) && createdMs > newestMs) newestMs = createdMs;
           rows.push({
             cabinet_id: cabinetId,
             srid,
@@ -111,7 +108,12 @@ export async function GET(request: NextRequest) {
       const coveredCandidates = [String(existing?.state.coveredFrom ?? ""), new Date(fromMs).toISOString().slice(0, 10)]
         .filter(Boolean)
         .sort();
-      const cursorCandidates = [String(existing?.cursor ?? ""), new Date(newestMs).toISOString()].filter(Boolean).sort();
+      // Курсор — «докуда просмотрели», а не дата последнего задания: у кабинета
+      // без FBS-заказов заданий нет вовсе, и курсор по ним застревал на старте
+      // окна, оставляя весь период неклассифицированным. Мы запросили окно до
+      // startedAt и WB ответил — значит покрыто до startedAt; хвост опоздавших
+      // заданий закрывает двухдневный перехлёст следующего прогона.
+      const cursorCandidates = [String(existing?.cursor ?? ""), startedAt.toISOString()].filter(Boolean).sort();
       await writeWbSyncState(db, cabinetId, JOB, {
         cursor: cursorCandidates[cursorCandidates.length - 1],
         status: "caught_up",
