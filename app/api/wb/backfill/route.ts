@@ -31,7 +31,13 @@ export async function POST(request: NextRequest) {
   const gate = await requireApiSession([...WRITE_ROLES]);
   if (gate) return gate;
 
-  const body = (await request.json().catch(() => ({}))) as { cabinetId?: string; from?: string; to?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    cabinetId?: string;
+    from?: string;
+    to?: string;
+    /** Сколько срезов воронки прогнать подряд. Каждый срез — 20 SKU. */
+    funnelPasses?: number;
+  };
   const cabinetId = String(body.cabinetId ?? "").trim();
   const from = String(body.from ?? "").trim();
   const to = String(body.to ?? "").trim();
@@ -71,13 +77,43 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Воронка забирает по 20 SKU за прогон (лимит analytics-API WB — три запроса в
+  // минуту), поэтому у кабинета на 350 SKU полный круг занимает почти сутки.
+  // Здесь гоняем срезы подряд, пока есть бюджет функции: каждый вызов синка сам
+  // двигает курсор среза, так что достаточно повторять запрос.
+  const funnelPasses = Math.max(0, Math.min(20, Math.round(Number(body.funnelPasses ?? 0))));
+  if (funnelPasses > 0) {
+    const deadline = Date.now() + 200_000;
+    let done = 0;
+    let lastError: string | undefined;
+    for (let pass = 0; pass < funnelPasses && Date.now() < deadline; pass++) {
+      const url = new URL("/api/sync/funnel", base);
+      url.searchParams.set("cabinet", cabinetId);
+      try {
+        const response = await fetch(url, { headers, cache: "no-store" });
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok || payload.error) {
+          lastError = payload.error ?? `HTTP ${response.status}`;
+          break;
+        }
+        done++;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "запрос не выполнен";
+        break;
+      }
+    }
+    results.push({ job: "funnel", ok: !lastError, status: lastError ? 502 : 200, detail: lastError ?? `срезов: ${done}` });
+  }
+
   return NextResponse.json({
     ok: results.every((result) => result.ok),
     cabinet: cabinet.name,
     period: { from, to: to || null },
     results,
-    // Воронку (показы, корзины, выкупы по дням) отдельно дёргать не нужно:
-    // её историю за год забирает DETAIL_HISTORY_REPORT в ежечасном /api/sync/all.
-    note: "Воронка догружается ежечасным восстановлением истории.",
+    // Дни старше окна дозаписи закрывает DETAIL_HISTORY_REPORT — его тянет
+    // ежечасный /api/sync/all, отдельного вызова отсюда не требуется.
+    note: funnelPasses > 0
+      ? "Срезы воронки прогнаны; дни старше окна дозаписи закроет ежечасное восстановление истории."
+      : "Воронка догружается ежечасным восстановлением истории.",
   });
 }

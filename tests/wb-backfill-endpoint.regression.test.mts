@@ -32,6 +32,17 @@ test("заказы и продажи забираются последовате
   assert.doesNotMatch(route, /Promise\.all\(\s*\["orders"/);
 });
 
+// Воронка забирает по 20 SKU за прогон (лимит analytics-API WB), поэтому у
+// кабинета на 350 SKU полный круг занимает почти сутки — срезы нужно уметь
+// прогнать подряд, а не ждать по одному в час.
+test("срезы воронки гоняются подряд и ограничены бюджетом функции", async () => {
+  const route = await read("../app/api/wb/backfill/route.ts");
+  assert.match(route, /const funnelPasses = Math\.max\(0, Math\.min\(20/);
+  assert.match(route, /Date\.now\(\) < deadline/);
+  // Ошибка на срезе останавливает цикл: гонять дальше в стену смысла нет.
+  assert.match(route, /lastError = payload\.error[\s\S]{0,60}break;/);
+});
+
 test("синки умеют принудительный период по одному кабинету", async () => {
   const orders = await read("../app/api/sync/orders/route.ts");
   const sales = await read("../app/api/sync/sales/route.ts");
