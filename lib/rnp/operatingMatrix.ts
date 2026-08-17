@@ -38,6 +38,7 @@ export const RNP_METRIC_FIELDS = [
   "spp_pct",
   "gross",
   "margin_pct",
+  "agent_commission_rub",
   "tax_rub",
   "net_profit",
   "net_margin_pct",
@@ -326,6 +327,7 @@ const METRIC_LABELS: Record<string, string> = {
   spp_pct: "СПП",
   gross: "Прибыль",
   margin_pct: "Маржа",
+  agent_commission_rub: "Комиссия каб.",
   tax_rub: "Налог",
   net_profit: "Чистая прибыль",
   net_margin_pct: "Чистая маржа",
@@ -527,6 +529,8 @@ const VOLUME_SCALED_FIELDS = new Set([
   "mp_cost_rub",
   // Налог считается от выручки — растёт вместе с ней, сигналом служит чистая маржа.
   "tax_rub",
+  // Комиссия кабинета — тоже процент от оборота.
+  "agent_commission_rub",
 ]);
 
 export function anomalyDirection(field: string, delta: RnpMetricDelta): "positive" | "negative" | null {

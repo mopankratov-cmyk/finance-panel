@@ -194,6 +194,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   final_price: { label: "Цена для покупателя, ₽", kind: "money" },
   spp_pct: { label: "СПП, %", kind: "pct" },
   gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
+  agent_commission_rub: { label: "Комиссия кабинета, ₽", kind: "money" },
   tax_rub: { label: "Налог, ₽", kind: "money" },
   net_profit: { label: "Чистая прибыль, ₽", kind: "money" },
   net_margin_pct: { label: "Чистая маржа, %", kind: "pct" },
@@ -293,7 +294,7 @@ const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: re
   { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "orders_spp_sum", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "buyouts_sum", "returns_count", "returns_sum", "return_pct", "actual_buyout_pct"], expanded: false },
   { id: "price", label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"], expanded: false },
   { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
-  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
+  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "agent_commission_rub", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
   { id: "stock", label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"], expanded: false },
 ];
 
@@ -643,6 +644,10 @@ export function WbRnpPage() {
   const [anomalyThreshold, setAnomalyThreshold] = useState(30);
   const [turnoverWindowDays, setTurnoverWindowDays] = useState(RNP_DEFAULT_TURNOVER_WINDOW_DAYS);
   const [taxPct, setTaxPct] = useState(RNP_DEFAULT_TAX_PCT);
+  // Ставки кабинета (налог, комиссия посредника) — задаются на экране юнитки и
+  // хранятся по кабинету. Настройка перебивает сохранённый в браузере дефолт,
+  // ручной ввод на экране перебивает настройку.
+  const [cabinetExtraPct, setCabinetExtraPct] = useState(0);
   const [operationsAvailable, setOperationsAvailable] = useState(false);
   const [operationsMessage, setOperationsMessage] = useState<string | null>(null);
   const [operationsLoading, setOperationsLoading] = useState(false);
@@ -671,14 +676,32 @@ export function WbRnpPage() {
     if (!source) return null;
     return {
       ...source,
-      summary: appendTaxMetrics([...source.summary], taxPct),
-      skus: source.skus.map((sku) => ({ ...sku, metrics: appendTaxMetrics([...sku.metrics], taxPct) })),
+      summary: appendTaxMetrics([...source.summary], taxPct, { extraCommissionPct: cabinetExtraPct }),
+      skus: source.skus.map((sku) => ({ ...sku, metrics: appendTaxMetrics([...sku.metrics], taxPct, { extraCommissionPct: cabinetExtraPct }) })),
     };
-  }, [taxPct]);
+  }, [cabinetExtraPct, taxPct]);
   const activeData = useMemo(
     () => withTax(dataKey === currentDataKey ? data : null),
     [currentDataKey, data, dataKey, withTax],
   );
+
+  useEffect(() => {
+    if (!cabinetId) {
+      setCabinetExtraPct(0);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/cabinet-settings/unit?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((body: { settings?: Array<{ cabinetId: string; taxPct: number | null; extraCommissionPct: number | null }> }) => {
+        if (cancelled) return;
+        const found = (body.settings ?? []).find((item) => item.cabinetId === cabinetId);
+        if (found?.taxPct != null) setTaxPct(found.taxPct);
+        setCabinetExtraPct(found?.extraCommissionPct ?? 0);
+      })
+      .catch(() => { if (!cancelled) setCabinetExtraPct(0); });
+    return () => { cancelled = true; };
+  }, [cabinetId]);
 
   useEffect(() => {
     setUserFilterPresets(readUserFilterPresets());
