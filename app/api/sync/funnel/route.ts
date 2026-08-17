@@ -29,7 +29,8 @@ interface HistoryDay {
   date?: string;
   openCount?: number;
   cartCount?: number;
-  addToWishList?: number;
+  /** Имя поля снято зондом с живого ответа history: addToWishlistCount, не addToWishList. */
+  addToWishlistCount?: number;
   orderCount?: number;
   orderSum?: number;
   buyoutCount?: number;
@@ -225,7 +226,7 @@ export async function GET(request: NextRequest) {
             open_card: day.openCount ?? 0,
             add_to_cart: day.cartCount ?? 0,
             // null, а не 0: «WB поле не прислал» — это не «никто не добавил».
-            add_to_wishlist: day.addToWishList ?? null,
+            add_to_wishlist: day.addToWishlistCount ?? null,
             orders: day.orderCount ?? 0,
             orders_sum: day.orderSum ?? 0,
             buyouts: day.buyoutCount ?? 0,
