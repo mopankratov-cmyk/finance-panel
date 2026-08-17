@@ -195,6 +195,9 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   spp_pct: { label: "СПП, %", kind: "pct" },
   gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
   agent_commission_rub: { label: "Комиссия кабинета, ₽", kind: "money" },
+  reviews_count: { label: "Новые отзывы, шт.", kind: "int" },
+  reviews_rating: { label: "Рейтинг новых отзывов", kind: "pct" },
+  reviews_bad_share_pct: { label: "Доля 1–3★, %", kind: "pct" },
   tax_rub: { label: "Налог, ₽", kind: "money" },
   net_profit: { label: "Чистая прибыль, ₽", kind: "money" },
   net_margin_pct: { label: "Чистая маржа, %", kind: "pct" },
@@ -295,6 +298,7 @@ const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: re
   { id: "price", label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"], expanded: false },
   { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
   { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "agent_commission_rub", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
+  { id: "reviews", label: "Отзывы", fields: ["reviews_count", "reviews_rating", "reviews_bad_share_pct"], expanded: false },
   { id: "stock", label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"], expanded: false },
 ];
 

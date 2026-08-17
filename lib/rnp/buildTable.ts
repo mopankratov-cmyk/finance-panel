@@ -95,6 +95,12 @@ interface RpcTotal {
   in_way_from_client: number;
   cost: number | null;
 }
+interface FeedbackNmRow {
+  nm_id: number;
+  rating: number | null;
+  created_at_wb: string | null;
+}
+
 interface AdNmRow {
   nm_id: number;
   date: string;
@@ -666,6 +672,45 @@ export function appendOrganicMetrics(metrics: Metric[]): Metric[] {
   if (anchor >= 0) metrics.splice(anchor + 1, 0, ...organic);
   else metrics.push(...organic);
   return metrics;
+}
+
+/**
+ * Отзывы за период: новые в день, рейтинг новых и доля плохих (1–3★).
+ * День без строк — честный ноль: отзыв либо есть, либо нет; рейтинг и доля при
+ * нуле отзывов молчат. Окна старше ~35 дней неполны: синк хранит отвеченные
+ * отзывы примерно месяц — об этом говорит note, а не тишина.
+ */
+export function buildReviewMetrics(
+  days: string[],
+  asOf: string,
+  byDate: Map<string, { count: number; ratingSum: number; bad: number }>,
+): Metric[] {
+  const counts = days.map((day) => day > asOf ? null : (byDate.get(day)?.count ?? 0));
+  const ratings = days.map((day) => {
+    if (day > asOf) return null;
+    const bucket = byDate.get(day);
+    return bucket && bucket.count > 0 ? Math.round((bucket.ratingSum / bucket.count) * 100) / 100 : null;
+  });
+  const badShare = days.map((day) => {
+    if (day > asOf) return null;
+    const bucket = byDate.get(day);
+    return bucket && bucket.count > 0 ? Math.round((bucket.bad / bucket.count) * 1000) / 10 : null;
+  });
+  let totalCount = 0;
+  let totalRatingSum = 0;
+  let totalBad = 0;
+  for (const [day, bucket] of byDate) {
+    if (day > asOf) continue;
+    totalCount += bucket.count;
+    totalRatingSum += bucket.ratingSum;
+    totalBad += bucket.bad;
+  }
+  const note = "По дате создания отзыва на стороне WB. Синк хранит отвеченные отзывы ~35 дней, поэтому окна старше месяца неполны.";
+  return [
+    { field: "reviews_count", label: "Новые отзывы, шт.", kind: "int", daily: counts, total: totalCount, forecast: null, source: "WB Отзывы", note, group_start: true },
+    { field: "reviews_rating", label: "Рейтинг новых отзывов", kind: "pct", daily: ratings, total: totalCount > 0 ? Math.round((totalRatingSum / totalCount) * 100) / 100 : null, forecast: null, source: "WB Отзывы", note: "Средняя оценка отзывов, созданных в этот день. Не равна рейтингу карточки — тот копится за всю жизнь товара." },
+    { field: "reviews_bad_share_pct", label: "Доля 1–3★, %", kind: "pct", daily: badShare, total: totalCount > 0 ? Math.round((totalBad / totalCount) * 1000) / 10 : null, forecast: null, source: "WB Отзывы", note: "Доля новых отзывов с оценкой 1–3." },
+  ];
 }
 
 export function calculateTurnoverDays(
@@ -1870,6 +1915,7 @@ export async function buildRnpTable(
             totals: [] as RpcTotal[],
             adRows: [] as AdNmRow[],
             funnelRows: [] as FunnelRow[],
+            feedbackRows: [] as FeedbackNmRow[],
             returnRows: [] as ScopedSaleSourceRow[],
             ordersCutoff: null as string | null,
             salesCutoff: null as string | null,
@@ -1885,6 +1931,7 @@ export async function buildRnpTable(
           baseFacts,
           adRows,
           funnelRows,
+          feedbackRows,
           returnRows,
           ordersRowCutoff,
           salesRowCutoff,
@@ -1933,6 +1980,21 @@ export async function buildRnpTable(
             if (allowed) query = query.in("nm_id", allowed);
             return query;
           }),
+          // Отзывы: новые за период, по дате создания на стороне WB. Синк хранит
+          // отвеченные ~35 дней назад, поэтому окна старше месяца неполны — это
+          // сказано в note метрик, а не спрятано.
+          loadAllPages<FeedbackNmRow>((start, end) => {
+            let query = db
+              .from("wb_feedbacks")
+              .select("nm_id, rating, created_at_wb")
+              .gte("created_at_wb", `${from}T00:00:00`)
+              .lt("created_at_wb", `${nextIsoDate(to)}T00:00:00`)
+              .order("created_at_wb", { ascending: true })
+              .range(start, end);
+            if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+            if (allowed) query = query.in("nm_id", allowed);
+            return query;
+          }).catch(() => [] as FeedbackNmRow[]),
           loadSalesReturns(db, scope, allowed, from, to),
           latestSourceDate("wb_orders", scope),
           latestSourceDate("wb_sales", scope),
@@ -1950,6 +2012,7 @@ export async function buildRnpTable(
           totals: baseFacts.totals,
           adRows,
           funnelRows,
+          feedbackRows,
           returnRows,
           ordersCutoff,
           salesCutoff,
@@ -1990,6 +2053,7 @@ export async function buildRnpTable(
     const totals = scopeData.flatMap((item) => item.totals);
     const adRows = scopeData.flatMap((item) => item.adRows.filter((row) => !item.advertsCutoff || String(row.date).slice(0, 10) <= item.advertsCutoff));
     const funnelRows = scopeData.flatMap((item) => item.funnelRows.filter((row) => !item.funnelCutoff || String(row.date).slice(0, 10) <= item.funnelCutoff));
+    const feedbackRows = scopeData.flatMap((item) => item.feedbackRows);
     // У каждого источника своя свежесть. Раньше весь РНП обрезался по min(orders, sales),
     // из-за чего задержка выкупов могла занижать уже загруженные заказы Optima.
     const ordersCutoff = latestKnownDate(scopeData.map((item) => latestKnownDate([item.funnelCutoff, item.ordersCutoff])));
@@ -2035,6 +2099,25 @@ export async function buildRnpTable(
       clicksByNm.get(r.nm_id)!.set(d, (clicksByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.clicks ?? 0));
       adOrdersByNm.get(r.nm_id)!.set(d, (adOrdersByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.orders ?? 0));
       adOrdersSumByNm.get(r.nm_id)!.set(d, (adOrdersSumByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.orders_sum ?? 0));
+    }
+    const reviewsByNm = new Map<number, Map<string, { count: number; ratingSum: number; bad: number }>>();
+    const reviewsByDateAll = new Map<string, { count: number; ratingSum: number; bad: number }>();
+    for (const r of feedbackRows) {
+      const d = String(r.created_at_wb ?? "").slice(0, 10);
+      if (!d) continue;
+      const rating = Number(r.rating ?? 0);
+      if (!reviewsByNm.has(r.nm_id)) reviewsByNm.set(r.nm_id, new Map());
+      const perNm = reviewsByNm.get(r.nm_id)!;
+      const nmDay = perNm.get(d) ?? { count: 0, ratingSum: 0, bad: 0 };
+      nmDay.count += 1;
+      nmDay.ratingSum += rating;
+      if (rating > 0 && rating <= 3) nmDay.bad += 1;
+      perNm.set(d, nmDay);
+      const allDay = reviewsByDateAll.get(d) ?? { count: 0, ratingSum: 0, bad: 0 };
+      allDay.count += 1;
+      allDay.ratingSum += rating;
+      if (rating > 0 && rating <= 3) allDay.bad += 1;
+      reviewsByDateAll.set(d, allDay);
     }
     for (const r of funnelRows) {
       const d = String(r.date).slice(0, 10);
@@ -2175,6 +2258,7 @@ export async function buildRnpTable(
         }));
         appendOrderConversion(metrics);
         appendOrganicMetrics(metrics);
+        metrics.push(...buildReviewMetrics(days, asOf, reviewsByNm.get(t.nm_id) ?? new Map()));
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
         return {
           nm: t.nm_id,
@@ -2198,6 +2282,7 @@ export async function buildRnpTable(
     }));
     appendOrderConversion(summary);
     appendOrganicMetrics(summary);
+    summary.push(...buildReviewMetrics(days, asOf, reviewsByDateAll));
     const sumDaily = (field: string) => days.map((_, i) => {
       let acc = 0, any = false;
       for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }

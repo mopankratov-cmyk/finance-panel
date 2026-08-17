@@ -63,6 +63,9 @@ export const RNP_METRIC_FIELDS = [
   "turnover",
   "money",
   "gmroi",
+  "reviews_count",
+  "reviews_rating",
+  "reviews_bad_share_pct",
 ] as const;
 
 export type RnpMetricField = (typeof RNP_METRIC_FIELDS)[number];
@@ -272,9 +275,11 @@ const POSITIVE_WHEN_UP = new Set([
   // СПП — скидка WB, а не продавца: растёт СПП → покупателю дешевле при той же
   // выручке продавца. Для кабинета это хорошая новость.
   "spp_pct",
+  "reviews_rating",
 ]);
 // Рост отмен, возвратов и собственной скидки — плохая новость, направление обратное.
 const POSITIVE_WHEN_DOWN = new Set([
+  "reviews_bad_share_pct",
   "drr",
   "turnover",
   "cancels_count",
@@ -352,6 +357,9 @@ const METRIC_LABELS: Record<string, string> = {
   turnover: "Оборачиваемость",
   money: "Деньги в остатках",
   gmroi: "GMROI",
+  reviews_count: "Отзывы",
+  reviews_rating: "Рейтинг нов.",
+  reviews_bad_share_pct: "1–3★ %",
 };
 
 /**
@@ -422,6 +430,9 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   turnover: "оборач.",
   money: "деньги в остатках",
   gmroi: "GMROI",
+  reviews_count: "Отзывы",
+  reviews_rating: "Рейтинг нов.",
+  reviews_bad_share_pct: "1–3★ %",
 };
 
 function finite(value: number | null | undefined): value is number {
@@ -531,6 +542,8 @@ const VOLUME_SCALED_FIELDS = new Set([
   "tax_rub",
   // Комиссия кабинета — тоже процент от оборота.
   "agent_commission_rub",
+  // Отзывы растут вместе с продажами; сигналы — рейтинг и доля плохих.
+  "reviews_count",
 ]);
 
 export function anomalyDirection(field: string, delta: RnpMetricDelta): "positive" | "negative" | null {
