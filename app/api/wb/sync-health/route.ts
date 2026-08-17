@@ -92,6 +92,37 @@ export async function GET(request: NextRequest) {
   // кабинетом Оптимы показала зеркально перевёрнутые числа в части дней, и без
   // сырых значений не отличить «WB прислал не то» от «мы не так классифицируем».
   const sp = request.nextUrl.searchParams;
+
+  // ?funnel_probe=1&cabinet=<uuid> — какие поля реально отдаёт history-эндпоинт
+  // воронки WB. Возвращаются только ИМЕНА ключей дня, не значения: нужно, чтобы
+  // отличать «WB не отдаёт поле» от «мы не так его читаем» (история с addToWishList).
+  if (sp.get("funnel_probe") === "1") {
+    const cabinetId = sp.get("cabinet");
+    if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const target = (await getActiveWbCabinets()).find((cabinet) => cabinet.id === cabinetId);
+    if (!target) return NextResponse.json({ error: "Кабинет не найден" }, { status: 404 });
+    const nmRow = await db.from("wb_funnel_daily").select("nm_id").eq("cabinet_id", cabinetId).limit(1).maybeSingle();
+    const nmId = Number(nmRow.data?.nm_id);
+    if (!Number.isFinite(nmId)) return NextResponse.json({ error: "Нет SKU с воронкой" }, { status: 404 });
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const response = await fetch("https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history", {
+      method: "POST",
+      headers: { Authorization: target.token, "Content-Type": "application/json" },
+      body: JSON.stringify({ nmIds: [nmId], selectedPeriod: { start: yesterday, end: yesterday } }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return NextResponse.json({ error: `WB ${response.status}: ${(await response.text()).slice(0, 150)}` }, { status: 502 });
+    }
+    const json = await response.json() as { data?: Array<{ history?: Array<Record<string, unknown>> }> } | Array<{ history?: Array<Record<string, unknown>> }>;
+    const items = Array.isArray(json) ? json : json.data ?? [];
+    const day = items[0]?.history?.[0];
+    return NextResponse.json({ nmId, dayKeys: day ? Object.keys(day).sort() : [], items: items.length });
+  }
+
   if (sp.get("warehouse_types") === "1") {
     const cabinetId = sp.get("cabinet");
     const from = sp.get("from");
