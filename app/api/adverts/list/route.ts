@@ -9,6 +9,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { buildAdvertWorkingDaySummary, type AdvertDayPoint } from "@/lib/adverts/daySummary";
 import { loadScopedAdvertReportRows } from "@/lib/adverts/scopedReport";
+import { advertReportScopeKey, loadCachedAdvertReportRows } from "@/lib/adverts/reportCache";
 import { aggregateClosedAdvertMetrics, getClosedMoscowPeriod } from "@/lib/adverts/closedPeriodMetrics";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
@@ -255,11 +256,17 @@ export async function GET(request: NextRequest) {
       })
     : Promise.resolve(null);
 
-  const reportPromise: Promise<RpcRow[]> = cabinetId && allowedNmIds
-    ? loadScopedAdvertReportRows(db, cabinetId, [...allowedNmIds])
-    : loadRnpReportRows<RpcRow>(db, cabinetId, {
-        label: "Реклама WB: товары",
-      });
+  // Справочник товаров (агрегаты месяца) — самый тяжёлый источник экрана
+  // (RPC 10+ секунд на крупном кабинете). Читаем из снимка с фоновым
+  // освежением; per-request фильтр по контуру применяется ниже как раньше.
+  // Для cabinet=all снимок общий («full») — строки режутся после чтения.
+  const reportScopeKey = advertReportScopeKey(cabinetId ? allowedNmIds : null);
+  const reportPromise: Promise<RpcRow[]> = loadCachedAdvertReportRows<RpcRow>(cabinetId, reportScopeKey, () =>
+    cabinetId && allowedNmIds
+      ? loadScopedAdvertReportRows(db, cabinetId, [...allowedNmIds])
+      : loadRnpReportRows<RpcRow>(db, cabinetId, {
+          label: "Реклама WB: товары",
+        }));
 
   let queryResults: [
     AdvertRow[],
