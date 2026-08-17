@@ -76,12 +76,21 @@ export async function loadCachedWbRnp(
     { revalidate: WB_RNP_CACHE_SECONDS, tags: [tag] },
   );
   const snapshot = decodeCompressedJson<RnpTable>(await loadSnapshot());
-  // Снимок собран без карточек WB: названия и бренды в нём пустые. Держать такой
-  // полсуток нельзя — сбрасываем ключ, чтобы следующий заход пересобрался уже с
-  // прогретым PIM, и заодно прогреваем сам PIM после ответа.
+  // Снимок без карточек WB (pim_cold): названия и бренды пустые. Прежний ход —
+  // сброс ключа на каждом чтении — устроил вечную петлю: пока PIM холодный,
+  // КАЖДОЕ открытие РНП пересобирало снимок с нуля (~8 секунд вместо тёплого
+  // чтения). Теперь пользователь всегда получает готовый снимок сразу, а починка
+  // идёт после ответа и только если снимок не свежесобранный: прогреваем PIM и
+  // помечаем тег на фоновую пересборку (stale-while-revalidate), не чаще, чем
+  // раз в 15 минут на срез.
   if (snapshot.pim_cold) {
-    revalidateTag(tag, { expire: 0 });
-    after(() => loadCabinetPimRowsHourly(input.cabinetId).catch(() => []));
+    const ageMs = Date.now() - Date.parse(snapshot.generated_at || "");
+    if (!Number.isFinite(ageMs) || ageMs > 15 * 60 * 1000) {
+      after(async () => {
+        await loadCabinetPimRowsHourly(input.cabinetId).catch(() => []);
+        revalidateTag(tag, "max");
+      });
+    }
   }
   return snapshot;
 }

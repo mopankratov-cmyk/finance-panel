@@ -22,12 +22,17 @@ test("холодный снимок карточек не подменяется
   assert.match(cards, /if \(options\.cacheOnly\) \{[\s\S]*throw new PimSnapshotColdError\(\)/);
 });
 
-test("снимок без карточек не залёживается в кэше на полсуток", async () => {
+// Сброс ключа на каждом чтении устраивал вечную петлю: пока PIM холодный,
+// каждое открытие РНП пересобирало снимок с нуля (~8 секунд). Правильный ход —
+// отдать готовый снимок и чинить в фоне: stale-while-revalidate, не чаще
+// раза в 15 минут.
+test("холодный снимок отдаётся сразу, починка идёт в фоне", async () => {
   const cache = await read("../lib/rnp/tableCache.ts");
   assert.match(cache, /if \(snapshot\.pim_cold\)/);
-  assert.match(cache, /revalidateTag\(tag, \{ expire: 0 \}\)/);
-  // И сам PIM греется после ответа, чтобы следующий заход собрался полным.
-  assert.match(cache, /after\(\(\) => loadCabinetPimRowsHourly\(input\.cabinetId\)/);
+  // Синхронного сброса ключа на чтении больше нет — он и был петлёй.
+  assert.doesNotMatch(cache, /if \(snapshot\.pim_cold\) \{\s*\n\s*revalidateTag\(tag, \{ expire: 0 \}\)/);
+  assert.match(cache, /ageMs > 15 \* 60 \* 1000/);
+  assert.match(cache, /revalidateTag\(tag, "max"\)/);
 });
 
 test("cron греет карточки до снимков РНП", async () => {
