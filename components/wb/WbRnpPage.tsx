@@ -5,7 +5,6 @@ import {
   ArrowRight,
   BookOpen,
   CalendarDays,
-  Download,
   Loader2,
   Pencil,
   RefreshCw,
@@ -29,9 +28,12 @@ import {
 import {
   RNP_METRIC_FIELDS,
   RNP_VIEW_PRESETS,
+  aggregateRnpWeekly,
   anomalyDirection,
   detectSkuSignals,
   formatAnomalyBadge,
+  isBurnedOutSku,
+  rnpLossReasons,
   scaleAnomalyThresholds,
   dayOverDayBaseline,
   detectSkuAnomalies,
@@ -44,6 +46,7 @@ import {
   type RnpAnomaly,
   type RnpAnomalyDirection,
   type RnpDeltaMode,
+  type RnpGranularity,
   type RnpMetricField,
   type RnpViewId,
 } from "@/lib/rnp/operatingMatrix";
@@ -633,6 +636,10 @@ function toneClass(metric: Metric, value: number | null) {
 export function WbRnpPage() {
   const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet, canWrite, setCabinetId } = useWbCabinet();
   const [range, setRange] = useState<DateRange>(() => rangeFor("week"));
+  // Шапка в духе «Рука на пульсе»: гранулярность колонок и операционные фильтры.
+  const [granularity, setGranularity] = useState<RnpGranularity>("day");
+  const [burnedOnly, setBurnedOnly] = useState(true);
+  const [lossOnly, setLossOnly] = useState(false);
   const [data, setData] = useState<RnpTable | null>(null);
   const [previousData, setPreviousData] = useState<RnpTable | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
@@ -704,9 +711,24 @@ export function WbRnpPage() {
     };
   }, [cabinetExtraPct, taxPct]);
   const activeData = useMemo(
-    () => withTax(dataKey === currentDataKey ? data : null),
-    [currentDataKey, data, dataKey, withTax],
+    () => {
+      const base = withTax(dataKey === currentDataKey ? data : null);
+      // Недельная гранулярность применяется к готовому дневному снимку:
+      // все потребители ниже (фасеты, сортировка, ячейки, CSV) работают
+      // с колонками как есть и получают недели прозрачно.
+      if (!base || granularity === "day") return base;
+      return aggregateRnpWeekly(base, range.from);
+    },
+    [currentDataKey, data, dataKey, granularity, range.from, withTax],
   );
+
+  // Аномалии откалиброваны по дневным колонкам; планирование редактирует дни.
+  useEffect(() => {
+    if (granularity === "week") setAnomalyMode("off");
+  }, [granularity]);
+  useEffect(() => {
+    if (planning) setGranularity("day");
+  }, [planning]);
 
   useEffect(() => {
     if (!cabinetId) {
@@ -993,13 +1015,23 @@ export function WbRnpPage() {
     }),
     [activeData?.skus, brand, byArticle, category],
   );
+  const burnedHiddenCount = useMemo(
+    () => facetSkus.filter((sku) => isBurnedOutSku(sku.metrics)).length,
+    [facetSkus],
+  );
+  const lossCount = useMemo(
+    () => facetSkus.filter((sku) => rnpLossReasons(sku.metrics).length > 0).length,
+    [facetSkus],
+  );
   const filteredSkus = useMemo(() => facetSkus
     .filter((sku) => matchesArticleList(sku, articleQuery))
     .filter((sku) => !activeTagIds.length || (tagsByNm.get(sku.nm) ?? []).some((tagId) => activeTagIds.includes(tagId)))
+    .filter((sku) => !burnedOnly || !isBurnedOutSku(sku.metrics))
+    .filter((sku) => !lossOnly || rnpLossReasons(sku.metrics).length > 0)
     .filter((sku) => {
       if (anomalyMode === "off") return true;
       return filterAnomalies(anomalyByNm.get(sku.nm) ?? [], anomalyMode).length > 0;
-    }), [activeTagIds, anomalyByNm, anomalyMode, articleQuery, facetSkus, tagsByNm]);
+    }), [activeTagIds, anomalyByNm, anomalyMode, articleQuery, burnedOnly, facetSkus, lossOnly, tagsByNm]);
 
   const sortedSkus = useMemo(
     () => sortRnpProducts(filteredSkus, sortField, sortDirection),
@@ -1364,94 +1396,6 @@ export function WbRnpPage() {
       </header>
 
       <section className="relative z-30 mb-4 rounded-[14px] border border-[#e5e7ef] bg-white p-3.5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]" aria-label="Фильтры РНП">
-        <div className="grid items-end gap-2.5 sm:grid-cols-2 xl:grid-cols-[132px_132px_minmax(0,1fr)_110px_142px]">
-          <label>
-            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">С даты</span>
-            <input
-              type="date"
-              value={range.from}
-              max={range.to}
-              onChange={(event) => setRange((current) => ({ ...current, from: event.target.value, preset: "custom" }))}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-            />
-          </label>
-          <label>
-            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">По дату</span>
-            <input
-              type="date"
-              value={range.to}
-              min={range.from}
-              onChange={(event) => setRange((current) => ({ ...current, to: event.target.value, preset: "custom" }))}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-            />
-          </label>
-          <div className="flex min-w-0 flex-wrap items-end gap-1.5 xl:flex-nowrap">
-            <button
-              type="button"
-              onClick={downloadTable}
-              disabled={!activeData}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-40"
-            >
-              <Download className="h-3.5 w-3.5" /> Скачать
-            </button>
-            <button
-              type="button"
-              onClick={() => applyPreset("today")}
-              className={`h-9 whitespace-nowrap rounded-lg border px-2.5 text-[10px] font-medium transition ${
-                range.preset === "today"
-                  ? "border-violet-200 bg-violet-50 text-violet-700"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-              }`}
-            >
-              Сегодня
-            </button>
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.value}
-                type="button"
-                onClick={() => applyPreset(preset.value)}
-                className={`h-9 whitespace-nowrap rounded-lg border px-2.5 text-[10px] font-medium transition ${
-                  range.preset === preset.value
-                    ? "border-violet-200 bg-violet-50 text-violet-700"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <label>
-            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Окно оборота, дн</span>
-            <input
-              type="number"
-              min={1}
-              max={180}
-              value={turnoverWindowDays}
-              onChange={(event) => setTurnoverWindowDays(Math.max(1, Math.min(180, Number(event.target.value) || 7)))}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-[11px] tabular-nums text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-            />
-          </label>
-          <label>
-            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Налог, %</span>
-            <input
-              type="number"
-              min={0}
-              max={50}
-              step={0.5}
-              value={taxPct}
-              onChange={(event) => setTaxPct(Math.max(0, Math.min(50, Number(event.target.value) || 0)))}
-              title="Ставка налога с выручки. Влияет только на чистую прибыль и чистую маржу; прибыль после расходов МП остаётся до налога."
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-[11px] tabular-nums text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-            />
-          </label>
-          <div>
-            <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Остатки</span>
-            <span className="flex h-9 items-center justify-center whitespace-nowrap rounded-lg border border-violet-300 bg-violet-50 px-2 text-center text-[9px] font-semibold leading-3 text-violet-700" title="Используются актуальные остатки WB">
-              Актуальные WB
-            </span>
-          </div>
-        </div>
-
         <RnpOperatingToolbar
           viewId={metricViewId}
           metricFields={metricFields}
@@ -1499,6 +1443,34 @@ export function WbRnpPage() {
           categories={productCategories}
           onBrandChange={setBrand}
           onCategoryChange={setCategory}
+          granularity={granularity}
+          weeklyDisabledReason={planning ? "В режиме планирования — только дневные колонки" : null}
+          burnedOnly={burnedOnly}
+          burnedHiddenCount={burnedHiddenCount}
+          lossOnly={lossOnly}
+          lossCount={lossCount}
+          rangeFrom={range.from}
+          rangeTo={range.to}
+          rangePreset={range.preset}
+          rangePresets={[{ value: "today", label: "Сегодня" }, { value: "yesterday", label: "Вчера" }, ...PRESETS, { value: "previous", label: "Пред. период" }]}
+          taxPct={taxPct}
+          deltaBaselineLabel={(() => {
+            const previous = previousEqualRange(range.from, range.to);
+            const long = (iso: string) => iso.split("-").reverse().join(".");
+            return `${long(previous.from)} – ${long(previous.to)}`;
+          })()}
+          asOfLabel={activeData?.as_of
+            ? new Date(activeData.as_of).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+            : null}
+          downloadDisabled={!activeData}
+          onGranularityChange={setGranularity}
+          onBurnedOnlyChange={setBurnedOnly}
+          onLossOnlyChange={setLossOnly}
+          onApplyRangePreset={(value) => applyPreset(value as DateRange["preset"])}
+          onRangeFromChange={(iso) => setRange((current) => ({ ...current, from: iso, preset: "custom" }))}
+          onRangeToChange={(iso) => setRange((current) => ({ ...current, to: iso, preset: "custom" }))}
+          onTaxPctChange={setTaxPct}
+          onDownload={downloadTable}
         />
       </section>
 

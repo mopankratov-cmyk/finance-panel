@@ -1,15 +1,20 @@
 "use client";
 
 import {
-  Activity,
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   BadgeCheck,
+  CalendarDays,
   Check,
   ChevronDown,
+  Download,
+  Eye,
+  Flame,
   GripVertical,
-  ListFilter,
+  Info,
   Search,
+  Settings2,
   SlidersHorizontal,
   Tag,
   X,
@@ -21,6 +26,7 @@ import {
   parseArticleList,
   type RnpAnomalyDirection,
   type RnpDeltaMode,
+  type RnpGranularity,
   type RnpMetricField,
   type RnpViewId,
 } from "@/lib/rnp/operatingMatrix";
@@ -63,6 +69,21 @@ interface Props {
   category: string;
   categories: string[];
   busy?: boolean;
+  // Шапка в духе «Рука на пульсе»: период, гранулярность, операционные фильтры.
+  granularity: RnpGranularity;
+  weeklyDisabledReason?: string | null;
+  burnedOnly: boolean;
+  burnedHiddenCount: number;
+  lossOnly: boolean;
+  lossCount: number;
+  rangeFrom: string;
+  rangeTo: string;
+  rangePreset: string;
+  rangePresets: ReadonlyArray<{ value: string; label: string }>;
+  taxPct: number;
+  deltaBaselineLabel: string;
+  asOfLabel: string | null;
+  downloadDisabled: boolean;
   onViewChange: (viewId: Exclude<RnpViewId, "custom">) => void;
   onMetricFieldsChange: (fields: RnpMetricField[]) => void;
   onMetricsOpenChange: (open: boolean) => void;
@@ -83,6 +104,14 @@ interface Props {
   onClearSelection: () => void;
   onBrandChange: (brand: string) => void;
   onCategoryChange: (category: string) => void;
+  onGranularityChange: (granularity: RnpGranularity) => void;
+  onBurnedOnlyChange: (value: boolean) => void;
+  onLossOnlyChange: (value: boolean) => void;
+  onApplyRangePreset: (value: string) => void;
+  onRangeFromChange: (iso: string) => void;
+  onRangeToChange: (iso: string) => void;
+  onTaxPctChange: (value: number) => void;
+  onDownload: () => void;
 }
 
 // Группы пикера показателей. Порядок и состав совпадают с группами таблицы.
@@ -127,10 +156,49 @@ const UNITS: Partial<Record<RnpMetricField, string>> = {
 const CONTROL_CLASS =
   "h-9 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100";
 
+const SECTION_LABEL_CLASS = "text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400";
+
+function shortDate(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  return year && month && day ? `${day}.${month}.${year.slice(2)}` : iso;
+}
+
+// Чип-переключатель как у референса: активный — фиолетовый с галкой.
+function FilterChip({ active, onClick, disabled, title, icon, label, badge }: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  icon?: React.ReactNode;
+  label: string;
+  badge?: string | number | null;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={disabled}
+      title={title}
+      onClick={onClick}
+      className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+        active ? "border-violet-600 bg-violet-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+      }`}
+    >
+      {active ? <Check className="h-3.5 w-3.5" /> : icon}
+      {label}
+      {badge != null && badge !== 0 ? (
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${active ? "bg-white/20" : "bg-violet-100 text-violet-700"}`}>{badge}</span>
+      ) : null}
+    </button>
+  );
+}
+
 export function RnpOperatingToolbar(props: Props) {
   const [tagsOpen, setTagsOpen] = useState(false);
-  const [displayOpen, setDisplayOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [tagComposerOpen, setTagComposerOpen] = useState(false);
   const [tagName, setTagName] = useState("");
   const [tagColor, setTagColor] = useState("#7567e8");
@@ -138,6 +206,13 @@ export function RnpOperatingToolbar(props: Props) {
   const selectedSet = new Set(props.metricFields);
   const queryCount = parseArticleList(props.articleQuery).length;
   const activeView = RNP_VIEW_PRESETS.find((view) => view.id === props.viewId);
+
+  const closePopovers = () => {
+    setViewOpen(false);
+    setSettingsOpen(false);
+    setPeriodOpen(false);
+    setInfoOpen(false);
+  };
 
   const toggleMetric = (field: RnpMetricField) => {
     if (selectedSet.has(field)) {
@@ -168,79 +243,155 @@ export function RnpOperatingToolbar(props: Props) {
 
   return (
     <div className="relative">
-      <div className="mt-2.5 grid items-end gap-2.5 border-t border-slate-100 pt-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(118px,0.8fr)_minmax(118px,0.8fr)_88px_minmax(160px,1fr)_minmax(210px,1.35fr)_184px]">
-        <label>
-          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Бренд</span>
-          <span className="relative block">
-            <BadgeCheck className="pointer-events-none absolute bottom-[11px] left-3 h-3.5 w-3.5 text-violet-500" />
-            <select
-              value={props.brand}
-              onChange={(event) => props.onBrandChange(event.target.value)}
-              className={`${CONTROL_CLASS} w-full appearance-none pl-9 pr-7`}
-              aria-label="Бренд товара"
-            >
-              <option value="">Все бренды</option>
-              {props.brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
-            </select>
-            <ChevronDown className="pointer-events-none absolute bottom-[11px] right-2.5 h-3.5 w-3.5 text-slate-400" />
-          </span>
+      {/* ===== ДАННЫЕ ===== */}
+      <div className={SECTION_LABEL_CLASS}>Данные</div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => { const open = periodOpen; closePopovers(); setPeriodOpen(!open); }}
+            aria-expanded={periodOpen}
+            className={`${CONTROL_CLASS} inline-flex items-center gap-2 tabular-nums`}
+          >
+            <CalendarDays className="h-3.5 w-3.5 text-violet-500" />
+            {shortDate(props.rangeFrom)} – {shortDate(props.rangeTo)}
+            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+          </button>
+          {periodOpen ? (
+            <div className="absolute left-0 top-11 z-50 w-[300px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+              <div className="flex flex-wrap gap-1.5">
+                {props.rangePresets.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => { props.onApplyRangePreset(preset.value); setPeriodOpen(false); }}
+                    className={`h-8 rounded-lg border px-2.5 text-[10px] font-medium transition ${
+                      props.rangePreset === preset.value
+                        ? "border-violet-200 bg-violet-50 text-violet-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[9px] font-medium text-slate-500">С даты</span>
+                  <input
+                    type="date"
+                    value={props.rangeFrom}
+                    max={props.rangeTo}
+                    onChange={(event) => props.onRangeFromChange(event.target.value)}
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-violet-400"
+                  />
+                </label>
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[9px] font-medium text-slate-500">По дату</span>
+                  <input
+                    type="date"
+                    value={props.rangeTo}
+                    min={props.rangeFrom}
+                    onChange={(event) => props.onRangeToChange(event.target.value)}
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-violet-400"
+                  />
+                </label>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <label className="relative inline-flex items-center">
+          <BadgeCheck className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-violet-500" />
+          <select
+            value={props.brand}
+            onChange={(event) => props.onBrandChange(event.target.value)}
+            className={`${CONTROL_CLASS} w-[150px] appearance-none pl-9 pr-7`}
+            aria-label="Бренд товара"
+          >
+            <option value="">Бренд: все</option>
+            {props.brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-slate-400" />
         </label>
 
-        <label>
-          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Категория</span>
-          <span className="relative block">
-            <select
-              value={props.category}
-              onChange={(event) => props.onCategoryChange(event.target.value)}
-              className={`${CONTROL_CLASS} w-full appearance-none pr-7`}
-              aria-label="Категория"
-            >
-              <option value="">Все категории</option>
-              {props.categories.map((category) => <option key={category} value={category}>{category}</option>)}
-              <option value="__none">Без категории</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute bottom-[11px] right-2.5 h-3.5 w-3.5 text-slate-400" />
-          </span>
+        <label className="relative inline-flex items-center">
+          <select
+            value={props.category}
+            onChange={(event) => props.onCategoryChange(event.target.value)}
+            className={`${CONTROL_CLASS} w-[160px] appearance-none pr-7`}
+            aria-label="Категория"
+          >
+            <option value="">Категория: все</option>
+            {props.categories.map((category) => <option key={category} value={category}>{category}</option>)}
+            <option value="__none">Без категории</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-slate-400" />
         </label>
 
         <div className="relative">
-          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Теги</span>
           <button
             type="button"
-            onClick={() => setTagsOpen((open) => !open)}
-            aria-expanded={tagsOpen}
-            className={`${CONTROL_CLASS} inline-flex w-full items-center gap-2`}
+            onClick={() => { const open = infoOpen; closePopovers(); setInfoOpen(!open); }}
+            aria-label="Как считаются данные"
+            aria-expanded={infoOpen}
+            className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           >
-            <Tag className="h-3.5 w-3.5 text-slate-500" />
-            {props.activeTagIds.length ? `${props.activeTagIds.length} выбрано` : props.tags.length ? `${props.tags.length} тегов` : "Нет тегов"}
+            <Info className="h-4 w-4" />
           </button>
+          {infoOpen ? (
+            <div className="absolute left-0 top-11 z-50 w-[300px] rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-4 text-slate-600 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+              <b className="text-slate-800">Как считаются данные.</b> Часовые снимки WB; остатки — актуальные WB.
+              «Без сгоревших» скрывает артикулы без заказов и без остатка за период.
+              «Потери» — минусовая прибыль, реклама без заказов или обнулившийся остаток при спросе.
+              В гранулярности «Неделя» суммы складываются по дням, а проценты — среднее по дням с данными.
+              Окно оборачиваемости — {props.turnoverWindowDays} дн.
+            </div>
+          ) : null}
         </div>
 
-        <label>
-          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Сортировка</span>
-          <span className="flex">
-            <select
-              value={props.sortField}
-              onChange={(event) => props.onSortFieldChange(event.target.value)}
-              className={`${CONTROL_CLASS} min-w-0 flex-1 rounded-r-none`}
-              aria-label="Сортировка артикулов"
-            >
-              {props.sortOptions.map((sort) => <option key={sort.field} value={sort.field}>{sort.label}</option>)}
-            </select>
-            <button
-              type="button"
-              onClick={() => props.onSortDirectionChange(props.sortDirection === -1 ? 1 : -1)}
-              className="grid h-9 w-10 place-items-center rounded-r-lg border border-l-0 border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700"
-              aria-label={props.sortDirection === -1 ? "По убыванию" : "По возрастанию"}
-            >
-              {props.sortDirection === -1 ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}
-            </button>
-          </span>
-        </label>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <FilterChip
+            active={props.burnedOnly}
+            onClick={() => props.onBurnedOnlyChange(!props.burnedOnly)}
+            title="Скрыть артикулы без заказов и без остатка за период"
+            label="Без сгоревших"
+            badge={props.burnedOnly ? props.burnedHiddenCount : null}
+          />
+          <FilterChip
+            active={props.lossOnly}
+            onClick={() => props.onLossOnlyChange(!props.lossOnly)}
+            title="Только артикулы с потерями: минус по прибыли, реклама без заказов, ноль остатка при спросе"
+            icon={<Flame className="h-3.5 w-3.5 text-amber-500" />}
+            label="Потери"
+            badge={props.lossCount}
+          />
+          <FilterChip
+            active={props.anomalyMode !== "off"}
+            onClick={() => props.onAnomalyModeChange(props.anomalyMode === "off" ? "all" : "off")}
+            disabled={props.granularity === "week"}
+            title={props.granularity === "week" ? "Аномалии считаются по дням — переключитесь на «День»" : "Резкие отклонения к прошлому периоду"}
+            icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+            label="Аномалии"
+            badge={props.anomalyCount}
+          />
+        </div>
+      </div>
 
-        <label className="relative">
-          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Поиск / список артикулов</span>
-          <Search className="pointer-events-none absolute bottom-[10px] left-3 h-3.5 w-3.5 text-slate-400" />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setTagsOpen((open) => !open)}
+          aria-expanded={tagsOpen}
+          className={`${CONTROL_CLASS} inline-flex items-center gap-2`}
+        >
+          <Tag className="h-3.5 w-3.5 text-slate-500" />
+          {props.activeTagIds.length ? `Тег: ${props.activeTagIds.length} выбрано` : props.tags.length ? `Тег: ${props.tags.length} тегов` : "Тег: тегов нет"}
+          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+        </button>
+
+        <label className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
             value={props.articleQuery}
             onChange={(event) => props.onArticleQueryChange(event.target.value)}
@@ -252,7 +403,7 @@ export function RnpOperatingToolbar(props: Props) {
             <button
               type="button"
               onClick={() => props.onArticleQueryChange("")}
-              className="absolute bottom-1.5 right-2 inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[9px] font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              className="absolute right-2 top-1/2 inline-flex h-6 -translate-y-1/2 items-center gap-1 rounded-md px-1.5 text-[9px] font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               aria-label="Очистить список артикулов"
             >
               {queryCount} <X className="h-3 w-3" />
@@ -260,21 +411,19 @@ export function RnpOperatingToolbar(props: Props) {
           ) : null}
         </label>
 
-        <div>
-          <span className="mb-1 block h-3 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-500">Детектор аномалий</span>
-          <button
-            type="button"
-            onClick={() => props.onAnomalyModeChange(props.anomalyMode === "off" ? "all" : "off")}
-            aria-pressed={props.anomalyMode !== "off"}
-            className={`${CONTROL_CLASS} inline-flex w-full items-center justify-between gap-2 whitespace-nowrap ${
-              props.anomalyMode !== "off" ? "border-violet-300 bg-violet-50 text-violet-700" : ""
-            }`}
-          >
-            <Activity className="h-3.5 w-3.5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate text-left">Детектор аномалий</span>
-            {props.anomalyCount > 0 ? <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold">{props.anomalyCount}</span> : null}
-          </button>
-        </div>
+        <label className={`${CONTROL_CLASS} inline-flex items-center gap-2`} title="Окно оборачиваемости остатков">
+          <span className="text-slate-500">Окно оборач.</span>
+          <input
+            type="number"
+            min={1}
+            max={180}
+            value={props.turnoverWindowDays}
+            onChange={(event) => props.onTurnoverWindowChange(Math.max(1, Math.min(180, Number(event.target.value) || 7)))}
+            className="w-12 border-0 bg-transparent text-right font-semibold tabular-nums text-slate-800 outline-none"
+            aria-label="Окно оборачиваемости, дней"
+          />
+          <span className="text-slate-500">дн</span>
+        </label>
       </div>
 
       {props.anomalyMode !== "off" ? (
@@ -312,75 +461,114 @@ export function RnpOperatingToolbar(props: Props) {
         </div>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-        <label className="inline-flex h-9 cursor-pointer items-center gap-2 text-[11px] font-medium text-slate-600">
-          <input
-            type="checkbox"
-            checked={props.showDeltas}
-            onChange={(event) => props.onShowDeltasChange(event.target.checked)}
-            className="h-4 w-4 accent-violet-600"
-          />
-          Дельты
-        </label>
-
-        <div className="inline-flex h-8 rounded-lg bg-slate-100 p-0.5" aria-label="Формат дельт">
+      {/* ===== ПОКАЗ ===== */}
+      <div className={`mt-3 border-t border-slate-100 pt-2.5 ${SECTION_LABEL_CLASS}`}>Показ</div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <div className="inline-flex h-9 rounded-lg bg-slate-100 p-0.5" aria-label="Гранулярность колонок">
           <button
             type="button"
-            disabled={!props.showDeltas}
-            onClick={() => props.onDeltaModeChange("percent")}
-            className={`min-w-9 rounded-md px-2 text-[10px] font-semibold ${
-              props.deltaMode === "percent" && props.showDeltas ? "bg-white text-violet-700 shadow-sm" : "text-slate-400"
+            onClick={() => props.onGranularityChange("day")}
+            className={`min-w-14 rounded-md px-2.5 text-[10px] font-semibold ${
+              props.granularity === "day" ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"
             }`}
           >
-            %
+            День
           </button>
           <button
             type="button"
-            disabled={!props.showDeltas}
-            onClick={() => props.onDeltaModeChange("absolute")}
-            className={`rounded-md px-2 text-[10px] font-semibold ${
-              props.deltaMode === "absolute" && props.showDeltas ? "bg-white text-violet-700 shadow-sm" : "text-slate-400"
+            disabled={Boolean(props.weeklyDisabledReason)}
+            title={props.weeklyDisabledReason ?? "Колонки по ISO-неделям"}
+            onClick={() => props.onGranularityChange("week")}
+            className={`min-w-14 rounded-md px-2.5 text-[10px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+              props.granularity === "week" ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"
             }`}
           >
-            ± цифры
+            Неделя
           </button>
         </div>
 
-        <div className="relative ml-auto flex flex-wrap items-center gap-2">
+        <FilterChip
+          active={props.showDeltas}
+          onClick={() => props.onShowDeltasChange(!props.showDeltas)}
+          label="Дельты"
+          badge={props.showDeltas && props.deltaMode === "percent" ? "%" : null}
+        />
+        <button
+          type="button"
+          disabled={!props.showDeltas}
+          onClick={() => props.onDeltaModeChange(props.deltaMode === "percent" ? "absolute" : "percent")}
+          className={`${CONTROL_CLASS} disabled:opacity-40 ${props.deltaMode === "absolute" && props.showDeltas ? "border-violet-300 bg-violet-50 text-violet-700" : ""}`}
+          title="Формат дельт: проценты или ± цифры"
+        >
+          ± цифры
+        </button>
+
+        <label className="relative inline-flex items-center">
+          <select
+            value={props.sortField}
+            onChange={(event) => props.onSortFieldChange(event.target.value)}
+            className={`${CONTROL_CLASS} w-[170px] appearance-none pr-7`}
+            aria-label="Сортировка артикулов"
+          >
+            {props.sortOptions.map((sort) => <option key={sort.field} value={sort.field}>Сортировка: {sort.label}</option>)}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-slate-400" />
+        </label>
+        <button
+          type="button"
+          onClick={() => props.onSortDirectionChange(props.sortDirection === -1 ? 1 : -1)}
+          className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700"
+          aria-label={props.sortDirection === -1 ? "По убыванию" : "По возрастанию"}
+        >
+          {props.sortDirection === -1 ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}
+        </button>
+
+        <div className="relative ml-auto flex flex-wrap items-center gap-1.5">
           <button
             type="button"
-            onClick={() => {
-              setDisplayOpen((open) => !open);
-              setViewOpen(false);
-            }}
+            onClick={() => { const open = viewOpen; closePopovers(); setViewOpen(!open); }}
+            aria-expanded={viewOpen}
             className={`${CONTROL_CLASS} inline-flex items-center gap-2`}
           >
-            <span className="text-slate-400">Отображение:</span>
-            <span>{activeView?.label ?? "Свой вариант"}</span>
+            <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+            {activeView?.label ?? "Свой вариант"}
             <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setViewOpen((open) => !open);
-              setDisplayOpen(false);
-            }}
-            className={`${CONTROL_CLASS} inline-flex items-center gap-2`}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" /> Вид
-          </button>
+
           <button
             type="button"
             onClick={() => props.onMetricsOpenChange(!props.metricsOpen)}
             aria-expanded={props.metricsOpen}
-            className={`${CONTROL_CLASS} inline-flex items-center gap-2 border-slate-300 font-semibold text-slate-800`}
+            title="Видимость показателей"
+            className={`${CONTROL_CLASS} inline-flex items-center gap-1.5 font-semibold text-slate-800`}
           >
-            <ListFilter className="h-3.5 w-3.5" />
-            Показатели {props.metricFields.length}/{RNP_METRIC_FIELDS.length}
+            <Eye className="h-3.5 w-3.5 text-slate-500" />
+            {props.metricFields.length}/{RNP_METRIC_FIELDS.length}
           </button>
 
-          {displayOpen ? (
-            <div className="absolute right-[220px] top-11 z-50 w-[270px] rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+          <button
+            type="button"
+            onClick={() => { const open = settingsOpen; closePopovers(); setSettingsOpen(!open); }}
+            aria-label="Настройки отображения"
+            aria-expanded={settingsOpen}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700"
+          >
+            <Settings2 className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={props.onDownload}
+            disabled={props.downloadDisabled}
+            aria-label="Скачать таблицу CSV"
+            title="Скачать таблицу CSV"
+            className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700 disabled:opacity-40"
+          >
+            <Download className="h-4 w-4" />
+          </button>
+
+          {viewOpen ? (
+            <div className="absolute right-0 top-11 z-50 w-[270px] rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
               <div className="px-2 pb-1.5 pt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">Готовые представления</div>
               {RNP_VIEW_PRESETS.map((view) => (
                 <button
@@ -388,7 +576,7 @@ export function RnpOperatingToolbar(props: Props) {
                   type="button"
                   onClick={() => {
                     props.onViewChange(view.id);
-                    setDisplayOpen(false);
+                    setViewOpen(false);
                   }}
                   className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-violet-50"
                 >
@@ -406,8 +594,8 @@ export function RnpOperatingToolbar(props: Props) {
             </div>
           ) : null}
 
-          {viewOpen ? (
-            <div className="absolute right-[122px] top-11 z-50 w-[230px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+          {settingsOpen ? (
+            <div className="absolute right-0 top-11 z-50 w-[240px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
               <div className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">Настройки отображения</div>
               <div className="mt-2 space-y-1">
                 <ViewCheck
@@ -419,11 +607,6 @@ export function RnpOperatingToolbar(props: Props) {
                   label="Мини-графики"
                   checked={props.sparklinesEnabled}
                   onChange={() => props.onSparklinesChange(!props.sparklinesEnabled)}
-                />
-                <ViewCheck
-                  label="Дельты"
-                  checked={props.showDeltas}
-                  onChange={() => props.onShowDeltasChange(!props.showDeltas)}
                 />
               </div>
               <div className="mt-3 border-t border-slate-100 pt-2">
@@ -445,14 +628,36 @@ export function RnpOperatingToolbar(props: Props) {
                   </button>
                 </div>
               </div>
+              <div className="mt-3 border-t border-slate-100 pt-2">
+                <label className="flex items-center justify-between gap-2 text-[10px] font-medium text-slate-600" title="Ставка налога с выручки. Влияет только на чистую прибыль и чистую маржу.">
+                  Налог, %
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    step={0.5}
+                    value={props.taxPct}
+                    onChange={(event) => props.onTaxPctChange(Math.max(0, Math.min(50, Number(event.target.value) || 0)))}
+                    className="h-8 w-16 rounded-md border border-slate-200 bg-white px-2 text-right font-semibold tabular-nums text-slate-700 outline-none focus:border-violet-300"
+                  />
+                </label>
+                <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1.5 text-center text-[9px] font-semibold text-violet-700" title="Используются актуальные остатки WB">
+                  Остатки: актуальные WB
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
       </div>
 
-      <p className="mt-3 text-[9px] leading-4 text-slate-400">
-        Дельты: итог — к предыдущему периоду, дни — к предыдущему дню, текущий день — после закрытия · окно оборачиваемости {props.turnoverWindowDays} дней
-      </p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[9px] leading-4 text-slate-400">
+        <span>
+          {props.showDeltas
+            ? `Дельты — сравнение с предыдущим (аналогичным) периодом ${props.deltaBaselineLabel}`
+            : "Дельты выключены"}
+        </span>
+        {props.asOfLabel ? <span className="tabular-nums">данные на {props.asOfLabel}</span> : null}
+      </div>
 
       {tagsOpen ? (
         <div className="absolute left-0 top-[90px] z-50 w-[360px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">

@@ -756,3 +756,136 @@ export function formatAnomalyBadge(anomaly: RnpAnomaly): string {
   const magnitude = Math.abs(Math.round(value * 10) / 10);
   return `${label} ${sign}${magnitude}${isPoints ? " п.п." : "%"}`;
 }
+
+// ===== Шапка в духе «Рука на пульсе»: гранулярность и операционные фильтры =====
+
+export type RnpGranularity = "day" | "week";
+
+interface GranularityMetricLike {
+  kind: string;
+  daily: (number | null)[];
+}
+
+interface GranularityTableLike {
+  period: { label: string; period_type: string }[];
+  summary: GranularityMetricLike[];
+  skus: { metrics: GranularityMetricLike[] }[];
+}
+
+function moscowTodayIso(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow" }).format(new Date());
+}
+
+interface WeekBucket {
+  label: string;
+  period_type: string;
+  indexes: number[];
+}
+
+/** Дневные индексы периода, сгруппированные в ISO-недели (пн–вс) с подписями. */
+export function rnpWeekBuckets(fromIso: string, dayCount: number, todayIso = moscowTodayIso()): WeekBucket[] {
+  const start = new Date(`${fromIso}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || dayCount <= 0) return [];
+  const buckets: WeekBucket[] = [];
+  const byMonday = new Map<string, WeekBucket>();
+  const dd = (date: Date) => `${String(date.getUTCDate()).padStart(2, "0")}.${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  for (let index = 0; index < dayCount; index++) {
+    const date = new Date(start.getTime() + index * 86_400_000);
+    const monday = new Date(date.getTime() - ((date.getUTCDay() + 6) % 7) * 86_400_000);
+    const key = monday.toISOString().slice(0, 10);
+    let bucket = byMonday.get(key);
+    if (!bucket) {
+      bucket = { label: "", period_type: "неделя", indexes: [] };
+      byMonday.set(key, bucket);
+      buckets.push(bucket);
+    }
+    bucket.indexes.push(index);
+  }
+  for (const bucket of buckets) {
+    const first = new Date(start.getTime() + bucket.indexes[0] * 86_400_000);
+    const last = new Date(start.getTime() + bucket.indexes[bucket.indexes.length - 1] * 86_400_000);
+    bucket.label = bucket.indexes.length === 1 ? dd(first) : `${dd(first)}–${dd(last)}`;
+    // Неделя, в которую попадает сегодняшний (московский) день, ещё идёт —
+    // подписываем явно, чтобы недобор не читался как падение.
+    const lastIso = last.toISOString().slice(0, 10);
+    const firstIso = first.toISOString().slice(0, 10);
+    if (firstIso <= todayIso && todayIso <= lastIso) bucket.period_type = "идёт";
+  }
+  return buckets;
+}
+
+function aggregateDaily(kind: string, daily: (number | null)[], buckets: WeekBucket[]): (number | null)[] {
+  return buckets.map((bucket) => {
+    const values = bucket.indexes
+      .map((index) => daily[index])
+      .filter((value): value is number => value != null && Number.isFinite(value));
+    if (!values.length) return null;
+    const sum = values.reduce((acc, value) => acc + value, 0);
+    // Проценты и ставки нельзя пересчитать из сумм (числители/знаменатели не в
+    // снимке) — честно показываем среднее по дням с данными.
+    return kind === "pct" ? sum / values.length : sum;
+  });
+}
+
+/**
+ * Дневные колонки таблицы → недельные. Итоги (total/forecast) не трогаем —
+ * они считаются за весь период и от гранулярности не зависят.
+ */
+export function aggregateRnpWeekly<T extends GranularityTableLike>(table: T, fromIso: string, todayIso?: string): T {
+  const buckets = rnpWeekBuckets(fromIso, table.period.length, todayIso);
+  const mapMetric = <M extends GranularityMetricLike>(metric: M): M => ({
+    ...metric,
+    daily: aggregateDaily(metric.kind, metric.daily, buckets),
+  });
+  return {
+    ...table,
+    period: buckets.map((bucket) => ({ label: bucket.label, period_type: bucket.period_type })),
+    summary: table.summary.map(mapMetric),
+    skus: table.skus.map((sku) => ({ ...sku, metrics: sku.metrics.map(mapMetric) })),
+  };
+}
+
+interface OperationalMetricLike {
+  field: string;
+  total: number | null;
+  daily: (number | null)[];
+}
+
+function operationalTotal(metrics: OperationalMetricLike[], field: string): number | null {
+  const metric = metrics.find((item) => item.field === field);
+  if (!metric) return null;
+  if (metric.total != null && Number.isFinite(metric.total)) return metric.total;
+  for (let index = metric.daily.length - 1; index >= 0; index--) {
+    const value = metric.daily[index];
+    if (value != null && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+/**
+ * «Сгоревший» артикул: за период нет ни одного заказа и остатка тоже нет —
+ * строка-ноль, которая только шумит в таблице. Неизвестные значения (null)
+ * сгоревшим не считаем: отсутствие данных — не факт смерти.
+ */
+export function isBurnedOutSku(metrics: OperationalMetricLike[]): boolean {
+  const orders = operationalTotal(metrics, "orders_count");
+  const stock = operationalTotal(metrics, "stock_total") ?? operationalTotal(metrics, "stock");
+  return orders === 0 && stock != null && stock <= 0;
+}
+
+/**
+ * Причины «потерь» по артикулу — критерии совпадают с сигналами фокуса
+ * (negative_margin / ads_without_orders / stock_risk): здесь они дают
+ * per-SKU фильтр «Потери» в шапке.
+ */
+export function rnpLossReasons(metrics: OperationalMetricLike[]): string[] {
+  const reasons: string[] = [];
+  const netProfit = operationalTotal(metrics, "net_profit");
+  if (netProfit != null && netProfit < 0) reasons.push("чистая прибыль в минусе");
+  const adSpent = operationalTotal(metrics, "ad_spent");
+  const orders = operationalTotal(metrics, "orders_count");
+  if (adSpent != null && adSpent > 0 && orders === 0) reasons.push("реклама крутится без заказов");
+  const stock = operationalTotal(metrics, "stock_total") ?? operationalTotal(metrics, "stock");
+  if (stock != null && stock <= 0 && orders != null && orders > 0) reasons.push("остаток кончился при живом спросе");
+  return reasons;
+}

@@ -31,7 +31,6 @@ test("WB RNP renders previous-period deltas, heatmap and sparklines in the opera
 });
 
 test("WB RNP supports article-list filtering and anomaly direction filters", () => {
-  assert.match(toolbar, /Поиск \/ список артикулов/);
   assert.match(toolbar, /nmID \/ артикул — можно списком/);
   assert.match(page, /matchesArticleList\(sku, articleQuery\)/);
   assert.match(page, /detectSkuAnomalies/);
@@ -40,8 +39,9 @@ test("WB RNP supports article-list filtering and anomaly direction filters", () 
 });
 
 test("WB RNP turnover window reaches the cached table calculation", () => {
-  assert.match(page, /Окно оборота, дн/);
-  assert.match(toolbar, /окно оборачиваемости \{props\.turnoverWindowDays\} дней/);
+  // Контрол переехал в шапку-тулбар («Окно оборач. N дн», как у референса).
+  assert.match(toolbar, /Окно оборач\./);
+  assert.match(toolbar, /props\.onTurnoverWindowChange/);
   assert.match(page, /turnover_days: String\(turnoverWindowDays\)/);
   assert.match(tableRoute, /sp\.get\("turnover_days"\)/);
 });
@@ -54,7 +54,8 @@ test("WB RNP follows the Optima matrix composition for summary and every product
   assert.match(page, /За период/);
   assert.match(page, /Мини-график/);
   assert.match(page, /Журнал изменений/);
-  assert.match(toolbar, /Показатели \{props\.metricFields\.length\}\/\{RNP_METRIC_FIELDS\.length\}/);
+  // Счётчик видимости показателей теперь в стиле референса: 👁 N/78.
+  assert.match(toolbar, /\{props\.metricFields\.length\}\/\{RNP_METRIC_FIELDS\.length\}/);
   assert.match(toolbar, /Показатели · тяните ⠿ для порядка/);
 });
 
@@ -65,8 +66,8 @@ test("WB RNP mirrors the Optima default week, grouped matrix and display control
   assert.match(page, /Продажи и возвраты/);
   assert.match(page, /groupedMetrics\.map/);
   assert.match(toolbar, /aria-label="Бренд товара"/);
-  assert.match(toolbar, /Все бренды/);
-  assert.match(toolbar, /Все категории/);
+  assert.match(toolbar, /Бренд: все/);
+  assert.match(toolbar, /Категория: все/);
   assert.match(toolbar, /Настройки отображения/);
   assert.match(toolbar, /Формат чисел/);
 });
