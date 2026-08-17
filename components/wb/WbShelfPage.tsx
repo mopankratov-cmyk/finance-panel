@@ -64,6 +64,11 @@ function diffTone(value: number | null): string {
   return value >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700";
 }
 
+function diffTextTone(value: number | null): string {
+  if (value == null) return "text-slate-400";
+  return value >= 0 ? "text-emerald-700" : "text-rose-600";
+}
+
 function SliceChips({ slices }: { slices: ShelfSliceResult[] }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -77,39 +82,185 @@ function SliceChips({ slices }: { slices: ShelfSliceResult[] }) {
   );
 }
 
-function HistoryChart({ history }: { history: HistoryPoint[] }) {
+const OUR_COLOR = "#7c3aed";
+const SLICE_COLORS: Record<number, string> = { 3: "#ef4444", 6: "#f97316", 12: "#3b82f6", 30: "#22c55e" };
+const rub = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
+const signedRub = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.round(Math.abs(value)).toLocaleString("ru-RU")} ₽`;
+
+// Таблица срезов по образцу макета: цена среза, отличие в % и в ₽.
+// «+» = конкуренты дороже нас (зелёное: наша цена конкурентна) — семантика
+// раздела, сознательно развёрнутая относительно макета-референса.
+function SliceTable({ latest, watch }: { latest: LatestView; watch: WatchView }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full min-w-[360px] border-collapse text-[11px]">
+        <thead className="bg-slate-50 text-slate-500">
+          <tr>
+            <th className="px-3 py-2 text-left">Срез</th>
+            <th className="px-3 py-2 text-right">Цена, ₽</th>
+            <th className="px-3 py-2 text-right" title="Плюс — конкуренты дороже нас">Отличие, %</th>
+            <th className="px-3 py-2 text-right" title="Плюс — конкуренты дороже нас">Отличие, ₽</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="border-t border-slate-100 bg-violet-50/40">
+            <td className="px-3 py-2 font-bold text-slate-800">{watch.supplierArticle || watch.nmId}<span className="ml-1 font-normal text-slate-400">(вы)</span></td>
+            <td className="px-3 py-2 text-right font-bold tabular-nums text-violet-700">{price(latest.ourPrice)}</td>
+            <td className="px-3 py-2 text-right text-slate-300">—</td>
+            <td className="px-3 py-2 text-right text-slate-300">—</td>
+          </tr>
+          {latest.slices.map((slice) => {
+            const diffRub = slice.avgPrice != null && latest.ourPrice != null ? slice.avgPrice - latest.ourPrice : null;
+            return (
+              <tr key={slice.n} className="border-t border-slate-100">
+                <td className="px-3 py-2 text-slate-600">
+                  <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ backgroundColor: SLICE_COLORS[slice.n] }} />
+                  {slice.label} <span className="text-slate-400">(ср. цена)</span>
+                </td>
+                {slice.avgPrice == null
+                  ? <td colSpan={3} className="px-3 py-2 text-right text-[10px] text-amber-700">{slice.note ?? "нет данных"}</td>
+                  : (
+                    <>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-700">{price(slice.avgPrice)}</td>
+                      <td className={`px-3 py-2 text-right font-semibold tabular-nums ${diffTextTone(slice.diffPct)}`}>{pct(slice.diffPct)}</td>
+                      <td className={`px-3 py-2 text-right font-semibold tabular-nums ${diffTextTone(diffRub)}`}>{diffRub == null ? "—" : signedRub(diffRub)}</td>
+                    </>
+                  )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Динамика цен по образцу макета: наша цена + средние всех четырёх срезов.
+// Точки = сборы (до трёх в день); разрывы линий = сбор без данных, их не тянем.
+function PriceHistoryChart({ history, watch }: { history: HistoryPoint[]; watch: WatchView }) {
   const points = history
     .map((point) => ({
       at: Date.parse(point.collectedAt),
+      day: new Date(point.collectedAt).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }),
       our: point.ourPrice,
-      top6: point.slices.find((slice) => slice.n === 6)?.avgPrice ?? null,
+      byN: new Map(point.slices.map((slice) => [slice.n, slice.avgPrice])),
     }))
-    .filter((point) => Number.isFinite(point.at));
-  if (points.length < 2) {
-    return <div className="text-[10px] text-slate-400">История появится после двух и более сборов.</div>;
+    .filter((point) => Number.isFinite(point.at))
+    .sort((left, right) => left.at - right.at);
+
+  const values = points.flatMap((point) => [point.our, ...[3, 6, 12, 30].map((n) => point.byN.get(n) ?? null)])
+    .filter((value): value is number => value != null);
+  if (!points.length || !values.length) {
+    return <div className="grid min-h-[180px] place-items-center rounded-xl border border-slate-200 text-[10px] text-slate-400">График появится после первого сбора с ценами.</div>;
   }
-  const values = points.flatMap((point) => [point.our, point.top6]).filter((value): value is number => value != null);
-  if (!values.length) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const spread = Math.max(max - min, 1);
-  const x = (index: number) => 8 + (index / (points.length - 1)) * 284;
-  const y = (value: number) => 60 - ((value - min) / spread) * 50;
-  const line = (key: "our" | "top6") => points
-    .map((point, index) => point[key] == null ? null : `${x(index).toFixed(1)},${y(point[key]).toFixed(1)}`)
-    .filter(Boolean)
-    .join(" ");
+
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const pad = Math.max((rawMax - rawMin) * 0.08, rawMax * 0.01, 1);
+  const yMin = Math.max(0, rawMin - pad);
+  const yMax = rawMax + pad;
+  const W = 680;
+  const H = 235;
+  const L = 58;
+  const R = 10;
+  const T = 10;
+  const B = 26;
+  const x = (index: number) => points.length === 1 ? L + (W - L - R) / 2 : L + (index / (points.length - 1)) * (W - L - R);
+  const y = (value: number) => T + (1 - (value - yMin) / (yMax - yMin)) * (H - T - B);
+  const path = (get: (point: typeof points[number]) => number | null | undefined) => {
+    let d = "";
+    let pen = false;
+    points.forEach((point, index) => {
+      const value = get(point);
+      if (value == null) { pen = false; return; }
+      d += `${pen ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`;
+      pen = true;
+    });
+    return d;
+  };
+
+  const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) * i) / 4);
+  // Подпись дня — под первым сбором каждого дня; при большом окне прореживаем.
+  const dayTickIndexes: number[] = [];
+  points.forEach((point, index) => {
+    if (index === 0 || points[index - 1].day !== point.day) dayTickIndexes.push(index);
+  });
+  const tickStep = Math.max(1, Math.ceil(dayTickIndexes.length / 10));
+  const shownTicks = dayTickIndexes.filter((_, i) => i % tickStep === 0);
+
+  const seriesList: { key: string; label: string; color: string; get: (point: typeof points[number]) => number | null | undefined }[] = [
+    { key: "our", label: `${watch.supplierArticle || watch.nmId} (вы)`, color: OUR_COLOR, get: (point) => point.our },
+    ...[3, 6, 12, 30].map((n) => ({ key: `top${n}`, label: `Топ-${n} — ср. цена`, color: SLICE_COLORS[n], get: (point: typeof points[number]) => point.byN.get(n) ?? null })),
+  ];
+
   return (
-    <div>
-      <svg viewBox="0 0 300 70" className="h-[70px] w-full max-w-[300px]" role="img" aria-label="Динамика нашей цены и средней Топ-6">
-        <polyline points={line("top6")} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 3" />
-        <polyline points={line("our")} fill="none" stroke="#7c3aed" strokeWidth="2" />
-      </svg>
-      <div className="flex gap-3 text-[9px] text-slate-400">
-        <span><span className="mr-1 inline-block h-[2px] w-4 bg-violet-600 align-middle" />наша цена</span>
-        <span><span className="mr-1 inline-block h-[2px] w-4 bg-slate-400 align-middle" />средняя Топ-6</span>
-        <span className="ml-auto tabular-nums">{price(min)} – {price(max)}</span>
+    <div className="rounded-xl border border-slate-200 p-3">
+      <div className="mb-1 text-[11px] font-bold text-slate-700">Динамика цен</div>
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${W} ${H}`} className="min-w-[480px] w-full" role="img" aria-label="Динамика нашей цены и средних по срезам">
+          {yTicks.map((tick) => (
+            <g key={tick}>
+              <line x1={L} x2={W - R} y1={y(tick)} y2={y(tick)} stroke="#e2e8f0" strokeWidth="1" />
+              <text x={L - 6} y={y(tick) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">{Math.round(tick).toLocaleString("ru-RU")} ₽</text>
+            </g>
+          ))}
+          {shownTicks.map((index) => (
+            <text key={index} x={x(index)} y={H - 8} textAnchor="middle" fontSize="9" fill="#94a3b8">{points[index].day}</text>
+          ))}
+          {seriesList.map((series) => (
+            <path key={series.key} d={path(series.get)} fill="none" stroke={series.color} strokeWidth={series.key === "our" ? 2.2 : 1.6} />
+          ))}
+          {points.map((point, index) => seriesList.map((series) => {
+            const value = series.get(point);
+            return value == null ? null : <circle key={`${series.key}-${index}`} cx={x(index)} cy={y(value)} r={series.key === "our" ? 2.6 : 1.8} fill={series.color} />;
+          }))}
+        </svg>
       </div>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-slate-500">
+        {seriesList.map((series) => (
+          <span key={series.key}><span className="mr-1 inline-block h-[3px] w-4 rounded align-middle" style={{ backgroundColor: series.color }} />{series.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Свод по НАШЕЙ цене за окно анализа: изменение, мин/макс с датами, средняя.
+function PeriodSummary({ history }: { history: HistoryPoint[] }) {
+  const ours = history
+    .map((point) => ({ at: Date.parse(point.collectedAt), price: point.ourPrice }))
+    .filter((point): point is { at: number; price: number } => Number.isFinite(point.at) && point.price != null)
+    .sort((left, right) => left.at - right.at);
+  if (!ours.length) return null;
+  const first = ours[0];
+  const last = ours[ours.length - 1];
+  const change = last.price - first.price;
+  const changePct = first.price > 0 ? (change / first.price) * 100 : null;
+  const minPoint = ours.reduce((best, point) => point.price < best.price ? point : best);
+  const maxPoint = ours.reduce((best, point) => point.price > best.price ? point : best);
+  const avg = ours.reduce((sum, point) => sum + point.price, 0) / ours.length;
+  const dayCount = new Set(ours.map((point) => new Date(point.at).toDateString())).size;
+  const fmtDate = (at: number) => new Date(at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const cards: { label: string; value: string; hint: string }[] = [
+    {
+      label: `Изменение за ${dayCount} ${dayCount === 1 ? "день" : dayCount < 5 ? "дня" : "дней"}`,
+      value: changePct == null ? "—" : `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`,
+      hint: signedRub(change),
+    },
+    { label: "Мин. цена за период", value: rub(minPoint.price), hint: fmtDate(minPoint.at) },
+    { label: "Макс. цена за период", value: rub(maxPoint.price), hint: fmtDate(maxPoint.at) },
+    { label: "Средняя цена за период", value: rub(avg), hint: `${ours.length} ${ours.length === 1 ? "сбор" : ours.length < 5 ? "сбора" : "сборов"}` },
+    { label: "Период анализа", value: `${fmtDate(first.at)} – ${fmtDate(last.at)}`, hint: `${dayCount} ${dayCount === 1 ? "день" : dayCount < 5 ? "дня" : "дней"}` },
+  ];
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+      {cards.map((card) => (
+        <div key={card.label} className="rounded-xl border border-slate-200 p-2.5">
+          <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{card.label}</div>
+          <div className="mt-0.5 text-sm font-bold tabular-nums text-slate-800">{card.value}</div>
+          <div className="text-[9px] text-slate-400">{card.hint}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -344,11 +495,12 @@ export function WbShelfPage() {
                     <div className="space-y-3 border-t border-slate-100 p-3">
                       {latest ? (
                         <>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <SliceChips slices={latest.slices} />
-                            <span className="text-[10px] text-slate-400">сбор {new Date(latest.collectedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · конкурентов в блоке: {latest.competitorCount}</span>
+                          <div className="text-[10px] text-slate-400">сбор {new Date(latest.collectedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · конкурентов в блоке: {latest.competitorCount}</div>
+                          <div className="grid gap-3 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+                            <SliceTable latest={latest} watch={watch} />
+                            <PriceHistoryChart history={history} watch={watch} />
                           </div>
-                          <HistoryChart history={history} />
+                          <PeriodSummary history={history} />
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Конкуренты последнего сбора</span>
                             {excludedCount > 0 ? (
