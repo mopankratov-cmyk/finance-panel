@@ -71,10 +71,13 @@ export async function GET(request: NextRequest) {
         url.searchParams.set("next", String(next));
         url.searchParams.set("dateFrom", String(Math.floor(fromMs / 1000)));
         url.searchParams.set("dateTo", String(Math.floor(startedAt.getTime() / 1000)));
-        const response = await fetch(url, {
-          headers: { Authorization: target.statsToken },
-          cache: "no-store",
-        });
+        let response = await fetch(url, { headers: { Authorization: target.statsToken }, cache: "no-store" });
+        // Глобальный лимитер продавца: тем же Marketplace API пользуется его
+        // собственный сервис. Пара повторов с паузой часто проскакивает окно.
+        for (let attempt = 0; response.status === 429 && attempt < 2; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 15_000));
+          response = await fetch(url, { headers: { Authorization: target.statsToken }, cache: "no-store" });
+        }
         if (!response.ok) {
           throw new Error(`WB ${response.status}: ${(await response.text()).slice(0, 120)}`);
         }
@@ -102,19 +105,24 @@ export async function GET(request: NextRequest) {
       const upsertError = rows.length ? await chunkedUpsert("wb_fbs_orders", rows, "cabinet_id,srid") : null;
       if (upsertError) throw new Error(upsertError);
       total += rows.length;
-      if (!forceFrom) {
-        await writeWbSyncState(db, cabinetId, JOB, {
-          cursor: new Date(newestMs).toISOString(),
-          status: "caught_up",
-          attempts: 0,
-          lastError: null,
-          state: {
-            coveredFrom: saved?.state.coveredFrom ?? new Date(fromMs).toISOString().slice(0, 10),
-            lastRunAt: startedAt.toISOString(),
-            rows: rows.length,
-          },
-        });
-      }
+      // Принудительное окно тоже двигает состояние: период фактически покрыт,
+      // и без записи покрытия РНП молчал бы, хотя факты уже в базе.
+      const existing = forceFrom ? await readWbSyncState(db, cabinetId, JOB) : saved;
+      const coveredCandidates = [String(existing?.state.coveredFrom ?? ""), new Date(fromMs).toISOString().slice(0, 10)]
+        .filter(Boolean)
+        .sort();
+      const cursorCandidates = [String(existing?.cursor ?? ""), new Date(newestMs).toISOString()].filter(Boolean).sort();
+      await writeWbSyncState(db, cabinetId, JOB, {
+        cursor: cursorCandidates[cursorCandidates.length - 1],
+        status: "caught_up",
+        attempts: 0,
+        lastError: null,
+        state: {
+          coveredFrom: coveredCandidates[0],
+          lastRunAt: startedAt.toISOString(),
+          rows: rows.length,
+        },
+      });
       progress.push({ cabinet: target.name, rows: rows.length, status: "caught_up" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "неизвестная ошибка";
