@@ -25,10 +25,10 @@ test("период проверяется, а не подставляется м
   assert.match(route, /Укажите кабинет/);
 });
 
-test("заказы, продажи и реклама забираются последовательно", async () => {
+test("синки бэкфилла забираются последовательно", async () => {
   const route = await read("../app/api/wb/backfill/route.ts");
   // Параллельный запуск тяжёлых отчётов упирается в общий лимит WB.
-  assert.match(route, /const ALL_JOBS = \["orders", "sales", "advert-stats"\] as const/);
+  assert.match(route, /const ALL_JOBS = \["orders", "sales", "advert-stats", "fbs-orders"\] as const/);
   assert.match(route, /for \(const job of requested\)/);
   assert.doesNotMatch(route, /Promise\.all\(\s*\["orders"/);
 });
@@ -37,7 +37,7 @@ test("заказы, продажи и реклама забираются пос
 // рекламой, которая по тому же окну проходит спокойно.
 test("набор синков выбирается, иначе один таймаут рушит остальные", async () => {
   const route = await read("../app/api/wb/backfill/route.ts");
-  assert.match(route, /const ALL_JOBS = \["orders", "sales", "advert-stats"\] as const/);
+  assert.match(route, /const ALL_JOBS = \["orders", "sales", "advert-stats", "fbs-orders"\] as const/);
   assert.match(route, /body\.jobs!\.includes\(job\)/);
   // Без списка поведение прежнее — гоняем всё.
   assert.match(route, /Array\.isArray\(body\.jobs\) && body\.jobs\.length > 0/);

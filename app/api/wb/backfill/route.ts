@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
   // Заказы, продажи и статистику рекламы забираем последовательно: каждый прогон
   // тянет с WB тяжёлое окно, а параллельный запуск упирается в общий лимит площадки.
-  const ALL_JOBS = ["orders", "sales", "advert-stats"] as const;
+  const ALL_JOBS = ["orders", "sales", "advert-stats", "fbs-orders"] as const;
   const requested = Array.isArray(body.jobs) && body.jobs.length > 0
     ? ALL_JOBS.filter((job) => body.jobs!.includes(job))
     : ALL_JOBS;

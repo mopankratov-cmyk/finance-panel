@@ -13,7 +13,6 @@ import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commiss
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
-import { wbSchemeFromWarehouseType } from "@/lib/wb/scheme";
 import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 
@@ -134,6 +133,8 @@ type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
 export interface ScopedOrderSourceRow {
   nm_id: number;
+  /** Идентификатор заказа: соответствует rid сборочного задания Marketplace. */
+  srid?: string | null;
   /** Сырой тип склада WB. undefined — колонки ещё нет в базе (миграция не применена). */
   warehouse_type?: string | null;
   supplier_article: string | null;
@@ -1030,7 +1031,7 @@ export function buildMetrics(
       total: knownSum(ordersFbsCount),
       forecast: null,
       source: "WB Статистика заказов",
-      note: "Метрика отключена: поле warehouseType в статистике WB метит «Складом продавца» и FBO-отгрузки из транзитных СЦ, поэтому не отражает схему продажи. Появится после подключения FBS-заказов из Marketplace API.",
+      note: "По сборочным заданиям Marketplace API (существуют только у FBS-заказов, сопоставление по srid). warehouseType из статистики не используется — он метит «Складом продавца» и FBO-отгрузки из СЦ.",
       qualityReason: schemeQualityReason,
       group_start: true,
     },
@@ -1052,7 +1053,7 @@ export function buildMetrics(
       total: knownSum(ordersFbwCount),
       forecast: null,
       source: "WB Статистика заказов",
-      note: "Метрика отключена вместе с FBS: без достоверного признака схемы «склад WB» — это остаток от вычитания недостоверного числа.",
+      note: "Заказы без сборочного задания Marketplace в пределах покрытого синком периода. Дни после границы покрытия не классифицируются.",
       qualityReason: schemeQualityReason,
     },
     {
@@ -1599,19 +1600,20 @@ export function buildScopedBaseFactsFromRows(input: {
   stocks: ScopedStockSourceRow[];
   products: ScopedProductSourceRow[];
   costs: ProductCostRow[];
+  /** Сборочные задания Marketplace: прямой признак FBS. Без них схема молчит. */
+  fbsFacts?: { srids: Set<string>; cutoff: string | null };
 }): { skuRows: SkuDailyRow[]; totals: RpcTotal[] } {
   const allowed = new Set(input.allowedNmIds);
   // PostgREST не возвращает поле, если колонки нет в таблице. Значит наличие ключа
   // (пусть даже со значением null) — признак того, что миграция применена.
   //
-  // ⚠️ Сплит по warehouseType ВЫКЛЮЧЕН: сверка с кабинетом (2026-08-17, Оптима)
-  // показала, что WB метит «Складом продавца» и FBO-отгрузки из транзитных СЦ —
-  // в дни, когда товар едет через СЦ, поле называет ФБС большинство заказов при
-  // реальном ФБС в единицы процентов. Поле не отражает схему продажи, и любая
-  // раскладка по нему — уверенная ложь. Честный источник — FBS-заказы из
-  // Marketplace API (сопоставление по srid); до его появления метрики молчат.
-  const schemeKnown = false;
-  void wbSchemeFromWarehouseType;
+  // ⚠️ warehouseType схему НЕ отражает: WB метит «Складом продавца» и
+  // FBO-отгрузки из транзитных СЦ (сверка с кабинетом 2026-08-17). Честный
+  // источник — сборочные задания Marketplace: они существуют только у
+  // FBS-заказов, сопоставление по srid. Без покрытого периода схема молчит.
+  const fbsSrids = input.fbsFacts?.srids;
+  const fbsCutoff = input.fbsFacts?.cutoff ?? null;
+  const schemeKnown = fbsSrids != null && fbsCutoff != null;
   const dailyRows = new Map<string, SkuDailyRow>();
   const articleByNm = new Map<number, string>();
   const stockByNm = new Map<number, StockPosition>();
@@ -1642,9 +1644,18 @@ export function buildScopedBaseFactsFromRows(input: {
     // Цена до скидки продавца: база для «Скидка продавца, %».
     const grossPrice = Number(order.total_price);
     row.orders_gross_sum = (row.orders_gross_sum ?? 0) + (Number.isFinite(grossPrice) ? grossPrice : orderPriceBeforeSpp(order));
-    // Корзины схем не наполняем: warehouseType не отражает схему (см. schemeKnown
-    // выше). Строки без полей fbs/fbw дают метрикам «источник не поддерживается»,
-    // а не нули — «ФБС-заказов не было» было бы второй ложью поверх первой.
+    // Классификация по факту Marketplace: srid есть в сборочных заданиях → FBS,
+    // нет — FBW. Дни после границы синка не классифицируем: свежее задание могло
+    // ещё не доехать, и «не-FBS» там не доказан.
+    if (schemeKnown && date <= fbsCutoff!) {
+      if (fbsSrids!.has(String(order.srid ?? ""))) {
+        row.orders_fbs_count = (row.orders_fbs_count ?? 0) + 1;
+        row.orders_fbs_sum = (row.orders_fbs_sum ?? 0) + orderPriceBeforeSpp(order);
+      } else {
+        row.orders_fbw_count = (row.orders_fbw_count ?? 0) + 1;
+        row.orders_fbw_sum = (row.orders_fbw_sum ?? 0) + orderPriceBeforeSpp(order);
+      }
+    }
   }
   for (const sale of input.sales) {
     const nmId = Number(sale.nm_id);
@@ -1693,9 +1704,9 @@ export function buildScopedBaseFactsFromRows(input: {
         ...row,
         cancels_count: row.cancels_count ?? 0,
         cancels_sum: row.cancels_sum ?? 0,
-        // Нули по схемам ставим, только если колонка типа склада реально пришла:
-        // иначе «схема неизвестна» превратилось бы в «FBS-заказов не было».
-        ...(schemeKnown ? {
+        // Нули по схемам ставим только в пределах границы покрытия синка FBS:
+        // за её пределами «схема неизвестна», а не «FBS-заказов не было».
+        ...(schemeKnown && row.d <= fbsCutoff! ? {
           orders_fbs_count: row.orders_fbs_count ?? 0,
           orders_fbs_sum: row.orders_fbs_sum ?? 0,
           orders_fbw_count: row.orders_fbw_count ?? 0,
@@ -1710,7 +1721,7 @@ export function buildScopedBaseFactsFromRows(input: {
   };
 }
 
-const ORDER_COLUMNS = "nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel";
+const ORDER_COLUMNS = "nm_id, srid, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel";
 
 /** PostgREST сообщает об отсутствующей колонке текстом «column … does not exist». */
 function isMissingColumnError(error: unknown, column: string): boolean {
@@ -1751,6 +1762,44 @@ async function loadScopedOrders(
   }
 }
 
+/**
+ * FBS-факты: множество srid сборочных заданий Marketplace за период плюс граница
+ * достоверности. Классифицировать «не-FBS как FBW» честно только там, где синк
+ * FBS-заказов реально покрыл период: без состояния синка или при ошибке — схема
+ * неизвестна, и раскладка молчит целиком.
+ */
+async function loadScopedFbsFacts(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  allowed: number[],
+  dateFrom: string,
+  dateTo: string,
+): Promise<{ srids: Set<string>; cutoff: string | null }> {
+  if (!scope.cabinetId) return { srids: new Set(), cutoff: null };
+  try {
+    const state = await readWbSyncState(db, scope.cabinetId, "fbs-orders");
+    if (!state || state.status === "error" || !state.cursor) return { srids: new Set(), cutoff: null };
+    const coveredFrom = String(state.state.coveredFrom ?? "");
+    // Период начинается раньше, чем синк начал покрывать? Ранние дни назвали бы
+    // FBW всё подряд — молчим по всему периоду, частичная правда тут не собирается.
+    if (coveredFrom && dateFrom.slice(0, 10) < coveredFrom) return { srids: new Set(), cutoff: null };
+    const rows = await loadAllPages<{ srid: string }>((start, end) => db
+      .from("wb_fbs_orders")
+      .select("srid")
+      .eq("cabinet_id", scope.cabinetId!)
+      .in("nm_id", allowed)
+      .gte("created_at_wb", dateFrom)
+      .lt("created_at_wb", dateTo)
+      .order("srid", { ascending: true })
+      .range(start, end));
+    // Граница: день последнего успешного прогона. Заказ мог появиться позже —
+    // дни после границы не классифицируем, как и у других источников.
+    return { srids: new Set(rows.map((row) => row.srid)), cutoff: String(state.cursor).slice(0, 10) };
+  } catch {
+    return { srids: new Set(), cutoff: null };
+  }
+}
+
 async function loadScopedBaseFacts(
   db: SupabaseAdmin,
   scope: CabinetScope,
@@ -1760,7 +1809,7 @@ async function loadScopedBaseFacts(
 ) {
   const dateFrom = `${from}T00:00:00.000Z`;
   const dateTo = `${nextIsoDate(to)}T00:00:00.000Z`;
-  const [orders, sales, advertSpend, stocks, products] = await Promise.all([
+  const [orders, sales, advertSpend, stocks, products, fbsFacts] = await Promise.all([
     loadScopedOrders(db, scope, allowed, dateFrom, dateTo),
     loadAllPages<ScopedSaleSourceRow>((start, end) => {
       let query = db
@@ -1809,6 +1858,7 @@ async function loadScopedBaseFacts(
       if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
       return query;
     }),
+    loadScopedFbsFacts(db, scope, allowed, dateFrom, dateTo),
   ]);
   const articleSet = new Set<string>();
   for (const product of products) if (product.article) articleSet.add(product.article);
@@ -1823,7 +1873,7 @@ async function loadScopedBaseFacts(
       .range(start, end))
     : [];
 
-  return buildScopedBaseFactsFromRows({ allowedNmIds: allowed, orders, sales, advertSpend, stocks, products, costs });
+  return buildScopedBaseFactsFromRows({ allowedNmIds: allowed, orders, sales, advertSpend, stocks, products, costs, fbsFacts });
 }
 
 async function loadSalesReturns(

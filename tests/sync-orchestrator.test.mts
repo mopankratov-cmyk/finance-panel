@@ -37,9 +37,11 @@ test("independent sync jobs run concurrently and advert stats waits for adverts"
 
   const result = await runCoreSyncJobs("https://example.test", {}, fakeFetch as typeof fetch);
   assert.equal(result.ok, true);
-  assert.equal(maxActive, 2);
-  assert.deepEqual(started.slice(0, 2).sort(), ["adverts", "orders"]);
-  assert.equal(started[2], "advert-stats");
+  assert.equal(maxActive, 3);
+  // Первая волна теперь трёхголовая: orders, adverts и fbs-orders стартуют разом.
+  assert.deepEqual(started.slice(0, 3).sort(), ["adverts", "fbs-orders", "orders"]);
+  // advert-stats ждёт только окончания adverts и идёт следом за первой волной.
+  assert.equal(started[3], "advert-stats");
 });
 
 test("downstream job failures make the aggregate sync fail", async () => {

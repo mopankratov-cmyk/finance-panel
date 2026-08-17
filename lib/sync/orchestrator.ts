@@ -1,4 +1,5 @@
-const FIRST_WAVE = ["orders", "sales", "stocks", "adverts"] as const;
+// fbs-orders — сборочные задания Marketplace: признак схемы продажи для РНП.
+const FIRST_WAVE = ["orders", "sales", "stocks", "adverts", "fbs-orders"] as const;
 const DEPENDENT_WAVE = ["advert-stats"] as const;
 
 export type CoreSyncJob = (typeof FIRST_WAVE)[number] | (typeof DEPENDENT_WAVE)[number];

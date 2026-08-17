@@ -22,7 +22,7 @@ test("hourly core sync leaves sales and stocks to their staggered cron slots", a
   );
 
   assert.equal(result.ok, true);
-  assert.deepEqual(called.sort(), ["advert-stats", "adverts", "orders"]);
+  assert.deepEqual(called.sort(), ["advert-stats", "adverts", "fbs-orders", "orders"]);
 });
 
 test("Vercel runs seller statistics and stocks in separate minute slots", () => {
@@ -48,7 +48,7 @@ test("manual WB refresh also leaves sales and stocks to dedicated slots", async 
   );
 
   assert.equal(result.ok, true);
-  assert.deepEqual(called.sort(), ["advert-stats", "adverts", "orders"]);
+  assert.deepEqual(called.sort(), ["advert-stats", "adverts", "fbs-orders", "orders"]);
 });
 
 test("an explicit full WB refresh can still include sales and stocks", async () => {
@@ -64,7 +64,7 @@ test("an explicit full WB refresh can still include sales and stocks", async () 
   );
 
   assert.equal(result.ok, true);
-  assert.deepEqual(called.sort(), ["advert-stats", "adverts", "orders", "sales", "stocks"]);
+  assert.deepEqual(called.sort(), ["advert-stats", "adverts", "fbs-orders", "orders", "sales", "stocks"]);
 });
 
 test("the aggregate WB route always uses the rate-limit-safe core options", () => {

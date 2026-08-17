@@ -127,6 +127,9 @@ export function resolveWbToken(cabinet: WbCabinet, scope: WbScope): string {
       return cabinet.token_feedbacks || cabinet.token;
     case "statistics":
     case "analytics":
+    // Marketplace живёт на основном токене: отдельного поля под него нет,
+    // а зонд token-health подтвердил доступ этим токеном у всех кабинетов.
+    case "marketplace":
     default:
       return cabinet.token;
   }
