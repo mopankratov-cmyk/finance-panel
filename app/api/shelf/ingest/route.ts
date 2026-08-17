@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseShelfSnapshotPayload } from "@/lib/shelf/ingest";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { checkCronAuth } from "@/lib/sync/helpers";
+import { checkShelfCollectorAuth } from "@/lib/shelf/collectorAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // в нескольких кабинетах — снимок пишется в каждый активный watch.
 // Повторная отправка того же сбора (watch_id + collected_at) — идемпотентный no-op.
 export async function POST(request: NextRequest) {
-  const denied = checkCronAuth(request);
+  const denied = checkShelfCollectorAuth(request);
   if (denied) return denied;
 
   const db = getSupabaseAdmin();

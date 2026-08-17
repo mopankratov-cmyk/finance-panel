@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { checkCronAuth } from "@/lib/sync/helpers";
+import { checkShelfCollectorAuth } from "@/lib/shelf/collectorAuth";
 
 export const dynamic = "force-dynamic";
 
 // Список артикулов для внешнего сборщика «Полок» (tools/shelf-collector).
-// Авторизация — тот же CRON_SECRET, что и у синков: сборщик работает на машине
-// владельца без сессии. Отдаём только номера артикулов — сборщику больше не нужно.
+// Сборщик работает на машине владельца без сессии — авторизация секретом
+// (SHELF_CRON_SECRET или серверный CRON_SECRET). Отдаём только номера артикулов.
 export async function GET(request: NextRequest) {
-  const denied = checkCronAuth(request);
+  const denied = checkShelfCollectorAuth(request);
   if (denied) return denied;
 
   const db = getSupabaseAdmin();

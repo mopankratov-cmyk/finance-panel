@@ -8,12 +8,18 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
 // экран — под сессией с проверкой кабинета, а удаление истории требует явного
 // подтверждения. Разъезд любого из них — тихая дыра, поэтому сторожим текстом.
 
-test("эндпоинты сборщика закрыты cron-авторизацией", async () => {
+test("эндпоинты сборщика закрыты секретной авторизацией", async () => {
   for (const path of ["../app/api/shelf/watchlist/route.ts", "../app/api/shelf/ingest/route.ts"]) {
     const source = await read(path);
-    assert.match(source, /checkCronAuth\(request\)/, `${path} без checkCronAuth`);
+    assert.match(source, /checkShelfCollectorAuth\(request\)/, `${path} без checkShelfCollectorAuth`);
     assert.doesNotMatch(source, /requireApiSession/, `${path} не должен требовать сессию — сборщик безголовый`);
   }
+  // Отдельный секрет сборщика существует потому, что CRON_SECRET sensitive и
+  // не выгружается на машину владельца; серверный секрет остаётся валидным.
+  const auth = await read("../lib/shelf/collectorAuth.ts");
+  assert.match(auth, /SHELF_CRON_SECRET/);
+  assert.match(auth, /CRON_SECRET/);
+  assert.match(auth, /status: 401/);
 });
 
 test("экранные эндпоинты под сессией и проверкой кабинета", async () => {
