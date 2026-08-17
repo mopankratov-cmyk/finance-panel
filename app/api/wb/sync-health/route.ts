@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { requireApiSession } from "@/lib/auth/apiGuard";
@@ -80,12 +80,52 @@ async function fieldCoverageSnapshot(db: SupabaseClient, cabinetId: string, tabl
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const session = await getServerSession();
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+
+  // ?warehouse_types=1&cabinet=<uuid>&from=YYYY-MM-DD&to=YYYY-MM-DD — распределение
+  // сырых значений warehouse_type по дням. Диагностика сплита ФБО/ФБС: сверка с
+  // кабинетом Оптимы показала зеркально перевёрнутые числа в части дней, и без
+  // сырых значений не отличить «WB прислал не то» от «мы не так классифицируем».
+  const sp = request.nextUrl.searchParams;
+  if (sp.get("warehouse_types") === "1") {
+    const cabinetId = sp.get("cabinet");
+    const from = sp.get("from");
+    const to = sp.get("to");
+    if (!cabinetId || !from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return NextResponse.json({ error: "Нужны cabinet, from и to (ГГГГ-ММ-ДД)" }, { status: 400 });
+    }
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    try {
+      const rows = await loadAllSupabasePages<{ date: string; warehouse_type: string | null; is_cancel: boolean | null }>(
+        (start, end) => db.from("wb_orders")
+          .select("date, warehouse_type, is_cancel")
+          .eq("cabinet_id", cabinetId)
+          .gte("date", `${from}T00:00:00`)
+          .lt("date", `${to}T23:59:59`)
+          .order("date", { ascending: true })
+          .range(start, end),
+        { maxPages: 60, label: "Диагностика типов складов" },
+      );
+      const byDay: Record<string, Record<string, number>> = {};
+      for (const row of rows) {
+        if (row.is_cancel === true) continue;
+        const day = String(row.date).slice(0, 10);
+        const value = row.warehouse_type == null ? "<null>" : String(row.warehouse_type) || "<пусто>";
+        byDay[day] = byDay[day] ?? {};
+        byDay[day][value] = (byDay[day][value] ?? 0) + 1;
+      }
+      return NextResponse.json({ cabinetId, from, to, byDay });
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Диагностика не удалась" }, { status: 502 });
+    }
+  }
   const sessionScoped = (await getActiveWbCabinets()).filter((cabinet) => sessionHasCabinetAccess(session, cabinet.id));
   const cabinetAccess = await Promise.all(sessionScoped.map((cabinet) => hasCabinetAccess(cabinet.id)));
   const cabinets = sessionScoped.filter((_cabinet, index) => cabinetAccess[index]);
