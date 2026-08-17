@@ -126,6 +126,35 @@ export async function GET(request: NextRequest) {
   // ?advert_types=1&cabinet=<uuid> — какие значения bid_type реально прислал WB.
   // Нужны для сплита рекламы по видам кампаний: имена в анонсах и в живом API
   // у WB расходятся (см. историю addToWishlistCount), маппинг пишем по факту.
+  // ?fbs_probe=1&cabinet=<uuid> — распределение сборочных заданий Marketplace по
+  // датам создания. Сверка сплита ФБО/ФБС: наши числа разошлись с сервисом
+  // кабинета, и без дат заданий не понять, чья семантика какая.
+  if (sp.get("fbs_probe") === "1") {
+    const cabinetId = sp.get("cabinet");
+    if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const rows = await loadAllSupabasePages<{ created_at_wb: string | null; nm_id: number }>(
+      (start, end) => db.from("wb_fbs_orders")
+        .select("created_at_wb, nm_id")
+        .eq("cabinet_id", cabinetId)
+        .order("created_at_wb", { ascending: true })
+        .range(start, end),
+      { maxPages: 30, label: "Диагностика FBS-заданий" },
+    );
+    const byDay: Record<string, number> = {};
+    const byDayMsk: Record<string, number> = {};
+    for (const row of rows) {
+      const iso = String(row.created_at_wb ?? "");
+      if (!iso) { byDay["<null>"] = (byDay["<null>"] ?? 0) + 1; continue; }
+      byDay[iso.slice(0, 10)] = (byDay[iso.slice(0, 10)] ?? 0) + 1;
+      const msk = new Date(new Date(iso).getTime() + 3 * 3600_000).toISOString().slice(0, 10);
+      byDayMsk[msk] = (byDayMsk[msk] ?? 0) + 1;
+    }
+    return NextResponse.json({ cabinetId, total: rows.length, byDayUtc: byDay, byDayMsk });
+  }
+
   if (sp.get("advert_types") === "1") {
     const cabinetId = sp.get("cabinet");
     if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
