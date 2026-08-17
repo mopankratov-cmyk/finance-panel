@@ -199,19 +199,33 @@ async function extractCompetitorsFromDom(page) {
     return cards.map((card, index) => {
       const nmId = card.getAttribute('data-popup-nm-id');
 
-      const brandWrap = card.querySelector('.product-card__brand-wrap');
+      // Бренд. Старая вёрстка: .product-card__brand-wrap с отдельным узлом
+      // .product-card__name — бренд равен остатку. Доверяем ей ТОЛЬКО когда узел
+      // названия есть: без него textContent слипается в «Бренд/Название»
+      // (подтверждено живым сбором 18.08.2026 на новой вёрстке карточек).
       let brand = null;
-      if (brandWrap) {
-        const nameEl = brandWrap.querySelector('.product-card__name');
+      const brandWrap = card.querySelector('.product-card__brand-wrap');
+      const nameEl = brandWrap ? brandWrap.querySelector('.product-card__name') : null;
+      if (brandWrap && nameEl) {
         const fullText = brandWrap.textContent.trim();
-        const nameText = nameEl ? nameEl.textContent.trim() : '';
-        brand = fullText.slice(0, fullText.length - nameText.length).replace(/\/\s*$/, '').trim();
+        const nameText = nameEl.textContent.trim();
+        brand = fullText.slice(0, fullText.length - nameText.length).replace(/\/\s*$/, '').trim() || null;
+      }
+      // Новая вёрстка (mo-typography, зонд 18.08.2026): бренд, «/» и название —
+      // три отдельных листовых узла подряд. Бренд = лист ПЕРЕД листом-слэшем;
+      // листа-слэша нет — бренда на карточке нет (то же правило, что и раньше).
+      if (!brand) {
+        const leaves = [...card.querySelectorAll('*')].filter((node) => node.children.length === 0);
+        const slashIndex = leaves.findIndex((node) => node.textContent.trim() === '/');
+        if (slashIndex > 0) brand = leaves[slashIndex - 1].textContent.trim() || null;
       }
 
-      // Третий вариант — на случай новой CSS-модульной вёрстки WB в карточках
-      // (camelCase c хэш-суффиксом, как это уже случилось с ценой своей карточки —
-      // см. OUR_PRICE_SELECTOR). Сегодня карточки блока на старой вёрстке.
-      const priceEl = card.querySelector('.price__lower-price.wallet-price, [class*="wallet-price"], [class*="walletPrice"]');
+      // Цена «с WB Кошельком». Старая вёрстка — wallet-price; новая (зонд
+      // 18.08.2026) — узел mo-typography_variant_action-accent внутри
+      // mainPriceWrapper, рядом подпись «с WB Кошельком». Узел
+      // variant_description рядом — СТАРАЯ зачёркнутая цена, его не трогаем.
+      const priceEl = card.querySelector('.price__lower-price.wallet-price, [class*="wallet-price"], [class*="walletPrice"]')
+        || card.querySelector('[class*="action-accent"]');
       const img = card.querySelector('img');
 
       return {
