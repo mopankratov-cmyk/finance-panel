@@ -16,6 +16,7 @@ import {
   Megaphone,
   MessageSquareText,
   PackageSearch,
+  Rows3,
   Search,
   Settings,
   Sparkles,
@@ -51,6 +52,7 @@ const ITEM_ICONS: Record<string, IconComponent> = {
   "/wb/sklejki": Link2,
   "/wb/adverts": Megaphone,
   "/wb/ctr": FlaskConical,
+  "/wb/shelf": Rows3,
   "/wb/market": ChartNoAxesCombined,
   "/wb/supplies": Truck,
   "/wb/product": PackageSearch,
@@ -104,7 +106,10 @@ export function WbShell({ children }: { children: React.ReactNode }) {
   const workNav = user?.role === "seller" && cabinets.length === 0
     ? []
     : user?.role === "seller"
-    ? WORK_NAV.map((item) => item.href === "/wb/funnel" ? { ...item, label: "Воронка" } : item)
+    // «Полки» — внутренний раздел (roles.ts и proxy селлера не пускают):
+    // пункт в меню был бы мёртвой ссылкой.
+    ? WORK_NAV.filter((item) => item.href !== "/wb/shelf")
+        .map((item) => item.href === "/wb/funnel" ? { ...item, label: "Воронка" } : item)
     : WORK_NAV;
   const mobileNav = user?.role === "seller" && cabinets.length === 0
     ? SELLER_SYSTEM_NAV

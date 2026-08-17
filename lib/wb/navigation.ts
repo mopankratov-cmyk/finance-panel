@@ -17,6 +17,7 @@ export const WB_NAVIGATION_ITEMS: WbNavigationItem[] = [
   { label: "Склейки", href: "/wb/sklejki" },
   { label: "Отзывы", href: "/wb/reviews" },
   { label: "CTR-тесты", href: "/wb/ctr" },
+  { label: "Полки", href: "/wb/shelf" },
   { label: "Рынок", href: "/wb/market" },
 ];
 

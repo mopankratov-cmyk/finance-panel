@@ -1,0 +1,16 @@
+{
+  "name": "shelf-collector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Сборщик цен конкурентов из блока «Смотрите также» для раздела «Полки» finance-panel. Playwright + реальный Chrome на Mac (антибот WB не пропускает серверный скрейпинг); снимки уходят в панель по CRON_SECRET. Основа — local-collector из наработок автора идеи.",
+  "scripts": {
+    "postinstall": "playwright install chromium",
+    "collect": "node src/collector.js",
+    "collect:now": "node src/collector.js --now"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "playwright": "^1.47.0"
+  }
+}

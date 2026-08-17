@@ -15,6 +15,7 @@ test("WB navigation exposes only the approved dashboards as direct links", () =>
     "/wb/sklejki",
     "/wb/reviews",
     "/wb/ctr",
+    "/wb/shelf",
     "/wb/market",
   ]);
   assert.equal(new Set(WB_NAVIGATION_ITEMS.map((item) => item.href)).size, WB_NAVIGATION_ITEMS.length);
