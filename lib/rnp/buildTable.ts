@@ -95,7 +95,15 @@ interface RpcTotal {
   in_way_from_client: number;
   cost: number | null;
 }
-interface AdNmRow { nm_id: number; date: string; views: number | null; clicks: number | null }
+interface AdNmRow {
+  nm_id: number;
+  date: string;
+  views: number | null;
+  clicks: number | null;
+  /** Атрибуцированные к рекламе заказы за день — их пишет синк advert-stats. */
+  orders: number | null;
+  orders_sum: number | null;
+}
 interface FunnelRow {
   nm_id: number;
   date: string;
@@ -463,6 +471,8 @@ export function buildFunnelMetrics(
   openCardByDate: Map<string, number>,
   cartByDate: Map<string, number>,
   cutoffs: FunnelCutoffs,
+  // Атрибуцированные заказы рекламы; опционально, чтобы не ломать вызовы без них.
+  ads?: { ordersByDate: Map<string, number>; ordersSumByDate: Map<string, number> },
 ): Metric[] {
   const read = (source: Map<string, number>, day: string, cutoff: string | null) =>
     !cutoff || day > asOf || day > cutoff || !source.has(day) ? null : Number(source.get(day));
@@ -482,6 +492,8 @@ export function buildFunnelMetrics(
   const totalClicks = knownSum(clicks);
   const totalOpenCard = knownSum(openCard);
   const totalCart = knownSum(cart);
+  const adOrders = ads ? days.map((day) => read(ads.ordersByDate, day, cutoffs.adverts)) : null;
+  const adOrdersSum = ads ? days.map((day) => read(ads.ordersSumByDate, day, cutoffs.adverts)) : null;
   const metrics: Metric[] = [
     { field: "views", label: "Рекламные показы", kind: "int", daily: views, total: totalViews, forecast: null, source: "WB Реклама", group_start: true },
     { field: "clicks", label: "Рекламные клики", kind: "int", daily: clicks, total: totalClicks, forecast: null, source: "WB Реклама" },
@@ -490,9 +502,20 @@ export function buildFunnelMetrics(
     { field: "cart", label: "В корзину", kind: "int", daily: cart, total: totalCart, forecast: null, source: "WB Воронка" },
     { field: "cart_cr", label: "Конв. в корзину, %", kind: "pct", daily: cartCr, total: totalOpenCard && totalCart != null ? Math.round((totalCart / totalOpenCard) * 1000) / 10 : null, forecast: null, source: "WB Воронка", note: "Корзины / переходы в карточку. Пустые даты источника не считаются нулём." },
   ];
+  if (adOrders && adOrdersSum) {
+    // Атрибуция WB: заказ приписывается рекламе в течение окна после клика,
+    // поэтому дневная сумма может расходиться с заказами дня — это не ошибка.
+    const anchor = metrics.findIndex((item) => item.field === "ctr") + 1;
+    metrics.splice(anchor, 0,
+      { field: "ad_orders", label: "Заказы из рекламы, шт.", kind: "int", daily: adOrders, total: knownSum(adOrders), forecast: null, source: "WB Реклама", note: "Атрибуция WB: заказ приписан кампании в течение окна после клика, поэтому день заказа может отличаться от дня клика." },
+      { field: "ad_orders_sum", label: "Заказы из рекламы, ₽", kind: "money", daily: adOrdersSum, total: knownSum(adOrdersSum), forecast: null, source: "WB Реклама" },
+    );
+  }
   return applyMetricForecasts(metrics, days, asOf, {
     views: cutoffAsOf(cutoffs.adverts, asOf),
     clicks: cutoffAsOf(cutoffs.adverts, asOf),
+    ad_orders: cutoffAsOf(cutoffs.adverts, asOf),
+    ad_orders_sum: cutoffAsOf(cutoffs.adverts, asOf),
     open_card: cutoffAsOf(cutoffs.funnel, asOf),
     cart: cutoffAsOf(cutoffs.funnel, asOf),
     cart_cr: cutoffAsOf(cutoffs.funnel, asOf),
@@ -536,6 +559,112 @@ export function appendOrderConversion(metrics: Metric[]): Metric[] {
   const anchor = metrics.findIndex((item) => item.field === "cart_cr");
   if (anchor >= 0) metrics.splice(anchor + 1, 0, metric);
   else metrics.push(metric);
+  return metrics;
+}
+
+
+/**
+ * Органика = всё минус реклама, по уже собранным рядам. Считается после слияния
+ * наборов: заказы и реклама приходят из разных источников с разными cutoff'ами.
+ *
+ * Атрибуция WB когортная (заказ приписан рекламе в течение окна после клика),
+ * поэтому день органики может уйти в минус — такой день показываем нулём, а не
+ * отрицательным числом, и это отражено в note. Правды в «минус три органических
+ * заказа» нет, есть только смещение атрибуции между днями.
+ */
+export function appendOrganicMetrics(metrics: Metric[]): Metric[] {
+  if (metrics.some((metric) => metric.field === "org_orders_count")) return metrics;
+  const openCard = metrics.find((metric) => metric.field === "open_card");
+  const clicks = metrics.find((metric) => metric.field === "clicks");
+  const orders = metrics.find((metric) => metric.field === "orders_count");
+  const adOrders = metrics.find((metric) => metric.field === "ad_orders");
+  if (!openCard || !clicks || !orders || !adOrders) return metrics;
+
+  const minus = (left: Array<number | null>, right: Array<number | null>) =>
+    left.map((value, index) => {
+      const subtrahend = right[index];
+      if (value == null || subtrahend == null) return null;
+      return Math.max(0, Number(value) - Number(subtrahend));
+    });
+  const minusTotal = (left: number | null, right: number | null) =>
+    left != null && right != null ? Math.max(0, left - right) : null;
+
+  const orgOpenCard = minus(openCard.daily, clicks.daily);
+  const orgOrders = minus(orders.daily, adOrders.daily);
+  const orgOpenCardTotal = minusTotal(openCard.total, clicks.total);
+  const orgOrdersTotal = minusTotal(orders.total, adOrders.total);
+  const weakest = (...values: Array<number | null | undefined>) =>
+    Math.min(...values.map((value) => value ?? 0));
+
+  const organic: Metric[] = [
+    {
+      field: "org_open_card",
+      label: "Переходы органики",
+      kind: "int",
+      daily: orgOpenCard,
+      total: orgOpenCardTotal,
+      forecast: null,
+      source: "WB Воронка − WB Реклама",
+      coveragePct: weakest(openCard.coveragePct, clicks.coveragePct),
+      status: statusForCoverage(weakest(openCard.coveragePct, clicks.coveragePct)),
+      note: "Переходы в карточку минус рекламные клики. Отрицательные дни показываются нулём.",
+      group_start: true,
+    },
+    {
+      field: "org_orders_count",
+      label: "Заказы органики, шт.",
+      kind: "int",
+      daily: orgOrders,
+      total: orgOrdersTotal,
+      forecast: null,
+      source: "WB Воронка − WB Реклама",
+      coveragePct: weakest(orders.coveragePct, adOrders.coveragePct),
+      status: statusForCoverage(weakest(orders.coveragePct, adOrders.coveragePct)),
+      note: "Заказы минус атрибуцированные к рекламе. Атрибуция WB когортная, поэтому день может обнулиться при всплеске рекламных заказов.",
+    },
+    {
+      field: "org_cr_pct",
+      label: "CR органики, %",
+      kind: "pct",
+      daily: orgOpenCard.map((visits, index) => {
+        const ordered = orgOrders[index];
+        return visits != null && visits > 0 && ordered != null
+          ? Math.round((ordered / visits) * 1000) / 10
+          : null;
+      }),
+      total: orgOpenCardTotal && orgOrdersTotal != null
+        ? Math.round((orgOrdersTotal / orgOpenCardTotal) * 1000) / 10
+        : null,
+      forecast: null,
+      source: "WB Воронка − WB Реклама",
+      coveragePct: weakest(openCard.coveragePct, clicks.coveragePct, orders.coveragePct, adOrders.coveragePct),
+      status: statusForCoverage(weakest(openCard.coveragePct, clicks.coveragePct, orders.coveragePct, adOrders.coveragePct)),
+      note: "Заказы органики / переходы органики.",
+    },
+    {
+      field: "org_share_pct",
+      label: "Доля органики в переходах, %",
+      kind: "pct",
+      daily: openCard.daily.map((visits, index) => {
+        const organicVisits = orgOpenCard[index];
+        return visits != null && Number(visits) > 0 && organicVisits != null
+          ? Math.round((organicVisits / Number(visits)) * 1000) / 10
+          : null;
+      }),
+      total: openCard.total && orgOpenCardTotal != null
+        ? Math.round((orgOpenCardTotal / openCard.total) * 1000) / 10
+        : null,
+      forecast: null,
+      source: "WB Воронка − WB Реклама",
+      coveragePct: weakest(openCard.coveragePct, clicks.coveragePct),
+      status: statusForCoverage(weakest(openCard.coveragePct, clicks.coveragePct)),
+      note: "Сколько переходов в карточку пришло не из рекламы.",
+    },
+  ];
+
+  const anchor = metrics.findIndex((item) => item.field === "order_cr");
+  if (anchor >= 0) metrics.splice(anchor + 1, 0, ...organic);
+  else metrics.push(...organic);
   return metrics;
 }
 
@@ -1780,7 +1909,7 @@ export async function buildRnpTable(
           loadAllPages<AdNmRow>((start, end) => {
             let query = db
               .from("wb_advert_nm_daily")
-              .select("nm_id, date, views, clicks")
+              .select("nm_id, date, views, clicks, orders, orders_sum")
               .gte("date", from)
               .lte("date", to)
               .order("date", { ascending: true })
@@ -1889,13 +2018,22 @@ export async function buildRnpTable(
     // рекламный и товарный трафик по (nm_id, date) — отдельно от rnp_daily(_sku) RPC
     const viewsByNm = new Map<number, Map<string, number>>();
     const clicksByNm = new Map<number, Map<string, number>>();
+    const adOrdersByNm = new Map<number, Map<string, number>>();
+    const adOrdersSumByNm = new Map<number, Map<string, number>>();
     const openCardByNm = new Map<number, Map<string, number>>();
     const cartByNm = new Map<number, Map<string, number>>();
     for (const r of adRows) {
       const d = String(r.date).slice(0, 10);
-      if (!viewsByNm.has(r.nm_id)) { viewsByNm.set(r.nm_id, new Map()); clicksByNm.set(r.nm_id, new Map()); }
+      if (!viewsByNm.has(r.nm_id)) {
+        viewsByNm.set(r.nm_id, new Map());
+        clicksByNm.set(r.nm_id, new Map());
+        adOrdersByNm.set(r.nm_id, new Map());
+        adOrdersSumByNm.set(r.nm_id, new Map());
+      }
       viewsByNm.get(r.nm_id)!.set(d, (viewsByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.views ?? 0));
       clicksByNm.get(r.nm_id)!.set(d, (clicksByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.clicks ?? 0));
+      adOrdersByNm.get(r.nm_id)!.set(d, (adOrdersByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.orders ?? 0));
+      adOrdersSumByNm.get(r.nm_id)!.set(d, (adOrdersSumByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.orders_sum ?? 0));
     }
     for (const r of funnelRows) {
       const d = String(r.date).slice(0, 10);
@@ -1907,12 +2045,16 @@ export async function buildRnpTable(
     // агрегат по всем nm — для сводки строки
     const viewsByDateAll = new Map<string, number>();
     const clicksByDateAll = new Map<string, number>();
+    const adOrdersByDateAll = new Map<string, number>();
+    const adOrdersSumByDateAll = new Map<string, number>();
     const openCardByDateAll = new Map<string, number>();
     const cartByDateAll = new Map<string, number>();
     for (const r of adRows) {
       const d = String(r.date).slice(0, 10);
       viewsByDateAll.set(d, (viewsByDateAll.get(d) ?? 0) + Number(r.views ?? 0));
       clicksByDateAll.set(d, (clicksByDateAll.get(d) ?? 0) + Number(r.clicks ?? 0));
+      adOrdersByDateAll.set(d, (adOrdersByDateAll.get(d) ?? 0) + Number(r.orders ?? 0));
+      adOrdersSumByDateAll.set(d, (adOrdersSumByDateAll.get(d) ?? 0) + Number(r.orders_sum ?? 0));
     }
     for (const r of funnelRows) {
       const d = String(r.date).slice(0, 10);
@@ -2026,8 +2168,12 @@ export async function buildRnpTable(
         const card = cardByNm.get(t.nm_id);
         const cost = costByArt.get(t.article);
         const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, schemeFacts: schemeFactsByNm.get(t.nm_id) ?? schemeFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0), rates: wbRatesForNm(t.nm_id) });
-        metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs));
+        metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs, {
+          ordersByDate: adOrdersByNm.get(t.nm_id) ?? new Map(),
+          ordersSumByDate: adOrdersSumByNm.get(t.nm_id) ?? new Map(),
+        }));
         appendOrderConversion(metrics);
+        appendOrganicMetrics(metrics);
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
         return {
           nm: t.nm_id,
@@ -2045,8 +2191,12 @@ export async function buildRnpTable(
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
     const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, schemeFacts: schemeFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal });
-    summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs));
+    summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs, {
+      ordersByDate: adOrdersByDateAll,
+      ordersSumByDate: adOrdersSumByDateAll,
+    }));
     appendOrderConversion(summary);
+    appendOrganicMetrics(summary);
     const sumDaily = (field: string) => days.map((_, i) => {
       let acc = 0, any = false;
       for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }
