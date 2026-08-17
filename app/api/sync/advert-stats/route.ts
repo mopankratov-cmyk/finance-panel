@@ -59,8 +59,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Нет активных кабинетов и WB_TOKEN_ADVERT не настроен" }, { status: 500 });
   }
 
-  const end = new Date();
-  const begin = new Date(Date.now() - DAYS_BACK * 86400000);
+  // ?from=YYYY-MM-DD&to=YYYY-MM-DD — принудительный период. Без них берём
+  // привычное окно: у только что подключённого кабинета первые дни месяца
+  // оказываются за его пределами, и показы по ним остаются пустыми навсегда —
+  // рекламная статистика, в отличие от воронки, назад сама не догружается.
+  const DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const fromParam = request.nextUrl.searchParams.get("from");
+  const toParam = request.nextUrl.searchParams.get("to");
+  if ((fromParam && !DATE.test(fromParam)) || (toParam && !DATE.test(toParam))) {
+    return NextResponse.json({ error: "Даты периода задаются как ГГГГ-ММ-ДД" }, { status: 400 });
+  }
+  const end = toParam ? new Date(`${toParam}T00:00:00.000Z`) : new Date();
+  const begin = fromParam
+    ? new Date(`${fromParam}T00:00:00.000Z`)
+    : new Date(Date.now() - DAYS_BACK * 86400000);
+  if (begin > end) {
+    return NextResponse.json({ error: "Дата начала позже даты окончания" }, { status: 400 });
+  }
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
   let advertDays = 0;

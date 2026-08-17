@@ -25,11 +25,22 @@ test("период проверяется, а не подставляется м
   assert.match(route, /Укажите кабинет/);
 });
 
-test("заказы и продажи забираются последовательно", async () => {
+test("заказы, продажи и реклама забираются последовательно", async () => {
   const route = await read("../app/api/wb/backfill/route.ts");
-  // Параллельный запуск двух тяжёлых отчётов упирается в общий лимит WB.
-  assert.match(route, /for \(const job of \["orders", "sales"\] as const\)/);
+  // Параллельный запуск тяжёлых отчётов упирается в общий лимит WB.
+  assert.match(route, /for \(const job of \["orders", "sales", "advert-stats"\] as const\)/);
   assert.doesNotMatch(route, /Promise\.all\(\s*\["orders"/);
+});
+
+// Рекламная статистика, в отличие от воронки, назад сама не догружается: окно
+// было жёстко 14 дней, и первые дни месяца у нового кабинета оставались пустыми.
+test("окно рекламной статистики задаётся периодом", async () => {
+  const route = await read("../app/api/sync/advert-stats/route.ts");
+  assert.match(route, /searchParams\.get\("from"\)/);
+  assert.match(route, /searchParams\.get\("to"\)/);
+  // Без параметров поведение прежнее — привычное окно.
+  assert.match(route, /new Date\(Date\.now\(\) - DAYS_BACK \* 86400000\)/);
+  assert.match(route, /Дата начала позже даты окончания/);
 });
 
 // Воронка забирает по 20 SKU за прогон (лимит analytics-API WB), поэтому у

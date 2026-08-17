@@ -58,9 +58,9 @@ export async function POST(request: NextRequest) {
   const headers = { Authorization: `Bearer ${secret}` };
   const results: JobResult[] = [];
 
-  // Заказы и продажи забираем последовательно: каждый прогон тянет с WB тяжёлое
-  // окно, а параллельный запуск двух отчётов упирается в общий лимит площадки.
-  for (const job of ["orders", "sales"] as const) {
+  // Заказы, продажи и статистику рекламы забираем последовательно: каждый прогон
+  // тянет с WB тяжёлое окно, а параллельный запуск упирается в общий лимит площадки.
+  for (const job of ["orders", "sales", "advert-stats"] as const) {
     const url = new URL(`/api/sync/${job}`, base);
     url.searchParams.set("from", from);
     if (to) url.searchParams.set("to", to);
