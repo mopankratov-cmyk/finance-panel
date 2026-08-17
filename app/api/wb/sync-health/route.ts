@@ -123,6 +123,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ nmId, dayKeys: day ? Object.keys(day).sort() : [], items: items.length });
   }
 
+  // ?advert_types=1&cabinet=<uuid> — какие значения bid_type реально прислал WB.
+  // Нужны для сплита рекламы по видам кампаний: имена в анонсах и в живом API
+  // у WB расходятся (см. историю addToWishlistCount), маппинг пишем по факту.
+  if (sp.get("advert_types") === "1") {
+    const cabinetId = sp.get("cabinet");
+    if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const rows = await loadAllSupabasePages<{ bid_type: string | null; status: number | null }>(
+      (start, end) => db.from("wb_adverts")
+        .select("bid_type, status")
+        .eq("cabinet_id", cabinetId)
+        .order("advert_id", { ascending: true })
+        .range(start, end),
+      { maxPages: 20, label: "Диагностика типов кампаний" },
+    );
+    const byType: Record<string, number> = {};
+    for (const row of rows) {
+      const key = row.bid_type == null ? "<null>" : String(row.bid_type) || "<пусто>";
+      byType[key] = (byType[key] ?? 0) + 1;
+    }
+    return NextResponse.json({ cabinetId, campaigns: rows.length, byType });
+  }
+
   if (sp.get("warehouse_types") === "1") {
     const cabinetId = sp.get("cabinet");
     const from = sp.get("from");
