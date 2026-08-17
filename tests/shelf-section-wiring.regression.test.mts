@@ -20,6 +20,13 @@ test("эндпоинты сборщика закрыты секретной ав
   assert.match(auth, /SHELF_CRON_SECRET/);
   assert.match(auth, /CRON_SECRET/);
   assert.match(auth, /status: 401/);
+  // Гейт-прокси знает только CRON_SECRET — без явного allowlist запрос сборщика
+  // умирает в нём 401-м, не дойдя до само-гарда роута. Узко: путь+метод.
+  const proxy = await read("../proxy.ts");
+  assert.match(proxy, /\{ prefix: "\/api\/shelf\/watchlist", methods: \["GET"\] \}/);
+  assert.match(proxy, /\{ prefix: "\/api\/shelf\/ingest", methods: \["POST"\] \}/);
+  // И ни одного более широкого /api/shelf-префикса в allowlist.
+  assert.equal((proxy.match(/\/api\/shelf/g) ?? []).length, 2);
 });
 
 test("экранные эндпоинты под сессией и проверкой кабинета", async () => {

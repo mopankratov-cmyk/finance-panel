@@ -28,6 +28,10 @@ const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
   { prefix: "/api/opiu/telegram", methods: ["POST"] }, // Telegram webhook: сам роут проверяет secret-token
   { prefix: "/api/opiu/monitor", methods: ["GET", "POST"] }, // cron мониторинга: сам роут проверяет Bearer-секрет
   { prefix: "/api/sync/watchdog", methods: ["GET"] }, // внешний watchdog: сам роут проверяет узкий SYNC_WATCHDOG_SECRET
+  // Сборщик «Полок» на Mac владельца: сам роут проверяет Bearer SHELF_CRON_SECRET
+  // (или CRON_SECRET) — lib/shelf/collectorAuth.ts. Узко: два пути, по одному методу.
+  { prefix: "/api/shelf/watchlist", methods: ["GET"] },
+  { prefix: "/api/shelf/ingest", methods: ["POST"] },
 ];
 
 function isPublicApi(pathname: string, method: string): boolean {
