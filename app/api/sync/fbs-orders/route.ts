@@ -135,5 +135,9 @@ export async function GET(request: NextRequest) {
 
   const ok = errors.length === 0;
   await writeSyncLog(JOB, ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
-  return NextResponse.json({ ok, rows: total, cabinets: targets.length, progress, errors }, { status: ok ? 200 : 502 });
+  // error дублирует errors первой строкой: бэкфилл показывает именно его.
+  return NextResponse.json(
+    { ok, rows: total, cabinets: targets.length, progress, errors, error: errors[0] ?? undefined },
+    { status: ok ? 200 : 502 },
+  );
 }
