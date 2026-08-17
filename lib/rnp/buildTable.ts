@@ -8,6 +8,7 @@ import {
   type RnpMetricForecast,
   type RnpMetricStatus,
 } from "@/lib/rnp/forecast";
+import { wbBidTypeGroup, type WbBidTypeGroup } from "@/lib/wb/advertTypes";
 import { wbCardImageUrl, wbCardImageUrlsByNmIds } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
@@ -94,6 +95,17 @@ interface RpcTotal {
   in_way_from_client: number;
   cost: number | null;
 }
+interface AdvertTypeRow { advert_id: number; bid_type: string | null }
+interface AdvertStatDayRow {
+  advert_id: number;
+  date: string;
+  views: number | null;
+  clicks: number | null;
+  sum_spent: number | null;
+  orders: number | null;
+  sum_orders: number | null;
+}
+
 interface FeedbackNmRow {
   nm_id: number;
   rating: number | null;
@@ -731,6 +743,63 @@ export function buildReviewMetrics(
     { field: "reviews_rating", label: "Рейтинг новых отзывов", kind: "pct", daily: ratings, total: totalCount > 0 ? Math.round((totalRatingSum / totalCount) * 100) / 100 : null, forecast: null, source: "WB Отзывы", note: "Средняя оценка отзывов, созданных в этот день. Не равна рейтингу карточки — тот копится за всю жизнь товара." },
     { field: "reviews_bad_share_pct", label: "Доля 1–3★, %", kind: "pct", daily: badShare, total: totalCount > 0 ? Math.round((totalBad / totalCount) * 1000) / 10 : null, forecast: null, source: "WB Отзывы", note: "Доля новых отзывов с оценкой 1–3." },
   ];
+}
+
+export interface AdTypeDayBucket { spent: number; views: number; clicks: number; orders: number; ordersSum: number }
+
+/**
+ * Сплит рекламы по видам кампаний — только в сводке: тип живёт на кампании,
+ * и по SKU честно не распределяется (одна кампания крутит несколько товаров).
+ * Кампании с неопознанным типом не приписываются ни к одной группе — их расход
+ * виден в note, а не растворён в чужой группе.
+ */
+export function buildAdTypeMetrics(
+  days: string[],
+  asOf: string,
+  buckets: Map<string, Map<string, AdTypeDayBucket>>,
+  unclassifiedSpent: number,
+  advertsCutoff: string | null,
+): Metric[] {
+  const groups: Array<{ key: WbBidTypeGroup; label: string }> = [
+    { key: "manual", label: "Ручная" },
+    { key: "unified", label: "Единая" },
+  ];
+  const read = (group: string, day: string, pick: (bucket: AdTypeDayBucket) => number) => {
+    if (!advertsCutoff || day > asOf || day > advertsCutoff) return null;
+    const bucket = buckets.get(group)?.get(day);
+    return bucket ? pick(bucket) : 0;
+  };
+  const metrics: Metric[] = [];
+  const baseNote = unclassifiedSpent > 0
+    ? ` Кампании с неопознанным типом (${Math.round(unclassifiedSpent).toLocaleString("ru-RU")} ₽ расхода за период) не вошли ни в одну группу.`
+    : "";
+  for (const group of groups) {
+    const rows: Array<{ field: string; label: string; kind: Metric["kind"]; pick: (bucket: AdTypeDayBucket) => number; round?: boolean }> = [
+      { field: `ads_${group.key}_spent`, label: `${group.label}: расход, ₽`, kind: "money", pick: (bucket) => bucket.spent, round: true },
+      { field: `ads_${group.key}_views`, label: `${group.label}: показы`, kind: "int", pick: (bucket) => bucket.views },
+      { field: `ads_${group.key}_clicks`, label: `${group.label}: клики`, kind: "int", pick: (bucket) => bucket.clicks },
+      { field: `ads_${group.key}_orders`, label: `${group.label}: заказы, шт.`, kind: "int", pick: (bucket) => bucket.orders },
+      { field: `ads_${group.key}_orders_sum`, label: `${group.label}: заказы, ₽`, kind: "money", pick: (bucket) => bucket.ordersSum, round: true },
+    ];
+    rows.forEach((row, index) => {
+      const daily = days.map((day) => {
+        const value = read(group.key, day, row.pick);
+        return value == null ? null : row.round ? Math.round(value) : value;
+      });
+      metrics.push({
+        field: row.field,
+        label: row.label,
+        kind: row.kind,
+        daily,
+        total: knownSum(daily),
+        forecast: null,
+        source: "WB Реклама (по кампаниям)",
+        note: `Только в сводке: тип ставки живёт на кампании и по SKU не распределяется.${baseNote}`,
+        ...(index === 0 ? { group_start: true } : {}),
+      });
+    });
+  }
+  return metrics;
 }
 
 export function calculateTurnoverDays(
@@ -1985,6 +2054,8 @@ export async function buildRnpTable(
             adRows: [] as AdNmRow[],
             funnelRows: [] as FunnelRow[],
             feedbackRows: [] as FeedbackNmRow[],
+            advertTypeRows: [] as AdvertTypeRow[],
+            advertStatRows: [] as AdvertStatDayRow[],
             returnRows: [] as ScopedSaleSourceRow[],
             ordersCutoff: null as string | null,
             salesCutoff: null as string | null,
@@ -2001,6 +2072,8 @@ export async function buildRnpTable(
           adRows,
           funnelRows,
           feedbackRows,
+          advertTypeRows,
+          advertStatRows,
           returnRows,
           ordersRowCutoff,
           salesRowCutoff,
@@ -2074,6 +2147,30 @@ export async function buildRnpTable(
             if (allowed) query = query.in("nm_id", allowed);
             return query;
           }).catch(() => [] as FeedbackNmRow[]),
+          // Сплит рекламы по видам кампаний: тип живёт на кампании (wb_adverts),
+          // дневная статистика — на кампании (wb_advert_stats). По SKU тип не
+          // распределяется, поэтому эти ряды идут только в сводку.
+          loadAllPages<AdvertTypeRow>((start, end) => {
+            let query = db
+              .from("wb_adverts")
+              .select("advert_id, bid_type")
+              .order("advert_id", { ascending: true })
+              .range(start, end);
+            if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+            return query as unknown as PromiseLike<PageResult<AdvertTypeRow>>;
+          }).catch(() => [] as AdvertTypeRow[]),
+          loadAllPages<AdvertStatDayRow>((start, end) => {
+            let query = db
+              .from("wb_advert_stats")
+              .select("advert_id, date, views, clicks, sum_spent, orders, sum_orders")
+              .gte("date", from)
+              .lte("date", to)
+              .order("date", { ascending: true })
+              .order("advert_id", { ascending: true })
+              .range(start, end);
+            if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+            return query as unknown as PromiseLike<PageResult<AdvertStatDayRow>>;
+          }).catch(() => [] as AdvertStatDayRow[]),
           loadSalesReturns(db, scope, allowed, from, to),
           latestSourceDate("wb_orders", scope),
           latestSourceDate("wb_sales", scope),
@@ -2092,6 +2189,8 @@ export async function buildRnpTable(
           adRows,
           funnelRows,
           feedbackRows,
+          advertTypeRows,
+          advertStatRows,
           returnRows,
           ordersCutoff,
           salesCutoff,
@@ -2133,6 +2232,8 @@ export async function buildRnpTable(
     const adRows = scopeData.flatMap((item) => item.adRows.filter((row) => !item.advertsCutoff || String(row.date).slice(0, 10) <= item.advertsCutoff));
     const funnelRows = scopeData.flatMap((item) => item.funnelRows.filter((row) => !item.funnelCutoff || String(row.date).slice(0, 10) <= item.funnelCutoff));
     const feedbackRows = scopeData.flatMap((item) => item.feedbackRows);
+    const advertTypeRows = scopeData.flatMap((item) => item.advertTypeRows);
+    const advertStatRows = scopeData.flatMap((item) => item.advertStatRows.filter((row) => !item.advertsCutoff || String(row.date).slice(0, 10) <= item.advertsCutoff));
     // У каждого источника своя свежесть. Раньше весь РНП обрезался по min(orders, sales),
     // из-за чего задержка выкупов могла занижать уже загруженные заказы Optima.
     const ordersCutoff = latestKnownDate(scopeData.map((item) => latestKnownDate([item.funnelCutoff, item.ordersCutoff])));
@@ -2224,6 +2325,28 @@ export async function buildRnpTable(
       clicksByDateAll.set(d, (clicksByDateAll.get(d) ?? 0) + Number(r.clicks ?? 0));
       adOrdersByDateAll.set(d, (adOrdersByDateAll.get(d) ?? 0) + Number(r.orders ?? 0));
       adOrdersSumByDateAll.set(d, (adOrdersSumByDateAll.get(d) ?? 0) + Number(r.orders_sum ?? 0));
+    }
+    const bidTypeByAdvert = new Map<number, string | null>();
+    for (const row of advertTypeRows) bidTypeByAdvert.set(Number(row.advert_id), row.bid_type);
+    const adTypeBuckets = new Map<string, Map<string, AdTypeDayBucket>>();
+    let adTypeUnclassifiedSpent = 0;
+    for (const row of advertStatRows) {
+      const group = wbBidTypeGroup(bidTypeByAdvert.get(Number(row.advert_id)));
+      const spent = Number(row.sum_spent ?? 0);
+      if (!group) {
+        adTypeUnclassifiedSpent += spent;
+        continue;
+      }
+      const day = String(row.date).slice(0, 10);
+      if (!adTypeBuckets.has(group)) adTypeBuckets.set(group, new Map());
+      const perDay = adTypeBuckets.get(group)!;
+      const bucket = perDay.get(day) ?? { spent: 0, views: 0, clicks: 0, orders: 0, ordersSum: 0 };
+      bucket.spent += spent;
+      bucket.views += Number(row.views ?? 0);
+      bucket.clicks += Number(row.clicks ?? 0);
+      bucket.orders += Number(row.orders ?? 0);
+      bucket.ordersSum += Number(row.sum_orders ?? 0);
+      perDay.set(day, bucket);
     }
     const wishlistByDateAll = new Map<string, number>();
     for (const r of funnelRows) {
@@ -2370,6 +2493,7 @@ export async function buildRnpTable(
     appendOrderConversion(summary);
     appendOrganicMetrics(summary);
     summary.push(...buildReviewMetrics(days, asOf, reviewsByDateAll));
+    summary.push(...buildAdTypeMetrics(days, asOf, adTypeBuckets, adTypeUnclassifiedSpent, advertsCutoff));
     const sumDaily = (field: string) => days.map((_, i) => {
       let acc = 0, any = false;
       for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }

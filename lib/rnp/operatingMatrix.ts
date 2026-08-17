@@ -67,6 +67,16 @@ export const RNP_METRIC_FIELDS = [
   "reviews_count",
   "reviews_rating",
   "reviews_bad_share_pct",
+  "ads_manual_spent",
+  "ads_manual_views",
+  "ads_manual_clicks",
+  "ads_manual_orders",
+  "ads_manual_orders_sum",
+  "ads_unified_spent",
+  "ads_unified_views",
+  "ads_unified_clicks",
+  "ads_unified_orders",
+  "ads_unified_orders_sum",
 ] as const;
 
 export type RnpMetricField = (typeof RNP_METRIC_FIELDS)[number];
@@ -361,6 +371,16 @@ const METRIC_LABELS: Record<string, string> = {
   money: "Деньги в остатках",
   gmroi: "GMROI",
   reviews_count: "Отзывы",
+  ads_manual_spent: "Ручн. ₽",
+  ads_manual_views: "Ручн. показы",
+  ads_manual_clicks: "Ручн. клики",
+  ads_manual_orders: "Ручн. заказы",
+  ads_manual_orders_sum: "Ручн. заказы ₽",
+  ads_unified_spent: "Един. ₽",
+  ads_unified_views: "Един. показы",
+  ads_unified_clicks: "Един. клики",
+  ads_unified_orders: "Един. заказы",
+  ads_unified_orders_sum: "Един. заказы ₽",
   reviews_rating: "Рейтинг нов.",
   reviews_bad_share_pct: "1–3★ %",
 };
@@ -435,6 +455,16 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   money: "деньги в остатках",
   gmroi: "GMROI",
   reviews_count: "Отзывы",
+  ads_manual_spent: "Ручн. ₽",
+  ads_manual_views: "Ручн. показы",
+  ads_manual_clicks: "Ручн. клики",
+  ads_manual_orders: "Ручн. заказы",
+  ads_manual_orders_sum: "Ручн. заказы ₽",
+  ads_unified_spent: "Един. ₽",
+  ads_unified_views: "Един. показы",
+  ads_unified_clicks: "Един. клики",
+  ads_unified_orders: "Един. заказы",
+  ads_unified_orders_sum: "Един. заказы ₽",
   reviews_rating: "Рейтинг нов.",
   reviews_bad_share_pct: "1–3★ %",
 };
@@ -548,6 +578,17 @@ const VOLUME_SCALED_FIELDS = new Set([
   "agent_commission_rub",
   // Отзывы растут вместе с продажами; сигналы — рейтинг и доля плохих.
   "reviews_count",
+  // Разрез рекламы по видам кампаний — объёмные ряды, аномалии ловит общий ДРР.
+  "ads_manual_spent",
+  "ads_manual_views",
+  "ads_manual_clicks",
+  "ads_manual_orders",
+  "ads_manual_orders_sum",
+  "ads_unified_spent",
+  "ads_unified_views",
+  "ads_unified_clicks",
+  "ads_unified_orders",
+  "ads_unified_orders_sum",
 ]);
 
 export function anomalyDirection(field: string, delta: RnpMetricDelta): "positive" | "negative" | null {

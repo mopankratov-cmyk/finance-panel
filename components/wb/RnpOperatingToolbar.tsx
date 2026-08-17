@@ -98,6 +98,8 @@ export const METRIC_GROUPS: Array<{ label: string; fields: RnpMetricField[] }> =
   { label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "agent_commission_rub", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"] },
   { label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"] },
   { label: "Отзывы", fields: ["reviews_count", "reviews_rating", "reviews_bad_share_pct"] },
+  { label: "Реклама · Ручная", fields: ["ads_manual_spent", "ads_manual_views", "ads_manual_clicks", "ads_manual_orders", "ads_manual_orders_sum"] },
+  { label: "Реклама · Единая", fields: ["ads_unified_spent", "ads_unified_views", "ads_unified_clicks", "ads_unified_orders", "ads_unified_orders_sum"] },
 ];
 
 const PERCENT_FIELDS: RnpMetricField[] = [
@@ -108,6 +110,7 @@ const PERCENT_FIELDS: RnpMetricField[] = [
 
 const RUBLE_FIELDS: RnpMetricField[] = [
   "orders_sum", "orders_spp_sum", "orders_fbs_sum", "orders_fbw_sum", "buyouts_sum", "buyouts_gross_rub", "returns_sum", "ad_orders_sum",
+  "ads_manual_spent", "ads_manual_orders_sum", "ads_unified_spent", "ads_unified_orders_sum",
   "avg_order_price", "avg_buyout_price", "final_price",
   "gross", "agent_commission_rub", "tax_rub", "net_profit", "profit_per_unit",
   "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub",
