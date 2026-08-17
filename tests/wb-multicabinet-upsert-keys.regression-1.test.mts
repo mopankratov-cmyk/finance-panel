@@ -27,7 +27,9 @@ test("WB sync tables that feed RNP upsert by cabinet-scoped unique keys", () => 
   assert.doesNotMatch(stocksRoute, /chunkedUpsert\("wb_stocks", rows, "nm_id,warehouse"\)/);
 
   assert.match(advertsRoute, /chunkedUpsert\("wb_adverts", rows, "cabinet_id,advert_id"\)/);
-  assert.match(advertsRoute, /chunkedUpsert\("wb_adverts", rows\.map\(\(\{ bid_cpm_rub, \.\.\.row \}\) => \(\{[\s\S]*?\}\)\), "cabinet_id,advert_id"\)/);
+  // Фолбэки совместимости (bid_type, bid_cpm_rub) сохраняют тот же ключ конфликта.
+  assert.match(advertsRoute, /chunkedUpsert\("wb_adverts", fallbackRows, "cabinet_id,advert_id"\)/);
+  assert.match(advertsRoute, /chunkedUpsert\("wb_adverts", fallbackRows\.map\([\s\S]*?\), "cabinet_id,advert_id"\)/);
   assert.doesNotMatch(advertsRoute, /chunkedUpsert\("wb_adverts", rows, "advert_id"\)/);
 });
 

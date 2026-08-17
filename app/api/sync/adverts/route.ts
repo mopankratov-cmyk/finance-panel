@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
             advert_id: a.id as number,
             name: a.settings?.name ?? null,
             type: null as number | null,
+            // Сырой тип ставки WB — без него рекламу не разложить по видам кампаний.
+            bid_type: (a.bid_type as string | null) ?? null,
             status: a.status ?? null,
             bid_cpm_rub: bid != null ? bid / 100 : null,
             nm_ids: nmIds.length ? nmIds : null,
@@ -74,12 +76,18 @@ export async function GET(request: NextRequest) {
       if (!rows.length) continue;
 
       let upsertError = await chunkedUpsert("wb_adverts", rows, "cabinet_id,advert_id");
+      let fallbackRows: Record<string, unknown>[] = rows;
+      if (upsertError && /bid_type|schema cache|column/i.test(upsertError)) {
+        // Миграция bid_type могла ещё не примениться — пишем без неё.
+        fallbackRows = rows.map(({ bid_type, ...row }) => ({ ...row }));
+        upsertError = await chunkedUpsert("wb_adverts", fallbackRows, "cabinet_id,advert_id");
+      }
       if (upsertError && /bid_cpm_rub|schema cache|column/i.test(upsertError)) {
         // Короткое окно совместимости, пока SQL-миграция ещё не применена.
-        upsertError = await chunkedUpsert("wb_adverts", rows.map(({ bid_cpm_rub, ...row }) => ({
-          ...row,
-          daily_budget: bid_cpm_rub,
-        })), "cabinet_id,advert_id");
+        upsertError = await chunkedUpsert("wb_adverts", fallbackRows.map((row) => {
+          const { bid_cpm_rub, ...rest } = row as { bid_cpm_rub: number | null } & Record<string, unknown>;
+          return { ...rest, daily_budget: bid_cpm_rub };
+        }), "cabinet_id,advert_id");
       }
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);
