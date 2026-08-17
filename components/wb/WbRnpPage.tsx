@@ -195,6 +195,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   spp_pct: { label: "СПП, %", kind: "pct" },
   gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
   agent_commission_rub: { label: "Комиссия кабинета, ₽", kind: "money" },
+  wishlist: { label: "В избранное, шт.", kind: "int" },
   reviews_count: { label: "Новые отзывы, шт.", kind: "int" },
   reviews_rating: { label: "Рейтинг новых отзывов", kind: "pct" },
   reviews_bad_share_pct: { label: "Доля 1–3★, %", kind: "pct" },

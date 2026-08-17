@@ -11,7 +11,8 @@ test("WB sync tables that feed RNP upsert by cabinet-scoped unique keys", () => 
   const stocksRoute = read("../app/api/sync/stocks/route.ts");
   const advertsRoute = read("../app/api/sync/adverts/route.ts");
 
-  assert.match(funnelRoute, /chunkedUpsert\("wb_funnel_daily", rows, "cabinet_id,nm_id,date"\)/);
+  // Запись идёт через optional-columns (add_to_wishlist), ключ конфликта тот же.
+  assert.match(funnelRoute, /chunkedUpsertWithOptionalColumns\("wb_funnel_daily", rows, "cabinet_id,nm_id,date", \["add_to_wishlist"\]\)/);
   assert.doesNotMatch(funnelRoute, /chunkedUpsert\("wb_funnel_daily", rows, "nm_id,date"\)/);
 
   assert.match(historyRecovery, /chunkedUpsert\("wb_funnel_daily", rows, "cabinet_id,nm_id,date", 100_000\)/);

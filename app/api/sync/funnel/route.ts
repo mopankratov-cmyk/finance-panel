@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
+import { checkCronAuth, chunkedUpsertWithOptionalColumns, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import {
   funnelGapRecoveryPeriod,
@@ -29,6 +29,7 @@ interface HistoryDay {
   date?: string;
   openCount?: number;
   cartCount?: number;
+  addToWishList?: number;
   orderCount?: number;
   orderSum?: number;
   buyoutCount?: number;
@@ -223,6 +224,8 @@ export async function GET(request: NextRequest) {
             date: day.date.slice(0, 10),
             open_card: day.openCount ?? 0,
             add_to_cart: day.cartCount ?? 0,
+            // null, а не 0: «WB поле не прислал» — это не «никто не добавил».
+            add_to_wishlist: day.addToWishList ?? null,
             orders: day.orderCount ?? 0,
             orders_sum: day.orderSum ?? 0,
             buyouts: day.buyoutCount ?? 0,
@@ -231,7 +234,10 @@ export async function GET(request: NextRequest) {
           });
         }
       }
-      const upsertError = rows.length ? await chunkedUpsert("wb_funnel_daily", rows, "cabinet_id,nm_id,date") : null;
+      const upsertResult = rows.length
+        ? await chunkedUpsertWithOptionalColumns("wb_funnel_daily", rows, "cabinet_id,nm_id,date", ["add_to_wishlist"])
+        : null;
+      const upsertError = upsertResult?.error ?? null;
       if (upsertError) {
         errors.push(`${t.name}: ${upsertError}`);
         if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "funnel", {

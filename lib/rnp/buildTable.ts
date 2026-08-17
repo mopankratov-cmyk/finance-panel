@@ -115,6 +115,8 @@ interface FunnelRow {
   date: string;
   open_card: number | null;
   add_to_cart: number | null;
+  /** null — строка записана до миграции или WB поле не прислал; это не ноль. */
+  add_to_wishlist?: number | null;
   orders: number | null;
   orders_sum: number | null;
 }
@@ -479,6 +481,8 @@ export function buildFunnelMetrics(
   cutoffs: FunnelCutoffs,
   // Атрибуцированные заказы рекламы; опционально, чтобы не ломать вызовы без них.
   ads?: { ordersByDate: Map<string, number>; ordersSumByDate: Map<string, number> },
+  /** Добавления в избранное; дни без данных остаются null — поле новое в WB API. */
+  wishlistByDate?: Map<string, number>,
 ): Metric[] {
   const read = (source: Map<string, number>, day: string, cutoff: string | null) =>
     !cutoff || day > asOf || day > cutoff || !source.has(day) ? null : Number(source.get(day));
@@ -508,6 +512,20 @@ export function buildFunnelMetrics(
     { field: "cart", label: "В корзину", kind: "int", daily: cart, total: totalCart, forecast: null, source: "WB Воронка" },
     { field: "cart_cr", label: "Конв. в корзину, %", kind: "pct", daily: cartCr, total: totalOpenCard && totalCart != null ? Math.round((totalCart / totalOpenCard) * 1000) / 10 : null, forecast: null, source: "WB Воронка", note: "Корзины / переходы в карточку. Пустые даты источника не считаются нулём." },
   ];
+  if (wishlistByDate) {
+    const wishlist = days.map((day) => read(wishlistByDate, day, cutoffs.funnel));
+    const cartAnchor = metrics.findIndex((item) => item.field === "cart") + 1;
+    metrics.splice(cartAnchor, 0, {
+      field: "wishlist",
+      label: "В избранное, шт.",
+      kind: "int",
+      daily: wishlist,
+      total: knownSum(wishlist),
+      forecast: null,
+      source: "WB Воронка",
+      note: "addToWishList из воронки WB. Поле появилось в API осенью 2025; дни, записанные до подключения, пусты — глубокая история его не отдаёт.",
+    });
+  }
   if (adOrders && adOrdersSum) {
     // Атрибуция WB: заказ приписывается рекламе в течение окна после клика,
     // поэтому дневная сумма может расходиться с заказами дня — это не ошибка.
@@ -524,6 +542,7 @@ export function buildFunnelMetrics(
     ad_orders_sum: cutoffAsOf(cutoffs.adverts, asOf),
     open_card: cutoffAsOf(cutoffs.funnel, asOf),
     cart: cutoffAsOf(cutoffs.funnel, asOf),
+    wishlist: cutoffAsOf(cutoffs.funnel, asOf),
     cart_cr: cutoffAsOf(cutoffs.funnel, asOf),
   });
 }
@@ -1967,19 +1986,29 @@ export async function buildRnpTable(
             if (allowed) query = query.in("nm_id", allowed);
             return query;
           }),
-          loadAllPages<FunnelRow>((start, end) => {
-            let query = db
-              .from("wb_funnel_daily")
-              .select("nm_id, date, open_card, add_to_cart, orders, orders_sum")
-              .gte("date", from)
-              .lte("date", to)
-              .order("date", { ascending: true })
-              .order("nm_id", { ascending: true })
-              .range(start, end);
-            if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
-            if (allowed) query = query.in("nm_id", allowed);
-            return query;
-          }),
+          (async () => {
+            const loadFunnel = (columns: string) => loadAllPages<FunnelRow>((start, end) => {
+              let query = db
+                .from("wb_funnel_daily")
+                .select(columns)
+                .gte("date", from)
+                .lte("date", to)
+                .order("date", { ascending: true })
+                .order("nm_id", { ascending: true })
+                .range(start, end);
+              if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+              if (allowed) query = query.in("nm_id", allowed);
+              return query as unknown as PromiseLike<PageResult<FunnelRow>>;
+            });
+            try {
+              return await loadFunnel("nm_id, date, open_card, add_to_cart, add_to_wishlist, orders, orders_sum");
+            } catch (error) {
+              // Миграция колонки избранного могла ещё не примениться — воронка
+              // обязана работать и без неё.
+              if (!isMissingColumnError(error, "add_to_wishlist")) throw error;
+              return loadFunnel("nm_id, date, open_card, add_to_cart, orders, orders_sum");
+            }
+          })(),
           // Отзывы: новые за период, по дате создания на стороне WB. Синк хранит
           // отвеченные ~35 дней назад, поэтому окна старше месяца неполны — это
           // сказано в note метрик, а не спрятано.
@@ -2119,12 +2148,18 @@ export async function buildRnpTable(
       if (rating > 0 && rating <= 3) allDay.bad += 1;
       reviewsByDateAll.set(d, allDay);
     }
+    const wishlistByNm = new Map<number, Map<string, number>>();
     for (const r of funnelRows) {
       const d = String(r.date).slice(0, 10);
       if (!openCardByNm.has(r.nm_id)) openCardByNm.set(r.nm_id, new Map());
       if (!cartByNm.has(r.nm_id)) cartByNm.set(r.nm_id, new Map());
       openCardByNm.get(r.nm_id)!.set(d, (openCardByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.open_card ?? 0));
       cartByNm.get(r.nm_id)!.set(d, (cartByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.add_to_cart ?? 0));
+      // Избранное: null в строке — «неизвестно», день в карту не попадает.
+      if (r.add_to_wishlist != null) {
+        if (!wishlistByNm.has(r.nm_id)) wishlistByNm.set(r.nm_id, new Map());
+        wishlistByNm.get(r.nm_id)!.set(d, (wishlistByNm.get(r.nm_id)!.get(d) ?? 0) + Number(r.add_to_wishlist));
+      }
     }
     // агрегат по всем nm — для сводки строки
     const viewsByDateAll = new Map<string, number>();
@@ -2140,10 +2175,12 @@ export async function buildRnpTable(
       adOrdersByDateAll.set(d, (adOrdersByDateAll.get(d) ?? 0) + Number(r.orders ?? 0));
       adOrdersSumByDateAll.set(d, (adOrdersSumByDateAll.get(d) ?? 0) + Number(r.orders_sum ?? 0));
     }
+    const wishlistByDateAll = new Map<string, number>();
     for (const r of funnelRows) {
       const d = String(r.date).slice(0, 10);
       openCardByDateAll.set(d, (openCardByDateAll.get(d) ?? 0) + Number(r.open_card ?? 0));
       cartByDateAll.set(d, (cartByDateAll.get(d) ?? 0) + Number(r.add_to_cart ?? 0));
+      if (r.add_to_wishlist != null) wishlistByDateAll.set(d, (wishlistByDateAll.get(d) ?? 0) + Number(r.add_to_wishlist));
     }
     // полный расход МП на nm = комиссия + эквайринг + прочие удержания (логистика/хранение/штрафы/…) + account-overhead
     const wbCostForNm = (nm: number) => {
@@ -2255,7 +2292,7 @@ export async function buildRnpTable(
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs, {
           ordersByDate: adOrdersByNm.get(t.nm_id) ?? new Map(),
           ordersSumByDate: adOrdersSumByNm.get(t.nm_id) ?? new Map(),
-        }));
+        }, wishlistByNm.get(t.nm_id) ?? new Map()));
         appendOrderConversion(metrics);
         appendOrganicMetrics(metrics);
         metrics.push(...buildReviewMetrics(days, asOf, reviewsByNm.get(t.nm_id) ?? new Map()));
@@ -2279,7 +2316,7 @@ export async function buildRnpTable(
     summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs, {
       ordersByDate: adOrdersByDateAll,
       ordersSumByDate: adOrdersSumByDateAll,
-    }));
+    }, wishlistByDateAll));
     appendOrderConversion(summary);
     appendOrganicMetrics(summary);
     summary.push(...buildReviewMetrics(days, asOf, reviewsByDateAll));
