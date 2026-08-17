@@ -195,6 +195,12 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   spp_pct: { label: "СПП, %", kind: "pct" },
   gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
   agent_commission_rub: { label: "Комиссия кабинета, ₽", kind: "money" },
+  ad_orders: { label: "Заказы из рекламы, шт.", kind: "int" },
+  ad_orders_sum: { label: "Заказы из рекламы, ₽", kind: "money" },
+  org_open_card: { label: "Переходы органики", kind: "int" },
+  org_orders_count: { label: "Заказы органики, шт.", kind: "int" },
+  org_cr_pct: { label: "CR органики, %", kind: "pct" },
+  org_share_pct: { label: "Доля органики в переходах, %", kind: "pct" },
   wishlist: { label: "В избранное, шт.", kind: "int" },
   ads_manual_spent: { label: "Ручная: расход, ₽", kind: "money" },
   ads_manual_views: { label: "Ручная: показы", kind: "int" },
@@ -1085,7 +1091,9 @@ export function WbRnpPage() {
     [userFilterPresets, visibleSystemPresets],
   );
   const metricDefinitions = useMemo(
-    () => RNP_METRIC_FIELDS.map((field) => ({ field, label: METRIC_FALLBACKS[field].label })),
+    // Поле каталога без фолбэка не должно ронять весь экран — деградируем до
+    // имени поля; полноту пары каталог↔фолбэки сторожит регрессионный тест.
+    () => RNP_METRIC_FIELDS.map((field) => ({ field, label: METRIC_FALLBACKS[field]?.label ?? field })),
     [],
   );
   const previousSummaryByField = useMemo(
