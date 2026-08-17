@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
     funnelPasses?: number;
     /** Сколько раз дёрнуть глубокую историю. Отчёт WB готовится не мгновенно. */
     historyPasses?: number;
+    /** Прогнать проверку токенов (все кабинеты): нужна после добавления скоупов. */
+    checkTokens?: boolean;
     /**
      * Какие синки гонять. По умолчанию все три. Выбор нужен, когда один из них
      * упирается в таймаут на широком окне и рушит весь вызов: заказы за полмесяца
@@ -150,6 +152,21 @@ export async function POST(request: NextRequest) {
       status: lastError ? 502 : 200,
       detail: lastError ?? `статус: ${lastStatus}`,
     });
+  }
+
+  if (body.checkTokens === true) {
+    try {
+      const response = await fetch(new URL("/api/sync/token-health", base), { headers, cache: "no-store" });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; checked?: number };
+      results.push({
+        job: "token-health",
+        ok: response.ok && !payload.error,
+        status: response.status,
+        detail: payload.error ?? (payload.checked != null ? `проверок: ${payload.checked}` : undefined),
+      });
+    } catch (error) {
+      results.push({ job: "token-health", ok: false, status: 0, detail: error instanceof Error ? error.message : "запрос не выполнен" });
+    }
   }
 
   return NextResponse.json({

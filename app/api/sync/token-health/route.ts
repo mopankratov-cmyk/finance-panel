@@ -6,7 +6,9 @@ import { decodeWbToken, probeWbScope, WB_SCOPE_LABEL, type WbScope } from "@/lib
 
 export const maxDuration = 60;
 
-const SCOPES: WbScope[] = ["statistics", "analytics", "advert", "content", "prices", "feedbacks"];
+// marketplace — для честного сплита ФБО/ФБС: warehouseType в статистике схему
+// не отражает, прямой факт — FBS-заказы Marketplace API.
+const SCOPES: WbScope[] = ["statistics", "marketplace", "analytics", "advert", "content", "prices", "feedbacks"];
 
 export async function GET(request: NextRequest) {
   const authError = checkCronAuth(request);
