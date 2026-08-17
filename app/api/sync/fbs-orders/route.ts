@@ -72,9 +72,19 @@ export async function GET(request: NextRequest) {
         url.searchParams.set("dateTo", String(Math.floor(startedAt.getTime() / 1000)));
         let response = await fetch(url, { headers: { Authorization: target.statsToken }, cache: "no-store" });
         // Глобальный лимитер продавца: тем же Marketplace API пользуется его
-        // собственный сервис. Пара повторов с паузой часто проскакивает окно.
-        for (let attempt = 0; response.status === 429 && attempt < 2; attempt++) {
-          await new Promise((resolve) => setTimeout(resolve, 15_000));
+        // собственный сервис (кейс Оптимы — их поллинг выедает лимит почти
+        // непрерывно). WB присылает в 429 заголовок, СКОЛЬКО ждать, — ждём его,
+        // а не слепую паузу; без заголовка отступаем по нарастающей.
+        for (let attempt = 0; response.status === 429 && attempt < 4; attempt++) {
+          const hinted = Number(
+            response.headers.get("X-Ratelimit-Retry")
+            ?? response.headers.get("Retry-After")
+            ?? NaN,
+          );
+          const waitMs = Number.isFinite(hinted) && hinted > 0
+            ? Math.min(hinted, 55) * 1000
+            : (attempt + 1) * 15_000;
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
           response = await fetch(url, { headers: { Authorization: target.statsToken }, cache: "no-store" });
         }
         if (!response.ok) {
