@@ -19,6 +19,10 @@ export const maxDuration = 60;
 const ADV_BASE = "https://advert-api.wildberries.ru";
 const CAMPAIGN_PAGE_SIZE = 1000;
 const CAMPAIGN_MAX_PAGES = 30;
+const CAMPAIGN_PAGE_CONCURRENCY = 6;
+// Статистика кампаний — самая большая выборка экрана (кампании × 15 дней,
+// у Оптимы ~65 страниц по 1000 строк): без пачек она листалась ~10 секунд.
+const STATS_PAGE_CONCURRENCY = 8;
 
 interface RpcRow {
   nm_id: number;
@@ -103,14 +107,20 @@ async function loadAllCampaignPages<Row>(
   const maxPages = CAMPAIGN_MAX_PAGES;
   const rows: Row[] = [];
 
-  for (let page = 0; page < maxPages; page++) {
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
-    const result = await fetchPage(from, to);
-    if (result.error) throw createCampaignPageError(result.error, label);
-    const batch = result.data ?? [];
-    rows.push(...batch);
-    if (batch.length < pageSize) return rows;
+  // Страницы читаем пачками: у крупного кабинета тысячи кампаний, и
+  // последовательные round-trip к БД складывались в секунды.
+  for (let page = 0; page < maxPages; page += CAMPAIGN_PAGE_CONCURRENCY) {
+    const batchCount = Math.min(CAMPAIGN_PAGE_CONCURRENCY, maxPages - page);
+    const results = await Promise.all(Array.from({ length: batchCount }, (_, index) => {
+      const from = (page + index) * pageSize;
+      return fetchPage(from, from + pageSize - 1);
+    }));
+    for (const result of results) {
+      if (result.error) throw createCampaignPageError(result.error, label);
+      const batch = result.data ?? [];
+      rows.push(...batch);
+      if (batch.length < pageSize) return rows;
+    }
   }
 
   throw new Error(`${label} превысил безопасный лимит ${pageSize * maxPages} строк`);
@@ -122,7 +132,8 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" });
 
   // ?cabinet=<uuid|all> — срез рекламы по выбранному кабинету (данные уже синканы с cabinet_id)
-  const { cabinetId, label } = await resolveShopCabinet(new URL(request.url).searchParams.get("cabinet") ?? undefined);
+  const searchParams = new URL(request.url).searchParams;
+  const { cabinetId, label } = await resolveShopCabinet(searchParams.get("cabinet") ?? undefined);
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
   }
@@ -143,6 +154,20 @@ export async function GET(request: NextRequest) {
   const statsDateFrom = legacyStatsDateFrom < metricsPeriod7Closed.dateFrom ? legacyStatsDateFrom : metricsPeriod7Closed.dateFrom;
   let changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
   if (cabinetId) changesQ = changesQ.eq("cabinet_id", cabinetId);
+
+  // ?timings=1 — длительности источников в ответе, чтобы мерить узкие места
+  // прямо на проде без пересборки. Данных не раскрывает, роут и так под сессией.
+  const wantTimings = searchParams.get("timings") === "1";
+  const timings: Record<string, number> = {};
+  const timed = <T,>(name: string, promise: Promise<T>): Promise<T> => {
+    if (!wantTimings) return promise;
+    const startedAt = Date.now();
+    const record = () => { timings[name] = Date.now() - startedAt; };
+    return promise.then(
+      (value) => { record(); return value; },
+      (error) => { record(); throw error; },
+    );
+  };
 
   const advertRowsPromise = (async (): Promise<AdvertRow[]> => {
     try {
@@ -181,7 +206,7 @@ export async function GET(request: NextRequest) {
       .range(from, to);
     if (cabinetId) query = query.eq("cabinet_id", cabinetId);
     return query;
-  }, { maxPages: 100, label: "Статистика рекламных кампаний WB" });
+  }, { maxPages: 100, label: "Статистика рекламных кампаний WB", concurrency: STATS_PAGE_CONCURRENCY });
 
   const nmDailyRowsPromise = loadAllSupabasePages<NmDailyRow>((from, to) => {
     let query = db
@@ -194,7 +219,7 @@ export async function GET(request: NextRequest) {
       .range(from, to);
     if (cabinetId) query = query.eq("cabinet_id", cabinetId);
     return query;
-  }, { maxPages: 100, label: "Расход рекламы WB по SKU" });
+  }, { maxPages: 100, label: "Расход рекламы WB по SKU", concurrency: STATS_PAGE_CONCURRENCY });
 
   const funnelRowsPromise = loadAllSupabasePages<FunnelDayRow>((from, to) => {
     let query = db
@@ -207,7 +232,7 @@ export async function GET(request: NextRequest) {
       .range(from, to);
     if (cabinetId) query = query.eq("cabinet_id", cabinetId);
     return query;
-  }, { maxPages: 100, label: "Воронка WB для сводки рекламы" });
+  }, { maxPages: 100, label: "Воронка WB для сводки рекламы", concurrency: 4 });
 
   // Баланс продвижения зависит только от cabinetId — считаем его цепочку параллельно
   // с тяжёлыми БД-запросами, а не после них (иначе латентность складывается).
@@ -248,14 +273,14 @@ export async function GET(request: NextRequest) {
   ] | null = null;
   try {
     queryResults = await Promise.all([
-      advertRowsPromise,
-      statRowsPromise,
-      nmDailyRowsPromise,
-      funnelRowsPromise,
-      reportPromise,
-      changesQ,
-      getWbCommissionForCabinet(cabinetId, 30, { allowLiveFallback: false }),
-      balancePromise,
+      timed("adverts", advertRowsPromise),
+      timed("stats", statRowsPromise),
+      timed("nm_daily", nmDailyRowsPromise),
+      timed("funnel", funnelRowsPromise),
+      timed("report", reportPromise),
+      timed("changes", Promise.resolve(changesQ)),
+      timed("commission", getWbCommissionForCabinet(cabinetId, 30, { allowLiveFallback: false })),
+      timed("balance", balancePromise),
     ]);
   } catch (error) {
     return NextResponse.json(
@@ -474,5 +499,6 @@ export async function GET(request: NextRequest) {
     spend_yest_total: Math.round(spendYestTotal),
     today,
     yest,
+    ...(wantTimings ? { timings_ms: timings } : {}),
   });
 }
