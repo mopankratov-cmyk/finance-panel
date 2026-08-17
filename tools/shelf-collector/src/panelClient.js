@@ -5,6 +5,10 @@
  * Контракт снимка не менялся — scrape.js передаётся как есть.
  */
 
+/**
+ * @returns {{articles: number[], pending: number[]}} — все активные артикулы и
+ * подмножество «без единого снимка» (новички для внепланового доскока).
+ */
 export async function fetchActiveArticles(panelUrl, secret) {
   const res = await fetch(`${panelUrl}/api/shelf/watchlist`, {
     headers: { Authorization: `Bearer ${secret}` }
@@ -13,7 +17,7 @@ export async function fetchActiveArticles(panelUrl, secret) {
   if (!res.ok || !data.ok) {
     throw new Error(`GET активных артикулов не удался: ${data.error || `HTTP ${res.status}`}`);
   }
-  return data.articles;
+  return { articles: data.articles ?? [], pending: data.pending ?? [] };
 }
 
 export async function pushSnapshot(panelUrl, secret, snapshot) {

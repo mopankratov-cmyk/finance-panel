@@ -64,6 +64,19 @@ test("контракт сборщика: panelClient шлёт Bearer на оба
   assert.equal(bearerCount, 2, "Bearer нужен и на GET, и на POST");
 });
 
+test("новички доскакиваются вне слотов, плановые слоты не трогаются", async () => {
+  const watchlist = await read("../app/api/shelf/watchlist/route.ts");
+  // pending = отслеживания без единого снимка; сборщик подбирает их каждые ~15 мин.
+  assert.match(watchlist, /pending/);
+  assert.match(watchlist, /wb_shelf_snapshots\(id\)/);
+  const collector = await read("../tools/shelf-collector/src/collector.js");
+  assert.match(collector, /list\.pending/);
+  assert.match(collector, /внеплановый доскок/);
+  // Слот отмечается ТОЛЬКО в плановом режиме — доскок и --now его не съедают.
+  assert.match(collector, /if \(slot\) \{\s*\n\s*markSlotDone\(slot\)/);
+  assert.equal((collector.match(/markSlotDone\(/g) ?? []).length, 1, "markSlotDone должен вызываться в одном месте");
+});
+
 test("scrape.js перенесён без изменений — антибот-эмпирики автора сохранены", async () => {
   const scrape = await read("../tools/shelf-collector/src/scrape.js");
   // Ключевые эмпирические решения, которые нельзя потерять при будущих правках.

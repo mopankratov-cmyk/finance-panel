@@ -55,31 +55,40 @@ async function launchContext() {
 }
 
 async function main() {
-  // --now: внеплановый сбор в обход слот-гейта (после добавления артикулов).
-  // Плановые слоты не отмечает — ближайший плановый сбор пройдёт как обычно.
+  // Три режима запуска:
+  //  - adhoc (--now): весь список вручную, слоты не трогаем;
+  //  - slot: плановый сбор всего списка (10:00/18:00/22:00 МСК), отмечает слот;
+  //  - pickup: вне слота, но у панели есть артикулы без единого снимка —
+  //    собираем ТОЛЬКО их, чтобы добавленный артикул не ждал слота часами.
+  //    Слот не отмечается, антибот не страдает: это 1-2 новые карточки.
   const adhoc = process.argv.includes('--now');
-
-  let slot = null;
-  if (!adhoc) {
-    // Слот-проверка ПЕРЕД всем остальным: launchd дёргает сборщик каждые 15 минут,
-    // и почти все запуски должны быть мгновенным no-op без браузера.
-    slot = getDueSlot();
-    if (!slot) {
-      log('Плановый слот сбора ещё не наступил или уже собран сегодня — выхожу без запуска браузера.');
-      return;
-    }
-    log(`Наступил слот ${slot.label} (Europe/Moscow), сегодня ещё не собирали — начинаю сбор.`);
-  } else {
-    log('Внеплановый сбор (--now) — плановые слоты не трогаю.');
-  }
 
   if (!PANEL_URL || !PANEL_CRON_SECRET) {
     throw new Error('PANEL_URL и PANEL_CRON_SECRET обязательны — заполните .env (см. .env.example)');
   }
 
-  log('Запрашиваю список активных артикулов у панели…');
-  const articles = await fetchActiveArticles(PANEL_URL, PANEL_CRON_SECRET);
-  log(`Активных артикулов: ${articles.length}`, articles);
+  const list = await fetchActiveArticles(PANEL_URL, PANEL_CRON_SECRET);
+
+  let slot = null;
+  let articles;
+  if (adhoc) {
+    log('Внеплановый сбор (--now) — весь список, плановые слоты не трогаю.');
+    articles = list.articles;
+  } else {
+    slot = getDueSlot();
+    if (slot) {
+      log(`Наступил слот ${slot.label} (Europe/Moscow), сегодня ещё не собирали — полный сбор.`);
+      articles = list.articles;
+    } else if (list.pending.length) {
+      log(`Плановый слот не наступил, но есть новые артикулы без снимков: ${list.pending.join(', ')} — внеплановый доскок только по ним.`);
+      articles = list.pending;
+    } else {
+      log('Плановый слот ещё не наступил или уже собран, новых артикулов нет — выхожу без запуска браузера.');
+      return;
+    }
+  }
+
+  log(`Артикулов к сбору: ${articles.length}`, articles);
 
   if (!articles.length) {
     log('Нечего собирать — реестр «Полок» пуст или все артикулы выключены.');
@@ -173,11 +182,11 @@ async function main() {
       `пропущено из-за блокировки: ${results.skipped}`
   );
 
-  if (adhoc) {
-    log('Внеплановый сбор завершён — плановые слоты не отмечены.');
-  } else {
+  if (slot) {
     markSlotDone(slot);
     log(`Слот ${slot.label} отмечен как собранный на сегодня — следующая попытка на следующем слоте.`);
+  } else {
+    log('Внеплановый сбор завершён — плановые слоты не отмечены.');
   }
 }
 

@@ -369,7 +369,7 @@ export function WbShelfPage() {
     const saved = await mutate("/api/shelf/watch", {
       method: "POST",
       body: JSON.stringify({ cabinetId, nmId: nm, supplierArticle: newSupplier.trim() || null }),
-    }, `Артикул ${nm} добавлен — попадёт в следующий сбор`);
+    }, `Артикул ${nm} добавлен — сборщик подберёт его в ближайшие ~15 минут`);
     // Инпуты чистим только после успеха: при ошибке набранное не пропадает.
     if (saved) {
       setNewNm("");
@@ -519,13 +519,27 @@ export function WbShelfPage() {
                                   <tr key={`${row.position}`} className={`border-t border-slate-100 ${row.excluded ? "opacity-45" : ""}`}>
                                     <td className="px-2 py-2 tabular-nums text-slate-400">{row.position}</td>
                                     <td className="px-2 py-2">
-                                      <div className="flex items-center gap-2">
-                                        {row.img || row.nmId ? (
-                                          // eslint-disable-next-line @next/next/no-img-element
-                                          <img src={row.img || wbCardImageUrl(row.nmId as number)} alt="" loading="lazy" className="h-10 w-8 rounded bg-slate-100 object-cover" />
-                                        ) : <span className="h-10 w-8 rounded bg-slate-100" />}
-                                        <span className="tabular-nums text-slate-600">{row.nmId ?? "—"}</span>
-                                      </div>
+                                      {row.nmId ? (
+                                        <a
+                                          href={`https://www.wildberries.ru/catalog/${row.nmId}/detail.aspx`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          title="Открыть карточку конкурента на WB"
+                                          className="group flex items-center gap-2"
+                                        >
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={row.img || wbCardImageUrl(row.nmId)} alt="" loading="lazy" className="h-10 w-8 rounded bg-slate-100 object-cover" />
+                                          <span className="tabular-nums font-semibold text-violet-700 group-hover:underline">{row.nmId}</span>
+                                        </a>
+                                      ) : (
+                                        <div className="flex items-center gap-2">
+                                          {row.img ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={row.img} alt="" loading="lazy" className="h-10 w-8 rounded bg-slate-100 object-cover" />
+                                          ) : <span className="h-10 w-8 rounded bg-slate-100" />}
+                                          <span className="text-slate-400">—</span>
+                                        </div>
+                                      )}
                                     </td>
                                     <td className="px-2 py-2 text-slate-600">{row.brand ?? "(бренд не указан)"}</td>
                                     <td className="px-2 py-2 text-right tabular-nums font-semibold text-slate-700">{price(row.price)}</td>
