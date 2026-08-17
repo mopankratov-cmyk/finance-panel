@@ -966,7 +966,7 @@ export function buildMetrics(
       total: knownSum(ordersFbsCount),
       forecast: null,
       source: "WB Статистика заказов",
-      note: "Отгрузка со склада продавца (FBS и DBS — по типу склада они не различаются). Заказы с неизвестным типом склада не попадают ни в FBS, ни в FBW.",
+      note: "Метрика отключена: поле warehouseType в статистике WB метит «Складом продавца» и FBO-отгрузки из транзитных СЦ, поэтому не отражает схему продажи. Появится после подключения FBS-заказов из Marketplace API.",
       qualityReason: schemeQualityReason,
       group_start: true,
     },
@@ -988,7 +988,7 @@ export function buildMetrics(
       total: knownSum(ordersFbwCount),
       forecast: null,
       source: "WB Статистика заказов",
-      note: "Отгрузка со склада Wildberries.",
+      note: "Метрика отключена вместе с FBS: без достоверного признака схемы «склад WB» — это остаток от вычитания недостоверного числа.",
       qualityReason: schemeQualityReason,
     },
     {
@@ -1539,7 +1539,15 @@ export function buildScopedBaseFactsFromRows(input: {
   const allowed = new Set(input.allowedNmIds);
   // PostgREST не возвращает поле, если колонки нет в таблице. Значит наличие ключа
   // (пусть даже со значением null) — признак того, что миграция применена.
-  const schemeKnown = input.orders.some((order) => order.warehouse_type !== undefined);
+  //
+  // ⚠️ Сплит по warehouseType ВЫКЛЮЧЕН: сверка с кабинетом (2026-08-17, Оптима)
+  // показала, что WB метит «Складом продавца» и FBO-отгрузки из транзитных СЦ —
+  // в дни, когда товар едет через СЦ, поле называет ФБС большинство заказов при
+  // реальном ФБС в единицы процентов. Поле не отражает схему продажи, и любая
+  // раскладка по нему — уверенная ложь. Честный источник — FBS-заказы из
+  // Marketplace API (сопоставление по srid); до его появления метрики молчат.
+  const schemeKnown = false;
+  void wbSchemeFromWarehouseType;
   const dailyRows = new Map<string, SkuDailyRow>();
   const articleByNm = new Map<number, string>();
   const stockByNm = new Map<number, StockPosition>();
@@ -1570,16 +1578,9 @@ export function buildScopedBaseFactsFromRows(input: {
     // Цена до скидки продавца: база для «Скидка продавца, %».
     const grossPrice = Number(order.total_price);
     row.orders_gross_sum = (row.orders_gross_sum ?? 0) + (Number.isFinite(grossPrice) ? grossPrice : orderPriceBeforeSpp(order));
-    // Схема известна не всегда: строки прежнего синка и заказы без типа склада
-    // остаются вне обеих корзин, а не приписываются складу WB по умолчанию.
-    const scheme = wbSchemeFromWarehouseType(order.warehouse_type);
-    if (scheme === "fbs") {
-      row.orders_fbs_count = (row.orders_fbs_count ?? 0) + 1;
-      row.orders_fbs_sum = (row.orders_fbs_sum ?? 0) + orderPriceBeforeSpp(order);
-    } else if (scheme === "fbw") {
-      row.orders_fbw_count = (row.orders_fbw_count ?? 0) + 1;
-      row.orders_fbw_sum = (row.orders_fbw_sum ?? 0) + orderPriceBeforeSpp(order);
-    }
+    // Корзины схем не наполняем: warehouseType не отражает схему (см. schemeKnown
+    // выше). Строки без полей fbs/fbw дают метрикам «источник не поддерживается»,
+    // а не нули — «ФБС-заказов не было» было бы второй ложью поверх первой.
   }
   for (const sale of input.sales) {
     const nmId = Number(sale.nm_id);

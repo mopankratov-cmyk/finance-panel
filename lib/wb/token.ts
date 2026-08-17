@@ -6,10 +6,11 @@
 // официально не раскрывает стабильно, поэтому наличие категории определяем НАДЁЖНО —
 // живой read-only пробой каждого хоста этим же токеном (401/403 = нет доступа).
 
-export type WbScope = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks";
+export type WbScope = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks" | "marketplace";
 
 export const WB_SCOPE_LABEL: Record<WbScope, string> = {
   statistics: "Статистика",
+  marketplace: "Маркетплейс (FBS)",
   analytics: "Аналитика",
   advert: "Продвижение",
   content: "Контент",
@@ -53,6 +54,12 @@ interface Probe { url: string; method: "GET" | "POST"; body?: string; fallback?:
 const PROBES: Record<WbScope, Probe> = {
   statistics: {
     url: "https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=2026-01-01&flag=1",
+    method: "GET",
+  },
+  // Нужен для честного сплита ФБО/ФБС: warehouseType в статистике метит «Складом
+  // продавца» и FBO-отгрузки из СЦ, а FBS-заказы Marketplace API — прямой факт.
+  marketplace: {
+    url: "https://marketplace-api.wildberries.ru/api/v3/orders?limit=1&next=0",
     method: "GET",
   },
   analytics: {
@@ -128,7 +135,7 @@ export async function probeWbScope(token: string, scope: WbScope): Promise<boole
 
 // Проверить все категории параллельно.
 export async function probeWbScopes(token: string): Promise<ScopeStatus> {
-  const scopes: WbScope[] = ["statistics", "analytics", "advert", "content", "prices", "feedbacks"];
+  const scopes: WbScope[] = ["statistics", "marketplace", "analytics", "advert", "content", "prices", "feedbacks"];
   const results = await Promise.all(scopes.map((s) => probeWbScope(token, s)));
   return Object.fromEntries(scopes.map((s, i) => [s, results[i]])) as ScopeStatus;
 }

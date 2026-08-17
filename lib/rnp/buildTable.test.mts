@@ -651,7 +651,11 @@ const schemeOrder = (isCancel: boolean, warehouseType: string | null | undefined
   ...(warehouseType === undefined ? {} : { warehouse_type: warehouseType }),
 });
 
-test("заказы разносятся по схеме отгрузки, отменённые не считаются", () => {
+// Сплит по warehouseType отключён: сверка с кабинетом (2026-08-17) показала,
+// что WB метит «Складом продавца» и FBO-отгрузки из транзитных СЦ — поле не
+// отражает схему продажи. Пока нет честного источника (FBS-заказы Marketplace
+// API), раскладка обязана молчать даже при заполненной колонке.
+test("сплит по warehouseType отключён: раскладка молчит даже при заполненной колонке", () => {
   const { skuRows } = buildScopedBaseFactsFromRows({
     allowedNmIds: [1],
     orders: [
@@ -663,23 +667,9 @@ test("заказы разносятся по схеме отгрузки, отм
     sales: [],
     ...NO_FACTS,
   });
-  assert.equal(skuRows[0].orders_fbs_count, 1);
-  assert.equal(skuRows[0].orders_fbs_sum, 1000);
-  assert.equal(skuRows[0].orders_fbw_count, 2);
-  assert.equal(skuRows[0].orders_fbw_sum, 5000);
-});
-
-test("заказ без типа склада не попадает ни в FBS, ни в FBW", () => {
-  const { skuRows } = buildScopedBaseFactsFromRows({
-    allowedNmIds: [1],
-    // Колонка в базе есть (ключ присутствует), но WB прислал пусто.
-    orders: [schemeOrder(false, null, 1000), schemeOrder(false, "Склад продавца", 500)],
-    sales: [],
-    ...NO_FACTS,
-  });
-  assert.equal(skuRows[0].orders_count, 2);
-  assert.equal(skuRows[0].orders_fbs_count, 1);
-  assert.equal(skuRows[0].orders_fbw_count, 0);
+  assert.equal(skuRows[0].orders_count, 3);
+  assert.equal(skuRows[0].orders_fbs_count, undefined);
+  assert.equal(skuRows[0].orders_fbw_count, undefined);
 });
 
 test("без колонки типа склада разбивка не выдумывает нули", () => {
