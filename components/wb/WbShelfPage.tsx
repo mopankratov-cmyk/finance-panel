@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import type { ShelfMarkedRow, ShelfSliceResult } from "@/lib/shelf/slices";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
+import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 
@@ -378,6 +380,12 @@ export function WbShelfPage() {
   };
 
   const globalBrands = settings.find((row) => row.cabinet_id === cabinetId)?.global_excluded_brands ?? [];
+  // Ручной порядок выдачи артикулов (настраивается в РНП) действует и здесь.
+  const { orderIndex } = useCabinetSkuOrder(hasExactCabinet ? cabinetId : null);
+  const orderedItems = useMemo(
+    () => sortByCustomSkuOrder(items, (item) => item.watch.nmId, orderIndex),
+    [items, orderIndex],
+  );
   const totalActive = items.filter((item) => item.watch.active).length;
 
   return (
@@ -464,7 +472,7 @@ export function WbShelfPage() {
         ) : (
           <div className="space-y-2">
             <div className="text-[10px] text-slate-400">{items.length} артикулов в реестре · {totalActive} активных для сбора</div>
-            {items.map((item) => {
+            {orderedItems.map((item) => {
               const { watch, latest, history } = item;
               const expanded = expandedId === watch.id;
               const age = latest ? collectedAge(latest.collectedAt) : null;

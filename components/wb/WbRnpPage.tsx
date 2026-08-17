@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BookOpen,
   CalendarDays,
+  ListOrdered,
   Loader2,
   Pencil,
   RefreshCw,
@@ -53,6 +54,8 @@ import {
 import { RNP_DEFAULT_TURNOVER_WINDOW_DAYS } from "@/lib/rnp/warmupPlan";
 import { appendTaxMetrics, RNP_DEFAULT_TAX_PCT } from "@/lib/rnp/taxMetrics";
 import { composeRnpSummaryFromSkus } from "@/lib/rnp/summaryFromSkus";
+import { parseSkuOrderInput, SKU_ORDER_LIMIT, sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
+import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import {
   RnpOperatingToolbar,
@@ -639,6 +642,14 @@ export function WbRnpPage() {
   const [range, setRange] = useState<DateRange>(() => rangeFor("week"));
   // Шапка в духе «Рука на пульсе»: гранулярность колонок и операционные фильтры.
   const [granularity, setGranularity] = useState<RnpGranularity>("day");
+  // Ручной порядок выдачи артикулов: настраивается здесь, применяется на всех
+  // экранах со списками SKU (общий хук useCabinetSkuOrder).
+  const { orderNmIds, orderIndex, refreshSkuOrder } = useCabinetSkuOrder(hasExactCabinet ? cabinetId : null);
+  const [orderEditorOpen, setOrderEditorOpen] = useState(false);
+  const [orderDraft, setOrderDraft] = useState("");
+  const [orderSaving, setOrderSaving] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [sortTouched, setSortTouched] = useState(false);
   const [burnedOnly, setBurnedOnly] = useState(true);
   const [lossOnly, setLossOnly] = useState(false);
   const [data, setData] = useState<RnpTable | null>(null);
@@ -1048,9 +1059,17 @@ export function WbRnpPage() {
     }), [activeTagIds, anomalyByNm, anomalyMode, articleQuery, burnedOnly, facetSkus, lossOnly, tagsByNm]);
 
   const sortedSkus = useMemo(
-    () => sortRnpProducts(filteredSkus, sortField, sortDirection),
-    [filteredSkus, sortDirection, sortField],
+    () => sortField === "__custom"
+      ? sortByCustomSkuOrder(filteredSkus, (sku) => sku.nm, orderIndex)
+      : sortRnpProducts(filteredSkus, sortField, sortDirection),
+    [filteredSkus, orderIndex, sortDirection, sortField],
   );
+
+  // Если владелец задал свой порядок — он и есть выдача по умолчанию,
+  // пока пользователь не выбрал другую сортировку руками.
+  useEffect(() => {
+    if (!sortTouched && orderNmIds.length > 0) setSortField("__custom");
+  }, [orderNmIds.length, sortTouched]);
 
   const tableSkus = useMemo(
     () => focusedNm == null ? sortedSkus : sortedSkus.filter((sku) => sku.nm === focusedNm),
@@ -1401,6 +1420,19 @@ export function WbRnpPage() {
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
+            disabled={!hasExactCabinet || !canWrite}
+            onClick={() => {
+              setOrderDraft(orderNmIds.length ? orderNmIds.join("\n") : sortedSkus.map((sku) => sku.nm).join("\n"));
+              setOrderError(null);
+              setOrderEditorOpen(true);
+            }}
+            title={!hasExactCabinet ? "Выберите один кабинет" : "Ручная последовательность выдачи артикулов — применяется на всех экранах"}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ListOrdered className="h-3.5 w-3.5" /> Порядок SKU{orderNmIds.length ? ` · ${orderNmIds.length}` : ""}
+          </button>
+          <button
+            type="button"
             disabled={!canWrite}
             onClick={() => setPlanning((value) => !value)}
             title={!canWrite ? "Для планирования выберите один кабинет" : "Редактировать план внутри таблицы"}
@@ -1444,7 +1476,7 @@ export function WbRnpPage() {
           operationsAvailable={operationsAvailable}
           sortField={sortField}
           sortDirection={sortDirection}
-          sortOptions={SORTS}
+          sortOptions={hasExactCabinet ? [{ field: "__custom", label: "Свой порядок" }, ...SORTS] : SORTS}
           busy={operationsBusy}
           onViewChange={applyMetricView}
           onMetricFieldsChange={updateMetricFields}
@@ -1458,7 +1490,10 @@ export function WbRnpPage() {
           onAnomalyModeChange={setAnomalyMode}
           onAnomalyThresholdChange={setAnomalyThreshold}
           onTurnoverWindowChange={setTurnoverWindowDays}
-          onSortFieldChange={setSortField}
+          onSortFieldChange={(field) => {
+            setSortTouched(true);
+            setSortField(field);
+          }}
           onSortDirectionChange={setSortDirection}
           onTagFilterToggle={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((item) => item !== tagId) : [...current, tagId])}
           onCreateTag={createTag}
@@ -1981,6 +2016,72 @@ export function WbRnpPage() {
             )}
           </div>
         </>
+      ) : null}
+
+      {orderEditorOpen ? (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/30 p-4" role="dialog" aria-modal="true" aria-label="Свой порядок артикулов">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Свой порядок выдачи артикулов</h2>
+                <p className="mt-0.5 text-[10px] leading-4 text-slate-400">
+                  Вставьте nmID в нужной последовательности (из таблицы, по одному в строке или через запятую).
+                  Перечисленные идут первыми в этом порядке, остальные — после них.
+                  Применяется на всех экранах со списками SKU кабинета.
+                </p>
+              </div>
+              <button type="button" onClick={() => setOrderEditorOpen(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="Закрыть">✕</button>
+            </div>
+            <textarea
+              value={orderDraft}
+              onChange={(event) => setOrderDraft(event.target.value)}
+              rows={12}
+              spellCheck={false}
+              className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-[11px] tabular-nums text-slate-700 outline-none focus:border-violet-300"
+              placeholder={"874393713\n874404592\n874404593"}
+            />
+            <div className="mt-1 text-[10px] text-slate-400">Распознано артикулов: {parseSkuOrderInput(orderDraft).length}{parseSkuOrderInput(orderDraft).length > SKU_ORDER_LIMIT ? ` — больше лимита ${SKU_ORDER_LIMIT}` : ""}</div>
+            {orderError ? <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[10px] text-rose-700">{orderError}</div> : null}
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={orderSaving || parseSkuOrderInput(orderDraft).length > SKU_ORDER_LIMIT}
+                onClick={() => {
+                  const nmIds = parseSkuOrderInput(orderDraft);
+                  setOrderSaving(true);
+                  setOrderError(null);
+                  void deploymentPinnedFetch("/api/sku-order", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ cabinetId, nmIds }),
+                  })
+                    .then(async (response) => {
+                      const body = await response.json().catch(() => ({})) as { error?: string };
+                      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+                      refreshSkuOrder();
+                      setOrderEditorOpen(false);
+                      if (nmIds.length) setSortField("__custom");
+                    })
+                    .catch((cause: unknown) => setOrderError(cause instanceof Error ? cause.message : "Не удалось сохранить порядок"))
+                    .finally(() => setOrderSaving(false));
+                }}
+                className="inline-flex h-9 items-center rounded-lg bg-violet-600 px-4 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
+              >
+                {orderSaving ? "Сохраняю…" : "Сохранить порядок"}
+              </button>
+              <button
+                type="button"
+                disabled={orderSaving}
+                onClick={() => setOrderDraft("")}
+                title="Пустой список = вернуть экранам их обычную сортировку"
+                className="h-9 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-500 hover:bg-slate-50"
+              >
+                Очистить
+              </button>
+              <span className="ml-auto text-[9px] text-slate-400">Пусто = порядок выключен</span>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <RnpProductOperationsDrawer

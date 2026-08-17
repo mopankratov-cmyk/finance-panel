@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
+import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { METRIC_TEXT_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { useCategoryMap } from "@/lib/useCategoryMap";
@@ -236,6 +238,14 @@ export function WbUnitPage() {
     });
   }, [byArticle, category, columns.cost, columns.marginUnit, data, onlyProblem, query]);
 
+  // Ручной порядок выдачи артикулов (настраивается в РНП): перечисленные —
+  // первыми в заданной последовательности, остальные — как шли.
+  const { orderIndex } = useCabinetSkuOrder(cabinetId && cabinetId !== "all" ? cabinetId : null);
+  const orderedIndices = useMemo(
+    () => sortByCustomSkuOrder(filteredIndices, (index) => Number((data?.rows ?? [])[index]?.[4]), orderIndex),
+    [data, filteredIndices, orderIndex],
+  );
+
   // Сводка считается по отфильтрованным строкам: цифры наверху должны совпадать
   // с тем, что человек видит в таблице, а не с полным кабинетом.
   const summary = useMemo(() => {
@@ -245,7 +255,7 @@ export function WbUnitPage() {
     let profitRevenue = 0;
     let negative = 0;
     let costKnown = 0;
-    for (const index of filteredIndices) {
+    for (const index of orderedIndices) {
       const row = rows[index];
       const rowRevenue = numberAt(row, columns.revenue) ?? 0;
       const orders = numberAt(row, columns.orders) ?? 0;
@@ -260,7 +270,7 @@ export function WbUnitPage() {
       }
     }
     return {
-      sku: filteredIndices.length,
+      sku: orderedIndices.length,
       revenue,
       profit,
       // Маржа считается только по SKU, где она вообще посчитана, иначе процент
@@ -269,9 +279,9 @@ export function WbUnitPage() {
       negative,
       costKnown,
     };
-  }, [columns.cost, columns.marginUnit, columns.orders, columns.revenue, data?.rows, filteredIndices]);
+  }, [columns.cost, columns.marginUnit, columns.orders, columns.revenue, data?.rows, orderedIndices]);
 
-  const { sorted: indices, sortField, sortDir, toggleSort } = useSort(filteredIndices, (rowIndex, field) => {
+  const { sorted: indices, sortField, sortDir, toggleSort } = useSort(orderedIndices, (rowIndex, field) => {
     const value = data?.rows[rowIndex]?.[Number(field)];
     if (value == null || value === "") return null;
     return typeof value === "number" ? value : Number.isFinite(Number(value)) ? Number(value) : String(value);
