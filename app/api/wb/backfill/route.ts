@@ -39,6 +39,12 @@ export async function POST(request: NextRequest) {
     funnelPasses?: number;
     /** Сколько раз дёрнуть глубокую историю. Отчёт WB готовится не мгновенно. */
     historyPasses?: number;
+    /**
+     * Какие синки гонять. По умолчанию все три. Выбор нужен, когда один из них
+     * упирается в таймаут на широком окне и рушит весь вызов: заказы за полмесяца
+     * не влезают в лимит функции, а реклама по тому же окну проходит спокойно.
+     */
+    jobs?: string[];
   };
   const cabinetId = String(body.cabinetId ?? "").trim();
   const from = String(body.from ?? "").trim();
@@ -60,7 +66,11 @@ export async function POST(request: NextRequest) {
 
   // Заказы, продажи и статистику рекламы забираем последовательно: каждый прогон
   // тянет с WB тяжёлое окно, а параллельный запуск упирается в общий лимит площадки.
-  for (const job of ["orders", "sales", "advert-stats"] as const) {
+  const ALL_JOBS = ["orders", "sales", "advert-stats"] as const;
+  const requested = Array.isArray(body.jobs) && body.jobs.length > 0
+    ? ALL_JOBS.filter((job) => body.jobs!.includes(job))
+    : ALL_JOBS;
+  for (const job of requested) {
     const url = new URL(`/api/sync/${job}`, base);
     url.searchParams.set("from", from);
     if (to) url.searchParams.set("to", to);
