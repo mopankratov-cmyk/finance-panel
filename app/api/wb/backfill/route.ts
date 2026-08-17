@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
     to?: string;
     /** Сколько срезов воронки прогнать подряд. Каждый срез — 20 SKU. */
     funnelPasses?: number;
+    /** Сколько раз дёрнуть глубокую историю. Отчёт WB готовится не мгновенно. */
+    historyPasses?: number;
   };
   const cabinetId = String(body.cabinetId ?? "").trim();
   const from = String(body.from ?? "").trim();
@@ -103,6 +105,41 @@ export async function POST(request: NextRequest) {
       }
     }
     results.push({ job: "funnel", ok: !lastError, status: lastError ? 502 : 200, detail: lastError ?? `срезов: ${done}` });
+  }
+
+  // Глубокая история (DETAIL_HISTORY_REPORT) — единственный источник дней старше
+  // окна дозаписи и единственное место, где WB отдаёт добавления в корзину.
+  // Отчёт готовится не мгновенно: первый вызов его заказывает, следующие проверяют
+  // готовность и скачивают. Поэтому дёргаем несколько раз с паузой.
+  const historyPasses = Math.max(0, Math.min(10, Math.round(Number(body.historyPasses ?? 0))));
+  if (historyPasses > 0) {
+    const deadline = Date.now() + 240_000;
+    let lastStatus = "не запускалась";
+    let lastError: string | undefined;
+    for (let pass = 0; pass < historyPasses && Date.now() < deadline; pass++) {
+      if (pass > 0) await new Promise((resolve) => setTimeout(resolve, 20_000));
+      try {
+        const response = await fetch(new URL("/api/sync/history", base), { headers, cache: "no-store" });
+        const payload = (await response.json().catch(() => ({}))) as {
+          errors?: string[];
+          results?: Array<{ cabinet?: string; status?: string; reason?: string; rows?: number }>;
+        };
+        const mine = (payload.results ?? []).find((item) => item.cabinet === cabinet.name);
+        lastStatus = mine?.status ?? `нет ответа по кабинету (HTTP ${response.status})`;
+        if (mine?.status === "unavailable") { lastError = mine.reason ?? "WB не отдаёт отчёт"; break; }
+        // complete — отчёт скачан и записан, дальше дёргать нечего.
+        if (mine?.status === "complete") break;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "запрос не выполнен";
+        break;
+      }
+    }
+    results.push({
+      job: "history",
+      ok: !lastError,
+      status: lastError ? 502 : 200,
+      detail: lastError ?? `статус: ${lastStatus}`,
+    });
   }
 
   return NextResponse.json({

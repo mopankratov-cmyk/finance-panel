@@ -43,6 +43,18 @@ test("срезы воронки гоняются подряд и огранич�
   assert.match(route, /lastError = payload\.error[\s\S]{0,60}break;/);
 });
 
+// Дни старше окна дозаписи и добавления в корзину есть только в глубоком
+// историческом отчёте: обычный синк воронки их не приносит вовсе.
+test("глубокая история дёргается повторно, пока WB готовит отчёт", async () => {
+  const route = await read("../app/api/wb/backfill/route.ts");
+  assert.match(route, /const historyPasses = Math\.max\(0, Math\.min\(10/);
+  // Между попытками нужна пауза: отчёт готовится не мгновенно.
+  assert.match(route, /setTimeout\(resolve, 20_000\)/);
+  // Готовый отчёт и отказ WB одинаково прекращают цикл.
+  assert.match(route, /mine\?\.status === "complete"/);
+  assert.match(route, /mine\?\.status === "unavailable"/);
+});
+
 test("синки умеют принудительный период по одному кабинету", async () => {
   const orders = await read("../app/api/sync/orders/route.ts");
   const sales = await read("../app/api/sync/sales/route.ts");
