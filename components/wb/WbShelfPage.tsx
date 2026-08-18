@@ -116,7 +116,7 @@ const OUR_COLOR = "#7c3aed";
 const SLICE_COLORS: Record<number, string> = { 3: "#ef4444", 6: "#f97316", 12: "#3b82f6", 30: "#22c55e" };
 const SLICE_ORDER = [3, 6, 12, 30] as const;
 // Одна сетка на шапку списка и на строки — иначе колонки разъезжаются.
-const SLICE_GRID_CLASS = "grid flex-1 grid-cols-2 items-baseline gap-x-3 gap-y-1 sm:flex-none sm:grid-cols-[minmax(96px,auto)_repeat(4,minmax(104px,auto))] sm:gap-x-5";
+const SLICE_GRID_CLASS = "grid flex-1 grid-cols-2 items-baseline gap-x-4 gap-y-1.5 sm:flex-none sm:grid-cols-[minmax(104px,auto)_repeat(4,minmax(132px,auto))] sm:gap-x-7";
 const rub = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 
 // Колонка среза в свёрнутой строке: средняя цена среза и наша дельта к ней.
@@ -127,9 +127,9 @@ function SliceCell({ slice }: { slice: ShelfSliceResult | undefined }) {
     return <div className="truncate text-right text-[9px] font-semibold text-amber-600" title={slice.note ?? undefined}>{slice.note ?? "нет данных"}</div>;
   }
   return (
-    <div className="flex items-baseline justify-end gap-1.5 whitespace-nowrap">
-      <span className="text-[13px] font-semibold tabular-nums text-slate-700">{price(slice.avgPrice)}</span>
-      <span className={`text-[11px] font-bold tabular-nums ${diffTextTone(slice.diffPct)}`}>{slice.diffPct == null ? "—" : pct(slice.diffPct)}</span>
+    <div className="flex items-baseline justify-end gap-2 whitespace-nowrap">
+      <span className="text-[15px] font-semibold tabular-nums text-slate-700">{price(slice.avgPrice)}</span>
+      <span className={`text-[13px] font-bold tabular-nums ${diffTextTone(slice.diffPct)}`}>{slice.diffPct == null ? "—" : pct(slice.diffPct)}</span>
     </div>
   );
 }
@@ -304,9 +304,9 @@ function PeriodSummary({ history }: { history: HistoryPoint[] }) {
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
       {cards.map((card) => (
         <div key={card.label} className="rounded-xl border border-slate-200 p-2.5">
-          <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{card.label}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">{card.label}</div>
           <div className="mt-0.5 whitespace-nowrap text-sm font-bold tabular-nums text-slate-800">{card.value}</div>
-          <div className="text-[9px] text-slate-400">{card.hint}</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">{card.hint}</div>
         </div>
       ))}
     </div>
@@ -564,9 +564,9 @@ export function WbShelfPage() {
               return (
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                   {cards.map((card) => (
-                    <div key={card.label} className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <div key={card.label} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                       <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{card.label}</div>
-                      <div className={`mt-1 text-lg font-bold tabular-nums ${card.tone ?? "text-slate-800"}`}>{card.value}</div>
+                      <div className={`mt-1.5 whitespace-nowrap text-[26px] font-bold leading-7 tracking-[-0.02em] tabular-nums ${card.tone ?? "text-slate-800"}`}>{card.value}</div>
                       <div className="text-[9px] text-slate-400">{card.hint}</div>
                     </div>
                   ))}
@@ -578,22 +578,23 @@ export function WbShelfPage() {
                 Прилипает под верхней панелью (54px), чтобы при прокрутке длинного
                 реестра было видно, где чей срез. Отрицательные поля растягивают
                 фон на всю ширину контента — иначе карточки просвечивают по краям. */}
-            <div className="sticky top-[54px] z-20 -mx-2 hidden border-b border-slate-200 bg-[#f6f7f9]/95 px-5 py-2 backdrop-blur-sm sm:-mx-6 sm:flex sm:items-end sm:px-9">
+            <div className="sticky top-[54px] z-20 -mx-2 hidden border-b border-slate-200 bg-[#f6f7f9]/95 px-5 py-2 backdrop-blur-sm sm:-mx-6 sm:flex sm:items-end sm:px-10">
               <div className="min-w-0 flex-1" />
               <div className="flex items-center gap-3">
                 <div className={SLICE_GRID_CLASS}>
-                  <div className="border-r border-transparent pr-3 text-right text-[9px] font-semibold uppercase tracking-wide text-slate-400">наша</div>
+                  <div className="border-r border-transparent pr-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">наша</div>
                   {SLICE_ORDER.map((n) => (
-                    <div key={n} className="flex items-center justify-end gap-1 whitespace-nowrap text-[9px] font-semibold text-slate-400">
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: SLICE_COLORS[n] }} />
+                    <div key={n} className="flex items-center justify-end gap-1.5 whitespace-nowrap text-[12px] font-semibold">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: SLICE_COLORS[n] }} />
                       <span style={{ color: SLICE_COLORS[n] }}>Топ-{n}</span>
-                      <span className="text-slate-400">(ср. цена)</span>
+                      <span className="text-[11px] font-medium text-slate-400">(ср. цена)</span>
                     </div>
                   ))}
                 </div>
                 <span className="h-4 w-4 shrink-0" aria-hidden="true" />
               </div>
             </div>
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] [&>section+section]:border-t [&>section+section]:border-slate-100">
             {orderedItems.map((item) => {
               const { watch, latest, history } = item;
               const expanded = expandedId === watch.id;
@@ -601,16 +602,16 @@ export function WbShelfPage() {
               const visibleRows = latest ? latest.rows.filter((row) => showExcluded || !row.excluded) : [];
               const excludedCount = latest ? latest.rows.filter((row) => row.excluded).length : 0;
               return (
-                <section key={watch.id} className={`group rounded-xl border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:border-violet-200 hover:shadow-[0_4px_16px_rgba(109,40,217,0.08)] ${watch.active ? "border-slate-200" : "border-slate-200 opacity-60"}`}>
-                  <button type="button" onClick={() => setExpandedId(expanded ? null : watch.id)} aria-expanded={expanded} className="flex w-full flex-wrap items-center gap-3 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-xl">
+                <section key={watch.id} className={`group bg-white transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-violet-50/25 ${watch.active ? "" : "opacity-60"}`}>
+                  <button type="button" onClick={() => setExpandedId(expanded ? null : watch.id)} aria-expanded={expanded} className="flex w-full flex-wrap items-center gap-4 px-4 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={watch.ourImg || wbCardImageUrl(watch.nmId)} alt="" loading="lazy" className="h-14 w-11 shrink-0 rounded-lg bg-slate-100 object-cover ring-1 ring-slate-200/60" />
+                    <img src={watch.ourImg || wbCardImageUrl(watch.nmId)} alt="" loading="lazy" className="h-16 w-[52px] shrink-0 rounded-lg bg-slate-100 object-cover ring-1 ring-slate-200/60" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-[15px] font-bold tracking-[-0.01em] text-slate-800">{watch.supplierArticle || watch.nmId}</span>
-                        {watch.ourBrand ? <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-slate-500 sm:inline">{watch.ourBrand}</span> : null}
+                        <span className="truncate text-[17px] font-bold tracking-[-0.01em] text-slate-800">{watch.supplierArticle || watch.nmId}</span>
+                        {watch.ourBrand ? <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">{watch.ourBrand}</span> : null}
                       </div>
-                      <div className="mt-0.5 text-[10px] text-slate-400">
+                      <div className="mt-1 text-[12px] text-slate-400">
                         nm {watch.nmId}
                         {watch.active ? "" : " · сбор выключен"}
                         {!watch.ourBrand ? " · бренд появится после первого сбора" : ""}
@@ -620,9 +621,9 @@ export function WbShelfPage() {
                     <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
                       {latest ? (
                         <div className={SLICE_GRID_CLASS}>
-                          <div className="flex items-baseline justify-end gap-1.5 border-r border-slate-200 pr-3">
+                          <div className="flex items-baseline justify-end gap-2 border-r border-slate-200 pr-4">
                             <PriceSparkline history={history} />
-                            <span className="text-[15px] font-bold tabular-nums text-slate-800">{price(latest.ourPrice)}</span>
+                            <span className="text-[17px] font-bold tabular-nums text-slate-800">{price(latest.ourPrice)}</span>
                           </div>
                           {SLICE_ORDER.map((n) => (
                             <SliceCell key={n} slice={latest.slices.find((slice) => slice.n === n)} />
@@ -746,6 +747,7 @@ export function WbShelfPage() {
                 </section>
               );
             })}
+            </div>
           </div>
         )}
 
