@@ -574,8 +574,11 @@ export function WbShelfPage() {
               );
             })()}
             {/* Шапка колонок — подписи один раз над списком, как в таблице.
-                Цветные точки совпадают с линиями графика в раскрытой карточке. */}
-            <div className="hidden px-3 sm:flex sm:items-end">
+                Цветные точки совпадают с линиями графика в раскрытой карточке.
+                Прилипает под верхней панелью (54px), чтобы при прокрутке длинного
+                реестра было видно, где чей срез. Отрицательные поля растягивают
+                фон на всю ширину контента — иначе карточки просвечивают по краям. */}
+            <div className="sticky top-[54px] z-20 -mx-2 hidden border-b border-slate-200 bg-[#f6f7f9]/95 px-5 py-2 backdrop-blur-sm sm:-mx-6 sm:flex sm:items-end sm:px-9">
               <div className="min-w-0 flex-1" />
               <div className="flex items-center gap-3">
                 <div className={SLICE_GRID_CLASS}>

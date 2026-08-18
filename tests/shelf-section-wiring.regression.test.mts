@@ -94,3 +94,14 @@ test("scrape.js перенесён без изменений — антибот-
   assert.match(scrape, /priceBlockWalletPrice/);
   assert.match(scrape, /data-popup-nm-id/);
 });
+
+test("шапка колонок «Полок» прилипает под верхней панелью", async () => {
+  const page = await read("../components/wb/WbShelfPage.tsx");
+  // 54px — высота фиксированной панели WbShell; без этого шапка спрячется под ней.
+  assert.match(page, /sticky top-\[54px\] z-20/);
+  // Фон обязателен: прозрачная шапка пропускала бы карточки под собой.
+  assert.match(page, /bg-\[#f6f7f9\]\/95/);
+  // Одна сетка на шапку и строки — иначе колонки разъедутся при прокрутке.
+  assert.match(page, /const SLICE_GRID_CLASS =/);
+  assert.equal((page.match(/SLICE_GRID_CLASS/g) ?? []).length, 3);
+});
