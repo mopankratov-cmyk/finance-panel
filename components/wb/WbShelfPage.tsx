@@ -141,19 +141,19 @@ const signedRub = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""
 function SliceTable({ latest, watch }: { latest: LatestView; watch: WatchView }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200">
-      <table className="w-full min-w-[360px] border-collapse text-[11px]">
+      <table className="w-full min-w-[420px] border-collapse text-[11px]">
         <thead className="bg-slate-50 text-slate-500">
           <tr>
             <th className="px-3 py-2 text-left">Срез</th>
-            <th className="px-3 py-2 text-right">Цена, ₽</th>
-            <th className="px-3 py-2 text-right" title="Плюс — конкуренты дороже нас">Отличие, %</th>
-            <th className="px-3 py-2 text-right" title="Плюс — конкуренты дороже нас">Отличие, ₽</th>
+            <th className="whitespace-nowrap px-3 py-2 text-right">Цена, ₽</th>
+            <th className="whitespace-nowrap px-3 py-2 text-right" title="Плюс — конкуренты дороже нас">Отличие, %</th>
+            <th className="whitespace-nowrap px-3 py-2 text-right" title="Плюс — конкуренты дороже нас">Отличие, ₽</th>
           </tr>
         </thead>
         <tbody>
           <tr className="border-t border-slate-100 bg-violet-50/40">
             <td className="px-3 py-2 font-bold text-slate-800">{watch.supplierArticle || watch.nmId}<span className="ml-1 font-normal text-slate-400">(вы)</span></td>
-            <td className="px-3 py-2 text-right font-bold tabular-nums text-violet-700">{price(latest.ourPrice)}</td>
+            <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-violet-700">{price(latest.ourPrice)}</td>
             <td className="px-3 py-2 text-right text-slate-300">—</td>
             <td className="px-3 py-2 text-right text-slate-300">—</td>
           </tr>
@@ -169,9 +169,9 @@ function SliceTable({ latest, watch }: { latest: LatestView; watch: WatchView })
                   ? <td colSpan={3} className="px-3 py-2 text-right text-[10px] text-amber-700">{slice.note ?? "нет данных"}</td>
                   : (
                     <>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-700">{price(slice.avgPrice)}</td>
-                      <td className={`px-3 py-2 text-right font-semibold tabular-nums ${diffTextTone(slice.diffPct)}`}>{pct(slice.diffPct)}</td>
-                      <td className={`px-3 py-2 text-right font-semibold tabular-nums ${diffTextTone(diffRub)}`}>{diffRub == null ? "—" : signedRub(diffRub)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-700">{price(slice.avgPrice)}</td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums ${diffTextTone(slice.diffPct)}`}>{pct(slice.diffPct)}</td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums ${diffTextTone(diffRub)}`}>{diffRub == null ? "—" : signedRub(diffRub)}</td>
                     </>
                   )}
               </tr>
@@ -305,7 +305,7 @@ function PeriodSummary({ history }: { history: HistoryPoint[] }) {
       {cards.map((card) => (
         <div key={card.label} className="rounded-xl border border-slate-200 p-2.5">
           <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{card.label}</div>
-          <div className="mt-0.5 text-sm font-bold tabular-nums text-slate-800">{card.value}</div>
+          <div className="mt-0.5 whitespace-nowrap text-sm font-bold tabular-nums text-slate-800">{card.value}</div>
           <div className="text-[9px] text-slate-400">{card.hint}</div>
         </div>
       ))}
@@ -638,7 +638,7 @@ export function WbShelfPage() {
                       {latest ? (
                         <>
                           <div className="text-[10px] text-slate-400">сбор {new Date(latest.collectedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · конкурентов в блоке: {latest.competitorCount}</div>
-                          <div className="grid gap-3 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+                          <div className="grid gap-3 xl:grid-cols-[minmax(0,470px)_minmax(0,1fr)]">
                             <SliceTable latest={latest} watch={watch} />
                             <PriceHistoryChart history={history} watch={watch} />
                           </div>
@@ -684,7 +684,7 @@ export function WbShelfPage() {
                                       )}
                                     </td>
                                     <td className="px-2 py-2 text-slate-600">{row.brand ?? "(бренд не указан)"}</td>
-                                    <td className="px-2 py-2 text-right tabular-nums font-semibold text-slate-700">{price(row.price)}</td>
+                                    <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums font-semibold text-slate-700">{price(row.price)}</td>
                                     <td className="px-2 py-2 text-right">
                                       {row.price != null && latest.ourPrice != null && latest.ourPrice > 0
                                         ? <span className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-bold tabular-nums ${row.price >= latest.ourPrice ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>{pct(((row.price - latest.ourPrice) / latest.ourPrice) * 100)}</span>
