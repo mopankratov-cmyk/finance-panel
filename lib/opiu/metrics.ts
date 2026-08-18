@@ -34,6 +34,8 @@ export interface WeekRawMetrics {
   otherDeductions: number;
   adsSpend: number;
   warehousePackaging: number;
+  /** Компенсация скидки по программе лояльности (cashback_discount). */
+  loyaltyCompensation: number;
 }
 
 function num(value: unknown): number {
@@ -210,6 +212,19 @@ function expenseRub(value: unknown): number {
   return num(value);
 }
 
+/**
+ * Компенсация скидки по программе лояльности.
+ * Колонка cashback_discount пока не выбирается в reportRows.ts (REPORT_COLUMNS) —
+ * её нет в таблице Supabase wb_report_rows (см. заявку docs/codemap/request-wb-sales-fields.md).
+ * До миграции row.cashback_discount всегда undefined → метрика безопасно равна 0.
+ * Как только колонка появится и попадёт в REPORT_COLUMNS/REPORT_FIELDS, значения
+ * подтянутся сюда без дополнительных правок.
+ */
+function loyaltyCompensationRub(row: WbReportRow): number {
+  const raw = row as Record<string, unknown>;
+  return num(raw.cashback_discount);
+}
+
 function buildCostLookup(costs: ProductCostRow[]): {
   byArticle: Map<string, number>;
   byBarcode: Map<string, number>;
@@ -297,6 +312,7 @@ export function aggregateWeek(
     ),
     adsSpend: adsSpendInRange(adStats, rangeFrom, rangeTo),
     warehousePackaging,
+    loyaltyCompensation: weekSales.reduce((s, r) => s + loyaltyCompensationRub(r), 0),
   };
 }
 
@@ -313,6 +329,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       otherDeductions: acc.otherDeductions + w.otherDeductions,
       adsSpend: acc.adsSpend + w.adsSpend,
       warehousePackaging: acc.warehousePackaging + w.warehousePackaging,
+      loyaltyCompensation: acc.loyaltyCompensation + w.loyaltyCompensation,
     }),
     {
       orders: 0,
@@ -325,6 +342,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       otherDeductions: 0,
       adsSpend: 0,
       warehousePackaging: 0,
+      loyaltyCompensation: 0,
     },
   );
 }
