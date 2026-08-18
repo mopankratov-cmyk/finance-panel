@@ -13,6 +13,7 @@ test("loan schedule sums every payment component falling on the same date", () =
     principal: 764_360.4,
     interest: 6_166.35,
     penalty: 14_095.59,
+    fine: 0,
   }]);
 });
 
@@ -38,5 +39,6 @@ test("bank spreadsheet parser classifies and sums same-date schedule components"
     principal: 764_360.4,
     interest: 42_005.6,
     penalty: 11_063.31,
+    fine: 0,
   }]);
 });

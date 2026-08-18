@@ -26,8 +26,17 @@ test("точная сумма, компания и счет дают автом�
 
 test("ручное подтверждение сохраняет устойчивую связь", () => {
   const plan = withCalendarFactLink(payment("plan", "planned", 100000), "fact");
+  assert.equal(plan.status, "cancelled");
   const result = findPlanFactMatches([plan, payment("fact", "done", 70000, "2026-08-15")]);
   assert.equal(result.matched[0]?.source, "confirmed");
+});
+
+test("назначение платежа усиливает правильное совпадение", () => {
+  const plan = { ...payment("plan", "planned", 100000), name: "Оплата рекламного кабинета Wildberries" };
+  const correct = { ...payment("correct", "done", 99000, "2026-08-11"), name: "Пополнение рекламного кабинета Wildberries" };
+  const other = { ...payment("other", "done", 99000, "2026-08-11"), name: "Оплата аренды склада" };
+  const result = findPlanFactMatches([plan, other, correct]);
+  assert.equal(result.matched[0]?.fact.id, "correct");
 });
 
 test("расход не сопоставляется с поступлением", () => {

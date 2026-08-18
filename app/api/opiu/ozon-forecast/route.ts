@@ -515,6 +515,7 @@ export async function GET(request: NextRequest) {
       cabinetId: cabinet.id,
       companyId,
       companyName: mapping.companyName,
+      receivingAccountId: mapping.receivingAccountId,
       scope: resolved.scope.label,
       cabinets: allCabinets.scope.cabinets.map((item) => ({
         id: item.id,

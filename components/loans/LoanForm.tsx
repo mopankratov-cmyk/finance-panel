@@ -14,6 +14,7 @@ export interface LoanScheduleDraft {
   principal: number;
   interest: number;
   penalty: number;
+  fine: number;
   status: PaymentStatus;
 }
 
@@ -53,7 +54,7 @@ interface LoanFormProps {
 }
 
 const fieldClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
-const emptySchedule = (): LoanScheduleDraft => ({ id: crypto.randomUUID(), date: "", principal: 0, interest: 0, penalty: 0, status: "planned" });
+const emptySchedule = (): LoanScheduleDraft => ({ id: crypto.randomUUID(), date: "", principal: 0, interest: 0, penalty: 0, fine: 0, status: "planned" });
 const initialRecognition = (): RecognizedLoan => ({ contractNumber: "", creditorName: "", companyHint: "", accountHint: "", principalAmount: 0, currency: "RUB", annualRate: 0, originationFee: 0, feeAmortizationMonths: 36, startDate: "", dueDate: "", interestFrequency: "unknown", confidence: 0, warnings: [] });
 
 function fileBase64(file: File) {
@@ -82,7 +83,7 @@ function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[
   const due = new Date(`${data.dueDate}T12:00:00`);
   if (data.interestFrequency !== "monthly") {
     const days = Math.max(1, Math.round((due.getTime() - start.getTime()) / 86_400_000));
-    return [{ id: crypto.randomUUID(), date: data.dueDate, principal: principalRub, interest: principalRub * data.annualRate / 100 * days / 365, penalty: 0, status: "planned" }];
+    return [{ id: crypto.randomUUID(), date: data.dueDate, principal: principalRub, interest: principalRub * data.annualRate / 100 * days / 365, penalty: 0, fine: 0, status: "planned" }];
   }
   const rows: LoanScheduleDraft[] = [];
   let cursor = new Date(start);
@@ -97,6 +98,7 @@ function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[
       principal: next.getTime() === due.getTime() ? principalRub : 0,
       interest: principalRub * data.annualRate / 100 * days / 365,
       penalty: 0,
+      fine: 0,
       status: "planned",
     });
     cursor = next;
@@ -112,6 +114,7 @@ function recognizedSchedule(rows: RecognizedScheduleRow[] | undefined, rate: num
       principal: Number(row.principal || 0) * rate,
       interest: Number(row.interest || 0) * rate,
       penalty: Number(row.penalty || 0) * rate,
+      fine: Number(row.fine || 0) * rate,
       status: "planned" as PaymentStatus,
     }));
 }
@@ -150,7 +153,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
   const [message, setMessage] = useState("");
   const [correctionText, setCorrectionText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const totals = useMemo(() => schedule.reduce((sum, row) => ({ principal: sum.principal + Number(row.principal || 0), interest: sum.interest + Number(row.interest || 0), penalty: sum.penalty + Number(row.penalty || 0) }), { principal: 0, interest: 0, penalty: 0 }), [schedule]);
+  const totals = useMemo(() => schedule.reduce((sum, row) => ({ principal: sum.principal + Number(row.principal || 0), interest: sum.interest + Number(row.interest || 0), penalty: sum.penalty + Number(row.penalty || 0), fine: sum.fine + Number(row.fine || 0) }), { principal: 0, interest: 0, penalty: 0, fine: 0 }), [schedule]);
 
   const updateData = (patch: Partial<RecognizedLoan>) => setData((current) => ({ ...current, ...patch }));
   const updateSchedule = (id: string, patch: Partial<LoanScheduleDraft>) => setSchedule((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
@@ -246,11 +249,12 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
           corrections: correctionText,
           existingRecognition: {
             ...data,
-            schedule: schedule.map(({ date, principal, interest, penalty }) => ({
+            schedule: schedule.map(({ date, principal, interest, penalty, fine }) => ({
               date,
               principal: principal / exchangeRate,
               interest: interest / exchangeRate,
               penalty: penalty / exchangeRate,
+              fine: fine / exchangeRate,
             })),
           },
         }),
@@ -289,7 +293,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const cleanSchedule = [...schedule.reduce((byDate, row) => {
-      if (!row.date || Number(row.principal) + Number(row.interest) + Number(row.penalty) <= 0) return byDate;
+      if (!row.date || Number(row.principal) + Number(row.interest) + Number(row.penalty) + Number(row.fine) <= 0) return byDate;
       const current = byDate.get(row.date);
       if (!current) byDate.set(row.date, { ...row });
       else byDate.set(row.date, {
@@ -297,6 +301,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         principal: current.principal + Number(row.principal || 0),
         interest: current.interest + Number(row.interest || 0),
         penalty: current.penalty + Number(row.penalty || 0),
+        fine: current.fine + Number(row.fine || 0),
         status: current.status === "done" && row.status === "done" ? "done" : "planned",
       });
       return byDate;
@@ -382,15 +387,16 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       </section>
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold">График платежей в рублях</h3><p className="text-xs text-slate-500">Проценты для валютного займа рассчитаны по выбранному курсу. Перед оплатой их можно обновить.</p></div><button type="button" onClick={() => setSchedule((rows) => [...rows, emptySchedule()])} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-bold"><Plus className="h-4 w-4" />Добавить платёж</button></div>
-        {schedule.map((row, index) => <div key={row.id} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-[1.1fr_1fr_1fr_1fr_1fr_44px]">
+        {schedule.map((row, index) => <div key={row.id} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-[1.1fr_1fr_1fr_1fr_1fr_1fr_44px]">
           <label className="text-xs font-medium">Дата<input type="date" value={row.date} onChange={(e) => updateSchedule(row.id, { date: e.target.value })} className={fieldClass} /></label>
           <label className="text-xs font-medium">Тело, ₽<input type="number" min="0" step="0.01" value={row.principal || ""} onChange={(e) => updateSchedule(row.id, { principal: Number(e.target.value) })} className={fieldClass} /></label>
           <label className="text-xs font-medium">Проценты, ₽<input type="number" min="0" step="0.01" value={row.interest || ""} onChange={(e) => updateSchedule(row.id, { interest: Number(e.target.value) })} className={fieldClass} /></label>
-          <label className="text-xs font-medium">Пени / штрафы, ₽<input type="number" min="0" step="0.01" value={row.penalty || ""} onChange={(e) => updateSchedule(row.id, { penalty: Number(e.target.value) })} className={fieldClass} /></label>
+          <label className="text-xs font-medium">Пени, ₽<input type="number" min="0" step="0.01" value={row.penalty || ""} onChange={(e) => updateSchedule(row.id, { penalty: Number(e.target.value) })} className={fieldClass} /></label>
+          <label className="text-xs font-medium">Штрафы, ₽<input type="number" min="0" step="0.01" value={row.fine || ""} onChange={(e) => updateSchedule(row.id, { fine: Number(e.target.value) })} className={fieldClass} /></label>
           <label className="text-xs font-medium">Состояние<select value={row.status} onChange={(e) => updateSchedule(row.id, { status: e.target.value as PaymentStatus })} className={fieldClass}><option value="planned">Запланировано</option><option value="done">Оплачено</option><option value="cancelled">Отменено</option></select></label>
           <button type="button" aria-label={`Удалить платёж ${index + 1}`} onClick={() => setSchedule((rows) => rows.filter((item) => item.id !== row.id))} className="mt-5 flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
         </div>)}
-        <div className="grid gap-2 rounded-xl bg-slate-900 p-4 text-white sm:grid-cols-4"><div><p className="text-xs text-slate-400">Тело</p><b>{totals.principal.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Проценты</p><b>{totals.interest.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Пени / штрафы</p><b>{totals.penalty.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Всего выплат</p><b>{(totals.principal + totals.interest + totals.penalty).toLocaleString("ru-RU")} ₽</b></div></div>
+        <div className="grid gap-2 rounded-xl bg-slate-900 p-4 text-white sm:grid-cols-5"><div><p className="text-xs text-slate-400">Тело</p><b>{totals.principal.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Проценты</p><b>{totals.interest.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Пени</p><b>{totals.penalty.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Штрафы</p><b>{totals.fine.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Всего выплат</p><b>{(totals.principal + totals.interest + totals.penalty + totals.fine).toLocaleString("ru-RU")} ₽</b></div></div>
       </section>
       {file && <p className="flex items-center gap-2 text-sm text-slate-600"><FileText className="h-4 w-4" />Документ обработан: {file.name}</p>}
       {message && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{message}</p>}

@@ -28,7 +28,7 @@ class ValidationError extends Error {
 
 const system = `Ты финансовый ассистент. Извлеки условия кредита или займа.
 Верни ТОЛЬКО JSON без markdown:
-{"contractNumber":"","creditorName":"","companyHint":"","accountHint":"","principalAmount":0,"currency":"RUB","annualRate":0,"originationFee":0,"feeAmortizationMonths":36,"startDate":"YYYY-MM-DD","dueDate":"YYYY-MM-DD","interestFrequency":"weekly|monthly|quarterly|at_maturity|unknown","confidence":0,"warnings":[],"schedule":[{"date":"YYYY-MM-DD","principal":0,"interest":0,"penalty":0}]}
+{"contractNumber":"","creditorName":"","companyHint":"","accountHint":"","principalAmount":0,"currency":"RUB","annualRate":0,"originationFee":0,"feeAmortizationMonths":36,"startDate":"YYYY-MM-DD","dueDate":"YYYY-MM-DD","interestFrequency":"weekly|monthly|quarterly|at_maturity|unknown","confidence":0,"warnings":[],"schedule":[{"date":"YYYY-MM-DD","principal":0,"interest":0,"penalty":0,"fine":0}]}
 Не выдумывай отсутствующие данные. ИП Филиппов и ИП Коровкин — одно юридическое лицо. Ставку возвращай в процентах годовых.
 Если ставка переменная, в annualRate укажи начальную годовую ставку и опиши периоды изменения в warnings.
 Если в документе есть график платежей, перенеси ВСЕ строки графика без пересчёта: дату, основной долг, проценты и штраф/пеню. Не заменяй недельный график месячным.
