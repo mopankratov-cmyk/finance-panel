@@ -4,15 +4,27 @@ import type { Account, Payment } from "@/lib/types";
 
 const money = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 
-export async function sendTelegramMessage(text: string, chatId = process.env.FINANCE_TELEGRAM_CHAT_ID) {
+export async function sendTelegramMessage(
+  text: string,
+  chatId = process.env.FINANCE_TELEGRAM_CHAT_ID,
+  options: { forceReply?: boolean } = {},
+) {
   const token = process.env.FINANCE_TELEGRAM_BOT_TOKEN;
   if (!token || !chatId) throw new Error("Не настроены FINANCE_TELEGRAM_BOT_TOKEN и FINANCE_TELEGRAM_CHAT_ID");
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      ...(options.forceReply ? { reply_markup: { force_reply: true, selective: true } } : {}),
+    }),
   });
   if (!response.ok) throw new Error(`Telegram вернул ${response.status}`);
+  const payload = await response.json().catch(() => null) as { result?: { message_id?: number } } | null;
+  return payload?.result?.message_id ?? null;
 }
 
 export function formatAlert(alert: FinancialAlert) {

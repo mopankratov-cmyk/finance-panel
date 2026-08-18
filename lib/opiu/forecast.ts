@@ -11,6 +11,8 @@ import {
 } from "@/lib/opiu/wbPlan";
 import { classifyForecastArticleGaps, type ForecastGap } from "@/lib/opiu/forecastGaps";
 import { deriveArticleBreakdown, sumBreakdowns } from "@/lib/opiu/unitEconomics";
+import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
+import { resolveWbPayoutRate } from "@/lib/opiu/wbUnitPayout";
 
 const num = (value: unknown) => {
   const parsed = Number(value);
@@ -240,7 +242,7 @@ export async function buildMarketplacePayoutForecast(
   const planArticleSet = new Set(planArticles.map((article) => article.toUpperCase()));
   const seasonalRules = ((seasonalRows ?? []) as SeasonalProductRule[])
     .filter((row) => planArticleSet.has(String(row.article ?? "").trim().toUpperCase()));
-  const [report, currentReport, recentOrders, articleCosts] = await Promise.all([
+  const [report, currentReport, recentOrders, articleCosts, unitCommission] = await Promise.all([
     fetchForecastReportRows(iso(historyStart), iso(historyEnd), planArticles, options.signal, cabinetId),
     hasStarted
       ? fetchForecastReportRows(iso(targetStart), iso(actualEnd), planArticles, options.signal, cabinetId)
@@ -253,6 +255,7 @@ export async function buildMarketplacePayoutForecast(
       cabinetId,
     ),
     fetchArticleCosts(client, options.signal),
+    getWbCommissionForCabinet(cabinetId, 30, { allowLiveFallback: false }),
   ]);
   const actualByArticle = aggregateByArticle(report);
   const currentByArticle = aggregateByArticle(currentReport);
@@ -277,7 +280,7 @@ export async function buildMarketplacePayoutForecast(
   let items = (planRows ?? []).map((row) => {
     const article = String(row.article).trim().toUpperCase();
     const actual = actualByArticle.get(article) ?? { revenue: 0, payout: 0 };
-    const payoutRate = actual.revenue > 0 ? actual.payout / actual.revenue : null;
+    const historicalPayoutRate = actual.revenue > 0 ? actual.payout / actual.revenue : null;
     const planRevenue = num(row.plan_revenue);
     const current = currentByArticle.get(article) ?? { revenue: 0, payout: 0 };
     const projectedRevenue = elapsedDays ? current.revenue / elapsedDays * daysInMonth : planRevenue;
@@ -288,6 +291,16 @@ export async function buildMarketplacePayoutForecast(
     const weather = weatherImpacts.get(article);
     const weatherAdjustedRevenue = adaptiveRevenue * (1 + (weather?.adjustmentPercent ?? 0) / 100);
     const meta = planMeta.get(article);
+    const nmId = Number(meta?.externalId);
+    const unitRates = resolveWbRatesForNm(unitCommission, Number.isFinite(nmId) ? nmId : 0);
+    const payoutRateResolution = resolveWbPayoutRate({
+      historicalRevenue: actual.revenue,
+      historicalPayout: actual.payout,
+      unitMarketplacePct: unitRates.factual ? unitRates.marketplacePct : null,
+      unitAcquiringPct: unitRates.factual ? unitRates.acquiringPct : null,
+      unitRatesAvailable: unitRates.factual,
+    });
+    const payoutRate = payoutRateResolution.rate;
     const planBuyouts = meta?.planBuyouts ?? 0;
     const costPerUnit = articleCosts.map.get(article) ?? null;
     // §6: наличие себестоимости. available:false (ошибка чтения) → undefined,
@@ -306,7 +319,9 @@ export async function buildMarketplacePayoutForecast(
       costPerUnit,
       historicalRevenue: actual.revenue,
       historicalPayout: actual.payout,
+      historicalPayoutRate,
       payoutRate,
+      payoutRateSource: payoutRateResolution.source,
       forecastPayout: payoutRate === null ? null : weatherAdjustedRevenue * payoutRate,
       actualRevenue: current.revenue,
       projectedRevenue,
@@ -391,7 +406,7 @@ export async function buildMarketplacePayoutForecast(
     availablePlanPeriods,
     planRevenue: items.reduce((sum, item) => sum + item.planRevenue, 0),
     forecastPayout,
-    articlesWithoutHistory: items.filter((item) => item.payoutRate === null).length,
+    articlesWithoutHistory: items.filter((item) => item.historicalPayoutRate === null).length,
     // §9/§19: сколько артикулов имеют пробел, влияющий на выплату — при >0 итог неполный.
     articlesAffectingPayout: items.filter((item) => item.affectsPayout).length,
     // §6: раздельная разбивка (выручка/удержания/выплата/себестоимость/прибыль).

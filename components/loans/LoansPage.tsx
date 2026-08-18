@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoanForm, type LoanFormResult, type LoanScheduleDraft } from "./LoanForm";
 import { deleteLoanDocument, openLoanDocument, saveLoanDocument } from "./loanDocuments";
 import { useFinance } from "@/components/providers/FinanceProvider";
-import { loadDdsCompanies, loadPaymentCompanyLinks, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
+import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
 import { downloadSimpleXlsx } from "@/components/payments/ddsExport";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
@@ -101,6 +101,10 @@ function exportRows(loans: Loan[], payments: Payment[], companies: DdsCompany[],
   return rows;
 }
 
+function exportRowIds(loans: Loan[], payments: Payment[]) {
+  return loans.flatMap((loan) => scheduleFromPayments(payments, loan.id).map(() => loan.id));
+}
+
 export function LoansPage() {
   const { state, dispatch } = useFinance();
   const [modalOpen, setModalOpen] = useState(false);
@@ -160,6 +164,7 @@ export function LoansPage() {
     return sum + (months ? fee / months * monthCountInPeriod(loan.startDate, months, periodStart, periodEnd) : 0);
   }, 0);
   const rowsForExport = exportRows(filteredLoans, state.payments, companies, companyByPayment);
+  const rowIdsForExport = exportRowIds(filteredLoans, state.payments);
 
   const reconcileWithDds = useCallback((showResult = true) => {
     const actualPayments = state.payments.filter((payment) => payment.status === "done" && payment.amount < 0 && !payment.comment?.includes("[loan:"));
@@ -280,10 +285,14 @@ export function LoansPage() {
     const desiredIds = new Set(desired.map((payment) => payment.id));
     for (const payment of existing.filter((payment) => !desiredIds.has(payment.id))) dispatch({ type: "DELETE_PAYMENT", payload: payment.id });
     for (const payment of desired) {
-      if (state.payments.some((item) => item.id === payment.id)) dispatch({ type: "UPDATE_PAYMENT", payload: payment });
-      else dispatch({ type: "ADD_PAYMENT", payload: payment });
+      if (state.payments.some((item) => item.id === payment.id)) {
+        dispatch({ type: "UPDATE_PAYMENT", payload: payment });
+        await updatePaymentCompany(payment.id, result.companyId);
+      } else {
+        await savePaymentWithCompany(payment, result.companyId);
+        dispatch({ type: "ADD_PAYMENT", payload: payment });
+      }
       setCompanyByPayment((current) => new Map(current).set(payment.id, result.companyId));
-      void updatePaymentCompany(payment.id, result.companyId);
     }
     setModalOpen(false);
     setEditing(null);
@@ -306,11 +315,20 @@ export function LoansPage() {
   const syncGoogle = async () => {
     setSyncing(true);
     try {
-      const response = await fetch("/api/opiu/google-sheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: rowsForExport, sheetName: "Учёт кредитов займов от сторонн", template: "loans" }) });
-      if (!response.ok) throw new Error("Не удалось выгрузить");
-      alert("Реестр кредитов отправлен в Google Таблицу");
-    } catch {
-      alert("Google Таблица пока не подключена. Excel можно скачать уже сейчас.");
+      const response = await fetch("/api/opiu/google-sheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: rowsForExport, rowIds: rowIdsForExport, sheetName: "Учёт кредитов займов от сторонн", template: "loans" }) });
+      const result = await response.json().catch(() => null) as { error?: string; spreadsheetUrl?: string; rows?: number; updated?: number; skipped?: number } | null;
+      if (!response.ok) throw new Error(result?.error || "Не удалось выгрузить реестр кредитов");
+      const added = Number(result?.rows ?? 0);
+      const updated = Number(result?.updated ?? 0);
+      const skipped = Number(result?.skipped ?? 0);
+      const summary = added > 0 || updated > 0
+        ? `Google Таблица обновлена: новых строк — ${added}, заменено существующих — ${updated}, пропущено — ${skipped}.`
+        : `Новых кредитов для добавления не найдено. Пропущено существующих строк — ${skipped}.`;
+      if (result?.spreadsheetUrl && confirm(`${summary}\n\nОткрыть Google Таблицу?`)) {
+        window.open(result.spreadsheetUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось обновить Google Таблицу");
     } finally {
       setSyncing(false);
     }

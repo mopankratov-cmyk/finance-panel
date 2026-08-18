@@ -52,8 +52,8 @@ export function classifyForecastArticleGaps(
   }
   if (presence.payoutRate === null) {
     gaps.push({
-      field: "Доля выплаты по истории финансовых отчётов",
-      source: "финансовый отчёт WB (wb_report_rows)",
+      field: "Доля выплаты: нет ни истории отчётов, ни полных ставок юнит-экономики",
+      source: "финансовый отчёт WB или юнит-экономика кабинета",
       impact: "payout",
     });
   }

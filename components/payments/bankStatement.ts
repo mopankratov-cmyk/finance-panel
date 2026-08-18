@@ -23,6 +23,7 @@ export interface BankStatement {
   declaredCredit: number;
   rows: BankStatementRow[];
   warnings: string[];
+  notes?: string[];
 }
 
 const decoder = new TextDecoder("utf-8");
@@ -135,6 +136,24 @@ function cellColumn(reference: string): string {
   return reference.replace(/\d/g, "");
 }
 
+function normalizedLabel(value: string) {
+  return value.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
+}
+
+function valueAfterLabel(grid: string[][], pattern: RegExp) {
+  for (const row of grid) {
+    const labelIndex = row.findIndex((cell) => pattern.test(normalizedLabel(cell ?? "")));
+    if (labelIndex < 0) continue;
+    const label = row[labelIndex]?.trim();
+    const value = row.slice(labelIndex + 1).find((cell) => {
+      const clean = cell?.trim();
+      return clean && clean !== label && !/^ооо\s+["«]?вб банк/i.test(clean);
+    });
+    if (value) return value.trim();
+  }
+  return "";
+}
+
 export async function readFirstSheetXlsx(file: File): Promise<string[][]> {
   const entries = await unzipEntries(await file.arrayBuffer());
   const stringsBytes = entries.get("xl/sharedStrings.xml");
@@ -206,6 +225,28 @@ export async function parseWbBankXlsx(file: File): Promise<BankStatement> {
     return hasDate && hasMoney;
   });
   if (headerIndex < 0) {
+    const operationCount = parseNumber(valueAfterLabel(grid, /^количество операций/));
+    const looksLikeEmptyStatement = grid.some((row) => row.some((cell) => /выписка операций по счету/i.test(cell ?? "")))
+      && operationCount === 0;
+    if (looksLikeEmptyStatement) {
+      const period = valueAfterLabel(grid, /^за период$/).match(/с\s+(\d{1,2}[./-]\d{1,2}[./-]\d{4})\s+по\s+(\d{1,2}[./-]\d{1,2}[./-]\d{4})/i);
+      const owner = grid.flat().find((cell) => /^(?:индивидуальный предприниматель|ип)\s+/i.test(cell?.trim() ?? ""))?.trim() ?? "";
+      return {
+        documentHash,
+        bank: grid[0]?.find((cell) => cell.trim())?.trim() || "Банковская выписка",
+        owner,
+        ownerInn: valueAfterLabel(grid, /^инн кио$/).replace(/\D/g, ""),
+        accountNumber: valueAfterLabel(grid, /^выписка операций по счету$/).replace(/\D/g, ""),
+        dateFrom: isoDate(period?.[1] ?? ""),
+        dateTo: isoDate(period?.[2] ?? ""),
+        openingBalance: parseNumber(valueAfterLabel(grid, /^входящий остаток$/)),
+        closingBalance: parseNumber(valueAfterLabel(grid, /^исходящий остаток$/)),
+        declaredDebit: parseNumber(valueAfterLabel(grid, /^обороты по дебету$/)),
+        declaredCredit: parseNumber(valueAfterLabel(grid, /^обороты по кредиту$/)),
+        rows: [],
+        warnings: ["Выписка распознана корректно: банк указал 0 операций за выбранный период"],
+      };
+    }
     throw new Error("Не удалось определить заголовки банковской выписки. Нужны колонки с датой и суммой операции");
   }
   const headers = grid[headerIndex].map(normalize);

@@ -4,11 +4,11 @@ export interface GoogleSyncResult {
   spreadsheetUrl?: string;
 }
 
-export async function syncDdsToGoogleSheets(rows: Array<Array<string | number>>): Promise<GoogleSyncResult> {
+export async function syncDdsToGoogleSheets(rows: Array<Array<string | number>>, rowIds: string[]): Promise<GoogleSyncResult> {
   const response = await fetch("/api/opiu/google-sheets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sheetName: "ДДС месяц", template: "dds", rows }),
+    body: JSON.stringify({ sheetName: "ДДС месяц", template: "dds", rows, rowIds }),
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) {
