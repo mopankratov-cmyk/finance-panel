@@ -5,6 +5,10 @@ import { OPIU_WB_CABINET_ID } from "./constants";
 
 export type OpiuReportDateMode = "sale" | "report";
 
+// TODO(loyalty_comp): добавить "cashback_discount" в этот список, когда колонка
+// появится в wb_report_rows (см. docs/codemap/request-wb-sales-fields.md) и в
+// REPORT_FIELDS + reportRowForStorage в syncReportRows.ts. metrics.ts уже готов
+// читать row.cashback_discount — больше ничего менять не нужно.
 const REPORT_COLUMNS = [
   "rr_dt",
   "sale_dt",

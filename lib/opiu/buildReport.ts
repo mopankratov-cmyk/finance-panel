@@ -91,8 +91,9 @@ export function buildOpiuReport(
 
   const rows: OpiuTableRow[] = [
     { id: "orders",         label: "Заказы, руб",                                     kind: "metric",  values: cols((m) => m.ordersRub) },
-    { id: "revenue",        label: "Выручка без СПП, руб",                            kind: "metric",  values: cols((m) => m.revenue) },
-    { id: "loyalty_comp",   label: "Компенсация скидки по программе лояльности, руб", kind: "metric",  values: zero },
+    { id: "revenue_without_spp", label: "Выручка без СПП, руб",                       kind: "metric",  values: cols((m) => m.revenueWithoutSpp) },
+    { id: "revenue",        label: "Выручка с учётом СПП, руб",                       kind: "metric",  values: cols((m) => m.revenue) },
+    { id: "loyalty_comp",   label: "Компенсация скидки по программе лояльности, руб", kind: "metric",  values: cols((m) => m.loyaltyCompensation) },
     { id: "buyout",         label: "% выкупа",                                        kind: "percent", values: pctCols((d) => d.buyoutPct) },
     { id: "for_pay",        label: "К перечислению продавцу, руб",                    kind: "metric",  values: cols((m) => m.forPay) },
     sep("sep0"),
