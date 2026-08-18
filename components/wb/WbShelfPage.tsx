@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Loader2, Plus, RefreshCw, Rows3, Trash2 } from "lucide-react";
+import { Ban, ChevronDown, Info, Loader2, Plus, RefreshCw, Rows3, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import type { ShelfMarkedRow, ShelfSliceResult } from "@/lib/shelf/slices";
@@ -58,6 +58,34 @@ function collectedAge(iso: string): { label: string; stale: boolean } {
   // Слоты 10:00/18:00/22:00 МСК: штатная пауза между 22:00 и утренним сбором —
   // 12 часов. Тревожимся только когда пропущен целый слот, а не каждое утро.
   return { label, stale: hours > 13 };
+}
+
+// Ближайший плановый слот сборщика (10:00/18:00/22:00 МСК) — для сводки.
+function nextSlotLabel(): string {
+  const hour = Number(new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "numeric", hour12: false }).format(new Date()));
+  const slot = [10, 18, 22].find((value) => hour < value);
+  return slot ? `${slot}:00` : "10:00 завтра";
+}
+
+// Мини-график нашей цены в свёрнутой карточке: движение видно без раскрытия.
+function PriceSparkline({ history }: { history: HistoryPoint[] }) {
+  const values = history
+    .map((point) => point.ourPrice)
+    .filter((value): value is number => value != null && Number.isFinite(value));
+  if (values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = Math.max(max - min, 1);
+  const x = (index: number) => 2 + (index / (values.length - 1)) * 84;
+  const y = (value: number) => 22 - ((value - min) / spread) * 18;
+  const points = values.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+  const last = values[values.length - 1];
+  return (
+    <svg viewBox="0 0 88 26" className="hidden h-[26px] w-[88px] sm:block" aria-hidden="true">
+      <polyline points={points} fill="none" stroke="#7c3aed" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
+      <circle cx={x(values.length - 1)} cy={y(last)} r="2.2" fill="#7c3aed" />
+    </svg>
+  );
 }
 
 function diffTone(value: number | null): string {
@@ -283,6 +311,8 @@ export function WbShelfPage() {
   const [newSupplier, setNewSupplier] = useState("");
   const [brandsDraft, setBrandsDraft] = useState<Record<string, string>>({});
   const [globalDraft, setGlobalDraft] = useState<string | null>(null);
+  const [exclOpen, setExclOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
 
@@ -400,6 +430,16 @@ export function WbShelfPage() {
               <button key={value} type="button" onClick={() => setDays(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${days === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{value} дней</button>
             ))}
           </div>
+          <div className="relative">
+            <button type="button" onClick={() => setInfoOpen((open) => !open)} aria-label="Как это устроено" aria-expanded={infoOpen} className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 sm:h-8 sm:w-8">
+              <Info className="h-3.5 w-3.5" />
+            </button>
+            {infoOpen ? (
+              <div className="absolute right-0 top-full z-50 mt-1 w-[320px] rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-4 text-slate-600 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+                <b className="text-slate-800">Как это устроено.</b> Цены снимает внешний сборщик (Playwright + реальный Chrome на Mac — антибот WB не пропускает серверный скрейпинг), панель принимает снимки и считает срезы. Средние Топ-3/6/12/30 — по порядку показа среди неисключённых конкурентов с ценой; нехватка подписывается «доступно X из N», срез из одних своих карточек — «только свои товары». «+» в разнице = конкурент дороже нас. Цена — «с WB Кошельком». Новые артикулы сборщик подбирает в течение ~15 минут, плановые сборы — 10:00 / 18:00 / 22:00 МСК.
+              </div>
+            ) : null}
+          </div>
           <button type="button" onClick={() => reload()} disabled={loading} aria-label="Обновить" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:opacity-60 sm:h-8 sm:w-8">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </button>
@@ -410,51 +450,62 @@ export function WbShelfPage() {
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}
         {error && !loading ? <WbErrorState message={error} onRetry={() => reload()} /> : null}
 
-        {hasExactCabinet && canWrite ? (
-          <section className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:flex-row sm:items-end">
-            <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-500">
-              Артикул WB
-              <input value={newNm} onChange={(event) => setNewNm(event.target.value)} inputMode="numeric" placeholder="786649863" className="min-h-11 w-40 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-9" />
-            </label>
-            <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-500">
-              Артикул поставщика (не обязательно)
-              <input value={newSupplier} onChange={(event) => setNewSupplier(event.target.value)} placeholder="NV-836…" className="min-h-11 w-44 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-9" />
-            </label>
-            <button type="button" disabled={busy || !newNm.trim()} onClick={() => void addWatch()} className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40 sm:min-h-9">
-              <Plus className="h-3.5 w-3.5" />отслеживать
-            </button>
-            <div className="text-[10px] leading-4 text-slate-400 sm:ml-auto sm:max-w-[260px]">
-              Свой бренд артикула исключается из конкурентов автоматически при первом сборе.
-            </div>
-          </section>
-        ) : null}
-
         {hasExactCabinet ? (
-          <section className="rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Глобальные бренды-исключения кабинета</span>
+          <section className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-wrap items-end gap-2">
               {canWrite ? (
                 <>
-                  <input
-                    value={globalDraft ?? globalBrands.join(", ")}
-                    onChange={(event) => setGlobalDraft(event.target.value)}
-                    placeholder="Бренды через запятую"
-                    className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-8"
-                  />
-                  <button
-                    type="button"
-                    disabled={busy || globalDraft == null}
-                    onClick={() => {
-                      const brands = (globalDraft ?? "").split(",").map((brand) => brand.trim()).filter(Boolean);
-                      setGlobalDraft(null);
-                      void mutate("/api/shelf/watch", { method: "PUT", body: JSON.stringify({ cabinetId, globalExcludedBrands: brands }) }, "Глобальные исключения сохранены");
-                    }}
-                    className="min-h-10 rounded-lg bg-slate-800 px-3 text-[11px] font-semibold text-white disabled:opacity-40 sm:min-h-8"
-                  >сохранить</button>
+                  <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-500">
+                    Артикул WB
+                    <input value={newNm} onChange={(event) => setNewNm(event.target.value)} inputMode="numeric" placeholder="786649863" className="min-h-11 w-40 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-9" />
+                  </label>
+                  <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-500">
+                    Артикул поставщика
+                    <input value={newSupplier} onChange={(event) => setNewSupplier(event.target.value)} placeholder="NV-836…" className="min-h-11 w-40 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-9" />
+                  </label>
+                  <button type="button" disabled={busy || !newNm.trim()} onClick={() => void addWatch()} className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40 sm:min-h-9">
+                    <Plus className="h-3.5 w-3.5" />отслеживать
+                  </button>
                 </>
-              ) : <span className="text-slate-500">{globalBrands.length ? globalBrands.join(", ") : "не заданы"}</span>}
+              ) : <span className="text-[11px] text-slate-500">Реестр ведёт менеджер кабинета.</span>}
+              <button
+                type="button"
+                onClick={() => setExclOpen((open) => !open)}
+                aria-expanded={exclOpen}
+                className={`ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-[11px] font-semibold transition sm:min-h-9 ${exclOpen ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+              >
+                <Ban className="h-3.5 w-3.5" />
+                Исключения кабинета{globalBrands.length ? ` · ${globalBrands.length}` : ""}
+              </button>
             </div>
-            <p className="mt-1 text-[10px] text-slate-400">Применяются ко всем артикулам кабинета поверх авто-исключения своего бренда; правка честно пересчитывает и историю срезов.</p>
+            {canWrite ? <p className="mt-1.5 text-[10px] text-slate-400">Свой бренд артикула исключается из конкурентов автоматически при первом сборе.</p> : null}
+            {exclOpen ? (
+              <div className="absolute right-3 top-full z-40 mt-1 w-[min(420px,calc(100vw-48px))] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Глобальные бренды-исключения кабинета</div>
+                {canWrite ? (
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={globalDraft ?? globalBrands.join(", ")}
+                      onChange={(event) => setGlobalDraft(event.target.value)}
+                      placeholder="Бренды через запятую"
+                      className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-9"
+                    />
+                    <button
+                      type="button"
+                      disabled={busy || globalDraft == null}
+                      onClick={() => {
+                        const brands = (globalDraft ?? "").split(",").map((brand) => brand.trim()).filter(Boolean);
+                        setGlobalDraft(null);
+                        setExclOpen(false);
+                        void mutate("/api/shelf/watch", { method: "PUT", body: JSON.stringify({ cabinetId, globalExcludedBrands: brands }) }, "Глобальные исключения сохранены");
+                      }}
+                      className="min-h-10 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40 sm:min-h-9"
+                    >сохранить</button>
+                  </div>
+                ) : <div className="mt-2 text-xs text-slate-500">{globalBrands.length ? globalBrands.join(", ") : "не заданы"}</div>}
+                <p className="mt-2 text-[10px] leading-4 text-slate-400">Применяются ко всем артикулам кабинета поверх авто-исключения своего бренда; правка честно пересчитывает и историю срезов.</p>
+              </div>
+            ) : null}
           </section>
         ) : <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">В режиме «Все кабинеты» показывается сводка. Добавлять артикулы и править исключения можно, выбрав конкретный кабинет.</div>}
 
@@ -471,7 +522,36 @@ export function WbShelfPage() {
           </WbEmptyState>
         ) : (
           <div className="space-y-2">
-            <div className="text-[10px] text-slate-400">{items.length} артикулов в реестре · {totalActive} активных для сбора</div>
+            {(() => {
+              const withTop6 = items
+                .map((item) => item.latest?.slices.find((slice) => slice.n === 6)?.diffPct)
+                .filter((value): value is number => value != null);
+              const cheaper = withTop6.filter((value) => value > 0).length;
+              const dearer = withTop6.filter((value) => value < 0).length;
+              const avgDiff = withTop6.length ? withTop6.reduce((sum, value) => sum + value, 0) / withTop6.length : null;
+              const lastCollected = items
+                .map((item) => item.latest?.collectedAt)
+                .filter((value): value is string => Boolean(value))
+                .sort()
+                .at(-1);
+              const cards: { label: string; value: string; hint: string; tone?: string }[] = [
+                { label: "В реестре", value: String(items.length), hint: `${totalActive} активных для сбора` },
+                { label: "Мы дешевле рынка", value: withTop6.length ? `${cheaper} из ${withTop6.length}` : "—", hint: "по средней Топ-6", tone: cheaper > dearer ? "text-emerald-700" : undefined },
+                { label: "Мы дороже рынка", value: withTop6.length ? `${dearer} из ${withTop6.length}` : "—", hint: avgDiff == null ? "нет данных" : `средняя дельта ${pct(avgDiff)}`, tone: dearer > 0 ? "text-rose-600" : undefined },
+                { label: "Последний сбор", value: lastCollected ? new Date(lastCollected).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—", hint: `следующий слот ${nextSlotLabel()} МСК` },
+              ];
+              return (
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                  {cards.map((card) => (
+                    <div key={card.label} className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                      <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{card.label}</div>
+                      <div className={`mt-1 text-lg font-bold tabular-nums ${card.tone ?? "text-slate-800"}`}>{card.value}</div>
+                      <div className="text-[9px] text-slate-400">{card.hint}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             {orderedItems.map((item) => {
               const { watch, latest, history } = item;
               const expanded = expandedId === watch.id;
@@ -479,23 +559,45 @@ export function WbShelfPage() {
               const visibleRows = latest ? latest.rows.filter((row) => showExcluded || !row.excluded) : [];
               const excludedCount = latest ? latest.rows.filter((row) => row.excluded).length : 0;
               return (
-                <section key={watch.id} className={`rounded-xl border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${watch.active ? "border-slate-200" : "border-slate-200 opacity-60"}`}>
-                  <button type="button" onClick={() => setExpandedId(expanded ? null : watch.id)} className="flex w-full flex-wrap items-center gap-3 p-3 text-left">
+                <section key={watch.id} className={`group rounded-xl border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:border-violet-200 hover:shadow-[0_4px_16px_rgba(109,40,217,0.08)] ${watch.active ? "border-slate-200" : "border-slate-200 opacity-60"}`}>
+                  <button type="button" onClick={() => setExpandedId(expanded ? null : watch.id)} aria-expanded={expanded} className="flex w-full flex-wrap items-center gap-3 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-xl">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={watch.ourImg || wbCardImageUrl(watch.nmId)} alt="" loading="lazy" className="h-12 w-9 shrink-0 rounded-md bg-slate-100 object-cover" />
+                    <img src={watch.ourImg || wbCardImageUrl(watch.nmId)} alt="" loading="lazy" className="h-14 w-11 shrink-0 rounded-lg bg-slate-100 object-cover ring-1 ring-slate-200/60" />
                     <div className="min-w-0">
-                      <div className="text-sm font-bold text-slate-800">{watch.supplierArticle || watch.nmId}</div>
-                      <div className="text-[10px] text-slate-400">nm {watch.nmId} · {watch.ourBrand ?? "бренд появится после первого сбора"}{watch.active ? "" : " · сбор выключен"}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[15px] font-bold tracking-[-0.01em] text-slate-800">{watch.supplierArticle || watch.nmId}</span>
+                        {watch.ourBrand ? <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-slate-500 sm:inline">{watch.ourBrand}</span> : null}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-slate-400">
+                        nm {watch.nmId}
+                        {watch.active ? "" : " · сбор выключен"}
+                        {!watch.ourBrand ? " · бренд появится после первого сбора" : ""}
+                        {age ? <span className={age.stale ? "text-amber-600" : ""}> · {age.label}{age.stale ? " — сборщик молчит" : ""}</span> : null}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+                    <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                       {latest ? (
                         <>
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600">наша {price(latest.ourPrice)}</span>
-                          <SliceChips slices={latest.slices.filter((slice) => slice.n === 6 || slice.n === 12)} />
-                          <span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${age?.stale ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"}`}>{age?.label}</span>
+                          <PriceSparkline history={history} />
+                          <div className="text-right">
+                            <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">наша</div>
+                            <div className="text-[15px] font-bold leading-5 tabular-nums text-slate-800">{price(latest.ourPrice)}</div>
+                          </div>
+                          {(() => {
+                            const top6 = latest.slices.find((slice) => slice.n === 6);
+                            if (!top6) return null;
+                            if (top6.avgPrice == null) {
+                              return <span className="rounded-full bg-amber-50 px-2 py-1 text-[9px] font-semibold text-amber-700">{top6.note ?? "Топ-6: нет данных"}</span>;
+                            }
+                            return (
+                              <span title="Средняя цена Топ-6 неисключённых конкурентов; «+» — рынок дороже нас" className={`rounded-full px-2 py-1 text-[10px] font-bold tabular-nums ${diffTone(top6.diffPct)}`}>
+                                Топ-6 {price(top6.avgPrice)}{top6.diffPct == null ? "" : ` · ${pct(top6.diffPct)}`}
+                              </span>
+                            );
+                          })()}
                         </>
                       ) : <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500">сборов ещё не было</span>}
-                      {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                      <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
                     </div>
                   </button>
 
@@ -519,12 +621,12 @@ export function WbShelfPage() {
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full min-w-[560px] border-collapse text-[10px]">
-                              <thead className="bg-slate-50 text-slate-500">
-                                <tr><th className="px-2 py-2 text-left">#</th><th className="px-2 py-2 text-left">Товар</th><th className="px-2 py-2 text-left">Бренд</th><th className="px-2 py-2 text-right">Цена</th><th className="px-2 py-2 text-right" title="Плюс — конкурент дороже нас">К нашей цене</th><th className="px-2 py-2 text-left" /></tr>
+                              <thead className="bg-slate-50">
+                                <tr className="text-[9px] font-semibold uppercase tracking-wide text-slate-400"><th className="px-2 py-2 text-left">#</th><th className="px-2 py-2 text-left">Товар</th><th className="px-2 py-2 text-left">Бренд</th><th className="px-2 py-2 text-right">Цена</th><th className="px-2 py-2 text-right" title="Плюс — конкурент дороже нас">К нашей цене</th><th className="px-2 py-2 text-left" /></tr>
                               </thead>
                               <tbody>
                                 {visibleRows.map((row) => (
-                                  <tr key={`${row.position}`} className={`border-t border-slate-100 ${row.excluded ? "opacity-45" : ""}`}>
+                                  <tr key={`${row.position}`} className={`border-t border-slate-100 transition-colors odd:bg-slate-50/40 hover:bg-violet-50/40 ${row.excluded ? "opacity-45" : ""}`}>
                                     <td className="px-2 py-2 tabular-nums text-slate-400">{row.position}</td>
                                     <td className="px-2 py-2">
                                       {row.nmId ? (
@@ -551,8 +653,10 @@ export function WbShelfPage() {
                                     </td>
                                     <td className="px-2 py-2 text-slate-600">{row.brand ?? "(бренд не указан)"}</td>
                                     <td className="px-2 py-2 text-right tabular-nums font-semibold text-slate-700">{price(row.price)}</td>
-                                    <td className={`px-2 py-2 text-right tabular-nums font-semibold ${row.price != null && latest.ourPrice != null ? (row.price >= latest.ourPrice ? "text-emerald-700" : "text-rose-600") : "text-slate-400"}`}>
-                                      {row.price != null && latest.ourPrice != null && latest.ourPrice > 0 ? pct(((row.price - latest.ourPrice) / latest.ourPrice) * 100) : "—"}
+                                    <td className="px-2 py-2 text-right">
+                                      {row.price != null && latest.ourPrice != null && latest.ourPrice > 0
+                                        ? <span className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-bold tabular-nums ${row.price >= latest.ourPrice ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>{pct(((row.price - latest.ourPrice) / latest.ourPrice) * 100)}</span>
+                                        : <span className="text-slate-400">—</span>}
                                     </td>
                                     <td className="px-2 py-2">
                                       {row.excluded ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">исключён</span>
@@ -613,9 +717,6 @@ export function WbShelfPage() {
           </div>
         )}
 
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-5 text-slate-500">
-          <b className="text-slate-700">Как это устроено:</b> цены снимает внешний сборщик (Playwright + реальный Chrome на Mac — антибот WB не пропускает серверный скрейпинг), панель только принимает снимки и считает срезы. Средние Топ-3/6/12/30 — по порядку показа среди неисключённых конкурентов с ценой; нехватка подписывается «доступно X из N», а срез из одних своих карточек — «только свои товары». «+» в разнице = конкурент дороже нас. Цена — та, что WB показывает крупно («с WB Кошельком»).
-        </div>
       </div>
     </div>
   );
