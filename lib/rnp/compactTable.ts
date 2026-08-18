@@ -28,6 +28,11 @@ export interface RnpMetricDictionaryEntry {
 /** Поля, одинаковые для всех артикулов, — они и уезжают в словарь. */
 const SHARED_FIELDS = ["label", "kind", "source", "note"] as const;
 
+// Детали прогноза нужны только в сводке (там их читает блок плана): в карточках
+// артикулов они не отображаются нигде, а весят на крупном кабинете сотни
+// килобайт ключей и чисел. По сети их не везём — в summary остаются.
+const SKU_DROPPED_FIELDS = ["forecastLow", "forecastHigh", "forecastConfidencePct"] as const;
+
 export function compactRnpTable<T extends TableLike>(table: T): T & { metric_dictionary: Record<string, RnpMetricDictionaryEntry> } {
   type SkuOf = T["skus"][number];
   type MetricOf = SkuOf["metrics"][number];
@@ -52,6 +57,7 @@ export function compactRnpTable<T extends TableLike>(table: T): T & { metric_dic
         // Своё значение оставляем: у артикула бывает свой note (причина пробела).
         if (compact[field] === shared[field]) delete compact[field];
       }
+      for (const field of SKU_DROPPED_FIELDS) delete compact[field];
       // Пустые поля не везём: у метрики артикула их до семи штук (forecast и
       // его детали, покрытие), и на 351 SKU × 64 метрики это лишние мегабайты.
       // Весь код читает их через `!= null`, поэтому отсутствие = прежний null.

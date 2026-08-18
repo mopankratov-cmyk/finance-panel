@@ -7,6 +7,7 @@ import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductSco
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { buildSupplyVolumeCoverage } from "@/lib/supplies/volumeCoverage";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { advertReportScopeKey, loadCachedAdvertReportRows } from "@/lib/adverts/reportCache";
 import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 
 export const dynamic = "force-dynamic";
@@ -69,27 +70,32 @@ async function fetchAllStocks(db: SupabaseClient, single: string | null, members
     if (members) q = q.in("cabinet_id", members);
     else if (single) q = q.eq("cabinet_id", single);
     return q;
-  }, { label: "Остатки WB" });
+  }, { label: "Остатки WB", concurrency: 6 });
 }
 
 // rnp_report принимает один p_cabinet — для группы вызываем по каждому участнику
 // и суммируем аддитивные поля по nm_id (заказы/остаток/в пути — простые суммы,
 // без пересчёта долей/ставок, поэтому merge безопасен).
 async function fetchRpcRows(db: SupabaseClient, single: string | null, members: string[] | null): Promise<RpcRow[]> {
+  // Месячные агрегаты — тот же тяжёлый RPC (10+ с), что душил «Рекламу» (#446)
+  // и ронял «Склейки» по statement timeout (#457). Читаем из общего снимка
+  // с фоновым освежением; ключ учитывает продуктовый контур запроса.
   if (!members) {
     const allowedNmIds = await requestAllowedNmIds(single);
-    return loadRnpReportRows<RpcRow>(db, single, {
-      allowedNmIds,
-      label: "Поставки WB: товары",
-    });
+    return loadCachedAdvertReportRows<RpcRow>(single, advertReportScopeKey(allowedNmIds), () =>
+      loadRnpReportRows<RpcRow>(db, single, {
+        allowedNmIds,
+        label: "Поставки WB: товары",
+      }));
   }
   const results = await Promise.all(members.map(async (member) => {
     const allowedNmIds = await requestAllowedNmIds(member);
     return {
-      rows: await loadRnpReportRows<RpcRow>(db, member, {
-        allowedNmIds,
-        label: "Поставки WB: товары участника группы",
-      }),
+      rows: await loadCachedAdvertReportRows<RpcRow>(member, advertReportScopeKey(allowedNmIds), () =>
+        loadRnpReportRows<RpcRow>(db, member, {
+          allowedNmIds,
+          label: "Поставки WB: товары участника группы",
+        })),
       allowedNmIds,
     };
   }));

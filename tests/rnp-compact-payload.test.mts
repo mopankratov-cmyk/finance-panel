@@ -81,6 +81,21 @@ test("ответ без словаря (старый формат) проход�
   assert.deepEqual(asIs.skus, table.skus);
 });
 
+test("детали прогноза не везутся в артикулах, но остаются в сводке", () => {
+  const rich = structuredClone(table);
+  rich.skus[0].metrics[0] = { ...rich.skus[0].metrics[0], forecastLow: 1, forecastHigh: 9, forecastConfidencePct: 70 } as typeof rich.skus[0].metrics[0];
+  rich.summary[0] = { ...rich.summary[0], forecastLow: 1, forecastHigh: 9, forecastConfidencePct: 70 } as typeof rich.summary[0];
+  const compact = compactRnpTable(rich);
+  const skuMetric = compact.skus[0].metrics[0] as Record<string, unknown>;
+  assert.equal(skuMetric.forecastLow, undefined, "детали прогноза не нужны в карточке артикула");
+  assert.equal(skuMetric.forecastHigh, undefined);
+  assert.equal(skuMetric.forecastConfidencePct, undefined);
+  // В сводке они читаются блоком плана — там остаются.
+  const summaryMetric = compact.summary[0] as Record<string, unknown>;
+  assert.equal(summaryMetric.forecastLow, 1);
+  assert.equal(summaryMetric.forecastConfidencePct, 70);
+});
+
 test("сжатие реально уменьшает объём", () => {
   const before = JSON.stringify(table).length;
   const after = JSON.stringify(compactRnpTable(structuredClone(table))).length;
