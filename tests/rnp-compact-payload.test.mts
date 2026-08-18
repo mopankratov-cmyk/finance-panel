@@ -83,7 +83,7 @@ test("ответ без словаря (старый формат) проход�
 
 test("детали прогноза не везутся в артикулах, но остаются в сводке", () => {
   const rich = structuredClone(table);
-  rich.skus[0].metrics[0] = { ...rich.skus[0].metrics[0], forecastLow: 1, forecastHigh: 9, forecastConfidencePct: 70 } as typeof rich.skus[0].metrics[0];
+  rich.skus[0].metrics[0] = { ...rich.skus[0].metrics[0], forecastLow: 1, forecastHigh: 9, forecastConfidencePct: 70 } as (typeof rich.skus)[0]["metrics"][0];
   rich.summary[0] = { ...rich.summary[0], forecastLow: 1, forecastHigh: 9, forecastConfidencePct: 70 } as typeof rich.summary[0];
   const compact = compactRnpTable(rich);
   const skuMetric = compact.skus[0].metrics[0] as Record<string, unknown>;
