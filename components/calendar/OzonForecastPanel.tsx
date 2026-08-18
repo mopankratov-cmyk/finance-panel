@@ -1,11 +1,14 @@
 "use client";
 
-import { BarChart3, Loader2, TriangleAlert } from "lucide-react";
+import { BarChart3, CalendarPlus, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
 import type { PayoutReport } from "@/lib/opiu/payoutReconciliation";
 import { readForecastJson } from "@/lib/opiu/forecastRequest";
+import type { Account } from "@/lib/types";
+import type { DdsCompany } from "@/components/payments/ddsCompanies";
+import { publishForecastToCalendar } from "./forecastPublication";
 
 type PayoutMode = "standard" | "weekly";
 
@@ -13,6 +16,7 @@ interface ForecastData {
   cabinetId: string;
   companyId: string;
   companyName: string;
+  receivingAccountId: string;
   cabinets: { id: string; name: string }[];
   planRows: number;
   planSource: "approved_sales_plan" | "working_sales_plan" | "none";
@@ -55,9 +59,13 @@ interface ForecastData {
 export function OzonForecastPanel({
   year,
   month,
+  accounts,
+  companies,
 }: {
   year: number;
   month: number;
+  accounts: Account[];
+  companies: DdsCompany[];
 }) {
   const [cabinetId, setCabinetId] = useState("");
   const [mode, setMode] = useState<PayoutMode>("standard");
@@ -65,6 +73,15 @@ export function OzonForecastPanel({
   const [cabinetOptions, setCabinetOptions] = useState<ForecastData["cabinets"]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [publishing, setPublishing] = useState(false);
+
+  useEffect(() => {
+    if (!data?.receivingAccountId) return;
+    if (accounts.some((account) => account.id === data.receivingAccountId)) {
+      setAccountId(data.receivingAccountId);
+    }
+  }, [accounts, data?.receivingAccountId]);
 
   useEffect(() => {
     const query = new URLSearchParams({
@@ -148,8 +165,8 @@ export function OzonForecastPanel({
         </div>
       </div>
       <CardContent className="space-y-4 pt-5">
-        <p className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-950">
-          Только просмотр: ДДС и календарь не изменяются
+        <p className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+          Проверьте кабинет, компанию, счёт и суммы. Календарь изменится только после отдельного подтверждения.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="text-sm text-slate-700">
@@ -247,6 +264,27 @@ export function OzonForecastPanel({
                 formatMoney(report.amount),
               ])}
             />
+            {data.payoutSchedule.length > 0 && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+                <h3 className="font-semibold text-sky-950">Перенести прогноз Ozon в календарь</h3>
+                <p className="mt-1 text-sm text-sky-800">Компания: <b>{companies.find((company) => company.id === data.companyId)?.name ?? data.companyName}</b></p>
+                <label className="mt-3 block text-sm text-sky-950">Счёт получения<select value={accountId} onChange={(event) => setAccountId(event.target.value)} className="mt-1 min-h-11 w-full max-w-md rounded-lg border border-sky-200 bg-white px-3"><option value="">Выберите счёт</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+                <button disabled={publishing || !accountId || data.planSource !== "approved_sales_plan" || data.reportDataStatus === "degraded" || data.reconciliationDataStatus === "degraded" || data.unallocatedForecastPayout !== null && data.unallocatedForecastPayout > 0} onClick={async () => {
+                  if (!confirm(`Перенести ${data.payoutSchedule.length} поступлений Ozon в платёжный календарь? Подтверждённые отчёты заменят расчётные строки.`)) return;
+                  setPublishing(true);
+                  try {
+                    const result = await publishForecastToCalendar(
+                      { marketplace: "ozon", cabinetId: data.cabinetId, companyId: data.companyId, accountId, year, month: month + 1 },
+                      data.payoutSchedule.map((row, index) => ({ key: row.id || `bucket-${index + 1}`, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined })),
+                    );
+                    alert(`Календарь обновлён: ${result.published} строк.`);
+                    window.location.reload();
+                  } catch (publishError) { alert(publishError instanceof Error ? publishError.message : "Не удалось обновить календарь"); }
+                  finally { setPublishing(false); }
+                }} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-lg bg-sky-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"><CalendarPlus className="h-4 w-4" />{publishing ? "Сохраняю…" : "Утвердить и перенести в календарь"}</button>
+                {data.planSource !== "approved_sales_plan" && <p className="mt-2 text-xs text-amber-800">Кнопка станет доступна после утверждения плана Ozon.</p>}
+              </div>
+            )}
             <ReadOnlyTable
               title="Расчётный график"
               headers={["Дата", "Источник", "Сумма"]}

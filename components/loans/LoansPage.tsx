@@ -13,7 +13,7 @@ import type { Loan, Payment } from "@/lib/types";
 
 const marker = (loanId: string) => `[loan:${loanId}:`;
 const receiptMarker = (loanId: string) => `[loan:${loanId}:receipt]`;
-const scheduleMarker = (loanId: string, rowId: string, kind: "principal" | "interest" | "penalty") => `[loan:${loanId}:schedule:${rowId}:${kind}]`;
+const scheduleMarker = (loanId: string, rowId: string, kind: "principal" | "interest" | "penalty" | "fine") => `[loan:${loanId}:schedule:${rowId}:${kind}]`;
 
 function commentValue(comment: string | undefined, key: string): string {
   return comment?.match(new RegExp(`\\[${key}:([^\\]]*)\\]`))?.[1] ?? "";
@@ -26,11 +26,11 @@ function linkedRows(payments: Payment[], loanId: string) {
 function scheduleFromPayments(payments: Payment[], loanId: string): LoanScheduleDraft[] {
   const grouped = new Map<string, LoanScheduleDraft>();
   for (const payment of linkedRows(payments, loanId)) {
-    const match = payment.comment?.match(/\[loan:[^:]+:schedule:([^:]+):(principal|interest|penalty)\]/);
+    const match = payment.comment?.match(/\[loan:[^:]+:schedule:([^:]+):(principal|interest|penalty|fine)\]/);
     if (!match) continue;
     const [, rowId, kind] = match;
-    const current = grouped.get(rowId) ?? { id: rowId, date: payment.date, principal: 0, interest: 0, penalty: 0, status: payment.status };
-    current[kind as "principal" | "interest" | "penalty"] = Math.abs(payment.amount);
+    const current = grouped.get(rowId) ?? { id: rowId, date: payment.date, principal: 0, interest: 0, penalty: 0, fine: 0, status: payment.status };
+    current[kind as "principal" | "interest" | "penalty" | "fine"] = Math.abs(payment.amount);
     if (payment.status === "done" || commentValue(payment.comment, "paid-by")) current.status = "done";
     grouped.set(rowId, current);
   }
@@ -95,7 +95,7 @@ function exportRows(loans: Loan[], payments: Payment[], companies: DdsCompany[],
     let balance = loan.principalAmount;
     for (const item of schedule) {
       balance = Math.max(0, balance - item.principal);
-      rows.push([company, loan.creditorName, item.date, item.principal, item.interest + item.penalty, item.principal + item.interest + item.penalty, item.status === "done" ? "Оплачено" : item.status === "cancelled" ? "Отменено" : "План", balance, contractName(payments, loan.id)]);
+      rows.push([company, loan.creditorName, item.date, item.principal, item.interest + item.penalty + item.fine, item.principal + item.interest + item.penalty + item.fine, item.status === "done" ? "Оплачено" : item.status === "cancelled" ? "Отменено" : "План", balance, contractName(payments, loan.id)]);
     }
   }
   return rows;
@@ -157,7 +157,7 @@ export function LoansPage() {
     : `${monthTo}-${String(new Date(Number(monthTo.slice(0, 4)), Number(monthTo.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
   const periodSchedule = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
     .filter(({ row }) => row.status !== "cancelled" && row.date >= periodStart && row.date <= periodEnd);
-  const periodInterest = periodSchedule.reduce((sum, item) => sum + item.row.interest + item.row.penalty, 0);
+  const periodInterest = periodSchedule.reduce((sum, item) => sum + item.row.interest + item.row.penalty + item.row.fine, 0);
   const periodFees = filteredLoans.reduce((sum, loan) => {
     const fee = metadataNumber(state.payments, loan.id, "origination-fee");
     const months = metadataNumber(state.payments, loan.id, "fee-months", 36);
@@ -166,29 +166,41 @@ export function LoansPage() {
   const rowsForExport = exportRows(filteredLoans, state.payments, companies, companyByPayment);
   const rowIdsForExport = exportRowIds(filteredLoans, state.payments);
 
-  const reconcileWithDds = useCallback((showResult = true) => {
+  const reconcileWithDds = useCallback(async (showResult = true) => {
     const actualPayments = state.payments.filter((payment) => payment.status === "done" && payment.amount < 0 && !payment.comment?.includes("[loan:"));
     const usedActual = new Set<string>();
     let matched = 0;
     for (const loan of state.loans) {
       const loanRows = scheduleFromPayments(state.payments, loan.id).filter((row) => row.status === "planned");
       for (const row of loanRows) {
-        const total = row.principal + row.interest + row.penalty;
-        const actual = actualPayments
+        const total = row.principal + row.interest + row.penalty + row.fine;
+        const expectedCompany = linkedRows(state.payments, loan.id)
+          .map((payment) => companyByPayment.get(payment.id))
+          .find(Boolean) ?? null;
+        if (!expectedCompany) continue;
+        const candidates = actualPayments
           .filter((payment) => !usedActual.has(payment.id) && paymentMatchesCreditor(payment, loan.creditorName))
+          .filter((payment) => !expectedCompany || companyByPayment.get(payment.id) === expectedCompany)
           .map((payment) => ({ payment, delta: Math.abs(Math.abs(payment.amount) - total), days: daysBetween(payment.date, row.date) }))
           .filter((candidate) => candidate.days <= 14 && candidate.delta <= Math.max(1, total * 0.005))
-          .sort((a, b) => a.delta - b.delta || a.days - b.days)[0]?.payment;
+          .sort((a, b) => a.delta - b.delta || a.days - b.days);
+        const best = candidates[0];
+        const second = candidates[1];
+        const actual = best && (!second || best.delta !== second.delta || best.days !== second.days) ? best.payment : undefined;
         if (!actual) continue;
         const markerPart = `:schedule:${row.id}:`;
-        for (const linked of linkedRows(state.payments, loan.id).filter((payment) => payment.comment?.includes(markerPart))) {
+        const updates = linkedRows(state.payments, loan.id)
+          .filter((payment) => payment.comment?.includes(markerPart))
+          .map((linked) => ({
+            ...linked,
+            status: "cancelled" as const,
+            comment: `${linked.comment ?? ""} [paid-by:${actual.id}]`,
+          }));
+        await Promise.all(updates.map((payment) => savePaymentWithCompany(payment, expectedCompany)));
+        for (const payment of updates) {
           dispatch({
             type: "UPDATE_PAYMENT",
-            payload: {
-              ...linked,
-              status: "cancelled",
-              comment: `${linked.comment ?? ""} [paid-by:${actual.id}]`,
-            },
+            payload: payment,
           });
         }
         usedActual.add(actual.id);
@@ -196,13 +208,13 @@ export function LoansPage() {
       }
     }
     if (showResult) alert(matched ? `Сверка завершена: ${matched} платежей по графикам найдены в ДДС и отмечены оплаченными.` : "Новых совпадений с фактическими платежами ДДС не найдено.");
-  }, [dispatch, state.loans, state.payments]);
+  }, [companyByPayment, dispatch, state.loans, state.payments]);
 
   useEffect(() => {
-    if (reconciledRef.current || state.loans.length === 0 || state.payments.length === 0) return;
+    if (reconciledRef.current || state.loans.length === 0 || state.payments.length === 0 || companyByPayment.size === 0) return;
     reconciledRef.current = true;
-    reconcileWithDds(false);
-  }, [reconcileWithDds, state.loans.length, state.payments.length]);
+    void reconcileWithDds(false);
+  }, [companyByPayment.size, reconcileWithDds, state.loans.length, state.payments.length]);
 
   useEffect(() => {
     if (contractNumberBackfillRef.current || state.loans.length === 0 || state.payments.length === 0) return;
@@ -281,6 +293,20 @@ export function LoansPage() {
           comment: `${rowMarker}${currencyMeta}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
         });
       }
+      if (row.fine > 0) {
+        const rowMarker = scheduleMarker(loan.id, row.id, "fine");
+        desired.push({
+          id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-fine"),
+          date: row.date,
+          name: `Штраф по кредиту — ${loan.creditorName}`,
+          amount: -Math.abs(row.fine),
+          category: "Штрафы по кредитам и займам",
+          accountId: result.accountId,
+          status: row.status,
+          counterparty: loan.creditorName,
+          comment: `${rowMarker}${currencyMeta}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
+        });
+      }
     }
     const desiredIds = new Set(desired.map((payment) => payment.id));
     for (const payment of existing.filter((payment) => !desiredIds.has(payment.id))) dispatch({ type: "DELETE_PAYMENT", payload: payment.id });
@@ -340,7 +366,7 @@ export function LoansPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div><h1 className="text-2xl font-bold text-slate-950">Кредиты и займы</h1><p className="mt-1 text-sm text-slate-500">Договоры, графики, остаток долга и ближайшие оплаты</p></div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => reconcileWithDds(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"><RefreshCw className="h-4 w-4" /> Сверить с ДДС</button>
+            <button onClick={() => void reconcileWithDds(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"><RefreshCw className="h-4 w-4" /> Сверить с ДДС</button>
             <button onClick={() => downloadSimpleXlsx(rowsForExport, `Учёт_финансовой_деятельности_${today}.xlsx`, "Учёт кредитов займов от сторонн")} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> Excel</button>
             <button onClick={() => void syncGoogle()} disabled={syncing} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Google Таблица</button>
             <button onClick={() => { setEditing(null); setModalOpen(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> Новый договор</button>
@@ -378,7 +404,7 @@ export function LoansPage() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Summary icon={WalletCards} label="Остаток основного долга" value={formatMoney(outstanding)} tone="slate" />
         <Summary icon={FileText} label="Проценты + комиссии · ОПиУ" value={formatMoney(periodInterest + periodFees)} tone="red" />
-        <Summary icon={CalendarClock} label="К оплате за 30 дней" value={formatMoney(next30.reduce((sum, item) => sum + item.row.principal + item.row.interest + item.row.penalty, 0))} tone="violet" />
+        <Summary icon={CalendarClock} label="К оплате за 30 дней" value={formatMoney(next30.reduce((sum, item) => sum + item.row.principal + item.row.interest + item.row.penalty + item.row.fine, 0))} tone="violet" />
         <Summary icon={AlertTriangle} label="Просрочено платежей" value={String(overdue.length)} tone={overdue.length ? "red" : "green"} />
         <Summary icon={FileText} label="Активных договоров" value={String(filteredLoans.filter((loan) => loan.status === "active").length)} tone="green" />
       </section>
@@ -402,7 +428,7 @@ export function LoansPage() {
               <Metric label="Сумма договора" value={formatMoney(loan.principalAmount)} />
               <Metric label="Остаток тела" value={formatMoney(balance)} strong />
               <Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} />
-              <Metric label="Следующий платёж" value={next ? `${formatDate(next.date)} · ${formatMoney(next.principal + next.interest + next.penalty)}` : "Нет"} />
+              <Metric label="Следующий платёж" value={next ? `${formatDate(next.date)} · ${formatMoney(next.principal + next.interest + next.penalty + next.fine)}` : "Нет"} />
             </div>
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500"><span>Строк графика: {schedule.length}</span><span>Оплачено: {schedule.filter((row) => row.status === "done").length}</span>{fee > 0 && <span>Комиссия в ОПиУ: {formatMoney(fee)} / {metadataNumber(state.payments, loan.id, "fee-months", 36)} мес.</span>}<span className="font-medium text-violet-700">В календаре только реальные платежи</span>{contractName(state.payments, loan.id) && <span>Файл: {contractName(state.payments, loan.id)}</span>}</div>
           </article>;
@@ -469,10 +495,10 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
       <header className="flex items-start justify-between gap-4 border-b p-5"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">{company}</p><h2 className="mt-1 text-xl font-bold text-slate-950">{loan.creditorName}</h2><p className="mt-1 text-sm text-slate-500">{contractNumber(payments, loan.id) ? `Договор № ${contractNumber(payments, loan.id)} от ` : "Договор от "}{formatDate(loan.startDate)} · срок до {formatDate(loan.dueDate)}</p></div><button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
       <div className="overflow-y-auto p-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={formatMoney(loan.principalAmount)} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
-        <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[820px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th><th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени / штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
+        <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[900px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th><th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
           const paidBefore = schedule.filter((item) => item.status === "done" && item.date <= row.date).reduce((sum, item) => sum + item.principal, 0);
           const overdue = row.status === "planned" && row.date < todayISO();
-          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
+          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
         })}</tbody></table></div>
       </div>
       <footer className="flex flex-wrap justify-between gap-3 border-t p-4"><button type="button" disabled={!fileName} onClick={() => void openSource()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-4 font-bold text-violet-700 disabled:opacity-40"><ExternalLink className="h-4 w-4" />Открыть исходный файл</button><div className="flex gap-2"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></div></footer>

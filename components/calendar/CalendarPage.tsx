@@ -488,9 +488,9 @@ export function CalendarPage() {
 
       <div id="calendar-main-content" className="scroll-mt-4">
       {view === "forecast" ? (
-        <SalesForecastPanel key={`${year}-${month}`} year={year} month={month} />
+        <SalesForecastPanel key={`${year}-${month}`} year={year} month={month} accounts={state.accounts} companies={companies} payments={state.payments} companyByPayment={companyByPayment} />
       ) : view === "ozon-forecast" ? (
-        <OzonForecastPanel key={`ozon-${year}-${month}`} year={year} month={month} />
+        <OzonForecastPanel key={`ozon-${year}-${month}`} year={year} month={month} accounts={state.accounts} companies={companies} />
       ) : view === "calendar" ? <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

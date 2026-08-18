@@ -5,6 +5,7 @@ export interface RecognizedScheduleRow {
   principal: number;
   interest: number;
   penalty?: number;
+  fine?: number;
 }
 
 export interface RecognizedLoan {
@@ -33,12 +34,14 @@ export function aggregateRecognizedSchedule(rows: RecognizedScheduleRow[] | unde
     const principal = Number(row.principal || 0);
     const interest = Number(row.interest || 0);
     const penalty = Number(row.penalty || 0);
-    if (!date || ![principal, interest, penalty].every(Number.isFinite)) continue;
-    if (principal + interest + penalty <= 0) continue;
-    const current = byDate.get(date) ?? { date, principal: 0, interest: 0, penalty: 0 };
+    const fine = Number(row.fine || 0);
+    if (!date || ![principal, interest, penalty, fine].every(Number.isFinite)) continue;
+    if (principal + interest + penalty + fine <= 0) continue;
+    const current = byDate.get(date) ?? { date, principal: 0, interest: 0, penalty: 0, fine: 0 };
     current.principal += principal;
     current.interest += interest;
     current.penalty = Number(current.penalty || 0) + penalty;
+    current.fine = Number(current.fine || 0) + fine;
     byDate.set(date, current);
   }
   return [...byDate.values()]
@@ -47,6 +50,7 @@ export function aggregateRecognizedSchedule(rows: RecognizedScheduleRow[] | unde
       principal: Math.round(row.principal * 100) / 100,
       interest: Math.round(row.interest * 100) / 100,
       penalty: Math.round(Number(row.penalty || 0) * 100) / 100,
+      fine: Math.round(Number(row.fine || 0) * 100) / 100,
     }))
     .sort((left, right) => left.date.localeCompare(right.date));
 }

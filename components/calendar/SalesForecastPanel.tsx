@@ -1,10 +1,14 @@
 "use client";
 
-import { BarChart3, Loader2, TriangleAlert } from "lucide-react";
+import { BarChart3, CalendarPlus, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
 import { readForecastJson } from "@/lib/opiu/forecastRequest";
+import type { Account, Payment } from "@/lib/types";
+import type { DdsCompany } from "@/components/payments/ddsCompanies";
+import { publishForecastToCalendar } from "./forecastPublication";
+import { recommendWbDestination } from "./marketplaceDestination";
 
 interface ForecastGap {
   field: string;
@@ -90,9 +94,13 @@ const PLAN_SOURCE_LABEL: Record<WbPlanSource, string> = {
   none: "План не найден",
 };
 
-export function SalesForecastPanel({ year, month }: {
+export function SalesForecastPanel({ year, month, accounts, companies, payments, companyByPayment }: {
   year: number;
   month: number;
+  accounts: Account[];
+  companies: DdsCompany[];
+  payments: Payment[];
+  companyByPayment: Map<string, string | null>;
 }) {
   const [cabinetId, setCabinetId] = useState("");
   const [cabinetOptions, setCabinetOptions] = useState<ForecastResponse["cabinets"]>([]);
@@ -103,6 +111,17 @@ export function SalesForecastPanel({ year, month }: {
   const [adjustment, setAdjustment] = useState(0);
   const [changeDate, setChangeDate] = useState("");
   const [changeReason, setChangeReason] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [publishing, setPublishing] = useState(false);
+
+  useEffect(() => {
+    if (!data?.cabinetId) return;
+    const recommendation = recommendWbDestination(data.cabinetId, payments, companyByPayment);
+    if (!recommendation) return;
+    if (companies.some((company) => company.id === recommendation.companyId)) setCompanyId(recommendation.companyId);
+    if (accounts.some((account) => account.id === recommendation.accountId)) setAccountId(recommendation.accountId);
+  }, [accounts, companies, companyByPayment, data?.cabinetId, payments]);
 
   useEffect(() => {
     const query = new URLSearchParams({ year: String(year), month: String(month + 1) });
@@ -178,7 +197,7 @@ export function SalesForecastPanel({ year, month }: {
         </div>
       </div>
       <CardContent className="space-y-4 pt-5">
-        <p className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm font-semibold text-violet-950">Только просмотр: прогноз не публикуется в платёжный календарь.</p>
+        <p className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950">Сначала проверьте кабинет, компанию, счёт и суммы. Календарь изменится только после отдельного подтверждения.</p>
         {cabinetOptions.length > 0 && (
           <label className="flex flex-col gap-1 text-sm text-slate-600 sm:max-w-xs">
             Кабинет WB
@@ -275,6 +294,29 @@ export function SalesForecastPanel({ year, month }: {
                 <p className="mt-2 text-xs text-amber-700">
                   Даты пока распределены упрощённо (недельные интервалы). Точная цепочка «заказ → отчёт → вывод → банк» с настройками сроков по кабинету — следующий шаг.
                 </p>
+              </div>
+            )}
+            {data.payoutSchedule.length > 0 && (
+              <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4">
+                <h3 className="font-semibold text-violet-950">Перенести прогноз WB в календарь</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm text-violet-950">Компания<select value={companyId} onChange={(event) => setCompanyId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-violet-200 bg-white px-3"><option value="">Выберите компанию</option>{companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
+                  <label className="text-sm text-violet-950">Счёт получения<select value={accountId} onChange={(event) => setAccountId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-violet-200 bg-white px-3"><option value="">Выберите счёт</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+                </div>
+                <button disabled={publishing || !companyId || !accountId || data.planSource !== "approved_sales_plan"} onClick={async () => {
+                  if (!confirm(`Перенести ${data.payoutSchedule.length} поступлений WB в платёжный календарь? Существующие строки этого прогноза будут обновлены.`)) return;
+                  setPublishing(true);
+                  try {
+                    const result = await publishForecastToCalendar(
+                      { marketplace: "wb", cabinetId: data.cabinetId, companyId, accountId, year, month: month + 1 },
+                      data.payoutSchedule.map((row, index) => ({ key: `bucket-${index + 1}`, date: row.date, amount: row.amount, source: "forecast" })),
+                    );
+                    alert(`Календарь обновлён: ${result.published} строк.`);
+                    window.location.reload();
+                  } catch (publishError) { alert(publishError instanceof Error ? publishError.message : "Не удалось обновить календарь"); }
+                  finally { setPublishing(false); }
+                }} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"><CalendarPlus className="h-4 w-4" />{publishing ? "Сохраняю…" : "Утвердить и перенести в календарь"}</button>
+                {data.planSource !== "approved_sales_plan" && <p className="mt-2 text-xs text-amber-800">Кнопка станет доступна после утверждения плана продаж выбранного кабинета.</p>}
               </div>
             )}
             {!data.automaticAdjustmentApplied && data.stableDeviationDays > 0 && (

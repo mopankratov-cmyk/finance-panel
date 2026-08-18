@@ -16,19 +16,31 @@ const dayDistance = (a: string, b: string) =>
   Math.abs(new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86_400_000;
 
 const clean = (value: string) => value.toLowerCase().replace(/[^а-яa-z0-9]+/gi, " ").trim();
+const PURPOSE_STOP_WORDS = new Set(["оплата", "платеж", "поступление", "перечисление", "сумма", "без", "ндс"]);
+
+function purposeSimilarity(left: Payment, right: Payment) {
+  const tokens = (payment: Payment) => new Set(clean(`${payment.name} ${payment.comment ?? ""}`)
+    .split(" ")
+    .filter((word) => word.length >= 4 && !PURPOSE_STOP_WORDS.has(word)));
+  const leftTokens = tokens(left);
+  const rightTokens = tokens(right);
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  const overlap = [...leftTokens].filter((word) => rightTokens.has(word)).length;
+  return overlap / Math.max(1, Math.min(leftTokens.size, rightTokens.size));
+}
 
 const linkedFactId = (payment: Payment) => payment.comment?.match(/\[calendar-fact:([^\]]+)\]/)?.[1] ?? null;
 
 export function withCalendarFactLink(payment: Payment, factId: string): Payment {
   const withoutOldLink = (payment.comment ?? "").replace(/\s*\[calendar-fact:[^\]]+\]/g, "").trim();
-  return { ...payment, comment: `${withoutOldLink}${withoutOldLink ? " " : ""}[calendar-fact:${factId}]` };
+  return { ...payment, status: "cancelled", comment: `${withoutOldLink}${withoutOldLink ? " " : ""}[calendar-fact:${factId}]` };
 }
 
 export function findPlanFactMatches(
   payments: Payment[],
   companyByPayment: Map<string, string | null> = new Map(),
 ): PlanFactMatchingResult {
-  const planned = payments.filter((payment) => payment.status === "planned" && isCalendarCashFlow(payment));
+  const planned = payments.filter((payment) => (payment.status === "planned" && isCalendarCashFlow(payment)) || Boolean(linkedFactId(payment)));
   const facts = payments.filter((payment) => payment.status === "done" && isCalendarCashFlow(payment));
   const usedFacts = new Set<string>();
   const matched: PlanFactMatch[] = [];
@@ -58,6 +70,9 @@ export function findPlanFactMatches(
         if (plan.accountId === fact.accountId) score += 20;
         if (clean(plan.counterparty) && clean(plan.counterparty) === clean(fact.counterparty)) score += 15;
         if (clean(plan.category) === clean(fact.category)) score += 10;
+        const purposeScore = purposeSimilarity(plan, fact);
+        if (purposeScore >= 0.75) score += 20;
+        else if (purposeScore >= 0.4) score += 10;
         if (amountDifference <= 0.01) score += 20;
         else if (amountDifference <= 0.05) score += 15;
         else if (amountDifference <= 0.15) score += 8;
