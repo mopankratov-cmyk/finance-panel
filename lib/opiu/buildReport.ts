@@ -31,12 +31,34 @@ function pct(numerator: number, denominator: number): number | null {
   return (numerator / denominator) * 100;
 }
 
+/**
+ * % выкупа физически не может быть больше 100% — если формула даёт больше,
+ * это всегда значит, что revenue (по дате продажи) и ordersRub (по дате заказа)
+ * сравнивают разные периоды (например, заказы ещё не подтянулись за свежую
+ * неделю), а не реальный бизнес-показатель. Показываем null, а не вводящее
+ * в заблуждение число.
+ */
+function buyoutPct(revenue: number, ordersRub: number): number | null {
+  const value = pct(revenue, ordersRub);
+  if (value === null || value > 100) return null;
+  return value;
+}
+
 function derived(m: WeekRawMetrics) {
   const marginal =
-    m.revenue - m.cogs - m.warehousePackaging - m.commission - m.logistics - m.otherDeductions;
+    m.revenue -
+    m.cogs -
+    m.warehousePackaging -
+    m.commission -
+    m.logistics -
+    m.otherDeductions -
+    m.penalties -
+    m.subscriptionJem -
+    m.transitDelivery -
+    m.withdrawNow;
   const gross = marginal - m.adsSpend;
   return {
-    buyoutPct: pct(m.revenue, m.ordersRub),
+    buyoutPct: buyoutPct(m.revenue, m.ordersRub),
     marginal,
     marginalPct: pct(marginal, m.revenue),
     gross,
@@ -105,8 +127,11 @@ export function buildOpiuReport(
     { id: "cogs_pct",       label: "% себестоимости",                                 kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.cogs, m.revenue)) },
     { id: "warehouse",      label: "Хранение / упаковка склада, руб",                 kind: "metric",  expense: true, editable: true, values: cols((m) => m.warehousePackaging) },
     { id: "storage_pct",    label: "% хранения",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.warehousePackaging, m.revenue)) },
+    { id: "penalties",      label: "Штрафы и доплаты, руб",                           kind: "metric",  expense: true, values: cols((m) => m.penalties) },
     { id: "other",          label: "Прочие удержания, руб",                           kind: "metric",  expense: true, values: cols((m) => m.otherDeductions) },
-    { id: "transit",        label: "Транзитные поставки, руб",                        kind: "metric",  expense: true, values: zero },
+    { id: "withdraw_now",   label: "Вывести сейчас, руб",                             kind: "metric",  expense: true, values: cols((m) => m.withdrawNow) },
+    { id: "jem",            label: "Подписка «Джем», руб",                            kind: "metric",  expense: true, values: cols((m) => m.subscriptionJem) },
+    { id: "transit",        label: "Транзитные поставки, руб",                        kind: "metric",  expense: true, values: cols((m) => m.transitDelivery) },
     { id: "acceptance",     label: "Платная приёмка, руб",                            kind: "metric",  expense: true, values: zero },
     sep("sep1"),
     { id: "marginal",       label: "Маржинальный доход",                              kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.marginal) },
