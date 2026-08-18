@@ -102,8 +102,12 @@ export function WbShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { cabinetId, cabinets, user } = useWbCabinet();
-  const systemNav = user?.role === "seller" ? SELLER_SYSTEM_NAV : INTERNAL_SYSTEM_NAV;
-  const workNav = user?.role === "seller" && cabinets.length === 0
+  // Пока сессия не загрузилась, роль неизвестна — рисуем скелетон, а не меню
+  // «по умолчанию»: иначе внешний селлер на каждой перезагрузке видел вспышку
+  // владельческой навигации (Полки, Кабинеты, Сотрудники) с мёртвыми ссылками.
+  const roleKnown = Boolean(user);
+  const systemNav = !roleKnown ? [] : user?.role === "seller" ? SELLER_SYSTEM_NAV : INTERNAL_SYSTEM_NAV;
+  const workNav = !roleKnown || (user?.role === "seller" && cabinets.length === 0)
     ? []
     : user?.role === "seller"
     // «Полки» — внутренний раздел (roles.ts и proxy селлера не пускают):
@@ -111,7 +115,9 @@ export function WbShell({ children }: { children: React.ReactNode }) {
     ? WORK_NAV.filter((item) => item.href !== "/wb/shelf")
         .map((item) => item.href === "/wb/funnel" ? { ...item, label: "Воронка" } : item)
     : WORK_NAV;
-  const mobileNav = user?.role === "seller" && cabinets.length === 0
+  const mobileNav = !roleKnown
+    ? []
+    : user?.role === "seller" && cabinets.length === 0
     ? SELLER_SYSTEM_NAV
     : MOBILE_NAV;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -171,6 +177,13 @@ export function WbShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <nav aria-label="Инструменты Wildberries" className="flex-1 overflow-y-auto overflow-x-visible py-2">
+        {!roleKnown ? (
+          <div className="space-y-1.5 px-2 py-1" aria-hidden="true">
+            {Array.from({ length: 9 }).map((_, index) => (
+              <div key={index} className="h-9 animate-pulse rounded-[9px] bg-slate-100 motion-reduce:animate-none" />
+            ))}
+          </div>
+        ) : null}
         <div className="space-y-0.5">
           {workNav.map((item) => (
             <RailLink
