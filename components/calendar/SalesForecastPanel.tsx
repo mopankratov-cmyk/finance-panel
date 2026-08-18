@@ -30,7 +30,9 @@ interface ForecastItem {
   planRevenue: number;
   historicalRevenue: number;
   historicalPayout: number;
+  historicalPayoutRate: number | null;
   payoutRate: number | null;
+  payoutRateSource: "financial_report" | "unit_economics" | "unavailable";
   forecastPayout: number | null;
   actualRevenue: number;
   projectedRevenue: number;
@@ -172,7 +174,7 @@ export function SalesForecastPanel({ year, month }: {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700"><BarChart3 className="h-5 w-5" /></div>
         <div>
           <h2 className="font-semibold text-slate-900">Прогноз поступлений по ОПиУ</h2>
-          <p className="text-sm text-slate-500">План продаж × фактическая доля выплаты каждого артикула.</p>
+          <p className="text-sm text-slate-500">План продаж × доля выплаты из отчётов или актуальной юнит-экономики.</p>
         </div>
       </div>
       <CardContent className="space-y-4 pt-5">
@@ -209,7 +211,7 @@ export function SalesForecastPanel({ year, month }: {
             {data.planRowsCount > 0 && (
               <div className="rounded-xl border border-slate-200 p-4">
                 <h3 className="font-semibold text-slate-900">Экономика прогноза</h3>
-                <p className="mt-1 text-xs text-slate-500">Себестоимость влияет на прибыль, но не вычитается из выплаты маркетплейса. Выплата — по текущей модели прогноза (не по юнит-экономике; формула на согласовании).</p>
+                <p className="mt-1 text-xs text-slate-500">Сначала используется фактическая доля выплаты из финансовых отчётов. Если истории нет — выплата рассчитывается по актуальным удержаниям из юнит-экономики. Себестоимость влияет на прибыль, но не вычитается из выплаты маркетплейса.</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                   <Metric label="Плановая выручка" value={data.breakdownTotals.revenue} />
                   <Metric label="Ожидаемые удержания МП" value={data.breakdownTotals.withholdings} />
@@ -350,7 +352,7 @@ export function SalesForecastPanel({ year, month }: {
                 <table className="w-full min-w-[620px] text-sm">
                   <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-4 py-2 text-left">Артикул</th><th className="px-4 py-2 text-right">План</th><th className="px-4 py-2 text-right">Факт продаж</th><th className="px-4 py-2 text-right">Темп месяца</th><th className="px-4 py-2 text-right">Доля выплаты</th><th className="px-4 py-2 text-right">Прогноз</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">{articleRows.map((item) => (
-                    <tr key={item.article}><td className="px-4 py-2 font-medium">{item.article}</td><td className="px-4 py-2 text-right tabular-nums">{formatMoney(item.planRevenue)}</td><td className="px-4 py-2 text-right tabular-nums">{formatMoney(item.actualRevenue)}</td><td className="px-4 py-2 text-right tabular-nums">{formatMoney(item.projectedRevenue)}</td><td className="px-4 py-2 text-right tabular-nums">{item.payoutRate === null ? "Нет истории" : `${(item.payoutRate * 100).toFixed(1)}%`}</td><td className="px-4 py-2 text-right font-semibold tabular-nums">{item.forecastPayout === null ? "—" : formatMoney(item.forecastPayout)}</td></tr>
+                    <tr key={item.article}><td className="px-4 py-2 font-medium">{item.article}</td><td className="px-4 py-2 text-right tabular-nums">{formatMoney(item.planRevenue)}</td><td className="px-4 py-2 text-right tabular-nums">{formatMoney(item.actualRevenue)}</td><td className="px-4 py-2 text-right tabular-nums">{formatMoney(item.projectedRevenue)}</td><td className="px-4 py-2 text-right tabular-nums">{item.payoutRate === null ? "Нет данных" : <>{(item.payoutRate * 100).toFixed(1)}%<span className="block text-[10px] text-slate-400">{item.payoutRateSource === "financial_report" ? "по отчётам" : "по юнит-экономике"}</span></>}</td><td className="px-4 py-2 text-right font-semibold tabular-nums">{item.forecastPayout === null ? "—" : formatMoney(item.forecastPayout)}</td></tr>
                   ))}</tbody>
                 </table>
               </div>

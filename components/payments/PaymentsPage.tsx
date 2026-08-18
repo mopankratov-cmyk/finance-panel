@@ -3,6 +3,7 @@
 import { BarChart3, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Pencil, Plus, RefreshCw, Trash2, Upload, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
 import { BankReviewPanel } from "./BankReviewPanel";
+import { loadBankGoogleSyncData } from "./bankReviewStore";
 import { BankReconciliationPanel } from "./BankReconciliationPanel";
 import { DdsOverview } from "./DdsOverview";
 import { useEffect, useMemo, useState } from "react";
@@ -14,7 +15,7 @@ import {
   type DdsCompany,
 } from "./ddsCompanies";
 import { cleanDemoData } from "./ddsImport";
-import { ddsTemplateRows, downloadDdsCsv, downloadDdsXlsx } from "./ddsExport";
+import { ddsReviewTemplateRows, ddsTemplateRows, downloadDdsCsv, downloadDdsXlsx } from "./ddsExport";
 import { syncDdsToGoogleSheets } from "./ddsGoogleSync";
 import { ImportDdsModal } from "./ImportDdsModal";
 import { PaymentForm } from "./PaymentForm";
@@ -143,7 +144,15 @@ export function PaymentsPage() {
   const handleGoogleSync = async () => {
     setSyncingGoogle(true);
     try {
-      const result = await syncDdsToGoogleSheets(ddsTemplateRows({ payments: paymentsWithCompany, accountNameById, companyNameById }));
+      const exportedPayments = paymentsWithCompany.filter((payment) => payment.status === "done").sort((a, b) => a.date.localeCompare(b.date));
+      const bankSync = await loadBankGoogleSyncData();
+      const review = ddsReviewTemplateRows(bankSync.items, accountNameById);
+      const confirmedRows = ddsTemplateRows({ payments: paymentsWithCompany, accountNameById, companyNameById });
+      const confirmedIds = exportedPayments.map((payment) => bankSync.sourceByPaymentId.get(payment.id) ?? payment.id);
+      const result = await syncDdsToGoogleSheets(
+        [confirmedRows[0], ...confirmedRows.slice(1), ...review.rows],
+        [...confirmedIds, ...review.rowIds],
+      );
       alert(`Google Таблица обновлена. Строк: ${result.rows}. Листы: ${result.sheets.join(", ")}.`);
       if (result.spreadsheetUrl && confirm("Открыть Google Таблицу?")) window.open(result.spreadsheetUrl, "_blank", "noopener,noreferrer");
     } catch (error) {

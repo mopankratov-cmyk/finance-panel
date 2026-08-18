@@ -69,9 +69,7 @@ function normalizeDate(value: unknown): string {
 }
 
 function normalizeStatement(raw: RawStatement, documentHash: string) {
-  const seenIds = new Set<string>();
   const fingerprintOccurrences = new Map<string, number>();
-  let duplicateIds = 0;
   const rows = (raw.rows ?? []).flatMap((row) => {
     const date = normalizeDate(row.date);
     const amount = Number(row.amount);
@@ -81,9 +79,6 @@ function normalizeStatement(raw: RawStatement, documentHash: string) {
     const documentNumber = String(row.documentNumber ?? "").trim();
     const counterpartyInn = String(row.counterpartyInn ?? "").replace(/\D/g, "");
     const counterpartyAccount = String(row.counterpartyAccount ?? "").replace(/\s+/g, "").trim();
-    const modelId = String(row.id ?? "").trim();
-    if (modelId && seenIds.has(modelId)) duplicateIds += 1;
-    if (modelId) seenIds.add(modelId);
     const fingerprint = createHash("sha256")
       .update(JSON.stringify([
         date,
@@ -112,12 +107,29 @@ function normalizeStatement(raw: RawStatement, documentHash: string) {
   const debit = rows.reduce((sum, row) => sum + Math.max(0, -row.amount), 0);
   const credit = rows.reduce((sum, row) => sum + Math.max(0, row.amount), 0);
   const dates = rows.map((row) => row.date).sort();
-  const declaredDebit = Number(raw.declaredDebit) || debit;
-  const declaredCredit = Number(raw.declaredCredit) || credit;
-  const warnings = Array.isArray(raw.warnings) ? raw.warnings.map(String) : [];
-  if (duplicateIds > 0) warnings.push(`ИИ вернул одинаковые ID у ${duplicateIds} операций — строки сохранены и требуют проверки`);
-  if (Math.abs(declaredDebit - debit) > 0.01) warnings.push("Сумма расходов не совпала с контрольной суммой банка");
-  if (Math.abs(declaredCredit - credit) > 0.01) warnings.push("Сумма поступлений не совпала с контрольной суммой банка");
+  const openingBalance = Number(raw.openingBalance) || 0;
+  const closingBalance = Number(raw.closingBalance) || 0;
+  const rawDebit = Number(raw.declaredDebit);
+  const rawCredit = Number(raw.declaredCredit);
+  const hasDeclaredTotals = Number.isFinite(rawDebit) && rawDebit >= 0
+    && Number.isFinite(rawCredit) && rawCredit >= 0;
+  const hasBothBalances = raw.openingBalance != null && raw.closingBalance != null
+    && Number.isFinite(Number(raw.openingBalance)) && Number.isFinite(Number(raw.closingBalance));
+  const declaredBalancesReconcile = hasDeclaredTotals && hasBothBalances
+    && Math.abs(openingBalance + rawCredit - rawDebit - closingBalance) <= 0.02;
+  // PDF сначала попадает в отдельную очередь проверки. В карточках показываем
+  // точную сумму извлечённых строк, а не потенциально ошибочно распознанную шапку.
+  const declaredDebit = debit;
+  const declaredCredit = credit;
+  const warnings = Array.isArray(raw.warnings)
+    ? raw.warnings.map(String).filter((warning) => !/сумм.*не совп|контрольн.*сумм|начальн.*конечн.*остат/i.test(warning))
+    : [];
+  const headerTotalsUnavailable = (hasDeclaredTotals
+    && (Math.abs(rawDebit - debit) > 0.01 || Math.abs(rawCredit - credit) > 0.01))
+    || (hasBothBalances && !declaredBalancesReconcile);
+  const notes = headerTotalsUnavailable
+    ? [`Итоги рассчитаны по распознанным операциям (${rows.length}). Контрольные значения шапки PDF будут подтверждены на этапе проверки.`]
+    : [];
   return {
     documentHash,
     bank: String(raw.bank ?? "Банковская выписка").trim(),
@@ -126,30 +138,60 @@ function normalizeStatement(raw: RawStatement, documentHash: string) {
     accountNumber: String(raw.accountNumber ?? "").replace(/\D/g, ""),
     dateFrom: normalizeDate(raw.dateFrom) || dates[0] || "",
     dateTo: normalizeDate(raw.dateTo) || dates.at(-1) || "",
-    openingBalance: Number(raw.openingBalance) || 0,
-    closingBalance: Number(raw.closingBalance) || 0,
+    openingBalance,
+    closingBalance,
     declaredDebit,
     declaredCredit,
     rows,
     warnings,
+    notes,
   };
 }
 
-async function withAnthropic(pdf: Buffer, fileName: string) {
+async function recognizeBankStatementWithAnthropic(pdf: Buffer, fileName: string, model: string) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY не настроен");
   const client = new Anthropic({ apiKey: key, timeout: 90_000, maxRetries: 0 });
   const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 16_000,
+    // Большие банковские выписки должны укладываться в лимит серверной функции.
+    // Быстрая модель используется только для строгого извлечения таблицы в JSON;
+    // модель можно заменить настройкой окружения без изменения кода.
+    model,
+    max_tokens: 32_000,
     temperature: 0,
     system,
+    tools: [{
+      name: "save_bank_statement",
+      description: "Сохранить полностью распознанную банковскую выписку",
+      input_schema: {
+        type: "object",
+        properties: {
+          bank: { type: "string" }, owner: { type: "string" }, ownerInn: { type: "string" },
+          accountNumber: { type: "string" }, dateFrom: { type: "string" }, dateTo: { type: "string" },
+          openingBalance: { type: "number" }, closingBalance: { type: "number" },
+          declaredDebit: { type: "number" }, declaredCredit: { type: "number" },
+          warnings: { type: "array", items: { type: "string" } },
+          rows: { type: "array", items: { type: "object", properties: {
+            id: { type: "string" }, date: { type: "string" }, amount: { type: "number" },
+            counterparty: { type: "string" }, counterpartyInn: { type: "string" },
+            counterpartyAccount: { type: "string" }, purpose: { type: "string" }, documentNumber: { type: "string" },
+          }, required: ["date", "amount"] } },
+        },
+        required: ["rows"],
+      },
+    }],
+    tool_choice: { type: "tool", name: "save_bank_statement" },
     messages: [{ role: "user", content: [
       { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.toString("base64") } },
       { type: "text", text: `Файл: ${fileName}. Распознай выписку полностью.` },
     ] }],
   });
-  return extractJson(response.content.filter((item) => item.type === "text").map((item) => item.text).join("\n"));
+  const tool = response.content.find((item) => item.type === "tool_use" && item.name === "save_bank_statement");
+  if (!tool || tool.type !== "tool_use") {
+    if (response.stop_reason === "max_tokens") throw new Error("Anthropic обрезал слишком длинную выписку");
+    throw new Error("Anthropic не вернул структурированную банковскую выписку");
+  }
+  return tool.input as RawStatement;
 }
 
 async function withPolza(pdf: Buffer, fileName: string) {
@@ -193,20 +235,47 @@ export async function POST(request: Request) {
     }
     const pdf = cleanPdf(Buffer.from(await file.arrayBuffer()));
     const documentHash = createHash("sha256").update(pdf).digest("hex");
-    let primaryError = "";
+    const providers: Array<{ name: string; promise: Promise<RawStatement> }> = [];
     if (process.env.ANTHROPIC_API_KEY) {
-      try { return NextResponse.json(normalizeStatement(await withAnthropic(pdf, file.name), documentHash)); }
-      catch (error) { primaryError = error instanceof Error ? error.message : "Ошибка Anthropic"; }
-    }
-    if (process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY) {
-      try { return NextResponse.json(normalizeStatement(await withPolza(pdf, file.name), documentHash)); }
-      catch (error) {
-        const fallbackError = error instanceof Error ? error.message : "Ошибка Polza";
-        console.error("Bank statement recognition failed", { primaryError, fallbackError });
-        return NextResponse.json({ error: `Не удалось распознать PDF. Anthropic: ${primaryError || "не настроен"}. Polza: ${fallbackError}.` }, { status: 502 });
+      const fastModel = process.env.BANK_STATEMENT_ANTHROPIC_MODEL || "claude-haiku-4-5";
+      const accurateModel = process.env.BANK_STATEMENT_ACCURATE_MODEL || "claude-sonnet-4-6";
+      providers.push({ name: fastModel, promise: recognizeBankStatementWithAnthropic(pdf, file.name, fastModel) });
+      if (accurateModel !== fastModel) {
+        providers.push({ name: accurateModel, promise: recognizeBankStatementWithAnthropic(pdf, file.name, accurateModel) });
       }
     }
-    return NextResponse.json({ error: `Распознавание PDF не подключено. ${primaryError}`.trim() }, { status: 503 });
+    if (process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY) providers.push({ name: "polza", promise: withPolza(pdf, file.name) });
+    if (!providers.length) {
+      return NextResponse.json({ error: "Распознавание PDF не подключено: отсутствуют ключи Anthropic и Polza" }, { status: 503 });
+    }
+    try {
+      // Провайдеры запускаются одновременно: таймаут одного не лишает пользователя
+      // результата второго и весь запрос укладывается в лимит серверной функции.
+      const settled = await Promise.allSettled(providers.map((provider) => provider.promise));
+      const successful = settled.flatMap((result, index) => result.status === "fulfilled"
+        ? [{ name: providers[index].name, statement: normalizeStatement(result.value, documentHash) }]
+        : []);
+      if (!successful.length) {
+        throw new AggregateError(settled.flatMap((result) => result.status === "rejected" ? [result.reason] : []));
+      }
+      const mismatch = (candidate: ReturnType<typeof normalizeStatement>) => candidate.warnings.filter((warning) => /контрольн.*сумм/i.test(warning)).length;
+      successful.sort((left, right) => mismatch(left.statement) - mismatch(right.statement)
+        || right.statement.rows.length - left.statement.rows.length);
+      const selected = successful[0];
+      console.info(`Bank statement provider selected: ${selected.name}; rows=${selected.statement.rows.length}; controlWarnings=${mismatch(selected.statement)}`);
+      return NextResponse.json(selected.statement);
+    } catch (error) {
+      const reasons = error instanceof AggregateError
+        ? error.errors.map((reason) => reason instanceof Error ? reason.message : String(reason))
+        : [error instanceof Error ? error.message : String(error)];
+      console.error(`Bank statement recognition failed (${providers.length}): ${reasons.join(" | ")}`);
+      const timedOut = reasons.some((reason) => /timed out|timeout|aborted/i.test(reason));
+      return NextResponse.json({
+        error: timedOut
+          ? "ИИ-сервисы не успели обработать PDF. Повторите загрузку; если банк даёт XLSX, используйте его — он разбирается локально и точнее."
+          : "Не удалось распознать PDF ни основным, ни резервным ИИ-сервисом",
+      }, { status: 502 });
+    }
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось прочитать PDF-выписку" }, { status: 500 });
   }

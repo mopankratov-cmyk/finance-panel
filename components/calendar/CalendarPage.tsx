@@ -153,6 +153,7 @@ export function CalendarPage() {
       body: JSON.stringify({
         sheets: calendarSheets.map((sheet) => ({
           rows: sheet.rows,
+          rowIds: sheet.rowIds,
           sheetName: sheet.name,
           template: "calendar",
         })),

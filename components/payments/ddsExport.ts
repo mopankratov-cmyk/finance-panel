@@ -1,5 +1,7 @@
 import { sectionForCategory } from "./ddsSummary";
 import type { Payment } from "@/lib/types";
+import { decodeBankSplits } from "./bankInstructionSplits";
+import type { BankReviewItem } from "./bankReviewStore";
 
 type PaymentWithCompany = Payment & { companyId?: string | null };
 
@@ -44,6 +46,32 @@ export function ddsTemplateRows({ payments, accountNameById, companyNameById }: 
       `${sectionForCategory(payment.category)}${sectionForCategory(payment.category) === "Техническая" ? " операция" : ""}`,
     ];
   })];
+}
+
+export function ddsReviewTemplateRows(items: BankReviewItem[], accountNameById: Map<string, string>) {
+  const rows: Array<Array<string | number>> = [];
+  const rowIds: string[] = [];
+  for (const item of items) {
+    const [year, month, day] = item.date.split("-");
+    const monthNumber = Number(month);
+    const base = (amount: number, purpose: string): Array<string | number> => [
+      MONTHS[monthNumber - 1] ?? "", monthNumber, `${day}.${month}.${year}`, amount, "",
+      item.accountId ? accountNameById.get(item.accountId) ?? "" : "",
+      "", item.counterparty, "", purpose, "", amount >= 0 ? "Поступление" : "Выбытие", "На проверке",
+    ];
+    const splits = decodeBankSplits(item.managerAnswer);
+    const includedSplits = splits?.filter((split) => !split.excluded) ?? [];
+    if (includedSplits.length) {
+      includedSplits.forEach((split, index) => {
+        rows.push(base(item.amount < 0 ? -split.amount : split.amount, split.description));
+        rowIds.push(index === 0 ? `bank-review:${item.id}` : `bank-review:${item.id}:split:${index}`);
+      });
+    } else {
+      rows.push(base(item.amount, item.purpose));
+      rowIds.push(`bank-review:${item.id}`);
+    }
+  }
+  return { rows, rowIds };
 }
 
 function download(blob: Blob, fileName: string) {

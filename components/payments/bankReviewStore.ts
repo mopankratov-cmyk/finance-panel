@@ -114,6 +114,22 @@ export async function loadBankReviewItems(): Promise<BankReviewItem[]> {
   return result.items.map(mapRow);
 }
 
+export async function loadBankGoogleSyncData(): Promise<{
+  items: BankReviewItem[];
+  sourceByPaymentId: Map<string, string>;
+}> {
+  const result = await api<{
+    items: ReviewRow[];
+    payment_sources: Array<{ id: string; import_source: string | null }>;
+  }>("/api/opiu/bank-review?resource=google-sync");
+  return {
+    items: result.items.map(mapRow),
+    sourceByPaymentId: new Map(result.payment_sources
+      .filter((row): row is { id: string; import_source: string } => Boolean(row.import_source))
+      .map((row) => [row.id, row.import_source])),
+  };
+}
+
 export async function updateBankReviewItem(
   id: string,
   patch: Partial<Pick<BankReviewItem, "companyId" | "accountId" | "category" | "counterparty" | "status" | "managerQuestion" | "managerAnswer">>,
@@ -121,6 +137,13 @@ export async function updateBankReviewItem(
   await api<{ ok: true }>("/api/opiu/bank-review", {
     method: "PATCH",
     body: JSON.stringify({ action: "update", id, patch }),
+  });
+}
+
+export async function askManagerAboutBankReviewItem(id: string, question: string) {
+  await api<{ ok: true }>("/api/opiu/bank-review", {
+    method: "PATCH",
+    body: JSON.stringify({ action: "ask_manager", id, question }),
   });
 }
 

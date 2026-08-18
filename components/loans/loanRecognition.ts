@@ -25,6 +25,32 @@ export interface RecognizedLoan {
   schedule?: RecognizedScheduleRow[];
 }
 
+/** Банковские графики часто хранят тело, проценты и неустойку отдельными строками одной даты. */
+export function aggregateRecognizedSchedule(rows: RecognizedScheduleRow[] | undefined): RecognizedScheduleRow[] {
+  const byDate = new Map<string, RecognizedScheduleRow>();
+  for (const row of rows ?? []) {
+    const date = String(row.date ?? "").trim();
+    const principal = Number(row.principal || 0);
+    const interest = Number(row.interest || 0);
+    const penalty = Number(row.penalty || 0);
+    if (!date || ![principal, interest, penalty].every(Number.isFinite)) continue;
+    if (principal + interest + penalty <= 0) continue;
+    const current = byDate.get(date) ?? { date, principal: 0, interest: 0, penalty: 0 };
+    current.principal += principal;
+    current.interest += interest;
+    current.penalty = Number(current.penalty || 0) + penalty;
+    byDate.set(date, current);
+  }
+  return [...byDate.values()]
+    .map((row) => ({
+      ...row,
+      principal: Math.round(row.principal * 100) / 100,
+      interest: Math.round(row.interest * 100) / 100,
+      penalty: Math.round(Number(row.penalty || 0) * 100) / 100,
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+}
+
 const currencyByText: Array<[RegExp, LoanCurrency]> = [
   [/\b(usd|доллар(?:а|ов|ы)?|\$)\b/i, "USD"],
   [/\b(eur|евро|€)\b/i, "EUR"],
@@ -44,6 +70,68 @@ function isoDate(raw: string, fallbackYear: number) {
   if (!match) return "";
   const year = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : fallbackYear;
   return `${year}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`;
+}
+
+function spreadsheetDate(raw: string) {
+  const clean = String(raw ?? "").trim();
+  const serial = Number(clean.replace(",", "."));
+  if (Number.isFinite(serial) && serial > 20_000 && serial < 100_000) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86_400_000).toISOString().slice(0, 10);
+  }
+  return isoDate(clean, new Date().getFullYear());
+}
+
+function spreadsheetAmount(raw: string) {
+  const normalized = String(raw ?? "").replace(/[\s\u00a0\u202f]/g, "").replace(",", ".");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? Math.abs(amount) : 0;
+}
+
+/** Exact local parser for bank schedules with Date / operation type / amount columns. */
+export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLoan> {
+  const normalize = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
+  const headerIndex = grid.findIndex((row) => {
+    const cells = row.map(normalize);
+    return cells.some((cell) => /дата платежа/.test(cell))
+      && cells.some((cell) => /тип плановой операции|операция/.test(cell))
+      && cells.some((cell) => /плановая сумма|сумма/.test(cell));
+  });
+  if (headerIndex < 0) return {};
+  const headers = grid[headerIndex].map(normalize);
+  const dateColumn = headers.findIndex((cell) => /дата платежа/.test(cell));
+  const typeColumn = headers.findIndex((cell) => /тип плановой операции|операция/.test(cell));
+  const amountColumn = headers.findIndex((cell) => /плановая сумма|сумма/.test(cell));
+  const schedule: RecognizedScheduleRow[] = [];
+  for (const row of grid.slice(headerIndex + 1)) {
+    const date = spreadsheetDate(row[dateColumn] ?? "");
+    const operation = normalize(row[typeColumn] ?? "");
+    const amount = spreadsheetAmount(row[amountColumn] ?? "");
+    if (!date || !operation || amount <= 0) continue;
+    if (/ссудн.*задолж|основн.*долг|тело/.test(operation)) {
+      schedule.push({ date, principal: amount, interest: 0, penalty: 0 });
+    } else if (/неустойк|штраф|пен/.test(operation)) {
+      schedule.push({ date, principal: 0, interest: 0, penalty: amount });
+    } else if (/процент/.test(operation)) {
+      schedule.push({ date, principal: 0, interest: amount, penalty: 0 });
+    }
+  }
+  const aggregated = aggregateRecognizedSchedule(schedule);
+  if (!aggregated.length) return {};
+  const title = grid.slice(0, headerIndex).flat().filter(Boolean).join(" ");
+  const startDate = spreadsheetDate(title.match(/дата займа\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/i)?.[1] ?? "");
+  const creditorName = /сбербанк/i.test(title) ? "Сбербанк" : "";
+  const companyHint = title.split(/дата займа/i)[0]
+    .match(/(?:ООО|ИП)\s+(?:["«][^"»]+["»]|[А-ЯЁA-Z][А-ЯЁA-Z0-9.-]*(?:\s+[А-ЯЁA-Z][А-ЯЁA-Z0-9.-]*){0,2})/)?.[0]?.trim() ?? "";
+  return {
+    creditorName,
+    companyHint,
+    principalAmount: aggregated.reduce((sum, row) => sum + row.principal, 0),
+    startDate,
+    dueDate: aggregated.at(-1)?.date ?? "",
+    schedule: aggregated,
+    confidence: 95,
+    warnings: [],
+  };
 }
 
 export function recognizeLoanText(text: string): RecognizedLoan {

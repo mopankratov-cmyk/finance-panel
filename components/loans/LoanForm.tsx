@@ -5,7 +5,8 @@ import { useMemo, useRef, useState } from "react";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import type { Account, Loan, LoanStatus, PaymentStatus } from "@/lib/types";
 import { extractOfficeText } from "./officeText";
-import { mergeRecognition, recognizeLoanText, type LoanCurrency, type RecognizedLoan, type RecognizedScheduleRow } from "./loanRecognition";
+import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
+import { aggregateRecognizedSchedule, mergeRecognition, recognizeLoanSpreadsheet, recognizeLoanText, type LoanCurrency, type RecognizedLoan, type RecognizedScheduleRow } from "./loanRecognition";
 
 export interface LoanScheduleDraft {
   id: string;
@@ -104,8 +105,7 @@ function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[
 }
 
 function recognizedSchedule(rows: RecognizedScheduleRow[] | undefined, rate: number) {
-  return (rows ?? [])
-    .filter((row) => row.date && Number(row.principal) + Number(row.interest) + Number(row.penalty || 0) > 0)
+  return aggregateRecognizedSchedule(rows)
     .map((row) => ({
       id: crypto.randomUUID(),
       date: row.date,
@@ -181,12 +181,18 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       let pdfBase64 = "";
       let imageBase64 = "";
       let imageType = "";
+      let spreadsheetRecognition: Partial<RecognizedLoan> | undefined;
       if (file) {
         if (file.name.toLowerCase().endsWith(".pdf")) pdfBase64 = await fileBase64(file);
         else if ((imageType = imageMediaType(file))) imageBase64 = await fileBase64(file);
-        else extractedText = `${extractedText}\n${await extractOfficeText(file)}`.trim();
+        else {
+          extractedText = `${extractedText}\n${await extractOfficeText(file)}`.trim();
+          if (file.name.toLowerCase().endsWith(".xlsx")) {
+            spreadsheetRecognition = recognizeLoanSpreadsheet(await readFirstSheetXlsx(file));
+          }
+        }
       }
-      const local = recognizeLoanText(extractedText || file?.name || "");
+      const local = mergeRecognition(recognizeLoanText(extractedText || file?.name || ""), spreadsheetRecognition);
       let remote: Partial<RecognizedLoan> | undefined;
       try {
         const response = await fetch("/api/opiu/loan-recognize", {
@@ -205,9 +211,16 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         // Для текстового описания и Office-файлов остаётся локальный резерв.
       }
       const recognized = mergeRecognition(local, remote);
+      // Для XLSX точные серийные даты и суммы читаются локально из ячеек.
+      // Текстовый ИИ может принять 18.08 за номер месяца и превратить её в 01.08,
+      // поэтому не разрешаем ему заменять детерминированно прочитанный график.
+      if (spreadsheetRecognition?.schedule?.length) {
+        recognized.schedule = spreadsheetRecognition.schedule;
+        recognized.dueDate = spreadsheetRecognition.dueDate || recognized.dueDate;
+      }
       const rate = await loadRate(recognized.currency).catch(() => 1);
       setData(recognized);
-      const exactSchedule = recognizedSchedule(remote?.schedule, rate);
+      const exactSchedule = recognizedSchedule(recognized.schedule, rate);
       setSchedule(exactSchedule.length ? exactSchedule : monthlySchedule(recognized, rate));
       const company = companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));
       const account = accounts.find((item) => recognized.accountHint && item.name.toLowerCase().includes(recognized.accountHint.toLowerCase()));
@@ -275,7 +288,19 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const cleanSchedule = schedule.filter((row) => row.date && Number(row.principal) + Number(row.interest) + Number(row.penalty) > 0);
+    const cleanSchedule = [...schedule.reduce((byDate, row) => {
+      if (!row.date || Number(row.principal) + Number(row.interest) + Number(row.penalty) <= 0) return byDate;
+      const current = byDate.get(row.date);
+      if (!current) byDate.set(row.date, { ...row });
+      else byDate.set(row.date, {
+        ...current,
+        principal: current.principal + Number(row.principal || 0),
+        interest: current.interest + Number(row.interest || 0),
+        penalty: current.penalty + Number(row.penalty || 0),
+        status: current.status === "done" && row.status === "done" ? "done" : "planned",
+      });
+      return byDate;
+    }, new Map<string, LoanScheduleDraft>()).values()].sort((left, right) => left.date.localeCompare(right.date));
     if (!data.creditorName.trim() || !selectedCompany || !selectedAccount) {
       setMessage("Проверьте кредитора, компанию и счёт оплаты.");
       return;

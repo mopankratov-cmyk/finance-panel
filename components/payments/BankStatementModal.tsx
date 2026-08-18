@@ -121,7 +121,11 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   };
 
   const handlePrepare = async () => {
-    if (!statement || !selectedAccount || !selectedCompany) return;
+    if (!statement) return;
+    if (!selectedAccount) {
+      setError("Перед отправкой выберите кошелёк / банковский счёт. Компанию можно определить отдельно для каждого платежа в разделе «На проверке». ");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -129,16 +133,20 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
         .filter((suggestion) => included.has(suggestion.row.id))
         .map((suggestion) => {
           const category = categories.get(suggestion.row.id) || null;
+          const rowCompanyId = companyId || suggestion.companyId;
           return {
             ...suggestion,
-            companyId,
+            companyId: rowCompanyId,
             accountId,
             category,
-            needsReview: !category || suggestion.confidence < 0.85,
+            needsReview: !category || !rowCompanyId || suggestion.confidence < 0.85,
           };
         });
       const queued = await saveBankReviewBatch(statement, selectedSuggestions, fileName);
-      if (statement.accountNumber) {
+      // Сопоставление счёта с компанией запоминаем только когда пользователь
+      // явно выбрал одну компанию для всей выписки. Общий счёт нельзя закреплять
+      // за случайной компанией из одной операции.
+      if (statement.accountNumber && selectedCompany) {
         await rememberBankAccount(statement.accountNumber, statement.ownerInn, companyId, accountId);
       }
       setDone({ queued });
@@ -191,9 +199,9 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs text-slate-500">Компания</label>
+                  <label className="mb-1 block text-xs text-slate-500">Компания по умолчанию — необязательно</label>
                   <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3">
-                    <option value="">Выберите компанию</option>
+                    <option value="">Определять отдельно по платежам</option>
                     {companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                   </select>
                 </div>
@@ -243,6 +251,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                 <span>Будет добавлено: {selectedRows.length}</span><span>Без статьи: {unclassified}</span>
               </div>
               {statement.warnings.map((warning) => <div key={warning} className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800"><AlertTriangle className="h-4 w-4" />{warning}</div>)}
+              {statement.notes?.map((note) => <div key={note} className="flex gap-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sky-800"><FileSpreadsheet className="h-4 w-4" />{note}</div>)}
               {hasControlMismatch && (
                 <label className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
                   <input
@@ -254,7 +263,12 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                   Я сверил выписку и подтверждаю отправку несмотря на расхождение с контрольной суммой банка.
                 </label>
               )}
-              <button onClick={handlePrepare} disabled={loading || !companyId || !accountId || selectedRows.length === 0 || (hasControlMismatch && !controlMismatchAccepted)} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+              {!accountId && (
+                <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sky-800">
+                  Выберите общий кошелёк. Компанию для каждого платежа можно проверить и изменить на следующем шаге.
+                </div>
+              )}
+              <button onClick={handlePrepare} disabled={loading || selectedRows.length === 0 || (hasControlMismatch && !controlMismatchAccepted)} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
                 {loading ? "Отправляю…" : "Отправить на проверку"}
               </button>
             </>
