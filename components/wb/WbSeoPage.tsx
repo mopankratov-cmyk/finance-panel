@@ -236,9 +236,9 @@ export function WbSeoPage() {
                     <div className="mt-1 flex items-center gap-2 text-[9px] text-slate-400 sm:hidden"><span>{fmt(sku.orders_count_window)} заказов</span><span>ДРР к заказам {pct(sku.drr_window)}</span></div>
                   </div>
                   <div className="hidden items-center gap-4 sm:flex">
-                    <div className="text-right"><div className="text-[8px] uppercase tracking-wide text-slate-400">показы</div><div className="text-[11px] font-medium tabular-nums text-slate-700">{fmt(sku.shows_window)}</div></div>
-                    <div className="text-right"><div className="text-[8px] uppercase tracking-wide text-slate-400">остаток</div><div className={`text-[11px] font-medium tabular-nums ${sku.stock < 10 ? "text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</div></div>
-                    <div className="text-right"><div className="text-[8px] uppercase tracking-wide text-slate-400">отзывы</div><div className="text-[11px] font-medium tabular-nums text-slate-700">{fmt(sku.reviews)} <span className="text-amber-500">★ {sku.rating ?? "—"}</span></div></div>
+                    <div className="text-right"><div className="text-[9px] uppercase tracking-wide text-slate-400">показы</div><div className="text-[11px] font-medium tabular-nums text-slate-700">{fmt(sku.shows_window)}</div></div>
+                    <div className="text-right"><div className="text-[9px] uppercase tracking-wide text-slate-400">остаток</div><div className={`text-[11px] font-medium tabular-nums ${sku.stock < 10 ? "text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</div></div>
+                    <div className="text-right"><div className="text-[9px] uppercase tracking-wide text-slate-400">отзывы</div><div className="text-[11px] font-medium tabular-nums text-slate-700">{fmt(sku.reviews)} <span className="text-amber-500">★ {sku.rating ?? "—"}</span></div></div>
                     <div className="rounded-lg bg-violet-50 px-2.5 py-1 text-[10px] font-medium text-violet-600">{sku.shop || activeCabinet?.name || "WB"}</div>
                     <span className="text-[10px] tabular-nums text-slate-400">nm {sku.nm}</span>
                   </div>
@@ -270,7 +270,7 @@ export function WbSeoPage() {
                 ["Заказы, шт", fmt(selected.orders_count_window), null, selected.orders_count_window],
                 [MARKETPLACE_METRICS.drrOrders.label, pct(selected.drr_window), "drrOrders", selected.drr_window],
                 [MARKETPLACE_METRICS.marginBeforeAds.label, pct(selected.margin_before_drr_window), "marginBeforeAds", selected.margin_before_drr_window],
-              ] as Array<[string, string, MarketplaceMetricId | null, number | null]>).map(([label, value, metricId, numeric]) => <div key={label} title={metricId ? MARKETPLACE_METRICS[metricId].definition : undefined} className="rounded-lg border border-slate-200 bg-white p-2"><div className="text-[8px] uppercase text-slate-400">{label}</div><div className={`mt-0.5 text-xs font-semibold tabular-nums ${metricId ? METRIC_TEXT_TONE[marketplaceMetricStatus(metricId, numeric)] : "text-slate-700"}`}>{value}</div></div>)}
+              ] as Array<[string, string, MarketplaceMetricId | null, number | null]>).map(([label, value, metricId, numeric]) => <div key={label} title={metricId ? MARKETPLACE_METRICS[metricId].definition : undefined} className="rounded-lg border border-slate-200 bg-white p-2"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className={`mt-0.5 text-xs font-semibold tabular-nums ${metricId ? METRIC_TEXT_TONE[marketplaceMetricStatus(metricId, numeric)] : "text-slate-700"}`}>{value}</div></div>)}
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto p-3">

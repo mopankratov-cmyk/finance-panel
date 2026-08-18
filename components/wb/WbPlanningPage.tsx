@@ -264,21 +264,21 @@ export function WbPlanningPage() {
                     <td className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-3 font-medium">SKU с планом</td>
                     {operational.activeSkuByMonth.map((value, month) => <td key={MONTHS[month]} className="border-b border-r border-slate-200 px-2 text-right tabular-nums last:border-r-0">{value ? number(value) : "—"}</td>)}
                   </tr>
-                  <tr className="h-9 bg-indigo-50 text-indigo-700">
-                    <td className="sticky left-0 z-20 border-b border-r border-indigo-100 bg-indigo-50 px-3 font-semibold">
+                  <tr className="h-9 bg-violet-50 text-violet-700">
+                    <td className="sticky left-0 z-20 border-b border-r border-violet-200 bg-violet-50 px-3 font-semibold">
                       <button type="button" onClick={() => setSkuOpen((value) => !value)} className="flex min-h-8 w-full items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${skuOpen ? "rotate-180" : ""}`} />
                         Детализация по SKU ({skus?.count ?? 0})
                       </button>
                     </td>
-                    {MONTHS.map((month, index) => <td key={month} className="border-b border-r border-indigo-100 px-2 text-right font-semibold tabular-nums last:border-r-0">{operational.skuUnitsByMonth[index] ? number(operational.skuUnitsByMonth[index]) : "—"}</td>)}
+                    {MONTHS.map((month, index) => <td key={month} className="border-b border-r border-violet-200 px-2 text-right font-semibold tabular-nums last:border-r-0">{operational.skuUnitsByMonth[index] ? number(operational.skuUnitsByMonth[index]) : "—"}</td>)}
                   </tr>
                 </tbody>
               </table>
             </div>
 
             {skuOpen ? (
-              <div className="border-t border-indigo-100 bg-indigo-50/40 p-2">
+              <div className="border-t border-violet-200 bg-violet-50/40 p-2">
                 <div className="mb-2 flex items-center justify-between px-1 text-[11px] text-slate-500">
                   <span>Потребность по артикулам, шт.</span>
                   <span>{activeCabinet?.name ?? "Все кабинеты"} · остатки на {skus?.wb_stock_date || "—"}</span>
@@ -300,7 +300,7 @@ export function WbPlanningPage() {
                           <td className="sticky left-[235px] z-10 max-w-[100px] truncate border-b border-r border-slate-100 bg-white px-2 text-right text-[10px] text-slate-400">{sku.cat}</td>
                           {MONTHS.map((month, index) => (
                             <td key={month} className="border-b border-r border-slate-100 bg-[#fffdf6] px-1.5">
-                              <input type="number" min={0} value={plan.sku_orders[sku.art]?.[index] ?? 0} onChange={(event) => setSkuOrder(sku.art, index, event.target.value)} disabled={!canEdit} aria-label={`${sku.art}, ${month}`} className="h-10 w-full rounded-md border border-transparent bg-transparent px-1.5 text-right tabular-nums outline-none hover:border-[#f1e8d8] focus:border-violet-400 focus:bg-white sm:h-7" />
+                              <input type="number" min={0} value={plan.sku_orders[sku.art]?.[index] ?? 0} onChange={(event) => setSkuOrder(sku.art, index, event.target.value)} disabled={!canEdit} aria-label={`${sku.art}, ${month}`} className="h-10 w-full rounded-md border border-transparent bg-transparent px-1.5 text-right tabular-nums outline-none hover:border-[#f1e8d8] focus:border-violet-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 sm:h-7" />
                             </td>
                           ))}
                         </tr>

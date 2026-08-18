@@ -201,7 +201,7 @@ export function WbRepricerPage() {
 
       <div className="mb-2 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] text-slate-500 lg:flex-row lg:items-center">
         <div className="flex items-center gap-2 font-semibold text-emerald-700"><ShieldCheck className="h-4 w-4" aria-hidden="true" />Только предложения: применение цен вручную через XLSX</div>
-        {!canWrite ? <div className="rounded-md bg-amber-50 px-2 py-1 font-semibold text-amber-700">Режим «Все кабинеты» доступен только для просмотра</div> : null}
+        {!canWrite ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">Режим «Все кабинеты» доступен только для просмотра</div> : null}
         <div className="lg:ml-auto">Прогон {date} · {activeCabinet?.name ?? "все кабинеты"}</div>
       </div>
 

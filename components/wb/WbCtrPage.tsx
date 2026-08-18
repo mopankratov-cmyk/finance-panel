@@ -32,9 +32,9 @@ interface ApiEnvelope<T> { data?: T; error?: string | null }
 
 const ROW_HEIGHT = 44;
 const typeTabs: { value: CtrTestType; label: string; tone: string }[] = [
-  { value: "ctr", label: "ТЕСТ CTR", tone: "bg-emerald-600 text-white" },
-  { value: "cr", label: "ТЕСТ CR · beta", tone: "bg-pink-500 text-white" },
-  { value: "video", label: "Видео", tone: "bg-blue-500 text-white" },
+  { value: "ctr", label: "Тест CTR", tone: "bg-violet-600 text-white" },
+  { value: "cr", label: "Тест CR · beta", tone: "bg-violet-600 text-white" },
+  { value: "video", label: "Видео", tone: "bg-violet-600 text-white" },
 ];
 const statusLabel = { draft: "черновик", running: "идёт", paused: "пауза", done: "завершён", cancelled: "отменён" } as const;
 const statusTone = { draft: "bg-slate-100 text-slate-600", running: "bg-violet-100 text-violet-700", paused: "bg-amber-100 text-amber-700", done: "bg-emerald-100 text-emerald-700", cancelled: "bg-rose-100 text-rose-700" } as const;
@@ -87,8 +87,12 @@ export function WbCtrPage() {
     const analysis = hasExactCabinet
       ? fetch(`/api/ctrtest/adv-analysis?days=${days}&cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
         .then(async (response) => {
-          const body = await response.json() as CtrData;
-          if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+          // Пустое тело (таймаут шлюза) раньше падало «Unexpected end of JSON
+          // input» — человеку нужен читаемый ответ, а не внутренности парсера.
+          const body = await response.json().catch(() => null) as CtrData | null;
+          if (!response.ok || !body || body.error) {
+            throw new Error(body?.error || `Реклама WB не ответила (${response.status}) — повторите позже`);
+          }
           return body;
         })
       : Promise.resolve({ items: [], count: 0, days } as CtrData);
@@ -201,7 +205,7 @@ export function WbCtrPage() {
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div><h1 className="text-lg font-bold text-slate-900">Тестирование CTR</h1><p className="text-[11px] text-slate-500">Ротация вариантов, история раундов и объяснимый победитель — как в Inferno.</p></div>
+          <p className="text-[11px] text-slate-500">Ротация вариантов, история раундов и объяснимый победитель — как в Inferno.</p>
           <div className="flex flex-wrap gap-2 sm:ml-auto">
             <button type="button" disabled={!canWrite || !flywheelSource} onClick={() => { const winner = flywheelSource?.variants.find((variant) => variant.id === flywheelSource.winnerVariantId || variant.isWinner); if (flywheelSource && winner) openFlywheelFor(flywheelSource, winner); }} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-100 px-3 text-[11px] font-semibold text-violet-700 disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />Маховик</button>
             <Link href="/wb/product" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-amber-100 px-3 text-[11px] font-semibold text-amber-800"><WandSparkles className="h-3.5 w-3.5" />Лаборатория контента</Link>

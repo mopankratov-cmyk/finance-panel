@@ -56,7 +56,7 @@ function CopyButton({ value, label }: { value: string | number; label: string })
     <button
       type="button"
       onClick={() => copyValue(value)}
-      className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-white hover:text-teal-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+      className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-white hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
       aria-label={label}
       title={label}
     >
@@ -86,11 +86,11 @@ function SkuCard({ group, sku, verdictVisible = true }: { group: SklejkiGroup; s
         </a>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-0.5">
-            <a href={wbUrl} target="_blank" rel="noopener noreferrer" className="truncate text-xs font-medium text-teal-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">{sku.art || sku.nm}</a>
+            <a href={wbUrl} target="_blank" rel="noopener noreferrer" className="truncate text-xs font-medium text-violet-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">{sku.art || sku.nm}</a>
             <CopyButton value={sku.art || sku.nm} label="Скопировать артикул" />
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-            <button type="button" onClick={() => copyValue(sku.nm)} className="hover:text-teal-600">{sku.nm}</button>
+            <button type="button" onClick={() => copyValue(sku.nm)} className="hover:text-violet-600">{sku.nm}</button>
             {sku.nm_feedbacks != null ? (
               <span className={sku.nm_feedbacks === 0 ? "font-semibold text-orange-600" : undefined}>
                 <span className="text-amber-500">★</span> {sku.nm_rating || 0} ({sku.nm_feedbacks})
@@ -129,7 +129,7 @@ function GroupCard({ group }: { group: SklejkiGroup }) {
         {group.category_label ? <><span className="text-base font-bold text-slate-900">·</span><span className="min-w-0 truncate text-base font-bold text-slate-900">{group.category_label}</span></> : null}
         <span className="rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-700">{group.skus.length} карточек</span>
         {summary.carry ? <span className="rounded bg-emerald-600 px-1.5 py-0 text-[10px] font-semibold text-white">🟢 несущих {summary.carry}</span> : null}
-        <button type="button" onClick={() => copyValue(group.imt_id)} className="text-[10px] text-slate-400 hover:text-teal-600 hover:underline" title="Скопировать imtID">imt {group.imt_id}</button>
+        <button type="button" onClick={() => copyValue(group.imt_id)} className="text-[10px] text-slate-400 hover:text-violet-600 hover:underline" title="Скопировать imtID">imt {group.imt_id}</button>
         {group.feedback_count && !group.hide_group_rating ? <span className="ml-auto text-xs"><span className="text-amber-500">★</span> <b>{group.valuation}</b> <span className="text-slate-500">({group.feedback_count} общих)</span></span> : null}
       </div>
 
@@ -210,21 +210,21 @@ export function WbSklejkiPage() {
         description={data ? `${data.total_sku} SKU, ${data.multi_groups} склеек, ${data.solo_skus} одиночных, покрыто ${data.covered}/${data.total_sku}` : "Объединённые карточки по imtID"}
         actions={
           <>
-            <span title="Показы, заказы, расход и ДРР берутся из РНП за последние 7 закрытых дней" className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-[10px] font-medium text-teal-700">данные из РНП · показы/заказы/ДРР за {sklejkiPeriod()}</span>
+            <span title="Показы, заказы, расход и ДРР берутся из РНП за последние 7 закрытых дней" className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-medium text-violet-700">данные из РНП · показы/заказы/ДРР за {sklejkiPeriod()}</span>
             {shops.length > 1 ? (
               <div className="flex items-center gap-1 text-[10px]" aria-label="Фильтр кабинета">
                 <span className="text-slate-400">кабинет:</span>
                 {["", ...shops].map((value) => (
-                  <button key={value || "all"} type="button" onClick={() => setShop(value)} className={`min-h-8 rounded px-2 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${shop === value ? "bg-violet-600 text-white" : value ? shopBadge(value) : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{value || "Все"}</button>
+                  <button key={value || "all"} type="button" onClick={() => setShop(value)} className={`min-h-11 rounded-lg px-2 font-semibold transition-colors sm:min-h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${shop === value ? "bg-violet-600 text-white" : value ? shopBadge(value) : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{value || "Все"}</button>
                 ))}
               </div>
             ) : null}
-            <button type="button" onClick={() => { forceRefreshRef.current = true; setReloadKey((value) => value + 1); }} disabled={loading} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-slate-500 hover:text-teal-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> обновить</button>
+            <button type="button" onClick={() => { forceRefreshRef.current = true; setReloadKey((value) => value + 1); }} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-slate-500 sm:min-h-8 hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> Обновить</button>
           </>
         }
       />
 
-      <div className="px-3 py-3 sm:px-6">
+      <div className="px-2 py-3 sm:px-6">
         {loading ? (
           <>
             <LoadingBanner seconds={elapsed} hint={`imtID через WB · ${activeCabinet?.name ?? "все кабинеты"}`} />
@@ -236,10 +236,10 @@ export function WbSklejkiPage() {
           <WbEmptyState>В выбранном кабинете нет карточек WB.</WbEmptyState>
         ) : (
           <>
-            <h2 className="mb-2 mt-1 text-sm font-semibold text-slate-700">Склейки с несколькими SKU ({multi.length})</h2>
+            <h2 className="mb-2 mt-4 first:mt-0 text-sm font-bold text-slate-700">Склейки с несколькими SKU ({multi.length})</h2>
             {multi.length ? <div className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto pb-3">{multi.map((group) => <div key={`${group.shop_label}-${group.imt_id}`} className="snap-start"><GroupCard group={group} /></div>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет склеек с несколькими SKU.</div>}
 
-            <h2 className="mb-2 mt-6 text-sm font-semibold text-slate-700">Одиночные SKU ({solo.length})</h2>
+            <h2 className="mb-2 mt-4 first:mt-0 text-sm font-bold text-slate-700">Одиночные SKU ({solo.length})</h2>
             {solo.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">{solo.map((group) => <SoloCard key={`${group.shop_label}-${group.imt_id}`} group={group} />)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет одиночных SKU.</div>}
           </>
         )}

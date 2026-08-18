@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { HealthCheck, OperationalAlert, OperationalOrder, OperationalState, TimelineStageState } from "@/lib/health/operations";
+import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -84,7 +85,7 @@ function Timeline({ order }: { order: OperationalOrder }) {
     <section aria-labelledby="health-cycle-title" className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,.04)] sm:p-5">
       <div className="flex flex-wrap items-start gap-3">
         <div>
-          <h2 id="health-cycle-title" className="text-sm font-bold text-slate-800">Цикл заказа {order.orderNumber}</h2>
+          <h2 id="health-cycle-title" className="text-sm font-bold text-slate-700">Цикл заказа {order.orderNumber}</h2>
           <p className="mt-1 text-[10px] text-slate-500">{order.supplier || "Поставщик не указан"} · {order.itemsCount} SKU · {order.quantity.toLocaleString("ru-RU")} шт.</p>
         </div>
         <span className={`ml-auto rounded-full border px-2.5 py-1 text-[9px] font-bold ${orderTone(order.state)}`}>{order.progressPct}% цикла</span>
@@ -152,6 +153,7 @@ export function WbHealthPage() {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [selectedId, setSelectedId] = useState("");
+  const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
     if (!ready || cabinetsLoading) return;
@@ -188,7 +190,7 @@ export function WbHealthPage() {
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
         {!hasExactCabinet ? <WbErrorState message={error || "Выберите один реальный кабинет"} /> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
-        {loading && !data ? <div className="grid min-h-[440px] place-items-center rounded-xl border border-slate-200 bg-white"><div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />Собираю сроки заказов и статусы сервисов…</div></div> : null}
+        {loading && !data ? <><LoadingBanner seconds={elapsed} hint="Собираем сроки заказов и статусы сервисов" /><SkeletonCards count={8} /></> : null}
         {data ? (
           <>
             {response?.meta?.warnings.length ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{response.meta.warnings.join(" · ")}</div> : null}
@@ -198,21 +200,21 @@ export function WbHealthPage() {
                 { label: "Просрочено", value: data.summary.overdueOrders, icon: AlertTriangle, tone: data.summary.overdueOrders ? "text-rose-600 bg-rose-50" : "text-emerald-600 bg-emerald-50" },
                 { label: "Здоровье сервисов", value: `${data.score}%`, icon: HeartPulse, tone: data.score >= 80 ? "text-emerald-600 bg-emerald-50" : data.score >= 50 ? "text-amber-600 bg-amber-50" : "text-rose-600 bg-rose-50" },
                 { label: data.scope.restricted ? "Разрешённые SKU" : "Контур SKU", value: data.scope.count ?? "Весь", icon: ShieldCheck, tone: "text-slate-600 bg-slate-100" },
-              ].map((metric) => <article key={metric.label} className="rounded-xl border border-slate-200 bg-white p-3"><div className={`grid h-8 w-8 place-items-center rounded-lg ${metric.tone}`}><metric.icon className="h-4 w-4" /></div><div className="mt-2 text-xl font-black tracking-tight text-slate-800">{metric.value}</div><div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">{metric.label}</div></article>)}
+              ].map((metric) => <article key={metric.label} className="rounded-xl border border-slate-200 bg-white p-3"><div className={`grid h-8 w-8 place-items-center rounded-lg ${metric.tone}`}><metric.icon className="h-4 w-4" /></div><div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{metric.label}</div><div className="mt-0.5 text-xl font-bold tracking-tight text-slate-800">{metric.value}</div></article>)}
             </section>
 
             <section className="rounded-xl bg-slate-950 p-3 text-white sm:p-4" aria-labelledby="cycle-panel-title">
-              <div className="flex items-center gap-2"><CircleDashed className="h-4 w-4 text-violet-300" /><h2 id="cycle-panel-title" className="text-xs font-bold">Операционный цикл</h2><span className="ml-auto text-[9px] font-semibold text-emerald-300">{selectedOrder ? `${selectedOrder.progressPct}%` : "нет активного заказа"}</span></div>
+              <div className="flex items-center gap-2"><CircleDashed className="h-4 w-4 text-violet-300" /><h2 id="cycle-panel-title" className="text-sm font-bold">Операционный цикл</h2><span className="ml-auto text-[9px] font-semibold text-emerald-300">{selectedOrder ? `${selectedOrder.progressPct}%` : "нет активного заказа"}</span></div>
               <p className="mt-1 text-[10px] text-slate-400">Производство → логистика → приёмка. Без P&amp;L, ДДС и расчётов финансового блока.</p>
             </section>
 
             {data.orders.length ? <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Заказы для operational timeline">{data.orders.map((order) => <button key={order.id} type="button" role="tab" aria-selected={order.id === selectedOrder?.id} onClick={() => setSelectedId(order.id)} className={`min-h-11 shrink-0 rounded-full border px-3 text-[10px] font-semibold ${order.id === selectedOrder?.id ? "border-violet-500 bg-violet-600 text-white" : orderTone(order.state)}`}>{order.orderNumber}<span className="ml-1.5 opacity-70">{order.progressPct}%</span></button>)}</div> : null}
             {selectedOrder ? <Timeline order={selectedOrder} /> : <WbEmptyState><div className="space-y-2"><Boxes className="mx-auto h-7 w-7 text-slate-300" /><p>Активных заказов фабрике пока нет.</p><Link href={`/wb/supplies?cabinet=${encodeURIComponent(cabinetId)}`} className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white">Открыть закупки</Link></div></WbEmptyState>}
 
-            {visibleAlerts.length ? <section aria-labelledby="health-alerts-title" className="rounded-xl border border-rose-200 bg-rose-50 p-3"><div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-rose-600" /><h2 id="health-alerts-title" className="text-xs font-bold text-rose-800">Требует внимания</h2><span className="ml-auto rounded-full bg-white px-2 py-1 text-[9px] font-bold text-rose-600">{visibleAlerts.length}</span></div><div className="mt-3 grid gap-2 lg:grid-cols-2">{visibleAlerts.map((alert) => <div key={alert.key} className="rounded-lg border border-rose-100 bg-white p-3"><div className="text-[10px] font-bold text-rose-800">{alert.title}</div><div className="mt-1 text-[9px] leading-4 text-rose-600">{alert.detail}</div></div>)}</div></section> : <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />По выбранному циклу критичных задержек нет.</div>}
+            {visibleAlerts.length ? <section aria-labelledby="health-alerts-title" className="rounded-xl border border-rose-200 bg-rose-50 p-3"><div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-rose-600" /><h2 id="health-alerts-title" className="text-sm font-bold text-rose-800">Требует внимания</h2><span className="ml-auto rounded-full bg-white px-2 py-1 text-[9px] font-bold text-rose-600">{visibleAlerts.length}</span></div><div className="mt-3 grid gap-2 lg:grid-cols-2">{visibleAlerts.map((alert) => <div key={alert.key} className="rounded-lg border border-rose-100 bg-white p-3"><div className="text-[10px] font-bold text-rose-800">{alert.title}</div><div className="mt-1 text-[9px] leading-4 text-rose-600">{alert.detail}</div></div>)}</div></section> : <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />По выбранному циклу критичных задержек нет.</div>}
 
             <section aria-labelledby="services-health-title">
-              <div className="mb-3 flex items-end gap-2"><div><h2 id="services-health-title" className="text-base font-bold text-slate-800">Здоровье сервисов</h2><p className="mt-1 text-[10px] text-slate-500">Статусы выбранного кабинета; продуктовые метрики применяют его разрешённый SKU-контур.</p></div><Database className="ml-auto h-5 w-5 text-slate-300" /></div>
+              <div className="mb-3 flex items-end gap-2"><div><h2 id="services-health-title" className="text-sm font-bold text-slate-700">Здоровье сервисов</h2><p className="mt-1 text-[10px] text-slate-500">Статусы выбранного кабинета; продуктовые метрики применяют его разрешённый SKU-контур.</p></div><Database className="ml-auto h-5 w-5 text-slate-300" /></div>
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">{data.checks.map((check) => <CheckCard key={check.key} check={check} cabinetId={cabinetId} />)}</div>
             </section>
 

@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   LockKeyhole,
@@ -133,8 +134,8 @@ export function WbConnectPage() {
             </label>
             <label className="mt-4 block text-xs font-semibold text-slate-600">API-токен WB
               <div className="relative mt-2">
-                <textarea value={token} onChange={(event) => setToken(event.target.value)} required spellCheck={false} autoComplete="off" rows={5} placeholder="Вставьте токен из кабинета продавца Wildberries" className={`w-full resize-none rounded-xl border border-slate-200 px-3 py-3 pr-12 font-mono text-xs leading-5 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100 ${showToken ? "" : "text-security-disc"}`} style={showToken ? undefined : { WebkitTextSecurity: "disc" } as React.CSSProperties} />
-                <button type="button" onClick={() => setShowToken((value) => !value)} aria-label={showToken ? "Скрыть токен" : "Показать токен"} className="absolute right-1 top-1 grid h-11 w-11 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700"><Eye className="h-4 w-4" /></button>
+                <input type={showToken ? "text" : "password"} value={token} onChange={(event) => setToken(event.target.value)} required spellCheck={false} autoComplete="off" placeholder="Вставьте токен из кабинета продавца Wildberries" className="h-11 w-full rounded-xl border border-slate-200 px-3 pr-12 font-mono text-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
+                <button type="button" onClick={() => setShowToken((value) => !value)} aria-label={showToken ? "Скрыть токен" : "Показать токен"} className="absolute right-0 top-0 grid h-11 w-11 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700">{showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
               </div>
             </label>
             {error ? <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}

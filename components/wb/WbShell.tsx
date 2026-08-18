@@ -164,7 +164,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
           type="button"
           onClick={mobile ? () => setMenuOpen(false) : toggleSidebar}
           aria-label={mobile ? "Закрыть навигацию" : expanded ? "Свернуть навигацию" : "Развернуть навигацию"}
-          className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+          className="grid h-11 w-11 md:h-8 md:w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700"
         >
           {expanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>

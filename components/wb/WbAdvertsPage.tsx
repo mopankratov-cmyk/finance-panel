@@ -468,7 +468,7 @@ export function WbAdvertsPage() {
               </section>
 
               <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-                <table className="min-w-full border-collapse text-[10px]">
+                <table className="w-full min-w-[640px] border-collapse text-[10px]">
                   <thead><tr className="h-8 bg-slate-50 text-slate-500"><th className="px-3 text-left">Дата</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">Клики</th><th className="px-3 text-right">CTR</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Атриб. выручка</th><th className="px-3 text-right">ДРР</th></tr></thead>
                   <tbody>{selected.campaign.days.slice().reverse().map((day) => <tr key={day.ts} className="h-8 border-t border-slate-100"><td className="px-3 text-slate-500">{day.ts}</td><td className="px-3 text-right tabular-nums">{day.views.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{day.clicks.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{pct(day.views > 0 ? (day.clicks / day.views) * 100 : null)}</td><td className="px-3 text-right font-medium tabular-nums">{rub(day.spend)}</td><td className="px-3 text-right tabular-nums">{rub(day.orders)}</td><td className="px-3 text-right tabular-nums">{pct(day.orders > 0 ? (day.spend / day.orders) * 100 : null)}</td></tr>)}</tbody>
                 </table>
