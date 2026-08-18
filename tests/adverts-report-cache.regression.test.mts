@@ -14,6 +14,10 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
 test("справочник товаров читается из снимка, живые части — нет", async () => {
   const route = await read("../app/api/adverts/list/route.ts");
   assert.match(route, /loadCachedAdvertReportRows<RpcRow>\(cabinetId, reportScopeKey/);
+  // Склейки берут те же месячные агрегаты — тоже из снимка, не живым RPC:
+  // под нагрузкой живой вызов упирался в statement timeout и ронял экран.
+  const sklejki = await read("../app/api/sklejki/route.ts");
+  assert.match(sklejki, /loadCachedAdvertReportRows<RpcTotal>\(cabinetId, "full"/);
   // Реестр кампаний (ставки/статусы) и правки репрайсера остаются живыми:
   // репрайсер пишет в wb_adverts сразу, часовой снимок показал бы старую ставку.
   assert.doesNotMatch(route, /loadCachedAdvertReportRows[\s\S]{0,200}wb_adverts/);

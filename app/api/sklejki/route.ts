@@ -8,6 +8,7 @@ import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cac
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
+import { loadCachedAdvertReportRows } from "@/lib/adverts/reportCache";
 
 export const dynamic = "force-dynamic";
 // Холодный all-cabinet снимок может впервые обойти несколько больших Content API
@@ -96,9 +97,14 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
   const metricsPromise = Promise.all([
     loadFunnelRows(),
     loadAdRows(),
-    loadRnpReportRows<RpcTotal>(db, cabinetId, {
-      label: "Склейки WB: товары",
-    }),
+    // Месячные агрегаты товаров — тот же тяжёлый источник, что и на «Рекламе»
+    // (10+ секунд, под нагрузкой упирается в statement timeout). Читаем из
+    // общего снимка с фоновым освежением — у кабинета он обычно уже тёплый
+    // после экрана «Рекламы», и холодный билд склеек не тащит RPC вживую.
+    loadCachedAdvertReportRows<RpcTotal>(cabinetId, "full", () =>
+      loadRnpReportRows<RpcTotal>(db, cabinetId, {
+        label: "Склейки WB: товары",
+      })),
     db.from("product_costs").select("article, warehouse_expenses"),
     loadSklejkiCommissionForCabinet(cabinetId),
   ]);
