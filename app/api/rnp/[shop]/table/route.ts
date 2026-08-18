@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { loadCachedWbRnp } from "@/lib/rnp/tableCache";
+import { compactRnpTable } from "@/lib/rnp/compactTable";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,7 +25,9 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ shop: s
       { from, to, cabinetId, label, turnoverWindowDays },
       { forceRefresh: sp.get("refresh") === "1" },
     );
-    return NextResponse.json(data, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
+    // Подписи метрик едут словарём, а не копией в каждом артикуле: на крупном
+    // кабинете это срезает ответ с 8.5 МБ до ~2 МБ (клиент разжимает сразу).
+    return NextResponse.json(compactRnpTable(data), { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Не удалось собрать РНП" },

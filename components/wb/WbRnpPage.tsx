@@ -19,6 +19,7 @@ import { heat } from "@/lib/analytics/heat";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
 import { readApiResponse, readOkApiResponse } from "@/lib/http/readApiResponse";
 import { buildRnpArticleCompare } from "@/lib/rnp/articleCompare";
+import { expandRnpTable } from "@/lib/rnp/compactTable";
 import { buildRnpFocusSummary, type RnpFocusSignal } from "@/lib/rnp/focusSummary";
 import {
   filterRnpProductFacets,
@@ -870,9 +871,12 @@ export function WbRnpPage() {
         cache: "no-store",
         signal,
       });
-      return label === "РНП"
-        ? readOkApiResponse<RnpTable>(response, "РНП")
-        : readOkApiResponse<RnpTable>(response, label);
+      // Ответ приходит компактным (подписи метрик словарём, а не копией в
+      // каждом артикуле) — разжимаем сразу, дальше всё работает как прежде.
+      const body = label === "РНП"
+        ? await readOkApiResponse<RnpTable>(response, "РНП")
+        : await readOkApiResponse<RnpTable>(response, label);
+      return expandRnpTable(body);
     };
     const previousRange = previousEqualRange(range.from, range.to);
 
