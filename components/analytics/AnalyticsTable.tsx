@@ -11,6 +11,12 @@ export interface Column<T> {
   align?: "left" | "right" | "center";
   render: (row: T) => ReactNode;
   csv?: (row: T) => string;
+  /**
+   * Значение для сортировки, когда csv-текст сортировать нельзя.
+   * Нужно для дат: parseFloat("2026-08-19") === 2026, поэтому все даты
+   * одного года сравниваются как равные и сортировка не работает.
+   */
+  sortValue?: (row: T) => number | string | null;
 }
 
 interface AnalyticsTableProps<T> {
@@ -36,7 +42,26 @@ export function AnalyticsTable<T>({
   const sorted = useMemo(() => {
     if (!sortKey) return data;
     const col = columns.find((c) => c.key === sortKey);
-    if (!col?.csv) return data;
+    if (!col) return data;
+    // sortValue важнее csv: у дат текстовый csv сортируется неверно.
+    if (col.sortValue) {
+      const pick = col.sortValue;
+      return [...data].sort((a, b) => {
+        const av = pick(a);
+        const bv = pick(b);
+        // Пустые значения всегда в конце, независимо от направления.
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (typeof av === "number" && typeof bv === "number") {
+          return sortDir === "asc" ? av - bv : bv - av;
+        }
+        const as = String(av);
+        const bs = String(bv);
+        return sortDir === "asc" ? as.localeCompare(bs) : bs.localeCompare(as);
+      });
+    }
+    if (!col.csv) return data;
     return [...data].sort((a, b) => {
       const av = col.csv!(a);
       const bv = col.csv!(b);

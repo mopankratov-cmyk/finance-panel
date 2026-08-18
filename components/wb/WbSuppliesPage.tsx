@@ -11,9 +11,26 @@ import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbPurchaseOrdersTab } from "./WbPurchaseOrdersTab";
 import { WbSupplyDistributionPlanner, type DistributionSkuInput, type DistributionWarehouseInput } from "./WbSupplyDistributionPlanner";
-import { WbMarkingTab } from "./WbMarkingTab";
+import { WbKizReconcileTab } from "./WbKizReconcileTab";
+import { WbKizExportTab } from "./WbKizExportTab";
+import { WbFbsOrdersTab } from "./WbFbsOrdersTab";
+import { WbFbsStockTab } from "./WbFbsStockTab";
+import { WbPvzReturnsTab } from "./WbPvzReturnsTab";
+import { WbPenaltiesTab } from "./WbPenaltiesTab";
 
-type Tab = "orders" | "distribution" | "reorder" | "stock" | "receiving" | "marking" | "source";
+type Tab =
+  | "orders"
+  | "reorder"
+  | "receiving"
+  | "kizReconcile"
+  | "kizExport"
+  | "fbsOrders"
+  | "fbsStock"
+  | "pvzReturns"
+  | "penalties"
+  | "stock"
+  | "distribution"
+  | "source";
 type Horizon = 30 | 45 | 60;
 
 interface SuppliesResponse {
@@ -82,9 +99,44 @@ export function WbSuppliesPage() {
     return (data?.data?.skus ?? []).map((row) => ({ ...row, need: minBatch > 0 ? Math.ceil(row[needKey] / minBatch) * minBatch : row[needKey] })).filter((row) => row.need > 0 && (!needle || `${row.nmId} ${row.article}`.toLocaleLowerCase("ru-RU").includes(needle))).sort((a, b) => b.need - a.need);
   }, [data?.data?.skus, horizon, minBatch, query]);
 
+  // Порядок как в кокпите Оптимы: поставка и приёмка → контур ЧЗ → FBS → возвраты и штрафы → справочное.
   const tabs: [Tab, string][] = sellerReadOnly
     ? [["reorder", "К поставке"], ["stock", "Остатки"]]
-    : [["orders", "Заказы фабрике"], ["distribution", "Распределение"], ["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"], ["marking", "Маркировка"], ["source", "Источник"]];
+    : [
+      ["orders", "Заказы фабрике"],
+      ["reorder", "К поставке"],
+      ["receiving", "Приёмка"],
+      ["kizReconcile", "Сверка оборота"],
+      ["kizExport", "КИЗ по брендам"],
+      ["fbsOrders", "FBS-заказы"],
+      ["fbsStock", "Остатки FBS"],
+      ["pvzReturns", "Возвраты ПВЗ"],
+      ["penalties", "Штрафы"],
+      ["stock", "Остатки"],
+      ["distribution", "Распределение"],
+      ["source", "Источник"],
+    ];
+
+  // У этих вкладок свой источник и свой период — общий /api/supplies им не нужен,
+  // поэтому они рендерятся до гейтов loading/error (как раньше делала «Маркировка»).
+  const standaloneTab = (() => {
+    switch (tab) {
+      case "kizReconcile":
+        return <WbKizReconcileTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} />;
+      case "kizExport":
+        return <WbKizExportTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} canWrite={canWrite} />;
+      case "fbsOrders":
+        return <WbFbsOrdersTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} />;
+      case "fbsStock":
+        return <WbFbsStockTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} />;
+      case "pvzReturns":
+        return <WbPvzReturnsTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} />;
+      case "penalties":
+        return <WbPenaltiesTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} />;
+      default:
+        return null;
+    }
+  })();
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
@@ -113,7 +165,7 @@ export function WbSuppliesPage() {
           <div role="tablist" aria-label="Разделы поставок" className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-0.5">{tabs.map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`min-h-10 shrink-0 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${tab === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{label}</button>)}</div>
         </div>
 
-        {tab === "marking" ? <WbMarkingTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} /> : loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`поставки · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={10} cols={10} /></div> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : !data?.data ? <WbEmptyState>Данные поставок ещё не синхронизированы.</WbEmptyState> : tab === "orders" ? (canWrite ? <WbPurchaseOrdersTab skus={data.data.skus} cabinetId={cabinetId} canWrite={canWrite} /> : <WbEmptyState>Заказы фабрике ведутся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>) : tab === "distribution" ? <WbSupplyDistributionPlanner cabinetId={cabinetId} cabinetName={activeCabinet?.name ?? "all"} canWrite={canWrite} recommendedWarehouses={data.warehouses} skus={data.skus} defaultMinBatch={data.threshold ?? 30} defaultPalletLiters={data.pallet_liters ?? 1230} volumeKnown={data.vol_known ?? 0} volumeTotal={data.vol_total ?? data.skus.length} /> : tab === "reorder" ? (
+        {standaloneTab ? standaloneTab : loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`поставки · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={10} cols={10} /></div> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : !data?.data ? <WbEmptyState>Данные поставок ещё не синхронизированы.</WbEmptyState> : tab === "orders" ? (canWrite ? <WbPurchaseOrdersTab skus={data.data.skus} cabinetId={cabinetId} canWrite={canWrite} /> : <WbEmptyState>Заказы фабрике ведутся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>) : tab === "distribution" ? <WbSupplyDistributionPlanner cabinetId={cabinetId} cabinetName={activeCabinet?.name ?? "all"} canWrite={canWrite} recommendedWarehouses={data.warehouses} skus={data.skus} defaultMinBatch={data.threshold ?? 30} defaultPalletLiters={data.pallet_liters ?? 1230} volumeKnown={data.vol_known ?? 0} volumeTotal={data.vol_total ?? data.skus.length} /> : tab === "reorder" ? (
           reorderRows.length === 0 ? <WbEmptyState>Дозаказывать нечего — остатков хватает на выбранный горизонт.</WbEmptyState> : <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="min-w-[760px] w-full border-collapse text-[10px]"><thead className="sticky top-0 z-20 bg-slate-50"><tr className="h-9 bg-slate-50 text-slate-500"><th className="px-3 text-left">Артикул</th><th className="px-3 text-right">Заказы/день</th><th className="px-3 text-right">Остаток</th><th className="px-3 text-right">В пути</th><th className="px-3 text-right">Хватит дней</th><th className="px-3 text-right">К поставке ({horizon}д)</th></tr></thead><tbody>{reorderRows.map((row) => <tr key={row.nmId} className="h-10 border-t border-slate-100"><td className="px-3"><div className="font-semibold text-violet-700">{row.article || row.nmId}</div><div className="text-[9px] text-slate-400">nm {row.nmId}</div></td><td className="px-3 text-right tabular-nums">{row.avgDaily.toFixed(1)}</td><td className="px-3 text-right tabular-nums">{format(row.stock)}</td><td className="px-3 text-right tabular-nums">{format(row.inWay)}</td><td className={`px-3 text-right tabular-nums ${row.daysLeft != null && row.daysLeft <= 14 ? "font-semibold text-rose-600" : ""}`}>{row.daysLeft ?? "∞"}</td><td className="px-3 text-right font-semibold tabular-nums text-violet-700">{format(row.need)}</td></tr>)}</tbody></table></div>
         ) : tab === "stock" ? <StockCatalogTab rows={data.data.catalog} /> : tab === "receiving" ? (canWrite ? <ReceivingTab skus={data.data.skus} cabId={cabinetId} warehouses={data.data.warehouses} /> : <WbEmptyState>Приёмка ведётся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>) : <MoySkladSourceTab cabinetId={cabinetId} canWrite={canWrite} />}
       </div>
