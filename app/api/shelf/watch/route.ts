@@ -5,12 +5,12 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-// Реестр отслеживаемых артикулов раздела «Полки». Раздел внутренний: seller
-// сюда не пускает и proxy (SELLER_READ_API), и карта ролей (roles.ts) — держим
-// список ролей согласованным с ними, а не шире (мёртвый грант вводит в заблуждение).
+// Реестр отслеживаемых артикулов раздела «Полки». Внешний селлер пользуется
+// разделом полностью — ведёт конкурентов СВОЕГО кабинета: tenant-границу
+// держит hasCabinetAccess (чужой кабинет и агрегат all для него — 403).
 // Смена списка меняет только будущие сборы; история снимков остаётся.
-const READ_ROLES = ["director", "finance", "manager"] as const;
-const WRITE_ROLES = ["director", "finance", "manager"] as const;
+const READ_ROLES = ["director", "finance", "manager", "seller"] as const;
+const WRITE_ROLES = ["director", "finance", "manager", "seller"] as const;
 
 const BRAND_LIST_LIMIT = 50;
 

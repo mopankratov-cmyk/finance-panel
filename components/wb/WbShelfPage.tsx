@@ -296,7 +296,10 @@ function PeriodSummary({ history }: { history: HistoryPoint[] }) {
 }
 
 export function WbShelfPage() {
-  const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet, canWrite } = useWbCabinet();
+  const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet, canWrite, user } = useWbCabinet();
+  // Внешний селлер пользуется «Полками» полностью: ведёт конкурентов своего
+  // кабинета сам (общий canWrite для него false — он про владельческие правки).
+  const canManage = canWrite || (user?.role === "seller" && hasExactCabinet);
   const [items, setItems] = useState<ShelfItem[]>([]);
   const [settings, setSettings] = useState<SettingsRow[]>([]);
   const [days, setDays] = useState(14);
@@ -453,7 +456,7 @@ export function WbShelfPage() {
         {hasExactCabinet ? (
           <section className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <div className="flex flex-wrap items-end gap-2">
-              {canWrite ? (
+              {canManage ? (
                 <>
                   <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-500">
                     Артикул WB
@@ -478,11 +481,11 @@ export function WbShelfPage() {
                 Исключения кабинета{globalBrands.length ? ` · ${globalBrands.length}` : ""}
               </button>
             </div>
-            {canWrite ? <p className="mt-1.5 text-[10px] text-slate-400">Свой бренд артикула исключается из конкурентов автоматически при первом сборе.</p> : null}
+            {canManage ? <p className="mt-1.5 text-[10px] text-slate-400">Свой бренд артикула исключается из конкурентов автоматически при первом сборе.</p> : null}
             {exclOpen ? (
               <div className="absolute right-3 top-full z-40 mt-1 w-[min(420px,calc(100vw-48px))] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Глобальные бренды-исключения кабинета</div>
-                {canWrite ? (
+                {canManage ? (
                   <div className="mt-2 flex gap-2">
                     <input
                       value={globalDraft ?? globalBrands.join(", ")}
@@ -516,7 +519,7 @@ export function WbShelfPage() {
           </div>
         ) : items.length === 0 ? (
           <WbEmptyState>
-            {hasExactCabinet && canWrite
+            {hasExactCabinet && canManage
               ? "Реестр пуст. Добавьте артикулы формой выше — сборщик (tools/shelf-collector, Mac с реальным Chrome) заберёт их в ближайший слот 10:00 / 18:00 / 22:00 МСК и пришлёт цены блока «Смотрите также»."
               : "В этом срезе пока нет отслеживаемых артикулов. Добавить их может менеджер, выбрав конкретный кабинет."}
           </WbEmptyState>
@@ -670,7 +673,7 @@ export function WbShelfPage() {
                         </>
                       ) : <WbEmptyState>Сборов по артикулу ещё не было — он попадёт в ближайший слот сборщика.</WbEmptyState>}
 
-                      {canWrite ? (
+                      {canManage ? (
                         <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                           <label className="flex min-w-0 flex-1 items-center gap-2 text-[10px] font-semibold text-slate-500">
                             Доп. исключения артикула:

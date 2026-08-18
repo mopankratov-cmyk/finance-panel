@@ -78,6 +78,10 @@ const SELLER_READ_API_PREFIXES = [
 
 function isSellerApiAllowed(pathname: string, method: string): boolean {
   if (pathname === "/api/cabinets/self-service") return method === "GET" || method === "POST";
+  // «Полки» открыты селлеру целиком: он сам ведёт конкурентов своего кабинета.
+  // Tenant-граница — hasCabinetAccess в роутах: чужой кабинет и агрегат all → 403.
+  if (pathname === "/api/shelf/watch") return ["GET", "POST", "PATCH", "DELETE", "PUT"].includes(method);
+  if (pathname === "/api/shelf/table" || pathname === "/api/sku-order") return method === "GET";
   if (method !== "GET") return false;
   return SELLER_READ_API_EXACT.includes(pathname as (typeof SELLER_READ_API_EXACT)[number])
     || SELLER_READ_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));

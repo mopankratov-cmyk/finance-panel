@@ -15,9 +15,8 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Раздел внутренний: seller не пропускает ни proxy, ни roles.ts — роли в
-// соответствии с ними (см. комментарий в watch/route.ts).
-const READ_ROLES = ["director", "finance", "manager"] as const;
+// Селлер читает «Полки» своего кабинета (см. комментарий в watch/route.ts).
+const READ_ROLES = ["director", "finance", "manager", "seller"] as const;
 const HISTORY_DAYS_DEFAULT = 14;
 const HISTORY_DAYS_MAX = 90;
 

@@ -25,8 +25,10 @@ test("эндпоинты сборщика закрыты секретной ав
   const proxy = await read("../proxy.ts");
   assert.match(proxy, /\{ prefix: "\/api\/shelf\/watchlist", methods: \["GET"\] \}/);
   assert.match(proxy, /\{ prefix: "\/api\/shelf\/ingest", methods: \["POST"\] \}/);
-  // И ни одного более широкого /api/shelf-префикса в allowlist.
-  assert.equal((proxy.match(/\/api\/shelf/g) ?? []).length, 2);
+  // И ни одного более широкого /api/shelf-префикса в ПУБЛИЧНОМ allowlist
+  // (селлерская секция ниже — отдельный контур под сессией, там свои пути).
+  const publicBlock = proxy.slice(proxy.indexOf("PUBLIC_API"), proxy.indexOf("SELLER_READ_API_EXACT"));
+  assert.equal((publicBlock.match(/\/api\/shelf/g) ?? []).length, 2);
 });
 
 test("экранные эндпоинты под сессией и проверкой кабинета", async () => {
@@ -45,15 +47,22 @@ test("удаление артикула с историей требует яв�
   assert.match(page, /window\.confirm/);
 });
 
-test("раздел заведён в навигацию WB, но скрыт от внешнего селлера", async () => {
+test("раздел в навигации WB и открыт внешнему селлеру целиком", async () => {
   const navigation = await read("../lib/wb/navigation.ts");
   assert.match(navigation, /"\/wb\/shelf"/);
   const shell = await read("../components/wb/WbShell.tsx");
   assert.match(shell, /"\/wb\/shelf": Rows3/);
-  // roles.ts и proxy селлера в раздел не пускают — пункт меню был бы мёртвой ссылкой.
-  assert.match(shell, /filter\(\(item\) => item\.href !== "\/wb\/shelf"\)/);
+  // Селлер ведёт конкурентов своего кабинета сам: страница в его карте ролей,
+  // прокси пускает CRUD реестра, tenant-граница — hasCabinetAccess в роутах.
+  assert.doesNotMatch(shell, /filter\(\(item\) => item\.href !== "\/wb\/shelf"\)/);
   const roles = await read("../lib/auth/roles.ts");
-  assert.doesNotMatch(roles, /seller:[^\]]*\/wb\/shelf/);
+  assert.match(roles, /seller:[^\]]*\/wb\/shelf/);
+  const proxy = await read("../proxy.ts");
+  assert.match(proxy, /pathname === "\/api\/shelf\/watch"/);
+  const watch = await read("../app/api/shelf/watch/route.ts");
+  assert.match(watch, /WRITE_ROLES = \["director", "finance", "manager", "seller"\]/);
+  const page = await read("../components/wb/WbShelfPage.tsx");
+  assert.match(page, /user\?\.role === "seller" && hasExactCabinet/);
 });
 
 test("контракт сборщика: panelClient шлёт Bearer на оба эндпоинта", async () => {
