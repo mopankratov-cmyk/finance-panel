@@ -19,7 +19,7 @@ import {
   Tag,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   RNP_METRIC_FIELDS,
   RNP_VIEW_PRESETS,
@@ -207,12 +207,28 @@ export function RnpOperatingToolbar(props: Props) {
   const queryCount = parseArticleList(props.articleQuery).length;
   const activeView = RNP_VIEW_PRESETS.find((view) => view.id === props.viewId);
 
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
   const closePopovers = () => {
     setViewOpen(false);
     setSettingsOpen(false);
     setPeriodOpen(false);
     setInfoOpen(false);
+    setTagsOpen(false);
   };
+
+  // Клик мимо шапки закрывает все поповеры — иначе период/теги/пикер висят,
+  // пока не найдёшь их собственную кнопку.
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        closePopovers();
+        if (props.metricsOpen) props.onMetricsOpenChange(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  });
 
   const toggleMetric = (field: RnpMetricField) => {
     if (selectedSet.has(field)) {
@@ -242,7 +258,7 @@ export function RnpOperatingToolbar(props: Props) {
   };
 
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       {/* ===== ДАННЫЕ ===== */}
       <div className={SECTION_LABEL_CLASS}>Данные</div>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -379,9 +395,10 @@ export function RnpOperatingToolbar(props: Props) {
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="relative" data-tags-anchor>
         <button
           type="button"
-          onClick={() => setTagsOpen((open) => !open)}
+          onClick={() => { const open = tagsOpen; closePopovers(); setTagsOpen(!open); }}
           aria-expanded={tagsOpen}
           className={`${CONTROL_CLASS} inline-flex items-center gap-2`}
         >
@@ -389,6 +406,81 @@ export function RnpOperatingToolbar(props: Props) {
           {props.activeTagIds.length ? `Тег: ${props.activeTagIds.length} выбрано` : props.tags.length ? `Тег: ${props.tags.length} тегов` : "Тег: тегов нет"}
           <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
+      {tagsOpen ? (
+        <div className="absolute left-0 top-full z-50 mt-1 w-[360px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-800">Фильтр по тегам</span>
+            <button type="button" onClick={() => setTagsOpen(false)} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-slate-100" aria-label="Закрыть теги">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {props.tags.map((tag) => {
+              const active = props.activeTagIds.includes(tag.id);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => props.onTagFilterToggle(tag.id)}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-semibold ${
+                    active ? "border-slate-400 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"
+                  }`}
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                  {tag.name}
+                </button>
+              );
+            })}
+            {!props.tags.length ? <span className="py-2 text-[10px] text-slate-400">Тегов пока нет.</span> : null}
+          </div>
+          {props.operationsAvailable ? (
+            <>
+              <button type="button" onClick={() => setTagComposerOpen((open) => !open)} className="mt-3 h-8 rounded-lg border border-dashed border-violet-300 px-3 text-[9px] font-semibold text-violet-700 hover:bg-violet-50">
+                + Новый тег
+              </button>
+              {tagComposerOpen ? (
+                <div className="mt-2 space-y-2 rounded-lg bg-slate-50 p-2">
+                  <input
+                    autoFocus
+                    maxLength={40}
+                    value={tagName}
+                    onChange={(event) => setTagName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void createTag();
+                      if (event.key === "Escape") setTagComposerOpen(false);
+                    }}
+                    placeholder="Название тега"
+                    className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] outline-none focus:border-violet-300"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    {["#7567e8", "#2563eb", "#0891b2", "#059669", "#d97706", "#e11d48", "#64748b"].map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={`Цвет ${color}`}
+                        aria-pressed={tagColor === color}
+                        onClick={() => setTagColor(color)}
+                        className={`h-5 w-5 rounded-full border-2 ${tagColor === color ? "border-slate-800" : "border-white"}`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                    <button
+                      type="button"
+                      disabled={!tagName.trim() || props.busy}
+                      onClick={() => void createTag()}
+                      className="ml-auto h-8 rounded-lg bg-violet-600 px-3 text-[9px] font-bold text-white disabled:opacity-40"
+                    >
+                      Создать
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+        </div>
 
         <label className="relative min-w-[220px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -504,13 +596,14 @@ export function RnpOperatingToolbar(props: Props) {
         </button>
 
         <label className="relative inline-flex items-center">
+          <span className="pointer-events-none absolute left-3 text-[11px] font-medium text-slate-400">Сортировка:</span>
           <select
             value={props.sortField}
             onChange={(event) => props.onSortFieldChange(event.target.value)}
-            className={`${CONTROL_CLASS} w-[170px] appearance-none pr-7`}
+            className={`${CONTROL_CLASS} w-[196px] appearance-none pl-[84px] pr-7`}
             aria-label="Сортировка артикулов"
           >
-            {props.sortOptions.map((sort) => <option key={sort.field} value={sort.field}>Сортировка: {sort.label}</option>)}
+            {props.sortOptions.map((sort) => <option key={sort.field} value={sort.field}>{sort.label}</option>)}
           </select>
           <ChevronDown className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-slate-400" />
         </label>
@@ -647,95 +740,8 @@ export function RnpOperatingToolbar(props: Props) {
               </div>
             </div>
           ) : null}
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[9px] leading-4 text-slate-400">
-        <span>
-          {props.showDeltas
-            ? `Дельты — сравнение с предыдущим (аналогичным) периодом ${props.deltaBaselineLabel}`
-            : "Дельты выключены"}
-        </span>
-        {props.asOfLabel ? <span className="tabular-nums">данные на {props.asOfLabel}</span> : null}
-      </div>
-
-      {tagsOpen ? (
-        <div className="absolute left-0 top-[90px] z-50 w-[360px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-800">Фильтр по тегам</span>
-            <button type="button" onClick={() => setTagsOpen(false)} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-slate-100" aria-label="Закрыть теги">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {props.tags.map((tag) => {
-              const active = props.activeTagIds.includes(tag.id);
-              return (
-                <button
-                  key={tag.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => props.onTagFilterToggle(tag.id)}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-semibold ${
-                    active ? "border-slate-400 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"
-                  }`}
-                >
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
-                  {tag.name}
-                </button>
-              );
-            })}
-            {!props.tags.length ? <span className="py-2 text-[10px] text-slate-400">Тегов пока нет.</span> : null}
-          </div>
-          {props.operationsAvailable ? (
-            <>
-              <button type="button" onClick={() => setTagComposerOpen((open) => !open)} className="mt-3 h-8 rounded-lg border border-dashed border-violet-300 px-3 text-[9px] font-semibold text-violet-700 hover:bg-violet-50">
-                + Новый тег
-              </button>
-              {tagComposerOpen ? (
-                <div className="mt-2 space-y-2 rounded-lg bg-slate-50 p-2">
-                  <input
-                    autoFocus
-                    maxLength={40}
-                    value={tagName}
-                    onChange={(event) => setTagName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void createTag();
-                      if (event.key === "Escape") setTagComposerOpen(false);
-                    }}
-                    placeholder="Название тега"
-                    className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] outline-none focus:border-violet-300"
-                  />
-                  <div className="flex items-center gap-1.5">
-                    {["#7567e8", "#2563eb", "#0891b2", "#059669", "#d97706", "#e11d48", "#64748b"].map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        aria-label={`Цвет ${color}`}
-                        aria-pressed={tagColor === color}
-                        onClick={() => setTagColor(color)}
-                        className={`h-5 w-5 rounded-full border-2 ${tagColor === color ? "border-slate-800" : "border-white"}`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                    <button
-                      type="button"
-                      disabled={!tagName.trim() || props.busy}
-                      onClick={() => void createTag()}
-                      className="ml-auto h-8 rounded-lg bg-violet-600 px-3 text-[9px] font-bold text-white disabled:opacity-40"
-                    >
-                      Создать
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-      ) : null}
-
       {props.metricsOpen ? (
-        <div className="absolute right-0 top-[132px] z-50 max-h-[min(70vh,560px)] w-[270px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.2)]">
+        <div className="absolute right-0 top-11 z-50 max-h-[min(70vh,560px)] w-[270px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.2)]">
           <div className="sticky top-0 z-10 -mx-1 -mt-1 flex items-start justify-between bg-white px-1 pb-2 pt-1">
             <div>
               <h3 className="text-[10px] font-bold text-slate-800">Показатели · тяните ⠿ для порядка</h3>
@@ -786,6 +792,19 @@ export function RnpOperatingToolbar(props: Props) {
           </div>
         </div>
       ) : null}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[9px] leading-4 text-slate-400">
+        <span>
+          {props.showDeltas
+            ? `Дельты — сравнение с предыдущим (аналогичным) периодом ${props.deltaBaselineLabel}`
+            : "Дельты выключены"}
+        </span>
+        {props.asOfLabel ? <span className="tabular-nums">данные на {props.asOfLabel}</span> : null}
+      </div>
+
+
 
       {props.selectedCount > 0 ? (
         <div className="fixed bottom-4 left-1/2 z-[70] flex w-[min(680px,calc(100vw-32px))] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_18px_55px_rgba(15,23,42,0.22)]">

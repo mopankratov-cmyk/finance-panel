@@ -1066,10 +1066,14 @@ export function WbRnpPage() {
   );
 
   // Если владелец задал свой порядок — он и есть выдача по умолчанию,
-  // пока пользователь не выбрал другую сортировку руками.
+  // пока пользователь не выбрал другую сортировку руками. После очистки
+  // порядка сортировка не должна залипать на пустом «своём порядке».
   useEffect(() => {
     if (!sortTouched && orderNmIds.length > 0) setSortField("__custom");
   }, [orderNmIds.length, sortTouched]);
+  useEffect(() => {
+    if (!orderNmIds.length) setSortField((current) => current === "__custom" ? "stock" : current);
+  }, [orderNmIds.length]);
 
   const tableSkus = useMemo(
     () => focusedNm == null ? sortedSkus : sortedSkus.filter((sku) => sku.nm === focusedNm),
@@ -1476,7 +1480,7 @@ export function WbRnpPage() {
           operationsAvailable={operationsAvailable}
           sortField={sortField}
           sortDirection={sortDirection}
-          sortOptions={hasExactCabinet ? [{ field: "__custom", label: "Свой порядок" }, ...SORTS] : SORTS}
+          sortOptions={hasExactCabinet && orderNmIds.length ? [{ field: "__custom", label: "Свой порядок" }, ...SORTS] : SORTS}
           busy={operationsBusy}
           onViewChange={applyMetricView}
           onMetricFieldsChange={updateMetricFields}
