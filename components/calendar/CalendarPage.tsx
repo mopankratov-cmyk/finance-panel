@@ -6,7 +6,7 @@ import { BulkPaymentModal } from "./BulkPaymentModal";
 import { CalendarAgenda } from "./CalendarAgenda";
 import { CalendarDayCell } from "./CalendarDayCell";
 import { CashFlowSparkline } from "./CashFlowSparkline";
-import { calendarPaymentsWithoutMatchedPlans, isCalendarCashFlow, isMarketplaceOrLoanIncome, matchPlannedToFacts } from "./calendarPlan";
+import { calendarPaymentsWithoutMatchedPlans, findPlanFactMatches, isCalendarCashFlow, isMarketplaceOrLoanIncome, withCalendarFactLink } from "./calendarPlan";
 import { DayDetailPanel } from "./DayDetailPanel";
 import { SalesForecastPanel } from "./SalesForecastPanel";
 import { OzonForecastPanel } from "./OzonForecastPanel";
@@ -176,18 +176,34 @@ export function CalendarPage() {
     }, 3000);
     return () => window.clearTimeout(timer);
   }, [calendarRows, isForecastView, syncCalendarToGoogle]);
-  const planFactMatches = useMemo(() => {
+  const allPlanFactMatching = useMemo(
+    () => findPlanFactMatches(scopedPayments, companyByPayment),
+    [scopedPayments, companyByPayment],
+  );
+  const planFactMatching = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return matchPlannedToFacts(scopedPayments).filter((match) => match.planned.date.startsWith(prefix));
-  }, [scopedPayments, year, month]);
+    return {
+      matched: allPlanFactMatching.matched.filter((match) => match.planned.date.startsWith(prefix)),
+      review: allPlanFactMatching.review.filter((match) => match.planned.date.startsWith(prefix)),
+    };
+  }, [allPlanFactMatching, year, month]);
+  const planFactMatches = planFactMatching.matched;
+  const planFactReview = planFactMatching.review;
+  useEffect(() => {
+    for (const match of allPlanFactMatching.matched) {
+      if (match.source === "automatic") {
+        dispatch({ type: "UPDATE_PAYMENT", payload: withCalendarFactLink(match.planned, match.fact.id) });
+      }
+    }
+  }, [allPlanFactMatching.matched, dispatch]);
   const planFactPeriod = useMemo(() => {
     const dates = planFactMatches.flatMap((match) => [match.planned.date, match.fact.date]).sort();
     return dates.length ? { from: dates[0], to: dates.at(-1)! } : null;
   }, [planFactMatches]);
   const accountNames = useMemo(() => new Map(state.accounts.map((account) => [account.id, account.name])), [state.accounts]);
   const calendarPayments = useMemo(
-    () => calendarPaymentsWithoutMatchedPlans(scopedPayments, planFactMatches),
-    [scopedPayments, planFactMatches],
+    () => calendarPaymentsWithoutMatchedPlans(scopedPayments, allPlanFactMatching.matched),
+    [scopedPayments, allPlanFactMatching.matched],
   );
   const allVisibleCalendarPayments = useMemo(
     () => calendarPayments.filter(isCalendarCashFlow),
@@ -288,6 +304,10 @@ export function CalendarPage() {
     void updatePaymentCompany(payment.id, companyId);
   };
 
+  const confirmPlanFactMatch = (planned: Payment, fact: Payment) => {
+    dispatch({ type: "UPDATE_PAYMENT", payload: withCalendarFactLink(planned, fact.id) });
+  };
+
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -325,7 +345,7 @@ export function CalendarPage() {
                 {planFactPeriod
                   ? `Найдено ${planFactMatches.length} пар за период ${formatDate(planFactPeriod.from)} — ${formatDate(planFactPeriod.to)}.`
                   : "Совпадений пока нет."}
-                {" "}Сравниваются только плановые и фактические поступления от маркетплейсов, займов и кредитов. Переводы между счетами и расходы исключены.
+                {" "}Сравниваются плановые и фактические поступления и расходы. Переводы между собственными счетами исключены.
               </p>
             </div>
           </CardHeader>
@@ -352,6 +372,31 @@ export function CalendarPage() {
                 </table>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {planFactReview.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div>
+              <h2 className="font-semibold text-slate-950">Нужно проверить совпадения плана и факта</h2>
+              <p className="mt-1 text-sm text-slate-500">Сумма, дата или реквизиты отличаются. Подтвердите только правильные пары — после этого план будет считаться оплаченным.</p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {planFactReview.map((match) => (
+                <div key={`${match.planned.id}-${match.fact.id}`} className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="grid min-w-0 flex-1 gap-2 text-sm sm:grid-cols-4">
+                    <div><span className="block text-xs text-slate-500">План</span><b>{formatDate(match.planned.date)} · {formatMoney(match.planned.amount)}</b></div>
+                    <div><span className="block text-xs text-slate-500">Факт</span><b>{formatDate(match.fact.date)} · {formatMoney(match.fact.amount)}</b></div>
+                    <div className="sm:col-span-2"><span className="block text-xs text-slate-500">Платёж</span><span className="break-words">{match.fact.name || match.fact.counterparty}</span></div>
+                  </div>
+                  <button onClick={() => confirmPlanFactMatch(match.planned, match.fact)} className="min-h-11 shrink-0 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">Подтвердить совпадение</button>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

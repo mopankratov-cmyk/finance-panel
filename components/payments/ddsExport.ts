@@ -48,7 +48,11 @@ export function ddsTemplateRows({ payments, accountNameById, companyNameById }: 
   })];
 }
 
-export function ddsReviewTemplateRows(items: BankReviewItem[], accountNameById: Map<string, string>) {
+export function ddsReviewTemplateRows(
+  items: BankReviewItem[],
+  accountNameById: Map<string, string>,
+  companyNameById: Map<string, string> = new Map(),
+) {
   const rows: Array<Array<string | number>> = [];
   const rowIds: string[] = [];
   for (const item of items) {
@@ -57,7 +61,7 @@ export function ddsReviewTemplateRows(items: BankReviewItem[], accountNameById: 
     const base = (amount: number, purpose: string): Array<string | number> => [
       MONTHS[monthNumber - 1] ?? "", monthNumber, `${day}.${month}.${year}`, amount, "",
       item.accountId ? accountNameById.get(item.accountId) ?? "" : "",
-      "", item.counterparty, "", purpose, "", amount >= 0 ? "Поступление" : "Выбытие", "На проверке",
+      item.companyId ? companyNameById.get(item.companyId) ?? "" : "", item.counterparty, "", purpose, "", amount >= 0 ? "Поступление" : "Выбытие", "На проверке",
     ];
     const splits = decodeBankSplits(item.managerAnswer);
     const includedSplits = splits?.filter((split) => !split.excluded) ?? [];
@@ -202,4 +206,10 @@ export function downloadDdsXlsx(context: ExportContext) {
   const bytes = buildSimpleXlsx(ddsTemplateRows(context), "ДДС месяц");
   const buffer = bytes.slice().buffer as ArrayBuffer;
   download(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `ДДС_факт_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+export function downloadGroupedDdsXlsx(sheets: Array<{ name: string; rows: Array<Array<string | number>> }>) {
+  const bytes = buildMultiSheetXlsx(sheets);
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  download(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `ДДС_по_компаниям_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
