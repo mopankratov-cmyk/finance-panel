@@ -15,7 +15,7 @@ interface WarmCallResult {
 
 export function wbDashboardWarmUrl(
   origin: string,
-  endpoint: "funnel-metrics" | "market-niches" | "market-pulse" | "seo" | "sklejki" | "unit",
+  endpoint: "funnel-metrics" | "market-niches" | "market-pulse" | "seo" | "sklejki" | "unit" | "adverts" | "supplies",
   scope: WbDashboardScope,
   subjectId?: number,
 ): string {
@@ -24,6 +24,8 @@ export function wbDashboardWarmUrl(
       : endpoint === "sklejki" ? "/api/sklejki"
     : endpoint === "market-niches" ? "/api/market/niches"
       : endpoint === "market-pulse" ? "/api/market/pulse"
+        : endpoint === "adverts" ? "/api/adverts/list"
+          : endpoint === "supplies" ? "/api/supplies"
         : "/api/unit/table";
   const url = new URL(pathname, origin);
   url.searchParams.set("cabinet", scope.cabinetId || "all");
@@ -72,16 +74,24 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
     seo: WarmCallResult;
     funnelMetrics: WarmCallResult;
     marketNiches: WarmCallResult;
+    adverts: WarmCallResult;
+    supplies: WarmCallResult;
     marketPulse: WarmCallResult & { skipped?: boolean };
   }> = [];
 
   const warm = async (scope: WbDashboardScope) => {
-    const [sklejki, nichesResult, unit, seo, funnelMetrics] = await Promise.all([
+    // «Реклама» и «Поставки» тоже греются: под ними общий снимок месячных
+    // агрегатов (loadCachedAdvertReportRows). Холодный он собирается тяжёлым
+    // RPC и под нагрузкой уходит в statement timeout — пользователь получал
+    // 500 на первом заходе. Прогрев уносит эту сборку в фон крона.
+    const [sklejki, nichesResult, unit, seo, funnelMetrics, adverts, supplies] = await Promise.all([
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "sklejki", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "market-niches", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "unit", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "seo", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "funnel-metrics", scope)),
+      fetchWarmSnapshot(wbDashboardWarmUrl(origin, "adverts", scope)),
+      fetchWarmSnapshot(wbDashboardWarmUrl(origin, "supplies", scope)),
     ]);
     const niches = nichesResult.body && typeof nichesResult.body === "object" && "niches" in nichesResult.body
       ? (nichesResult.body as { niches?: Array<{ id?: unknown }> }).niches
@@ -92,13 +102,16 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
       : { ok: nichesResult.ok, status: nichesResult.status, error: nichesResult.error, skipped: true };
     const result = {
       scope: scope.label,
-      ok: sklejki.ok && pim.ok && unit.ok && seo.ok && funnelMetrics.ok && nichesResult.ok && marketPulse.ok,
+      ok: sklejki.ok && pim.ok && unit.ok && seo.ok && funnelMetrics.ok && nichesResult.ok && marketPulse.ok
+        && adverts.ok && supplies.ok,
       sklejki: { ok: sklejki.ok, status: sklejki.status, error: sklejki.error },
       pim: { ok: pim.ok, status: pim.status, error: pim.error },
       unit: { ok: unit.ok, status: unit.status, error: unit.error },
       seo: { ok: seo.ok, status: seo.status, error: seo.error },
       funnelMetrics: { ok: funnelMetrics.ok, status: funnelMetrics.status, error: funnelMetrics.error },
       marketNiches: { ok: nichesResult.ok, status: nichesResult.status, error: nichesResult.error },
+      adverts: { ok: adverts.ok, status: adverts.status, error: adverts.error },
+      supplies: { ok: supplies.ok, status: supplies.status, error: supplies.error },
       marketPulse: { ok: marketPulse.ok, status: marketPulse.status, error: marketPulse.error, skipped: "skipped" in marketPulse ? marketPulse.skipped : undefined },
     };
     snapshots.push(result);

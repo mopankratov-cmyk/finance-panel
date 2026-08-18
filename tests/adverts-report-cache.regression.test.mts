@@ -48,3 +48,17 @@ test("scoped-запрос и общий кабинет не делят один 
   // включать контур запроса.
   assert.match(route, /advertReportScopeKey\(cabinetId \? allowedNmIds : null\)/);
 });
+
+test("крон греет снимок агрегатов через «Рекламу» и «Поставки»", async () => {
+  // Холодный снимок собирается тяжёлым RPC и под нагрузкой уходит в statement
+  // timeout — на первом заходе пользователь ловил 500. Сборку уносим в крон.
+  const warmup = await read("../lib/wb/dashboardWarmup.ts");
+  assert.match(warmup, /"\/api\/adverts\/list"/);
+  assert.match(warmup, /"\/api\/supplies"/);
+  assert.match(warmup, /wbDashboardWarmUrl\(origin, "adverts", scope\)/);
+  assert.match(warmup, /wbDashboardWarmUrl\(origin, "supplies", scope\)/);
+  // Поставки читают тот же снимок, а не живой RPC.
+  const supplies = await read("../app/api/supplies/route.ts");
+  assert.match(supplies, /loadCachedAdvertReportRows<RpcRow>/);
+  assert.match(supplies, /concurrency: 6/);
+});
