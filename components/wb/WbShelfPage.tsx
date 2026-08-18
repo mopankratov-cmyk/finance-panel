@@ -115,6 +115,10 @@ function SliceChips({ slices }: { slices: ShelfSliceResult[] }) {
 const OUR_COLOR = "#7c3aed";
 const SLICE_COLORS: Record<number, string> = { 3: "#ef4444", 6: "#f97316", 12: "#3b82f6", 30: "#22c55e" };
 const SLICE_ORDER = [3, 6, 12, 30] as const;
+// Вертикальные линии между колонками — те же отступы обязаны быть и в шапке,
+// иначе подписи съедут относительно чисел (в шапке граница прозрачная).
+const SLICE_DIVIDER_CLASS = "sm:border-l sm:border-slate-200 sm:pl-5";
+const SLICE_HEAD_DIVIDER_CLASS = "sm:border-l sm:border-transparent sm:pl-5";
 // Одна сетка на шапку списка и на строки — иначе колонки разъезжаются.
 const SLICE_GRID_CLASS = "grid flex-1 grid-cols-2 items-baseline gap-x-4 gap-y-1.5 sm:flex-none sm:grid-cols-[minmax(104px,auto)_repeat(4,minmax(132px,auto))] sm:gap-x-7";
 const rub = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
@@ -122,12 +126,16 @@ const rub = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽
 // Колонка среза в свёрнутой строке: средняя цена среза и наша дельта к ней.
 // Пустые срезы показывают причину («только свои товары»), а не прочерк.
 function SliceCell({ slice }: { slice: ShelfSliceResult | undefined }) {
-  if (!slice) return <div className="text-right text-[11px] text-slate-300">—</div>;
+  if (!slice) return <div className={`text-right text-[11px] text-slate-300 ${SLICE_DIVIDER_CLASS}`}>—</div>;
   if (slice.avgPrice == null) {
-    return <div className="truncate text-right text-[9px] font-semibold text-amber-600" title={slice.note ?? undefined}>{slice.note ?? "нет данных"}</div>;
+    return (
+      <div className={`truncate text-right text-[10px] font-semibold text-amber-600 ${SLICE_DIVIDER_CLASS}`} title={slice.note ?? undefined}>
+        {slice.note ?? "нет данных"}
+      </div>
+    );
   }
   return (
-    <div className="flex items-baseline justify-end gap-2 whitespace-nowrap">
+    <div className={`flex items-baseline justify-end gap-2 whitespace-nowrap ${SLICE_DIVIDER_CLASS}`}>
       <span className="text-[15px] font-semibold tabular-nums text-slate-700">{price(slice.avgPrice)}</span>
       <span className={`text-[13px] font-bold tabular-nums ${diffTextTone(slice.diffPct)}`}>{slice.diffPct == null ? "—" : pct(slice.diffPct)}</span>
     </div>
@@ -582,9 +590,9 @@ export function WbShelfPage() {
               <div className="min-w-0 flex-1" />
               <div className="flex items-center gap-3">
                 <div className={SLICE_GRID_CLASS}>
-                  <div className="border-r border-transparent pr-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">наша</div>
+                  <div className="text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">наша</div>
                   {SLICE_ORDER.map((n) => (
-                    <div key={n} className="flex items-center justify-end gap-1.5 whitespace-nowrap text-[12px] font-semibold">
+                    <div key={n} className={`flex items-center justify-end gap-1.5 whitespace-nowrap text-[12px] font-semibold ${SLICE_HEAD_DIVIDER_CLASS}`}>
                       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: SLICE_COLORS[n] }} />
                       <span style={{ color: SLICE_COLORS[n] }}>Топ-{n}</span>
                       <span className="text-[11px] font-medium text-slate-400">(ср. цена)</span>
@@ -621,7 +629,7 @@ export function WbShelfPage() {
                     <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
                       {latest ? (
                         <div className={SLICE_GRID_CLASS}>
-                          <div className="flex items-baseline justify-end gap-2 border-r border-slate-200 pr-4">
+                          <div className="flex items-baseline justify-end gap-2">
                             <PriceSparkline history={history} />
                             <span className="text-[17px] font-bold tabular-nums text-slate-800">{price(latest.ourPrice)}</span>
                           </div>
