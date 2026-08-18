@@ -1021,19 +1021,6 @@ export function WbRnpPage() {
     }
     return map;
   }, [journal]);
-  const anomalyByNm = useMemo(() => {
-    const map = new Map<number, RnpAnomaly[]>();
-    // Пороги откалиброваны по ДНЕВНЫМ колонкам — в недельной гранулярности
-    // детектор молчит целиком (и чип выключен, и значки на карточках).
-    if (granularity === "week") return map;
-    // Пороги по каждой метрике + дефицит остатка + серии падения подряд.
-    const thresholds = scaleAnomalyThresholds(anomalyThreshold);
-    for (const sku of activeData?.skus ?? []) {
-      const anomalies = detectSkuSignals(sku, previousSkuByNm.get(sku.nm), thresholds, anomalyThreshold);
-      if (anomalies.length) map.set(sku.nm, anomalies);
-    }
-    return map;
-  }, [activeData?.skus, anomalyThreshold, granularity, previousSkuByNm]);
 
   const brands = useMemo(
     () => rnpBrandOptions(activeData?.skus ?? []),
@@ -1065,6 +1052,25 @@ export function WbRnpPage() {
     () => facetSkus.filter((sku) => rnpLossReasons(sku.metrics).length > 0).length,
     [facetSkus],
   );
+  // Ядро оборота считаем по текущему срезу: выбран бренд — сигналы про него.
+  const revenueCore = useMemo(() => selectRevenueCore(facetSkus), [facetSkus]);
+  const anomalyByNm = useMemo(() => {
+    const map = new Map<number, RnpAnomaly[]>();
+    // Пороги откалиброваны по ДНЕВНЫМ колонкам — в недельной гранулярности
+    // детектор молчит целиком (и чип выключен, и значки на карточках).
+    if (granularity === "week") return map;
+    // Пороги по каждой метрике + дефицит остатка + серии падения подряд.
+    // Считаем ТОЛЬКО по ядру оборота: у живого кабинета недельное движение
+    // больше порога есть почти у каждого SKU (у СЛОЁНО было 315 «аномалий»
+    // из 351 артикула), и хвост с единичными заказами топит сигнал.
+    const thresholds = scaleAnomalyThresholds(anomalyThreshold);
+    for (const sku of facetSkus) {
+      if (!revenueCore.has(sku.nm)) continue;
+      const anomalies = detectSkuSignals(sku, previousSkuByNm.get(sku.nm), thresholds, anomalyThreshold);
+      if (anomalies.length) map.set(sku.nm, anomalies);
+    }
+    return map;
+  }, [anomalyThreshold, facetSkus, granularity, previousSkuByNm, revenueCore]);
   const filteredSkus = useMemo(() => facetSkus
     .filter((sku) => matchesArticleList(sku, deferredArticleQuery))
     .filter((sku) => !activeTagIds.length || (tagsByNm.get(sku.nm) ?? []).some((tagId) => activeTagIds.includes(tagId)))

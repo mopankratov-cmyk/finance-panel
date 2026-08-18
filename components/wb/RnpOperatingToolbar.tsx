@@ -322,6 +322,8 @@ export function RnpOperatingToolbar(props: Props) {
               <b className="text-slate-800">Как считаются данные.</b> Часовые снимки WB; остатки — актуальные WB.
               «Без сгоревших» скрывает артикулы без заказов и без остатка за период.
               «Потери» — минусовая прибыль, реклама без заказов или обнулившийся остаток при спросе.
+              «Аномалии» ищутся среди артикулов, дающих 80% оборота среза: в хвосте с единичными
+              заказами почти любое недельное движение превышает порог и топит сигнал.
               В гранулярности «Неделя» суммы складываются по дням, а проценты — среднее по дням с данными.
               Окно оборачиваемости — {props.turnoverWindowDays} дн.
             </div>
@@ -348,7 +350,7 @@ export function RnpOperatingToolbar(props: Props) {
             active={props.anomalyMode !== "off"}
             onClick={() => props.onAnomalyModeChange(props.anomalyMode === "off" ? "all" : "off")}
             disabled={props.granularity === "week"}
-            title={props.granularity === "week" ? "Аномалии считаются по дням — переключитесь на «День»" : "Резкие отклонения к прошлому периоду"}
+            title={props.granularity === "week" ? "Аномалии считаются по дням — переключитесь на «День»" : "Резкие отклонения к прошлому периоду среди артикулов, дающих 80% оборота"}
             icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
             label="Аномалии"
             badge={props.anomalyCount}

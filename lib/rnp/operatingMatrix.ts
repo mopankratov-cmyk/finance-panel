@@ -889,3 +889,48 @@ export function rnpLossReasons(metrics: OperationalMetricLike[]): string[] {
   if (stock != null && stock <= 0 && orders != null && orders > 0) reasons.push("остаток кончился при живом спросе");
   return reasons;
 }
+
+// ===== Ядро оборота: на чём детектор аномалий вообще имеет смысл =====
+
+export const REVENUE_CORE_SHARE = 0.8;
+
+interface RevenueCoreSku {
+  nm: number;
+  metrics: Array<{ field: string; total: number | null }>;
+}
+
+/**
+ * Артикулы, которые дают заданную долю оборота (по умолчанию 80%).
+ *
+ * Зачем: при живом кабинете недельные колебания больше 30% есть почти у
+ * каждого SKU (у СЛОЁНО это 315 из 351 — весь каталог «аномален», смотреть
+ * некуда). Хвост из товаров с единичными заказами шумит громче ядра, поэтому
+ * сигналы считаем только там, где деньги.
+ *
+ * Пограничные случаи: артикул, пересекающий порог доли, входит в ядро (иначе
+ * при единственном SKU со 100% оборота ядро осталось бы пустым); если оборот
+ * нулевой или неизвестен — ядром считаем весь список, чтобы детектор молчал
+ * из-за отсутствия данных, а не притворялся, будто аномалий нет.
+ */
+export function selectRevenueCore(
+  skus: readonly RevenueCoreSku[],
+  shareTarget = REVENUE_CORE_SHARE,
+): Set<number> {
+  const revenueOf = (sku: RevenueCoreSku) => {
+    const metric = sku.metrics.find((item) => item.field === "orders_sum");
+    const value = metric?.total;
+    return value != null && Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const total = skus.reduce((sum, sku) => sum + revenueOf(sku), 0);
+  if (total <= 0) return new Set(skus.map((sku) => sku.nm));
+
+  const ranked = [...skus].sort((left, right) => revenueOf(right) - revenueOf(left));
+  const core = new Set<number>();
+  let accumulated = 0;
+  for (const sku of ranked) {
+    if (accumulated / total >= shareTarget) break;
+    core.add(sku.nm);
+    accumulated += revenueOf(sku);
+  }
+  return core;
+}
