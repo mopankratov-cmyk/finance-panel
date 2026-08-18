@@ -579,21 +579,39 @@ export function RnpOperatingToolbar(props: Props) {
           </button>
         </div>
 
-        <FilterChip
-          active={props.showDeltas}
-          onClick={() => props.onShowDeltasChange(!props.showDeltas)}
-          label="Дельты"
-          badge={props.showDeltas && props.deltaMode === "percent" ? "%" : null}
-        />
-        <button
-          type="button"
-          disabled={!props.showDeltas}
-          onClick={() => props.onDeltaModeChange(props.deltaMode === "percent" ? "absolute" : "percent")}
-          className={`${CONTROL_CLASS} disabled:opacity-40 ${props.deltaMode === "absolute" && props.showDeltas ? "border-violet-300 bg-violet-50 text-violet-700" : ""}`}
-          title="Формат дельт: проценты или ± цифры"
-        >
-          ± цифры
-        </button>
+        {/* Одно состояние — один контрол: «выкл / % / ± цифры». Раньше режим был
+            размазан по чипу со скачущим значком и отдельной кнопке — неочевидно. */}
+        <div className="inline-flex h-9 items-center rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Дельты к прошлому периоду">
+          <span className="px-2 text-[10px] font-semibold text-slate-500">Дельты</span>
+          {([
+            ["off", "выкл"],
+            ["percent", "%"],
+            ["absolute", "± цифры"],
+          ] as const).map(([value, label]) => {
+            const active = !props.showDeltas ? value === "off" : props.deltaMode === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  if (value === "off") {
+                    props.onShowDeltasChange(false);
+                    return;
+                  }
+                  props.onShowDeltasChange(true);
+                  props.onDeltaModeChange(value);
+                }}
+                className={`min-w-9 rounded-md px-2.5 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                  active ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+                style={{ height: "30px" }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
         <label className="relative inline-flex items-center">
           <span className="pointer-events-none absolute left-3 text-[11px] font-medium text-slate-400">Сортировка:</span>
