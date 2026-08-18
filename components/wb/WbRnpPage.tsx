@@ -642,7 +642,11 @@ function toneClass(metric: Metric, value: number | null) {
 }
 
 export function WbRnpPage() {
-  const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet, canWrite, setCabinetId } = useWbCabinet();
+  const { cabinets, cabinetId, activeCabinet, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet, canWrite, setCabinetId, user } = useWbCabinet();
+  // Внешний селлер ведёт СВОЙ кабинет сам: порядок артикулов, план продаж,
+  // теги и журнал — рабочие инструменты, а не владельческие настройки.
+  // Общий canWrite для него false (он про доступ к чужим контурам).
+  const canManage = canWrite || (user?.role === "seller" && hasExactCabinet);
   const [range, setRange] = useState<DateRange>(() => rangeFor("week"));
   // Шапка в духе «Рука на пульсе»: гранулярность колонок и операционные фильтры.
   const [granularity, setGranularity] = useState<RnpGranularity>("day");
@@ -1317,7 +1321,7 @@ export function WbRnpPage() {
   };
 
   const postOperation = async <T extends RnpOperationsPayload>(body: Record<string, unknown>) => {
-    if (!canWrite || cabinetId === "all") return null;
+    if (!canManage || cabinetId === "all") return null;
     setOperationsBusy(true);
     setOperationsMessage(null);
     try {
@@ -1454,7 +1458,7 @@ export function WbRnpPage() {
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
-            disabled={!hasExactCabinet || !canWrite}
+            disabled={!hasExactCabinet || !canManage}
             onClick={() => {
               setOrderDraft(orderNmIds.length ? orderNmIds.join("\n") : sortedSkus.map((sku) => sku.nm).join("\n"));
               setOrderError(null);
@@ -1467,9 +1471,9 @@ export function WbRnpPage() {
           </button>
           <button
             type="button"
-            disabled={!canWrite}
+            disabled={!canManage}
             onClick={() => setPlanning((value) => !value)}
-            title={!canWrite ? "Для планирования выберите один кабинет" : "Редактировать план внутри таблицы"}
+            title={!canManage ? "Для планирования выберите один кабинет" : "Редактировать план внутри таблицы"}
             className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
               planning ? "border-violet-600 bg-violet-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:text-violet-700"
             }`}
@@ -1617,7 +1621,7 @@ export function WbRnpPage() {
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {planMessage}
         </div>
       )}
-      {operationsMessage && canWrite && (
+      {operationsMessage && canManage && (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {operationsMessage}
         </div>
@@ -1958,7 +1962,7 @@ export function WbRnpPage() {
                   anomalies={anomalyByNm.get(sku.nm) ?? []}
                   selected={selectedOperationNms.includes(sku.nm)}
                   selectable={operationsAvailable}
-                  canWrite={canWrite}
+                  canWrite={canManage}
                   planning={planning}
                   showDeltas={showDeltas}
                   deltaMode={deltaMode}
@@ -2013,7 +2017,7 @@ export function WbRnpPage() {
                       <p className="mt-0.5 truncate text-[10px] text-slate-400">{sku.name}</p>
                       <p className="mt-1 text-[9px] text-slate-400">WB {sku.nm}</p>
                     </div>
-                    {canWrite ? (
+                    {canManage ? (
                       <button type="button" onClick={() => setOperationsSkuNm(sku.nm)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-400 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700" aria-label={`Теги и журнал ${sku.art}`}>
                         <BookOpen className="h-4 w-4" />
                       </button>

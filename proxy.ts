@@ -81,7 +81,12 @@ function isSellerApiAllowed(pathname: string, method: string): boolean {
   // «Полки» открыты селлеру целиком: он сам ведёт конкурентов своего кабинета.
   // Tenant-граница — hasCabinetAccess в роутах: чужой кабинет и агрегат all → 403.
   if (pathname === "/api/shelf/watch") return ["GET", "POST", "PATCH", "DELETE", "PUT"].includes(method);
-  if (pathname === "/api/shelf/table" || pathname === "/api/sku-order") return method === "GET";
+  if (pathname === "/api/shelf/table") return method === "GET";
+  // Свой порядок артикулов, план продаж и операционные пометки (теги/журнал) —
+  // рабочие инструменты владельца кабинета, а не владельческие настройки:
+  // селлер ведёт ими СВОЙ кабинет. Границу держит hasCabinetAccess в роутах.
+  if (pathname === "/api/sku-order") return method === "GET" || method === "PUT";
+  if (/^\/api\/rnp\/[^/]+\/(plan|operations)$/.test(pathname)) return method === "GET" || method === "POST";
   if (method !== "GET") return false;
   return SELLER_READ_API_EXACT.includes(pathname as (typeof SELLER_READ_API_EXACT)[number])
     || SELLER_READ_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));

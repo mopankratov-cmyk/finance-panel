@@ -11,7 +11,9 @@ export const dynamic = "force-dynamic";
 // всеми экранами со списками SKU. Порядок — представление, не деньги, поэтому
 // править может и менеджер.
 const READ_ROLES = ["director", "finance", "manager", "seller"] as const;
-const WRITE_ROLES = ["director", "finance", "manager"] as const;
+// Порядок выдачи — представление своего кабинета, а не владельческая настройка:
+// селлер ведёт его сам (tenant-границу держит hasCabinetAccess).
+const WRITE_ROLES = ["director", "finance", "manager", "seller"] as const;
 
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession([...READ_ROLES]);

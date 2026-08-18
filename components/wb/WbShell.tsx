@@ -251,7 +251,8 @@ export function WbShell({ children }: { children: React.ReactNode }) {
           <span>Управление Wildberries</span>
         </div>
         <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
-          {user?.role === "seller" ? <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500 lg:inline">Только просмотр</span> : null}
+          {/* Селлер ведёт свой кабинет сам (порядок артикулов, план, теги,
+              журнал, реестр «Полок») — метка «только просмотр» врала бы. */}
           <WbCabinetSwitcher />
           <div className="hidden h-5 w-px bg-slate-200 sm:block" />
           <div className="hidden min-w-0 items-center gap-2 sm:flex">

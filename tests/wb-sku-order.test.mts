@@ -48,3 +48,21 @@ test("порядок настраивается в РНП и применяет�
   assert.match(route, /requireApiSession/);
   assert.match(route, /hasCabinetAccess/);
 });
+
+test("селлер управляет своим кабинетом: порядок, план, теги и журнал", async () => {
+  const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
+  const proxy = await read("../proxy.ts");
+  // Прокси признаёт только сессию/секрет: без этих строк селлер ловил 403,
+  // не доходя до проверки кабинета в самих роутах.
+  assert.match(proxy, /pathname === "\/api\/sku-order"\) return method === "GET" \|\| method === "PUT"/);
+  assert.match(proxy, /\\\/api\\\/rnp\\\/\[\^\/\]\+\\\/\(plan\|operations\)/);
+  const order = await read("../app/api/sku-order/route.ts");
+  assert.match(order, /WRITE_ROLES = \["director", "finance", "manager", "seller"\]/);
+  // Страница открывает управление селлеру только в конкретном кабинете.
+  const page = await read("../components/wb/WbRnpPage.tsx");
+  assert.match(page, /canManage = canWrite \|\| \(user\?\.role === "seller" && hasExactCabinet\)/);
+  assert.doesNotMatch(page, /disabled=\{!hasExactCabinet \|\| !canWrite\}/);
+  // Метки «Только просмотр» у селлера больше нет — она врала бы.
+  const shell = await read("../components/wb/WbShell.tsx");
+  assert.doesNotMatch(shell, /Только просмотр/);
+});
