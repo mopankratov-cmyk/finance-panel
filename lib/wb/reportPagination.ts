@@ -80,6 +80,7 @@ const LEGACY_FIELD_ALIASES = {
   additionalPayment: "additional_payment",
   paidAcceptance: "acceptance",
   acquiringFee: "acquiring_fee",
+  cashbackDiscount: "cashback_discount",
   bonusTypeName: "bonus_type_name",
 } as const;
 

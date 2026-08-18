@@ -5,10 +5,9 @@ import { OPIU_WB_CABINET_ID } from "./constants";
 
 export type OpiuReportDateMode = "sale" | "report";
 
-// TODO(loyalty_comp): добавить "cashback_discount" в этот список, когда колонка
-// появится в wb_report_rows (см. docs/codemap/request-wb-sales-fields.md) и в
-// REPORT_FIELDS + reportRowForStorage в syncReportRows.ts. metrics.ts уже готов
-// читать row.cashback_discount — больше ничего менять не нужно.
+// cashback_discount (компенсация скидки по программе лояльности) читается наравне
+// с остальными деньгами отчёта: колонка добавлена миграцией 202608200002, синк её
+// запрашивает у WB и сохраняет, metrics.ts агрегирует в loyaltyCompensation.
 const REPORT_COLUMNS = [
   "rr_dt",
   "sale_dt",
@@ -31,6 +30,7 @@ const REPORT_COLUMNS = [
   "storage_fee",
   "acceptance",
   "acquiring_fee",
+  "cashback_discount",
   "bonus_type_name",
   "realizationreport_id",
   "rrd_id",

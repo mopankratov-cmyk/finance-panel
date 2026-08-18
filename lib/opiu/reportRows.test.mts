@@ -99,6 +99,7 @@ test("WB finance row is mapped to exact persisted money fields", () => {
     storage_fee: 4.4,
     acceptance: 5.5,
     acquiring_fee: 6.6,
+    cashback_discount: null,
     bonus_type_name: "Тест",
     realizationreport_id: 999,
     rrd_id: 777,

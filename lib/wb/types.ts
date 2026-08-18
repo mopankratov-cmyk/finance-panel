@@ -36,6 +36,8 @@ export interface WbReportRow {
   additional_payment?: number;
   acceptance?: number;
   acquiring_fee?: number;
+  /** Компенсация скидки по программе лояльности (WB отдаёт как cashbackDiscount). */
+  cashback_discount?: number;
   [key: string]: unknown;
 }
 

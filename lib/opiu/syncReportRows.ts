@@ -29,6 +29,9 @@ const REPORT_FIELDS = [
   "paidStorage",
   "paidAcceptance",
   "acquiringFee",
+  // Компенсация скидки по программе лояльности: WB отдаёт её только если
+  // поле явно запрошено, иначе строка приходит без него и метрика ОПиУ = 0.
+  "cashbackDiscount",
   "bonusTypeName",
 ];
 
@@ -105,6 +108,7 @@ export function reportRowForStorage(
     storage_fee: finiteNumber(row.storage_fee),
     acceptance: finiteNumber(row.acceptance),
     acquiring_fee: finiteNumber(row.acquiring_fee),
+    cashback_discount: finiteNumber(row.cashback_discount),
     bonus_type_name: text(row.bonus_type_name),
     realizationreport_id: safeInteger(row.realizationreport_id),
     rrd_id: rrdId,
