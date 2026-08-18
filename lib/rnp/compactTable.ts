@@ -52,6 +52,12 @@ export function compactRnpTable<T extends TableLike>(table: T): T & { metric_dic
         // Своё значение оставляем: у артикула бывает свой note (причина пробела).
         if (compact[field] === shared[field]) delete compact[field];
       }
+      // Пустые поля не везём: у метрики артикула их до семи штук (forecast и
+      // его детали, покрытие), и на 351 SKU × 64 метрики это лишние мегабайты.
+      // Весь код читает их через `!= null`, поэтому отсутствие = прежний null.
+      for (const [field, value] of Object.entries(compact)) {
+        if (value === null && field !== "daily") delete compact[field];
+      }
       return compact as unknown as MetricOf;
     }),
   }));

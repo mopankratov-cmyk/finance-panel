@@ -36,9 +36,23 @@ const table = {
   ],
 };
 
-test("разжатое равно исходному — форма не теряется", () => {
+test("разжатое равно исходному по значимым данным", () => {
   const restored = expandRnpTable(compactRnpTable(structuredClone(table)));
-  assert.deepEqual(restored.skus, table.skus);
+  // Пустые (null) поля по сети не едут: весь код читает их через `!= null`,
+  // поэтому отсутствие ключа и null — одно и то же состояние «нет значения».
+  const meaningful = (value: unknown): unknown => JSON.parse(JSON.stringify(value, (key, v) => (v === null && key !== "0" ? undefined : v)));
+  assert.deepEqual(meaningful(restored.skus), meaningful(table.skus));
+  // Значения и подписи на месте.
+  assert.equal(restored.skus[0].metrics[0].label, "Метрика orders_count");
+  assert.deepEqual(restored.skus[0].metrics[0].daily, [1, null, 3]);
+  assert.equal(restored.skus[0].metrics[0].total, 4);
+});
+
+test("дневной ряд с пропусками не теряет null-дни", () => {
+  const compact = compactRnpTable(structuredClone(table));
+  assert.deepEqual(compact.skus[0].metrics[0].daily, [1, null, 3]);
+  const restored = expandRnpTable(compact);
+  assert.deepEqual(restored.skus[0].metrics[0].daily, [1, null, 3]);
 });
 
 test("общие подписи уезжают из артикулов в словарь", () => {
