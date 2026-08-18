@@ -26,6 +26,9 @@ export interface ProductCostRow {
 export interface WeekRawMetrics {
   orders: number;
   ordersRub: number;
+  /** Выручка без СПП — retail_price_withdisc_rub (до скидки постоянного покупателя). */
+  revenueWithoutSpp: number;
+  /** Выручка с учётом СПП — фактическая сумма продажи (retail_amount). */
   revenue: number;
   forPay: number;
   cogs: number;
@@ -207,6 +210,11 @@ function revenueRub(row: WbReportRow): number {
   return num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
 }
 
+function revenueWithoutSppRub(row: WbReportRow): number {
+  if (!isSale(row)) return 0;
+  return num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
+}
+
 /** Суммируем со знаком: возвраты уменьшают удержания */
 function expenseRub(value: unknown): number {
   return num(value);
@@ -291,6 +299,7 @@ export function aggregateWeek(
   return {
     orders: weekOrders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
     ordersRub: weekOrders.reduce((s, o) => s + orderRub(o), 0),
+    revenueWithoutSpp: saleRows.reduce((s, r) => s + revenueWithoutSppRub(r), 0),
     revenue: saleRows.reduce((s, r) => s + revenueRub(r), 0),
     forPay: weekSales.reduce((s, r) => s + num(r.ppvz_for_pay), 0),
     cogs: cogsForSales(weekSales, costLookup),
@@ -321,6 +330,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
     (acc, w) => ({
       orders: acc.orders + w.orders,
       ordersRub: acc.ordersRub + w.ordersRub,
+      revenueWithoutSpp: acc.revenueWithoutSpp + w.revenueWithoutSpp,
       revenue: acc.revenue + w.revenue,
       forPay: acc.forPay + w.forPay,
       cogs: acc.cogs + w.cogs,
@@ -334,6 +344,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
     {
       orders: 0,
       ordersRub: 0,
+      revenueWithoutSpp: 0,
       revenue: 0,
       forPay: 0,
       cogs: 0,
