@@ -6,6 +6,8 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
 
 const {
   allocateWbPayoutSchedule,
+  deriveWbConfirmedPayoutSchedule,
+  deriveWbForecastReceiptDates,
   deriveWbLegacySnapshotPayout,
   deriveWbPayoutSummary,
 } = await import("./forecast");
@@ -16,17 +18,33 @@ test("WB payout keeps report accrual separate from unavailable bank fact", () =>
   assert.deepEqual(summary, {
     reportAccruedPayout: 400,
     actualPayout: null,
-    remainingPayout: 1_000,
+    remainingPayout: 600,
   });
   assert.deepEqual(deriveWbLegacySnapshotPayout(summary), {
     actual_payout: 0,
-    remaining_payout: 1_000,
+    remaining_payout: 600,
   });
 });
 
 test("WB payout never exposes an invalid or negative forecast remainder", () => {
   assert.equal(deriveWbPayoutSummary(-1, 400).remainingPayout, 0);
   assert.equal(deriveWbPayoutSummary(Number.NaN, 400).remainingPayout, 0);
+});
+
+test("WB reports keep separate stable identities and replace forecast remainder", () => {
+  const rows = [
+    { realizationreport_id: 101, rr_dt: "2026-08-10", ppvz_for_pay: 100 },
+    { realizationreport_id: 101, rr_dt: "2026-08-11", ppvz_for_pay: 50, delivery_rub: 10 },
+    { realizationreport_id: 102, rr_dt: "2026-08-11", ppvz_for_pay: 25 },
+  ];
+  const schedule = deriveWbConfirmedPayoutSchedule(rows);
+  assert.deepEqual(schedule.map((row) => [row.id, row.amount]), [["101", 140], ["102", 25]]);
+  assert.equal(schedule[0].date, "2026-08-20");
+  assert.equal(deriveWbPayoutSummary(500, 165).remainingPayout, 335);
+});
+
+test("WB forecast dates include conservative withdrawal and bank delay", () => {
+  assert.deepEqual(deriveWbForecastReceiptDates(2026, 8, [7, 14]), ["2026-09-01", "2026-09-08"]);
 });
 
 test("WB payout schedule distributes whole cents across dates in input order", () => {

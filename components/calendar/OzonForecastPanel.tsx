@@ -275,7 +275,7 @@ export function OzonForecastPanel({
                   try {
                     const result = await publishForecastToCalendar(
                       { marketplace: "ozon", cabinetId: data.cabinetId, companyId: data.companyId, accountId, year, month: month + 1 },
-                      data.payoutSchedule.map((row, index) => ({ key: row.id || `bucket-${index + 1}`, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined })),
+                      data.payoutSchedule.map((row) => ({ key: row.id || `forecast:${row.date}`, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined })),
                     );
                     alert(`Календарь обновлён: ${result.published} строк.`);
                     window.location.reload();

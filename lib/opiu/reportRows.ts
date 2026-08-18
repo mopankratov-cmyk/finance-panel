@@ -37,6 +37,7 @@ const REPORT_COLUMNS = [
 ].join(",");
 
 const FORECAST_REPORT_COLUMNS = [
+  "rr_dt",
   "sale_dt",
   "sa_name",
   "doc_type_name",
@@ -53,6 +54,7 @@ const FORECAST_REPORT_COLUMNS = [
   "storage_fee",
   "acceptance",
   "acquiring_fee",
+  "realizationreport_id",
   "rrd_id",
 ].join(",");
 

@@ -1,4 +1,5 @@
 import type { ForecastPublishRow, ForecastPublishScope } from "@/lib/opiu/calendarForecastPublish";
+import type { Payment } from "@/lib/types";
 
 export async function publishForecastToCalendar(scope: ForecastPublishScope, rows: ForecastPublishRow[]) {
   const response = await fetch("/api/opiu/calendar-publish", {
@@ -9,4 +10,21 @@ export async function publishForecastToCalendar(scope: ForecastPublishScope, row
   const result = await response.json().catch(() => null) as { error?: string; published?: number; cancelled?: number } | null;
   if (!response.ok) throw new Error(result?.error || "Не удалось перенести прогноз в календарь");
   return { published: Number(result?.published ?? 0), cancelled: Number(result?.cancelled ?? 0) };
+}
+
+export async function persistCalendarFactLink(
+  plannedId: string,
+  factId: string,
+  mode: "automatic" | "confirmed",
+): Promise<Payment> {
+  const response = await fetch("/api/opiu/calendar-publish", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plannedId, factId, mode }),
+  });
+  const result = await response.json().catch(() => null) as { error?: string; payment?: Payment } | null;
+  if (!response.ok || !result?.payment) {
+    throw new Error(result?.error || "Не удалось сохранить связь плана с фактическим платежом");
+  }
+  return result.payment;
 }

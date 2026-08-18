@@ -6,7 +6,8 @@ import { BulkPaymentModal } from "./BulkPaymentModal";
 import { CalendarAgenda } from "./CalendarAgenda";
 import { CalendarDayCell } from "./CalendarDayCell";
 import { CashFlowSparkline } from "./CashFlowSparkline";
-import { calendarPaymentsWithoutMatchedPlans, findPlanFactMatches, isCalendarCashFlow, isMarketplaceOrLoanIncome, withCalendarFactLink } from "./calendarPlan";
+import { calendarPaymentsWithoutMatchedPlans, findPlanFactMatches, isCalendarCashFlow, isMarketplaceOrLoanIncome } from "./calendarPlan";
+import { persistCalendarFactLink } from "./forecastPublication";
 import { DayDetailPanel } from "./DayDetailPanel";
 import { SalesForecastPanel } from "./SalesForecastPanel";
 import { OzonForecastPanel } from "./OzonForecastPanel";
@@ -189,11 +190,23 @@ export function CalendarPage() {
   }, [allPlanFactMatching, year, month]);
   const planFactMatches = planFactMatching.matched;
   const planFactReview = planFactMatching.review;
+  const factLinkRequests = useRef(new Set<string>());
+  const [factLinkError, setFactLinkError] = useState<string | null>(null);
   useEffect(() => {
     for (const match of allPlanFactMatching.matched) {
-      if (match.source === "automatic") {
-        dispatch({ type: "UPDATE_PAYMENT", payload: withCalendarFactLink(match.planned, match.fact.id) });
-      }
+      if (match.source !== "automatic") continue;
+      const requestKey = `${match.planned.id}:${match.fact.id}`;
+      if (factLinkRequests.current.has(requestKey)) continue;
+      factLinkRequests.current.add(requestKey);
+      void persistCalendarFactLink(match.planned.id, match.fact.id, "automatic")
+        .then((payment) => {
+          dispatch({ type: "UPDATE_PAYMENT", payload: payment });
+          setFactLinkError(null);
+        })
+        .catch((error: unknown) => {
+          factLinkRequests.current.delete(requestKey);
+          setFactLinkError(error instanceof Error ? error.message : "Не удалось отметить поступление фактическим");
+        });
     }
   }, [allPlanFactMatching.matched, dispatch]);
   const planFactPeriod = useMemo(() => {
@@ -304,8 +317,14 @@ export function CalendarPage() {
     void updatePaymentCompany(payment.id, companyId);
   };
 
-  const confirmPlanFactMatch = (planned: Payment, fact: Payment) => {
-    dispatch({ type: "UPDATE_PAYMENT", payload: withCalendarFactLink(planned, fact.id) });
+  const confirmPlanFactMatch = async (planned: Payment, fact: Payment) => {
+    try {
+      const payment = await persistCalendarFactLink(planned.id, fact.id, "confirmed");
+      dispatch({ type: "UPDATE_PAYMENT", payload: payment });
+      setFactLinkError(null);
+    } catch (error) {
+      setFactLinkError(error instanceof Error ? error.message : "Не удалось подтвердить совпадение");
+    }
   };
 
   return (
@@ -393,12 +412,18 @@ export function CalendarPage() {
                     <div><span className="block text-xs text-slate-500">Факт</span><b>{formatDate(match.fact.date)} · {formatMoney(match.fact.amount)}</b></div>
                     <div className="sm:col-span-2"><span className="block text-xs text-slate-500">Платёж</span><span className="break-words">{match.fact.name || match.fact.counterparty}</span></div>
                   </div>
-                  <button onClick={() => confirmPlanFactMatch(match.planned, match.fact)} className="min-h-11 shrink-0 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">Подтвердить совпадение</button>
+                  <button onClick={() => void confirmPlanFactMatch(match.planned, match.fact)} className="min-h-11 shrink-0 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">Подтвердить совпадение</button>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {factLinkError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {factLinkError}
+        </div>
       )}
 
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:flex-row lg:items-center lg:justify-between">

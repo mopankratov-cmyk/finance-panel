@@ -196,81 +196,6 @@ test("Ozon forecast route is an authenticated read-only GET with fail-visible fi
   assert.doesNotMatch(source, /export async function (?:POST|PUT|PATCH|DELETE)\(/);
 });
 
-test.skip("obsolete read-only forecast panel contract", () => {
-  const ozonPanel = readFileSync(
-    new URL("../../components/calendar/OzonForecastPanel.tsx", import.meta.url),
-    "utf8",
-  );
-  const wbPanel = readFileSync(
-    new URL("../../components/calendar/SalesForecastPanel.tsx", import.meta.url),
-    "utf8",
-  );
-  const calendarPage = readFileSync(
-    new URL("../../components/calendar/CalendarPage.tsx", import.meta.url),
-    "utf8",
-  );
-  const policy = readFileSync(
-    new URL("./ozonForecastPolicy.ts", import.meta.url),
-    "utf8",
-  );
-  const forbidden = /onAddPayment|onUpdatePayment|savePaymentWithCompany|updatePaymentCompany|calendarWrites|CalendarPlus/;
-
-  assert.match(ozonPanel, /Только просмотр: ДДС и календарь не изменяются/);
-  assert.match(ozonPanel, /result\.cabinetId === requestedCabinetId/);
-  assert.match(ozonPanel, /data\?\.companyName \?\? "Определяется по кабинету"/);
-  assert.doesNotMatch(ozonPanel, /query\.set\("company"/);
-  assert.doesNotMatch(ozonPanel, /setCompanyId|requestedCompanyId/);
-  assert.match(ozonPanel, /Ответ API не соответствует выбранному кабинету или компании/);
-  assert.match(ozonPanel, /actualDataStatus === "degraded"/);
-  assert.match(ozonPanel, /actualDataStatus === "not_started"/);
-  assert.match(ozonPanel, /value=\{actualMetricsUnavailable \? "—"/);
-  assert.match(ozonPanel, /forecastDataStatus === "degraded"/);
-  assert.match(
-    ozonPanel,
-    /reconciliationDataStatus === "degraded"\s*&&\s*data\.reconciliationQueue\.length > 0/,
-  );
-  assert.doesNotMatch(ozonPanel, /reportDataStatus === "not_selected"/);
-  assert.match(ozonPanel, /formatNullableMoney/);
-  assert.match(ozonPanel, /const controller = new AbortController\(\)/);
-  assert.match(ozonPanel, /signal:\s*controller\.signal/);
-  assert.match(ozonPanel, /controller\.abort\(\)/);
-  assert.match(ozonPanel, /requestError instanceof DOMException[\s\S]*?requestError\.name === "AbortError"/);
-  assert.match(
-    ozonPanel,
-    /Ответ API не соответствует[\s\S]*?setLoading\(false\)/,
-  );
-  assert.doesNotMatch(ozonPanel, forbidden);
-  assert.doesNotMatch(ozonPanel, /<input[^>]+type=["'](?:date|number)["']/);
-  assert.doesNotMatch(wbPanel, /onAddPayment|Payment|Перенести прогноз в платёжный календарь/);
-  assert.match(wbPanel, /Только просмотр/);
-  assert.match(
-    calendarPage,
-    /<SalesForecastPanel[\s\S]*?year=\{year\}[\s\S]*?month=\{month\}[\s\S]*?\/>/,
-  );
-  assert.match(
-    calendarPage,
-    /<OzonForecastPanel[\s\S]*?year=\{year\}[\s\S]*?month=\{month\}[\s\S]*?\/>/,
-  );
-  assert.doesNotMatch(
-    calendarPage.match(/<SalesForecastPanel[\s\S]*?\/>/)?.[0] ?? "",
-    /accounts|onAddPayment/,
-  );
-  assert.doesNotMatch(
-    calendarPage.match(/<OzonForecastPanel[\s\S]*?\/>/)?.[0] ?? "",
-    /payments|accounts|companyByPayment|onAdd|onUpdate/,
-  );
-  assert.doesNotMatch(policy, /\.(?:insert|update|upsert|delete)\s*\(/);
-  assert.match(policy, /\.select\(/);
-  assert.match(policy, /\.eq\("account_id", accountId\)/);
-  assert.match(policy, /\.eq\("status", "done"\)/);
-  assert.match(policy, /\.gt\("amount", 0\)/);
-  assert.match(policy, /\.gte\("date", boundedFrom\)/);
-  assert.match(policy, /\.lte\("date", boundedTo\)/);
-  assert.match(policy, /\.order\("date"/);
-  assert.match(policy, /\.order\("id"/);
-  assert.match(policy, /\.range\(/);
-});
-
 test("forecast publication is owner-approved and performed by one guarded upsert", () => {
   const ozonPanel = readFileSync(new URL("../../components/calendar/OzonForecastPanel.tsx", import.meta.url), "utf8");
   const wbPanel = readFileSync(new URL("../../components/calendar/SalesForecastPanel.tsx", import.meta.url), "utf8");
@@ -281,6 +206,22 @@ test("forecast publication is owner-approved and performed by one guarded upsert
   assert.match(wbPanel, /publishForecastToCalendar/);
   assert.match(publishRoute, /requireApiSession\(\["director", "finance"\]\)/);
   assert.match(publishRoute, /body\?\.approved !== true/);
+  assert.match(publishRoute, /loadPlanningState/);
+  assert.match(publishRoute, /hasApprovedPlan/);
+  assert.match(publishRoute, /getOzonPayoutMapping/);
+  assert.match(publishRoute, /forecast-period/);
   assert.match(publishRoute, /\.upsert\(payload, \{ onConflict: "id" \}\)/);
   assert.equal((publishRoute.match(/\.upsert\(/g) ?? []).length, 1);
+});
+
+test("calendar fact transition is persisted and revalidated on the server", () => {
+  const calendarPage = readFileSync(new URL("../../components/calendar/CalendarPage.tsx", import.meta.url), "utf8");
+  const publication = readFileSync(new URL("../../components/calendar/forecastPublication.ts", import.meta.url), "utf8");
+  const publishRoute = readFileSync(new URL("../../app/api/opiu/calendar-publish/route.ts", import.meta.url), "utf8");
+  assert.match(calendarPage, /persistCalendarFactLink/);
+  assert.match(publication, /method: "PATCH"/);
+  assert.match(publishRoute, /export async function PATCH/);
+  assert.match(publishRoute, /findPlanFactMatches/);
+  assert.match(publishRoute, /plannedRow\.company_id !== factRow\.company_id/);
+  assert.match(publishRoute, /status: linked\.status, comment: linked\.comment/);
 });

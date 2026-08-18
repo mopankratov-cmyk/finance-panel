@@ -78,7 +78,7 @@ interface ForecastResponse {
   adaptiveRevenue: number;
   elapsedDays: number;
   daysInMonth: number;
-  payoutSchedule: { date: string; amount: number }[];
+  payoutSchedule: { id: string; date: string; amount: number; source: "forecast" | "financial_report" }[];
   actualPayout: number | null;
   reportAccruedPayout: number;
   remainingPayout: number;
@@ -267,7 +267,7 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
               </div>
             )}
             <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-              Адаптивный план продаж: <b>{formatMoney(data.adaptiveRevenue)}</b>. Банковский факт: недоступен — сверка с ДДС ещё не подключена. Осталось запланировать: <b>{formatMoney(data.remainingPayout)}</b>. Чем больше дней месяца прошло, тем сильнее прогноз опирается на фактический темп.
+              Адаптивный прогноз продаж: <b>{formatMoney(data.adaptiveRevenue)}</b>. Подтверждённые отчётом суммы заменяют расчётную часть, а поступление в ДДС автоматически отмечает план фактическим. Осталось рассчитать: <b>{formatMoney(data.remainingPayout)}</b>.
             </p>
             {data.payoutSchedule.length > 0 && (
               <div className="rounded-xl border border-slate-200 p-4">
@@ -278,21 +278,23 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full min-w-[320px] text-sm">
                     <thead className="bg-slate-50 text-xs text-slate-500"><tr>
-                      <th className="px-3 py-2 text-left">Расчётная дата</th>
+                      <th className="px-3 py-2 text-left">Дата поступления</th>
+                      <th className="px-3 py-2 text-left">Источник</th>
                       <th className="px-3 py-2 text-right">Сумма</th>
                     </tr></thead>
                     <tbody className="divide-y divide-slate-100">
                       {data.payoutSchedule.map((row) => (
-                        <tr key={row.date}>
+                        <tr key={row.id}>
                           <td className="px-3 py-2">{new Date(row.date).toLocaleDateString("ru-RU")}</td>
+                          <td className="px-3 py-2">{row.source === "financial_report" ? "Подтверждено отчётом" : "Предварительный расчёт"}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.amount)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-2 text-xs text-amber-700">
-                  Даты пока распределены упрощённо (недельные интервалы). Точная цепочка «заказ → отчёт → вывод → банк» с настройками сроков по кабинету — следующий шаг.
+                <p className="mt-2 text-xs text-slate-500">
+                  Для предварительного расчёта используется консервативный срок: 14 календарных дней до доступности вывода и ещё 7 рабочих дней банка. Для строки отчёта дата считается от даты отчёта; это ещё не банковский факт.
                 </p>
               </div>
             )}
@@ -309,7 +311,13 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                   try {
                     const result = await publishForecastToCalendar(
                       { marketplace: "wb", cabinetId: data.cabinetId, companyId, accountId, year, month: month + 1 },
-                      data.payoutSchedule.map((row, index) => ({ key: `bucket-${index + 1}`, date: row.date, amount: row.amount, source: "forecast" })),
+                      data.payoutSchedule.map((row) => ({
+                        key: row.id,
+                        date: row.date,
+                        amount: row.amount,
+                        source: row.source,
+                        reportId: row.source === "financial_report" ? row.id : undefined,
+                      })),
                     );
                     alert(`Календарь обновлён: ${result.published} строк.`);
                     window.location.reload();
