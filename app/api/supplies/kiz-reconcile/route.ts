@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
@@ -13,8 +14,10 @@ import {
   fetchFbsSoldTaskIds,
   fetchFbsTaskKizCodes,
   fetchReturnClaimReasons,
+  fetchTaskKizCodesDirect,
   fetchWbReturnFacts,
   reconcileKizFromWb,
+  type FbsAssemblyTask,
   type KizCodesLookupResult,
   type KizReconcileDays,
   type KizReconcileResult,
@@ -23,6 +26,83 @@ import {
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/**
+ * Сверка не помещается в один прогон на живом кабинете: сначала тянутся все
+ * сборочные задания за период, потом их статусы, и только потом опрашиваются
+ * коды — до кодов дело не доходило вовсе (проверено 0 из N).
+ *
+ * Поэтому дорогой префикс (задания + статусы) кэшируется на час, а коды
+ * кэшируются поштучно: код задания не меняется. В итоге каждый следующий
+ * «Проверить» идёт сразу к неопрошенным заданиям и досчитывает — прогресс
+ * накапливается, а не обнуляется.
+ */
+interface KizTasksSnapshot {
+  tasks: FbsAssemblyTask[];
+  truncated: boolean;
+}
+
+async function loadTasksSnapshot(
+  cabinetId: string,
+  token: string,
+  days: KizReconcileDays,
+  fromMs: number,
+  toMs: number,
+  deadline: number,
+  forceRefresh: boolean,
+): Promise<KizTasksSnapshot> {
+  return loadHourlyDashboard<KizTasksSnapshot>(
+    "wb-kiz-tasks",
+    { cabinetId, days, schema: 1 },
+    async () => {
+      const result = await fetchFbsAssemblyTasks({ token, fromMs, toMs, deadline });
+      return { tasks: result.tasks, truncated: result.truncated };
+    },
+    { forceRefresh },
+  );
+}
+
+async function loadSoldIdsSnapshot(
+  cabinetId: string,
+  token: string,
+  days: KizReconcileDays,
+  ids: number[],
+  deadline: number,
+  forceRefresh: boolean,
+): Promise<{ sold: number[]; complete: boolean }> {
+  return loadHourlyDashboard<{ sold: number[]; complete: boolean }>(
+    "wb-kiz-sold",
+    { cabinetId, days, schema: 1, count: ids.length },
+    async () => {
+      const statuses = await fetchFbsSoldTaskIds({ token, ids, deadline });
+      return { sold: [...statuses.sold], complete: statuses.complete };
+    },
+    { forceRefresh },
+  );
+}
+
+/** Пустой список кодов в кэш не пускаем: продавец привяжет код позже, а мы
+ *  целый час утверждали бы, что кода нет. Такие задания перезапрашиваются. */
+class EmptyKizCodesError extends Error {}
+
+function cachedKizCodeResolver(cabinetId: string, token: string, deadline: number) {
+  return async (id: number): Promise<string[]> => {
+    try {
+      return await loadHourlyDashboard<string[]>(
+        "wb-fbs-order-kiz-list",
+        { cabinetId, orderId: id, schema: 1 },
+        async () => {
+          const codes = await fetchTaskKizCodesDirect(token, id, deadline);
+          if (!codes.length) throw new EmptyKizCodesError();
+          return codes;
+        },
+      );
+    } catch (error) {
+      if (error instanceof EmptyKizCodesError) return [];
+      throw error;
+    }
+  };
+}
 
 export interface KizReconcileResponse {
   meta: {
@@ -89,9 +169,11 @@ export async function GET(request: NextRequest) {
     return [];
   });
 
-  let tasks;
+  // refresh=1 — принудительно перечитать снимок заданий и статусов у WB.
+  const forceRefresh = params.get("refresh") === "1";
+  let tasks: KizTasksSnapshot;
   try {
-    tasks = await fetchFbsAssemblyTasks({ token, fromMs, toMs: generatedAt.getTime(), deadline });
+    tasks = await loadTasksSnapshot(cabinetId, token, days, fromMs, generatedAt.getTime(), deadline, forceRefresh);
   } catch (error) {
     // Главный источник недоступен — отдаём честную ошибку и пустые корзины,
     // а не молчаливый ноль, который прочитали бы как «нарушений нет».
@@ -115,8 +197,8 @@ export async function GET(request: NextRequest) {
   let soldIds = new Set<number>();
   let statusesAvailable = false;
   try {
-    const statuses = await fetchFbsSoldTaskIds({ token, ids: scoped.map((task) => task.id), deadline });
-    soldIds = statuses.sold;
+    const statuses = await loadSoldIdsSnapshot(cabinetId, token, days, scoped.map((task) => task.id), deadline, forceRefresh);
+    soldIds = new Set(statuses.sold);
     statusesAvailable = true;
     if (!statuses.complete) warnings.push("Статусы заданий догружены не полностью — часть продаж могла не попасть в сверку.");
   } catch (error) {
@@ -128,7 +210,14 @@ export async function GET(request: NextRequest) {
     .filter((task) => soldIds.has(task.id))
     .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
   const meta: KizCodesLookupResult = statusesAvailable && soldTasks.length
-    ? await fetchFbsTaskKizCodes({ token, ids: soldTasks.map((task) => task.id), deadline })
+    ? await fetchFbsTaskKizCodes({
+      token,
+      ids: soldTasks.map((task) => task.id),
+      deadline,
+      // Уже опрошенные задания достаются из кэша мгновенно, поэтому за прогон
+      // добираются новые — «проверено N из M» растёт от захода к заходу.
+      resolve: cachedKizCodeResolver(cabinetId, token, deadline),
+    })
     : { codes: new Map<number, string[]>(), failed: 0, skipped: 0, lookupStopped: false, stopReason: null, stopMessage: null };
   if (soldTasks.length > KIZ_META_LOOKUP_LIMIT) {
     warnings.push(`За прогон проверяется не больше ${KIZ_META_LOOKUP_LIMIT} заданий — остальные показаны в корзине «Не проверено».`);
@@ -137,6 +226,11 @@ export async function GET(request: NextRequest) {
   // иначе непроверенные задания читаются как факт о обороте продавца.
   if (meta.lookupStopped) {
     warnings.push(`Коды маркировки опрошены не полностью: ${meta.stopMessage ?? "опрос прерван"}. Проверено заданий: ${meta.codes.size} из ${soldTasks.length}.`);
+    // Опрошенное сохраняется, поэтому повтор не начинает с нуля — говорим об этом прямо,
+    // иначе «проверено 0 из 302» читается как «раздел не работает».
+    if (meta.codes.size < soldTasks.length) {
+      warnings.push("Нажмите «Проверить» ещё раз — уже опрошенные задания сохранены, каждый заход добирает новые.");
+    }
   }
   if (meta.failed) warnings.push(`WB не отдал коды по ${meta.failed} заданиям — они в корзине «Не проверено».`);
   if (!meta.lookupStopped && meta.skipped) {

@@ -275,11 +275,37 @@ export interface KizCodesLookupResult extends KizCodesLookupState {
  * остаются без ключа в codes и попадают в корзину «Не проверено», а причина
  * обрыва возвращается наружу, чтобы роут показал предупреждение.
  */
+/** Прямой опрос кодов одного сборочного задания у WB (без кэша). */
+export async function fetchTaskKizCodesDirect(token: string, id: number, deadline: number): Promise<string[]> {
+  const json = await wbJson<{ meta?: Record<string, unknown> }>({
+    url: `${ORDERS_URL}/${id}/meta`,
+    token,
+    source: "meta",
+    deadline,
+  });
+  const meta = json.meta ?? {};
+  return [
+    ...metaCodes(meta.sgtin),
+    ...metaCodes(meta.uin),
+    ...metaCodes(meta.imei),
+    ...metaCodes(meta.gtin),
+  ];
+}
+
 export async function fetchFbsTaskKizCodes(options: {
   token: string;
   ids: number[];
   deadline: number;
   limit?: number;
+  /**
+   * Как получить коды одного задания. По умолчанию — прямой запрос к WB.
+   * Роут подставляет кэширующую обёртку: код задания не меняется, поэтому
+   * однажды опрошенные задания достаются мгновенно и прогресс накапливается
+   * между прогонами, а не начинается каждый раз с нуля.
+   * Обёртка обязана пробрасывать WbKizSourceError — на нём держится
+   * различение «кода нет» и «WB не ответил».
+   */
+  resolve?: (id: number) => Promise<string[]>;
 }): Promise<KizCodesLookupResult> {
   const limit = options.limit ?? KIZ_META_LOOKUP_LIMIT;
   const planned = options.ids.slice(0, limit);
@@ -303,19 +329,9 @@ export async function fetchFbsTaskKizCodes(options: {
       }
       const id = planned[index];
       try {
-        const json = await wbJson<{ meta?: Record<string, unknown> }>({
-          url: `${ORDERS_URL}/${id}/meta`,
-          token: options.token,
-          source: "meta",
-          deadline: options.deadline,
-        });
-        const meta = json.meta ?? {};
-        codes.set(id, [
-          ...metaCodes(meta.sgtin),
-          ...metaCodes(meta.uin),
-          ...metaCodes(meta.imei),
-          ...metaCodes(meta.gtin),
-        ]);
+        codes.set(id, options.resolve
+          ? await options.resolve(id)
+          : await fetchTaskKizCodesDirect(options.token, id, options.deadline));
       } catch (error) {
         // 401/403/429/504 бьют по всем заданиям сразу — дальше идти бессмысленно.
         if (error instanceof WbKizSourceError && error.status === 429) return stop("rate_limited");
