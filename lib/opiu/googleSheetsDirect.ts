@@ -20,7 +20,7 @@ const aliases: Record<string, string[]> = {
 };
 
 const formulaColumnsFor = (name: string) => {
-  if (/ДДС.*месяц/i.test(name)) return ["Месяц", "Мсц (цифрой)", "Платеж/поступл", "Вид д-ти"];
+  if (/^ДДС/i.test(name)) return ["Месяц", "Мсц (цифрой)", "Платеж/поступл", "Вид д-ти"];
   if (name === "Плановый Реестр поступлений") return ["Год план", "Месяц план", "Номер недели план"];
   if (name.startsWith("План выбытий")) return ["Номер недели", "Начало недели", "Конец недели", "Год план", "Месяц план"];
   if (name === "Факт ДДС") return ["Год", "Месяц", "День недели", "Платеж/поступл"];
@@ -28,7 +28,7 @@ const formulaColumnsFor = (name: string) => {
 };
 
 const keyColumnsFor = (name: string) => {
-  if (/ДДС.*месяц/i.test(name)) return ["Дата", "Сумма", "Кошелек", "Контрагент", "Назначение платежа"];
+  if (/^ДДС/i.test(name)) return ["Дата", "Сумма", "Кошелек", "Контрагент", "Назначение платежа"];
   if (name === "Плановый Реестр поступлений") return ["Дата планируемого получения", "Сумма план", "Контрагент", "Статья поступлений"];
   if (name.startsWith("План выбытий")) return ["Дата планируемой оплаты", "Сумма план", "Статья", "Контрагент", "Комментарий"];
   if (name === "Факт ДДС") return ["Дата", "Сумма", "Контрагент", "Назначение платежа", "Статья"];
@@ -350,10 +350,20 @@ export async function syncFinanceSheetsDirect(jobs: DirectSheetJob[]) {
     token,
     `${SHEETS_API}/${spreadsheetId}?fields=spreadsheetUrl,sheets.properties`,
   );
-  const sheets = (metadata.sheets ?? []).flatMap((item) => item.properties ? [item.properties] : []);
+  let sheets = (metadata.sheets ?? []).flatMap((item) => item.properties ? [item.properties] : []);
   const results = [];
   for (const job of jobs) {
-    const sheet = findSheet(job.sheet, sheets);
+    let sheet = findSheet(job.sheet, sheets);
+    if (!sheet && job.template === "dds") {
+      await batchUpdate(token, spreadsheetId, [{ addSheet: { properties: { title: job.sheet, gridProperties: { rowCount: Math.max(1000, job.rows.length + 20), columnCount: Math.max(30, job.rows[0]?.length ?? 13) } } } }]);
+      await writeValues(token, spreadsheetId, [{ range: `${quoteSheet(job.sheet)}!A1`, values: [job.rows[0] ?? []] }]);
+      const refreshed = await googleRequest<{ sheets?: Array<{ properties?: SheetProperties }> }>(
+        token,
+        `${SHEETS_API}/${spreadsheetId}?fields=sheets.properties`,
+      );
+      sheets = (refreshed.sheets ?? []).flatMap((item) => item.properties ? [item.properties] : []);
+      sheet = findSheet(job.sheet, sheets);
+    }
     if (!sheet) throw new Error(`В Google Таблице не найден лист «${job.sheet}»`);
     results.push(job.template === "loans"
       ? await syncLoans(token, spreadsheetId, sheet, job.rows, job.rowIds)

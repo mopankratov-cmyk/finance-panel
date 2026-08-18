@@ -15,8 +15,9 @@ import {
   type DdsCompany,
 } from "./ddsCompanies";
 import { cleanDemoData } from "./ddsImport";
-import { ddsReviewTemplateRows, ddsTemplateRows, downloadDdsCsv, downloadDdsXlsx } from "./ddsExport";
+import { ddsReviewTemplateRows, ddsTemplateRows, downloadDdsCsv, downloadGroupedDdsXlsx } from "./ddsExport";
 import { syncDdsToGoogleSheets } from "./ddsGoogleSync";
+import { ddsSheetNameForCompany } from "./ddsSheetGroups";
 import { ImportDdsModal } from "./ImportDdsModal";
 import { PaymentForm } from "./PaymentForm";
 import { useFinance } from "@/components/providers/FinanceProvider";
@@ -144,15 +145,27 @@ export function PaymentsPage() {
   const handleGoogleSync = async () => {
     setSyncingGoogle(true);
     try {
-      const exportedPayments = paymentsWithCompany.filter((payment) => payment.status === "done").sort((a, b) => a.date.localeCompare(b.date));
       const bankSync = await loadBankGoogleSyncData();
-      const review = ddsReviewTemplateRows(bankSync.items, accountNameById);
-      const confirmedRows = ddsTemplateRows({ payments: paymentsWithCompany, accountNameById, companyNameById });
-      const confirmedIds = exportedPayments.map((payment) => bankSync.sourceByPaymentId.get(payment.id) ?? payment.id);
-      const result = await syncDdsToGoogleSheets(
-        [confirmedRows[0], ...confirmedRows.slice(1), ...review.rows],
-        [...confirmedIds, ...review.rowIds],
-      );
+      const companyById = new Map(companies.map((company) => [company.id, company] as const));
+      const sheetNames = new Set<string>();
+      for (const payment of paymentsWithCompany) {
+        if (payment.status === "done") sheetNames.add(ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null));
+      }
+      for (const item of bankSync.items) sheetNames.add(ddsSheetNameForCompany(item.companyId ? companyById.get(item.companyId) : null));
+      const sheets = [...sheetNames].sort((a, b) => a.localeCompare(b, "ru")).map((name) => {
+        const facts = paymentsWithCompany
+          .filter((payment) => payment.status === "done" && ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === name)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const reviewItems = bankSync.items.filter((item) => ddsSheetNameForCompany(item.companyId ? companyById.get(item.companyId) : null) === name);
+        const confirmed = ddsTemplateRows({ payments: facts, accountNameById, companyNameById });
+        const review = ddsReviewTemplateRows(reviewItems, accountNameById, companyNameById);
+        return {
+          name,
+          rows: [confirmed[0], ...confirmed.slice(1), ...review.rows],
+          rowIds: [...facts.map((payment) => bankSync.sourceByPaymentId.get(payment.id) ?? payment.id), ...review.rowIds],
+        };
+      });
+      const result = await syncDdsToGoogleSheets(sheets);
       alert(`Google Таблица обновлена. Строк: ${result.rows}. Листы: ${result.sheets.join(", ")}.`);
       if (result.spreadsheetUrl && confirm("Открыть Google Таблицу?")) window.open(result.spreadsheetUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
@@ -238,7 +251,18 @@ export function PaymentsPage() {
             <Download className="h-4 w-4" /> CSV
           </button>
           <button
-            onClick={() => downloadDdsXlsx({ payments: paymentsWithCompany, accountNameById, companyNameById })}
+            onClick={() => {
+              const companyById = new Map(companies.map((company) => [company.id, company] as const));
+              const names = new Set(paymentsWithCompany.filter((payment) => payment.status === "done").map((payment) => ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null)));
+              downloadGroupedDdsXlsx([...names].sort((a, b) => a.localeCompare(b, "ru")).map((name) => ({
+                name,
+                rows: ddsTemplateRows({
+                  payments: paymentsWithCompany.filter((payment) => payment.status === "done" && ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === name),
+                  accountNameById,
+                  companyNameById,
+                }),
+              })));
+            }}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
           >
             <Download className="h-4 w-4" /> Excel

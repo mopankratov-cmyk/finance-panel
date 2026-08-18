@@ -6,7 +6,7 @@ const MAX_REQUEST_BYTES = 10 * 1024 * 1024;
 const MAX_ROWS = 10_000;
 const MAX_COLUMNS = 100;
 const MAX_CELL_LENGTH = 50_000;
-const MAX_SHEETS = 10;
+const MAX_SHEETS = 50;
 
 type SheetPayload = {
   rows?: Array<Array<string | number>>;
