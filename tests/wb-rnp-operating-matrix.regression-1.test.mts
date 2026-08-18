@@ -32,7 +32,10 @@ test("WB RNP renders previous-period deltas, heatmap and sparklines in the opera
 
 test("WB RNP supports article-list filtering and anomaly direction filters", () => {
   assert.match(toolbar, /nmID \/ артикул — можно списком/);
-  assert.match(page, /matchesArticleList\(sku, articleQuery\)/);
+  // Поиск фильтрует по ОТЛОЖЕННОМУ значению: ввод не должен на каждый символ
+  // пересобирать сводку/дельты/ленту (см. fix перф-аудита).
+  assert.match(page, /matchesArticleList\(sku, deferredArticleQuery\)/);
+  assert.match(page, /useDeferredValue\(articleQuery\)/);
   assert.match(page, /detectSkuAnomalies/);
   assert.match(toolbar, /Только риски/);
   assert.match(toolbar, /Только рост/);

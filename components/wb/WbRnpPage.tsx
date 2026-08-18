@@ -10,7 +10,7 @@ import {
   Pencil,
   RefreshCw,
 } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ActionableError } from "@/components/ui/ActionableError";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
@@ -252,6 +252,9 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
 const METRIC_ROW_HEIGHT = 34;
 const DELTA_METRIC_ROW_HEIGHT = 42;
 const MOBILE_PAGE_SIZE = 20;
+// Порция десктопной ленты: карточка тяжёлая (метрики × дни), поэтому первый
+// экран отдаём быстро, остальное дорисовываем при скролле.
+const DESK_PAGE_SIZE = 8;
 const MONTHLY_FLOW_FIELDS = new Set([
   "views",
   "clicks",
@@ -669,14 +672,21 @@ export function WbRnpPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [planMessage, setPlanMessage] = useState<string | null>(null);
-  const [skuWindow, setSkuWindow] = useState({ start: 0, end: 4 });
   const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE_SIZE);
+  // Десктопная лента рендерится порциями: карточка SKU — это 9+ строк × (дни+3)
+  // ячеек, и полная лента на квартале превращалась в сотни тысяч React-элементов,
+  // которые реконсилировались на КАЖДЫЙ ввод и клик. Дорисовываем по мере скролла.
+  const [deskLimit, setDeskLimit] = useState(DESK_PAGE_SIZE);
+  const deskSentinelRef = useRef<HTMLDivElement | null>(null);
   const [userFilterPresets, setUserFilterPresets] = useState<RnpFilterPreset[]>([]);
   const [matrixReady, setMatrixReady] = useState(false);
   const [metricViewId, setMetricViewId] = useState<RnpViewId>("main");
   const [metricFields, setMetricFields] = useState<RnpMetricField[]>([...RNP_VIEW_PRESETS[0].fields]);
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [articleQuery, setArticleQuery] = useState("");
+  // Ввод в поиск не должен на каждый символ пересобирать сводку по фильтру,
+  // дельты и сравнение артикулов — фильтрация идёт по отложенному значению.
+  const deferredArticleQuery = useDeferredValue(articleQuery);
   const [showDeltas, setShowDeltas] = useState(true);
   const [deltaMode, setDeltaMode] = useState<RnpDeltaMode>("percent");
   const [heatmapEnabled, setHeatmapEnabled] = useState(true);
@@ -701,7 +711,6 @@ export function WbRnpPage() {
   const [operationsSkuNm, setOperationsSkuNm] = useState<number | null>(null);
   const [operationsInitialDate, setOperationsInitialDate] = useState<string | undefined>();
   const [journal, setJournal] = useState<RnpJournalEntry[]>([]);
-  const tableViewportRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
@@ -1049,14 +1058,14 @@ export function WbRnpPage() {
     [facetSkus],
   );
   const filteredSkus = useMemo(() => facetSkus
-    .filter((sku) => matchesArticleList(sku, articleQuery))
+    .filter((sku) => matchesArticleList(sku, deferredArticleQuery))
     .filter((sku) => !activeTagIds.length || (tagsByNm.get(sku.nm) ?? []).some((tagId) => activeTagIds.includes(tagId)))
     .filter((sku) => !burnedOnly || !isBurnedOutSku(sku.metrics))
     .filter((sku) => !lossOnly || rnpLossReasons(sku.metrics).length > 0)
     .filter((sku) => {
       if (anomalyMode === "off") return true;
       return filterAnomalies(anomalyByNm.get(sku.nm) ?? [], anomalyMode).length > 0;
-    }), [activeTagIds, anomalyByNm, anomalyMode, articleQuery, burnedOnly, facetSkus, lossOnly, tagsByNm]);
+    }), [activeTagIds, anomalyByNm, anomalyMode, deferredArticleQuery, burnedOnly, facetSkus, lossOnly, tagsByNm]);
 
   const sortedSkus = useMemo(
     () => sortField === "__custom"
@@ -1085,10 +1094,23 @@ export function WbRnpPage() {
   }, [focusedNm, sortedSkus]);
 
   useEffect(() => {
-    setSkuWindow({ start: 0, end: Math.min(4, tableSkus.length) });
     setMobileLimit(MOBILE_PAGE_SIZE);
-    if (tableViewportRef.current) tableViewportRef.current.scrollTop = 0;
+    setDeskLimit(DESK_PAGE_SIZE);
   }, [metricFields.length, showDeltas, tableSkus]);
+
+  // Догрузка ленты: сентинел под последней карточкой попал в область видимости —
+  // дорисовываем следующую порцию.
+  useEffect(() => {
+    const sentinel = deskSentinelRef.current;
+    if (!sentinel || deskLimit >= tableSkus.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setDeskLimit((current) => Math.min(tableSkus.length, current + DESK_PAGE_SIZE));
+      }
+    }, { rootMargin: "600px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [deskLimit, tableSkus.length]);
 
   useEffect(() => {
     const available = new Set((activeData?.skus ?? []).map((sku) => sku.nm));
@@ -1096,7 +1118,7 @@ export function WbRnpPage() {
     if (operationsSkuNm != null && !available.has(operationsSkuNm)) setOperationsSkuNm(null);
   }, [activeData?.skus, operationsSkuNm]);
 
-  const visibleSkus = tableSkus.slice(skuWindow.start, skuWindow.end);
+  const deskSkus = tableSkus.slice(0, deskLimit);
   const mobileSkus = tableSkus.slice(0, mobileLimit);
   const operationsSku = operationsSkuNm == null ? null : activeData?.skus.find((sku) => sku.nm === operationsSkuNm) ?? null;
   const anomalyCount = [...anomalyByNm.values()].filter((items) => items.length > 0).length;
@@ -1116,12 +1138,16 @@ export function WbRnpPage() {
       unavailableMetrics: activeData.summary.filter((item) => item.status === "unavailable").length,
     };
   })();
+  // Блоки ассистента выключены флагом и не рендерятся — считать их данные тоже
+  // не надо: раньше каждый ввод в поиск строил невидимый график по всем SKU.
   const focusSummary = useMemo(
-    () => activeData ? buildRnpFocusSummary(sortedSkus) : null,
+    () => SHOW_RNP_ASSISTANT_BLOCKS && activeData ? buildRnpFocusSummary(sortedSkus) : null,
     [activeData, sortedSkus],
   );
   const articleCompareCatalog = useMemo(
-    () => activeData ? buildRnpArticleCompare(sortedSkus, activeData.period, compareMetric, sortedSkus.length || 1) : null,
+    () => SHOW_RNP_ASSISTANT_BLOCKS && activeData
+      ? buildRnpArticleCompare(sortedSkus, activeData.period, compareMetric, sortedSkus.length || 1)
+      : null,
     [activeData, compareMetric, sortedSkus],
   );
   const compareColorByNm = useMemo(
@@ -1148,7 +1174,9 @@ export function WbRnpPage() {
     return sortedSkus.filter((sku) => selected.has(sku.nm));
   }, [selectedCompareNms, sortedSkus]);
   const articleCompare = useMemo(
-    () => activeData ? buildRnpArticleCompare(selectedCompareSkus, activeData.period, compareMetric, selectedCompareSkus.length || 1) : null,
+    () => SHOW_RNP_ASSISTANT_BLOCKS && activeData
+      ? buildRnpArticleCompare(selectedCompareSkus, activeData.period, compareMetric, selectedCompareSkus.length || 1)
+      : null,
     [activeData, compareMetric, selectedCompareSkus],
   );
   const visibleSystemPresets = useMemo(
@@ -1186,22 +1214,20 @@ export function WbRnpPage() {
   const skuBlockHeight = metricFields.length * metricRowHeight;
   const tablePrefixHeight = 38 + 34 + metricFields.length * metricRowHeight + 34;
 
-  const updateSkuWindow = (element: HTMLDivElement) => {
-    const offset = Math.max(0, element.scrollTop - tablePrefixHeight);
-    const firstVisible = Math.floor(offset / skuBlockHeight);
-    const visibleBlocks = Math.ceil(element.clientHeight / skuBlockHeight);
-    const start = Math.max(0, firstVisible - 1);
-    const end = Math.min(tableSkus.length, firstVisible + visibleBlocks + 2);
-    setSkuWindow((current) => (current.start === start && current.end === end ? current : { start, end }));
-  };
 
   useEffect(() => {
+    if (!SHOW_RNP_ASSISTANT_BLOCKS) return;
     const available = articleCompareCatalog?.lines.map((line) => line.nm) ?? [];
     setSelectedCompareNms((current) => {
       const availableSet = new Set(available);
       const kept = current.filter((nm) => availableSet.has(nm));
-      if (kept.length) return kept;
-      return available.slice(0, Math.min(DEFAULT_COMPARE_SELECTED_LIMIT, available.length));
+      // Возврат НОВОГО массива с тем же содержимым — это реальный state-апдейт
+      // и лишний полный рендер страницы на каждый ввод. Бэйлимся по составу.
+      if (kept.length) return kept.length === current.length ? current : kept;
+      const fallback = available.slice(0, Math.min(DEFAULT_COMPARE_SELECTED_LIMIT, available.length));
+      return fallback.length === current.length && fallback.every((nm, index) => nm === current[index])
+        ? current
+        : fallback;
     });
   }, [articleCompareCatalog]);
 
@@ -1914,7 +1940,7 @@ export function WbRnpPage() {
               Выбрать все ({tableSkus.length})
             </label>
 
-            {tableSkus.map((sku) => {
+            {deskSkus.map((sku) => {
               const skuTagIds = tagsByNm.get(sku.nm) ?? [];
               const skuMetrics = completeMetrics(sku.metrics, activeData.period.length, metricFields);
               return (
@@ -1956,6 +1982,11 @@ export function WbRnpPage() {
                 />
               );
             })}
+            {deskLimit < tableSkus.length ? (
+              <div ref={deskSentinelRef} className="py-2 text-center text-[10px] text-slate-400">
+                Показано {deskSkus.length} из {tableSkus.length} SKU — остальные дорисуются при скролле
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2.5 md:hidden">

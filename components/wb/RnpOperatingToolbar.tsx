@@ -218,17 +218,23 @@ export function RnpOperatingToolbar(props: Props) {
   };
 
   // Клик мимо шапки закрывает все поповеры — иначе период/теги/пикер висят,
-  // пока не найдёшь их собственную кнопку.
+  // пока не найдёшь их собственную кнопку. Слушатель вешается ОДИН раз:
+  // актуальное замыкание живёт в ref, чтобы не пересоздавать подписку на
+  // каждый рендер тяжёлой страницы.
+  const closeAllRef = useRef<() => void>(() => {});
+  closeAllRef.current = () => {
+    closePopovers();
+    if (props.metricsOpen) props.onMetricsOpenChange(false);
+  };
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        closePopovers();
-        if (props.metricsOpen) props.onMetricsOpenChange(false);
+        closeAllRef.current();
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  });
+  }, []);
 
   const toggleMetric = (field: RnpMetricField) => {
     if (selectedSet.has(field)) {
