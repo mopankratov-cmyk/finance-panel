@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
 import {
   RNP_METRIC_FIELDS,
   RNP_VIEW_PRESETS,
@@ -197,7 +198,6 @@ export function RnpOperatingToolbar(props: Props) {
   const [tagsOpen, setTagsOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [periodOpen, setPeriodOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [tagComposerOpen, setTagComposerOpen] = useState(false);
   const [tagName, setTagName] = useState("");
@@ -212,7 +212,6 @@ export function RnpOperatingToolbar(props: Props) {
   const closePopovers = () => {
     setViewOpen(false);
     setSettingsOpen(false);
-    setPeriodOpen(false);
     setInfoOpen(false);
     setTagsOpen(false);
   };
@@ -268,60 +267,17 @@ export function RnpOperatingToolbar(props: Props) {
       {/* ===== ДАННЫЕ ===== */}
       <div className={SECTION_LABEL_CLASS}>Данные</div>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => { const open = periodOpen; closePopovers(); setPeriodOpen(!open); }}
-            aria-expanded={periodOpen}
-            className={`${CONTROL_CLASS} inline-flex items-center gap-2 tabular-nums`}
-          >
-            <CalendarDays className="h-3.5 w-3.5 text-violet-500" />
-            {shortDate(props.rangeFrom)} – {shortDate(props.rangeTo)}
-            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-          </button>
-          {periodOpen ? (
-            <div className="absolute left-0 top-11 z-50 w-[300px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
-              <div className="flex flex-wrap gap-1.5">
-                {props.rangePresets.map((preset) => (
-                  <button
-                    key={preset.value}
-                    type="button"
-                    onClick={() => { props.onApplyRangePreset(preset.value); setPeriodOpen(false); }}
-                    className={`h-8 rounded-lg border px-2.5 text-[10px] font-medium transition ${
-                      props.rangePreset === preset.value
-                        ? "border-violet-200 bg-violet-50 text-violet-700"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
-                <label className="min-w-0">
-                  <span className="mb-1 block text-[9px] font-medium text-slate-500">С даты</span>
-                  <input
-                    type="date"
-                    value={props.rangeFrom}
-                    max={props.rangeTo}
-                    onChange={(event) => props.onRangeFromChange(event.target.value)}
-                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-violet-400"
-                  />
-                </label>
-                <label className="min-w-0">
-                  <span className="mb-1 block text-[9px] font-medium text-slate-500">По дату</span>
-                  <input
-                    type="date"
-                    value={props.rangeTo}
-                    min={props.rangeFrom}
-                    onChange={(event) => props.onRangeToChange(event.target.value)}
-                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-violet-400"
-                  />
-                </label>
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <PeriodRangePicker
+          from={props.rangeFrom}
+          to={props.rangeTo}
+          presets={props.rangePresets}
+          activePreset={props.rangePreset}
+          onApplyPreset={props.onApplyRangePreset}
+          onApplyRange={(from, to) => {
+            props.onRangeFromChange(from);
+            props.onRangeToChange(to);
+          }}
+        />
 
         <label className="relative inline-flex items-center">
           <BadgeCheck className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-violet-500" />

@@ -3,8 +3,10 @@
 import { Filter, Package, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
 import { MARKETPLACE_METRICS, METRIC_CELL_TONE, marketplaceMetricStatus, type MarketplaceMetricId } from "@/lib/analytics/marketplaceMetrics";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
+import { clampFunnelPeriod, FUNNEL_MAX_PERIOD_DAYS, funnelPeriodDates, resolveFunnelPeriod } from "@/lib/wb/funnelMetrics";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
 import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -45,6 +47,13 @@ const METRICS: Array<{ key: MetricKey; label: string; kind: "int" | "money" | "p
   { key: "drr", label: MARKETPLACE_METRICS.drrOrders.label, kind: "pct", definition: MARKETPLACE_METRICS.drrOrders.definition, metricId: "drrOrders" },
 ];
 
+const PERIOD_PRESETS = [
+  { value: "1", label: "Вчера" },
+  { value: "7", label: "7 дней" },
+  { value: "30", label: "30 дней" },
+] as const;
+type PeriodPresetValue = (typeof PERIOD_PRESETS)[number]["value"];
+
 const ROW_HEIGHT = 49;
 const fmt = (value: number | null | undefined) => value == null ? "—" : Math.round(value).toLocaleString("ru-RU");
 const pct = (value: number | null | undefined) => value == null ? "—" : `${Math.round(value * 10) / 10}%`;
@@ -57,9 +66,11 @@ function cellTone(metric: MetricKey, value: number | null | undefined) {
 
 export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const { cabinetId, activeCabinet, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
-  const [windowParam, setWindowParam] = useDashboardFilter("days", "7", ["1", "7", "30"] as const);
+  const [windowParam, setWindowParam] = useDashboardFilter<PeriodPresetValue>("days", "7", PERIOD_PRESETS.map((preset) => preset.value));
   const windowDays = Number(windowParam);
-  const setWindowDays = (days: number) => setWindowParam(String(days) as typeof windowParam);
+  const [customFrom, setCustomFrom] = useDashboardFilter<string>("date_from", "");
+  const [customTo, setCustomTo] = useDashboardFilter<string>("date_to", "");
+  const [periodClamped, setPeriodClamped] = useState(false);
   const [metric, setMetric] = useDashboardFilter<MetricKey>("metric", "views", METRICS.map((item) => item.key));
   const [skus, setSkus] = useState<SkusData | null>(null);
   const [daily, setDaily] = useState<DayMetricsData | null>(null);
@@ -70,6 +81,31 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 18 });
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
+
+  // Произвольный диапазон бьёт пресет, но только если он проходит те же правила,
+  // что и API: кривые ?date_from/?date_to из чужой ссылки не должны рисовать
+  // колонки, которых сервер не считал.
+  const period = useMemo(() => {
+    const custom = resolveFunnelPeriod(customFrom, customTo);
+    if (custom.ok && custom.period) return { from: custom.period.start, to: custom.period.end, custom: true };
+    const preset = closedMoscowDates(windowDays);
+    return { from: preset[0], to: preset[preset.length - 1], custom: false };
+  }, [customFrom, customTo, windowDays]);
+  const lastClosedDay = closedMoscowDates(1)[0];
+
+  const applyPreset = (value: string) => {
+    setPeriodClamped(false);
+    setCustomFrom("");
+    setCustomTo("");
+    setWindowParam(value as PeriodPresetValue);
+  };
+
+  const applyRange = (from: string, to: string) => {
+    const range = clampFunnelPeriod(from, to);
+    setPeriodClamped(range.clamped);
+    setCustomFrom(range.from);
+    setCustomTo(range.to);
+  };
 
   useEffect(() => {
     if (!ready || cabinetsLoading) return;
@@ -83,9 +119,12 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
     setLoading(true);
     setError(null);
     const cabinet = encodeURIComponent(cabinetId || "all");
+    // Даты уезжают только при своём периоде: дефолтный заход остаётся тем же
+    // запросом, что греет крон, и попадает в готовый снимок.
+    const range = period.custom ? `&date_from=${period.from}&date_to=${period.to}` : "";
     Promise.all([
-      fetch(`/api/seo/skus?window=${windowDays}&cabinet=${cabinet}`, { cache: "no-store", signal: controller.signal }),
-      fetch(`/api/design/day-metrics?cabinet=${cabinet}`, { cache: "no-store", signal: controller.signal }),
+      fetch(`/api/seo/skus?window=${windowDays}&cabinet=${cabinet}${range}`, { cache: "no-store", signal: controller.signal }),
+      fetch(`/api/design/day-metrics?cabinet=${cabinet}${range}`, { cache: "no-store", signal: controller.signal }),
     ]).then(async ([skuResponse, dailyResponse]) => {
       const skuBody = (await skuResponse.json()) as SkusData;
       const dailyBody = (await dailyResponse.json()) as DayMetricsData;
@@ -102,16 +141,14 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
       if (current === requestId.current) setLoading(false);
     });
     return () => controller.abort();
-  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, retryKey, windowDays]);
+  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, period.custom, period.from, period.to, ready, retryKey, windowDays]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
     return (skus?.skus ?? []).filter((sku) => !needle || `${sku.nm} ${sku.art} ${sku.name}`.toLocaleLowerCase("ru-RU").includes(needle));
   }, [query, skus?.skus]);
 
-  const dates = useMemo(() => {
-    return closedMoscowDates(windowDays);
-  }, [windowDays]);
+  const dates = useMemo(() => funnelPeriodDates(period.from, period.to), [period.from, period.to]);
 
   useEffect(() => setRowWindow({ start: 0, end: Math.min(18, filtered.length) }), [filtered.length, query]);
 
@@ -124,15 +161,30 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   };
 
   const currentMetric = METRICS.find((item) => item.key === metric)!;
+  const periodPicker = (
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <PeriodRangePicker
+        from={period.from}
+        to={period.to}
+        presets={PERIOD_PRESETS}
+        activePreset={period.custom ? undefined : windowParam}
+        // Сегодняшний день WB отдаёт неполным — дальше вчерашнего выбирать нечего.
+        maxIso={lastClosedDay}
+        onApplyPreset={applyPreset}
+        onApplyRange={applyRange}
+      />
+      {periodClamped ? <span className="text-[10px] font-semibold text-amber-600">Период обрезан до {FUNNEL_MAX_PERIOD_DAYS} дней</span> : null}
+    </div>
+  );
   const formatCell = (value: number | null | undefined) => currentMetric.kind === "pct" ? pct(value) : currentMetric.kind === "money" ? (value == null ? "—" : `${fmt(value)} ₽`) : fmt(value);
 
   return (
     <div className={embedded ? "" : "min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5"}>
-      {!embedded ? <WbModuleHeader icon={Filter} title="Воронка" description={skus ? `${skus.metrics_period} · ${filtered.length} SKU · ${activeCabinet?.name ?? "все кабинеты"}` : "SKU × метрики × дни"} actions={<div className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8 sm:gap-0">{[1, 7, 30].map((days) => <button key={days} type="button" onClick={() => setWindowDays(days)} className={`min-h-11 rounded-md px-3 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-7 ${windowDays === days ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{days === 1 ? "Вчера" : `${days} дней`}</button>)}</div>} /> : null}
+      {!embedded ? <WbModuleHeader icon={Filter} title="Воронка" description={skus ? `${skus.metrics_period} · ${filtered.length} SKU · ${activeCabinet?.name ?? "все кабинеты"}` : "SKU × метрики × дни"} actions={periodPicker} /> : null}
 
       <div className="px-2 py-3 sm:px-6">
         <div className="mb-2 flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center">
-          {embedded ? <div className="flex min-h-11 shrink-0 items-center rounded-lg bg-slate-100 p-0.5 sm:min-h-8">{[1, 7, 30].map((days) => <button key={days} type="button" onClick={() => setWindowDays(days)} className={`min-h-10 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-7 ${windowDays === days ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{days === 1 ? "Вчера" : `${days} дней`}</button>)}</div> : null}
+          {embedded ? periodPicker : null}
           <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
           <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:w-72 lg:min-h-8"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="nm, артикул, название" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />{query ? <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}</label>
         </div>

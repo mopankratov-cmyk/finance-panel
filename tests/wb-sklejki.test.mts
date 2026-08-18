@@ -185,5 +185,5 @@ test("sklejki period contains seven closed Moscow days", () => {
 
 test("sklejki cache schema invalidates snapshots without order counts", async () => {
   const route = await readFile(new URL("../app/api/sklejki/route.ts", import.meta.url), "utf8");
-  assert.match(route, /\{ cabinetId, schema: 5 \}/);
+  assert.match(route, /\{ cabinetId, from: .+, to: .+, schema: 5 \}/);
 });

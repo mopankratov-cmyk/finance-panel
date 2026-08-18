@@ -123,8 +123,8 @@ export interface GlueVerdict {
 const number = (value: number | null | undefined) => Number(value || 0);
 
 // Правила Inferno: несущие определяются по доле показов, а рекламные решения —
-// по заказам, ДРР и расходу за 14 дней.
-export function glueVerdict(group: SklejkiGroup, sku: SklejkiSkuMetrics): GlueVerdict {
+// по заказам, ДРР и расходу за расширенное окно (по умолчанию 14 дней).
+export function glueVerdict(group: SklejkiGroup, sku: SklejkiSkuMetrics, spendWindowDays = 14): GlueVerdict {
   const orders = number(sku.orders_sum_7d);
   const shows = number(sku.shows_7d);
   const drr = sku.drr_7d == null ? null : Number(sku.drr_7d);
@@ -136,7 +136,7 @@ export function glueVerdict(group: SklejkiGroup, sku: SklejkiSkuMetrics): GlueVe
   const hasAds = (drr != null && drr > 0) || (spend14 != null && spend14 > 0);
   const share = Math.round(showShare * 100);
   const spendSuffix = spend14 != null && spend14 > 0
-    ? ` · ${Math.round(spend14).toLocaleString("ru-RU")}₽ рекл/14д`
+    ? ` · ${Math.round(spend14).toLocaleString("ru-RU")}₽ рекл/${spendWindowDays}д`
     : "";
 
   if (showShare >= 0.35) {
@@ -249,4 +249,104 @@ export function sklejkiPeriod(nowMs = Date.now()) {
   const dates = closedMoscowDates(7, nowMs);
   const label = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
   return `${label(dates[0])}–${label(dates[dates.length - 1])}`;
+}
+
+export const SKLEJKI_DEFAULT_PERIOD_DAYS = 7;
+export const SKLEJKI_MAX_PERIOD_DAYS = 90;
+
+export interface SklejkiPeriod {
+  start: string;
+  end: string;
+  /** Длина периода в днях, включительно. */
+  days: number;
+  /** Окно расхода рекламы (поле adv_spend_14d) — оно шире окна остальных метрик. */
+  spendWindowDays: number;
+  /** Период пришёл из запроса, а не из дефолта — только такой едет в ключ снимка. */
+  custom: boolean;
+  label: string;
+}
+
+export type SklejkiPeriodResult = { period: SklejkiPeriod } | { error: string };
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
+function isoToUtcMs(iso: string): number | null {
+  if (!ISO_DATE_RE.test(iso)) return null;
+  const parsed = Date.parse(`${iso}T00:00:00.000Z`);
+  // «2026-02-31» проходит регуляр, но такого дня нет — ловим обратной сборкой.
+  return Number.isNaN(parsed) || new Date(parsed).toISOString().slice(0, 10) !== iso ? null : parsed;
+}
+
+/** Сдвиг ISO-даты на delta дней. Счёт в UTC — локальная таймзона не участвует. */
+export function shiftIsoDate(iso: string, delta: number): string {
+  const ms = isoToUtcMs(iso);
+  if (ms == null) throw new Error(`Некорректная дата: ${iso}`);
+  return new Date(ms + delta * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** Дни периода включительно; пустой массив, если границы кривые или перевёрнуты. */
+export function isoDateRange(start: string, end: string): string[] {
+  const startMs = isoToUtcMs(start);
+  const endMs = isoToUtcMs(end);
+  if (startMs == null || endMs == null || endMs < startMs) return [];
+  const dates: string[] = [];
+  for (let ms = startMs; ms <= endMs; ms += DAY_MS) dates.push(new Date(ms).toISOString().slice(0, 10));
+  return dates;
+}
+
+function periodLabel(start: string, end: string): string {
+  const day = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+  return start.slice(0, 4) === end.slice(0, 4)
+    ? `${day(start)}–${day(end)}`
+    : `${day(start)}.${start.slice(2, 4)}–${day(end)}.${end.slice(2, 4)}`;
+}
+
+// Расход рекламы читается за удвоенный период: для дефолтной недели это ровно
+// прежние 14 дней. Потолок в 30 дней держит запрос рекламы в размере периода —
+// иначе выбор в три месяца тянул бы вдвое больше строк, чем показывает экран.
+function spendWindowFor(days: number): number {
+  return Math.max(days, Math.min(days * 2, 30));
+}
+
+function buildPeriod(start: string, end: string, custom: boolean): SklejkiPeriod {
+  const days = isoDateRange(start, end).length;
+  return { start, end, days, spendWindowDays: spendWindowFor(days), custom, label: periodLabel(start, end) };
+}
+
+/** Первый день окна расхода рекламы — оно заканчивается вместе с периодом. */
+export function sklejkiSpendWindowStart(period: SklejkiPeriod): string {
+  return shiftIsoDate(period.end, -(period.spendWindowDays - 1));
+}
+
+/**
+ * Период склеек из ?date_from=&date_to=. Без параметров — прежний дефолт
+ * (последние закрытые 7 дней метрик + 14 дней расхода). Кривой вход не
+ * подменяется молча: роут отвечает 400, чтобы экран не подписал чужие даты.
+ */
+export function resolveSklejkiPeriod(
+  from: string | null | undefined,
+  to: string | null | undefined,
+  nowMs = Date.now(),
+): SklejkiPeriodResult {
+  const rawFrom = (from ?? "").trim();
+  const rawTo = (to ?? "").trim();
+  if (!rawFrom && !rawTo) {
+    const dates = closedMoscowDates(SKLEJKI_DEFAULT_PERIOD_DAYS, nowMs);
+    return { period: buildPeriod(dates[0], dates[dates.length - 1], false) };
+  }
+  if (!rawFrom || !rawTo) {
+    return { error: "Период задаётся парой параметров date_from и date_to в формате ГГГГ-ММ-ДД" };
+  }
+  if (isoToUtcMs(rawFrom) == null || isoToUtcMs(rawTo) == null) {
+    return { error: "Даты периода должны быть в формате ГГГГ-ММ-ДД" };
+  }
+  if (rawFrom > rawTo) {
+    return { error: "Начало периода позже конца — проверьте date_from и date_to" };
+  }
+  const days = isoDateRange(rawFrom, rawTo).length;
+  if (days > SKLEJKI_MAX_PERIOD_DAYS) {
+    return { error: `Период больше ${SKLEJKI_MAX_PERIOD_DAYS} дней (запрошено ${days}) — сузьте выбор` };
+  }
+  return { period: buildPeriod(rawFrom, rawTo, true) };
 }

@@ -92,3 +92,56 @@ export function buildWbFunnelDayMetrics(
   }
   return metrics;
 }
+
+export const FUNNEL_MAX_PERIOD_DAYS = 90;
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
+export interface FunnelPeriod { start: string; end: string; days: number }
+export type FunnelPeriodResolution = { ok: true; period: FunnelPeriod | null } | { ok: false; error: string };
+
+// Обратная сверка нужна из-за «2026-02-31»: такую дату Date.parse принимает и
+// молча переносит на март — календарно несуществующий день должен быть ошибкой.
+const utcMsOf = (iso: string) => {
+  if (!ISO_DATE_RE.test(iso)) return Number.NaN;
+  const parsed = Date.parse(`${iso}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  return new Date(parsed).toISOString().slice(0, 10) === iso ? parsed : Number.NaN;
+};
+
+/** Дни периода включительно. Считаем в UTC: локальная зона сервера и браузера не должна двигать календарь. */
+export function funnelPeriodDates(start: string, end: string): string[] {
+  const first = utcMsOf(start);
+  const last = utcMsOf(end);
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last < first) return [];
+  const dates: string[] = [];
+  for (let ms = first; ms <= last; ms += DAY_MS) dates.push(new Date(ms).toISOString().slice(0, 10));
+  return dates;
+}
+
+/**
+ * Период воронки из ?date_from/?date_to. Обе границы пустые — не ошибка, а дефолт
+ * (пресет ?days=/?window=), поэтому period=null. Всё остальное разбирается строго:
+ * молча подменять запрошенный период соседним нельзя — экран подпишет не те дни.
+ */
+export function resolveFunnelPeriod(from: string | null | undefined, to: string | null | undefined): FunnelPeriodResolution {
+  const start = (from ?? "").trim();
+  const end = (to ?? "").trim();
+  if (!start && !end) return { ok: true, period: null };
+  if (!start || !end) return { ok: false, error: "Период задаётся парой date_from и date_to — одна граница без второй не принимается" };
+  const first = utcMsOf(start);
+  const last = utcMsOf(end);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return { ok: false, error: "Даты периода нужны в формате ГГГГ-ММ-ДД" };
+  if (last < first) return { ok: false, error: "Начало периода позже его конца" };
+  const days = Math.round((last - first) / DAY_MS) + 1;
+  if (days > FUNNEL_MAX_PERIOD_DAYS) return { ok: false, error: `Период не больше ${FUNNEL_MAX_PERIOD_DAYS} дней, запрошено ${days}` };
+  return { ok: true, period: { start, end, days } };
+}
+
+/** Экран не даёт запросить больше предела API: режем начало, а не конец — свежие дни важнее. */
+export function clampFunnelPeriod(from: string, to: string): { from: string; to: string; clamped: boolean } {
+  const dates = funnelPeriodDates(from, to);
+  if (!dates.length || dates.length <= FUNNEL_MAX_PERIOD_DAYS) return { from, to, clamped: false };
+  return { from: dates[dates.length - FUNNEL_MAX_PERIOD_DAYS], to, clamped: true };
+}

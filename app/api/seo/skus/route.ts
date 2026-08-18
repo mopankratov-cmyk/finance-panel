@@ -8,7 +8,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
-import { percentRatio } from "@/lib/wb/funnelMetrics";
+import { funnelPeriodDates, percentRatio, resolveFunnelPeriod } from "@/lib/wb/funnelMetrics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,13 +37,6 @@ function selectedPeriod(days: number) {
   return { start, end, label: days === 1 ? ruDate(end) : `${ruDate(start)}-${ruDate(end)}` };
 }
 
-const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
-// Произвольный диапазон (?date_from=&date_to=) в дополнение к пресетам ?window=1|7|30.
-function customPeriod(from: string | null, to: string | null) {
-  if (!from || !to || !ISO_RE.test(from) || !ISO_RE.test(to) || from > to) return null;
-  return { start: from, end: to, label: `${ruDate(from)}-${ruDate(to)}` };
-}
-
 // Источник SKU для дизайн/«Воронка» (inferno loadDesign). Поля с суффиксом _7d (окно 7д) и _4d (вчера).
 export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
@@ -56,13 +49,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
   const allowedNmIds = await requestAllowedNmIds(cabinetId);
+  // Произвольный диапазон (?date_from=&date_to=) в дополнение к пресетам ?window=1|7|30.
+  const requested = resolveFunnelPeriod(params.get("date_from"), params.get("date_to"));
+  if (!requested.ok) return NextResponse.json({ error: requested.error }, { status: 400 });
   const days = windowDays(params.get("window"));
-  const period = customPeriod(params.get("date_from"), params.get("date_to")) ?? selectedPeriod(days);
+  const period = requested.period
+    ? { start: requested.period.start, end: requested.period.end, label: `${ruDate(requested.period.start)}-${ruDate(requested.period.end)}` }
+    : selectedPeriod(days);
+  // Длина периода — из самих границ, а не из ?window=: иначе оборачиваемость
+  // произвольного диапазона считалась бы по чужому числу дней.
+  const periodDays = funnelPeriodDates(period.start, period.end).length;
 
   const payload = await loadHourlyDashboard(
     "wb-seo-skus",
     // Cache schema: 3 used advertising clicks as a fallback conversion denominator.
-    { cabinetId, start: period.start, end: period.end, days, schema: 4 },
+    { cabinetId, start: period.start, end: period.end, days: periodDays, schema: 4 },
     async () => {
       const [funnel, ad, totals, costs, dailySku] = await Promise.all([
         loadAllSupabasePages<FunnelRow>((from, to) => {
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
 
     const priceUnit = (a: typeof w) => (a.oc > 0 ? Math.round(a.os / a.oc) : 0);
     const margin = (a: typeof w) => { const p = priceUnit(a); return p > 0 && cost > 0 ? r2(((p - cost) / p) * 100) : null; };
-    const turn = w.oc > 0 ? Math.round(stock / (w.oc / days)) : null;
+    const turn = w.oc > 0 ? Math.round(stock / (w.oc / periodDays)) : null;
 
     const mb7 = margin(w), drr7 = pct(w.spent, w.os);
     const mb4 = margin(y), drr4 = pct(y.spent, y.os);
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest) {
   }).filter((s) => s.shows_7d > 0 || s.orders_count_7d > 0 || s.stock > 0)
     .sort((a, b) => b.orders_sum_7d - a.orders_sum_7d);
 
-      return { skus, metrics_period: period.label, window_days: days, count: skus.length };
+      return { skus, metrics_period: period.label, window_days: periodDays, count: skus.length };
     },
     {
       forceRefresh: params.get("refresh") === "1",

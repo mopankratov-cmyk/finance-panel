@@ -3,7 +3,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
-import { closedMoscowDates, loadSklejkiCommissionForCabinet, mapSklejkiMarginBeforeDrr, mergeSklejkiPayloads, type SklejkiPayload } from "@/lib/wb/sklejki";
+import { isoDateRange, loadSklejkiCommissionForCabinet, mapSklejkiMarginBeforeDrr, mergeSklejkiPayloads, resolveSklejkiPeriod, sklejkiSpendWindowStart, type SklejkiPayload, type SklejkiPeriod } from "@/lib/wb/sklejki";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
 import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
@@ -33,10 +33,12 @@ const MAX_DB_PAGES = 30;
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions) {
+async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions, period: SklejkiPeriod) {
   return loadHourlyDashboard(
     "wb-sklejki",
-    { cabinetId, schema: 5 },
+    // Дефолтный период уходит в ключ как undefined: hourlyDashboardIdentity такие
+    // поля отбрасывает, и снимок остаётся тем же, что греет крон (он ходит без дат).
+    { cabinetId, from: period.custom ? period.start : undefined, to: period.custom ? period.end : undefined, schema: 5 },
     async () => {
   // 1) Один общий часовой снимок карточек для PIM, поставок и склеек.
   //    У scoped-кабинетов он ищет только разрешённые nmID, не обходит весь чужой каталог.
@@ -53,16 +55,16 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
   //    запускаем ОДНОВРЕМЕННО с их фетчем, а не после.
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
-  const closedFortnight = closedMoscowDates(14);
-  const since = closedFortnight[0];
-  const week = new Set(closedFortnight.slice(-7));
+  const windowDates = new Set(isoDateRange(period.start, period.end));
+  const spendStart = sklejkiSpendWindowStart(period);
   const loadFunnelRows = async () => {
     const rows: FunnelRow[] = [];
     for (let page = 0; page < MAX_DB_PAGES; page++) {
       let query = db
         .from("wb_funnel_daily")
         .select("nm_id, date, add_to_cart, orders, orders_sum")
-        .gte("date", since)
+        .gte("date", period.start)
+        .lte("date", period.end)
         .order("date", { ascending: true })
         .order("nm_id", { ascending: true })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
@@ -81,7 +83,8 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
       let query = db
         .from("wb_advert_nm_daily")
         .select("nm_id, date, views, spent")
-        .gte("date", since)
+        .gte("date", spendStart)
+        .lte("date", period.end)
         .order("date", { ascending: true })
         .order("nm_id", { ascending: true })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
@@ -146,18 +149,19 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
   }
 
   const m7 = new Map<number, { views: number; spent: number; cart: number; oc: number; os: number }>();
-  const spent14 = new Map<number, number>();
+  const spendWide = new Map<number, number>();
   const totals = new Map<number, RpcTotal>();
   if (metricsRes) {
     const [funnelRows, adRows, totalRows] = metricsRes;
     const g7 = (nm: number) => { let x = m7.get(nm); if (!x) { x = { views: 0, spent: 0, cart: 0, oc: 0, os: 0 }; m7.set(nm, x); } return x; };
     for (const f of funnelRows) {
-      if (week.has(String(f.date).slice(0, 10))) { const x = g7(f.nm_id); x.cart += f.add_to_cart || 0; x.oc += f.orders || 0; x.os += Number(f.orders_sum || 0); }
+      if (windowDates.has(String(f.date).slice(0, 10))) { const x = g7(f.nm_id); x.cart += f.add_to_cart || 0; x.oc += f.orders || 0; x.os += Number(f.orders_sum || 0); }
     }
     for (const a of adRows) {
       const iso = String(a.date).slice(0, 10);
-      spent14.set(a.nm_id, (spent14.get(a.nm_id) ?? 0) + Number(a.spent || 0));
-      if (week.has(iso)) { const x = g7(a.nm_id); x.views += a.views || 0; x.spent += Number(a.spent || 0); }
+      // Строки рекламы уже ограничены запросом окном расхода — открытый день в сумму не попадает.
+      spendWide.set(a.nm_id, (spendWide.get(a.nm_id) ?? 0) + Number(a.spent || 0));
+      if (windowDates.has(iso)) { const x = g7(a.nm_id); x.views += a.views || 0; x.spent += Number(a.spent || 0); }
     }
     for (const t of totalRows) totals.set(t.nm_id, t);
   }
@@ -194,7 +198,7 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
       orders_count_7d: oc,
       orders_sum_7d: Math.round(os),
       adv_spend_7d: Math.round(spent),
-      adv_spend_14d: Math.round(spent14.get(c.nmID) ?? 0),
+      adv_spend_14d: Math.round(spendWide.get(c.nmID) ?? 0),
       drr_7d: os > 0 ? r1((spent / os) * 100) : (spent > 0 ? null : 0),
       margin_before_drr: marginBeforeDrrPct == null ? null : r1(marginBeforeDrrPct),
       stock: Number(t?.stock ?? 0),
@@ -251,21 +255,36 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
 // «Все кабинеты» собирается из отдельных почасовых снимков параллельно: холодный
 // ответ ограничен самым медленным кабинетом, а не полным последовательным обходом.
 export async function GET(request: NextRequest) {
-  const { cabinetId } = await resolveShopCabinet(request.nextUrl.searchParams.get("cabinet") ?? undefined);
+  const params = request.nextUrl.searchParams;
+  const { cabinetId } = await resolveShopCabinet(params.get("cabinet") ?? undefined);
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
+  const resolved = resolveSklejkiPeriod(params.get("date_from"), params.get("date_to"));
+  if ("error" in resolved) {
+    return NextResponse.json({ error: resolved.error }, { status: 400 });
+  }
+  const period = resolved.period;
+  // Период отдаём на уровне роута, а не внутри снимка: экран подписывает те даты,
+  // из которых ответ реально посчитан, а контракт снимка остаётся прежним.
+  const periodPayload = {
+    start: period.start,
+    end: period.end,
+    days: period.days,
+    spend_window_days: period.spendWindowDays,
+    label: period.label,
+  };
   const cacheOptions: HourlyDashboardCacheOptions = {
-    forceRefresh: request.nextUrl.searchParams.get("refresh") === "1",
-    backgroundRefresh: request.nextUrl.searchParams.get("background") === "1",
+    forceRefresh: params.get("refresh") === "1",
+    backgroundRefresh: params.get("background") === "1",
   };
   try {
     if (cabinetId) {
-      const payload = await loadSklejkiSnapshot(cabinetId, cacheOptions);
-      return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
+      const payload = await loadSklejkiSnapshot(cabinetId, cacheOptions, period);
+      return NextResponse.json({ ...payload, period: periodPayload }, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
     }
     const cabinets = await getActiveWbCabinets();
-    const results = await Promise.allSettled(cabinets.map((cabinet) => loadSklejkiSnapshot(cabinet.id, cacheOptions)));
+    const results = await Promise.allSettled(cabinets.map((cabinet) => loadSklejkiSnapshot(cabinet.id, cacheOptions, period)));
     const payloads: SklejkiPayload[] = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
     if (!payloads.length && cabinets.length) {
       const errors = results.flatMap((result) => result.status === "rejected" ? [String(result.reason)] : []);
@@ -275,7 +294,7 @@ export async function GET(request: NextRequest) {
     const warnings = results.flatMap((result, index) => result.status === "rejected"
       ? [`${cabinets[index]?.name ?? "Кабинет"}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
       : []);
-    return NextResponse.json({ ...payload, warnings }, { headers: { "X-Dashboard-Cache": "per-cabinet-hourly-snapshots" } });
+    return NextResponse.json({ ...payload, warnings, period: periodPayload }, { headers: { "X-Dashboard-Cache": "per-cabinet-hourly-snapshots" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось загрузить склейки" }, { status: 502 });
   }

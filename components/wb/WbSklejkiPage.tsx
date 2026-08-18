@@ -3,14 +3,16 @@
 import { Copy, Link2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { PeriodRangePicker, type PeriodPreset } from "@/components/ui/PeriodRangePicker";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import {
+  closedMoscowDates,
   glueSortedGroups,
   glueSortedSkus,
   glueSummary,
   glueTotals,
   glueVerdict,
-  sklejkiPeriod,
+  SKLEJKI_MAX_PERIOD_DAYS,
   type GlueVerdictKind,
   type SklejkiGroup,
   type SklejkiSkuMetrics,
@@ -26,7 +28,23 @@ interface SklejkiData {
   multi_groups: number;
   solo_skus: number;
   covered: number;
+  /** Период, из которого ответ реально посчитан — подписываем его, а не запрошенный. */
+  period?: { start: string; end: string; days: number; spend_window_days: number; label: string };
   error?: string;
+}
+
+const PERIOD_PRESETS: ReadonlyArray<PeriodPreset> = [
+  { value: "week", label: "Неделя" },
+  { value: "two_weeks", label: "2 недели" },
+  { value: "month", label: "Месяц" },
+];
+
+const PRESET_DAYS: Record<string, number> = { week: 7, two_weeks: 14, month: 30 };
+
+// Период набирается только из закрытых московских дней: данные WB за сегодня неполные.
+function closedRange(days: number) {
+  const dates = closedMoscowDates(days);
+  return { from: dates[0], to: dates[dates.length - 1] };
 }
 
 const VERDICT_STYLE: Record<GlueVerdictKind, { row: string; badge: string; action: string; dot: string }> = {
@@ -74,8 +92,8 @@ function Metric({ label, value, tone = "text-slate-900", title }: { label: strin
   );
 }
 
-function SkuCard({ group, sku, verdictVisible = true }: { group: SklejkiGroup; sku: SklejkiSkuMetrics; verdictVisible?: boolean }) {
-  const verdict = glueVerdict(group, sku);
+function SkuCard({ group, sku, spendWindowDays, verdictVisible = true }: { group: SklejkiGroup; sku: SklejkiSkuMetrics; spendWindowDays: number; verdictVisible?: boolean }) {
+  const verdict = glueVerdict(group, sku, spendWindowDays);
   const style = verdictVisible ? VERDICT_STYLE[verdict.kind] : VERDICT_STYLE.slate;
   const wbUrl = `https://www.wildberries.ru/catalog/${sku.nm}/detail.aspx`;
   return (
@@ -119,7 +137,7 @@ function SkuCard({ group, sku, verdictVisible = true }: { group: SklejkiGroup; s
   );
 }
 
-function GroupCard({ group }: { group: SklejkiGroup }) {
+function GroupCard({ group, spendWindowDays }: { group: SklejkiGroup; spendWindowDays: number }) {
   const totals = glueTotals(group);
   const summary = glueSummary(group);
   return (
@@ -141,14 +159,14 @@ function GroupCard({ group }: { group: SklejkiGroup }) {
         <Metric label="ДРР" value={percent(totals.drr)} tone={totals.drr == null || totals.drr > 10 ? "text-red-600" : undefined} />
       </div>
 
-      <div className="space-y-1">{glueSortedSkus(group).map((sku) => <SkuCard key={sku.nm} group={group} sku={sku} />)}</div>
+      <div className="space-y-1">{glueSortedSkus(group).map((sku) => <SkuCard key={sku.nm} group={group} sku={sku} spendWindowDays={spendWindowDays} />)}</div>
     </article>
   );
 }
 
-function SoloCard({ group }: { group: SklejkiGroup }) {
+function SoloCard({ group, spendWindowDays }: { group: SklejkiGroup; spendWindowDays: number }) {
   const sku = group.skus[0];
-  return sku ? <SkuCard group={group} sku={sku} verdictVisible={false} /> : null;
+  return sku ? <SkuCard group={group} sku={sku} spendWindowDays={spendWindowDays} verdictVisible={false} /> : null;
 }
 
 export function WbSklejkiPage() {
@@ -158,6 +176,11 @@ export function WbSklejkiPage() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [shop, setShop] = useDashboardFilter<string>("shop", "");
+  // Дефолт = прежнее окно склеек (7 закрытых дней). Совпадение с ним держит URL
+  // чистым и оставляет запрос в том же снимке, который греет крон.
+  const defaultRange = useMemo(() => closedRange(PRESET_DAYS.week), []);
+  const [dateFrom, setDateFrom] = useDashboardFilter<string>("date_from", defaultRange.from);
+  const [dateTo, setDateTo] = useDashboardFilter<string>("date_to", defaultRange.to);
   const requestId = useRef(0);
   const forceRefreshRef = useRef(false);
   const elapsed = useElapsedSeconds(loading);
@@ -175,7 +198,9 @@ export function WbSklejkiPage() {
     setError(null);
     const mode = forceRefreshRef.current ? "refresh=1" : "background=1";
     forceRefreshRef.current = false;
-    fetch(`/api/sklejki?cabinet=${encodeURIComponent(cabinetId || "all")}&${mode}`, { cache: "no-store", signal: controller.signal })
+    const custom = dateFrom !== defaultRange.from || dateTo !== defaultRange.to;
+    const periodQuery = custom ? `&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}` : "";
+    fetch(`/api/sklejki?cabinet=${encodeURIComponent(cabinetId || "all")}&${mode}${periodQuery}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = (await response.json()) as SklejkiData;
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
@@ -193,7 +218,7 @@ export function WbSklejkiPage() {
         if (current === requestId.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, reloadKey]);
+  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, dateFrom, dateTo, defaultRange.from, defaultRange.to, ready, reloadKey]);
 
   const shops = useMemo(() => Array.from(new Set([...(data?.groups_multi ?? []), ...(data?.groups_solo ?? [])].map((group) => group.shop_label))).filter(Boolean), [data]);
   useEffect(() => {
@@ -201,6 +226,20 @@ export function WbSklejkiPage() {
   }, [data, setShop, shop, shops]);
   const multi = useMemo(() => glueSortedGroups((data?.groups_multi ?? []).filter((group) => !shop || group.shop_label === shop)), [data?.groups_multi, shop]);
   const solo = useMemo(() => glueSortedGroups((data?.groups_solo ?? []).filter((group) => !shop || group.shop_label === shop)), [data?.groups_solo, shop]);
+  const activePreset = useMemo(
+    () => PERIOD_PRESETS.find((preset) => {
+      const range = closedRange(PRESET_DAYS[preset.value]);
+      return range.from === dateFrom && range.to === dateTo;
+    })?.value,
+    [dateFrom, dateTo],
+  );
+  const applyPreset = (value: string) => {
+    const range = closedRange(PRESET_DAYS[value] ?? PRESET_DAYS.week);
+    setDateFrom(range.from);
+    setDateTo(range.to);
+  };
+  const lastClosedDay = useMemo(() => closedRange(1).to, []);
+  const spendWindowDays = data?.period?.spend_window_days ?? 14;
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
@@ -210,7 +249,16 @@ export function WbSklejkiPage() {
         description={data ? `${data.total_sku} SKU, ${data.multi_groups} склеек, ${data.solo_skus} одиночных, покрыто ${data.covered}/${data.total_sku}` : "Объединённые карточки по imtID"}
         actions={
           <>
-            <span title="Показы, заказы, расход и ДРР берутся из РНП за последние 7 закрытых дней" className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-medium text-violet-700">данные из РНП · показы/заказы/ДРР за {sklejkiPeriod()}</span>
+            <PeriodRangePicker
+              from={dateFrom}
+              to={dateTo}
+              presets={PERIOD_PRESETS}
+              activePreset={activePreset}
+              maxIso={lastClosedDay}
+              onApplyPreset={applyPreset}
+              onApplyRange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+            />
+            <span title={`Показы, заказы, расход и ДРР берутся из РНП за выбранные закрытые дни, не длиннее ${SKLEJKI_MAX_PERIOD_DAYS} дней`} className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-medium text-violet-700">данные из РНП · показы/заказы/ДРР за {data?.period?.label ?? "период"}</span>
             {shops.length > 1 ? (
               <div className="flex items-center gap-1 text-[10px]" aria-label="Фильтр кабинета">
                 <span className="text-slate-400">кабинет:</span>
@@ -237,10 +285,10 @@ export function WbSklejkiPage() {
         ) : (
           <>
             <h2 className="mb-2 mt-4 first:mt-0 text-sm font-bold text-slate-700">Склейки с несколькими SKU ({multi.length})</h2>
-            {multi.length ? <div className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto pb-3">{multi.map((group) => <div key={`${group.shop_label}-${group.imt_id}`} className="snap-start"><GroupCard group={group} /></div>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет склеек с несколькими SKU.</div>}
+            {multi.length ? <div className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto pb-3">{multi.map((group) => <div key={`${group.shop_label}-${group.imt_id}`} className="snap-start"><GroupCard group={group} spendWindowDays={spendWindowDays} /></div>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет склеек с несколькими SKU.</div>}
 
             <h2 className="mb-2 mt-4 first:mt-0 text-sm font-bold text-slate-700">Одиночные SKU ({solo.length})</h2>
-            {solo.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">{solo.map((group) => <SoloCard key={`${group.shop_label}-${group.imt_id}`} group={group} />)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет одиночных SKU.</div>}
+            {solo.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">{solo.map((group) => <SoloCard key={`${group.shop_label}-${group.imt_id}`} group={group} spendWindowDays={spendWindowDays} />)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет одиночных SKU.</div>}
           </>
         )}
       </div>

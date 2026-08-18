@@ -6,7 +6,7 @@ import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductSco
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
-import { buildWbFunnelDayMetrics } from "@/lib/wb/funnelMetrics";
+import { buildWbFunnelDayMetrics, resolveFunnelPeriod } from "@/lib/wb/funnelMetrics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -19,17 +19,23 @@ export async function GET(req: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ metrics: {} });
 
-  const p_cabinet = cabinetIdFromParam(new URL(req.url).searchParams.get("cabinet")); // null → все кабинеты
+  const sp = new URL(req.url).searchParams;
+  const p_cabinet = cabinetIdFromParam(sp.get("cabinet")); // null → все кабинеты
   if (!(await hasCabinetAccess(p_cabinet))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
   const allowedNmIds = await requestAllowedNmIds(p_cabinet);
-  const since = closedMoscowDates(30)[0];
-  const sp = new URL(req.url).searchParams;
+  // Произвольный период (?date_from=&date_to=) поверх дефолтных 30 закрытых дней.
+  const requested = resolveFunnelPeriod(sp.get("date_from"), sp.get("date_to"));
+  if (!requested.ok) return NextResponse.json({ error: requested.error }, { status: 400 });
+  const since = requested.period?.start ?? closedMoscowDates(30)[0];
+  // Без запрошенного периода верхней границы нет — ключ кэша остаётся прежним,
+  // и снимок, прогретый кроном без дат, никуда не девается.
+  const until = requested.period?.end;
   const payload = await loadHourlyDashboard(
     "wb-funnel-day-metrics",
     // Cache schema: 3 did not include cross-cabinet aggregation or card-to-cart CR.
-    { cabinetId: p_cabinet, since, schema: 4 },
+    { cabinetId: p_cabinet, since, until, schema: 4 },
     async () => {
       const [funnelRows, adRows] = await Promise.all([
         loadAllSupabasePages<FunnelRow>((from, to) => {
@@ -40,6 +46,7 @@ export async function GET(req: NextRequest) {
             .order("date", { ascending: true })
             .order("nm_id", { ascending: true })
             .range(from, to);
+          if (until) query = query.lte("date", until);
           if (p_cabinet) query = query.eq("cabinet_id", p_cabinet);
           if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
           return query;
@@ -52,6 +59,7 @@ export async function GET(req: NextRequest) {
             .order("date", { ascending: true })
             .order("nm_id", { ascending: true })
             .range(from, to);
+          if (until) query = query.lte("date", until);
           if (p_cabinet) query = query.eq("cabinet_id", p_cabinet);
           if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
           return query;
