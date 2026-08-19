@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildSkuOrderIndex } from "@/lib/wb/skuOrder";
 
 // Ручной порядок выдачи артикулов кабинета (настраивается в РНП). Хук общий
@@ -30,5 +30,11 @@ export function useCabinetSkuOrder(cabinetId: string | null | undefined) {
   }, [cabinetId, version]);
 
   const refresh = useCallback(() => setVersion((value) => value + 1), []);
-  return { orderNmIds: nmIds, orderIndex: buildSkuOrderIndex(nmIds), refreshSkuOrder: refresh };
+  // Индекс обязан быть стабильным между рендерами: он уходит в зависимости
+  // useMemo у списков SKU. Пересборка на каждом рендере давала новую
+  // идентичность отсортированному списку, из-за чего экраны с постраничной
+  // дорисовкой сбрасывали показанную порцию обратно к первой странице —
+  // список «залипал» и при скролле больше ничего не подгружалось.
+  const orderIndex = useMemo(() => buildSkuOrderIndex(nmIds), [nmIds]);
+  return { orderNmIds: nmIds, orderIndex, refreshSkuOrder: refresh };
 }
