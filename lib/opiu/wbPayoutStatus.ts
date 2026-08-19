@@ -4,13 +4,7 @@ export interface WbFinanceReport {
   periodTo: string | null;
   forPaySum: number | null;
   bankPaymentSum: number | null;
-  paymentDate: string | null;
-}
-
-export interface WbScheduledPayout {
-  reportId: string;
-  date: string;
-  amount: number;
+  paymentSchedule: string | null;
 }
 
 const ISO_DATE = /(?:^|\D)(20\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))(?:$|\D)/;
@@ -48,17 +42,7 @@ export function normalizeWbFinanceReports(payload: unknown): WbFinanceReport[] {
       periodTo: strictWbPaymentDate(row.dateTo ?? row.date_to),
       forPaySum: optionalMoney(row.forPaySum ?? row.for_pay_sum),
       bankPaymentSum: optionalMoney(row.bankPaymentSum ?? row.bank_payment_sum),
-      paymentDate: strictWbPaymentDate(row.paymentSchedule ?? row.payment_schedule),
+      paymentSchedule: text(row.paymentSchedule ?? row.payment_schedule) || null,
     }];
-  });
-}
-
-export function scheduledWbPayouts(reports: WbFinanceReport[]): WbScheduledPayout[] {
-  return reports.flatMap((report) => {
-    if (!report.paymentDate) return [];
-    const amount = report.bankPaymentSum && report.bankPaymentSum > 0
-      ? report.bankPaymentSum
-      : report.forPaySum;
-    return amount && amount > 0 ? [{ reportId: report.reportId, date: report.paymentDate, amount }] : [];
   });
 }

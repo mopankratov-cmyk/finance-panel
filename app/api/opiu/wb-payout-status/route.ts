@@ -3,9 +3,16 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
-import { normalizeWbFinanceReports, optionalMoney, scheduledWbPayouts } from "@/lib/opiu/wbPayoutStatus";
+import { normalizeWbFinanceReports, optionalMoney } from "@/lib/opiu/wbPayoutStatus";
 
 export const maxDuration = 30;
+
+interface CachedStatus {
+  expiresAt: number;
+  payload: Record<string, unknown>;
+}
+
+const statusCache = new Map<string, CachedStatus>();
 
 async function wbJson(url: string, token: string, init?: RequestInit) {
   const response = await fetch(url, {
@@ -38,26 +45,39 @@ export async function GET(request: NextRequest) {
   const token = resolveWbToken(cabinet, "statistics");
   const from = `${year}-${String(month).padStart(2, "0")}-01`;
   const to = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  const cacheKey = `${cabinetId}:${year}-${month}`;
+  const cached = statusCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.payload);
   try {
-    const [balancePayload, reportsPayload] = await Promise.all([
+    const [balanceResult, reportsResult] = await Promise.allSettled([
       wbJson("https://finance-api.wildberries.ru/api/v1/account/balance", token),
       wbJson("https://finance-api.wildberries.ru/api/finance/v1/sales-reports/list", token, {
         method: "POST",
         body: JSON.stringify({ dateFrom: from, dateTo: to, limit: 100, offset: 0, period: "weekly" }),
       }),
     ]);
+    const balancePayload = balanceResult.status === "fulfilled" ? balanceResult.value : null;
+    const reportsPayload = reportsResult.status === "fulfilled" ? reportsResult.value : null;
     const balance = balancePayload && typeof balancePayload === "object" ? balancePayload as Record<string, unknown> : {};
     const reports = normalizeWbFinanceReports(reportsPayload);
-    return NextResponse.json({
+    if (balanceResult.status === "rejected" && reportsResult.status === "rejected") {
+      throw new Error("WB не вернул ни баланс, ни финансовые отчёты. Проверьте у токена категорию «Финансы» и повторите через минуту.");
+    }
+    const payload = {
       cabinetId,
       cabinetName: cabinet.name,
       currency: String(balance.currency ?? "RUB"),
       currentBalance: optionalMoney(balance.current),
       availableForWithdrawal: optionalMoney(balance.for_withdraw),
       reports,
-      scheduledPayouts: scheduledWbPayouts(reports),
+      warnings: [
+        ...(balanceResult.status === "rejected" ? ["Баланс WB временно недоступен"] : []),
+        ...(reportsResult.status === "rejected" ? ["Финансовые отчёты WB временно недоступны"] : []),
+      ],
       checkedAt: new Date().toISOString(),
-    });
+    };
+    statusCache.set(cacheKey, { expiresAt: Date.now() + 60_000, payload });
+    return NextResponse.json(payload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось получить финансовые данные WB" }, { status: 502 });
   }

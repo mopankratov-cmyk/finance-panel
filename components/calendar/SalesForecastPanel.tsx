@@ -94,8 +94,8 @@ interface WbPayoutStatus {
   currency: string;
   currentBalance: number | null;
   availableForWithdrawal: number | null;
-  reports: { reportId: string; periodFrom: string | null; periodTo: string | null; forPaySum: number | null; bankPaymentSum: number | null; paymentDate: string | null }[];
-  scheduledPayouts: { reportId: string; date: string; amount: number }[];
+  reports: { reportId: string; periodFrom: string | null; periodTo: string | null; forPaySum: number | null; bankPaymentSum: number | null; paymentSchedule: string | null }[];
+  warnings: string[];
   checkedAt: string;
 }
 
@@ -297,7 +297,7 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="font-semibold text-sky-950">Финансовый статус WB</h3>
-                  <p className="mt-1 text-xs text-sky-800">Баланс и подтверждённые даты запрашиваются напрямую у WB только по кнопке.</p>
+                  <p className="mt-1 text-xs text-sky-800">Баланс и отчёты запрашиваются напрямую у WB только по кнопке. Дату заказанного вывода официальный API не передаёт.</p>
                 </div>
                 <button type="button" disabled={payoutLoading} onClick={async () => {
                   setPayoutLoading(true);
@@ -322,11 +322,8 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                   <Metric label="Доступно для вывода" value={payoutStatus.availableForWithdrawal} green />
                 </div>
                 <p className="mt-2 text-xs text-sky-800">Обновлено: {new Date(payoutStatus.checkedAt).toLocaleString("ru-RU")}</p>
-                {payoutStatus.scheduledPayouts.length > 0 ? <div className="mt-3 overflow-x-auto rounded-lg border border-sky-200 bg-white">
-                  <table className="w-full min-w-[520px] text-sm"><thead className="bg-sky-50 text-xs text-sky-900"><tr><th className="px-3 py-2 text-left">Отчёт WB</th><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-left">Дата</th><th className="px-3 py-2 text-right">Сумма</th></tr></thead><tbody>
-                    {payoutStatus.scheduledPayouts.map((row) => <tr key={row.reportId} className="border-t border-sky-100"><td className="px-3 py-2">{row.reportId}</td><td className="px-3 py-2 font-medium text-amber-700">Ожидается перечисление</td><td className="px-3 py-2">{new Date(`${row.date}T00:00:00`).toLocaleDateString("ru-RU")}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.amount)}</td></tr>)}
-                  </tbody></table>
-                </div> : <p className="mt-3 text-sm text-sky-900">WB пока не передал точную дату ожидаемого перечисления. Расчётные даты календаря не меняются.</p>}
+                {payoutStatus.warnings.map((warning) => <p key={warning} className="mt-2 text-sm text-amber-800">{warning}</p>)}
+                <p className="mt-3 text-sm text-sky-900">Отчётов за месяц: <b>{payoutStatus.reports.length}</b>. Суммы отчётов используются только для сверки и не выдаются за заказанный вывод.</p>
               </>}
             </div>
             {data.planRowsCount > 0 && (
@@ -411,14 +408,11 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                   if (!confirm(`Перенести ${data.payoutSchedule.length} поступлений WB в платёжный календарь? Существующие строки этого прогноза будут обновлены.`)) return;
                   setPublishing(true);
                   try {
-                    const officialByReport = new Map((payoutStatus?.scheduledPayouts ?? []).map((row) => [row.reportId, row]));
                     const publicationRows = data.payoutSchedule.map((row) => {
-                      const official = officialByReport.get(row.id);
-                      return official ? { key: official.reportId, date: official.date, amount: official.amount, source: "financial_report" as const, reportId: official.reportId } : {
+                      return {
                         key: row.id, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined,
                       };
                     });
-                    for (const official of payoutStatus?.scheduledPayouts ?? []) if (!publicationRows.some((row) => row.key === official.reportId)) publicationRows.push({ key: official.reportId, date: official.date, amount: official.amount, source: "financial_report", reportId: official.reportId });
                     const result = await publishForecastToCalendar(
                       { marketplace: "wb", cabinetId: data.cabinetId, companyId, accountId, year, month: month + 1 },
                       publicationRows,
