@@ -58,6 +58,9 @@ export function WbSuppliesPage() {
   const [minBatch, setMinBatch] = useState(30);
   const [horizon, setHorizon] = useState<Horizon>(45);
   const [retryKey, setRetryKey] = useState(0);
+  // Кнопка «Загрузить остатки WB» должна пересобрать снимок, а не перечитать
+  // тот же самый — иначе нажатие выглядит как «ничего не произошло».
+  const forceRefreshRef = useRef(false);
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
 
@@ -78,7 +81,9 @@ export function WbSuppliesPage() {
     const current = ++requestId.current;
     setLoading(true);
     setError(null);
-    fetch(`/api/supplies?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
+    const refreshParam = forceRefreshRef.current ? "&refresh=1" : "";
+    forceRefreshRef.current = false;
+    fetch(`/api/supplies?cabinet=${encodeURIComponent(cabinetId || "all")}${refreshParam}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = (await response.json()) as SuppliesResponse;
         if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
@@ -154,10 +159,10 @@ export function WbSuppliesPage() {
         title="Поставки"
         description={data ? `${data.data?.catalog.length ?? data.skus.length} SKU · ${data.data?.warehouses.length ?? data.warehouses.length} складов · мин. партия ${minBatch} шт` : "Потребность, склады, ограничения и приёмка"}
         actions={sellerReadOnly ? (
-          <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 sm:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить данные</button>
+          <button type="button" onClick={() => { forceRefreshRef.current = true; setRetryKey((value) => value + 1); }} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 sm:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить данные</button>
         ) :
           <>
-            <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 sm:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Boxes className="h-3.5 w-3.5" />} Загрузить остатки WB</button>
+            <button type="button" onClick={() => { forceRefreshRef.current = true; setRetryKey((value) => value + 1); }} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 sm:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Boxes className="h-3.5 w-3.5" />} Загрузить остатки WB</button>
             <button type="button" onClick={() => setTab("source")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:border-violet-200 hover:text-violet-700 sm:min-h-8"><PackageCheck className="h-3.5 w-3.5 text-violet-500" /> Источник готовой тары</button>
             <button type="button" onClick={() => setTab("distribution")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:border-violet-200 hover:text-violet-700 sm:min-h-8"><ShieldCheck className="h-3.5 w-3.5 text-violet-500" /> Ограничения складов</button>
           </>

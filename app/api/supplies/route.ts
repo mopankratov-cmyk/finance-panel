@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { resolveCabinetSelection } from "@/lib/cabinetGroups";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
@@ -118,7 +119,10 @@ export async function GET(req: NextRequest) {
   if (!db) {
     return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
   }
-  const { single: p_cabinet, members } = await resolveCabinetSelection(new URL(req.url).searchParams.get("cabinet"));
+  const params = new URL(req.url).searchParams;
+  const { single: p_cabinet, members } = await resolveCabinetSelection(params.get("cabinet"));
+  // refresh=1 — кнопка «Загрузить остатки WB»: пересобрать снимок принудительно.
+  const forceRefresh = params.get("refresh") === "1";
   const accessAllowed = members
     ? (await Promise.all(members.map((member) => hasCabinetAccess(member)))).every(Boolean)
     : await hasCabinetAccess(p_cabinet);
@@ -143,9 +147,19 @@ export async function GET(req: NextRequest) {
         rows: [],
         error: error instanceof Error ? error.message : "Габариты WB не загружены",
       }));
+    // Снимок вместо живого пересчёта. Эти два источника — RPC по товарам и
+    // постраничные остатки — и есть те 8–10 секунд ожидания на каждом заходе;
+    // именно они упирались в statement timeout под нагрузкой. Данные меняются
+    // не чаще синхронизации с WB, поэтому читаем готовый снимок, а кнопка
+    // «Загрузить остатки WB» пересобирает его через ?refresh=1.
+    const snapshotIdentity = {
+      cabinet: p_cabinet ?? "",
+      members: members ? [...members].sort().join(",") : "",
+      schema: 1,
+    };
     const [rpcRows, allStockRowsRaw, costsRes, pimSnapshot] = await Promise.all([
-      fetchRpcRows(db, p_cabinet, members),
-      fetchAllStocks(db, p_cabinet, members),
+      loadHourlyDashboard("wb-supplies-rows", snapshotIdentity, () => fetchRpcRows(db, p_cabinet, members), { forceRefresh }),
+      loadHourlyDashboard("wb-supplies-stocks", snapshotIdentity, () => fetchAllStocks(db, p_cabinet, members), { forceRefresh }),
       db.from("product_costs").select("article, name"),
       pimRowsPromise,
     ]);
