@@ -273,6 +273,9 @@ export function WbPenaltiesTab({ cabinetId, cabinetName }: { cabinetId: string; 
   }
 
   const warnings = data?.meta.warnings ?? [];
+  // Время среза: вкладка остаётся смонтированной при переключении, поэтому
+  // без этой строки старые данные выглядели бы только что загруженными.
+  const snapshotAt = data?.meta.generatedAt ? new Date(data?.meta.generatedAt).toLocaleString("ru-RU") : null;
   const exclusions = data?.data?.exclusions ?? null;
 
   return (
@@ -311,6 +314,7 @@ export function WbPenaltiesTab({ cabinetId, cabinetName }: { cabinetId: string; 
         })}
         <div className="rounded-xl border border-slate-300 bg-slate-50 p-3">
           <div className="text-[11px] text-slate-500">Итого удержаний в выборке</div>
+          {snapshotAt ? <div className="text-[11px] text-slate-400">Данные на {snapshotAt}</div> : null}
           <div className="mt-1 text-xl font-bold tabular-nums text-slate-800">{formatRub(data?.data?.total ?? 0)}</div>
           <div className="mt-0.5 text-[11px] text-slate-400">{formatDate(range.from)} — {formatDate(range.to)}</div>
         </div>

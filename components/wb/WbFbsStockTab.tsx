@@ -100,11 +100,15 @@ export function WbFbsStockTab({ cabinetId, cabinetName }: { cabinetId: string; c
 
   const { warehouses, totalAmount, skuChecked, zeroSkus, warehouseName, catalogReady } = data.data;
   const warnings = data.meta.warnings;
+  // Время среза: вкладка остаётся смонтированной при переключении, поэтому
+  // без этой строки старые данные выглядели бы только что загруженными.
+  const snapshotAt = data.meta.generatedAt ? new Date(data.meta.generatedAt).toLocaleString("ru-RU") : null;
 
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-3">
         <div className="text-sm font-semibold text-slate-800">Остатки на вашем складе (FBS)</div>
+        {snapshotAt ? <div className="mt-0.5 text-[11px] text-slate-400">Данные на {snapshotAt}</div> : null}
         <div className="mt-0.5 text-[11px] text-slate-500">
           WB отдаёт остаток склада продавца только по списку баркодов — баркоды берутся из карточек кабинета. Позиции с нулём в таблицу не попадают.
         </div>

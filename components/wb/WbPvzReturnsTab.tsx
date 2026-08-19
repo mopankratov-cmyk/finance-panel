@@ -142,6 +142,9 @@ export function WbPvzReturnsTab({ cabinetId, cabinetName }: { cabinetId: string;
 
   const statuses = data?.data?.statuses ?? [];
   const warnings = data?.meta.warnings ?? [];
+  // Время среза: вкладка остаётся смонтированной при переключении, поэтому
+  // без этой строки старые данные выглядели бы только что загруженными.
+  const snapshotAt = data?.meta.generatedAt ? new Date(data?.meta.generatedAt).toLocaleString("ru-RU") : null;
   const anonymized = data?.data?.anonymized ?? null;
 
   return (
@@ -150,6 +153,7 @@ export function WbPvzReturnsTab({ cabinetId, cabinetName }: { cabinetId: string;
         <PackageX className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
         <div>
           <div className="font-semibold text-slate-700">Товар, который WB везёт обратно вам</div>
+          {snapshotAt ? <div className="text-[11px] text-slate-400">Данные на {snapshotAt}</div> : null}
           <div className="text-slate-500">
             Брак, неверное вложение, возврат по вашей инициативе. Источник — заявки покупателей на возврат в API WB;
             статусы и типы заявок показаны так, как их передал WB, без наших переводов.

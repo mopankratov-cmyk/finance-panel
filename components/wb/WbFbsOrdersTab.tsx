@@ -165,11 +165,15 @@ export function WbFbsOrdersTab({ cabinetId, cabinetName }: { cabinetId: string; 
 
   const { buckets, kizMissing, kizChecked, kizRequired, kizUnchecked } = data.data;
   const warnings = data.meta.warnings;
+  // Время среза: вкладка остаётся смонтированной при переключении, поэтому
+  // без этой строки старые данные выглядели бы только что загруженными.
+  const snapshotAt = data.meta.generatedAt ? new Date(data.meta.generatedAt).toLocaleString("ru-RU") : null;
 
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-3">
         <div className="text-sm font-semibold text-slate-800">Заказы на самовывоз из вашего склада (Маркетплейс)</div>
+        {snapshotAt ? <div className="mt-0.5 text-[11px] text-slate-400">Данные на {snapshotAt}</div> : null}
         <div className="mt-0.5 text-[11px] text-slate-500">
           Сборочные задания FBS/DBS за выбранный период. Код маркировки WB отдаёт по одному заданию за запрос — проверено {fmt(kizChecked)} из {fmt(kizRequired)}.
           {kizUnchecked > 0 ? (
