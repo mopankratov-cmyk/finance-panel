@@ -61,8 +61,14 @@ export function WbSuppliesPage() {
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
 
+  // Вкладки со своим источником не нуждаются в общем /api/supplies (тяжёлый RPC
+  // по остаткам). Раньше он грузился всегда — открывая «FBS-заказы», человек ждал
+  // два источника вместо одного. Грузим по требованию: только когда открыта
+  // вкладка, которой эти данные действительно нужны.
+  const needsSuppliesData = !["kizReconcile", "kizExport", "fbsOrders", "fbsStock", "pvzReturns", "penalties"].includes(tab);
+
   const load = useCallback(() => {
-    if (!ready || cabinetsLoading) return undefined;
+    if (!ready || cabinetsLoading || !needsSuppliesData) return undefined;
     if (cabinets.length === 0) {
       setLoading(false);
       setError(cabinetsError || "Подключите хотя бы один активный WB-кабинет в настройках");
@@ -82,12 +88,15 @@ export function WbSuppliesPage() {
       .catch((cause: unknown) => { if (current === requestId.current && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Не удалось загрузить поставки"); })
       .finally(() => { if (current === requestId.current) setLoading(false); });
     return controller;
-  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready]);
+  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, needsSuppliesData]);
 
   useEffect(() => {
+    // На вкладке со своим источником общий запрос не идёт — снимаем индикатор,
+    // иначе шапка «грузится» бесконечно, хотя ничего не загружается.
+    if (!needsSuppliesData) { setLoading(false); return; }
     const controller = load();
     return () => controller?.abort();
-  }, [load, retryKey]);
+  }, [load, retryKey, needsSuppliesData]);
 
   useEffect(() => {
     if (sellerReadOnly && !["reorder", "stock"].includes(tab)) setTab("reorder");
@@ -156,13 +165,17 @@ export function WbSuppliesPage() {
       />
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
-        <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 xl:flex-row xl:items-center">
+        {/* Фильтры — ОТДЕЛЬНОЙ строкой под вкладками. Раньше они стояли в одной
+            строке с таб-баром и появлялись только на «К поставке», из-за чего
+            вкладки уезжали вправо прямо под курсором: целишься в «Приёмку»,
+            попадаешь в соседнюю. Панель вкладок должна стоять неподвижно. */}
+        <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3">
+          <div role="tablist" aria-label="Разделы поставок" className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-0.5">{tabs.map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`min-h-10 shrink-0 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${tab === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{label}</button>)}</div>
           <div className={`min-w-0 flex-1 flex-col gap-2 sm:flex-row ${tab === "reorder" ? "flex" : "hidden"}`}>
             <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 sm:max-w-sm sm:min-h-9"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="артикул или ШК" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label>
             <label className="flex min-h-11 items-center gap-2 text-xs text-slate-500 sm:min-h-9">Мин. партия<input type="number" min={0} step={10} value={minBatch} onChange={(event) => setMinBatch(Math.max(0, Number(event.target.value) || 0))} className="h-9 w-20 rounded-lg border border-slate-200 px-2 text-right text-xs tabular-nums outline-none focus:border-violet-400" />шт</label>
             {tab === "reorder" ? <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5">{([30, 45, 60] as const).map((value) => <button key={value} type="button" onClick={() => setHorizon(value)} className={`min-h-10 rounded-md px-3 text-[10px] font-semibold sm:min-h-8 ${horizon === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}>{value} дней</button>)}</div> : null}
           </div>
-          <div role="tablist" aria-label="Разделы поставок" className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-0.5">{tabs.map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`min-h-10 shrink-0 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${tab === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{label}</button>)}</div>
         </div>
 
         {standaloneTab ? standaloneTab : loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`поставки · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={10} cols={10} /></div> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : !data?.data ? <WbEmptyState>Данные поставок ещё не синхронизированы.</WbEmptyState> : tab === "orders" ? (canWrite ? <WbPurchaseOrdersTab skus={data.data.skus} cabinetId={cabinetId} canWrite={canWrite} /> : <WbEmptyState>Заказы фабрике ведутся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>) : tab === "distribution" ? <WbSupplyDistributionPlanner cabinetId={cabinetId} cabinetName={activeCabinet?.name ?? "all"} canWrite={canWrite} recommendedWarehouses={data.warehouses} skus={data.skus} defaultMinBatch={data.threshold ?? 30} defaultPalletLiters={data.pallet_liters ?? 1230} volumeKnown={data.vol_known ?? 0} volumeTotal={data.vol_total ?? data.skus.length} /> : tab === "reorder" ? (

@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { SupplyRow } from "@/app/api/supplies/route";
 import { SlidePanel } from "@/components/ui/SlidePanel";
+import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
 import type { PurchaseOrderView } from "@/lib/purchases/db";
 import {
   addDays,
@@ -116,6 +117,7 @@ const smallButton = "inline-flex min-h-10 items-center justify-center gap-1.5 ro
 export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
   const [orders, setOrders] = useState<PurchaseOrderView[]>([]);
   const [loading, setLoading] = useState(true);
+  const elapsed = useElapsedSeconds(loading);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
@@ -291,7 +293,9 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
       </div>
 
       {warnings.map((warning) => <div key={warning} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">{warning}</div>)}
-      {loading ? <div className="flex min-h-40 items-center justify-center rounded-xl border border-slate-200 bg-white text-xs text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> Загружаю заказы…</div> : loadError ? <WbErrorState message={loadError} onRetry={() => void loadOrders()} /> : orders.length === 0 ? <WbEmptyState>Заказов фабрике пока нет. Создайте первый — черновик сохранится автоматически.</WbEmptyState> : (
+      {/* Тот же индикатор, что и на остальных вкладках раздела: одинаковая
+          формулировка и счётчик секунд вместо собственного спиннера. */}
+      {loading ? <LoadingBanner seconds={elapsed} hint="заказы фабрике" /> : loadError ? <WbErrorState message={loadError} onRetry={() => void loadOrders()} /> : orders.length === 0 ? <WbEmptyState>Заказов фабрике пока нет. Создайте первый — черновик сохранится автоматически.</WbEmptyState> : (
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
           {orders.map((order) => <button key={order.id} type="button" onClick={() => editOrder(order)} className="group rounded-xl border border-slate-200 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md">
             <div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><Factory className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="truncate text-sm font-bold text-slate-800">{order.orderNumber}</span><span className={`ml-auto shrink-0 rounded-full border px-2 py-1 text-[9px] font-semibold ${STATUS_STYLES[order.status]}`}>{STATUS_LABELS[order.status]}</span></div><div className="mt-0.5 truncate text-[11px] text-slate-500">{order.supplier || "Поставщик не указан"}</div></div></div>
