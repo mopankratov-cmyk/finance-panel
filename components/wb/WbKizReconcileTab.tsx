@@ -8,7 +8,9 @@ import type { KizReconcileResponse } from "@/app/api/supplies/kiz-reconcile/rout
 import type { KizBucket, KizReconcileDays, KizReconcileRow, KizReturnTask, KizRowBucket } from "@/lib/wb/kizReconcile";
 import { WbEmptyState } from "./WbModuleHeader";
 
-const DAYS: KizReconcileDays[] = [30, 60, 90];
+// Короткие окна — для агентских кабинетов: WB отдаёт задания всего продавца,
+// и на большом обороте чужие товары съедают потолок прогона целиком.
+const DAYS: KizReconcileDays[] = [1, 3, 7, 30, 60, 90];
 const NO_PREFIX = "__none__";
 
 const fmt = (value: number) => value.toLocaleString("ru-RU");

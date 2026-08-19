@@ -118,7 +118,7 @@ export interface KizReconcileResponse {
   error: string | null;
 }
 
-const DAYS_OPTIONS: KizReconcileDays[] = [30, 60, 90];
+const DAYS_OPTIONS: KizReconcileDays[] = [1, 3, 7, 30, 60, 90];
 
 function fail(error: string, status: number, days: KizReconcileDays, cabinetId = ""): NextResponse {
   const body: KizReconcileResponse = {
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
   const params = new URL(request.url).searchParams;
   const rawDays = Number(params.get("days") ?? 30);
   const days = (DAYS_OPTIONS as number[]).includes(rawDays) ? (rawDays as KizReconcileDays) : null;
-  if (!days) return fail("Период сверки — 30, 60 или 90 дней", 400, 30);
+  if (!days) return fail("Период сверки — 1, 3, 7, 30, 60 или 90 дней", 400, 30);
 
   const rawCabinet = params.get("cabinet");
   if (!rawCabinet || rawCabinet === "all" || rawCabinet.startsWith("group:")) {
@@ -187,12 +187,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(body, { status });
   }
 
-  if (tasks.truncated) {
-    warnings.push("Заданий за период больше, чем помещается в один прогон — сверьте период поменьше (30 дней).");
-  }
   const scoped = tasks.tasks.filter((task) => allowsProduct(scope, task.nmId));
   const blocked = tasks.tasks.length - scoped.length;
-  if (blocked) warnings.push(`Исключено заданий вне товарного контура кабинета: ${blocked}`);
+
+  // Агентский кабинет: WB отдаёт задания всего продавца, панель показывает только
+  // товары кабинета. Если потолок прогона выбран целиком и своих товаров в срезе
+  // не оказалось — сверка по этому периоду невозможна в принципе, и сказать об
+  // этом надо прямо. Прежние две фразы («исключено N» + «возьмите период меньше»)
+  // выглядели как настройка, хотя объясняли разные вещи и вводили в заблуждение.
+  if (tasks.truncated && scoped.length === 0 && blocked > 0) {
+    warnings.push(
+      `Сверка по этому периоду невозможна: WB отдаёт сборочные задания всего продавца, `
+      + `а кабинет ограничен вашими товарами. За ${days} дн. панель успела просмотреть ${blocked} заданий — `
+      + `все чужие, ваших среди них не встретилось. Возьмите период короче (1–7 дней): `
+      + `чем он меньше, тем выше шанс, что ваши товары попадут в просмотренный срез.`,
+    );
+  } else {
+    if (tasks.truncated) {
+      warnings.push(`Заданий за период больше, чем помещается в один прогон (просмотрено ${tasks.tasks.length}) — возьмите период короче.`);
+    }
+    if (blocked) warnings.push(`Исключено заданий вне товарного контура кабинета: ${blocked}`);
+  }
 
   let soldIds = new Set<number>();
   let statusesAvailable = false;
