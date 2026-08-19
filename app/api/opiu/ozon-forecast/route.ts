@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
+import {
+  describeOzonScope,
+  getOzonCabinetScope,
+  selectOzonCabinets,
+} from "@/lib/ozon/cabinet";
+import { loadCachedOzonCockpit } from "@/lib/ozon/cockpitCache";
 import { ozonAnalyticsDaily, ozonPrices } from "@/lib/ozon/api";
 import { calculateSalesPlanDaily, inferModelArticle, type SalesPlanDocument } from "@/lib/planning/salesPlan";
 import { loadPlanningState } from "@/lib/planning/stateStore";
@@ -37,6 +42,7 @@ import {
 import {
   classifyOzonReceipt,
   getOzonPayoutMapping,
+  ozonCabinetDisplayName,
 } from "@/lib/opiu/ozonPayoutIdentity";
 
 export const maxDuration = 60;
@@ -136,33 +142,41 @@ export async function GET(request: NextRequest) {
         { status: 503 },
       );
     }
-    const requestedCabinet = request.nextUrl.searchParams.get("cabinet")
-      || allCabinets.scope.cabinets[0]?.id;
-    if (!requestedCabinet || requestedCabinet === "all") {
+    const cabinetOptions = allCabinets.scope.cabinets.map((item) => ({
+      id: item.id,
+      name: ozonCabinetDisplayName(item.id, item.name),
+    }));
+    const requestedCabinet = request.nextUrl.searchParams.get("cabinet");
+    if (!requestedCabinet) {
+      return NextResponse.json({ cabinets: cabinetOptions });
+    }
+    if (requestedCabinet === "all") {
       return NextResponse.json(
         { error: "Для финансового прогноза выберите один кабинет Ozon" },
         { status: 400 },
       );
     }
-    const resolved = await runWithDeadline(
-      deadline,
-      "выбранный кабинет",
-      (signal) => getOzonCabinetScope(requestedCabinet, { signal }),
-      deadlineOptions,
+    // The complete, access-filtered cabinet list is already loaded above.
+    // Selecting from it avoids a second Supabase/session round-trip which used
+    // to make the whole forecast fail when the finance database was slow.
+    const selectedScope = selectOzonCabinets(
+      allCabinets.scope.cabinets,
+      requestedCabinet,
     );
-    if (!resolved.ok) {
+    if (!selectedScope) {
       return NextResponse.json(
         { error: "Выбранный кабинет Ozon не найден" },
         { status: 404 },
       );
     }
-    if (resolved.scope.cabinets.length !== 1) {
+    if (selectedScope.cabinets.length !== 1) {
       return NextResponse.json(
         { error: "Финансовый прогноз рассчитывается отдельно для каждого кабинета" },
         { status: 400 },
       );
     }
-    const cabinet = resolved.scope.cabinets[0];
+    const cabinet = selectedScope.cabinets[0];
+    const cabinetName = ozonCabinetDisplayName(cabinet.id, cabinet.name);
     const mapping = getOzonPayoutMapping(cabinet.id);
     if (!mapping) {
       return NextResponse.json(
@@ -276,8 +290,59 @@ export async function GET(request: NextRequest) {
         },
       ] as const)
       : []);
+    let unitEconomyFallbackUsed = false;
+    let unitEconomySnapshotAt: string | null = null;
+    let tariffProviderComplete = prices.ok;
+    let tariffProviderRowCount = prices.ok ? prices.rows.length : 0;
     if (!prices.ok) {
-      warnings.push(`${cabinet.name}: тарифы Ozon недоступны — прогноз выплаты неполный`);
+      try {
+        const economySnapshot = await runWithDeadline(
+          deadline,
+          "сохранённая юнит-экономика Ozon",
+          async (signal) => {
+            signal.throwIfAborted();
+            return loadCachedOzonCockpit({
+              view: "economy",
+              scope: describeOzonScope(selectedScope),
+              days: 14,
+              taxPct: 7,
+            });
+          },
+          deadlineOptions,
+        ) as {
+          view?: string;
+          generatedAt?: string;
+          rows?: Array<{
+            offerId?: string;
+            commissionPct?: number;
+            logistics?: number;
+            acquiring?: number;
+          }>;
+        };
+        const snapshotRows = economySnapshot.view === "economy" && Array.isArray(economySnapshot.rows)
+          ? economySnapshot.rows
+          : [];
+        for (const row of snapshotRows) {
+          const offerId = String(row.offerId ?? "").trim().toUpperCase();
+          if (!offerId) continue;
+          rates.set(offerId, {
+            commissionPct: numberOrZero(row.commissionPct),
+            logistics: numberOrZero(row.logistics),
+            acquiring: numberOrZero(row.acquiring),
+          });
+        }
+        unitEconomyFallbackUsed = rates.size > 0;
+        unitEconomySnapshotAt = unitEconomyFallbackUsed
+          ? String(economySnapshot.generatedAt ?? "") || null
+          : null;
+        tariffProviderComplete = unitEconomyFallbackUsed;
+        tariffProviderRowCount = rates.size;
+      } catch {
+        unitEconomyFallbackUsed = false;
+      }
+      warnings.push(unitEconomyFallbackUsed
+        ? `${cabinetName}: живые тарифы Ozon недоступны — использован последний сохранённый снимок юнит-экономики`
+        : `${cabinetName}: тарифы Ozon и сохранённая юнит-экономика недоступны — прогноз выплаты неполный`);
     }
 
     for (const row of selectedPlan?.document.rows ?? []) {
@@ -322,15 +387,15 @@ export async function GET(request: NextRequest) {
       });
     }
     const coverage = assessTariffCoverage(
-      prices.ok,
-      prices.ok ? prices.rows.length : 0,
+      tariffProviderComplete,
+      tariffProviderRowCount,
       forecastCoverageRows,
     );
     const forecastDataStatus = coverage.forecastDataStatus;
     if (forecastDataStatus === "degraded" && prices.ok) {
       warnings.push(prices.rows.length >= 20_000
-        ? `${cabinet.name}: тарифы Ozon достигли лимита строк и могут быть неполными`
-        : `${cabinet.name}: не для всех строк с плановой выручкой найдены полные валидные тарифы Ozon`);
+        ? `${cabinetName}: тарифы Ozon достигли лимита строк и могут быть неполными`
+        : `${cabinetName}: не для всех строк с плановой выручкой найдены полные валидные тарифы Ozon`);
     }
 
     let reportDataStatus: "available" | "degraded" | "not_selected" = "available";
@@ -351,13 +416,13 @@ export async function GET(request: NextRequest) {
         if (reportResult.degraded) {
           reportDataStatus = "degraded";
           warnings.push(
-            `${cabinet.name}: отклонено строк отчётов без обязательного внешнего ID или валидных данных: ${reportResult.rejectedRows}`,
+            `${cabinetName}: отклонено строк отчётов без обязательного внешнего ID или валидных данных: ${reportResult.rejectedRows}`,
           );
         }
       } catch {
         reportDataStatus = "degraded";
         warnings.push(
-          `${cabinet.name}: финансовые отчёты Ozon недоступны`,
+          `${cabinetName}: финансовые отчёты Ozon недоступны`,
         );
       }
 
@@ -395,8 +460,8 @@ export async function GET(request: NextRequest) {
         actualDataStatus = "degraded";
         warnings.push(
           analytics.ok
-            ? `${cabinet.name}: аналитика Ozon достигла лимита строк и может быть неполной`
-            : `${cabinet.name}: фактические заказы Ozon недоступны`,
+            ? `${cabinetName}: аналитика Ozon достигла лимита строк и может быть неполной`
+            : `${cabinetName}: фактические заказы Ozon недоступны`,
         );
       }
     } else {
@@ -453,6 +518,10 @@ export async function GET(request: NextRequest) {
       })),
       receivedByReport: reconciliation.receivedByReport,
     });
+    const preliminaryOnly = forecastDataStatus === "available"
+      && reportDataStatus === "degraded"
+      && confirmedPayouts.length === 0
+      && reconciliation.unresolved.length === 0;
     const buckets = new Map<string, number>();
     dailyGross.forEach((weight, index) => {
       if (weight <= 0) return;
@@ -464,10 +533,12 @@ export async function GET(request: NextRequest) {
       if (!isForecastDateEligible(date, businessDateKey)) return;
       buckets.set(date, (buckets.get(date) ?? 0) + weight);
     });
-    const definitiveCombined = totals.forecastRemainder !== null;
-    const allocation = definitiveCombined
+    const scheduleForecastAmount = totals.forecastRemainder
+      ?? (preliminaryOnly ? totals.expectedPayout : null);
+    const scheduleAvailable = scheduleForecastAmount !== null;
+    const allocation = scheduleAvailable
       ? allocateForecastRemainder(
-        totals.forecastRemainder!,
+        scheduleForecastAmount!,
         [...buckets].sort(([left], [right]) => left.localeCompare(right))
           .map(([date, weight]) => ({
             id: `forecast:${cabinet.id}:${date}`,
@@ -476,7 +547,7 @@ export async function GET(request: NextRequest) {
           })),
       )
       : { schedule: [], unallocatedForecastPayout: null };
-    const reportSchedule: ScheduleRow[] = definitiveCombined
+    const reportSchedule: ScheduleRow[] = scheduleAvailable && !preliminaryOnly
       ? confirmedPayouts.map((item) => ({
         id: payoutReportKey(item),
         date: item.estimatedReceiptDate,
@@ -503,7 +574,7 @@ export async function GET(request: NextRequest) {
         "Часть прогноза не распределена: нет будущих расчётных дат выплат",
       );
     }
-    const remainingPayout = definitiveCombined
+    const remainingPayout = scheduleAvailable
       ? Math.round((
         payoutSchedule.reduce((sum, item) => sum + item.amount, 0)
           + (allocation.unallocatedForecastPayout ?? 0)
@@ -516,11 +587,8 @@ export async function GET(request: NextRequest) {
       companyId,
       companyName: mapping.companyName,
       receivingAccountId: mapping.receivingAccountId,
-      scope: resolved.scope.label,
-      cabinets: allCabinets.scope.cabinets.map((item) => ({
-        id: item.id,
-        name: item.name,
-      })),
+      scope: selectedScope.label,
+      cabinets: cabinetOptions,
       planRows,
       planSource: selectedPlan?.source ?? "none",
       planApproved: selectedPlan?.source === "approved_sales_plan",
@@ -543,6 +611,9 @@ export async function GET(request: NextRequest) {
       plannedPositiveRevenue: coverage.plannedPositiveRevenue,
       coveredPositiveRevenueRows: coverage.coveredPositiveRevenueRows,
       coveredPositiveRevenue: coverage.coveredPositiveRevenue,
+      unitEconomyFallbackUsed,
+      unitEconomySnapshotAt,
+      preliminaryOnly,
       reconciliationQueue: reconciliation.unresolved.map((item) => {
         const payment = paymentRows.find((row) => row.id === item.bankReceiptId);
         return {
@@ -558,8 +629,16 @@ export async function GET(request: NextRequest) {
       dataNotices: [...new Set(dataNotices)],
     });
   } catch (error) {
+    const errorMessage = error && typeof error === "object" && "message" in error
+      ? String(error.message)
+      : "";
+    const unavailable = /fetch failed|request timed out|ист[её]к общий срок/i.test(errorMessage);
     return NextResponse.json(
-      { error: publicOzonForecastError(error) },
+      {
+        error: unavailable
+          ? "Финансовая база временно недоступна. Прогноз не рассчитан; повторите через минуту."
+          : publicOzonForecastError(error),
+      },
       { status: 503 },
     );
   }

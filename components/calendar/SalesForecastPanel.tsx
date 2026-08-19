@@ -103,6 +103,8 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
   companyByPayment: Map<string, string | null>;
 }) {
   const [cabinetId, setCabinetId] = useState("");
+  const [calculatedCabinetId, setCalculatedCabinetId] = useState("");
+  const [calculationVersion, setCalculationVersion] = useState(0);
   const [cabinetOptions, setCabinetOptions] = useState<ForecastResponse["cabinets"]>([]);
   const [forceRecalc, setForceRecalc] = useState(false);
   const [data, setData] = useState<ForecastResponse | null>(null);
@@ -125,9 +127,41 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
 
   useEffect(() => {
     const query = new URLSearchParams({ year: String(year), month: String(month + 1) });
-    if (cabinetId) query.set("cabinet", cabinetId);
+    const controller = new AbortController();
+    let cancelled = false;
+    setCabinetOptions([]);
+    setData(null);
+    setError("");
+    setLoading(true);
+    fetch(`/api/opiu/forecast?${query}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => readForecastJson<{ cabinets: ForecastResponse["cabinets"] }>(
+        response,
+        "Не удалось загрузить список кабинетов WB",
+      ))
+      .then((result) => {
+        if (cancelled) return;
+        setCabinetOptions(result.cabinets);
+        setLoading(false);
+      })
+      .catch((requestError) => {
+        if (cancelled || requestError instanceof DOMException && requestError.name === "AbortError") return;
+        setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить список кабинетов WB");
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [year, month]);
+
+  useEffect(() => {
+    if (!calculatedCabinetId) return;
+    const query = new URLSearchParams({
+      year: String(year),
+      month: String(month + 1),
+      cabinet: calculatedCabinetId,
+    });
     if (forceRecalc) query.set("force", "1");
-    const requestedCabinetId = cabinetId;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 55_000);
     let cancelled = false;
@@ -146,13 +180,8 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
         );
         if (cancelled) return;
         setCabinetOptions(result.cabinets ?? []);
-        // Первый заход без выбранного кабинета — сервер вернул дефолтный, фиксируем его.
-        if (!requestedCabinetId && result.cabinetId) {
-          setCabinetId(result.cabinetId);
-          return;
-        }
         // §19: показываем данные только если ответ строго про запрошенный кабинет.
-        if (result.cabinetId === requestedCabinetId) {
+        if (result.cabinetId === calculatedCabinetId) {
           setData(result);
           setError("");
           setLoading(false);
@@ -178,7 +207,7 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [year, month, cabinetId, forceRecalc]);
+  }, [year, month, calculatedCabinetId, calculationVersion, forceRecalc]);
 
   const expectedPayout = (data?.forecastPayout ?? 0) + adjustment;
   const articleRows = useMemo(() => data?.items.slice().sort((a, b) => b.planRevenue - a.planRevenue) ?? [], [data]);
@@ -198,21 +227,42 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
       </div>
       <CardContent className="space-y-4 pt-5">
         <p className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950">Сначала проверьте кабинет, компанию, счёт и суммы. Календарь изменится только после отдельного подтверждения.</p>
-        {cabinetOptions.length > 0 && (
-          <label className="flex flex-col gap-1 text-sm text-slate-600 sm:max-w-xs">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex min-w-64 flex-col gap-1 text-sm text-slate-600">
             Кабинет WB
             <select
               value={cabinetId}
-              onChange={(event) => { setCabinetId(event.target.value); setForceRecalc(false); }}
+              onChange={(event) => {
+                setCabinetId(event.target.value);
+                setCalculatedCabinetId("");
+                setForceRecalc(false);
+                setData(null);
+                setError("");
+              }}
               className="min-h-11 rounded-lg border border-slate-200 px-3"
             >
+              <option value="">Выберите кабинет</option>
               {cabinetOptions.map((cabinet) => (
                 <option key={cabinet.id} value={cabinet.id}>{cabinet.name}</option>
               ))}
             </select>
           </label>
-        )}
-        {loading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Считаю по отчётам…</div>
+          <button
+            type="button"
+            disabled={!cabinetId || loading}
+            onClick={() => {
+              setData(null);
+              setError("");
+              setForceRecalc(false);
+              setCalculatedCabinetId(cabinetId);
+              setCalculationVersion((value) => value + 1);
+            }}
+            className="min-h-11 rounded-xl bg-violet-600 px-5 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {loading && calculatedCabinetId ? "Рассчитываем…" : "Рассчитать прогноз"}
+          </button>
+        </div>
+        {loading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> {calculatedCabinetId ? "Считаю прогноз WB…" : "Загружаю список кабинетов…"}</div>
           : error ? <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>
           : data && <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
