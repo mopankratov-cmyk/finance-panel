@@ -49,7 +49,9 @@ export function deriveWbPayoutSummary(
   return {
     reportAccruedPayout,
     actualPayout: null,
-    remainingPayout: Number.isFinite(forecastPayout) ? Math.max(0, forecastPayout) : 0,
+    remainingPayout: Number.isFinite(forecastPayout)
+      ? Math.max(0, forecastPayout - Math.max(0, reportAccruedPayout))
+      : 0,
   };
 }
 
@@ -91,6 +93,64 @@ export function allocateWbPayoutSchedule(remainingPayout: number, dates: string[
   }));
 }
 
+function rowPayout(row: Awaited<ReturnType<typeof fetchForecastReportRows>>[number]) {
+  return num(row.ppvz_for_pay) -
+    num(row.delivery_rub) -
+    num(row.rebill_logistic_cost) -
+    num(row.storage_fee) -
+    num(row.penalty) -
+    num(row.deduction) +
+    num(row.additional_payment) -
+    num(row.acceptance) -
+    num(row.acquiring_fee);
+}
+
+export function addBusinessDays(dateValue: string, days: number) {
+  const date = new Date(`${dateValue.slice(0, 10)}T12:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return "";
+  let remaining = Math.max(0, Math.trunc(days));
+  while (remaining > 0) {
+    date.setUTCDate(date.getUTCDate() + 1);
+    const weekday = date.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) remaining--;
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+export function deriveWbConfirmedPayoutSchedule(
+  report: Awaited<ReturnType<typeof fetchForecastReportRows>>,
+) {
+  const groups = new Map<string, { id: string; date: string; amount: number; source: "financial_report" }>();
+  for (const row of report) {
+    const reportId = String(row.realizationreport_id ?? "").trim();
+    const reportDate = String(row.rr_dt ?? row.sale_dt ?? "").slice(0, 10);
+    if (!reportId || !reportDate) continue;
+    const current = groups.get(reportId) ?? {
+      id: reportId,
+      date: addBusinessDays(reportDate, 7),
+      amount: 0,
+      source: "financial_report" as const,
+    };
+    const candidateDate = addBusinessDays(reportDate, 7);
+    if (candidateDate > current.date) current.date = candidateDate;
+    current.amount += rowPayout(row);
+    groups.set(reportId, current);
+  }
+  return [...groups.values()]
+    .map((row) => ({ ...row, amount: Math.round(row.amount * 100) / 100 }))
+    .filter((row) => row.amount > 0 && row.date)
+    .sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id));
+}
+
+export function deriveWbForecastReceiptDates(year: number, month: number, days: number[]) {
+  return days.map((day) => {
+    const saleDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const withdrawalAvailable = new Date(`${saleDate}T12:00:00Z`);
+    withdrawalAvailable.setUTCDate(withdrawalAvailable.getUTCDate() + 14);
+    return addBusinessDays(withdrawalAvailable.toISOString().slice(0, 10), 7);
+  });
+}
+
 function aggregateByArticle(report: Awaited<ReturnType<typeof fetchForecastReportRows>>) {
   const result = new Map<string, { revenue: number; payout: number }>();
   for (const row of report) {
@@ -101,16 +161,7 @@ function aggregateByArticle(report: Awaited<ReturnType<typeof fetchForecastRepor
       ? num(row.retail_amount) || num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1)
       : 0;
     current.revenue += saleRevenue;
-    current.payout +=
-      num(row.ppvz_for_pay) -
-      num(row.delivery_rub) -
-      num(row.rebill_logistic_cost) -
-      num(row.storage_fee) -
-      num(row.penalty) -
-      num(row.deduction) +
-      num(row.additional_payment) -
-      num(row.acceptance) -
-      num(row.acquiring_fee);
+    current.payout += rowPayout(row);
     result.set(article, current);
   }
   return result;
@@ -388,14 +439,15 @@ export async function buildMarketplacePayoutForecast(
 
   const forecastPayout = items.reduce((sum, item) => sum + (item.forecastPayout ?? 0), 0);
   const payoutDays = [7, 14, 21, Math.min(28, daysInMonth)];
-  const reportAccruedPayout = [...currentByArticle.values()].reduce((sum, item) => sum + item.payout, 0);
+  const confirmedPayoutSchedule = deriveWbConfirmedPayoutSchedule(currentReport);
+  const reportAccruedPayout = confirmedPayoutSchedule.reduce((sum, row) => sum + row.amount, 0);
   const payoutSummary = deriveWbPayoutSummary(forecastPayout, reportAccruedPayout);
   const futurePayoutDays = targetEnd < today
     ? []
     : payoutDays.filter((day) => targetStart > today || day > actualEnd.getDate());
-  const futurePayoutDates = futurePayoutDays.map(
-    (day) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-  );
+  const futurePayoutDates = deriveWbForecastReceiptDates(year, month, futurePayoutDays);
+  const forecastPayoutSchedule = allocateWbPayoutSchedule(payoutSummary.remainingPayout, futurePayoutDates)
+    .map((row) => ({ ...row, id: `forecast:${row.date}`, source: "forecast" as const }));
   const result = {
     historyFrom: iso(historyStart),
     historyTo: iso(historyEnd),
@@ -425,7 +477,8 @@ export async function buildMarketplacePayoutForecast(
     automaticAdjustmentApplied,
     currentDeviation,
     ...payoutSummary,
-    payoutSchedule: allocateWbPayoutSchedule(payoutSummary.remainingPayout, futurePayoutDates),
+    payoutSchedule: [...confirmedPayoutSchedule, ...forecastPayoutSchedule]
+      .sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id)),
   };
   const legacySnapshotPayout = deriveWbLegacySnapshotPayout(payoutSummary);
   // §19/§3 (owner follow-up): ключ снапшота — year/month/snapshot_date без cabinet_id.

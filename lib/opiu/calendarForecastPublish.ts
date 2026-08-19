@@ -51,7 +51,7 @@ export function buildForecastPayments(scope: ForecastPublishScope, rows: Forecas
       accountId: scope.accountId,
       status: "planned",
       counterparty: marketplaceName,
-      comment: `[forecast-scope:${scopeKey}] [forecast-marketplace:${scope.marketplace}] [forecast-cabinet:${safe(scope.cabinetId)}] [forecast-company:${safe(scope.companyId)}] [forecast-row:${rowKey}] [forecast-source:${row.source}]${row.reportId ? ` [forecast-report:${safe(row.reportId)}]` : ""}`,
+      comment: `[forecast-scope:${scopeKey}] [forecast-marketplace:${scope.marketplace}] [forecast-cabinet:${safe(scope.cabinetId)}] [forecast-company:${safe(scope.companyId)}] [forecast-period:${scope.year}-${String(scope.month).padStart(2, "0")}] [forecast-row:${rowKey}] [forecast-source:${row.source}]${row.reportId ? ` [forecast-report:${safe(row.reportId)}]` : ""}`,
     };
   });
 }

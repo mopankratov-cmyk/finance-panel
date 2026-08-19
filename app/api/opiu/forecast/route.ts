@@ -27,9 +27,13 @@ export async function GET(request: NextRequest) {
   const cabinets = (await getActiveWbCabinets())
     .filter((cabinet) => sessionHasCabinetAccess(session, cabinet.id))
     .map((cabinet) => ({ id: cabinet.id, name: cabinet.name }));
+  const requestedCabinet = request.nextUrl.searchParams.get("cabinet");
+  if (!requestedCabinet) {
+    return NextResponse.json({ cabinets });
+  }
   const resolved = resolveForecastCabinet(
     cabinets,
-    request.nextUrl.searchParams.get("cabinet"),
+    requestedCabinet,
     OPIU_WB_CABINET_ID,
   );
   if (!resolved.ok) {

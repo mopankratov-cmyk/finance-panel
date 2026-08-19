@@ -25,6 +25,16 @@ const MAPPINGS: Record<string, OzonPayoutMapping> = {
   },
 };
 
+const CABINET_DISPLAY_NAMES: Record<string, string> = {
+  "9142319b-34b7-4521-b80f-a2b303adbc17": "Cosmos Shop",
+  "4ab2ed44-9a0a-4397-ab56-f613760f5616": "Clerin",
+};
+
+export function ozonCabinetDisplayName(cabinetId: string, fallback = "Ozon") {
+  return CABINET_DISPLAY_NAMES[cabinetId]
+    ?? (fallback.replace(/^Ozon\s+/i, "").trim() || "Ozon");
+}
+
 export function getOzonPayoutMapping(cabinetId: string) {
   return MAPPINGS[cabinetId] ?? null;
 }
