@@ -318,6 +318,11 @@ function adsInvoiceDeductionRub(row: WbReportRow): number {
   return isAdsInvoiceDeductionRow(row) ? expenseRub(row.deduction) : 0;
 }
 
+/** Автоматическое "Хранение" — идёт в строку "Хранение / упаковка склада" в дополнение к ручному вводу. */
+function storageFeeRub(row: WbReportRow): number {
+  return expenseRub(row.storage_fee);
+}
+
 function loanTransferRub(row: WbReportRow): number {
   const bt = bonusType(row);
   const isLoan =
@@ -412,13 +417,15 @@ export function aggregateWeek(
     ),
     // acquiring_fee (эквайринг) намеренно не входит в пул — не относится
     // никуда в P&L по решению владельца, не вычитается из прибыли.
+    // storage_fee уходит в warehousePackaging (строка "Хранение") ниже,
+    // а не в "Прочие удержания" — тогда сумма реально видна в отчёте,
+    // а не тонет в общей корзине.
     otherDeductions: weekSales.reduce(
       (s, r) =>
         s +
         expenseRub(r.penalty) +
         expenseRub(r.deduction) +
         expenseRub(r.additional_payment) +
-        expenseRub(r.storage_fee) +
         expenseRub(r.acceptance) -
         penaltiesRub(r) -
         subscriptionJemRub(r) -
@@ -438,7 +445,8 @@ export function aggregateWeek(
     loanTransfer: weekSales.reduce((s, r) => s + loanTransferRub(r), 0),
     penaltyLoan: weekSales.reduce((s, r) => s + penaltyLoanRub(r), 0),
     adsSpend: adsSpendInRange(adStats, rangeFrom, rangeTo),
-    warehousePackaging,
+    // "Хранение / упаковка склада" = ручной ввод (собственные расходы) + storage_fee из финотчёта.
+    warehousePackaging: warehousePackaging + weekSales.reduce((s, r) => s + storageFeeRub(r), 0),
     loyaltyCompensation: weekSales.reduce((s, r) => s + loyaltyCompensationRub(r), 0),
   };
 }
