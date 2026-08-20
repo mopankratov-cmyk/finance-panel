@@ -55,7 +55,10 @@ function derived(m: WeekRawMetrics) {
     m.penalties -
     m.subscriptionJem -
     m.transitDelivery -
-    m.withdrawNow;
+    m.withdrawNow -
+    m.acceptance -
+    m.loanTransfer -
+    m.penaltyLoan;
   const gross = marginal - m.adsSpend;
   return {
     buyoutPct: buyoutPct(m.revenue, m.ordersRub),
@@ -132,7 +135,7 @@ export function buildOpiuReport(
     { id: "withdraw_now",   label: "Вывести сейчас, руб",                             kind: "metric",  expense: true, values: cols((m) => m.withdrawNow) },
     { id: "jem",            label: "Подписка «Джем», руб",                            kind: "metric",  expense: true, values: cols((m) => m.subscriptionJem) },
     { id: "transit",        label: "Транзитные поставки, руб",                        kind: "metric",  expense: true, values: cols((m) => m.transitDelivery) },
-    { id: "acceptance",     label: "Платная приёмка, руб",                            kind: "metric",  expense: true, values: zero },
+    { id: "acceptance",     label: "Платная приёмка, руб",                            kind: "metric",  expense: true, values: cols((m) => m.acceptance) },
     sep("sep1"),
     { id: "marginal",       label: "Маржинальный доход",                              kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.marginal) },
     { id: "marginal_pct",   label: "Рентабельность по МД, %",                         kind: "percent", values: pctCols((d) => d.marginalPct) },
@@ -143,8 +146,8 @@ export function buildOpiuReport(
     { id: "gross",          label: "Валовая прибыль",                                 kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.gross) },
     { id: "gross_pct",      label: "Рентабельность, %",                               kind: "percent", values: pctCols((d) => d.grossPct) },
     sep("sep4"),
-    { id: "loan_transfer",  label: "Перевод на баланс заёмщика (займ/кредит)",        kind: "metric",  expense: true, values: zero },
-    { id: "penalty_loan",   label: "Пени",                                            kind: "metric",  expense: true, values: zero },
+    { id: "loan_transfer",  label: "Перевод на баланс заёмщика (займ/кредит)",        kind: "metric",  expense: true, values: cols((m) => m.loanTransfer) },
+    { id: "penalty_loan",   label: "Пени",                                            kind: "metric",  expense: true, values: cols((m) => m.penaltyLoan) },
   ];
 
   return { weeks, rows, warehouseByWeek };

@@ -44,6 +44,12 @@ export interface WeekRawMetrics {
   transitDelivery: number;
   /** Разовое изменение срока перечисления денежных средств. */
   withdrawNow: number;
+  /** Платная приёмка (acceptance). */
+  acceptance: number;
+  /** Перевод на баланс заёмщика для платежа/долга/процентов/комиссии по займу (deduction). */
+  loanTransfer: number;
+  /** Перевод на баланс заёмщика для оплаты пени (deduction). */
+  penaltyLoan: number;
   adsSpend: number;
   warehousePackaging: number;
   /** Компенсация скидки по программе лояльности (cashback_discount). */
@@ -265,6 +271,27 @@ function withdrawNowRub(row: WbReportRow): number {
     : 0;
 }
 
+function acceptanceRub(row: WbReportRow): number {
+  return expenseRub(row.acceptance);
+}
+
+function loanTransferRub(row: WbReportRow): number {
+  const bt = bonusType(row);
+  const isLoan =
+    bt.startsWith("перевод на баланс заёмщика для платежа по договору займа") ||
+    bt.startsWith("перевод на баланс заёмщика для оплаты основного долга по кредиту") ||
+    bt.startsWith("перевод на баланс заёмщика для оплаты комиссии по кредиту") ||
+    bt.startsWith("перевод на баланс заёмщика для оплаты процентов по кредиту");
+  return isLoan ? expenseRub(row.deduction) : 0;
+}
+
+function penaltyLoanRub(row: WbReportRow): number {
+  const bt = bonusType(row);
+  return bt.startsWith("перевод на баланс заёмщика для оплаты пени")
+    ? expenseRub(row.deduction)
+    : 0;
+}
+
 function buildCostLookup(costs: ProductCostRow[]): {
   byArticle: Map<string, number>;
   byBarcode: Map<string, number>;
@@ -352,13 +379,19 @@ export function aggregateWeek(
         penaltiesRub(r) -
         subscriptionJemRub(r) -
         transitDeliveryRub(r) -
-        withdrawNowRub(r),
+        withdrawNowRub(r) -
+        acceptanceRub(r) -
+        loanTransferRub(r) -
+        penaltyLoanRub(r),
       0,
     ),
     penalties: weekSales.reduce((s, r) => s + penaltiesRub(r), 0),
     subscriptionJem: weekSales.reduce((s, r) => s + subscriptionJemRub(r), 0),
     transitDelivery: weekSales.reduce((s, r) => s + transitDeliveryRub(r), 0),
     withdrawNow: weekSales.reduce((s, r) => s + withdrawNowRub(r), 0),
+    acceptance: weekSales.reduce((s, r) => s + acceptanceRub(r), 0),
+    loanTransfer: weekSales.reduce((s, r) => s + loanTransferRub(r), 0),
+    penaltyLoan: weekSales.reduce((s, r) => s + penaltyLoanRub(r), 0),
     adsSpend: adsSpendInRange(adStats, rangeFrom, rangeTo),
     warehousePackaging,
     loyaltyCompensation: weekSales.reduce((s, r) => s + loyaltyCompensationRub(r), 0),
@@ -381,6 +414,9 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       subscriptionJem: acc.subscriptionJem + w.subscriptionJem,
       transitDelivery: acc.transitDelivery + w.transitDelivery,
       withdrawNow: acc.withdrawNow + w.withdrawNow,
+      acceptance: acc.acceptance + w.acceptance,
+      loanTransfer: acc.loanTransfer + w.loanTransfer,
+      penaltyLoan: acc.penaltyLoan + w.penaltyLoan,
       adsSpend: acc.adsSpend + w.adsSpend,
       warehousePackaging: acc.warehousePackaging + w.warehousePackaging,
       loyaltyCompensation: acc.loyaltyCompensation + w.loyaltyCompensation,
@@ -399,6 +435,9 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       subscriptionJem: 0,
       transitDelivery: 0,
       withdrawNow: 0,
+      acceptance: 0,
+      loanTransfer: 0,
+      penaltyLoan: 0,
       adsSpend: 0,
       warehousePackaging: 0,
       loyaltyCompensation: 0,
