@@ -12,6 +12,20 @@ test("повторная публикация отчёта обновляет т
   assert.equal(corrected[0].date, "2026-08-21");
 });
 
+test("кабинетная выплата остаётся планом с явным статусом до факта ДДС", () => {
+  const [payment] = buildForecastPayments(scope, [{
+    key: "report-10",
+    reportId: "report-10",
+    date: "2026-08-22",
+    amount: 120,
+    source: "financial_report",
+    state: "awaiting_transfer",
+  }]);
+  assert.equal(payment.status, "planned");
+  assert.match(payment.name, /ожидается перечисление/i);
+  assert.match(payment.comment ?? "", /\[forecast-state:awaiting_transfer\]/);
+});
+
 test("кабинеты и компании имеют разные устойчивые ключи", () => {
   assert.notEqual(forecastScopeKey(scope), forecastScopeKey({ ...scope, cabinetId: "cab-2" }));
   assert.notEqual(forecastScopeKey(scope), forecastScopeKey({ ...scope, companyId: "company-2" }));

@@ -9,6 +9,8 @@ import { readForecastJson } from "@/lib/opiu/forecastRequest";
 import type { Account } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { publishForecastToCalendar } from "./forecastPublication";
+import { BrowserPayoutSnapshotsPanel } from "./BrowserPayoutSnapshotsPanel";
+import { resolveBrowserPayoutReportId, type BrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
 
 type PayoutMode = "standard" | "weekly";
 
@@ -80,6 +82,7 @@ export function OzonForecastPanel({
   const [error, setError] = useState("");
   const [accountId, setAccountId] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [browserPayouts, setBrowserPayouts] = useState<BrowserPayoutSnapshot[]>([]);
 
   useEffect(() => {
     if (!data?.receivingAccountId) return;
@@ -336,6 +339,12 @@ export function OzonForecastPanel({
                 formatMoney(report.amount),
               ])}
             />
+            <BrowserPayoutSnapshotsPanel marketplace="ozon" cabinetId={data.cabinetId} year={year} month={month + 1} onChange={setBrowserPayouts} />
+            {browserPayouts.some((snapshot) => !resolveBrowserPayoutReportId(snapshot, data.confirmedPayouts)) && (
+              <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Часть кабинетных выплат пока не удалось однозначно связать с отчётом Ozon. Они показаны для проверки, но не будут записаны в календарь.
+              </p>
+            )}
             {data.payoutSchedule.length > 0 && (
               <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4">
                 <h3 className="font-semibold text-sky-950">Перенести прогноз Ozon в календарь</h3>
@@ -345,9 +354,17 @@ export function OzonForecastPanel({
                   if (!confirm(`Перенести ${data.payoutSchedule.length} поступлений Ozon в платёжный календарь? Подтверждённые отчёты заменят расчётные строки.`)) return;
                   setPublishing(true);
                   try {
+                    const authoritative = new Map(browserPayouts
+                      .filter((snapshot) => snapshot.companyId === data.companyId && snapshot.accountId === accountId)
+                      .map((snapshot) => [resolveBrowserPayoutReportId(snapshot, data.confirmedPayouts), snapshot] as const)
+                      .filter((entry): entry is [string, BrowserPayoutSnapshot] => Boolean(entry[0])));
                     const result = await publishForecastToCalendar(
                       { marketplace: "ozon", cabinetId: data.cabinetId, companyId: data.companyId, accountId, year, month: month + 1 },
-                      data.payoutSchedule.map((row) => ({ key: row.id || `forecast:${row.date}`, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined })),
+                      data.payoutSchedule.map((row) => {
+                        const snapshot = authoritative.get(row.id);
+                        return snapshot ? { key: row.id, date: snapshot.plannedDate, amount: snapshot.amount, source: "financial_report" as const, reportId: row.id, state: snapshot.state }
+                          : { key: row.id || `forecast:${row.date}`, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined };
+                      }),
                     );
                     alert(`Календарь обновлён: ${result.published} строк.`);
                     window.location.reload();

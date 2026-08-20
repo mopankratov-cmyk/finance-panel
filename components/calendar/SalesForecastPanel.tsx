@@ -9,6 +9,8 @@ import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { publishForecastToCalendar } from "./forecastPublication";
 import { recommendWbDestination } from "./marketplaceDestination";
+import { BrowserPayoutSnapshotsPanel } from "./BrowserPayoutSnapshotsPanel";
+import { resolveBrowserPayoutReportId, type BrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
 
 interface ForecastGap {
   field: string;
@@ -130,6 +132,7 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
   const [payoutStatus, setPayoutStatus] = useState<WbPayoutStatus | null>(null);
   const [payoutLoading, setPayoutLoading] = useState(false);
   const [payoutError, setPayoutError] = useState("");
+  const [browserPayouts, setBrowserPayouts] = useState<BrowserPayoutSnapshot[]>([]);
 
   useEffect(() => {
     if (!data?.cabinetId) return;
@@ -326,6 +329,12 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                 <p className="mt-3 text-sm text-sky-900">Отчётов за месяц: <b>{payoutStatus.reports.length}</b>. Суммы отчётов используются только для сверки и не выдаются за заказанный вывод.</p>
               </>}
             </div>
+            <BrowserPayoutSnapshotsPanel marketplace="wb" cabinetId={data.cabinetId} year={year} month={month + 1} onChange={setBrowserPayouts} />
+            {browserPayouts.some((snapshot) => !resolveBrowserPayoutReportId(snapshot, payoutStatus?.reports ?? [])) && (
+              <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Часть кабинетных выплат пока не удалось однозначно связать с финансовым отчётом WB. Они показаны для проверки, но не будут записаны в календарь.
+              </p>
+            )}
             {data.planRowsCount > 0 && (
               <div className="rounded-xl border border-slate-200 p-4">
                 <h3 className="font-semibold text-slate-900">Экономика прогноза</h3>
@@ -408,8 +417,20 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                   if (!confirm(`Перенести ${data.payoutSchedule.length} поступлений WB в платёжный календарь? Существующие строки этого прогноза будут обновлены.`)) return;
                   setPublishing(true);
                   try {
+                    const authoritative = new Map(browserPayouts
+                      .filter((snapshot) => snapshot.companyId === companyId && snapshot.accountId === accountId)
+                      .map((snapshot) => [resolveBrowserPayoutReportId(snapshot, payoutStatus?.reports ?? []), snapshot] as const)
+                      .filter((entry): entry is [string, BrowserPayoutSnapshot] => Boolean(entry[0])));
                     const publicationRows = data.payoutSchedule.map((row) => {
-                      return {
+                      const snapshot = authoritative.get(row.id);
+                      return snapshot ? {
+                        key: row.id,
+                        date: snapshot.plannedDate,
+                        amount: snapshot.amount,
+                        source: "financial_report" as const,
+                        reportId: row.id,
+                        state: snapshot.state,
+                      } : {
                         key: row.id, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined,
                       };
                     });

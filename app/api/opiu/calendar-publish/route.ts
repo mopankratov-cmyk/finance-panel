@@ -65,6 +65,8 @@ export async function POST(request: Request) {
     || row.amount <= 0
     || Math.round(row.amount * 100) > Number.MAX_SAFE_INTEGER
     || !["forecast", "financial_report"].includes(row.source)
+    || (row.state !== undefined && !["awaiting_transfer", "marketplace_sent"].includes(row.state))
+    || (row.state !== undefined && row.source !== "financial_report")
     || (row.source === "financial_report" && (!row.reportId || row.reportId !== row.key)))) {
     return NextResponse.json({ error: "В графике есть повторяющаяся или некорректная строка" }, { status: 400 });
   }
