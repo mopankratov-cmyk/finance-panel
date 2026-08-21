@@ -28,16 +28,16 @@ function valueClass(
   row: Pick<OpiuTableRow, "kind" | "expense" | "id">,
 ): string {
   if (value == null || row.kind === "separator") return "text-slate-400";
-  if (row.kind === "percent") return "text-slate-400";
-  if (row.expense) return value > 0 ? "text-red-400" : value < 0 ? "text-emerald-400" : "text-slate-300";
+  if (row.kind === "percent") return "text-slate-500";
+  if (row.expense) return value > 0 ? "text-red-600" : value < 0 ? "text-emerald-600" : "text-slate-700";
   if (row.id === "marginal" || row.id === "gross") {
-    if (value > 0) return "text-emerald-400";
-    if (value < 0) return "text-red-400";
-    return "text-slate-300";
+    if (value > 0) return "text-emerald-600";
+    if (value < 0) return "text-red-600";
+    return "text-slate-700";
   }
-  if (value > 0) return "text-emerald-400";
-  if (value < 0) return "text-red-400";
-  return "text-slate-300";
+  if (value > 0) return "text-emerald-600";
+  if (value < 0) return "text-red-600";
+  return "text-slate-700";
 }
 
 function formatCell(value: number | null, row: Pick<OpiuTableRow, "kind" | "expense">): string {
@@ -49,16 +49,16 @@ function formatCell(value: number | null, row: Pick<OpiuTableRow, "kind" | "expe
 
 function OpiuTableSkeleton({ cols }: { cols: number }) {
   return (
-    <div className="animate-pulse overflow-hidden rounded-xl border border-white/10 bg-[#16162a]">
-      <div className="border-b border-white/10 px-4 py-3">
-        <div className="h-4 w-48 rounded bg-white/10" />
+    <div className="animate-pulse overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 px-4 py-3">
+        <div className="h-4 w-48 rounded bg-slate-100" />
       </div>
       <div className="space-y-2 p-4">
         {Array.from({ length: 14 }).map((_, i) => (
           <div key={i} className="flex gap-3">
-            <div className="h-8 w-40 shrink-0 rounded bg-white/10" />
+            <div className="h-8 w-40 shrink-0 rounded bg-slate-100" />
             {Array.from({ length: cols }).map((_, j) => (
-              <div key={j} className="h-8 flex-1 rounded bg-white/5" />
+              <div key={j} className="h-8 flex-1 rounded bg-slate-50" />
             ))}
           </div>
         ))}
@@ -213,7 +213,7 @@ export function OpiuPage() {
         </p>
       )}
 
-      <div className="flex gap-1 border-b border-white/10">
+      <div className="flex gap-1 border-b border-slate-200">
         {(
           [
             { id: "sale_date", label: "Свод по дате продажи" },
@@ -226,8 +226,8 @@ export function OpiuPage() {
             onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.id
-                ? "border-b-2 border-violet-500 text-violet-400"
-                : "text-slate-400 hover:text-slate-200"
+                ? "border-b-2 border-violet-600 text-violet-600"
+                : "text-slate-500 hover:text-slate-700"
             }`}
           >
             {t.label}
@@ -238,15 +238,15 @@ export function OpiuPage() {
       {loading ? (
         <OpiuTableSkeleton cols={colCount} />
       ) : tab === "report_date" && !report ? (
-        <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-6 text-sm text-amber-200">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-800">
           Данные по дате отчёта пока недоступны: источник не синхронизирован
         </div>
       ) : report ? (
-        <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#1a1a2e] shadow-lg">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-slate-400">
-                <th className="sticky left-0 z-10 min-w-[200px] bg-[#1a1a2e] px-4 py-3 font-medium">
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+                <th className="sticky left-0 z-10 min-w-[200px] bg-slate-50 px-4 py-3 font-medium">
                   Показатель
                 </th>
                 {report.weeks.map((w) => (
@@ -257,89 +257,97 @@ export function OpiuPage() {
                     {w.label}
                   </th>
                 ))}
-                <th className="w-[120px] px-4 py-3 text-right font-bold text-white">
+                <th className="w-[120px] px-4 py-3 text-right font-bold text-slate-900">
                   Итого
                 </th>
               </tr>
             </thead>
             <tbody>
-              {report.rows.map((row) => {
-                if (row.kind === "separator") {
+              {(() => {
+                let stripeIndex = 0;
+                return report.rows.map((row) => {
+                  if (row.kind === "separator") {
+                    return (
+                      <tr key={row.id}>
+                        <td
+                          colSpan={colCount}
+                          className="h-2 border-y border-slate-100 bg-slate-50 px-4"
+                        />
+                      </tr>
+                    );
+                  }
+
+                  const isPercent = row.kind === "percent";
+                  const isTotal = row.id === "marginal" || row.id === "gross";
+                  const rowBg = stripeIndex % 2 === 1 ? "bg-slate-50" : "bg-white";
+                  stripeIndex += 1;
+
                   return (
-                    <tr key={row.id} className="bg-black/25">
-                      <td
-                        colSpan={colCount}
-                        className="h-2 border-y border-white/5 px-4"
-                      />
-                    </tr>
-                  );
-                }
-
-                const isPercent = row.kind === "percent";
-
-                return (
-                  <tr
-                    key={row.id}
-                    className="border-b border-white/5 transition-colors hover:bg-white/5"
-                  >
-                    <td
-                      className={`sticky left-0 z-10 bg-[#1a1a2e] px-4 py-2.5 ${
-                        isPercent ? "text-xs text-slate-500" : "text-slate-200"
+                    <tr
+                      key={row.id}
+                      className={`border-b border-slate-100 transition-colors hover:bg-violet-50 ${rowBg} ${
+                        isTotal ? "border-t-2 border-t-slate-300" : ""
                       }`}
                     >
-                      {row.label}
-                    </td>
-                    {row.values.slice(0, -1).map((val, i) => {
-                      const week = report.weeks[i];
-                      const isEditable = row.editable && week;
+                      <td
+                        className={`sticky left-0 z-10 px-4 py-2.5 ${rowBg} ${
+                          isPercent ? "text-xs text-slate-500" : "text-slate-700"
+                        } ${isTotal ? "font-medium text-slate-900" : ""}`}
+                      >
+                        {row.label}
+                      </td>
+                      {row.values.slice(0, -1).map((val, i) => {
+                        const week = report.weeks[i];
+                        const isEditable = row.editable && week;
 
-                      if (isEditable && week) {
+                        if (isEditable && week) {
+                          return (
+                            <td key={week.weekStart} className="px-2 py-1.5 text-right">
+                              <input
+                                key={`${week.weekStart}-${val}`}
+                                type="text"
+                                defaultValue={val != null ? String(Math.round(val)) : "0"}
+                                disabled={savingWeeks.has(`${month}:${week.weekStart}`)}
+                                onBlur={(e) => {
+                                  const next = e.target.value;
+                                  const prev = val != null ? String(Math.round(val)) : "0";
+                                  if (next !== prev) {
+                                    void handleWarehouseSave(week.weekStart, next);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    (e.target as HTMLInputElement).blur();
+                                  }
+                                }}
+                                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-right text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                              />
+                            </td>
+                          );
+                        }
+
                         return (
-                          <td key={week.weekStart} className="px-2 py-1.5 text-right">
-                            <input
-                              key={`${week.weekStart}-${val}`}
-                              type="text"
-                              defaultValue={val != null ? String(Math.round(val)) : "0"}
-                              disabled={savingWeeks.has(`${month}:${week.weekStart}`)}
-                              onBlur={(e) => {
-                                const next = e.target.value;
-                                const prev = val != null ? String(Math.round(val)) : "0";
-                                if (next !== prev) {
-                                  void handleWarehouseSave(week.weekStart, next);
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  (e.target as HTMLInputElement).blur();
-                                }
-                              }}
-                              className="w-full rounded border border-white/15 bg-[#16162a] px-2 py-1 text-right text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
-                            />
+                          <td
+                            key={week?.weekStart ?? i}
+                            className={`px-3 py-2.5 text-right tabular-nums ${
+                              isPercent ? "text-xs" : ""
+                            } ${valueClass(val, row)}`}
+                          >
+                            {formatCell(val, row)}
                           </td>
                         );
-                      }
-
-                      return (
-                        <td
-                          key={week?.weekStart ?? i}
-                          className={`px-3 py-2.5 text-right tabular-nums ${
-                            isPercent ? "text-xs" : ""
-                          } ${valueClass(val, row)}`}
-                        >
-                          {formatCell(val, row)}
-                        </td>
-                      );
-                    })}
-                    <td
-                      className={`px-4 py-2.5 text-right font-bold tabular-nums ${
-                        isPercent ? "text-xs" : ""
-                      } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
-                    >
-                      {formatCell(row.values[row.values.length - 1] ?? null, row)}
-                    </td>
-                  </tr>
-                );
-              })}
+                      })}
+                      <td
+                        className={`px-4 py-2.5 text-right font-bold tabular-nums ${
+                          isPercent ? "text-xs" : ""
+                        } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
+                      >
+                        {formatCell(row.values[row.values.length - 1] ?? null, row)}
+                      </td>
+                    </tr>
+                  );
+                });
+              })()}
             </tbody>
           </table>
         </div>
