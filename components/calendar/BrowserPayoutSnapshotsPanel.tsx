@@ -14,11 +14,15 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
 }) {
   const [rows, setRows] = useState<BrowserPayoutSnapshot[]>([]);
   const [loading, setLoading] = useState(false);
+  // До первого запроса панель ничего не знает: «снимков нет» тогда — утверждение
+  // о непроверенном, а тут это читается как «выплат нет».
+  const [checked, setChecked] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setRows([]);
     setError("");
+    setChecked(false);
     onChange([]);
   }, [cabinetId, marketplace, month, onChange, year]);
 
@@ -37,6 +41,7 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
           const result = await response.json().catch(() => null) as { snapshots?: BrowserPayoutSnapshot[]; error?: string } | null;
           if (!response.ok || !result?.snapshots) throw new Error(result?.error || "Не удалось прочитать снимки выплат");
           setRows(result.snapshots);
+          setChecked(true);
           onChange(result.snapshots);
         } catch (loadError) { setError(loadError instanceof Error ? loadError.message : "Не удалось прочитать снимки выплат"); }
         finally { setLoading(false); }
@@ -45,10 +50,11 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
       </button>
     </div>
     {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-    {!error && rows.length === 0 && <p className="mt-3 text-sm text-indigo-900">Снимков пока нет. Это нормально до первого успешного запуска агента.</p>}
+    {!error && checked && rows.length === 0 && <p className="mt-3 text-sm text-indigo-900">Снимков пока нет. Это нормально до первого успешного запуска агента.</p>}
+    {!error && !checked && <p className="mt-3 text-sm text-indigo-900">Нажмите «Проверить кабинетные выплаты», чтобы посмотреть снимки агента.</p>}
     {rows.length > 0 && <div className="mt-3 overflow-x-auto rounded-lg border border-indigo-200 bg-white">
       <table className="w-full min-w-[700px] text-sm"><thead className="bg-indigo-50 text-xs text-indigo-900"><tr><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-left">Дата</th><th className="px-3 py-2 text-right">Сумма</th><th className="px-3 py-2 text-left">Период</th><th className="px-3 py-2 text-left">Собрано</th></tr></thead><tbody>
-        {rows.map((row) => <tr key={`${row.marketplace}:${row.cabinetId}:${row.externalId}`} className="border-t border-indigo-100"><td className="px-3 py-2 font-medium text-amber-700">{row.state === "awaiting_transfer" ? "Ожидается перечисление" : "Отправлено маркетплейсом"}</td><td className="px-3 py-2">{new Date(`${row.plannedDate}T00:00:00`).toLocaleDateString("ru-RU")}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.amount)}</td><td className="px-3 py-2">{row.periodFrom && row.periodTo ? `${row.periodFrom}—${row.periodTo}` : "—"}</td><td className="px-3 py-2">{new Date(row.capturedAt).toLocaleString("ru-RU")}</td></tr>)}
+        {rows.map((row) => <tr key={`${row.marketplace}:${row.cabinetId}:${row.externalId}`} className="border-t border-indigo-100"><td className={`px-3 py-2 font-medium ${row.state === "awaiting_transfer" ? "text-amber-700" : "text-emerald-700"}`}>{row.state === "awaiting_transfer" ? "Ожидается перечисление" : "Отправлено маркетплейсом"}</td><td className="px-3 py-2">{new Date(`${row.plannedDate}T00:00:00`).toLocaleDateString("ru-RU")}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.amount)}</td><td className="px-3 py-2">{row.periodFrom && row.periodTo ? `${row.periodFrom}—${row.periodTo}` : "—"}</td><td className="px-3 py-2">{new Date(row.capturedAt).toLocaleString("ru-RU")}</td></tr>)}
       </tbody></table>
     </div>}
   </div>;

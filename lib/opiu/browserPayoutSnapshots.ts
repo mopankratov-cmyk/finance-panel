@@ -113,3 +113,30 @@ export function resolveBrowserPayoutReportId(
   const matches = reports.filter((report) => report.periodFrom === snapshot.periodFrom && report.periodTo === snapshot.periodTo);
   return matches.length === 1 ? matches[0].reportId : null;
 }
+
+/**
+ * Снимки кабинета → строки расчётного графика, по ID самой строки.
+ *
+ * Ловушка, из-за которой снимок Ozon молча не применялся: `resolveBrowserPayoutReportId`
+ * отдаёт ГОЛЫЙ reportId, а `id` строки графика Ozon — составной `payoutReportKey`
+ * (`marketplace:cabinetId:companyId:reportId`, см. app/api/opiu/ozon-forecast). У WB
+ * `id` строки — сам reportId. Поэтому ключ строит вызывающий: `scheduleIdOf`.
+ * Отчёта нет в списке — кладём reportId как есть: такой ключ просто не совпадёт
+ * ни с одной строкой, и фактическая выплата в календарь не попадёт (это честнее,
+ * чем угадывать строку).
+ */
+export function browserPayoutsByScheduleId<Report extends { reportId: string; periodFrom: string | null; periodTo: string | null }>(
+  snapshots: BrowserPayoutSnapshot[],
+  reports: Report[],
+  scheduleIdOf: (report: Report) => string,
+): Map<string, BrowserPayoutSnapshot> {
+  const byReportId = new Map(reports.map((report) => [report.reportId, report]));
+  const matched = new Map<string, BrowserPayoutSnapshot>();
+  for (const snapshot of snapshots) {
+    const reportId = resolveBrowserPayoutReportId(snapshot, reports);
+    if (!reportId) continue;
+    const report = byReportId.get(reportId);
+    matched.set(report ? scheduleIdOf(report) : reportId, snapshot);
+  }
+  return matched;
+}

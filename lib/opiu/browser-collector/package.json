@@ -1,0 +1,14 @@
+{
+  "name": "marketplace-payout-collector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Видимый браузерный сборщик выплат WB/Ozon на Mac mini. Свой Playwright и свой профиль Chrome: он не зависит от shelf-collector и не трогает чужие профили. Снимки уходят в панель по FINANCE_MONITOR_SECRET и попадают в календарь только после подтверждения человеком.",
+  "scripts": {
+    "login": "node collector.mjs --login",
+    "collect": "node collector.mjs --collect"
+  },
+  "dependencies": {
+    "playwright": "^1.47.0"
+  }
+}

@@ -32,6 +32,11 @@ const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
   // (или CRON_SECRET) — lib/shelf/collectorAuth.ts. Узко: два пути, по одному методу.
   { prefix: "/api/shelf/watchlist", methods: ["GET"] },
   { prefix: "/api/shelf/ingest", methods: ["POST"] },
+  // Браузерный сборщик выплат на Mac владельца: сам роут проверяет Bearer
+  // FINANCE_MONITOR_SECRET (или CRON_SECRET). Без этой строки запрос умирал бы
+  // здесь 401-м, не дойдя до само-гарда — гейт знает только CRON_SECRET.
+  // Узко: только POST приёма снимков; GET читается под сессией и сюда не попадает.
+  { prefix: "/api/opiu/browser-payout-snapshots", methods: ["POST"] },
 ];
 
 function isPublicApi(pathname: string, method: string): boolean {

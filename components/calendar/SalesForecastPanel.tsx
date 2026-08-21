@@ -10,7 +10,7 @@ import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { publishForecastToCalendar } from "./forecastPublication";
 import { recommendWbDestination } from "./marketplaceDestination";
 import { BrowserPayoutSnapshotsPanel } from "./BrowserPayoutSnapshotsPanel";
-import { resolveBrowserPayoutReportId, type BrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
+import { browserPayoutsByScheduleId, resolveBrowserPayoutReportId, type BrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
 
 interface ForecastGap {
   field: string;
@@ -417,10 +417,12 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                   if (!confirm(`Перенести ${data.payoutSchedule.length} поступлений WB в платёжный календарь? Существующие строки этого прогноза будут обновлены.`)) return;
                   setPublishing(true);
                   try {
-                    const authoritative = new Map(browserPayouts
-                      .filter((snapshot) => snapshot.companyId === companyId && snapshot.accountId === accountId)
-                      .map((snapshot) => [resolveBrowserPayoutReportId(snapshot, payoutStatus?.reports ?? []), snapshot] as const)
-                      .filter((entry): entry is [string, BrowserPayoutSnapshot] => Boolean(entry[0])));
+                    // У WB id строки графика — сам reportId (lib/opiu/forecast.ts).
+                    const authoritative = browserPayoutsByScheduleId(
+                      browserPayouts.filter((snapshot) => snapshot.companyId === companyId && snapshot.accountId === accountId),
+                      payoutStatus?.reports ?? [],
+                      (report) => report.reportId,
+                    );
                     const publicationRows = data.payoutSchedule.map((row) => {
                       const snapshot = authoritative.get(row.id);
                       return snapshot ? {

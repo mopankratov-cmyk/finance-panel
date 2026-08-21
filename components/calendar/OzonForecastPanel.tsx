@@ -10,7 +10,8 @@ import type { Account } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { publishForecastToCalendar } from "./forecastPublication";
 import { BrowserPayoutSnapshotsPanel } from "./BrowserPayoutSnapshotsPanel";
-import { resolveBrowserPayoutReportId, type BrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
+import { browserPayoutsByScheduleId, resolveBrowserPayoutReportId, type BrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
+import { payoutReportKey } from "@/lib/opiu/payoutReconciliation";
 
 type PayoutMode = "standard" | "weekly";
 
@@ -354,10 +355,12 @@ export function OzonForecastPanel({
                   if (!confirm(`Перенести ${data.payoutSchedule.length} поступлений Ozon в платёжный календарь? Подтверждённые отчёты заменят расчётные строки.`)) return;
                   setPublishing(true);
                   try {
-                    const authoritative = new Map(browserPayouts
-                      .filter((snapshot) => snapshot.companyId === data.companyId && snapshot.accountId === accountId)
-                      .map((snapshot) => [resolveBrowserPayoutReportId(snapshot, data.confirmedPayouts), snapshot] as const)
-                      .filter((entry): entry is [string, BrowserPayoutSnapshot] => Boolean(entry[0])));
+                    // Ключ строки графика Ozon — payoutReportKey, а не голый reportId.
+                    const authoritative = browserPayoutsByScheduleId(
+                      browserPayouts.filter((snapshot) => snapshot.companyId === data.companyId && snapshot.accountId === accountId),
+                      data.confirmedPayouts,
+                      (report) => payoutReportKey(report),
+                    );
                     const result = await publishForecastToCalendar(
                       { marketplace: "ozon", cabinetId: data.cabinetId, companyId: data.companyId, accountId, year, month: month + 1 },
                       data.payoutSchedule.map((row) => {

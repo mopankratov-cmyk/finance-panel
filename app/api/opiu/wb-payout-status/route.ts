@@ -35,7 +35,9 @@ export async function GET(request: NextRequest) {
   const cabinetId = String(request.nextUrl.searchParams.get("cabinet") ?? "");
   const year = Number(request.nextUrl.searchParams.get("year"));
   const month = Number(request.nextUrl.searchParams.get("month"));
-  if (!cabinetId || !Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+  // Год ограничен так же, как в соседнем роуте снимков: без верхней и нижней
+  // границы Date.UTC(year, …) кидает RangeError мимо try и отдаёт 500 вместо 400.
+  if (!cabinetId || !Number.isInteger(year) || year < 2025 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) {
     return NextResponse.json({ error: "Выберите кабинет и корректный месяц" }, { status: 400 });
   }
   const session = await getServerSession();
