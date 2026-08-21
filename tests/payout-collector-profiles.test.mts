@@ -56,3 +56,16 @@ test("сборщик открывает отдельный контекст на
   assert.match(collector, /waitForEnter/);
   assert.doesNotMatch(collector, /await new Promise\(\(\) => \{\}\)/);
 });
+
+test("кабинет WB переключается ПОСЛЕ главной и проверяется на самой странице выплат", () => {
+  // Живой сбор 21.08: кука, поставленная до главной, затиралась — WB отдаёт
+  // Set-Cookie со своим активным кабинетом, и первый кабинет уезжал на чужой.
+  const collectorSource = readFileSync(new URL("../lib/opiu/browser-collector/collector.mjs", import.meta.url), "utf8");
+  const homeIndex = collectorSource.indexOf("target.homeUrl");
+  const cookieIndex = collectorSource.indexOf("addCookies(supplierCookies)");
+  const payoutIndex = collectorSource.indexOf("target.payoutUrl");
+  assert.ok(homeIndex > 0 && cookieIndex > 0 && payoutIndex > 0);
+  assert.ok(cookieIndex > homeIndex, "куку ставим после перехода на главную");
+  assert.ok(payoutIndex > cookieIndex, "на страницу выплат идём уже с кукой кабинета");
+  assert.match(collectorSource, /supplier_switch_retry/);
+});
