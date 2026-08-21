@@ -4,7 +4,7 @@ import { getServerSession } from "@/lib/auth/server";
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadPlanningState, writePlanningStateSnapshot } from "@/lib/planning/stateStore";
-import { normalizeBrowserPayoutSnapshot, normalizeBrowserPayoutStore, upsertBrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
+import { browserPayoutMonthKey, normalizeBrowserPayoutSnapshot, normalizeBrowserPayoutStore, upsertBrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
 import { getOzonPayoutMapping } from "@/lib/opiu/ozonPayoutIdentity";
 
 const STORE_KEY = "marketplace_payout_browser_v1";
@@ -32,7 +32,10 @@ export async function GET(request: NextRequest) {
   const snapshot = await loadPlanningState<Record<string, unknown>>(db, year);
   const store = normalizeBrowserPayoutStore(snapshot.data[STORE_KEY]);
   return NextResponse.json({
-    snapshots: store.snapshots.filter((row) => row.marketplace === marketplace && row.cabinetId === cabinetId && row.plannedDate.startsWith(`${year}-${String(month).padStart(2, "0")}-`)),
+    // Снимок без дня выплаты относим к месяцу по концу отчётного периода:
+    // кабинет платит именно за него (browserPayoutMonthKey).
+    snapshots: store.snapshots.filter((row) => row.marketplace === marketplace && row.cabinetId === cabinetId
+      && browserPayoutMonthKey(row) === `${year}-${String(month).padStart(2, "0")}`),
   });
 }
 
@@ -41,7 +44,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { snapshot?: unknown } | null;
   const incoming = normalizeBrowserPayoutSnapshot(body?.snapshot);
   if (!incoming) return NextResponse.json({ error: "Некорректный снимок выплаты" }, { status: 400 });
-  const year = Number(incoming.plannedDate.slice(0, 4));
+  const year = Number(browserPayoutMonthKey(incoming).slice(0, 4));
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "База данных не настроена" }, { status: 503 });
   if (incoming.marketplace === "ozon") {

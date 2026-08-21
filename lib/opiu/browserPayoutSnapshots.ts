@@ -10,7 +10,13 @@ export interface BrowserPayoutSnapshot {
   reportId: string | null;
   periodFrom: string | null;
   periodTo: string | null;
-  plannedDate: string;
+  /**
+   * День выплаты, каким его называет кабинет. null — кабинет его не называет:
+   * в отчётах реализации WB есть период и день формирования, а дня перечисления
+   * нет вовсе. Тогда снимок приносит только точную СУММУ, а день остаётся
+   * расчётным — панель показывает это отдельно, а не выдаёт расчёт за факт.
+   */
+  plannedDate: string | null;
   amount: number;
   state: BrowserPayoutState;
   capturedAt: string;
@@ -46,7 +52,7 @@ export function normalizeBrowserPayoutSnapshot(value: unknown): BrowserPayoutSna
   const externalId = String(row.externalId ?? "").trim();
   const reportIdRaw = String(row.reportId ?? "").trim();
   const reportId = reportIdRaw || null;
-  const plannedDate = String(row.plannedDate ?? "").trim();
+  const plannedDate = optionalDate(row.plannedDate);
   const periodFrom = optionalDate(row.periodFrom);
   const periodTo = optionalDate(row.periodTo);
   const amount = Number(row.amount);
@@ -57,7 +63,10 @@ export function normalizeBrowserPayoutSnapshot(value: unknown): BrowserPayoutSna
     || !(state === "awaiting_transfer" || state === "marketplace_sent")
     || ![cabinetId, companyId, accountId, externalId].every((item) => SAFE_ID.test(item))
     || reportId !== null && !SAFE_ID.test(reportId)
-    || !validDate(plannedDate)
+    || plannedDate === undefined
+    // Без дня выплаты снимок обязан опираться на период: иначе его не с чем
+    // сопоставить в календаре и незачем принимать.
+    || !plannedDate && !(periodFrom && periodTo)
     || periodFrom === undefined || periodTo === undefined
     || periodFrom && periodTo && periodFrom > periodTo
     || !Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) > Number.MAX_SAFE_INTEGER
@@ -87,7 +96,8 @@ export function upsertBrowserPayoutSnapshot(store: BrowserPayoutStore, incoming:
   const key = browserPayoutKey(incoming);
   const snapshots = store.snapshots.filter((row) => browserPayoutKey(row) !== key);
   snapshots.push(incoming);
-  snapshots.sort((left, right) => right.plannedDate.localeCompare(left.plannedDate) || browserPayoutKey(left).localeCompare(browserPayoutKey(right)));
+  const sortKey = (row: BrowserPayoutSnapshot) => row.plannedDate ?? row.periodTo ?? "";
+  snapshots.sort((left, right) => sortKey(right).localeCompare(sortKey(left)) || browserPayoutKey(left).localeCompare(browserPayoutKey(right)));
   return { version: 1, snapshots: snapshots.slice(0, 500) };
 }
 
@@ -139,4 +149,11 @@ export function browserPayoutsByScheduleId<Report extends { reportId: string; pe
     matched.set(report ? scheduleIdOf(report) : reportId, snapshot);
   }
   return matched;
+}
+/**
+ * К какому месяцу относить снимок. День выплаты знаем — по нему; не знаем —
+ * по концу отчётного периода: именно за него кабинет и заплатит.
+ */
+export function browserPayoutMonthKey(snapshot: Pick<BrowserPayoutSnapshot, "plannedDate" | "periodTo">) {
+  return (snapshot.plannedDate ?? snapshot.periodTo ?? "").slice(0, 7);
 }

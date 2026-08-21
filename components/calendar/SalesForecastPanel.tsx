@@ -427,7 +427,9 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                       const snapshot = authoritative.get(row.id);
                       return snapshot ? {
                         key: row.id,
-                        date: snapshot.plannedDate,
+                        // Дня выплаты в отчётах WB нет — тогда остаётся расчётный
+                        // день панели, а из кабинета берётся только точная сумма.
+                        date: snapshot.plannedDate ?? row.date,
                         amount: snapshot.amount,
                         source: "financial_report" as const,
                         reportId: row.id,

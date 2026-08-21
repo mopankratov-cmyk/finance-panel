@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browserPayoutKey, browserPayoutsByScheduleId, normalizeBrowserPayoutSnapshot, resolveBrowserPayoutReportId, upsertBrowserPayoutSnapshot } from "./browserPayoutSnapshots";
+import { browserPayoutKey, browserPayoutMonthKey, browserPayoutsByScheduleId, normalizeBrowserPayoutSnapshot, resolveBrowserPayoutReportId, upsertBrowserPayoutSnapshot } from "./browserPayoutSnapshots";
 import { payoutReportKey } from "./payoutReconciliation";
 
 const snapshot = (overrides = {}) => normalizeBrowserPayoutSnapshot({
@@ -117,4 +117,46 @@ test("у WB ключ строки графика — сам reportId", () => {
   const reports = [{ reportId: "12345", periodFrom: "2026-08-01", periodTo: "2026-08-07" }];
   const matched = browserPayoutsByScheduleId(snapshot ? [snapshot] : [], reports, (report) => report.reportId);
   assert.equal(matched.get("12345")?.amount, 100);
+});
+
+test("снимок без дня выплаты принимается, если есть отчётный период", () => {
+  // В отчётах реализации WB дня перечисления нет вовсе — есть период и день
+  // формирования отчёта. Отвергать такой снимок значило бы терять точную сумму;
+  // подставлять день формирования — врать датой. Поэтому дата остаётся пустой.
+  const row = normalizeBrowserPayoutSnapshot({
+    marketplace: "wb",
+    cabinetId: "cab-1",
+    companyId: "co-1",
+    accountId: "acc-1",
+    externalId: "wb:cab-1:813379425",
+    reportId: "813379425",
+    periodFrom: "2026-08-10",
+    periodTo: "2026-08-16",
+    plannedDate: "",
+    amount: 87310418.87,
+    state: "awaiting_transfer",
+    capturedAt: "2026-08-21T09:00:00.000Z",
+  });
+  assert.ok(row);
+  assert.equal(row?.plannedDate, null);
+  // Месяц считается по концу периода: кабинет платит именно за него.
+  assert.equal(browserPayoutMonthKey(row!), "2026-08");
+});
+
+test("без дня выплаты и без периода снимок не принимается", () => {
+  const row = normalizeBrowserPayoutSnapshot({
+    marketplace: "wb",
+    cabinetId: "cab-1",
+    companyId: "co-1",
+    accountId: "acc-1",
+    externalId: "wb:cab-1:нечто",
+    reportId: "",
+    periodFrom: "",
+    periodTo: "",
+    plannedDate: "",
+    amount: 100,
+    state: "awaiting_transfer",
+    capturedAt: "2026-08-21T09:00:00.000Z",
+  });
+  assert.equal(row, null);
 });

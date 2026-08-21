@@ -365,7 +365,7 @@ export function OzonForecastPanel({
                       { marketplace: "ozon", cabinetId: data.cabinetId, companyId: data.companyId, accountId, year, month: month + 1 },
                       data.payoutSchedule.map((row) => {
                         const snapshot = authoritative.get(row.id);
-                        return snapshot ? { key: row.id, date: snapshot.plannedDate, amount: snapshot.amount, source: "financial_report" as const, reportId: row.id, state: snapshot.state }
+                        return snapshot ? { key: row.id, date: snapshot.plannedDate ?? row.date, amount: snapshot.amount, source: "financial_report" as const, reportId: row.id, state: snapshot.state }
                           : { key: row.id || `forecast:${row.date}`, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined };
                       }),
                     );
