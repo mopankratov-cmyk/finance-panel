@@ -111,3 +111,23 @@ test("кабинет сверяется и по куке, и по подписи
   // Отвергнутый снимок должен попадать в лог целиком, иначе непонятно, что чинить.
   assert.match(source, /snapshot_rejected/);
 });
+
+test("отказ по одной строке не отменяет весь кабинет", () => {
+  const source = readFileSync(new URL("../lib/opiu/browser-collector/collector.mjs", import.meta.url), "utf8");
+  assert.match(source, /snapshots_partially_rejected/);
+  assert.match(source, /rejected\.length === unique\.size/);
+  // В счётчик успеха идут только принятые строки, иначе лог врал бы числом.
+  assert.match(source, /rows: unique\.size - rejected\.length/);
+});
+
+test("можно открыть один профиль: --profile", () => {
+  // Ozon не отдаёт переключение кабинета коду — клики проходят, а активным
+  // остаётся прежний. Поэтому у каждого кабинета Ozon свой профиль, и человеку
+  // нужен способ открыть ровно один из них, чтобы выбрать кабинет руками.
+  const source = readFileSync(new URL("../lib/opiu/browser-collector/collector.mjs", import.meta.url), "utf8");
+  assert.match(source, /--profile/);
+  assert.match(source, /onlyProfile \? allGroups\.filter/);
+  // Опечатка в имени профиля не должна выглядеть как «целей нет»: ошибка
+  // перечисляет доступные профили.
+  assert.match(source, /Есть: \$\{allGroups\.map/);
+});
