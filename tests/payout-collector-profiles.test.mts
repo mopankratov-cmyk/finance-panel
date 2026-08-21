@@ -95,3 +95,19 @@ test("цель без идентификатора кабинета сверят
   assert.deepEqual(supplierCookiesFor({ marketplace: "ozon", cabinetId: "c", sellerId: "62515" }).map((c: { name: string; domain: string }) => [c.name, c.domain]),
     [["sc_company_id", ".ozon.ru"]]);
 });
+
+test("кабинет сверяется и по куке, и по подписи магазина на странице", () => {
+  // Куку сборщик ставит сам и сам же её читает: если маркетплейс её не
+  // применил (магазина нет в этом логине), проверка прошла бы вхолостую, а на
+  // странице остались бы выплаты чужого кабинета. Поэтому есть вторая опора —
+  // подпись магазина в шапке, та самая, что видит человек.
+  const source = readFileSync(new URL("../lib/opiu/browser-collector/collector.mjs", import.meta.url), "utf8");
+  assert.match(source, /activeCabinetLabel/);
+  assert.match(source, /cabinet_label_mismatch/);
+  assert.match(source, /switched\.ok && labelOk/);
+  // Переключение через селектор: список длиннее экрана, пункт нужно проматывать.
+  assert.match(source, /scrollIntoView\(\{ block: "center" \}\)/);
+  assert.match(source, /keyboard\.press\("Enter"\)/);
+  // Отвергнутый снимок должен попадать в лог целиком, иначе непонятно, что чинить.
+  assert.match(source, /snapshot_rejected/);
+});
