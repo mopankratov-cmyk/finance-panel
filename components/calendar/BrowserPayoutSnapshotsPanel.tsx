@@ -49,6 +49,22 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Проверить кабинетные выплаты
       </button>
     </div>
+    {rows.length > 0 && <button type="button" disabled={loading} onClick={async () => {
+      if (!confirm(`Удалить ${rows.length} снимков этого кабинета за выбранный месяц? Календарь не изменится — удалятся только предложения агента.`)) return;
+      setLoading(true);
+      setError("");
+      try {
+        const query = new URLSearchParams({ marketplace, cabinet: cabinetId, year: String(year), month: String(month) });
+        const response = await fetch(`/api/opiu/browser-payout-snapshots?${query}`, { method: "DELETE" });
+        const result = await response.json().catch(() => null) as { removed?: number; error?: string } | null;
+        if (!response.ok) throw new Error(result?.error || "Не удалось удалить снимки");
+        setRows([]);
+        onChange([]);
+      } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить снимки"); }
+      finally { setLoading(false); }
+    }} className="mt-3 text-sm font-medium text-rose-700 underline underline-offset-2 disabled:opacity-50">
+      Удалить снимки этого кабинета за месяц
+    </button>}
     {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     {!error && checked && rows.length === 0 && <p className="mt-3 text-sm text-indigo-900">Снимков пока нет. Это нормально до первого успешного запуска агента.</p>}
     {!error && !checked && <p className="mt-3 text-sm text-indigo-900">Нажмите «Проверить кабинетные выплаты», чтобы посмотреть снимки агента.</p>}

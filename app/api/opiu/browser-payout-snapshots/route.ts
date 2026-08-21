@@ -73,3 +73,43 @@ export async function POST(request: Request) {
   }
   return NextResponse.json({ error: "Данные изменились одновременно, повторите отправку" }, { status: 409 });
 }
+
+/**
+ * Удаление снимков кабинета за месяц.
+ *
+ * Понадобилось после живого сбора 21.08: профиль Ozon был авторизован под одним
+ * кабинетом, а снимки ушли ещё и под именем второго — 9 чужих строк. Сбор такое
+ * больше не допускает (сверка активного кабинета по куке), но уже принятые
+ * снимки убрать было нечем, а держать чужие выплаты в предложениях календаря
+ * нельзя. Доступ — как у остальных денежных действий: director/finance.
+ */
+export async function DELETE(request: NextRequest) {
+  const gate = await requireApiSession(["director", "finance"]);
+  if (gate) return gate;
+  const marketplace = request.nextUrl.searchParams.get("marketplace");
+  const cabinetId = String(request.nextUrl.searchParams.get("cabinet") ?? "");
+  const year = Number(request.nextUrl.searchParams.get("year"));
+  const month = Number(request.nextUrl.searchParams.get("month"));
+  if (!Number.isInteger(year) || year < 2025 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12 || !(marketplace === "wb" || marketplace === "ozon") || !cabinetId) {
+    return NextResponse.json({ error: "Некорректный кабинет, маркетплейс или год" }, { status: 400 });
+  }
+  const session = await getServerSession();
+  if (!sessionHasCabinetAccess(session, cabinetId)) return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  const db = getSupabaseAdmin();
+  if (!db) return NextResponse.json({ error: "База данных не настроена" }, { status: 503 });
+  const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = await loadPlanningState<Record<string, unknown>>(db, year);
+    const store = normalizeBrowserPayoutStore(current.data[STORE_KEY]);
+    const kept = store.snapshots.filter((row) => !(row.marketplace === marketplace && row.cabinetId === cabinetId && browserPayoutMonthKey(row) === monthKey));
+    const removed = store.snapshots.length - kept.length;
+    if (!removed) return NextResponse.json({ ok: true, removed: 0 });
+    const result = await writePlanningStateSnapshot(db, year, current, {
+      ...current.data,
+      [STORE_KEY]: { version: 1 as const, snapshots: kept },
+    }, new Date().toISOString());
+    if (result.ok) return NextResponse.json({ ok: true, removed });
+    if (!("conflict" in result) || !result.conflict) return NextResponse.json({ error: "Не удалось удалить снимки выплат" }, { status: 500 });
+  }
+  return NextResponse.json({ error: "Данные изменились одновременно, повторите удаление" }, { status: 409 });
+}

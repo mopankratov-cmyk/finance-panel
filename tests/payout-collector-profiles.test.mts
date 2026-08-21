@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { groupTargetsByProfile, profileNameOf, sanitizeProfileName } from "../lib/opiu/browser-collector/profiles.mjs";
+import { activeSupplierId, supplierCookiesFor, verifySupplierSwitch } from "../lib/opiu/browser-collector/supplierCookies.mjs";
 
 const collector = readFileSync(new URL("../lib/opiu/browser-collector/collector.mjs", import.meta.url), "utf8");
 
@@ -68,4 +69,29 @@ test("кабинет WB переключается ПОСЛЕ главной и 
   assert.ok(cookieIndex > homeIndex, "куку ставим после перехода на главную");
   assert.ok(payoutIndex > cookieIndex, "на страницу выплат идём уже с кукой кабинета");
   assert.match(collectorSource, /supplier_switch_retry/);
+});
+
+test("кабинет Ozon сверяется по куке sc_company_id", () => {
+  // Живой сбор 21.08: профиль был авторизован под CLERIN, а снимки ушли ещё и
+  // под именем COSMOS — 9 чужих строк. Сверки для Ozon тогда не было.
+  const cosmos = { marketplace: "ozon", cabinetId: "cab-cosmos", sellerId: "62515" };
+  const asClerin = [{ name: "sc_company_id", value: "1933484" }];
+  const asCosmos = [{ name: "sc_company_id", value: "62515" }];
+  assert.equal(activeSupplierId(asClerin, "ozon"), "1933484");
+  assert.equal(verifySupplierSwitch(cosmos, asCosmos).ok, true);
+  const mismatch = verifySupplierSwitch(cosmos, asClerin);
+  assert.equal(mismatch.ok, false);
+  assert.match(mismatch.reason ?? "", /Ozon оставил активным кабинет 1933484/);
+  // Профиль без куки — не авторизован, снимать нельзя.
+  assert.equal(verifySupplierSwitch(cosmos, []).ok, false);
+});
+
+test("цель без идентификатора кабинета сверять нечем — и это не выдаётся за успех", () => {
+  const noId = { marketplace: "ozon", cabinetId: "cab-1" };
+  assert.equal(verifySupplierSwitch(noId, []).ok, true);
+  assert.deepEqual(supplierCookiesFor(noId), []);
+  assert.deepEqual(supplierCookiesFor({ marketplace: "wb", cabinetId: "c", supplierId: "abc" }).map((c: { name: string }) => c.name),
+    ["x-supplier-id", "x-supplier-id-external"]);
+  assert.deepEqual(supplierCookiesFor({ marketplace: "ozon", cabinetId: "c", sellerId: "62515" }).map((c: { name: string; domain: string }) => [c.name, c.domain]),
+    [["sc_company_id", ".ozon.ru"]]);
 });
