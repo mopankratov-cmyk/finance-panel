@@ -154,3 +154,17 @@ test("Ozon: строка без периода опознаётся по ном�
   assert.equal(rows[0].periodFrom, null);
   assert.equal(rows[0].externalId, "ozon:cab-1:428361");
 });
+
+test("отрицательное «Итого к оплате» — это долг продавца, а не выплата", () => {
+  // Живой прогон 21.08: у COSMOS SHOP пришло -81 455,91, у Оптимы -5 160,78 —
+  // удержания за период перекрыли реализацию. В календарь поступлений такому
+  // не место; панель такие снимки и так отвергает, но раньше первая же такая
+  // строка обрывала весь кабинет, и 14 законных выплат не доходили.
+  const debt = [...WB_ROW];
+  debt[18] = "-81 455.91";
+  const { rows, skipped } = parsePayoutTable(WB_HEADERS, [debt], TARGET, { defaultState: "awaiting_transfer" });
+  assert.equal(rows.length, 0);
+  assert.equal(skipped["сумма отрицательная — это удержание, а не выплата"], 1);
+  // Сам разбор числа знак по-прежнему понимает — отказ принимает parsePayoutTableRow.
+  assert.equal(cellAmount("-81 455.91"), -81455.91);
+});
