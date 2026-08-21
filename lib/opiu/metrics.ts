@@ -299,6 +299,25 @@ function acceptanceRub(row: WbReportRow): number {
   return expenseRub(row.acceptance);
 }
 
+/**
+ * WB иногда выставляет счёт за рекламные услуги отдельной строкой прямо
+ * в финотчёте (supplier_oper_name="Удержание", bonus_type_name содержит
+ * "Оказание услуг «WB Продвижение»"), привязанной к произвольной дате
+ * счёта, а не к датам продаж. Реклама уже честно считается из отдельного
+ * источника (wb_advert_nm_daily/adsSpend) — эта строка задвоила бы расход
+ * и раздувала бы "Прочие удержания". Исключаем её из P&L целиком.
+ */
+function isAdsInvoiceDeductionRow(row: WbReportRow): boolean {
+  const oper = String(row.supplier_oper_name ?? "").trim().toLowerCase();
+  if (oper !== "удержание") return false;
+  const bt = bonusType(row);
+  return bt.includes("оказание услуг") && bt.includes("продвижение");
+}
+
+function adsInvoiceDeductionRub(row: WbReportRow): number {
+  return isAdsInvoiceDeductionRow(row) ? expenseRub(row.deduction) : 0;
+}
+
 function loanTransferRub(row: WbReportRow): number {
   const bt = bonusType(row);
   const isLoan =
@@ -406,7 +425,8 @@ export function aggregateWeek(
         withdrawNowRub(r) -
         acceptanceRub(r) -
         loanTransferRub(r) -
-        penaltyLoanRub(r),
+        penaltyLoanRub(r) -
+        adsInvoiceDeductionRub(r),
       0,
     ),
     penalties: weekSales.reduce((s, r) => s + penaltiesRub(r), 0),
