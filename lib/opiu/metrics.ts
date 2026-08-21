@@ -82,6 +82,30 @@ function isSale(row: WbReportRow): boolean {
   return t.includes("продаж") || t.includes("sale");
 }
 
+function docType(row: WbReportRow): "sale" | "return" | "other" {
+  const t = String(row.doc_type_name ?? row.supplier_oper_name ?? "").toLowerCase();
+  if (t.includes("продаж") || t.includes("sale")) return "sale";
+  if (t.includes("возврат") || t.includes("return")) return "return";
+  return "other";
+}
+
+/**
+ * Комиссия ВБ = Выручка без СПП − К перечислению продавцу (остаток).
+ * В отличие от m.revenueWithoutSpp/forPay (которые считаются только по
+ * продажам, без учёта возвратов — так исторически сделано на main для
+ * строк "Выручка"/"К перечислению"), здесь both суммируются по ВСЕМ
+ * строкам (продажи и возвраты) со знаком — возврат вычитает — чтобы
+ * остаток точно совпадал с методологией старой ветки (Excel-модель).
+ */
+function commissionResidualRub(row: WbReportRow): number {
+  const type = docType(row);
+  if (type === "other") return 0;
+  const revenueWithoutSpp = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
+  const forPay = num(row.ppvz_for_pay);
+  const signed = revenueWithoutSpp - forPay;
+  return type === "sale" ? signed : -signed;
+}
+
 function orderRub(row: OpiuOrder): number {
   if (row.totalPriceDiscount !== undefined) {
     return Math.abs(num(row.totalPriceDiscount));
@@ -362,7 +386,7 @@ export function aggregateWeek(
     revenue: saleRows.reduce((s, r) => s + revenueRub(r), 0),
     forPay: weekSales.reduce((s, r) => s + num(r.ppvz_for_pay), 0),
     cogs: cogsForSales(weekSales, costLookup),
-    commission: weekSales.reduce((s, r) => s + expenseRub(r.ppvz_sales_commission), 0),
+    commission: weekSales.reduce((s, r) => s + commissionResidualRub(r), 0),
     logistics: weekSales.reduce(
       (s, r) => s + expenseRub(r.delivery_rub) + expenseRub(r.rebill_logistic_cost),
       0,
