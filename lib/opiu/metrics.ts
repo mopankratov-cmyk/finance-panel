@@ -410,6 +410,8 @@ export function aggregateWeek(
       (s, r) => s + expenseRub(r.delivery_rub) + expenseRub(r.rebill_logistic_cost),
       0,
     ),
+    // acquiring_fee (эквайринг) намеренно не входит в пул — не относится
+    // никуда в P&L по решению владельца, не вычитается из прибыли.
     otherDeductions: weekSales.reduce(
       (s, r) =>
         s +
@@ -417,8 +419,7 @@ export function aggregateWeek(
         expenseRub(r.deduction) +
         expenseRub(r.additional_payment) +
         expenseRub(r.storage_fee) +
-        expenseRub(r.acceptance) +
-        expenseRub(r.acquiring_fee) -
+        expenseRub(r.acceptance) -
         penaltiesRub(r) -
         subscriptionJemRub(r) -
         transitDeliveryRub(r) -
