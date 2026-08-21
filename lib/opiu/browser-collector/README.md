@@ -5,8 +5,9 @@
 ## Безопасная установка владельцем
 
 1. Скопировать эту папку в `/Users/maxim/marketplace-payout-collector`.
-2. Установить свой Playwright: `cd /Users/maxim/marketplace-payout-collector && /Users/maxim/opt/node/bin/npm install`. Браузер не скачивается — сборщик запускает системный Google Chrome. Свой Playwright нужен, чтобы обновление или переезд соседнего `shelf-collector` не роняли сбор выплат.
-3. Создать `.env` по `.env.example`, указав тот же `FINANCE_MONITOR_SECRET`, который настроен на сервере панели. Не присылать значение в переписку.
+2. Установить свой Playwright: `cd ~/marketplace-payout-collector && PATH=$HOME/opt/node/bin:$PATH npm install`. Именно с `PATH`: node на mini лежит вне системного PATH, и `npm` по полному пути падает с `env: node: No such file or directory`. Браузер не скачивается — сборщик запускает системный Google Chrome. Свой Playwright нужен, чтобы обновление или переезд соседнего `shelf-collector` не роняли сбор выплат.
+3. Завести секрет. `FINANCE_MONITOR_SECRET` должен быть задан **и на сервере** (Vercel → Production), **и** в `.env` сборщика — одинаковый. Если на сервере его нет, роут принимает только `CRON_SECRET`, а его из Vercel уже не прочитать. Значение не присылать в переписку.
+   Проверка, что сервер видит секрет: `curl -s -X POST -H "Authorization: Bearer <секрет>" -H "Content-Type: application/json" -d '{}' https://<панель>/api/opiu/browser-payout-snapshots` — ответ `Некорректный снимок выплаты` означает, что секрет принят (данные пустые), а `Нет доступа` — что нет.
 4. Создать `targets.json` по `targets.example.json`. Для WB добавить отдельную строку на каждый кабинет с точными `cabinetId`, `companyId`, `accountId`, главной страницей и URL раздела выплат.
 5. Права: `chmod 700 . && chmod 600 .env targets.json`.
 6. Один раз через VNC выполнить `/Users/maxim/opt/node/bin/node collector.mjs --login`, войти в каждый кабинет в открытых вкладках, затем остановить процесс `Ctrl+C`. Профиль останется в `chrome-profile`.
