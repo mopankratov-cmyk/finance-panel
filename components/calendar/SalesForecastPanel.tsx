@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, CalendarPlus, Loader2, TriangleAlert } from "lucide-react";
+import { BarChart3, CalendarPlus, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
@@ -9,6 +9,8 @@ import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { publishForecastToCalendar } from "./forecastPublication";
 import { recommendWbDestination } from "./marketplaceDestination";
+import { BrowserPayoutSnapshotsPanel } from "./BrowserPayoutSnapshotsPanel";
+import { resolveBrowserPayoutReportId, type BrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
 
 interface ForecastGap {
   field: string;
@@ -88,6 +90,17 @@ interface ForecastResponse {
   error?: string;
 }
 
+interface WbPayoutStatus {
+  cabinetId: string;
+  cabinetName: string;
+  currency: string;
+  currentBalance: number | null;
+  availableForWithdrawal: number | null;
+  reports: { reportId: string; periodFrom: string | null; periodTo: string | null; forPaySum: number | null; bankPaymentSum: number | null; paymentSchedule: string | null }[];
+  warnings: string[];
+  checkedAt: string;
+}
+
 const PLAN_SOURCE_LABEL: Record<WbPlanSource, string> = {
   approved_sales_plan: "Утверждённый план",
   working_sales_plan: "Рабочий план",
@@ -116,6 +129,10 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
   const [companyId, setCompanyId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [payoutStatus, setPayoutStatus] = useState<WbPayoutStatus | null>(null);
+  const [payoutLoading, setPayoutLoading] = useState(false);
+  const [payoutError, setPayoutError] = useState("");
+  const [browserPayouts, setBrowserPayouts] = useState<BrowserPayoutSnapshot[]>([]);
 
   useEffect(() => {
     if (!data?.cabinetId) return;
@@ -238,6 +255,8 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                 setForceRecalc(false);
                 setData(null);
                 setError("");
+                setPayoutStatus(null);
+                setPayoutError("");
               }}
               className="min-h-11 rounded-lg border border-slate-200 px-3"
             >
@@ -277,6 +296,45 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
               Кабинет: <b>{data.cabinetName || data.cabinetId}</b> · Источник плана: <b>{PLAN_SOURCE_LABEL[data.planSource]}</b>
               {data.planSource === "working_sales_plan" && " — план не утверждён, используется только для предварительного просмотра"}
             </p>
+            <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-sky-950">Финансовый статус WB</h3>
+                  <p className="mt-1 text-xs text-sky-800">Баланс и отчёты запрашиваются напрямую у WB только по кнопке. Дату заказанного вывода официальный API не передаёт.</p>
+                </div>
+                <button type="button" disabled={payoutLoading} onClick={async () => {
+                  setPayoutLoading(true);
+                  setPayoutError("");
+                  try {
+                    const query = new URLSearchParams({ cabinet: data.cabinetId, year: String(year), month: String(month + 1) });
+                    const response = await fetch(`/api/opiu/wb-payout-status?${query}`, { cache: "no-store" });
+                    const result = await response.json().catch(() => null) as (WbPayoutStatus & { error?: string }) | null;
+                    if (!response.ok || !result) throw new Error(result?.error || "Не удалось получить финансовый статус WB");
+                    if (result.cabinetId !== data.cabinetId) throw new Error("WB вернул данные другого кабинета");
+                    setPayoutStatus(result);
+                  } catch (statusError) { setPayoutError(statusError instanceof Error ? statusError.message : "Не удалось получить финансовый статус WB"); }
+                  finally { setPayoutLoading(false); }
+                }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-sky-300 bg-white px-4 text-sm font-semibold text-sky-900 disabled:opacity-50">
+                  {payoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Обновить данные WB
+                </button>
+              </div>
+              {payoutError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{payoutError}</p>}
+              {payoutStatus && <>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Metric label="Баланс кабинета WB" value={payoutStatus.currentBalance} />
+                  <Metric label="Доступно для вывода" value={payoutStatus.availableForWithdrawal} green />
+                </div>
+                <p className="mt-2 text-xs text-sky-800">Обновлено: {new Date(payoutStatus.checkedAt).toLocaleString("ru-RU")}</p>
+                {payoutStatus.warnings.map((warning) => <p key={warning} className="mt-2 text-sm text-amber-800">{warning}</p>)}
+                <p className="mt-3 text-sm text-sky-900">Отчётов за месяц: <b>{payoutStatus.reports.length}</b>. Суммы отчётов используются только для сверки и не выдаются за заказанный вывод.</p>
+              </>}
+            </div>
+            <BrowserPayoutSnapshotsPanel marketplace="wb" cabinetId={data.cabinetId} year={year} month={month + 1} onChange={setBrowserPayouts} />
+            {browserPayouts.some((snapshot) => !resolveBrowserPayoutReportId(snapshot, payoutStatus?.reports ?? [])) && (
+              <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Часть кабинетных выплат пока не удалось однозначно связать с финансовым отчётом WB. Они показаны для проверки, но не будут записаны в календарь.
+              </p>
+            )}
             {data.planRowsCount > 0 && (
               <div className="rounded-xl border border-slate-200 p-4">
                 <h3 className="font-semibold text-slate-900">Экономика прогноза</h3>
@@ -359,15 +417,26 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                   if (!confirm(`Перенести ${data.payoutSchedule.length} поступлений WB в платёжный календарь? Существующие строки этого прогноза будут обновлены.`)) return;
                   setPublishing(true);
                   try {
+                    const authoritative = new Map(browserPayouts
+                      .filter((snapshot) => snapshot.companyId === companyId && snapshot.accountId === accountId)
+                      .map((snapshot) => [resolveBrowserPayoutReportId(snapshot, payoutStatus?.reports ?? []), snapshot] as const)
+                      .filter((entry): entry is [string, BrowserPayoutSnapshot] => Boolean(entry[0])));
+                    const publicationRows = data.payoutSchedule.map((row) => {
+                      const snapshot = authoritative.get(row.id);
+                      return snapshot ? {
+                        key: row.id,
+                        date: snapshot.plannedDate,
+                        amount: snapshot.amount,
+                        source: "financial_report" as const,
+                        reportId: row.id,
+                        state: snapshot.state,
+                      } : {
+                        key: row.id, date: row.date, amount: row.amount, source: row.source, reportId: row.source === "financial_report" ? row.id : undefined,
+                      };
+                    });
                     const result = await publishForecastToCalendar(
                       { marketplace: "wb", cabinetId: data.cabinetId, companyId, accountId, year, month: month + 1 },
-                      data.payoutSchedule.map((row) => ({
-                        key: row.id,
-                        date: row.date,
-                        amount: row.amount,
-                        source: row.source,
-                        reportId: row.source === "financial_report" ? row.id : undefined,
-                      })),
+                      publicationRows,
                     );
                     alert(`Календарь обновлён: ${result.published} строк.`);
                     window.location.reload();
@@ -472,6 +541,6 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
   );
 }
 
-function Metric({ label, value, green }: { label: string; value: number; green?: boolean }) {
-  return <div className={`rounded-xl p-4 ${green ? "bg-emerald-50" : "bg-slate-50"}`}><p className="text-xs uppercase tracking-wide text-slate-500">{label}</p><p className={`mt-1 text-xl font-bold tabular-nums ${green ? "text-emerald-800" : "text-slate-950"}`}>{formatMoney(value)}</p></div>;
+function Metric({ label, value, green }: { label: string; value: number | null; green?: boolean }) {
+  return <div className={`rounded-xl p-4 ${green ? "bg-emerald-50" : "bg-slate-50"}`}><p className="text-xs uppercase tracking-wide text-slate-500">{label}</p><p className={`mt-1 text-xl font-bold tabular-nums ${green ? "text-emerald-800" : "text-slate-950"}`}>{value === null ? "—" : formatMoney(value)}</p></div>;
 }

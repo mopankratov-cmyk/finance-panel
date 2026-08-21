@@ -9,6 +9,7 @@ export interface ForecastPublishRow {
   amount: number;
   source: ForecastRowSource;
   reportId?: string;
+  state?: "awaiting_transfer" | "marketplace_sent";
 }
 
 export interface ForecastPublishScope {
@@ -41,7 +42,11 @@ export function buildForecastPayments(scope: ForecastPublishScope, rows: Forecas
   return rows.map((row) => {
     const rowKey = safe(row.key || row.reportId || row.date);
     const id = `forecast-${hash(`${scopeKey}|${rowKey}`)}`;
-    const sourceLabel = row.source === "financial_report" ? "подтверждено отчётом" : "расчётный прогноз";
+    const sourceLabel = row.state === "awaiting_transfer"
+      ? "ожидается перечисление"
+      : row.state === "marketplace_sent"
+        ? "отправлено маркетплейсом"
+        : row.source === "financial_report" ? "подтверждено отчётом" : "расчётный прогноз";
     return {
       id,
       date: row.date,
@@ -51,7 +56,7 @@ export function buildForecastPayments(scope: ForecastPublishScope, rows: Forecas
       accountId: scope.accountId,
       status: "planned",
       counterparty: marketplaceName,
-      comment: `[forecast-scope:${scopeKey}] [forecast-marketplace:${scope.marketplace}] [forecast-cabinet:${safe(scope.cabinetId)}] [forecast-company:${safe(scope.companyId)}] [forecast-period:${scope.year}-${String(scope.month).padStart(2, "0")}] [forecast-row:${rowKey}] [forecast-source:${row.source}]${row.reportId ? ` [forecast-report:${safe(row.reportId)}]` : ""}`,
+      comment: `[forecast-scope:${scopeKey}] [forecast-marketplace:${scope.marketplace}] [forecast-cabinet:${safe(scope.cabinetId)}] [forecast-company:${safe(scope.companyId)}] [forecast-period:${scope.year}-${String(scope.month).padStart(2, "0")}] [forecast-row:${rowKey}] [forecast-source:${row.source}]${row.reportId ? ` [forecast-report:${safe(row.reportId)}]` : ""}${row.state ? ` [forecast-state:${row.state}]` : ""}`,
     };
   });
 }

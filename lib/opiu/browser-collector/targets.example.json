@@ -1,0 +1,20 @@
+[
+  {
+    "marketplace": "ozon",
+    "cabinetId": "9142319b-34b7-4521-b80f-a2b303adbc17",
+    "companyId": "f44db400-1374-42d8-9c71-78aed8978f95",
+    "accountId": "58819f26-bf1c-4fc8-9b4f-c608b0f70a4c",
+    "homeUrl": "https://seller.ozon.ru/",
+    "payoutUrl": "OWNER_WILL_COPY_COSMOS_PAYOUT_URL",
+    "rowSelectors": ["tr", "[role=row]"]
+  },
+  {
+    "marketplace": "ozon",
+    "cabinetId": "4ab2ed44-9a0a-4397-ab56-f613760f5616",
+    "companyId": "9f697ea3-e444-465f-a544-9e90cdfd0330",
+    "accountId": "bc726415-0e05-442d-ab6d-7755f6505f2a",
+    "homeUrl": "https://seller.ozon.ru/",
+    "payoutUrl": "OWNER_WILL_COPY_CLERIN_PAYOUT_URL",
+    "rowSelectors": ["tr", "[role=row]"]
+  }
+]
