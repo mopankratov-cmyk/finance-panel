@@ -94,3 +94,63 @@ test("таблица без колонки суммы не даёт снимко
   assert.equal(cellDate("17.08.2026"), "2026-08-17");
   assert.equal(mapColumns(["Товар"]).amount, -1);
 });
+
+// Снято с живого кабинета Ozon 21.08.2026 (CLERIN, Финансы → Выплаты).
+// Суммы изменены, структура — нет.
+const OZON_HEADERS = [
+  "Тип выплаты", "Сумма", "Статус выплаты", "Планируемая дата выплаты",
+  "Дата отправки выплаты", "Период", "Номер документа оплаты",
+];
+
+test("Ozon: сумма-дубль в ячейке читается, берётся фактический день отправки", () => {
+  // Ozon пишет в ячейку две одинаковые суммы («22 948 ₽ 22 948 ₽») — начислено
+  // и к выплате. Равны — значит это одно число. И у него есть обе даты:
+  // планируемая и фактическая; в календарь идёт фактическая.
+  const paid = [
+    "Оплата реализации", "117 922 ₽ 117 922 ₽", "Выплачена",
+    "08.07.2026", "15.06.2026", "08.06.2026 – 14.06.2026",
+    "Оплата факторинга №428854 от 15.06.2026",
+  ];
+  const { columns, rows } = parsePayoutTable(OZON_HEADERS, [paid], { ...TARGET, marketplace: "ozon" });
+  assert.equal(OZON_HEADERS[columns.amount], "Сумма");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].amount, 117922);
+  assert.equal(rows[0].plannedDate, "2026-06-15");
+  assert.equal(rows[0].state, "marketplace_sent");
+  assert.equal(rows[0].reportId, "428854");
+  assert.equal(rows[0].periodFrom, "2026-06-08");
+  assert.equal(rows[0].periodTo, "2026-06-14");
+});
+
+test("Ozon: пока выплата не ушла, берётся планируемая дата", () => {
+  const planned = [
+    "Оплата реализации", "50 000 ₽ 50 000 ₽", "Ожидается",
+    "05.09.2026", "", "24.08.2026 – 30.08.2026", "№319999 от 01.09.2026",
+  ];
+  const { rows } = parsePayoutTable(OZON_HEADERS, [planned], { ...TARGET, marketplace: "ozon" });
+  assert.equal(rows[0].plannedDate, "2026-09-05");
+  assert.equal(rows[0].state, "awaiting_transfer");
+});
+
+test("Ozon: разные суммы в одной ячейке — отказ, а не выбор наугад", () => {
+  // Начислено и к выплате разошлись (например, удержание). Какая из них
+  // «выплата» — по ячейке не видно, поэтому строка не берётся.
+  const ambiguous = [
+    "Прочие выплаты", "10 000 ₽ 7 500 ₽", "Выплачена",
+    "02.06.2026", "02.06.2026", "—", "№428361 от 02.06.2026",
+  ];
+  const { rows, skipped } = parsePayoutTable(OZON_HEADERS, [ambiguous], { ...TARGET, marketplace: "ozon" });
+  assert.equal(rows.length, 0);
+  assert.equal(skipped["сумма в колонке выплаты не читается как число"], 1);
+});
+
+test("Ozon: строка без периода опознаётся по номеру документа", () => {
+  const noPeriod = [
+    "Прочие выплаты", "2 849 ₽ 2 849 ₽", "Выплачена",
+    "02.06.2026", "02.06.2026", "—", "Оплата факторинга №428361 от 02.06.2026",
+  ];
+  const { rows } = parsePayoutTable(OZON_HEADERS, [noPeriod], { ...TARGET, marketplace: "ozon" });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].periodFrom, null);
+  assert.equal(rows[0].externalId, "ozon:cab-1:428361");
+});
