@@ -10,7 +10,8 @@
    Проверка, что сервер видит секрет: `curl -s -X POST -H "Authorization: Bearer <секрет>" -H "Content-Type: application/json" -d '{}' https://<панель>/api/opiu/browser-payout-snapshots` — ответ `Некорректный снимок выплаты` означает, что секрет принят (данные пустые), а `Нет доступа` — что нет.
 4. Создать `targets.json` по `targets.example.json`. Для WB добавить отдельную строку на каждый кабинет с точными `cabinetId`, `companyId`, `accountId`, главной страницей и URL раздела выплат.
 5. Права: `chmod 700 . && chmod 600 .env targets.json`.
-6. Один раз через VNC выполнить `/Users/maxim/opt/node/bin/node collector.mjs --login`, войти в каждый кабинет в открытых вкладках, затем остановить процесс `Ctrl+C`. Профиль останется в `chrome-profile`.
+6. Один раз через VNC выполнить `PATH=$HOME/opt/node/bin:$PATH node collector.mjs --login`. Сборщик открывает **по одному профилю Chrome за раз** — по профилю на кабинет: WB держит одну сессию продавца на профиль, и в общем профиле вход в следующий кабинет выкидывал бы предыдущий. Войдите в открытых вкладках и нажмите Enter в терминале — откроется следующий профиль. Профили лежат в `chrome-profiles/<профиль>`.
+   Если несколько кабинетов реально живут в одном аккаунте маркетплейса (у WB такие магазины переключаются селектором вверху справа), пропишите им одинаковое поле `"profile"` в `targets.json` — тогда они разделят один профиль и один запуск браузера.
 7. Проверить вручную: `/Users/maxim/opt/node/bin/node collector.mjs --collect`, затем `tail -50 logs/collector.log`.
 8. Только после успешной проверки скопировать plist в `~/Library/LaunchAgents/` и выполнить `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ru.kreonopt.marketplace-payout-collector.plist`.
 
