@@ -100,7 +100,7 @@ function docType(row: WbReportRow): "sale" | "return" | "other" {
 function commissionResidualRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
-  const revenueWithoutSpp = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
+  const revenueWithoutSpp = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1) + loyaltyCompensationRub(row);
   const forPay = num(row.ppvz_for_pay);
   const signed = revenueWithoutSpp - forPay;
   return type === "sale" ? signed : -signed;
@@ -242,16 +242,41 @@ export function overlayFunnelOrders(
   return [...fallback, ...synthetic];
 }
 
-function revenueRub(row: WbReportRow): number {
-  if (!isSale(row)) return 0;
-  const amount = num(row.retail_amount);
-  if (amount) return amount;
-  return num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
+/**
+ * WB хранит ppvz_for_pay по возвратам как положительное число (не готовое
+ * к сложению) — суммировать без учёта типа операции нельзя, иначе выплата
+ * продавцу задваивается на сумму возвратов.
+ */
+function forPayRub(row: WbReportRow): number {
+  const type = docType(row);
+  if (type === "other") return 0;
+  const amount = num(row.ppvz_for_pay);
+  return type === "sale" ? amount : -amount;
 }
 
+/**
+ * Возвраты вычитаются из выручки (со знаком), а не просто исключаются —
+ * иначе выручка задваивается на сумму возвратов относительно реального
+ * поступления денег.
+ */
+function revenueRub(row: WbReportRow): number {
+  const type = docType(row);
+  if (type === "other") return 0;
+  const amount = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
+  return type === "sale" ? amount : -amount;
+}
+
+/**
+ * cashback_discount (компенсация скидки по программе лояльности) добавляется
+ * к "Выручке без СПП" — WB так возмещает продавцу часть выручки, потерянной
+ * из-за скидки постоянного покупателя. Без этого "без СПП" занижена ровно
+ * на сумму компенсации за неделю.
+ */
 function revenueWithoutSppRub(row: WbReportRow): number {
-  if (!isSale(row)) return 0;
-  return num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
+  const type = docType(row);
+  if (type === "other") return 0;
+  const amount = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1) + loyaltyCompensationRub(row);
+  return type === "sale" ? amount : -amount;
 }
 
 /** Суммируем со знаком: возвраты уменьшают удержания */
@@ -401,14 +426,13 @@ export function aggregateWeek(
     (o) => !o.isCancel && inRange(orderDate(o), rangeFrom, rangeTo),
   );
   const weekSales = sales.filter((r) => inRange(rowDate(r), rangeFrom, rangeTo));
-  const saleRows = weekSales.filter(isSale);
 
   return {
     orders: weekOrders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
     ordersRub: weekOrders.reduce((s, o) => s + orderRub(o), 0),
-    revenueWithoutSpp: saleRows.reduce((s, r) => s + revenueWithoutSppRub(r), 0),
-    revenue: saleRows.reduce((s, r) => s + revenueRub(r), 0),
-    forPay: weekSales.reduce((s, r) => s + num(r.ppvz_for_pay), 0),
+    revenueWithoutSpp: weekSales.reduce((s, r) => s + revenueWithoutSppRub(r), 0),
+    revenue: weekSales.reduce((s, r) => s + revenueRub(r), 0),
+    forPay: weekSales.reduce((s, r) => s + forPayRub(r), 0),
     cogs: cogsForSales(weekSales, costLookup),
     commission: weekSales.reduce((s, r) => s + commissionResidualRub(r), 0),
     logistics: weekSales.reduce(
