@@ -59,6 +59,7 @@ import {
   type RnpJournalEntry,
 } from "./RnpProductOperationsDrawer";
 import { WbProductImage } from "./WbProductImage";
+import { displaySkuName, useWbSkuNames } from "./useWbSkuNames";
 import { useWbCabinet } from "./WbCabinetContext";
 
 interface Metric {
@@ -720,14 +721,21 @@ export function WbRnpPage() {
   // кэшируется на 12 часов по периоду, и ставка в ключе размножила бы кэш.
   // Копируем массивы метрик — исходный ответ остаётся без налоговых строк,
   // поэтому смена ставки всегда пересчитывается от чистого источника.
+  const skuNames = useWbSkuNames(cabinetId || null);
   const withTax = useCallback((source: RnpTable | null) => {
     if (!source) return null;
     return {
       ...source,
       summary: appendTaxMetrics([...source.summary], taxPct, { extraCommissionPct: cabinetExtraPct }),
-      skus: source.skus.map((sku) => ({ ...sku, metrics: appendTaxMetrics([...sku.metrics], taxPct, { extraCommissionPct: cabinetExtraPct }) })),
+      // Имя, совпадающее с артикулом, — фолбэк снимка (PIM был холодным при
+      // сборке): подменяем его живым заголовком карточки WB из справочника.
+      skus: source.skus.map((sku) => ({
+        ...sku,
+        name: displaySkuName(sku.art, sku.name, skuNames, sku.nm) || sku.name,
+        metrics: appendTaxMetrics([...sku.metrics], taxPct, { extraCommissionPct: cabinetExtraPct }),
+      })),
     };
-  }, [cabinetExtraPct, taxPct]);
+  }, [cabinetExtraPct, skuNames, taxPct]);
   const activeData = useMemo(
     () => {
       const base = withTax(dataKey === currentDataKey ? data : null);

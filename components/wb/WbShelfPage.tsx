@@ -7,6 +7,7 @@ import type { ShelfMarkedRow, ShelfSliceResult } from "@/lib/shelf/slices";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
+import { displaySkuName, useWbSkuNames } from "./useWbSkuNames";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -443,6 +444,7 @@ export function WbShelfPage() {
   // Ручной порядок выдачи артикулов (настраивается в РНП) действует и здесь.
   const { orderIndex } = useCabinetSkuOrder(hasExactCabinet ? cabinetId : null);
   const { tags, tagIdsByNm } = useRnpTags(hasExactCabinet ? cabinetId : null);
+  const skuNames = useWbSkuNames(hasExactCabinet ? cabinetId : null);
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   useEffect(() => setActiveTagIds([]), [cabinetId]);
   // Ярлык на модели = все её цвета одной группой: фильтр сужает и список,
@@ -641,6 +643,7 @@ export function WbShelfPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-[17px] font-bold tracking-[-0.01em] text-slate-800">{watch.supplierArticle || watch.nmId}</span>
+                        {displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId) ? <span className="truncate text-[11px] font-normal text-slate-400">{displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId)}</span> : null}
                         {watch.ourBrand ? <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">{watch.ourBrand}</span> : null}
                       </div>
                       <div className="mt-1 text-[12px] text-slate-400">
