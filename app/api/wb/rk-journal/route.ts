@@ -4,12 +4,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moscowToday } from "@/lib/wb/rkJournalDates";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import {
-  wbAdvertBlock,
-  wbAdvertBlockBid,
-  WB_RK_BLOCK_UNKNOWN,
-  type WbRkBlock,
-} from "@/lib/wb/advertBlocks";
+import { buildRkJournalItems, rkAdvertBlock, rkNum as num } from "@/lib/wb/rkJournalRows";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -63,27 +58,6 @@ interface AdvertRow {
   bid_shelf_rub: number | string | null;
   block_override: string | null;
   nm_ids: number[] | null;
-}
-
-interface Cell {
-  bid: number | null;
-  views: number;
-  clicks: number;
-  spent: number;
-  carts: number;
-  orders: number;
-  ordersSum: number;
-  /** false — день посчитан на лету, ставка того дня неизвестна. */
-  snapshot: boolean;
-}
-
-const num = (value: number | string | null | undefined) => {
-  const parsed = typeof value === "string" ? Number(value) : value;
-  return parsed != null && Number.isFinite(parsed) ? parsed : 0;
-};
-
-function emptyCell(snapshot: boolean): Cell {
-  return { bid: null, views: 0, clicks: 0, spent: 0, carts: 0, orders: 0, ordersSum: 0, snapshot };
 }
 
 function dayList(from: string, to: string): string[] {
@@ -144,15 +118,7 @@ export async function GET(request: NextRequest) {
   const advertByKey = new Map<string, AdvertRow>();
   for (const advert of adverts) advertByKey.set(`${advert.cabinet_id ?? ""}|${advert.advert_id}`, advert);
 
-  const blockOf = (advert: AdvertRow | undefined): WbRkBlock | null => advert
-    ? wbAdvertBlock({
-      bid_type: advert.bid_type,
-      bid_search_rub: advert.bid_search_rub == null ? null : num(advert.bid_search_rub),
-      bid_shelf_rub: advert.bid_shelf_rub == null ? null : num(advert.bid_shelf_rub),
-      bid_cpm_rub: advert.bid_cpm_rub == null ? null : num(advert.bid_cpm_rub),
-      block_override: advert.block_override,
-    })
-    : null;
+  const blockOf = rkAdvertBlock;
 
   // Снимки закрытых дней.
   const snapshots = await loadAllSupabasePages<JournalRow>(
@@ -185,50 +151,7 @@ export async function GET(request: NextRequest) {
     ).catch(noteOn("статистика кампаний")) as CampaignDayRow[];
   }
 
-  // (артикул, блок) → день → ячейка
-  const rows = new Map<string, { nm: number; block: string; cells: Map<string, Cell> }>();
-  const cellOf = (nm: number, block: string, date: string, snapshot: boolean) => {
-    const rowKey = `${nm}|${block}`;
-    const row = rows.get(rowKey) ?? { nm, block, cells: new Map<string, Cell>() };
-    rows.set(rowKey, row);
-    const cell = row.cells.get(date) ?? emptyCell(snapshot);
-    row.cells.set(date, cell);
-    return cell;
-  };
-
-  for (const row of snapshots) {
-    const cell = cellOf(row.nm_id, row.block, row.date, true);
-    cell.bid = row.bid == null ? cell.bid : num(row.bid);
-    cell.views += num(row.views);
-    cell.clicks += num(row.clicks);
-    cell.spent += num(row.spent);
-    cell.carts += num(row.carts);
-    cell.orders += num(row.orders);
-    cell.ordersSum += num(row.orders_sum);
-  }
-
-  // Ставка на «живых» днях — текущая ставка кампании, а не историческая.
-  // Помечаем ячейку snapshot: false, чтобы экран не выдавал её за снятую.
-  for (const row of live) {
-    const advert = advertByKey.get(`${row.cabinet_id ?? ""}|${row.advert_id}`);
-    const block = blockOf(advert);
-    const cell = cellOf(row.nm_id, block ?? WB_RK_BLOCK_UNKNOWN, row.date, false);
-    const spent = num(row.spent);
-    cell.views += num(row.views);
-    cell.clicks += num(row.clicks);
-    cell.spent += spent;
-    cell.carts += num(row.carts);
-    cell.orders += num(row.orders);
-    cell.ordersSum += num(row.orders_sum);
-    const bid = advert
-      ? wbAdvertBlockBid({
-        bid_search_rub: advert.bid_search_rub == null ? null : num(advert.bid_search_rub),
-        bid_shelf_rub: advert.bid_shelf_rub == null ? null : num(advert.bid_shelf_rub),
-        bid_cpm_rub: advert.bid_cpm_rub == null ? null : num(advert.bid_cpm_rub),
-      }, block)
-      : null;
-    if (bid != null && bid > 0 && cell.bid == null) cell.bid = bid;
-  }
+  const items = buildRkJournalItems(snapshots, live, adverts);
 
   // Кампании без разметки — для экрана «Без разметки»: WB не отдаёт вид
   // размещения, и владелец расставляет его руками один раз на кампанию.
@@ -244,21 +167,6 @@ export async function GET(request: NextRequest) {
       bidShelf: advert.bid_shelf_rub == null ? null : num(advert.bid_shelf_rub),
       nmIds: advert.nm_ids ?? [],
     }));
-
-  const items = [...rows.values()].map((row) => ({
-    nm: row.nm,
-    block: row.block,
-    days: Object.fromEntries([...row.cells.entries()].map(([date, cell]) => [date, {
-      bid: cell.bid,
-      views: cell.views,
-      clicks: cell.clicks,
-      spent: Math.round(cell.spent * 100) / 100,
-      carts: cell.carts,
-      orders: cell.orders,
-      ordersSum: Math.round(cell.ordersSum * 100) / 100,
-      snapshot: cell.snapshot,
-    }])),
-  }));
 
   return NextResponse.json({
     from,
