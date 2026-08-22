@@ -142,30 +142,40 @@ export async function GET(request: NextRequest) {
   {
     const ids = [...neededSnapshotIds];
     const chunkSize = 20; // ≤40 строк на снимок → страница выборки заведомо меньше лимита PostgREST
-    for (let offset = 0; offset < ids.length; offset += chunkSize) {
-      const chunk = ids.slice(offset, offset + chunkSize);
-      let chunkRows: DbRow[];
-      try {
-        chunkRows = await loadAllSupabasePages<DbRow>((from, to) => db
-          .from("wb_shelf_snapshot_rows")
-          .select("snapshot_id, position, nm_id, brand, price, img")
-          .in("snapshot_id", chunk)
-          .order("id", { ascending: true })
-          .range(from, to), { maxPages: 5, label: "Строки снимков «Полок»" });
-      } catch (error) {
-        return NextResponse.json({ error: error instanceof Error ? error.message : "Строки снимков не загрузились" }, { status: 502 });
+    const chunks: string[][] = [];
+    for (let offset = 0; offset < ids.length; offset += chunkSize) chunks.push(ids.slice(offset, offset + chunkSize));
+
+    // Чанки шли строго по очереди: две недели истории — это два десятка
+    // обращений подряд, а round-trip до базы стоит около 240 мс. Пятёрками
+    // экран собирается за то же число запросов, но впятеро быстрее.
+    const CHUNK_CONCURRENCY = 5;
+    let loaded: DbRow[][];
+    try {
+      loaded = [];
+      for (let offset = 0; offset < chunks.length; offset += CHUNK_CONCURRENCY) {
+        const batch = await Promise.all(chunks.slice(offset, offset + CHUNK_CONCURRENCY).map((chunk) =>
+          loadAllSupabasePages<DbRow>((from, to) => db
+            .from("wb_shelf_snapshot_rows")
+            .select("snapshot_id, position, nm_id, brand, price, img")
+            .in("snapshot_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to), { maxPages: 5, label: "Строки снимков «Полок»" })));
+        loaded.push(...batch);
       }
-      for (const raw of chunkRows) {
-        const list = rowsBySnapshot.get(raw.snapshot_id) ?? [];
-        list.push({
-          position: Number(raw.position),
-          nmId: raw.nm_id == null ? null : Number(raw.nm_id),
-          brand: raw.brand,
-          price: raw.price == null ? null : Number(raw.price),
-          img: raw.img,
-        });
-        rowsBySnapshot.set(raw.snapshot_id, list);
-      }
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Строки снимков не загрузились" }, { status: 502 });
+    }
+
+    for (const raw of loaded.flat()) {
+      const list = rowsBySnapshot.get(raw.snapshot_id) ?? [];
+      list.push({
+        position: Number(raw.position),
+        nmId: raw.nm_id == null ? null : Number(raw.nm_id),
+        brand: raw.brand,
+        price: raw.price == null ? null : Number(raw.price),
+        img: raw.img,
+      });
+      rowsBySnapshot.set(raw.snapshot_id, list);
     }
   }
 
