@@ -16,7 +16,14 @@ interface AdvertInfo {
   status?: number;
   bid_type?: string;
   nm_settings?: NmSetting[];
-  settings?: { name?: string };
+  settings?: {
+    name?: string;
+    // WB сам говорит, где кампания крутится и как за неё платят. Раньше это
+    // собиралось из величины ставки (единицы рублей = CPC, сотни = CPM) с
+    // ручной доразметкой сотен кампаний — при том, что факт лежал здесь же.
+    payment_type?: string;
+    placements?: { search?: boolean; recommendations?: boolean };
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -80,6 +87,9 @@ export async function GET(request: NextRequest) {
             bid_cpm_rub: bidSearch ?? bidShelf,
             bid_search_rub: bidSearch,
             bid_shelf_rub: bidShelf,
+            payment_type: a.settings?.payment_type ?? null,
+            placement_search: a.settings?.placements?.search ?? null,
+            placement_shelf: a.settings?.placements?.recommendations ?? null,
             // Сырая карточка: поля WB под виды размещения меняются, и без
             // исходника разметку пришлось бы угадывать по именам кампаний.
             raw: a as unknown as Record<string, unknown>,
@@ -94,9 +104,14 @@ export async function GET(request: NextRequest) {
 
       let upsertError = await chunkedUpsert("wb_adverts", rows, "cabinet_id,advert_id");
       let fallbackRows: Record<string, unknown>[] = rows;
+      if (upsertError && /payment_type|placement_search|placement_shelf|schema cache|column/i.test(upsertError)) {
+        // Окно совместимости, пока миграция вида размещения не применена.
+        fallbackRows = rows.map(({ payment_type, placement_search, placement_shelf, ...row }) => ({ ...row }));
+        upsertError = await chunkedUpsert("wb_adverts", fallbackRows, "cabinet_id,advert_id");
+      }
       if (upsertError && /bid_search_rub|bid_shelf_rub|raw|schema cache|column/i.test(upsertError)) {
         // Окно совместимости, пока миграция журнала РК не применена.
-        fallbackRows = rows.map(({ bid_search_rub, bid_shelf_rub, raw, ...row }) => ({ ...row }));
+        fallbackRows = fallbackRows.map(({ bid_search_rub, bid_shelf_rub, raw, ...row }) => ({ ...row }));
         upsertError = await chunkedUpsert("wb_adverts", fallbackRows, "cabinet_id,advert_id");
       }
       if (upsertError && /bid_type|schema cache|column/i.test(upsertError)) {

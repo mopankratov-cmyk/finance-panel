@@ -1,43 +1,47 @@
 // Виды размещения РК для журнала кампаний (см. app/wb/rk).
 //
-// Владелец разносит кампании по пяти секциям: CPC поиск, CPC полки, CPM поиск,
-// CPM полки и ЕРК. WB прямого поля «вид размещения» не отдаёт, поэтому вид
-// собирается из того, что в API есть:
-//   • bid_type — manual против unified (значения сняты с живой базы зондом
-//     sync-health?advert_types=1: manual 737, unified 431, unknown 5);
-//   • bids_kopecks.search / .recommendations — ставка в поиске и на полках.
-//     Кампания, у которой WB отдаёт только полочную ставку, крутится на полках.
+// WB говорит об этом сам — в карточке v2/adverts лежит settings.payment_type
+// (cpc против cpm) и settings.placements {search, recommendations}. Раньше вид
+// собирался из порядка ставки, а спорные случаи уходили в ручную разметку
+// сотнями; теперь берётся факт, а разметка руками остаётся только для
+// кампаний, о которых WB молчит (архив, старые записи синка).
 //
-// Модель оплаты (клики против показов) отдельным полем не приходит, но она
-// однозначно читается по порядку ставки: CPC у WB — единицы рублей за клик,
-// CPM — сотни и тысячи рублей за 1000 показов. Граница взята с запасом в обе
-// стороны, поэтому попадание в неё считается неопределённостью, а не догадкой.
-//
-// Неопределённое размещение НЕ приписывается к блоку: строка уходит в «Без
-// разметки», где владелец расставляет вид вручную (wb_adverts.block_override).
-// Тихо раздутый чужой блок хуже честного счётчика неразмеченных кампаний.
+// Кампания может крутиться и в поиске, и на полках одновременно — WB отдаёт
+// обе площадки true. Расход между ними он не делит, поэтому такая кампания
+// показывается отдельным видом «поиск + полки», а не приписывается к одному
+// из них: приписать значило бы сложить чужие деньги в чужой блок.
 
-export type WbRkBlock = "cpc_search" | "cpc_shelf" | "cpm_search" | "cpm_shelf" | "erk";
+export type WbRkBlock =
+  | "cpc_search" | "cpc_shelf" | "cpc_both"
+  | "cpm_search" | "cpm_shelf" | "cpm_both"
+  | "erk";
 
-export const WB_RK_BLOCKS: WbRkBlock[] = ["cpc_search", "cpc_shelf", "cpm_search", "cpm_shelf", "erk"];
+export const WB_RK_BLOCKS: WbRkBlock[] = [
+  "cpc_search", "cpc_shelf", "cpc_both",
+  "cpm_search", "cpm_shelf", "cpm_both",
+  "erk",
+];
 
 export const WB_RK_BLOCK_LABELS: Record<WbRkBlock, string> = {
   cpc_search: "CPC поиск",
   cpc_shelf: "CPC полки",
+  cpc_both: "CPC поиск + полки",
   cpm_search: "CPM поиск",
   cpm_shelf: "CPM полки",
+  cpm_both: "CPM поиск + полки",
   erk: "ЕРК",
 };
 
 export const WB_RK_BLOCK_UNKNOWN = "unknown";
 export const WB_RK_BLOCK_UNKNOWN_LABEL = "Без разметки";
 
-/** Ставка ниже — оплата за клик, выше — за 1000 показов. Между — не знаем. */
-const CPC_MAX_RUB = 60;
-const CPM_MIN_RUB = 120;
-
 export interface WbAdvertBlockInput {
   bid_type?: string | null;
+  /** Модель оплаты от WB: cpc или cpm. */
+  payment_type?: string | null;
+  /** Площадки от WB. NULL — признак не пришёл (старая строка синка). */
+  placement_search?: boolean | null;
+  placement_shelf?: boolean | null;
   bid_search_rub?: number | null;
   bid_shelf_rub?: number | null;
   /** Совместимость со строками до раздельных ставок: это была ставка поиска. */
@@ -49,9 +53,41 @@ function isBlock(value: string | null | undefined): value is WbRkBlock {
   return WB_RK_BLOCKS.includes(value as WbRkBlock);
 }
 
-function payment(bid: number): "cpc" | "cpm" | null {
-  if (bid > 0 && bid <= CPC_MAX_RUB) return "cpc";
-  if (bid >= CPM_MIN_RUB) return "cpm";
+/** Модель оплаты. Слово WB сильнее любой эвристики по величине ставки. */
+function payment(advert: WbAdvertBlockInput): "cpc" | "cpm" | null {
+  const declared = String(advert.payment_type ?? "").trim().toLowerCase();
+  if (declared === "cpc") return "cpc";
+  if (declared === "cpm") return "cpm";
+  // Строки, записанные синком до сбора payment_type: порядок ставки у WB
+  // разводит модели надёжно — CPC это единицы рублей за клик, CPM сотни и
+  // тысячи за 1000 показов. Между 60 и 120 ₽ не угадываем.
+  // Ноль — это «ставка не задана», а не «ставка нулевая»: ?? пропустил бы его
+  // как валидное значение и сорвал бы разбор кампании, живущей на полках.
+  const bid = [advert.bid_search_rub, advert.bid_shelf_rub, advert.bid_cpm_rub]
+    .find((value) => value != null && value > 0) ?? null;
+  if (bid == null) return null;
+  if (bid <= 60) return "cpc";
+  if (bid >= 120) return "cpm";
+  return null;
+}
+
+/** Площадки. Признак WB сильнее, чем «у какой ставки ненулевое значение». */
+function placement(advert: WbAdvertBlockInput): "search" | "shelf" | "both" | null {
+  const search = advert.placement_search;
+  const shelf = advert.placement_shelf;
+  if (search != null || shelf != null) {
+    if (search && shelf) return "both";
+    if (search) return "search";
+    if (shelf) return "shelf";
+    return null;
+  }
+  const bidSearch = advert.bid_search_rub ?? advert.bid_cpm_rub ?? null;
+  const bidShelf = advert.bid_shelf_rub ?? null;
+  const hasSearch = bidSearch != null && bidSearch > 0;
+  const hasShelf = bidShelf != null && bidShelf > 0;
+  if (hasSearch && hasShelf) return "both";
+  if (hasSearch) return "search";
+  if (hasShelf) return "shelf";
   return null;
 }
 
@@ -65,20 +101,11 @@ export function wbAdvertBlock(advert: WbAdvertBlockInput): WbRkBlock | null {
   const type = String(advert.bid_type ?? "").trim().toLowerCase();
   if (type === "unified" || type === "auto" || type === "automatic") return "erk";
 
-  const search = advert.bid_search_rub ?? advert.bid_cpm_rub ?? null;
-  const shelf = advert.bid_shelf_rub ?? null;
-  const hasSearch = search != null && search > 0;
-  const hasShelf = shelf != null && shelf > 0;
-
-  // Обе ставки живы — кампания идёт и в поиске, и на полках. Куда её отнести,
-  // решает владелец: делить расход кампании между блоками WB не даёт.
-  if (hasSearch === hasShelf) return null;
-
-  const bid = (hasSearch ? search : shelf) as number;
-  const model = payment(bid);
-  if (!model) return null;
-  if (hasSearch) return model === "cpc" ? "cpc_search" : "cpm_search";
-  return model === "cpc" ? "cpc_shelf" : "cpm_shelf";
+  const model = payment(advert);
+  const where = placement(advert);
+  if (!model || !where) return null;
+  if (model === "cpc") return where === "search" ? "cpc_search" : where === "shelf" ? "cpc_shelf" : "cpc_both";
+  return where === "search" ? "cpm_search" : where === "shelf" ? "cpm_shelf" : "cpm_both";
 }
 
 /** Ставка, которую показываем в строке журнала: та, что соответствует блоку. */

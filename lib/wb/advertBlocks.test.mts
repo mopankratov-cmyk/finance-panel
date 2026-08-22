@@ -9,23 +9,44 @@ test("единая ставка — это ЕРК независимо от ра
   assert.equal(wbAdvertBlock({ bid_type: "unified", bid_search_rub: 5.36 }), "erk");
 });
 
-test("живая ставка одна: поиск и полки разводятся, модель оплаты — по порядку ставки", () => {
+test("вид размещения берётся из того, что говорит сам WB", () => {
+  // settings.payment_type + settings.placements — факт из карточки кампании.
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpc", placement_search: true, placement_shelf: false }), "cpc_search");
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpc", placement_search: false, placement_shelf: true }), "cpc_shelf");
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpm", placement_search: true, placement_shelf: false }), "cpm_search");
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpm", placement_search: false, placement_shelf: true }), "cpm_shelf");
+});
+
+test("кампания на обеих площадках не приписывается ни к поиску, ни к полкам", () => {
+  // WB не делит её расход между площадками — свой вид честнее подмены.
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpc", placement_search: true, placement_shelf: true }), "cpc_both");
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpm", placement_search: true, placement_shelf: true }), "cpm_both");
+});
+
+test("слово WB сильнее величины ставки", () => {
+  // Ставка 2000 выглядит как CPM, но WB говорит cpc — верим WB.
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpc", placement_search: true, bid_search_rub: 2000 }), "cpc_search");
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpm", placement_shelf: true, bid_shelf_rub: 4.5 }), "cpm_shelf");
+});
+
+test("для старых строк без признаков WB работает прежний разбор по ставкам", () => {
   assert.equal(wbAdvertBlock({ bid_type: "manual", bid_search_rub: 4.61, bid_shelf_rub: 0 }), "cpc_search");
   assert.equal(wbAdvertBlock({ bid_type: "manual", bid_search_rub: 2000, bid_shelf_rub: null }), "cpm_search");
   assert.equal(wbAdvertBlock({ bid_type: "manual", bid_search_rub: 0, bid_shelf_rub: 6.8 }), "cpc_shelf");
   assert.equal(wbAdvertBlock({ bid_type: "manual", bid_search_rub: null, bid_shelf_rub: 210 }), "cpm_shelf");
 });
 
-test("две живые ставки или ставка в серой зоне — размечает владелец, а не автоматика", () => {
-  assert.equal(wbAdvertBlock({ bid_type: "manual", bid_search_rub: 300, bid_shelf_rub: 200 }), null);
+test("без признаков WB и без ставок — размечает владелец", () => {
   assert.equal(wbAdvertBlock({ bid_type: "manual", bid_search_rub: 90, bid_shelf_rub: null }), null);
   assert.equal(wbAdvertBlock({ bid_type: "manual" }), null);
   assert.equal(wbAdvertBlock({ bid_type: "unknown", bid_search_rub: null, bid_shelf_rub: null }), null);
+  // Площадки WB отдал, а модель оплаты нет — вид всё ещё неполон.
+  assert.equal(wbAdvertBlock({ bid_type: "manual", placement_search: true }), null);
 });
 
 test("ручная разметка сильнее любых ставок", () => {
   assert.equal(wbAdvertBlock({ bid_type: "unified", bid_search_rub: 415, block_override: "cpm_shelf" }), "cpm_shelf");
-  assert.equal(wbAdvertBlock({ bid_type: "manual", bid_search_rub: 300, bid_shelf_rub: 200, block_override: "cpc_search" }), "cpc_search");
+  assert.equal(wbAdvertBlock({ bid_type: "manual", payment_type: "cpm", placement_search: true, block_override: "cpc_search" }), "cpc_search");
 });
 
 test("в строке журнала показываем ставку того размещения, к которому она относится", () => {

@@ -31,6 +31,9 @@ interface AdvertRow {
   cabinet_id: string | null;
   advert_id: number;
   bid_type: string | null;
+  payment_type: string | null;
+  placement_search: boolean | null;
+  placement_shelf: boolean | null;
   bid_cpm_rub: number | string | null;
   bid_search_rub: number | string | null;
   bid_shelf_rub: number | string | null;
@@ -73,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     const adverts = await loadAllSupabasePages<AdvertRow>(
       (start, end) => db.from("wb_adverts")
-        .select("cabinet_id, advert_id, bid_type, bid_cpm_rub, bid_search_rub, bid_shelf_rub, block_override")
+        .select("cabinet_id, advert_id, bid_type, payment_type, placement_search, placement_shelf, bid_cpm_rub, bid_search_rub, bid_shelf_rub, block_override")
         .order("advert_id", { ascending: true })
         .range(start, end),
       { maxPages: 200, label: "Журнал РК: кампании", concurrency: 4 },
@@ -94,6 +97,9 @@ export async function GET(request: NextRequest) {
       const block: WbRkBlock | null = advert
         ? wbAdvertBlock({
           bid_type: advert.bid_type,
+          payment_type: advert.payment_type,
+          placement_search: advert.placement_search,
+          placement_shelf: advert.placement_shelf,
           bid_search_rub: advert.bid_search_rub == null ? null : num(advert.bid_search_rub),
           bid_shelf_rub: advert.bid_shelf_rub == null ? null : num(advert.bid_shelf_rub),
           bid_cpm_rub: advert.bid_cpm_rub == null ? null : num(advert.bid_cpm_rub),

@@ -4,6 +4,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moscowToday } from "@/lib/wb/rkJournalDates";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { WB_RK_BLOCKS } from "@/lib/wb/advertBlocks";
 import { buildRkJournalItems, rkAdvertBlock, rkNum as num } from "@/lib/wb/rkJournalRows";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,9 @@ interface AdvertRow {
   name: string | null;
   status: number | null;
   bid_type: string | null;
+  payment_type?: string | null;
+  placement_search?: boolean | null;
+  placement_shelf?: boolean | null;
   bid_cpm_rub: number | string | null;
   bid_search_rub: number | string | null;
   bid_shelf_rub: number | string | null;
@@ -65,7 +69,8 @@ interface AdvertRow {
 /** Кампания, о которой WB больше ничего не сообщает: ни ставки, ни типа. */
 function isArchived(advert: AdvertRow): boolean {
   const noBid = !advert.bid_search_rub && !advert.bid_shelf_rub && !advert.bid_cpm_rub;
-  return noBid && !advert.bid_type;
+  const noPlacement = advert.placement_search == null && advert.placement_shelf == null;
+  return noBid && !advert.bid_type && !advert.payment_type && noPlacement;
 }
 
 /** Миграция раскладки расхода могла ещё не примениться. */
@@ -122,7 +127,7 @@ export async function GET(request: NextRequest) {
     (start, end) => {
       const q = db
         .from("wb_adverts")
-        .select("cabinet_id, advert_id, name, status, bid_type, bid_cpm_rub, bid_search_rub, bid_shelf_rub, block_override, nm_ids");
+        .select("cabinet_id, advert_id, name, status, bid_type, payment_type, placement_search, placement_shelf, bid_cpm_rub, bid_search_rub, bid_shelf_rub, block_override, nm_ids");
       return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("advert_id", { ascending: true }).range(start, end);
     },
     { maxPages: 60, label: "Журнал РК: кампании", concurrency: 4 },
@@ -190,6 +195,9 @@ export async function GET(request: NextRequest) {
       name: advert.name,
       status: advert.status,
       bidType: advert.bid_type,
+      paymentType: advert.payment_type ?? null,
+      placementSearch: advert.placement_search ?? null,
+      placementShelf: advert.placement_shelf ?? null,
       bidSearch: advert.bid_search_rub == null ? null : num(advert.bid_search_rub),
       bidShelf: advert.bid_shelf_rub == null ? null : num(advert.bid_shelf_rub),
       nmIds: advert.nm_ids ?? [],
@@ -228,7 +236,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
 
-  const allowed = new Set(["cpc_search", "cpc_shelf", "cpm_search", "cpm_shelf", "erk"]);
+  const allowed = new Set(WB_RK_BLOCKS as readonly string[]);
   const block = body?.block == null || body.block === "" ? null : String(body.block);
   if (block != null && !allowed.has(block)) {
     return NextResponse.json({ error: "Неизвестный вид размещения" }, { status: 400 });

@@ -6,6 +6,9 @@ const advert = {
   cabinet_id: "cab-1",
   advert_id: 101,
   bid_type: "manual",
+  payment_type: "cpc",
+  placement_search: true,
+  placement_shelf: false,
   bid_search_rub: 4.5,
   bid_shelf_rub: null,
 };
@@ -33,7 +36,7 @@ test("кампании разных видов размещения не сме�
     { cabinet_id: "cab-1", advert_id: 201, nm_id: 7, date: "2026-08-21", spent: 900, carts: 4, orders: 0 },
   ], [
     advert,
-    { cabinet_id: "cab-1", advert_id: 201, bid_type: "manual", bid_search_rub: null, bid_shelf_rub: 210 },
+    { cabinet_id: "cab-1", advert_id: 201, bid_type: "manual", payment_type: "cpm", placement_search: false, placement_shelf: true, bid_search_rub: null, bid_shelf_rub: 210 },
   ]);
 
   const blocks = items.map((item) => item.block).sort();
@@ -45,7 +48,7 @@ test("кампания без известного вида уходит в «б
   const items = buildRkJournalItems([], [
     { cabinet_id: "cab-1", advert_id: 301, nm_id: 7, date: "2026-08-21", spent: 100, carts: 1, orders: 0 },
   ], [
-    { cabinet_id: "cab-1", advert_id: 301, bid_type: "manual", bid_search_rub: 300, bid_shelf_rub: 200 },
+    { cabinet_id: "cab-1", advert_id: 301, bid_type: "manual", bid_search_rub: 90 },
   ]);
   assert.equal(items[0].block, "unknown");
 });

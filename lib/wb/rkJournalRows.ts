@@ -40,6 +40,9 @@ export interface RkAdvertRow {
   cabinet_id: string | null;
   advert_id: number;
   bid_type?: string | null;
+  payment_type?: string | null;
+  placement_search?: boolean | null;
+  placement_shelf?: boolean | null;
   bid_cpm_rub?: number | string | null;
   bid_search_rub?: number | string | null;
   bid_shelf_rub?: number | string | null;
@@ -79,6 +82,9 @@ export function rkAdvertBlock(advert: RkAdvertRow | undefined): WbRkBlock | null
   if (!advert) return null;
   return wbAdvertBlock({
     bid_type: advert.bid_type,
+    payment_type: advert.payment_type,
+    placement_search: advert.placement_search,
+    placement_shelf: advert.placement_shelf,
     bid_search_rub: advert.bid_search_rub == null ? null : rkNum(advert.bid_search_rub),
     bid_shelf_rub: advert.bid_shelf_rub == null ? null : rkNum(advert.bid_shelf_rub),
     bid_cpm_rub: advert.bid_cpm_rub == null ? null : rkNum(advert.bid_cpm_rub),
