@@ -115,6 +115,8 @@ async function exists(url: string): Promise<boolean> {
  * возвращают ложное «фото не найдено» — на этом легко построить неверный вывод.
  */
 const basketByVol = new Map<number, number>();
+/** Сколько секунд экран готов ждать опрос баскетов у WB. */
+const BASKET_PROBE_BUDGET_MS = 2500;
 
 async function probeBasket(vol: number, nmId: number): Promise<number> {
   const part = Math.floor(nmId / 1000);
@@ -165,14 +167,20 @@ export async function wbCardImageUrlsByNmIds(nmIds: number[], size = "c246x328")
 
   const stillUnknown = [...byVol.entries()].filter(([vol]) => !basketByVol.has(vol));
   if (stillUnknown.length) {
-    await Promise.all(stillUnknown.map(([, nmId]) => resolveWbBasketForVol(nmId).catch(() => 0)));
-    // Запоминаем найденное, чтобы следующий холодный старт не ходил в WB.
-    const found = new Map<number, number>();
-    for (const [vol] of stillUnknown) {
-      const basket = basketByVol.get(vol);
-      if (basket) found.set(vol, basket);
+    // Опрос WB под секундомером: экран не должен ждать сеть дольше, чем
+    // стоит миниатюра. Не успели — отдаём оценку по таблице, а следующий
+    // прогон дособерёт остаток и положит его в базу.
+    const probes = Promise.all(stillUnknown.map(async ([vol, nmId]) => {
+      const basket = await resolveWbBasketForVol(nmId).catch(() => 0);
+      return [vol, basket] as const;
+    }));
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), BASKET_PROBE_BUDGET_MS));
+    const probed = await Promise.race([probes, timeout]);
+    if (probed && store) {
+      // Ноль тоже запоминаем: у тома может не быть живого фото, и без записи
+      // он опрашивался бы заново каждый прогон.
+      void store.rememberBasketVols(new Map(probed)).catch(() => {});
     }
-    if (found.size && store) void store.rememberBasketVols(found).catch(() => {});
   }
 
   const out = new Map<number, string>();
