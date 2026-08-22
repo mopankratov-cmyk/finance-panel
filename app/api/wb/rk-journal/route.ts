@@ -62,6 +62,11 @@ interface AdvertRow {
   nm_ids: number[] | null;
 }
 
+/** Миграция раскладки расхода могла ещё не примениться. */
+function missingAllocatedColumn(err: unknown): boolean {
+  return /spent_allocated/i.test(err instanceof Error ? err.message : String(err));
+}
+
 function dayList(from: string, to: string): string[] {
   const days: string[] = [];
   const cursor = new Date(`${from}T00:00:00Z`);
@@ -118,17 +123,25 @@ export async function GET(request: NextRequest) {
   ).catch(noteOn("кампании")) as AdvertRow[];
 
   // Снимки закрытых дней.
-  const snapshots = await loadAllSupabasePages<JournalRow>(
+  // Колонка раскладки появляется отдельной миграцией. Пока её нет, читаем без
+  // неё: журнал должен показывать измеренный расход, а не пустоту.
+  const snapshotColumns = "cabinet_id, date, nm_id, block, bid, views, clicks, spent, carts, orders, orders_sum";
+  const loadSnapshots = (columns: string) => loadAllSupabasePages<JournalRow>(
     (start, end) => {
       const q = db
         .from("wb_rk_journal_daily")
-        .select("cabinet_id, date, nm_id, block, bid, views, clicks, spent, spent_allocated, carts, orders, orders_sum")
+        .select(columns)
         .gte("date", from)
         .lte("date", to);
-      return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("date", { ascending: true }).range(start, end);
+      return (cabinetId ? q.eq("cabinet_id", cabinetId) : q)
+        .order("date", { ascending: true })
+        .range(start, end) as unknown as PromiseLike<{ data: JournalRow[] | null; error: { message: string } | null }>;
     },
     { maxPages: 60, label: "Журнал РК: снимки", concurrency: 4 },
-  ).catch(noteOn("снимки")) as JournalRow[];
+  );
+  const snapshots = await loadSnapshots(`${snapshotColumns}, spent_allocated`)
+    .catch((err) => missingAllocatedColumn(err) ? loadSnapshots(snapshotColumns) : Promise.reject(err))
+    .catch(noteOn("снимки")) as JournalRow[];
 
   const snapshotDates = new Set(snapshots.map((row) => row.date));
   const liveDates = dates.filter((date) => !snapshotDates.has(date));
@@ -136,16 +149,22 @@ export async function GET(request: NextRequest) {
   // Дни без снимка — из слоя кампаний.
   let live: CampaignDayRow[] = [];
   if (liveDates.length) {
-    live = await loadAllSupabasePages<CampaignDayRow>(
+    const liveColumns = "cabinet_id, advert_id, nm_id, date, views, clicks, spent, carts, orders, orders_sum";
+    const loadLive = (columns: string) => loadAllSupabasePages<CampaignDayRow>(
       (start, end) => {
         const q = db
           .from("wb_advert_nm_campaign_daily")
-          .select("cabinet_id, advert_id, nm_id, date, views, clicks, spent, spent_allocated, carts, orders, orders_sum")
+          .select(columns)
           .in("date", liveDates);
-        return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("date", { ascending: true }).range(start, end);
+        return (cabinetId ? q.eq("cabinet_id", cabinetId) : q)
+          .order("date", { ascending: true })
+          .range(start, end) as unknown as PromiseLike<{ data: CampaignDayRow[] | null; error: { message: string } | null }>;
       },
       { maxPages: 120, label: "Журнал РК: дни без снимка", concurrency: 4 },
-    ).catch(noteOn("статистика кампаний")) as CampaignDayRow[];
+    );
+    live = await loadLive(`${liveColumns}, spent_allocated`)
+      .catch((err) => missingAllocatedColumn(err) ? loadLive(liveColumns) : Promise.reject(err))
+      .catch(noteOn("статистика кампаний")) as CampaignDayRow[];
   }
 
   const items = buildRkJournalItems(snapshots, live, adverts);

@@ -93,21 +93,32 @@ async function rebuildNmDailyFromCampaigns(
   const nmIds = [...new Set(touched.map((row) => row.nm_id))];
   if (!nmIds.length) return [];
   const all: CampaignNmRow[] = [];
+  // Колонка раскладки приходит отдельной миграцией: пока её нет, пересобираем
+  // витрину по измеренному расходу, а не роняем весь прогон.
+  const baseColumns = "nm_id, date, views, clicks, spent, carts, orders, orders_sum, cabinet_id";
+  let columns = `${baseColumns}, spent_allocated`;
   for (let index = 0; index < nmIds.length; index += 200) {
     const chunk = nmIds.slice(index, index + 200);
-    let query = db
-      .from("wb_advert_nm_campaign_daily")
-      .select("nm_id, date, views, clicks, spent, spent_allocated, carts, orders, orders_sum, cabinet_id")
-      .gte("date", from)
-      .lte("date", to)
-      .in("nm_id", chunk)
-      .order("nm_id", { ascending: true })
-      .order("date", { ascending: true })
-      .limit(50_000);
-    query = cabinetId === null ? query.is("cabinet_id", null) : query.eq("cabinet_id", cabinetId);
-    const { data, error } = await query;
+    const fetchChunk = async (select: string) => {
+      let query = db
+        .from("wb_advert_nm_campaign_daily")
+        .select(select)
+        .gte("date", from)
+        .lte("date", to)
+        .in("nm_id", chunk)
+        .order("nm_id", { ascending: true })
+        .order("date", { ascending: true })
+        .limit(50_000);
+      query = cabinetId === null ? query.is("cabinet_id", null) : query.eq("cabinet_id", cabinetId);
+      return query;
+    };
+    let { data, error } = await fetchChunk(columns);
+    if (error && /spent_allocated/i.test(error.message)) {
+      columns = baseColumns;
+      ({ data, error } = await fetchChunk(columns));
+    }
     if (error) throw new Error(`Пересборка витрины рекламы: ${error.message}`);
-    all.push(...((data ?? []) as CampaignNmRow[]));
+    all.push(...((data ?? []) as unknown as CampaignNmRow[]));
   }
   return aggregateNmDaily(all, cabinetId);
 }
