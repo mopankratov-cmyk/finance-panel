@@ -59,6 +59,9 @@ interface JournalData {
 }
 
 const DAY_OPTIONS = [5, 7, 14, 30];
+// Сколько срезов кампаний добираем за одно нажатие. Больше — упрёмся в лимиты
+// WB и в терпение: у кабинета на тысячу кампаний полный круг это ~24 среза.
+const SYNC_MAX_PASSES = 8;
 
 const money = (value: number | null) => value == null ? "—" : Math.round(value).toLocaleString("ru-RU");
 const money2 = (value: number | null) => value == null ? "—" : value.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -166,13 +169,30 @@ export function WbRkJournalPage() {
   // Ручной прогон синка рекламы: крон ходит раз в час и берёт очередной срез
   // кампаний, а когда цифры нужны сейчас, ждать нечего.
   const runSync = async () => {
-    setSyncing("Тянем статистику кампаний из WB…");
     setError(null);
     try {
       const params = cabinetId ? `?cabinet=${encodeURIComponent(cabinetId)}` : "";
-      const stats = await fetch(`/api/sync/advert-stats${params}`, { cache: "no-store" });
-      const body = await stats.json().catch(() => ({}));
-      if (!stats.ok) throw new Error(body.error || `Ошибка ${stats.status}`);
+      // Один вызов берёт очередной срез кампаний (у WB между срезами пауза на
+      // лимит), поэтому гоняем подряд, пока обход не замкнёт круг. Без этого
+      // расход журнала отстаёт от кабинетного ровно на необойдённые кампании.
+      for (let pass = 1; pass <= SYNC_MAX_PASSES; pass++) {
+        setSyncing(`Прогон ${pass}: тянем статистику кампаний из WB…`);
+        const response = await fetch(`/api/sync/advert-stats${params}`, { cache: "no-store" });
+        const body = await response.json().catch(() => ({})) as {
+          error?: string;
+          progress?: Array<{ cabinet?: string; coveragePct?: number; nextBatch?: number; batches?: number; status?: string }>;
+        };
+        if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
+        const progress = body.progress?.[0];
+        const coverage = progress?.coveragePct ?? 100;
+        setSyncing(`Прогон ${pass}: собрано ${coverage}% кампаний кабинета…`);
+        // Круг замкнулся (nextBatch вернулся в начало) либо кампаний мало.
+        if (!progress || progress.nextBatch === 0 || (progress.batches ?? 1) <= 1) break;
+        if (progress.status === "rate_limited") {
+          setError("WB притормозил выдачу статистики — часть кампаний доберёт следующий прогон.");
+          break;
+        }
+      }
       setSyncing("Обновляем журнал…");
       await load();
     } catch (err) {
