@@ -8,6 +8,7 @@ test("WB navigation exposes only the approved dashboards as direct links", () =>
     "/wb/planning",
     "/wb/funnel",
     "/wb/adverts",
+    "/wb/rk",
     "/wb/supplies",
     "/wb/unit",
     "/wb/product",
