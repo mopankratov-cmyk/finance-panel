@@ -83,26 +83,32 @@ export async function GET(request: NextRequest) {
   const daysRaw = Number(searchParams.get("days") ?? HISTORY_DAYS_DEFAULT);
   const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.round(daysRaw), 1), HISTORY_DAYS_MAX) : HISTORY_DAYS_DEFAULT;
 
-  let watchQ = db
-    .from("wb_shelf_watch")
-    .select("id, cabinet_id, nm_id, supplier_article, our_brand, our_link, our_img, extra_excluded_brands, active")
-    .order("created_at", { ascending: true });
-  if (cabinetId) watchQ = watchQ.eq("cabinet_id", cabinetId);
-  const watchesRes = await watchQ;
+  // Список отслеживаемых и глобальные исключения друг от друга не зависят —
+  // замер показал по 0.5 и 0.7 секунды подряд, хотя запросы независимы.
+  const [watchesRes, settingsRes] = await Promise.all([
+    (() => {
+      let watchQ = db
+        .from("wb_shelf_watch")
+        .select("id, cabinet_id, nm_id, supplier_article, our_brand, our_link, our_img, extra_excluded_brands, active")
+        .order("created_at", { ascending: true });
+      if (cabinetId) watchQ = watchQ.eq("cabinet_id", cabinetId);
+      return watchQ;
+    })(),
+    (() => {
+      let settingsQ = db.from("wb_shelf_cabinet_settings").select("cabinet_id, global_excluded_brands");
+      if (cabinetId) settingsQ = settingsQ.eq("cabinet_id", cabinetId);
+      return settingsQ;
+    })(),
+  ]);
   if (watchesRes.error) return NextResponse.json({ error: watchesRes.error.message }, { status: 502 });
+  if (settingsRes.error) return NextResponse.json({ error: settingsRes.error.message }, { status: 502 });
   mark("watches");
   const watches = (watchesRes.data ?? []) as WatchRow[];
   if (!watches.length) return NextResponse.json({ items: [], days });
 
   const globalByCabinet = new Map<string, string[]>();
-  {
-    let settingsQ = db.from("wb_shelf_cabinet_settings").select("cabinet_id, global_excluded_brands");
-    if (cabinetId) settingsQ = settingsQ.eq("cabinet_id", cabinetId);
-    const settings = await settingsQ;
-    if (settings.error) return NextResponse.json({ error: settings.error.message }, { status: 502 });
-    for (const row of settings.data ?? []) {
-      globalByCabinet.set(String(row.cabinet_id), (row.global_excluded_brands ?? []) as string[]);
-    }
+  for (const row of settingsRes.data ?? []) {
+    globalByCabinet.set(String(row.cabinet_id), (row.global_excluded_brands ?? []) as string[]);
   }
 
   mark("settings");
