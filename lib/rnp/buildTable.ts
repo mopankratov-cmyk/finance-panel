@@ -1823,6 +1823,85 @@ export function buildScopedBaseFactsFromRows(input: {
   };
 }
 
+/**
+ * Те же строки, но из агрегата базы. Схемы FBS/FBW проставляются только там,
+ * где функция их посчитала: при NULL-границе она возвращает нули, и день
+ * остаётся без раскладки — «схема неизвестна», а не «FBS-заказов не было».
+ */
+export function buildScopedBaseFactsFromAggregate(input: {
+  allowedNmIds: number[];
+  aggregate: ScopedAggregateRow[];
+  stocks: ScopedStockSourceRow[];
+  products: ScopedProductSourceRow[];
+  costs: ProductCostRow[];
+  fbsCutoff?: string | null;
+}) {
+  const allowed = new Set(input.allowedNmIds);
+  const articleByNm = new Map<number, string>();
+  const stockByNm = new Map<number, StockPosition>();
+  const costByArticle = new Map<string, number | null>();
+
+  for (const product of input.products) {
+    if (!allowed.has(Number(product.nm_id))) continue;
+    writeArticle(articleByNm, Number(product.nm_id), product.article);
+  }
+  for (const cost of input.costs) {
+    const article = String(cost.article ?? "").trim();
+    if (article) costByArticle.set(article, cost.cost_rub == null ? null : Number(cost.cost_rub));
+  }
+  for (const stock of input.stocks) {
+    const nmId = Number(stock.nm_id);
+    if (!allowed.has(nmId)) continue;
+    stockByNm.set(nmId, addStockRow(stockByNm.get(nmId), stock));
+  }
+
+  const num = (value: number | string | null | undefined) => {
+    const parsed = typeof value === "string" ? Number(value) : value;
+    return parsed != null && Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const skuRows = input.aggregate
+    .filter((row) => allowed.has(Number(row.nm_id)))
+    .map((row) => {
+      const nmId = Number(row.nm_id);
+      writeArticle(articleByNm, nmId, row.article ?? undefined);
+      const scheme = input.fbsCutoff && String(row.d).slice(0, 10) <= input.fbsCutoff;
+      return {
+        nm_id: nmId,
+        d: String(row.d).slice(0, 10),
+        orders_count: num(row.orders_count),
+        orders_sum: num(row.orders_sum),
+        orders_gross_sum: num(row.orders_gross_sum),
+        cancels_count: num(row.cancels_count),
+        cancels_sum: num(row.cancels_sum),
+        buyouts_count: num(row.buyouts_count),
+        buyouts_sum: num(row.buyouts_sum),
+        buyouts_gross_sum: num(row.buyouts_gross_sum),
+        buyouts_finished_sum: num(row.buyouts_finished_sum),
+        ad_spent: num(row.ad_spent),
+        ...(scheme ? {
+          orders_fbs_count: num(row.orders_fbs_count),
+          orders_fbs_sum: num(row.orders_fbs_sum),
+          orders_fbw_count: num(row.orders_fbw_count),
+          orders_fbw_sum: num(row.orders_fbw_sum),
+        } : {}),
+      };
+    })
+    .sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id);
+
+  const totals = input.allowedNmIds.map((nmId) => {
+    const article = articleByNm.get(nmId) ?? "";
+    return {
+      nm_id: nmId,
+      article,
+      ...(stockByNm.get(nmId) ?? EMPTY_STOCK_POSITION),
+      cost: article ? (costByArticle.get(article) ?? null) : null,
+    };
+  });
+
+  return { skuRows, totals };
+}
+
 const ORDER_COLUMNS = "nm_id, srid, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel";
 
 /** PostgREST сообщает об отсутствующей колонке текстом «column … does not exist». */
@@ -1870,6 +1949,28 @@ async function loadScopedOrders(
  * FBS-заказов реально покрыл период: без состояния синка или при ошибке — схема
  * неизвестна, и раскладка молчит целиком.
  */
+/**
+ * Только граница достоверности сборочных заданий, без выгрузки их самих.
+ * Правила те же, что у loadScopedFbsFacts: нет состояния синка, ошибка или
+ * период начинается раньше покрытия — схему не раскладываем вовсе.
+ */
+async function loadScopedFbsCutoff(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  dateFrom: string,
+): Promise<string | null> {
+  if (!scope.cabinetId) return null;
+  try {
+    const state = await readWbSyncState(db, scope.cabinetId, "fbs-orders");
+    if (!state || state.status === "error" || !state.cursor) return null;
+    const coveredFrom = String(state.state.coveredFrom ?? "");
+    if (coveredFrom && dateFrom.slice(0, 10) < coveredFrom) return null;
+    return String(state.cursor).slice(0, 10);
+  } catch {
+    return null;
+  }
+}
+
 async function loadScopedFbsFacts(
   db: SupabaseAdmin,
   scope: CabinetScope,
@@ -1902,6 +2003,57 @@ async function loadScopedFbsFacts(
   }
 }
 
+interface ScopedAggregateRow {
+  d: string;
+  nm_id: number;
+  article: string | null;
+  orders_count: number;
+  orders_sum: number | string;
+  orders_gross_sum: number | string;
+  cancels_count: number;
+  cancels_sum: number | string;
+  orders_fbs_count: number;
+  orders_fbs_sum: number | string;
+  orders_fbw_count: number;
+  orders_fbw_sum: number | string;
+  buyouts_count: number;
+  buyouts_sum: number | string;
+  buyouts_gross_sum: number | string;
+  buyouts_finished_sum: number | string;
+  ad_spent: number | string;
+}
+
+/**
+ * Агрегат кабинета с ограниченным ассортиментом одним запросом.
+ *
+ * Раньше эта ветка тянула сырые строки: у Оптимы за неделю 10 679 заказов,
+ * 10 651 продажа и 12 149 сборочных заданий на 18 артикулах — по одиннадцать
+ * страниц на источник. Считает ту же арифметику, что и код ниже, но в базе.
+ * Сборочные задания больше не едут наружу вовсе: схему раскладывает сама
+ * функция, ей нужна только граница достоверности.
+ */
+async function loadScopedAggregate(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  allowed: number[],
+  from: string,
+  to: string,
+  fbsCutoff: string | null,
+): Promise<ScopedAggregateRow[] | null> {
+  if (!scope.cabinetId) return null;
+  const { data, error } = await db.rpc("rnp_scoped_daily_sku", {
+    p_from: from,
+    p_to: to,
+    p_cabinet: scope.cabinetId,
+    p_nm_ids: allowed,
+    p_fbs_cutoff: fbsCutoff,
+  });
+  // Функции может не быть (миграция не применена) — тогда работает прежний
+  // путь по сырым строкам, и экран этого не замечает.
+  if (error) return null;
+  return (data ?? []) as ScopedAggregateRow[];
+}
+
 async function loadScopedBaseFacts(
   db: SupabaseAdmin,
   scope: CabinetScope,
@@ -1923,9 +2075,16 @@ async function loadScopedBaseFacts(
   };
   const dateFrom = `${from}T00:00:00.000Z`;
   const dateTo = `${nextIsoDate(to)}T00:00:00.000Z`;
+
+  // Граница достоверности сборочных заданий нужна до агрегата: по ней функция
+  // решает, какие дни вообще раскладывать по схемам.
+  const fbsCutoffOnly = await step("scoped_fbs_cutoff", loadScopedFbsCutoff(db, scope, dateFrom));
+  const aggregate = await step("scoped_aggregate", loadScopedAggregate(db, scope, allowed, from, to, fbsCutoffOnly));
+  const skipRawFacts = aggregate != null;
+
   const [orders, sales, advertSpend, stocks, products, fbsFacts] = await Promise.all([
-    step("scoped_orders", loadScopedOrders(db, scope, allowed, dateFrom, dateTo)),
-    step("scoped_sales", loadAllPages<ScopedSaleSourceRow>((start, end) => {
+    skipRawFacts ? Promise.resolve([] as ScopedOrderSourceRow[]) : step("scoped_orders", loadScopedOrders(db, scope, allowed, dateFrom, dateTo)),
+    skipRawFacts ? Promise.resolve([] as ScopedSaleSourceRow[]) : step("scoped_sales", loadAllPages<ScopedSaleSourceRow>((start, end) => {
       let query = db
         .from("wb_sales")
         .select("nm_id, date, price_with_disc, finished_price, sale_id")
@@ -1939,7 +2098,7 @@ async function loadScopedBaseFacts(
       if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
       return query;
     })),
-    step("scoped_advert_spend", loadAllPages<ScopedAdvertSpendRow>((start, end) => {
+    skipRawFacts ? Promise.resolve([] as ScopedAdvertSpendRow[]) : step("scoped_advert_spend", loadAllPages<ScopedAdvertSpendRow>((start, end) => {
       let query = db
         .from("wb_advert_nm_daily")
         .select("nm_id, date, spent")
@@ -1972,11 +2131,16 @@ async function loadScopedBaseFacts(
       if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
       return query;
     })),
-    step("scoped_fbs", loadScopedFbsFacts(db, scope, allowed, dateFrom, dateTo)),
+    // Сборочные задания (12 149 строк у Оптимы) нужны только прежнему пути:
+    // агрегат раскладывает схемы сам, ему хватает границы достоверности.
+    skipRawFacts
+      ? Promise.resolve({ srids: new Set<string>(), cutoff: fbsCutoffOnly })
+      : step("scoped_fbs", loadScopedFbsFacts(db, scope, allowed, dateFrom, dateTo)),
   ]);
   const articleSet = new Set<string>();
   for (const product of products) if (product.article) articleSet.add(product.article);
   for (const order of orders) if (order.supplier_article) articleSet.add(order.supplier_article);
+  for (const row of aggregate ?? []) if (row.article) articleSet.add(String(row.article));
   const articles = [...articleSet];
   const costs = articles.length
     ? await loadAllPages<ProductCostRow>((start, end) => db
@@ -1987,6 +2151,9 @@ async function loadScopedBaseFacts(
       .range(start, end))
     : [];
 
+  if (aggregate) {
+    return buildScopedBaseFactsFromAggregate({ allowedNmIds: allowed, aggregate, stocks, products, costs, fbsCutoff: fbsCutoffOnly });
+  }
   return buildScopedBaseFactsFromRows({ allowedNmIds: allowed, orders, sales, advertSpend, stocks, products, costs, fbsFacts });
 }
 
