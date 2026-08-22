@@ -170,18 +170,38 @@ export async function GET(request: NextRequest) {
       .select("date")
       .order("date", { ascending: true })
       .limit(1);
+    // Проверяем именно круг «записал → прочитал»: под включённой RLS без
+    // политик запись может пройти без ошибки, а чтение вернуть пустоту, и по
+    // отдельности оба шага выглядят здоровыми.
     const dryRun = await db
       .from("wb_advert_nm_campaign_daily")
       .upsert([{ cabinet_id: null, advert_id: -1, nm_id: -1, date: "1970-01-01", views: 0, clicks: 0, spent: 0, carts: 0, orders: 0, orders_sum: 0 }], { onConflict: "cabinet_id,advert_id,nm_id,date" });
+    let roundTrip: number | null = null;
     if (!dryRun.error) {
+      const readBack = await db
+        .from("wb_advert_nm_campaign_daily")
+        .select("advert_id", { count: "exact", head: true })
+        .eq("advert_id", -1)
+        .eq("nm_id", -1);
+      roundTrip = readBack.count ?? 0;
       await db.from("wb_advert_nm_campaign_daily").delete().eq("advert_id", -1).eq("nm_id", -1);
     }
+    const nmDaily = await db
+      .from("wb_advert_nm_daily")
+      .select("carts", { count: "exact" })
+      .not("carts", "is", null)
+      .limit(1);
     return NextResponse.json({
       rows: probe.count ?? null,
       newestDate: probe.data?.[0]?.date ?? null,
       oldestDate: oldest.data?.[0]?.date ?? null,
       selectError: probe.error?.message ?? null,
       upsertError: dryRun.error?.message ?? null,
+      // 1 — запись видна сразу после вставки; 0 — пишем «в никуда».
+      roundTrip,
+      // Витрина знает корзины из РК только начиная с той же миграции.
+      nmDailyWithCarts: nmDaily.count ?? null,
+      nmDailyError: nmDaily.error?.message ?? null,
     });
   }
 
