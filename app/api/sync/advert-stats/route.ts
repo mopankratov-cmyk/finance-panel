@@ -22,6 +22,7 @@ interface NmStat {
   views?: number;
   clicks?: number;
   sum?: number;
+  atbs?: number;
   orders?: number;
   sum_price?: number;
 }
@@ -42,6 +43,66 @@ interface DayStat {
 interface AdvertStat {
   advertId?: number;
   days?: DayStat[];
+}
+
+
+interface CampaignNmRow {
+  nm_id: number;
+  date: string;
+  views: number;
+  clicks: number;
+  spent: number;
+  carts: number;
+  orders: number;
+  orders_sum: number;
+  cabinet_id: string | null;
+}
+
+/** Фолбэк без слоя кампаний: прежний агрегат из строк текущего среза. */
+function aggregateNmDaily(rows: CampaignNmRow[], cabinetId: string | null) {
+  const byKey = new Map<string, Record<string, unknown> & { views: number; clicks: number; spent: number; carts: number; orders: number; orders_sum: number }>();
+  for (const row of rows) {
+    const key = `${row.nm_id}|${row.date}`;
+    const agg = byKey.get(key) ?? { nm_id: row.nm_id, date: row.date, views: 0, clicks: 0, spent: 0, carts: 0, orders: 0, orders_sum: 0, cabinet_id: cabinetId, synced_at: new Date().toISOString() };
+    agg.views += row.views; agg.clicks += row.clicks; agg.spent += row.spent;
+    agg.carts += row.carts; agg.orders += row.orders; agg.orders_sum += row.orders_sum;
+    byKey.set(key, agg);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * Полная пересборка витрины по затронутым (nm, день): суммируем ВСЕ кампании
+ * артикула из слоя, а не кампании одного среза. Именно частичная сумма из
+ * одного среза и давала «нули при включённой РК».
+ */
+async function rebuildNmDailyFromCampaigns(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  cabinetId: string | null,
+  touched: CampaignNmRow[],
+  from: string,
+  to: string,
+) {
+  const nmIds = [...new Set(touched.map((row) => row.nm_id))];
+  if (!nmIds.length) return [];
+  const all: CampaignNmRow[] = [];
+  for (let index = 0; index < nmIds.length; index += 200) {
+    const chunk = nmIds.slice(index, index + 200);
+    let query = db
+      .from("wb_advert_nm_campaign_daily")
+      .select("nm_id, date, views, clicks, spent, carts, orders, orders_sum, cabinet_id")
+      .gte("date", from)
+      .lte("date", to)
+      .in("nm_id", chunk)
+      .order("nm_id", { ascending: true })
+      .order("date", { ascending: true })
+      .limit(50_000);
+    query = cabinetId === null ? query.is("cabinet_id", null) : query.eq("cabinet_id", cabinetId);
+    const { data, error } = await query;
+    if (error) throw new Error(`Пересборка витрины рекламы: ${error.message}`);
+    all.push(...((data ?? []) as CampaignNmRow[]));
+  }
+  return aggregateNmDaily(all, cabinetId);
 }
 
 export async function GET(request: NextRequest) {
@@ -138,7 +199,13 @@ export async function GET(request: NextRequest) {
       }
 
       const dayRows: Record<string, unknown>[] = [];
-      const nmDaily = new Map<string, { nm_id: number; date: string; views: number; clicks: number; spent: number; orders: number; orders_sum: number; cabinet_id: string | null }>();
+      // По-кампанийный слой: ключ (кампания, nm, день). Каждый срез fullstats
+      // полон для своих кампаний, поэтому такой upsert никогда не затирает
+      // данные кампаний из других срезов. Прежний агрегат «nm за день из
+      // кампаний ТЕКУЩЕГО среза» перезаписывал полную сумму частичной, когда
+      // артикул размазан по кампаниям из разных срезов — отсюда мигающие нули
+      // при включённой РК.
+      const campaignDaily = new Map<string, { advert_id: number; nm_id: number; date: string; views: number; clicks: number; spent: number; carts: number; orders: number; orders_sum: number; cabinet_id: string | null }>();
 
       // Батчи кампаний: каждый почасовой прогон берёт следующий срез.
       const idBatches: number[][] = [];
@@ -204,13 +271,15 @@ export async function GET(request: NextRequest) {
                 scopedSpent += nm.sum ?? 0;
                 scopedOrders += nm.orders ?? 0;
                 scopedOrdersSum += nm.sum_price ?? 0;
-                const key = `${nm.nmId}|${date}`;
-                const agg = nmDaily.get(key) ?? {
+                const key = `${adv.advertId}|${nm.nmId}|${date}`;
+                const agg = campaignDaily.get(key) ?? {
+                  advert_id: adv.advertId,
                   nm_id: nm.nmId,
                   date,
                   views: 0,
                   clicks: 0,
                   spent: 0,
+                  carts: 0,
                   orders: 0,
                   orders_sum: 0,
                   cabinet_id: t.cabinetId,
@@ -218,9 +287,10 @@ export async function GET(request: NextRequest) {
                 agg.views += nm.views ?? 0;
                 agg.clicks += nm.clicks ?? 0;
                 agg.spent += nm.sum ?? 0;
+                agg.carts += nm.atbs ?? 0;
                 agg.orders += nm.orders ?? 0;
                 agg.orders_sum += nm.sum_price ?? 0;
-                nmDaily.set(key, agg);
+                campaignDaily.set(key, agg);
               }
             }
 
@@ -268,7 +338,7 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      const nmRows = [...nmDaily.values()].map((r) => ({ ...r, synced_at: new Date().toISOString() }));
+      const campaignRows = [...campaignDaily.values()].map((r) => ({ ...r, synced_at: new Date().toISOString() }));
 
       const e1 = await chunkedUpsert("wb_advert_stats", dayRows, "cabinet_id,advert_id,date");
       if (e1) {
@@ -278,6 +348,29 @@ export async function GET(request: NextRequest) {
           state: { ...(previous?.state ?? {}), nextBatch: startB, totalBatches: idBatches.length, totalCampaigns: ids.length },
         });
         continue;
+      }
+      const e0 = await chunkedUpsert(
+        "wb_advert_nm_campaign_daily",
+        campaignRows,
+        // Constraint unique nulls not distinct — см. миграцию слоя.
+        "cabinet_id,advert_id,nm_id,date",
+      );
+      if (e0 && !/does not exist|42P01/i.test(e0)) {
+        errors.push(`${t.name}: ${e0}`);
+      }
+      // Витрина по артикулу пересобирается из ВСЕХ кампаний затронутых
+      // (nm, день) — а не из кампаний одного среза. Пока миграция слоя не
+      // применена, живёт прежний (мигающий) агрегат — честная деградация.
+      let nmRows: ReturnType<typeof aggregateNmDaily>;
+      if (e0) {
+        nmRows = aggregateNmDaily(campaignRows, t.cabinetId);
+      } else {
+        try {
+          nmRows = await rebuildNmDailyFromCampaigns(db, t.cabinetId, campaignRows, fmt(begin), fmt(end));
+        } catch (cause) {
+          errors.push(`${t.name}: ${cause instanceof Error ? cause.message : String(cause)}`);
+          nmRows = aggregateNmDaily(campaignRows, t.cabinetId);
+        }
       }
       const e2 = await chunkedUpsert("wb_advert_nm_daily", nmRows, "cabinet_id,nm_id,date");
       if (e2) {
