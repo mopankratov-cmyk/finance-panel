@@ -4,8 +4,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moscowToday } from "@/lib/wb/rkJournalDates";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import { WB_RK_BLOCKS } from "@/lib/wb/advertBlocks";
-import { buildRkJournalItems, rkAdvertBlock, rkNum as num } from "@/lib/wb/rkJournalRows";
+import { buildRkJournalItems } from "@/lib/wb/rkJournalRows";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -66,16 +65,6 @@ interface AdvertRow {
   nm_ids: number[] | null;
 }
 
-/** Кампания, о которой WB больше ничего не сообщает: ни ставки, ни типа. */
-function isArchived(advert: AdvertRow): boolean {
-  // Признаки, которые синк переписывает при каждом прогоне: если WB не отдал
-  // ни модель оплаты, ни площадки, ни тип ставки — кампании в его выдаче
-  // больше нет. Старую ставку из прошлых синков в расчёт не берём: у
-  // завершённых автокампаний она остаётся навсегда и маскировала архив.
-  const noPlacement = advert.placement_search == null && advert.placement_shelf == null;
-  return noPlacement && !advert.payment_type && !advert.bid_type;
-}
-
 /** Миграция раскладки расхода могла ещё не примениться. */
 function missingAllocatedColumn(err: unknown): boolean {
   return /spent_allocated/i.test(err instanceof Error ? err.message : String(err));
@@ -123,7 +112,7 @@ export async function GET(request: NextRequest) {
   const from = fromDate.toISOString().slice(0, 10);
   const dates = dayList(from, to);
 
-  // Кампании нужны и для разметки дней без снимка, и для экрана разметки.
+  // Кампании нужны, чтобы разложить дни без снимка по видам размещения.
   // Запрос строится внутри колбэка: builder PostgREST одноразовый, повторное
   // использование одного объекта на вторую страницу молча ломает выборку.
   const adverts = await loadAllSupabasePages<AdvertRow>(
@@ -183,76 +172,12 @@ export async function GET(request: NextRequest) {
 
   const items = buildRkJournalItems(snapshots, live, adverts);
 
-  // Кампании без разметки — для экрана «Без разметки»: WB не отдаёт вид
-  // размещения, и владелец расставляет его руками один раз на кампанию.
-  //
-  // Архив отсеиваем: по старым кампаниям WB не отдаёт ни ставок, ни типа
-  // ставки — разметить их не по чему, а в списке они тонут живые. У Оптимы
-  // таких 4 328 из 4 339, и без фильтра экран разметки бесполезен.
-  const archived = adverts.filter((advert) => rkAdvertBlock(advert) == null && isArchived(advert)).length;
-  const unmarked = adverts
-    .filter((advert) => rkAdvertBlock(advert) == null && !isArchived(advert))
-    .map((advert) => ({
-      advertId: advert.advert_id,
-      cabinetId: advert.cabinet_id,
-      name: advert.name,
-      status: advert.status,
-      bidType: advert.bid_type,
-      paymentType: advert.payment_type ?? null,
-      placementSearch: advert.placement_search ?? null,
-      placementShelf: advert.placement_shelf ?? null,
-      bidSearch: advert.bid_search_rub == null ? null : num(advert.bid_search_rub),
-      bidShelf: advert.bid_shelf_rub == null ? null : num(advert.bid_shelf_rub),
-      nmIds: advert.nm_ids ?? [],
-    }));
-
   return NextResponse.json({
     from,
     to,
     dates,
     items,
-    unmarked,
-    archivedUnmarked: archived,
-    campaigns: adverts.length,
     snapshotDates: [...snapshotDates].sort(),
     notes,
   });
-}
-
-/** Ручная разметка вида размещения: одна кампания — один блок. */
-export async function POST(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance", "manager"]);
-  if (gate) return gate;
-  const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
-
-  const body = await request.json().catch(() => null) as
-    | { advertId?: number; advertIds?: number[]; cabinetId?: string | null; block?: string | null }
-    | null;
-  // Разметка идёт пачками: в кабинете больше тысячи кампаний, по одной их
-  // не разметить. advertId оставлен для одиночного случая из таблицы.
-  const advertIds = (body?.advertIds ?? (body?.advertId ? [body.advertId] : []))
-    .map((value) => Number(value))
-    .filter((value) => Number.isSafeInteger(value) && value > 0);
-  if (!advertIds.length) return NextResponse.json({ error: "Нужен advertId или advertIds" }, { status: 400 });
-  if (!(await hasCabinetAccess(body?.cabinetId ?? null))) {
-    return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
-  }
-
-  const allowed = new Set(WB_RK_BLOCKS as readonly string[]);
-  const block = body?.block == null || body.block === "" ? null : String(body.block);
-  if (block != null && !allowed.has(block)) {
-    return NextResponse.json({ error: "Неизвестный вид размещения" }, { status: 400 });
-  }
-
-  // Пачками по 200: PostgREST кладёт список в URL, и длинный in() упирается
-  // в лимит длины строки запроса.
-  for (let start = 0; start < advertIds.length; start += 200) {
-    const slice = advertIds.slice(start, start + 200);
-    let query = db.from("wb_adverts").update({ block_override: block }).in("advert_id", slice);
-    query = body?.cabinetId ? query.eq("cabinet_id", body.cabinetId) : query.is("cabinet_id", null);
-    const { error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 502 });
-  }
-  return NextResponse.json({ ok: true, updated: advertIds.length, block });
 }

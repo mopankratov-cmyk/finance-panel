@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, Download, Loader2, PlayCircle, RefreshCw, Tags } from "lucide-react";
+import { ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import {
@@ -36,26 +36,12 @@ interface JournalItem {
   days: Record<string, DayCell>;
 }
 
-interface UnmarkedCampaign {
-  advertId: number;
-  cabinetId: string | null;
-  name: string | null;
-  status: number | null;
-  bidType: string | null;
-  bidSearch: number | null;
-  bidShelf: number | null;
-  nmIds: number[];
-}
-
 interface JournalData {
   notes?: string[];
-  archivedUnmarked?: number;
   from: string;
   to: string;
   dates: string[];
   items: JournalItem[];
-  unmarked: UnmarkedCampaign[];
-  campaigns: number;
   snapshotDates: string[];
 }
 
@@ -91,9 +77,6 @@ export function WbRkJournalPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [blockFilter, setBlockFilter] = useState<string>("all");
-  const [savingAdvert, setSavingAdvert] = useState<number | null>(null);
-  const [markMask, setMarkMask] = useState("");
-  const [bulkSaving, setBulkSaving] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
 
@@ -120,52 +103,6 @@ export function WbRkJournalPage() {
   }, [cabinetId, days, ready]);
 
   useEffect(() => { void load(); }, [load]);
-
-  const saveBlock = async (campaigns: UnmarkedCampaign[], block: WbRkBlock | "") => {
-    if (!campaigns.length) return;
-    try {
-      // Кампании разных кабинетов обновляются отдельными запросами: доступ
-      // проверяется по кабинету, и смешивать их в одном обновлении нельзя.
-      const byCabinet = new Map<string | null, number[]>();
-      for (const campaign of campaigns) {
-        const list = byCabinet.get(campaign.cabinetId) ?? [];
-        list.push(campaign.advertId);
-        byCabinet.set(campaign.cabinetId, list);
-      }
-      for (const [cabinet, advertIds] of byCabinet) {
-        const response = await fetch("/api/wb/rk-journal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ advertIds, cabinetId: cabinet, block: block || null }),
-        });
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body.error || `Ошибка ${response.status}`);
-        }
-      }
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось сохранить вид размещения");
-    }
-  };
-
-  const setBlock = async (campaign: UnmarkedCampaign, block: WbRkBlock | "") => {
-    setSavingAdvert(campaign.advertId);
-    await saveBlock([campaign], block);
-    setSavingAdvert(null);
-  };
-
-  const maskMatches = useMemo(() => {
-    const mask = markMask.trim().toLowerCase();
-    if (!mask) return [] as UnmarkedCampaign[];
-    return (data?.unmarked ?? []).filter((campaign) => (campaign.name ?? "").toLowerCase().includes(mask));
-  }, [data?.unmarked, markMask]);
-
-  const setBlockByMask = async (block: WbRkBlock) => {
-    setBulkSaving(true);
-    await saveBlock(maskMatches, block);
-    setBulkSaving(false);
-  };
 
   // Ручной прогон синка рекламы: крон ходит раз в час и берёт очередной срез
   // кампаний, а когда цифры нужны сейчас, ждать нечего.
@@ -236,11 +173,7 @@ export function WbRkJournalPage() {
         const agg = acc.get(block)!;
         return {
           block,
-          // Когда размечать нечего, «Без разметки» вводит в заблуждение: это
-          // расход кампаний, которых у WB уже нет — завершённых и удалённых.
-          label: block === WB_RK_BLOCK_UNKNOWN
-            ? (data?.unmarked.length ? WB_RK_BLOCK_UNKNOWN_LABEL : "Завершённые РК")
-            : WB_RK_BLOCK_LABELS[block as WbRkBlock],
+          label: block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[block as WbRkBlock],
           spent: agg.spent,
           allocated: agg.allocated,
           carts: agg.carts,
@@ -253,7 +186,7 @@ export function WbRkJournalPage() {
           drr: agg.ordersSum ? (agg.spent / agg.ordersSum) * 100 : null,
         };
       });
-  }, [data?.unmarked.length, visibleItems]);
+  }, [visibleItems]);
 
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -436,69 +369,6 @@ export function WbRkJournalPage() {
               </div>
             ) : null}
 
-            {data.unmarked.length ? (
-              <details className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-                <summary className="cursor-pointer text-sm font-medium text-amber-900">
-                  <Tags className="mr-1.5 inline h-4 w-4" />
-                  Без разметки: {data.unmarked.length} кампаний из {data.campaigns}
-                  {data.archivedUnmarked ? ` · архивных скрыто: ${data.archivedUnmarked}` : ""}
-                </summary>
-                <p className="mt-1.5 text-xs text-amber-800">
-                  WB не отдаёт вид размещения кампании. Автоматика разбирает те, где живёт одна ставка —
-                  поиска или полок. Остальные разметьте один раз: разметка переживает синхронизации.
-                  Архивные кампании, по которым WB не отдаёт ни ставки, ни типа, в списке скрыты —
-                  размечать их не по чему.
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <input
-                    value={markMask}
-                    onChange={(event) => setMarkMask(event.target.value)}
-                    placeholder="Часть названия кампании, например CPC"
-                    className="min-w-[220px] flex-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs"
-                  />
-                  <span className="text-xs text-amber-800">совпало: {maskMatches.length}</span>
-                  {WB_RK_BLOCKS.map((block) => (
-                    <button
-                      key={block}
-                      type="button"
-                      disabled={!canWrite || bulkSaving || !maskMatches.length}
-                      onClick={() => void setBlockByMask(block)}
-                      className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-40"
-                    >
-                      → {WB_RK_BLOCK_LABELS[block]}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-2 max-h-72 overflow-auto rounded-lg border border-amber-200 bg-white">
-                  <table className="w-full text-xs">
-                    <tbody className="divide-y divide-slate-100">
-                      {data.unmarked.map((campaign) => (
-                        <tr key={`${campaign.cabinetId ?? ""}-${campaign.advertId}`}>
-                          <td className="px-2 py-1 text-slate-700">{campaign.name || `Кампания ${campaign.advertId}`}</td>
-                          <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums text-slate-500">
-                            поиск {money2(campaign.bidSearch)} · полки {money2(campaign.bidShelf)}
-                          </td>
-                          <td className="px-2 py-1 text-right">
-                            <select
-                              disabled={!canWrite || savingAdvert === campaign.advertId}
-                              defaultValue=""
-                              onChange={(event) => void setBlock(campaign, event.target.value as WbRkBlock | "")}
-                              className="rounded-md border border-slate-200 px-1.5 py-1 text-xs disabled:opacity-50"
-                            >
-                              <option value="">Выбрать вид…</option>
-                              {WB_RK_BLOCKS.map((block) => (
-                                <option key={block} value={block}>{WB_RK_BLOCK_LABELS[block]}</option>
-                              ))}
-                            </select>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            ) : null}
-
             {visibleItems.length ? (
               <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
                 <table className="min-w-full border-collapse text-xs">
@@ -538,9 +408,7 @@ export function WbRkJournalPage() {
                             {name ? <div className="max-w-[220px] truncate text-[11px] text-slate-500">{name}</div> : null}
                           </td>
                           <td className="whitespace-nowrap px-2 py-1 text-slate-500">
-                            {item.block === WB_RK_BLOCK_UNKNOWN
-                              ? (data.unmarked.length ? WB_RK_BLOCK_UNKNOWN_LABEL : "Завершённые РК")
-                              : WB_RK_BLOCK_LABELS[item.block as WbRkBlock]}
+                            {item.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[item.block as WbRkBlock]}
                           </td>
                           {dates.map((date) => {
                             const cell = item.days[date];
