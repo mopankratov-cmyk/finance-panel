@@ -348,6 +348,42 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // ?advert_raw=1&cabinet=<uuid> — какие поля WB реально отдаёт по кампании.
+  // Сырая карточка v2/adverts сохраняется синком; по ней видно, есть ли у WB
+  // собственный признак вида размещения, или его правда приходится собирать
+  // из ставок.
+  if (sp.get("advert_raw") === "1") {
+    const cabinetId = sp.get("cabinet");
+    if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const { data, error } = await db
+      .from("wb_adverts")
+      .select("advert_id, name, status, bid_type, raw")
+      .eq("cabinet_id", cabinetId)
+      .not("raw", "is", null)
+      .order("advert_id", { ascending: false })
+      .limit(40);
+    if (error) return NextResponse.json({ error: error.message }, { status: 502 });
+    const rows = (data ?? []) as Array<{ advert_id: number; name: string | null; status: number | null; bid_type: string | null; raw: Record<string, unknown> | null }>;
+    const keyCounts: Record<string, number> = {};
+    const nmSettingKeys: Record<string, number> = {};
+    for (const row of rows) {
+      for (const key of Object.keys(row.raw ?? {})) keyCounts[key] = (keyCounts[key] ?? 0) + 1;
+      const settings = (row.raw as { nm_settings?: Array<Record<string, unknown>> } | null)?.nm_settings ?? [];
+      for (const setting of settings.slice(0, 1)) {
+        for (const key of Object.keys(setting)) nmSettingKeys[key] = (nmSettingKeys[key] ?? 0) + 1;
+      }
+    }
+    return NextResponse.json({
+      sampled: rows.length,
+      topLevelKeys: keyCounts,
+      nmSettingKeys,
+      sample: rows.slice(0, 2).map((row) => ({ advertId: row.advert_id, name: row.name, raw: row.raw })),
+    });
+  }
+
   if (sp.get("advert_types") === "1") {
     const cabinetId = sp.get("cabinet");
     if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
