@@ -2506,7 +2506,7 @@ export async function buildRnpTable(
 
     // Баскет фото проверяется у WB по томам (обычно 3-5 на кабинет), а не вычисляется
     // формулой: та протухает при каждой новой разрезке и даёт пустые миниатюры.
-    const imageByNm = await wbCardImageUrlsByNmIds([...totalByNm.keys()]).catch(() => new Map<number, string>());
+    const imageByNm = await timed("card_images", wbCardImageUrlsByNmIds([...totalByNm.keys()])).catch(() => new Map<number, string>());
     const skus = [...totalByNm.values()]
       .map((t) => {
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();

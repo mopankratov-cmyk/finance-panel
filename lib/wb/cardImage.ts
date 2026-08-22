@@ -149,7 +149,31 @@ export async function wbCardImageUrlsByNmIds(nmIds: number[], size = "c246x328")
     const vol = Math.floor(nmId / 100000);
     if (!byVol.has(vol)) byVol.set(vol, nmId);
   }
-  await Promise.all([...byVol.values()].map((nmId) => resolveWbBasketForVol(nmId).catch(() => 0)));
+
+  // Известные тома берём из базы: Map ниже живёт внутри процесса, и на каждом
+  // холодном инстансе лямбды опрос WB начинался заново — на кабинете в 467
+  // артикулов это десятки последовательных HEAD с ретраями и почти двадцать
+  // секунд внутри сборки РНП. Импорт динамический: модуль изоморфен, а
+  // серверный Supabase в клиентский бандл тащить нельзя.
+  const unknownVols = [...byVol.keys()].filter((vol) => !basketByVol.has(vol));
+  let store: typeof import("./basketVols") | null = null;
+  if (unknownVols.length) {
+    store = await import("./basketVols").catch(() => null);
+    const known = store ? await store.loadKnownBasketVols(unknownVols).catch(() => new Map<number, number>()) : new Map<number, number>();
+    for (const [vol, basket] of known) if (basket > 0) basketByVol.set(vol, basket);
+  }
+
+  const stillUnknown = [...byVol.entries()].filter(([vol]) => !basketByVol.has(vol));
+  if (stillUnknown.length) {
+    await Promise.all(stillUnknown.map(([, nmId]) => resolveWbBasketForVol(nmId).catch(() => 0)));
+    // Запоминаем найденное, чтобы следующий холодный старт не ходил в WB.
+    const found = new Map<number, number>();
+    for (const [vol] of stillUnknown) {
+      const basket = basketByVol.get(vol);
+      if (basket) found.set(vol, basket);
+    }
+    if (found.size && store) void store.rememberBasketVols(found).catch(() => {});
+  }
 
   const out = new Map<number, string>();
   for (const nmId of nmIds) {
