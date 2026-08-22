@@ -280,22 +280,32 @@ export async function POST(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
 
   const body = await request.json().catch(() => null) as
-    | { advertId?: number; cabinetId?: string | null; block?: string | null }
+    | { advertId?: number; advertIds?: number[]; cabinetId?: string | null; block?: string | null }
     | null;
-  if (!body?.advertId) return NextResponse.json({ error: "Нужен advertId" }, { status: 400 });
-  if (!(await hasCabinetAccess(body.cabinetId ?? null))) {
+  // Разметка идёт пачками: в кабинете больше тысячи кампаний, по одной их
+  // не разметить. advertId оставлен для одиночного случая из таблицы.
+  const advertIds = (body?.advertIds ?? (body?.advertId ? [body.advertId] : []))
+    .map((value) => Number(value))
+    .filter((value) => Number.isSafeInteger(value) && value > 0);
+  if (!advertIds.length) return NextResponse.json({ error: "Нужен advertId или advertIds" }, { status: 400 });
+  if (!(await hasCabinetAccess(body?.cabinetId ?? null))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
 
   const allowed = new Set(["cpc_search", "cpc_shelf", "cpm_search", "cpm_shelf", "erk"]);
-  const block = body.block == null || body.block === "" ? null : String(body.block);
+  const block = body?.block == null || body.block === "" ? null : String(body.block);
   if (block != null && !allowed.has(block)) {
     return NextResponse.json({ error: "Неизвестный вид размещения" }, { status: 400 });
   }
 
-  let query = db.from("wb_adverts").update({ block_override: block }).eq("advert_id", body.advertId);
-  query = body.cabinetId ? query.eq("cabinet_id", body.cabinetId) : query.is("cabinet_id", null);
-  const { error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 502 });
-  return NextResponse.json({ ok: true, advertId: body.advertId, block });
+  // Пачками по 200: PostgREST кладёт список в URL, и длинный in() упирается
+  // в лимит длины строки запроса.
+  for (let start = 0; start < advertIds.length; start += 200) {
+    const slice = advertIds.slice(start, start + 200);
+    let query = db.from("wb_adverts").update({ block_override: block }).in("advert_id", slice);
+    query = body?.cabinetId ? query.eq("cabinet_id", body.cabinetId) : query.is("cabinet_id", null);
+    const { error } = await query;
+    if (error) return NextResponse.json({ error: error.message }, { status: 502 });
+  }
+  return NextResponse.json({ ok: true, updated: advertIds.length, block });
 }

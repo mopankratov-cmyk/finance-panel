@@ -87,6 +87,8 @@ export function WbRkJournalPage() {
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [blockFilter, setBlockFilter] = useState<string>("all");
   const [savingAdvert, setSavingAdvert] = useState<number | null>(null);
+  const [markMask, setMarkMask] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
   const elapsed = useElapsedSeconds(loading);
 
   const { tags, tagIdsByNm } = useRnpTags(hasExactCabinet ? cabinetId : null);
@@ -113,24 +115,50 @@ export function WbRkJournalPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const setBlock = async (campaign: UnmarkedCampaign, block: WbRkBlock | "") => {
-    setSavingAdvert(campaign.advertId);
+  const saveBlock = async (campaigns: UnmarkedCampaign[], block: WbRkBlock | "") => {
+    if (!campaigns.length) return;
     try {
-      const response = await fetch("/api/wb/rk-journal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ advertId: campaign.advertId, cabinetId: campaign.cabinetId, block: block || null }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Ошибка ${response.status}`);
+      // Кампании разных кабинетов обновляются отдельными запросами: доступ
+      // проверяется по кабинету, и смешивать их в одном обновлении нельзя.
+      const byCabinet = new Map<string | null, number[]>();
+      for (const campaign of campaigns) {
+        const list = byCabinet.get(campaign.cabinetId) ?? [];
+        list.push(campaign.advertId);
+        byCabinet.set(campaign.cabinetId, list);
+      }
+      for (const [cabinet, advertIds] of byCabinet) {
+        const response = await fetch("/api/wb/rk-journal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ advertIds, cabinetId: cabinet, block: block || null }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || `Ошибка ${response.status}`);
+        }
       }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось сохранить вид размещения");
-    } finally {
-      setSavingAdvert(null);
     }
+  };
+
+  const setBlock = async (campaign: UnmarkedCampaign, block: WbRkBlock | "") => {
+    setSavingAdvert(campaign.advertId);
+    await saveBlock([campaign], block);
+    setSavingAdvert(null);
+  };
+
+  const maskMatches = useMemo(() => {
+    const mask = markMask.trim().toLowerCase();
+    if (!mask) return [] as UnmarkedCampaign[];
+    return (data?.unmarked ?? []).filter((campaign) => (campaign.name ?? "").toLowerCase().includes(mask));
+  }, [data?.unmarked, markMask]);
+
+  const setBlockByMask = async (block: WbRkBlock) => {
+    setBulkSaving(true);
+    await saveBlock(maskMatches, block);
+    setBulkSaving(false);
   };
 
   const dates = data?.dates ?? [];
@@ -300,6 +328,26 @@ export function WbRkJournalPage() {
                   WB не отдаёт вид размещения кампании. Автоматика разбирает те, где живёт одна ставка —
                   поиска или полок. Остальные разметьте один раз: разметка переживает синхронизации.
                 </p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <input
+                    value={markMask}
+                    onChange={(event) => setMarkMask(event.target.value)}
+                    placeholder="Часть названия кампании, например CPC"
+                    className="min-w-[220px] flex-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs"
+                  />
+                  <span className="text-xs text-amber-800">совпало: {maskMatches.length}</span>
+                  {WB_RK_BLOCKS.map((block) => (
+                    <button
+                      key={block}
+                      type="button"
+                      disabled={!canWrite || bulkSaving || !maskMatches.length}
+                      onClick={() => void setBlockByMask(block)}
+                      className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-40"
+                    >
+                      → {WB_RK_BLOCK_LABELS[block]}
+                    </button>
+                  ))}
+                </div>
                 <div className="mt-2 max-h-72 overflow-auto rounded-lg border border-amber-200 bg-white">
                   <table className="w-full text-xs">
                     <tbody className="divide-y divide-slate-100">
