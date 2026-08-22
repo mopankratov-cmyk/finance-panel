@@ -62,6 +62,12 @@ interface AdvertRow {
   nm_ids: number[] | null;
 }
 
+/** Кампания, о которой WB больше ничего не сообщает: ни ставки, ни типа. */
+function isArchived(advert: AdvertRow): boolean {
+  const noBid = !advert.bid_search_rub && !advert.bid_shelf_rub && !advert.bid_cpm_rub;
+  return noBid && !advert.bid_type;
+}
+
 /** Миграция раскладки расхода могла ещё не примениться. */
 function missingAllocatedColumn(err: unknown): boolean {
   return /spent_allocated/i.test(err instanceof Error ? err.message : String(err));
@@ -171,8 +177,13 @@ export async function GET(request: NextRequest) {
 
   // Кампании без разметки — для экрана «Без разметки»: WB не отдаёт вид
   // размещения, и владелец расставляет его руками один раз на кампанию.
+  //
+  // Архив отсеиваем: по старым кампаниям WB не отдаёт ни ставок, ни типа
+  // ставки — разметить их не по чему, а в списке они тонут живые. У Оптимы
+  // таких 4 328 из 4 339, и без фильтра экран разметки бесполезен.
+  const archived = adverts.filter((advert) => rkAdvertBlock(advert) == null && isArchived(advert)).length;
   const unmarked = adverts
-    .filter((advert) => rkAdvertBlock(advert) == null)
+    .filter((advert) => rkAdvertBlock(advert) == null && !isArchived(advert))
     .map((advert) => ({
       advertId: advert.advert_id,
       cabinetId: advert.cabinet_id,
@@ -190,6 +201,7 @@ export async function GET(request: NextRequest) {
     dates,
     items,
     unmarked,
+    archivedUnmarked: archived,
     campaigns: adverts.length,
     snapshotDates: [...snapshotDates].sort(),
     notes,

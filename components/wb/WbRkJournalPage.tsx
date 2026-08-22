@@ -49,6 +49,7 @@ interface UnmarkedCampaign {
 
 interface JournalData {
   notes?: string[];
+  archivedUnmarked?: number;
   from: string;
   to: string;
   dates: string[];
@@ -436,10 +437,13 @@ export function WbRkJournalPage() {
                 <summary className="cursor-pointer text-sm font-medium text-amber-900">
                   <Tags className="mr-1.5 inline h-4 w-4" />
                   Без разметки: {data.unmarked.length} кампаний из {data.campaigns}
+                  {data.archivedUnmarked ? ` · архивных скрыто: ${data.archivedUnmarked}` : ""}
                 </summary>
                 <p className="mt-1.5 text-xs text-amber-800">
                   WB не отдаёт вид размещения кампании. Автоматика разбирает те, где живёт одна ставка —
                   поиска или полок. Остальные разметьте один раз: разметка переживает синхронизации.
+                  Архивные кампании, по которым WB не отдаёт ни ставки, ни типа, в списке скрыты —
+                  размечать их не по чему.
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <input
