@@ -91,6 +91,9 @@ function isSellerApiAllowed(pathname: string, method: string): boolean {
   // рабочие инструменты владельца кабинета, а не владельческие настройки:
   // селлер ведёт ими СВОЙ кабинет. Границу держит hasCabinetAccess в роутах.
   if (pathname === "/api/sku-order") return method === "GET" || method === "PUT";
+  // Журнал РК: чтение и разметка вида размещения кампаний своего кабинета.
+  // Без этой строки селлер видит пункт меню и упирается в 403 от API.
+  if (pathname === "/api/wb/rk-journal") return method === "GET" || method === "POST";
   if (/^\/api\/rnp\/[^/]+\/(plan|operations)$/.test(pathname)) return method === "GET" || method === "POST";
   if (method !== "GET") return false;
   return SELLER_READ_API_EXACT.includes(pathname as (typeof SELLER_READ_API_EXACT)[number])
