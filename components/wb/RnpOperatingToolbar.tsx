@@ -1,24 +1,6 @@
 "use client";
 
-import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  BadgeCheck,
-  CalendarDays,
-  Check,
-  ChevronDown,
-  Download,
-  Eye,
-  Flame,
-  GripVertical,
-  Info,
-  Search,
-  Settings2,
-  SlidersHorizontal,
-  Tag,
-  X,
-} from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, BadgeCheck, CalendarDays, Check, ChevronDown, Download, Eye, Flame, GripVertical, Info, Pencil, Search, Settings2, SlidersHorizontal, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
 import {
@@ -102,6 +84,8 @@ interface Props {
   onTagFilterToggle: (tagId: string) => void;
   onCreateTag: (name: string, color: string) => Promise<boolean>;
   onBulkTag: (tagId: string) => void;
+  onRenameTag: (tagId: string, name: string, color?: string) => Promise<boolean>;
+  onDeleteTag: (tagId: string) => Promise<boolean>;
   onClearSelection: () => void;
   onBrandChange: (brand: string) => void;
   onCategoryChange: (category: string) => void;
@@ -200,6 +184,8 @@ export function RnpOperatingToolbar(props: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [tagComposerOpen, setTagComposerOpen] = useState(false);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
   const [tagName, setTagName] = useState("");
   const [tagColor, setTagColor] = useState("#7567e8");
   const [bulkTagId, setBulkTagId] = useState("");
@@ -381,19 +367,77 @@ export function RnpOperatingToolbar(props: Props) {
           <div className="mt-2 flex flex-wrap gap-1.5">
             {props.tags.map((tag) => {
               const active = props.activeTagIds.includes(tag.id);
+              if (editingTagId === tag.id) {
+                return (
+                  <span key={tag.id} className="inline-flex h-8 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-1.5">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+                    <input
+                      autoFocus
+                      maxLength={40}
+                      value={editingName}
+                      onChange={(event) => setEditingName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setEditingTagId(null);
+                        if (event.key === "Enter") {
+                          const name = editingName.trim();
+                          if (name) void props.onRenameTag(tag.id, name).then((ok) => { if (ok) setEditingTagId(null); });
+                        }
+                      }}
+                      aria-label={`Новое название тега ${tag.name}`}
+                      className="h-6 w-24 bg-transparent text-[9px] font-semibold text-slate-800 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = editingName.trim();
+                        if (name) void props.onRenameTag(tag.id, name).then((ok) => { if (ok) setEditingTagId(null); });
+                      }}
+                      className="grid h-6 w-6 place-items-center rounded-full text-violet-700 hover:bg-violet-100"
+                      aria-label="Сохранить название"
+                    >
+                      ✓
+                    </button>
+                  </span>
+                );
+              }
               return (
-                <button
-                  key={tag.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => props.onTagFilterToggle(tag.id)}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-semibold ${
-                    active ? "border-slate-400 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"
-                  }`}
-                >
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
-                  {tag.name}
-                </button>
+                <span key={tag.id} className={`inline-flex h-8 items-center rounded-full border pl-2.5 ${
+                  active ? "border-slate-400 bg-slate-50" : "border-slate-200"
+                }`}>
+                  <button
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => props.onTagFilterToggle(tag.id)}
+                    className={`inline-flex items-center gap-1.5 text-[9px] font-semibold ${active ? "text-slate-800" : "text-slate-500"}`}
+                  >
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                    {tag.name}
+                  </button>
+                  {props.operationsAvailable ? (
+                    <span className="ml-1 inline-flex items-center pr-1">
+                      <button
+                        type="button"
+                        onClick={() => { setEditingTagId(tag.id); setEditingName(tag.name); }}
+                        className="grid h-6 w-6 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        aria-label={`Переименовать тег ${tag.name}`}
+                        title="Переименовать"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Удалить тег «${tag.name}»? Он снимется со всех товаров кабинета.`)) void props.onDeleteTag(tag.id);
+                        }}
+                        className="grid h-6 w-6 place-items-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        aria-label={`Удалить тег ${tag.name}`}
+                        title="Удалить"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ) : null}
+                </span>
               );
             })}
             {!props.tags.length ? <span className="py-2 text-[10px] text-slate-400">Тегов пока нет.</span> : null}

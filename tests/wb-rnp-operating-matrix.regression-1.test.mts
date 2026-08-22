@@ -88,3 +88,17 @@ test("WB RNP shared tags and product journal stay scoped to one cabinet", () => 
   assert.match(operationsRoute, /action === "add_journal"/);
   assert.match(operationsMigration, /foreign key \(cabinet_id, tag_id\)/);
 });
+
+test("теги РНП можно переименовать и удалить, а назначать — без журнала", () => {
+  // Раньше «+ тег» в карточке открывал панель «Теги и журнал» целиком, а
+  // переименования и удаления не существовало: опечатка в теге жила вечно.
+  assert.match(operationsRoute, /action === "rename_tag"/);
+  assert.match(operationsRoute, /action === "delete_tag"/);
+  // Удаление снимает тег с товаров каскадом схемы — и локальное состояние
+  // страницы обязано зеркалить это, иначе чипы висят до перезагрузки.
+  assert.match(page, /setTagAssignments\(\(current\) => current\.filter\(\(item\) => item\.tag_id !== tagId\)\)/);
+  assert.match(page, /QuickTagPicker/);
+  assert.match(toolbar, /onRenameTag/);
+  assert.match(toolbar, /onDeleteTag/);
+  assert.match(toolbar, /Удалить тег «\$\{tag\.name\}»/ );
+});

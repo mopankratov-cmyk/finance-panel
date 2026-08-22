@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  AlertTriangle,
-  ArrowRight,
-  BookOpen,
-  CalendarDays,
-  ListOrdered,
-  Loader2,
-  Pencil,
-  RefreshCw,
-} from "lucide-react";
+import { AlertTriangle, ArrowRight, BookOpen, CalendarDays, Check, ListOrdered, Loader2, Pencil, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ActionableError } from "@/components/ui/ActionableError";
@@ -1358,6 +1349,25 @@ export function WbRnpPage() {
     return Boolean(result?.tag);
   };
 
+  const renameTag = async (tagId: string, name: string, color?: string) => {
+    const result = await postOperation<RnpOperationsPayload & { tag?: RnpTagOption }>({ action: "rename_tag", tagId, name, ...(color ? { color } : {}) });
+    if (!result?.tag) return false;
+    setTags((current) => current.map((tag) => (tag.id === tagId ? result.tag! : tag))
+      .sort((left, right) => left.name.localeCompare(right.name, "ru")));
+    return true;
+  };
+
+  const deleteTag = async (tagId: string) => {
+    const result = await postOperation({ action: "delete_tag", tagId });
+    if (!result) return false;
+    // Сервер снял тег с товаров каскадом — зеркалим это в локальном состоянии,
+    // иначе карточки продолжат показывать чипы удалённого тега до перезагрузки.
+    setTags((current) => current.filter((tag) => tag.id !== tagId));
+    setTagAssignments((current) => current.filter((item) => item.tag_id !== tagId));
+    setActiveTagIds((current) => current.filter((id) => id !== tagId));
+    return true;
+  };
+
   const setTagForNms = async (tagId: string, nmIds: number[], assigned: boolean) => {
     if (!nmIds.length) return false;
     const result = await postOperation({ action: "set_tag", tagId, nmIds, assigned });
@@ -1517,6 +1527,8 @@ export function WbRnpPage() {
           turnoverWindowDays={turnoverWindowDays}
           tags={tags}
           activeTagIds={activeTagIds}
+          onRenameTag={renameTag}
+          onDeleteTag={deleteTag}
           selectedCount={selectedOperationNms.length}
           operationsAvailable={operationsAvailable}
           sortField={sortField}
@@ -1966,6 +1978,8 @@ export function WbRnpPage() {
                   metrics={skuMetrics}
                   previousMetrics={previousSkuByNm.get(sku.nm)?.metrics ?? []}
                   tags={tags.filter((tag) => skuTagIds.includes(tag.id))}
+                  allTags={tags}
+                  onToggleTag={(tagId, assigned) => setTagForNms(tagId, [sku.nm], assigned)}
                   anomalies={anomalyByNm.get(sku.nm) ?? []}
                   selected={selectedOperationNms.includes(sku.nm)}
                   selectable={operationsAvailable}
@@ -2208,6 +2222,59 @@ function OptimaMatrixCard({
   );
 }
 
+/**
+ * Быстрое назначение тегов из карточки: раньше «+ тег» открывал панель
+ * «Теги и журнал» целиком, хотя журнал для этого не нужен.
+ */
+function QuickTagPicker({ allTags, assignedIds, onToggleTag }: {
+  allTags: RnpTagOption[];
+  assignedIds: string[];
+  onToggleTag: (tagId: string, assigned: boolean) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+      >
+        + тег
+      </button>
+      {open ? (
+        <>
+          <button type="button" className="fixed inset-0 z-[60] cursor-default" onClick={() => setOpen(false)} aria-label="Закрыть выбор тегов" />
+          <div className="absolute left-0 top-full z-[61] mt-1 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+            {allTags.length ? allTags.map((tag) => {
+              const assigned = assignedIds.includes(tag.id);
+              const pending = pendingId === tag.id;
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  disabled={pending}
+                  onClick={async () => {
+                    setPendingId(tag.id);
+                    await onToggleTag(tag.id, !assigned);
+                    setPendingId(null);
+                  }}
+                  className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[10px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+                  <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+                  {pending ? <Loader2 className="h-3 w-3 animate-spin text-slate-400" /> : assigned ? <Check className="h-3 w-3 text-violet-600" /> : null}
+                </button>
+              );
+            }) : <p className="px-2 py-2 text-[10px] text-slate-400">Тегов нет — создайте в панели над таблицей.</p>}
+          </div>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
 function OptimaProductCard({
   sku,
   period,
@@ -2217,6 +2284,8 @@ function OptimaProductCard({
   anomalies,
   selected,
   selectable,
+  allTags,
+  onToggleTag,
   canWrite,
   planning,
   showDeltas,
@@ -2240,10 +2309,12 @@ function OptimaProductCard({
   metrics: Metric[];
   previousMetrics: Metric[];
   tags: RnpTagOption[];
+  allTags: RnpTagOption[];
   anomalies: RnpAnomaly[];
   selected: boolean;
   selectable: boolean;
   canWrite: boolean;
+  onToggleTag: (tagId: string, assigned: boolean) => Promise<boolean>;
   planning: boolean;
   showDeltas: boolean;
   deltaMode: RnpDeltaMode;
@@ -2303,9 +2374,7 @@ function OptimaProductCard({
               </span>
             ))}
             {canWrite ? (
-              <button type="button" onClick={onOpenOperations} className="rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700">
-                + тег
-              </button>
+              <QuickTagPicker allTags={allTags} assignedIds={tags.map((tag) => tag.id)} onToggleTag={onToggleTag} />
             ) : null}
           </div>
         </div>

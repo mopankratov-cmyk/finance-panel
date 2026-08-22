@@ -180,6 +180,43 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sh
     return NextResponse.json({ ok: true, tag: data });
   }
 
+  if (action === "rename_tag") {
+    const tagId = String(body.tagId ?? "");
+    const name = String(body.name ?? "").normalize("NFKC").trim().slice(0, 40);
+    const color = TAG_COLORS.has(String(body.color)) ? String(body.color) : null;
+    if (!tagId || !name) return NextResponse.json({ error: "Выберите тег и введите название" }, { status: 422 });
+    const { data, error } = await db.from("wb_rnp_tags")
+      .update({ name, ...(color ? { color } : {}), updated_at: new Date().toISOString() })
+      .eq("id", tagId)
+      .eq("cabinet_id", scoped.cabinetId)
+      .select("id, name, color, created_by, created_at")
+      .maybeSingle();
+    if (error) {
+      if (migrationUnavailable(error.code)) return NextResponse.json({ error: migrationMessage() }, { status: 503 });
+      if (error.code === "23505") return NextResponse.json({ error: "Тег с таким названием уже есть" }, { status: 409 });
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!data) return NextResponse.json({ error: "Тег не найден" }, { status: 404 });
+    return NextResponse.json({ ok: true, tag: data });
+  }
+
+  if (action === "delete_tag") {
+    const tagId = String(body.tagId ?? "");
+    if (!tagId) return NextResponse.json({ error: "Выберите тег" }, { status: 422 });
+    // Каскад в схеме сам снимает тег со всех товаров (fk on delete cascade).
+    const { data, error } = await db.from("wb_rnp_tags")
+      .delete()
+      .eq("id", tagId)
+      .eq("cabinet_id", scoped.cabinetId)
+      .select("id");
+    if (error) {
+      if (migrationUnavailable(error.code)) return NextResponse.json({ error: migrationMessage() }, { status: 503 });
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!data?.length) return NextResponse.json({ error: "Тег не найден" }, { status: 404 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "set_tag") {
     const nmIds = normalizeNmIds(body.nmIds);
     const tagId = String(body.tagId ?? "");
