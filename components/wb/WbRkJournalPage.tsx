@@ -319,6 +319,9 @@ export function WbRkJournalPage() {
               to={range.to}
               presets={RANGE_PRESETS}
               activePreset={range.preset}
+              // Кнопка стоит у правого края шапки: раскрытие влево, иначе
+              // второй месяц и кнопка «Выбрать» уезжают за экран.
+              align="right"
               onApplyPreset={(value) => setRange({ ...rangeForPreset(value), preset: value })}
               onApplyRange={(from, to) => setRange({ from, to, preset: "custom" })}
             />
