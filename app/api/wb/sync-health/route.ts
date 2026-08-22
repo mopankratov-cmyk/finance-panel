@@ -205,6 +205,69 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // ?spend_split=1&cabinet=<uuid>&nm=<nmId> — где теряется расход по артикулу.
+  // Сравнивает расход кампаний за день (wb_advert_stats, уровень кампании) с
+  // суммой по артикулам той же кампании (слой wb_advert_nm_campaign_daily).
+  // Расхождение означает, что WB не разнёс расход по nm, и брать его нужно с
+  // уровня кампании.
+  if (sp.get("spend_split") === "1") {
+    const cabinetId = sp.get("cabinet");
+    const nmId = Number(sp.get("nm"));
+    if (!cabinetId || !Number.isSafeInteger(nmId)) {
+      return NextResponse.json({ error: "Нужны cabinet и nm" }, { status: 400 });
+    }
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const layer = await loadAllSupabasePages<{ advert_id: number; date: string; spent: number | string | null; nm_id: number }>(
+      (start, end) => db.from("wb_advert_nm_campaign_daily")
+        .select("advert_id, date, spent, nm_id")
+        .eq("cabinet_id", cabinetId)
+        .eq("nm_id", nmId)
+        .order("date", { ascending: false })
+        .range(start, end),
+      { maxPages: 10, label: "Диагностика расхода по артикулу" },
+    );
+    const advertIds = [...new Set(layer.map((row) => row.advert_id))].slice(0, 40);
+    const dates = [...new Set(layer.map((row) => row.date))].slice(0, 20);
+    const campaignLevel = advertIds.length && dates.length
+      ? await db.from("wb_advert_stats")
+        .select("advert_id, date, sum_spent")
+        .eq("cabinet_id", cabinetId)
+        .in("advert_id", advertIds)
+        .in("date", dates)
+      : { data: [], error: null };
+    const perCampaign = new Map<string, number>();
+    for (const row of (campaignLevel.data ?? []) as Array<{ advert_id: number; date: string; sum_spent: number | string | null }>) {
+      perCampaign.set(`${row.advert_id}|${row.date}`, Number(row.sum_spent ?? 0));
+    }
+    // Сколько всего артикулов у кампании в этот день — от этого зависит,
+    // можно ли отнести расход кампании к артикулу без деления.
+    const siblings = advertIds.length && dates.length
+      ? await db.from("wb_advert_nm_campaign_daily")
+        .select("advert_id, date, nm_id")
+        .eq("cabinet_id", cabinetId)
+        .in("advert_id", advertIds)
+        .in("date", dates)
+      : { data: [], error: null };
+    const nmCount = new Map<string, number>();
+    for (const row of (siblings.data ?? []) as Array<{ advert_id: number; date: string }>) {
+      const key = `${row.advert_id}|${row.date}`;
+      nmCount.set(key, (nmCount.get(key) ?? 0) + 1);
+    }
+    return NextResponse.json({
+      nmId,
+      rows: layer.slice(0, 25).map((row) => ({
+        date: row.date,
+        advertId: row.advert_id,
+        nmSpent: Number(row.spent ?? 0),
+        campaignSpent: perCampaign.get(`${row.advert_id}|${row.date}`) ?? null,
+        nmsInCampaign: nmCount.get(`${row.advert_id}|${row.date}`) ?? null,
+      })),
+      campaignError: campaignLevel.error?.message ?? null,
+    });
+  }
+
   if (sp.get("advert_types") === "1") {
     const cabinetId = sp.get("cabinet");
     if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
