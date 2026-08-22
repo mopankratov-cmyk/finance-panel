@@ -1440,6 +1440,8 @@ export interface RnpTable {
    * не должен лежать в кэше полсуток — см. lib/rnp/tableCache.ts.
    */
   pim_cold?: boolean;
+  /** Длительности источников в мс — чтобы медленный экран можно было измерить. */
+  timings?: Record<string, number>;
   period: { label: string; period_type: string }[];
   summary: Metric[];
   skus: {
@@ -2056,6 +2058,17 @@ export async function buildRnpTable(
     return result.data?.[0]?.date ? String(result.data[0].date).slice(0, 10) : null;
   };
 
+  // Длительности источников: РНП падал по statement timeout на живых
+  // кабинетах, и без разбивки не понять, какой запрос это делает.
+  const timings: Record<string, number> = {};
+  const timed = <T,>(name: string, promise: PromiseLike<T>): Promise<T> => {
+    const startedAt = Date.now();
+    return Promise.resolve(promise).then(
+      (value) => { timings[name] = Math.max(timings[name] ?? 0, Date.now() - startedAt); return value; },
+      (error) => { timings[name] = Math.max(timings[name] ?? 0, Date.now() - startedAt); throw error; },
+    );
+  };
+
   try {
     const periodEnd = to < currentMoscowDate() ? to : currentMoscowDate();
     const latestSyncStateDate = async (
@@ -2104,8 +2117,8 @@ export async function buildRnpTable(
           funnelSyncCutoff,
         ] = await Promise.all([
           allowed
-            ? loadScopedBaseFacts(db, scope, allowed, from, to)
-            : Promise.all([
+            ? timed("base_facts_scoped", loadScopedBaseFacts(db, scope, allowed, from, to))
+            : timed("base_facts_rpc", Promise.all([
               loadRnpDailySkuRows<SkuDailyRow>(db, {
                 from,
                 to,
@@ -2116,8 +2129,8 @@ export async function buildRnpTable(
             ]).then(([skuRows, stockRows]) => ({
               skuRows,
               totals: buildLightweightProductTotals(skuRows, stockRows),
-            })),
-          loadAllPages<AdNmRow>((start, end) => {
+            }))),
+          timed("advert_nm_daily", loadAllPages<AdNmRow>((start, end) => {
             let query = db
               .from("wb_advert_nm_daily")
               .select("nm_id, date, views, clicks, orders, orders_sum")
@@ -2129,8 +2142,8 @@ export async function buildRnpTable(
             if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
             if (allowed) query = query.in("nm_id", allowed);
             return query;
-          }),
-          (async () => {
+          })),
+          timed("funnel", (async () => {
             const loadFunnel = (columns: string) => loadAllPages<FunnelRow>((start, end) => {
               let query = db
                 .from("wb_funnel_daily")
@@ -2152,11 +2165,11 @@ export async function buildRnpTable(
               if (!isMissingColumnError(error, "add_to_wishlist")) throw error;
               return loadFunnel("nm_id, date, open_card, add_to_cart, orders, orders_sum");
             }
-          })(),
+          })()),
           // Отзывы: новые за период, по дате создания на стороне WB. Синк хранит
           // отвеченные ~35 дней назад, поэтому окна старше месяца неполны — это
           // сказано в note метрик, а не спрятано.
-          loadAllPages<FeedbackNmRow>((start, end) => {
+          timed("feedbacks", loadAllPages<FeedbackNmRow>((start, end) => {
             let query = db
               .from("wb_feedbacks")
               .select("nm_id, rating, created_at_wb")
@@ -2167,11 +2180,11 @@ export async function buildRnpTable(
             if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
             if (allowed) query = query.in("nm_id", allowed);
             return query;
-          }).catch(() => [] as FeedbackNmRow[]),
+          })).catch(() => [] as FeedbackNmRow[]),
           // Сплит рекламы по видам кампаний: тип живёт на кампании (wb_adverts),
           // дневная статистика — на кампании (wb_advert_stats). По SKU тип не
           // распределяется, поэтому эти ряды идут только в сводку.
-          loadAllPages<AdvertTypeRow>((start, end) => {
+          timed("advert_types", loadAllPages<AdvertTypeRow>((start, end) => {
             let query = db
               .from("wb_adverts")
               .select("advert_id, bid_type")
@@ -2179,8 +2192,8 @@ export async function buildRnpTable(
               .range(start, end);
             if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
             return query as unknown as PromiseLike<PageResult<AdvertTypeRow>>;
-          }).catch(() => [] as AdvertTypeRow[]),
-          loadAllPages<AdvertStatDayRow>((start, end) => {
+          })).catch(() => [] as AdvertTypeRow[]),
+          timed("advert_stats", loadAllPages<AdvertStatDayRow>((start, end) => {
             let query = db
               .from("wb_advert_stats")
               .select("advert_id, date, views, clicks, sum_spent, orders, sum_orders")
@@ -2191,7 +2204,7 @@ export async function buildRnpTable(
               .range(start, end);
             if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
             return query as unknown as PromiseLike<PageResult<AdvertStatDayRow>>;
-          }).catch(() => [] as AdvertStatDayRow[]),
+          })).catch(() => [] as AdvertStatDayRow[]),
           loadSalesReturns(db, scope, allowed, from, to),
           latestSourceDate("wb_orders", scope),
           latestSourceDate("wb_sales", scope),
@@ -2651,6 +2664,7 @@ export async function buildRnpTable(
       shop_label: shopLabel || "Все кабинеты",
       sku_count: skus.length,
       ...(pimCold ? { pim_cold: true } : {}),
+      timings,
       generated_at: new Date().toISOString(),
       as_of: asOf,
       scope_freshness: scopeData.map((item) => ({
