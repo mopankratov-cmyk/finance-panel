@@ -24,6 +24,7 @@ interface JournalRow {
   cabinet_id: string | null;
   date: string;
   nm_id: number;
+  advert_id: number | null;
   block: string;
   bid: number | string | null;
   views: number | null;
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
   // Снимки закрытых дней.
   // Колонка раскладки появляется отдельной миграцией. Пока её нет, читаем без
   // неё: журнал должен показывать измеренный расход, а не пустоту.
-  const snapshotColumns = "cabinet_id, date, nm_id, block, bid, views, clicks, spent, carts, orders, orders_sum";
+  const snapshotColumns = "cabinet_id, date, nm_id, advert_id, block, bid, views, clicks, spent, carts, orders, orders_sum";
   const loadSnapshots = (columns: string) => loadAllSupabasePages<JournalRow>(
     (start, end) => {
       const q = db

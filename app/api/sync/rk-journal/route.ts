@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     for (const advert of adverts) advertByKey.set(`${advert.cabinet_id ?? ""}|${advert.advert_id}`, advert);
 
     interface Agg {
-      cabinet_id: string | null; nm_id: number; block: string;
+      cabinet_id: string | null; nm_id: number; advert_id: number; block: string;
       views: number; clicks: number; spent: number; carts: number; orders: number; orders_sum: number;
       spentAllocated: number;
       campaigns: number; bidWeighted: number; bidWeight: number; bidPlain: number; bidPlainCount: number;
@@ -107,9 +107,11 @@ export async function GET(request: NextRequest) {
         })
         : null;
       const blockKey = block ?? WB_RK_BLOCK_UNKNOWN;
-      const key = `${row.cabinet_id ?? ""}|${row.nm_id}|${blockKey}`;
+      // Ключ — кампания: экран показывает артикул, раскрывая его кампании,
+      // а вид размещения и итог по артикулу собираются из них.
+      const key = `${row.cabinet_id ?? ""}|${row.nm_id}|${row.advert_id}`;
       const agg = byKey.get(key) ?? {
-        cabinet_id: row.cabinet_id, nm_id: row.nm_id, block: blockKey,
+        cabinet_id: row.cabinet_id, nm_id: row.nm_id, advert_id: row.advert_id, block: blockKey,
         views: 0, clicks: 0, spent: 0, spentAllocated: 0, carts: 0, orders: 0, orders_sum: 0,
         campaigns: 0, bidWeighted: 0, bidWeight: 0, bidPlain: 0, bidPlainCount: 0,
       };
@@ -151,6 +153,7 @@ export async function GET(request: NextRequest) {
       cabinet_id: agg.cabinet_id,
       date,
       nm_id: agg.nm_id,
+      advert_id: agg.advert_id,
       block: agg.block,
       // NULL, а не 0: «ставку не знаем» и «ставка ноль» — разные вещи.
       bid: agg.bidWeight > 0
@@ -169,14 +172,14 @@ export async function GET(request: NextRequest) {
       captured_at: new Date().toISOString(),
     }));
 
-    let upsertError = await chunkedUpsert("wb_rk_journal_daily", rows, "cabinet_id,date,nm_id,block");
+    let upsertError = await chunkedUpsert("wb_rk_journal_daily", rows, "cabinet_id,date,nm_id,advert_id");
     if (upsertError && /spent_allocated/i.test(upsertError)) {
       // Окно совместимости, пока миграция раскладки не применена: spent уже
       // полный, теряется только пометка о доле восстановленного.
       upsertError = await chunkedUpsert(
         "wb_rk_journal_daily",
         rows.map(({ spent_allocated, ...row }) => row),
-        "cabinet_id,date,nm_id,block",
+        "cabinet_id,date,nm_id,advert_id",
       );
     }
     if (upsertError) {

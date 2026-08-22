@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { ChevronRight, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import {
@@ -30,10 +30,18 @@ interface DayCell {
   snapshot: boolean;
 }
 
-interface JournalItem {
-  nm: number;
+interface JournalCampaign {
+  advertId: number | null;
+  name: string | null;
   block: string;
   days: Record<string, DayCell>;
+}
+
+interface JournalItem {
+  nm: number;
+  /** Итог по артикулу за день — сумма его кампаний. */
+  days: Record<string, DayCell>;
+  campaigns: JournalCampaign[];
 }
 
 interface JournalData {
@@ -78,6 +86,7 @@ export function WbRkJournalPage() {
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [blockFilter, setBlockFilter] = useState<string>("all");
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [openNms, setOpenNms] = useState<Set<number>>(new Set());
   const elapsed = useElapsedSeconds(loading);
 
   const { tags, tagIdsByNm } = useRnpTags(hasExactCabinet ? cabinetId : null);
@@ -144,7 +153,9 @@ export function WbRkJournalPage() {
 
   const visibleItems = useMemo(() => {
     const items = (data?.items ?? []).filter((item) => nmMatchesTags(tagIdsByNm, item.nm, activeTagIds));
-    const byBlock = blockFilter === "all" ? items : items.filter((item) => item.block === blockFilter);
+    const byBlock = blockFilter === "all"
+      ? items
+      : items.filter((item) => item.campaigns.some((campaign) => campaign.block === blockFilter));
     return sortByCustomSkuOrder(byBlock, (item) => item.nm, orderIndex);
   }, [activeTagIds, blockFilter, data?.items, orderIndex, tagIdsByNm]);
 
@@ -153,8 +164,9 @@ export function WbRkJournalPage() {
   const blockSummary = useMemo(() => {
     const acc = new Map<string, { spent: number; allocated: number; carts: number; orders: number; clicks: number; views: number; ordersSum: number; skus: Set<number> }>();
     for (const item of visibleItems) {
-      const agg = acc.get(item.block) ?? { spent: 0, allocated: 0, carts: 0, orders: 0, clicks: 0, views: 0, ordersSum: 0, skus: new Set<number>() };
-      for (const cell of Object.values(item.days)) {
+      for (const campaign of item.campaigns) {
+      const agg = acc.get(campaign.block) ?? { spent: 0, allocated: 0, carts: 0, orders: 0, clicks: 0, views: 0, ordersSum: 0, skus: new Set<number>() };
+      for (const cell of Object.values(campaign.days)) {
         agg.spent += cell.spent;
         agg.allocated += cell.spentAllocated ?? 0;
         agg.carts += cell.carts;
@@ -164,7 +176,8 @@ export function WbRkJournalPage() {
         agg.ordersSum += cell.ordersSum;
       }
       agg.skus.add(item.nm);
-      acc.set(item.block, agg);
+      acc.set(campaign.block, agg);
+      }
     }
     const order = [...WB_RK_BLOCKS, WB_RK_BLOCK_UNKNOWN];
     return order
@@ -222,24 +235,29 @@ export function WbRkJournalPage() {
   // порядке. На переходный период команда сверяет журнал со своей таблицей.
   const exportCsv = () => {
     if (!data) return;
-    const header = ["Артикул", "Название", "Вид размещения", ...dates.flatMap((date) => [
+    const header = ["Артикул", "Название", "Кампания", "Вид размещения", ...dates.flatMap((date) => [
       `${dayLabel(date)} ставка`, `${dayLabel(date)} корзин`, `${dayLabel(date)} заказов`,
       `${dayLabel(date)} затраты`, `${dayLabel(date)} CPO`, `${dayLabel(date)} CPL`,
     ])];
     const num = (value: number | null) => value == null ? "" : String(Math.round(value * 100) / 100);
-    const rows = visibleItems.map((item) => [
-      String(item.nm),
-      displaySkuName("", null, skuNames, item.nm),
-      item.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[item.block as WbRkBlock],
-      ...dates.flatMap((date) => {
-        const cell = item.days[date];
-        if (isEmpty(cell)) return ["", "", "", "", "", ""];
-        return [
-          num(cell.bid), String(cell.carts), String(cell.orders), num(cell.spent),
-          num(costPerOrder(cell.spent, cell.orders)), num(costPerCart(cell.spent, cell.carts)),
-        ];
-      }),
-    ]);
+
+    const rows = visibleItems.flatMap((item) => {
+      const name = displaySkuName("", null, skuNames, item.nm);
+      return item.campaigns.map((campaign) => [
+        String(item.nm),
+        name,
+        campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : ""),
+        campaign.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[campaign.block as WbRkBlock],
+        ...dates.flatMap((date) => {
+          const cell = campaign.days[date];
+          if (isEmpty(cell)) return ["", "", "", "", "", ""];
+          return [
+            num(cell.bid), String(cell.carts), String(cell.orders), num(cell.spent),
+            num(costPerOrder(cell.spent, cell.orders)), num(costPerCart(cell.spent, cell.carts)),
+          ];
+        }),
+      ]);
+    });
     const csv = [header, ...rows]
       .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(";"))
       .join("\n");
@@ -375,7 +393,7 @@ export function WbRkJournalPage() {
                   <thead>
                     <tr className="bg-slate-50 text-slate-500">
                       <th className="sticky left-0 z-10 bg-slate-50 px-2 py-1.5 text-left font-medium">Артикул</th>
-                      <th className="px-2 py-1.5 text-left font-medium">Вид</th>
+                      <th className="px-2 py-1.5 text-left font-medium">Кампании</th>
                       {dates.map((date) => (
                         <th key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-semibold text-slate-700">
                           {dayLabel(date)}
@@ -401,47 +419,100 @@ export function WbRkJournalPage() {
                   <tbody className="divide-y divide-slate-100">
                     {visibleItems.map((item) => {
                       const name = displaySkuName("", null, skuNames, item.nm);
+                      const open = openNms.has(item.nm);
+                      const shown = blockFilter === "all"
+                        ? item.campaigns
+                        : item.campaigns.filter((campaign) => campaign.block === blockFilter);
                       return (
-                        <tr key={`${item.nm}-${item.block}`} className="hover:bg-slate-50/60">
-                          <td className="sticky left-0 z-10 bg-white px-2 py-1 hover:bg-slate-50/60">
-                            <div className="font-medium tabular-nums text-slate-800">{item.nm}</div>
-                            {name ? <div className="max-w-[220px] truncate text-[11px] text-slate-500">{name}</div> : null}
-                          </td>
-                          <td className="whitespace-nowrap px-2 py-1 text-slate-500">
-                            {item.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[item.block as WbRkBlock]}
-                          </td>
-                          {dates.map((date) => {
-                            const cell = item.days[date];
-                            if (isEmpty(cell)) {
+                        <Fragment key={item.nm}>
+                          <tr
+                            className="cursor-pointer bg-white font-medium hover:bg-slate-50/60"
+                            onClick={() => setOpenNms((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(item.nm)) next.delete(item.nm); else next.add(item.nm);
+                              return next;
+                            })}
+                          >
+                            <td className="sticky left-0 z-10 bg-white px-2 py-1.5">
+                              <div className="flex items-start gap-1.5">
+                                <ChevronRight className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
+                                <div className="min-w-0">
+                                  <div className="tabular-nums text-slate-800">{item.nm}</div>
+                                  {name ? <div className="max-w-[220px] truncate text-[11px] font-normal text-slate-500">{name}</div> : null}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap px-2 py-1.5 text-[11px] font-normal text-slate-500">
+                              {shown.length} {shown.length === 1 ? "кампания" : shown.length < 5 ? "кампании" : "кампаний"}
+                            </td>
+                            {dates.map((date) => {
+                              const cell = item.days[date];
+                              if (isEmpty(cell)) {
+                                return (
+                                  <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">
+                                    —
+                                  </td>
+                                );
+                              }
+                              const cpo = costPerOrder(cell.spent, cell.orders);
+                              const cpl = costPerCart(cell.spent, cell.carts);
                               return (
-                                <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1 text-center text-slate-300">
-                                  —
-                                </td>
+                                <Fragment key={date}>
+                                  {/* Ставка у артикула не показывается: у его кампаний она разная. */}
+                                  <td className="border-l border-slate-200 px-2 py-1.5" />
+                                  <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.carts)}</td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.orders)}</td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums">{money(cell.spent)}</td>
+                                  <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
+                                  <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                                </Fragment>
                               );
-                            }
-                            const cpo = costPerOrder(cell.spent, cell.orders);
-                            const cpl = costPerCart(cell.spent, cell.carts);
-                            return (
-                              <Fragment key={date}>
-                                <td className="border-l border-slate-200 px-2 py-1 text-right tabular-nums text-slate-600">
-                                  {cell.bid == null ? "—" : money2(cell.bid)}
-                                </td>
-                                <td className="px-2 py-1 text-right tabular-nums text-slate-700">{count(cell.carts)}</td>
-                                <td className="px-2 py-1 text-right tabular-nums text-slate-700">{count(cell.orders)}</td>
-                                <td className="px-2 py-1 text-right tabular-nums text-slate-700">{money(cell.spent)}</td>
-                                <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
-                                <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
-                              </Fragment>
-                            );
-                          })}
-                        </tr>
+                            })}
+                          </tr>
+                          {open ? shown.map((campaign) => (
+                            <tr key={`${item.nm}-${campaign.advertId ?? campaign.block}`} className="bg-slate-50/40 text-slate-600">
+                              <td className="sticky left-0 z-10 bg-slate-50/40 py-1 pl-7 pr-2">
+                                <div className="max-w-[240px] truncate text-[11px]" title={campaign.name ?? undefined}>
+                                  {campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : "—")}
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap px-2 py-1 text-[11px]">
+                                {campaign.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[campaign.block as WbRkBlock]}
+                              </td>
+                              {dates.map((date) => {
+                                const cell = campaign.days[date];
+                                if (isEmpty(cell)) {
+                                  return (
+                                    <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1 text-center text-slate-300">
+                                      —
+                                    </td>
+                                  );
+                                }
+                                const cpo = costPerOrder(cell.spent, cell.orders);
+                                const cpl = costPerCart(cell.spent, cell.carts);
+                                return (
+                                  <Fragment key={date}>
+                                    <td className="border-l border-slate-200 px-2 py-1 text-right tabular-nums">
+                                      {cell.bid == null ? "—" : money2(cell.bid)}
+                                    </td>
+                                    <td className="px-2 py-1 text-right tabular-nums">{count(cell.carts)}</td>
+                                    <td className="px-2 py-1 text-right tabular-nums">{count(cell.orders)}</td>
+                                    <td className="px-2 py-1 text-right tabular-nums">{money(cell.spent)}</td>
+                                    <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
+                                    <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                                  </Fragment>
+                                );
+                              })}
+                            </tr>
+                          )) : null}
+                        </Fragment>
                       );
                     })}
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-50 font-semibold text-slate-800">
                       <td className="sticky left-0 z-10 bg-slate-50 px-2 py-1.5">Итого</td>
-                      <td className="px-2 py-1.5 font-normal text-slate-500">{visibleItems.length} строк</td>
+                      <td className="px-2 py-1.5 font-normal text-slate-500">{visibleItems.length} артикулов</td>
                       {dates.map((date) => {
                         const total = dayTotals.get(date);
                         if (!total || (!total.spent && !total.carts && !total.orders)) {
