@@ -9,7 +9,7 @@
 // текущая, и ячейка помечена snapshot: false, чтобы экран не выдавал её за
 // снятую.
 
-import { wbAdvertBlock, wbAdvertBlockBid, WB_RK_BLOCK_UNKNOWN, type WbRkBlock } from "./advertBlocks";
+import { wbAdvertBlock, wbAdvertBlockBid, WB_RK_BLOCK_ATTRIBUTED, WB_RK_BLOCK_UNKNOWN, type WbRkBlock } from "./advertBlocks";
 
 export interface RkSnapshotRow {
   date: string;
@@ -54,6 +54,7 @@ export interface RkAdvertRow {
   bid_search_rub?: number | string | null;
   bid_shelf_rub?: number | string | null;
   block_override?: string | null;
+  nm_ids?: number[] | null;
 }
 
 export interface RkCell {
@@ -74,6 +75,8 @@ export interface RkCampaign {
   advertId: number | null;
   name: string | null;
   block: string;
+  /** Сколько артикулов ведёт кампания: её имя может быть от соседнего. */
+  nmCount: number | null;
   days: Record<string, RkCell>;
 }
 
@@ -207,10 +210,38 @@ export function buildRkJournalItems(
 
   // Кампании собираются под артикулом, там же складывается его итог за день.
   const byNm = new Map<number, { nm: number; totals: Map<string, RkCell>; campaigns: RkCampaign[] }>();
+  // Конверсии, приписанные чужими кампаниями, — по одной строке на артикул.
+  const attributed = new Map<number, Map<string, RkCell>>();
   for (const row of rows.values()) {
     const item = byNm.get(row.nm) ?? { nm: row.nm, totals: new Map<string, RkCell>(), campaigns: [] };
     byNm.set(row.nm, item);
-    item.campaigns.push({ advertId: row.advertId, name: row.name, block: row.block, days: finishCells(row.cells) });
+    // Кампания, которая этот артикул не показывала и денег на него не
+    // тратила, его кампанией не является: WB просто приписал ей конверсию
+    // соседнего товара. Такие строки сливаются в одну — как в кабинете WB.
+    const worked = [...row.cells.values()].some((cell) => cell.views > 0 || cell.clicks > 0 || cell.spent > 0);
+    const idle = [...row.cells.values()].every((cell) =>
+      cell.views === 0 && cell.clicks === 0 && cell.spent === 0 && cell.carts === 0 && cell.orders === 0);
+    if (idle) continue;
+    if (worked) {
+      item.campaigns.push({
+        advertId: row.advertId,
+        name: row.name,
+        block: row.block,
+        nmCount: row.advertId == null ? null : (advertById.get(row.advertId)?.nm_ids?.length ?? null),
+        days: finishCells(row.cells),
+      });
+    } else {
+      for (const [date, cell] of row.cells) {
+        const bucket = attributed.get(row.nm) ?? new Map<string, RkCell>();
+        attributed.set(row.nm, bucket);
+        const target = bucket.get(date) ?? emptyCell(cell.snapshot);
+        target.snapshot = target.snapshot && cell.snapshot;
+        target.carts += cell.carts;
+        target.orders += cell.orders;
+        target.ordersSum += cell.ordersSum;
+        bucket.set(date, target);
+      }
+    }
     for (const [date, cell] of row.cells) {
       const total = item.totals.get(date) ?? emptyCell(true);
       // День артикула считается снятым, только если снят целиком.
@@ -226,10 +257,22 @@ export function buildRkJournalItems(
     }
   }
 
+  for (const [nm, cells] of attributed) {
+    const item = byNm.get(nm);
+    if (!item) continue;
+    item.campaigns.push({
+      advertId: null,
+      name: null,
+      block: WB_RK_BLOCK_ATTRIBUTED,
+      nmCount: null,
+      days: finishCells(cells),
+    });
+  }
+
   const spendOf = (campaign: RkCampaign) =>
     Object.values(campaign.days).reduce((sum, cell) => sum + cell.spent, 0);
 
-  return [...byNm.values()].map((item) => ({
+  return [...byNm.values()].filter((item) => item.campaigns.length).map((item) => ({
     nm: item.nm,
     days: finishCells(item.totals),
     // Кампании — по убыванию расхода: сверху та, что съела больше всех.

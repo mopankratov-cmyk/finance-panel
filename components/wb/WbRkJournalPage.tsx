@@ -5,6 +5,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import {
   WB_RK_BLOCKS,
+  WB_RK_BLOCK_ATTRIBUTED,
+  WB_RK_BLOCK_ATTRIBUTED_LABEL,
   WB_RK_BLOCK_LABELS,
   WB_RK_BLOCK_UNKNOWN,
   WB_RK_BLOCK_UNKNOWN_LABEL,
@@ -34,6 +36,8 @@ interface JournalCampaign {
   advertId: number | null;
   name: string | null;
   block: string;
+  /** Сколько артикулов ведёт кампания: её имя бывает от соседнего товара. */
+  nmCount: number | null;
   days: Record<string, DayCell>;
 }
 
@@ -165,6 +169,9 @@ export function WbRkJournalPage() {
     const acc = new Map<string, { spent: number; allocated: number; carts: number; orders: number; clicks: number; views: number; ordersSum: number; skus: Set<number> }>();
     for (const item of visibleItems) {
       for (const campaign of item.campaigns) {
+      // Конверсии из чужих кампаний вида размещения не имеют: попав в блок,
+      // они бы улучшили его CPO заказами, которых он не покупал.
+      if (campaign.block === WB_RK_BLOCK_ATTRIBUTED) continue;
       const agg = acc.get(campaign.block) ?? { spent: 0, allocated: 0, carts: 0, orders: 0, clicks: 0, views: 0, ordersSum: 0, skus: new Set<number>() };
       for (const cell of Object.values(campaign.days)) {
         agg.spent += cell.spent;
@@ -246,8 +253,12 @@ export function WbRkJournalPage() {
       return item.campaigns.map((campaign) => [
         String(item.nm),
         name,
-        campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : ""),
-        campaign.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[campaign.block as WbRkBlock],
+        campaign.block === WB_RK_BLOCK_ATTRIBUTED
+          ? WB_RK_BLOCK_ATTRIBUTED_LABEL
+          : campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : ""),
+        campaign.block === WB_RK_BLOCK_ATTRIBUTED ? ""
+          : campaign.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL
+            : WB_RK_BLOCK_LABELS[campaign.block as WbRkBlock],
         ...dates.flatMap((date) => {
           const cell = campaign.days[date];
           if (isEmpty(cell)) return ["", "", "", "", "", ""];
@@ -422,7 +433,7 @@ export function WbRkJournalPage() {
                       const open = openNms.has(item.nm);
                       const shown = blockFilter === "all"
                         ? item.campaigns
-                        : item.campaigns.filter((campaign) => campaign.block === blockFilter);
+                        : item.campaigns.filter((campaign) => campaign.block === blockFilter || campaign.block === WB_RK_BLOCK_ATTRIBUTED);
                       return (
                         <Fragment key={item.nm}>
                           <tr
@@ -472,12 +483,20 @@ export function WbRkJournalPage() {
                           {open ? shown.map((campaign) => (
                             <tr key={`${item.nm}-${campaign.advertId ?? campaign.block}`} className="bg-slate-50/40 text-slate-600">
                               <td className="sticky left-0 z-10 bg-slate-50/40 py-1 pl-7 pr-2">
-                                <div className="max-w-[240px] truncate text-[11px]" title={campaign.name ?? undefined}>
-                                  {campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : "—")}
+                                <div className={`max-w-[240px] truncate text-[11px] ${campaign.block === WB_RK_BLOCK_ATTRIBUTED ? "italic text-slate-400" : ""}`} title={campaign.name ?? undefined}>
+                                  {campaign.block === WB_RK_BLOCK_ATTRIBUTED
+                                    ? WB_RK_BLOCK_ATTRIBUTED_LABEL
+                                    : campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : "—")}
                                 </div>
+                                {campaign.nmCount && campaign.nmCount > 1 ? (
+                                  // Имя кампании бывает от соседнего товара — показываем охват.
+                                  <div className="text-[10px] text-slate-400">на {campaign.nmCount} артикулов</div>
+                                ) : null}
                               </td>
                               <td className="whitespace-nowrap px-2 py-1 text-[11px]">
-                                {campaign.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[campaign.block as WbRkBlock]}
+                                {campaign.block === WB_RK_BLOCK_ATTRIBUTED ? ""
+                                  : campaign.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL
+                                    : WB_RK_BLOCK_LABELS[campaign.block as WbRkBlock]}
                               </td>
                               {dates.map((date) => {
                                 const cell = campaign.days[date];

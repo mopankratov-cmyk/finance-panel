@@ -157,3 +157,36 @@ test("день артикула снят, только когда сняты в�
   );
   assert.equal(items[0].days["2026-08-22"].snapshot, false);
 });
+
+test("чужая кампания без показов не становится кампанией артикула", () => {
+  // WB приписал заказ кампании соседнего товара: показов и расхода по нашему
+  // артикулу у неё нет. В кабинете это отдельная строка «Конверсии из других
+  // кампаний», а не полноценная кампания.
+  const items = buildRkJournalItems([], [
+    { cabinet_id: "cab-1", advert_id: 101, nm_id: 7, date: "2026-08-21", spent: 600, views: 900, clicks: 20, carts: 5, orders: 2 },
+    { cabinet_id: "cab-1", advert_id: 777, nm_id: 7, date: "2026-08-21", spent: 0, views: 0, clicks: 0, carts: 1, orders: 1 },
+  ], [advert, { cabinet_id: "cab-1", advert_id: 777, name: "чужая 846/розовая", bid_type: "manual", payment_type: "cpc", placement_search: true }]);
+
+  const blocks = items[0].campaigns.map((campaign) => campaign.block);
+  assert.deepEqual(blocks, ["cpc_search", "attributed"]);
+  // Итог артикула по-прежнему включает перенесённый заказ.
+  assert.equal(items[0].days["2026-08-21"].orders, 3);
+  assert.equal(items[0].campaigns[1].days["2026-08-21"].orders, 1);
+});
+
+test("кампания без единой цифры по артикулу не показывается вовсе", () => {
+  const items = buildRkJournalItems([], [
+    { cabinet_id: "cab-1", advert_id: 101, nm_id: 7, date: "2026-08-21", spent: 600, views: 900, carts: 5, orders: 2 },
+    { cabinet_id: "cab-1", advert_id: 888, nm_id: 7, date: "2026-08-21", spent: 0, views: 0, clicks: 0, carts: 0, orders: 0 },
+  ], [advert, { cabinet_id: "cab-1", advert_id: 888, name: "пустая", bid_type: "manual", payment_type: "cpc", placement_search: true }]);
+
+  assert.equal(items[0].campaigns.length, 1);
+  assert.equal(items[0].campaigns[0].advertId, 101);
+});
+
+test("артикул, у которого вообще нет живых кампаний, из журнала уходит", () => {
+  const items = buildRkJournalItems([], [
+    { cabinet_id: "cab-1", advert_id: 888, nm_id: 9, date: "2026-08-21", spent: 0, views: 0, clicks: 0, carts: 0, orders: 0 },
+  ], [{ cabinet_id: "cab-1", advert_id: 888, name: "пустая", bid_type: "manual", payment_type: "cpc", placement_search: true }]);
+  assert.deepEqual(items, []);
+});
