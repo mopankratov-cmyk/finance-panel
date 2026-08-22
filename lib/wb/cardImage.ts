@@ -115,6 +115,8 @@ async function exists(url: string): Promise<boolean> {
  * возвращают ложное «фото не найдено» — на этом легко построить неверный вывод.
  */
 const basketByVol = new Map<number, number>();
+/** Тома, про которые известно, что живого фото у них нет: спрашивать WB незачем. */
+const knownEmptyVols = new Set<number>();
 /** Сколько секунд экран готов ждать опрос баскетов у WB. */
 const BASKET_PROBE_BUDGET_MS = 2500;
 
@@ -157,15 +159,22 @@ export async function wbCardImageUrlsByNmIds(nmIds: number[], size = "c246x328")
   // артикулов это десятки последовательных HEAD с ретраями и почти двадцать
   // секунд внутри сборки РНП. Импорт динамический: модуль изоморфен, а
   // серверный Supabase в клиентский бандл тащить нельзя.
-  const unknownVols = [...byVol.keys()].filter((vol) => !basketByVol.has(vol));
+  const unknownVols = [...byVol.keys()].filter((vol) => !basketByVol.has(vol) && !knownEmptyVols.has(vol));
   let store: typeof import("./basketVols") | null = null;
   if (unknownVols.length) {
     store = await import("./basketVols").catch(() => null);
     const known = store ? await store.loadKnownBasketVols(unknownVols).catch(() => new Map<number, number>()) : new Map<number, number>();
-    for (const [vol, basket] of known) if (basket > 0) basketByVol.set(vol, basket);
+    for (const [vol, basket] of known) {
+      // Ноль из базы — это ответ «фото у тома нет», а не отсутствие ответа.
+      // Раньше нули отбрасывались, такие тома снова считались неизвестными и
+      // опрашивались у WB каждый прогон: справочник наполнялся, а время не
+      // падало.
+      if (basket > 0) basketByVol.set(vol, basket);
+      else knownEmptyVols.add(vol);
+    }
   }
 
-  const stillUnknown = [...byVol.entries()].filter(([vol]) => !basketByVol.has(vol));
+  const stillUnknown = [...byVol.entries()].filter(([vol]) => !basketByVol.has(vol) && !knownEmptyVols.has(vol));
   if (stillUnknown.length) {
     // Опрос WB под секундомером: экран не должен ждать сеть дольше, чем
     // стоит миниатюра. Не успели — отдаём оценку по таблице, а следующий
@@ -180,7 +189,10 @@ export async function wbCardImageUrlsByNmIds(nmIds: number[], size = "c246x328")
     // Ноль тоже запоминаем — «живого фото у тома нет» такой же факт.
     if (store) {
       const target = store;
-      void probes.then((rows) => target.rememberBasketVols(new Map(rows))).catch(() => {});
+      void probes.then((rows) => {
+        for (const [vol, basket] of rows) if (!basket) knownEmptyVols.add(vol);
+        return target.rememberBasketVols(new Map(rows));
+      }).catch(() => {});
     }
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), BASKET_PROBE_BUDGET_MS));
     await Promise.race([probes, timeout]);
