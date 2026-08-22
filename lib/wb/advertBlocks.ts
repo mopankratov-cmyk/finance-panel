@@ -33,7 +33,10 @@ export const WB_RK_BLOCK_LABELS: Record<WbRkBlock, string> = {
 };
 
 export const WB_RK_BLOCK_UNKNOWN = "unknown";
-export const WB_RK_BLOCK_UNKNOWN_LABEL = "Без разметки";
+// Не «Без разметки»: размечать руками больше нечего и нечем. Так называются
+// строки кампаний, о которых WB ничего не сообщает — завершённых и удалённых,
+// оставивших статистику.
+export const WB_RK_BLOCK_UNKNOWN_LABEL = "Вид не определён";
 
 export interface WbAdvertBlockInput {
   bid_type?: string | null;
