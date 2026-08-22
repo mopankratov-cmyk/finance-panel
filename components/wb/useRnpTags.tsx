@@ -1,7 +1,8 @@
 "use client";
 
 import { Check, Loader2, Tag, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Ярлыки РНП на других экранах WB (Воронка, Полки).
@@ -145,21 +146,55 @@ export function WbTagPicker({ tags, assignedIds, onToggle }: {
 }) {
   const [open, setOpen] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Меню уходит порталом в body: ячейки таблицы липкие, они создают свой
+  // слой, и выпадашка внутри них не перехватывала клики — те проваливались
+  // на строку под меню и вместо выбора ярлыка раскрывали соседний артикул.
+  const place = () => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setAnchor({ top: rect.bottom + 4, left: rect.left });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+
   return (
     <span className="relative inline-flex" onClick={(event) => event.stopPropagation()}>
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          place();
+          setOpen((current) => !current);
+        }}
         aria-expanded={open}
         aria-label="Ярлыки артикула"
         className="rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
       >
         {assignedIds.length ? `ярлыков: ${assignedIds.length}` : "+ ярлык"}
       </button>
-      {open ? (
+      {open && anchor ? createPortal(
         <>
-          <button type="button" className="fixed inset-0 z-[60] cursor-default" onClick={() => setOpen(false)} aria-label="Закрыть выбор ярлыков" />
-          <div className="absolute left-0 top-full z-[61] mt-1 w-56 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+          <button
+            type="button"
+            className="fixed inset-0 z-[998] cursor-default"
+            onClick={() => setOpen(false)}
+            aria-label="Закрыть выбор ярлыков"
+          />
+          <div
+            className="fixed z-[999] w-56 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-[0_18px_55px_rgba(15,23,42,0.18)]"
+            style={{ top: anchor.top, left: anchor.left }}
+          >
             {tags.length ? tags.map((tag) => {
               const assigned = assignedIds.includes(tag.id);
               const pending = pendingId === tag.id;
@@ -182,7 +217,8 @@ export function WbTagPicker({ tags, assignedIds, onToggle }: {
               );
             }) : <p className="px-2 py-2 text-[10px] text-slate-400">Ярлыков нет — создайте их в РНП.</p>}
           </div>
-        </>
+        </>,
+        document.body,
       ) : null}
     </span>
   );
