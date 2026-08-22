@@ -8,6 +8,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { wbSyncHealthStatus } from "@/lib/sync/wbSyncHealthStatus";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { normalizeWbBrand } from "@/lib/wb/productScope";
 import { WB_SCOPE_LABEL, type WbScope } from "@/lib/wb/token";
@@ -435,6 +436,56 @@ export async function GET(request: NextRequest) {
   // сборка РНП каждый раз опрашивает WB и упирается в свой секундомер.
   // ?db_latency=1 — чистая задержка «функция → база», замеренная на сервере.
   // Из браузера этого не увидеть: там в цифру входит и путь до Vercel.
+  // ?scoped_rows=1&cabinet=<uuid>&from=&to= — объём и время трёх запросов,
+  // на которых стоит РНП кабинета с ограниченным ассортиментом. Нужно,
+  // чтобы отличить «много строк» от «скан вместо индекса».
+  if (sp.get("scoped_rows") === "1") {
+    const cabinetId = sp.get("cabinet");
+    const from = sp.get("from") || "2026-08-16";
+    const to = sp.get("to") || "2026-08-22";
+    if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const scope = await requestAllowedNmIds(cabinetId);
+    const allowed = scope ? [...scope] : null;
+    const dateFrom = `${from}T00:00:00.000Z`;
+    const dateTo = `${to}T23:59:59.999Z`;
+
+    const measure = async (label: string, run: () => PromiseLike<{ count: number | null; error: { message: string } | null }>) => {
+      const startedAt = Date.now();
+      const { count, error } = await run();
+      return { label, ms: Date.now() - startedAt, rows: count ?? null, error: error?.message ?? null };
+    };
+
+    const results = [];
+    results.push(await measure("wb_orders", () => {
+      let q = db.from("wb_orders").select("nm_id", { count: "exact", head: true })
+        .eq("cabinet_id", cabinetId).gte("date", dateFrom).lt("date", dateTo);
+      if (allowed) q = q.in("nm_id", allowed);
+      return q;
+    }));
+    results.push(await measure("wb_sales", () => {
+      let q = db.from("wb_sales").select("nm_id", { count: "exact", head: true })
+        .eq("cabinet_id", cabinetId).gte("date", dateFrom).lt("date", dateTo);
+      if (allowed) q = q.in("nm_id", allowed);
+      return q;
+    }));
+    results.push(await measure("wb_fbs_orders", () => {
+      let q = db.from("wb_fbs_orders").select("nm_id", { count: "exact", head: true })
+        .eq("cabinet_id", cabinetId).gte("created_at_wb", dateFrom).lt("created_at_wb", dateTo);
+      if (allowed) q = q.in("nm_id", allowed);
+      return q;
+    }));
+    // Те же таблицы без фильтра по артикулам — видно, сколько строк вообще
+    // лежит в периоде и во что обходится их перебор.
+    results.push(await measure("wb_orders_всего_за_период", () => db
+      .from("wb_orders").select("nm_id", { count: "exact", head: true })
+      .eq("cabinet_id", cabinetId).gte("date", dateFrom).lt("date", dateTo)));
+
+    return NextResponse.json({ cabinetId, allowedNmCount: allowed?.length ?? null, results });
+  }
+
   if (sp.get("db_latency") === "1") {
     const samples: number[] = [];
     for (let attempt = 0; attempt < 5; attempt++) {
