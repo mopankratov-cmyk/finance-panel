@@ -12,7 +12,7 @@ import { wbBidTypeGroup, type WbBidTypeGroup } from "@/lib/wb/advertTypes";
 import { wbCardImageUrl, wbCardImageUrlsByNmIds } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
-import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
+import { loadCabinetPimRowsHourly, type PimRow } from "@/lib/wb/cards";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
@@ -1982,6 +1982,23 @@ async function loadCurrentStockRows(db: SupabaseAdmin, scope: CabinetScope) {
   });
 }
 
+/**
+ * Карточки для РНП: снимок, а при его отсутствии — прямой обход WB под
+ * секундомером. Возвращает "cold", если карточек взять неоткуда.
+ */
+const RNP_PIM_TIMEOUT_MS = 8_000;
+
+async function loadPimForRnp(cabinetId: string | null): Promise<PimRow[] | "cold"> {
+  const cached = await loadCabinetPimRowsHourly(cabinetId, { cacheOnly: true }).catch(() => null);
+  if (cached) return cached;
+  // Обход продолжится в фоне даже после нашего отказа ждать — и запишет
+  // снимок, поэтому следующий запрос экрана будет уже тёплым.
+  const live = loadCabinetPimRowsHourly(cabinetId).catch(() => null);
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), RNP_PIM_TIMEOUT_MS));
+  const rows = await Promise.race([live, timeout]);
+  return rows ?? "cold";
+}
+
 export async function buildRnpTable(
   from: string,
   to: string,
@@ -2212,9 +2229,14 @@ export async function buildRnpTable(
       // Бренд и предмет WB принадлежат карточке товара, а не кабинету.
       // Ошибка/лимит Content API не должны ломать сам РНП: в таком случае
       // ниже остаётся безопасный fallback на справочник себестоимости.
-      // Читаем ТОЛЬКО прогретый снимок: холодный обход Content API на крупном
-      // кабинете идёт минуту, и экран целиком отваливался по таймауту функции.
-      loadCabinetPimRowsHourly(p_cabinet, { cacheOnly: true }).catch(() => "cold" as const),
+      //
+      // Сначала пробуем прогретый снимок, а если его нет — идём за карточками
+      // сами, но под секундомером. Прежде тут стоял только снимок, и когда он
+      // не прогревался, «Бренд» и «Категория» в фильтрах оставались пустыми
+      // навсегда: замер на Retail Family — 64 карточки за 1–2 секунды, а
+      // фильтры не работали месяцами. Таймбокс держит прежнюю страховку от
+      // 504: не успели — отдаём экран без карточек, снимок дойдёт в фоне.
+      loadPimForRnp(p_cabinet),
     ]);
 
     const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(

@@ -8,11 +8,17 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
 // на этом кабинете ~66 секунд (у Оптимы ~20), а лимит пользовательской функции —
 // 60. Экран падал целиком, хотя карточки нужны только для названия и бренда.
 
-test("РНП читает карточки только из прогретого снимка", async () => {
+test("РНП сначала берёт снимок карточек, а обход держит под секундомером", async () => {
   const build = await read("../lib/rnp/buildTable.ts");
-  assert.match(build, /loadCabinetPimRowsHourly\(p_cabinet, \{ cacheOnly: true \}\)/);
-  // Без cacheOnly пользовательский запрос снова начнёт обходить Content API.
-  assert.doesNotMatch(build, /loadCabinetPimRowsHourly\(p_cabinet\)\.catch/);
+  // Снимок пробуется первым — обход нужен только когда его нет.
+  assert.match(build, /loadCabinetPimRowsHourly\(cabinetId, \{ cacheOnly: true \}\)/);
+  // Ожидание обхода ограничено: экран не должен отваливаться по таймауту
+  // функции, как это было на Retail Family (~66 секунд холодного обхода).
+  assert.match(build, /RNP_PIM_TIMEOUT_MS = 8_000/);
+  assert.match(build, /Promise\.race\(\[live, timeout\]\)/);
+  // Без ожидания вовсе фильтры «Бренд» и «Категория» пустовали месяцами:
+  // снимок не прогревался, а другого источника у экрана не было.
+  assert.match(build, /return rows \?\? "cold"/);
 });
 
 test("холодный снимок карточек не подменяется пустотой в кэше", async () => {
