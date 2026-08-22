@@ -9,6 +9,7 @@ import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { clampFunnelPeriod, FUNNEL_MAX_PERIOD_DAYS, funnelPeriodDates, resolveFunnelPeriod } from "@/lib/wb/funnelMetrics";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
 import { WbProductImage } from "./WbProductImage";
+import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -79,6 +80,8 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 18 });
+  const { tags, tagIdsByNm } = useRnpTags(cabinetId);
+  const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
 
@@ -143,10 +146,49 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
     return () => controller.abort();
   }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, period.custom, period.from, period.to, ready, retryKey, windowDays]);
 
+  useEffect(() => setActiveTagIds([]), [cabinetId]);
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
-    return (skus?.skus ?? []).filter((sku) => !needle || `${sku.nm} ${sku.art} ${sku.name}`.toLocaleLowerCase("ru-RU").includes(needle));
-  }, [query, skus?.skus]);
+    return (skus?.skus ?? [])
+      .filter((sku) => !needle || `${sku.nm} ${sku.art} ${sku.name}`.toLocaleLowerCase("ru-RU").includes(needle))
+      .filter((sku) => nmMatchesTags(tagIdsByNm, sku.nm, activeTagIds));
+  }, [activeTagIds, query, skus?.skus, tagIdsByNm]);
+
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const sku of skus?.skus ?? []) {
+      for (const tagId of tagIdsByNm.get(sku.nm) ?? []) counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+    }
+    return counts;
+  }, [skus?.skus, tagIdsByNm]);
+
+  // Сводка по ярлыку: все цвета модели одной строкой. Доли считаются из
+  // числителя и знаменателя, а не усреднением процентов; ДРР восстанавливается
+  // из drr×заказы каждого SKU — отдельного поля расходов в окне нет.
+  const tagSummary = useMemo(() => {
+    if (!activeTagIds.length || !filtered.length) return null;
+    const sum = (pick: (sku: FunnelSku) => number | null | undefined) =>
+      filtered.reduce((total, sku) => total + (pick(sku) ?? 0), 0);
+    const shows = sum((sku) => sku.shows_window);
+    const clicks = sum((sku) => sku.clicks_window);
+    const openCard = sum((sku) => sku.open_card_window);
+    const carts = sum((sku) => sku.cart_window);
+    const ordersCount = sum((sku) => sku.orders_count_window);
+    const ordersSum = sum((sku) => sku.orders_sum_window);
+    const advert = filtered.reduce((total, sku) =>
+      total + (sku.drr_window != null ? (sku.drr_window * sku.orders_sum_window) / 100 : 0), 0);
+    return {
+      shows,
+      ctr: shows > 0 ? (clicks / shows) * 100 : null,
+      openCard,
+      carts,
+      cvCart: openCard > 0 ? (carts / openCard) * 100 : null,
+      ordersCount,
+      ordersSum,
+      drr: ordersSum > 0 ? (advert / ordersSum) * 100 : null,
+    };
+  }, [activeTagIds.length, filtered]);
 
   const dates = useMemo(() => funnelPeriodDates(period.from, period.to), [period.from, period.to]);
 
@@ -186,6 +228,13 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
         <div className="mb-2 flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center">
           {embedded ? periodPicker : null}
           <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
+          <WbTagFilterChips
+            tags={tags}
+            activeIds={activeTagIds}
+            counts={tagCounts}
+            onToggle={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])}
+            onClear={() => setActiveTagIds([])}
+          />
           <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:w-72 lg:min-h-8"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="nm, артикул, название" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />{query ? <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}</label>
         </div>
 
@@ -211,6 +260,27 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                 </tr>
               </thead>
               <tbody>
+                {tagSummary ? (
+                  <tr className="h-12 bg-violet-50/60 font-semibold text-violet-950">
+                    <td className="sticky left-0 z-10 border-b border-r border-violet-100 bg-violet-50 px-3 text-[10px]">Итого по ярлыку · {filtered.length} SKU</td>
+                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.shows)}</td>
+                    <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.ctr)}</td>
+                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.openCard)}</td>
+                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.carts)}</td>
+                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.cvCart)}</td>
+                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.ordersCount)}</td>
+                    <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.ordersSum)} ₽</td>
+                    <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.drr)}</td>
+                    {dates.map((date) => {
+                      if (currentMetric.kind === "pct") return <td key={date} className="border-b border-violet-100 px-1 text-center text-violet-300">—</td>;
+                      const total = filtered.reduce((acc, sku) => {
+                        const value = daily?.metrics[String(sku.nm)]?.[date]?.[metric];
+                        return value == null ? acc : (acc ?? 0) + value;
+                      }, null as number | null);
+                      return <td key={date} className="border-b border-violet-100 px-1 text-center tabular-nums">{total == null ? "—" : currentMetric.kind === "money" ? `${fmt(total)} ₽` : fmt(total)}</td>;
+                    })}
+                  </tr>
+                ) : null}
                 {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={9 + dates.length} /></tr> : null}
                 {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><div className="min-w-0"><div className="max-w-[185px] truncate font-semibold text-slate-700">{sku.art}</div><div className="max-w-[185px] truncate text-[9px] text-slate-400">{sku.name || `nm ${sku.nm}`}</div></div></div></td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.shows_window)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td><td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => { const value = daily?.metrics[String(sku.nm)]?.[date]?.[metric]; return <td key={date} className="border-b border-slate-100 px-1 text-center"><span className={`inline-flex min-h-7 min-w-[66px] items-center justify-center rounded-md px-1 font-semibold tabular-nums ${cellTone(metric, value)}`}>{formatCell(value)}</span></td>; })}</tr>)}
                 {rowWindow.end < filtered.length ? <tr aria-hidden="true" style={{ height: (filtered.length - rowWindow.end) * ROW_HEIGHT }}><td colSpan={9 + dates.length} /></tr> : null}

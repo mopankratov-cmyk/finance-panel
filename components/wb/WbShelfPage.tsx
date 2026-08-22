@@ -6,6 +6,7 @@ import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/component
 import type { ShelfMarkedRow, ShelfSliceResult } from "@/lib/shelf/slices";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
+import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -441,11 +442,27 @@ export function WbShelfPage() {
   const globalBrands = settings.find((row) => row.cabinet_id === cabinetId)?.global_excluded_brands ?? [];
   // Ручной порядок выдачи артикулов (настраивается в РНП) действует и здесь.
   const { orderIndex } = useCabinetSkuOrder(hasExactCabinet ? cabinetId : null);
-  const orderedItems = useMemo(
-    () => sortByCustomSkuOrder(items, (item) => item.watch.nmId, orderIndex),
-    [items, orderIndex],
+  const { tags, tagIdsByNm } = useRnpTags(hasExactCabinet ? cabinetId : null);
+  const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
+  useEffect(() => setActiveTagIds([]), [cabinetId]);
+  // Ярлык на модели = все её цвета одной группой: фильтр сужает и список,
+  // и сводку над ним — карточки сводки честны к выбранному ярлыку.
+  const taggedItems = useMemo(
+    () => items.filter((item) => nmMatchesTags(tagIdsByNm, item.watch.nmId, activeTagIds)),
+    [activeTagIds, items, tagIdsByNm],
   );
-  const totalActive = items.filter((item) => item.watch.active).length;
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      for (const tagId of tagIdsByNm.get(item.watch.nmId) ?? []) counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+    }
+    return counts;
+  }, [items, tagIdsByNm]);
+  const orderedItems = useMemo(
+    () => sortByCustomSkuOrder(taggedItems, (item) => item.watch.nmId, orderIndex),
+    [taggedItems, orderIndex],
+  );
+  const totalActive = taggedItems.filter((item) => item.watch.active).length;
 
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
@@ -551,20 +568,27 @@ export function WbShelfPage() {
           </WbEmptyState>
         ) : (
           <div className="space-y-2">
+            <WbTagFilterChips
+              tags={tags}
+              activeIds={activeTagIds}
+              counts={tagCounts}
+              onToggle={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])}
+              onClear={() => setActiveTagIds([])}
+            />
             {(() => {
-              const withTop6 = items
+              const withTop6 = taggedItems
                 .map((item) => item.latest?.slices.find((slice) => slice.n === 6)?.diffPct)
                 .filter((value): value is number => value != null);
               const cheaper = withTop6.filter((value) => value > 0).length;
               const dearer = withTop6.filter((value) => value < 0).length;
               const avgDiff = withTop6.length ? withTop6.reduce((sum, value) => sum + value, 0) / withTop6.length : null;
-              const lastCollected = items
+              const lastCollected = taggedItems
                 .map((item) => item.latest?.collectedAt)
                 .filter((value): value is string => Boolean(value))
                 .sort()
                 .at(-1);
               const cards: { label: string; value: string; hint: string; tone?: string }[] = [
-                { label: "В реестре", value: String(items.length), hint: `${totalActive} активных для сбора` },
+                { label: activeTagIds.length ? "По ярлыку" : "В реестре", value: String(taggedItems.length), hint: `${totalActive} активных для сбора` },
                 { label: "Мы дешевле рынка", value: withTop6.length ? `${cheaper} из ${withTop6.length}` : "—", hint: "по средней Топ-6", tone: cheaper > dearer ? "text-emerald-700" : undefined },
                 { label: "Мы дороже рынка", value: withTop6.length ? `${dearer} из ${withTop6.length}` : "—", hint: avgDiff == null ? "нет данных" : `средняя дельта ${pct(avgDiff)}`, tone: dearer > 0 ? "text-rose-600" : undefined },
                 { label: "Последний сбор", value: lastCollected ? new Date(lastCollected).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—", hint: `следующий слот ${nextSlotLabel()} МСК` },
