@@ -433,6 +433,27 @@ export async function GET(request: NextRequest) {
   // разделяется, и до таблицы «Категория» была пуста у всех артикулов.
   // ?basket_vols=1 — наполняется ли справочник «том → баскет». Пока он пуст,
   // сборка РНП каждый раз опрашивает WB и упирается в свой секундомер.
+  // ?db_latency=1 — чистая задержка «функция → база», замеренная на сервере.
+  // Из браузера этого не увидеть: там в цифру входит и путь до Vercel.
+  if (sp.get("db_latency") === "1") {
+    const samples: number[] = [];
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const startedAt = Date.now();
+      await db.from("wb_cabinets").select("id").limit(1);
+      samples.push(Date.now() - startedAt);
+    }
+    // Тот же замер, но пятью запросами разом: покажет, упирается ли база в
+    // конкуренцию за соединения или держит параллель без потерь.
+    const parallelStartedAt = Date.now();
+    await Promise.all(Array.from({ length: 5 }, () => db.from("wb_cabinets").select("id").limit(1)));
+    return NextResponse.json({
+      sequentialMs: samples,
+      medianMs: [...samples].sort((a, b) => a - b)[2],
+      fiveInParallelMs: Date.now() - parallelStartedAt,
+      region: process.env.VERCEL_REGION ?? null,
+    });
+  }
+
   if (sp.get("basket_vols") === "1") {
     const { data, error, count } = await db
       .from("wb_basket_vols")
