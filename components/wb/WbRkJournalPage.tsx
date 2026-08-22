@@ -236,7 +236,11 @@ export function WbRkJournalPage() {
         const agg = acc.get(block)!;
         return {
           block,
-          label: block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[block as WbRkBlock],
+          // Когда размечать нечего, «Без разметки» вводит в заблуждение: это
+          // расход кампаний, которых у WB уже нет — завершённых и удалённых.
+          label: block === WB_RK_BLOCK_UNKNOWN
+            ? (data?.unmarked.length ? WB_RK_BLOCK_UNKNOWN_LABEL : "Завершённые РК")
+            : WB_RK_BLOCK_LABELS[block as WbRkBlock],
           spent: agg.spent,
           allocated: agg.allocated,
           carts: agg.carts,
@@ -249,7 +253,7 @@ export function WbRkJournalPage() {
           drr: agg.ordersSum ? (agg.spent / agg.ordersSum) * 100 : null,
         };
       });
-  }, [visibleItems]);
+  }, [data?.unmarked.length, visibleItems]);
 
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -534,7 +538,9 @@ export function WbRkJournalPage() {
                             {name ? <div className="max-w-[220px] truncate text-[11px] text-slate-500">{name}</div> : null}
                           </td>
                           <td className="whitespace-nowrap px-2 py-1 text-slate-500">
-                            {item.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[item.block as WbRkBlock]}
+                            {item.block === WB_RK_BLOCK_UNKNOWN
+                              ? (data.unmarked.length ? WB_RK_BLOCK_UNKNOWN_LABEL : "Завершённые РК")
+                              : WB_RK_BLOCK_LABELS[item.block as WbRkBlock]}
                           </td>
                           {dates.map((date) => {
                             const cell = item.days[date];
