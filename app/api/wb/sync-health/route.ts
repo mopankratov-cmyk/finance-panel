@@ -365,7 +365,7 @@ export async function GET(request: NextRequest) {
       .eq("cabinet_id", cabinetId)
       .not("raw", "is", null)
       .order("advert_id", { ascending: false })
-      .limit(40);
+      .limit(1000);
     if (error) return NextResponse.json({ error: error.message }, { status: 502 });
     const rows = (data ?? []) as Array<{ advert_id: number; name: string | null; status: number | null; bid_type: string | null; raw: Record<string, unknown> | null }>;
     const keyCounts: Record<string, number> = {};
@@ -377,10 +377,24 @@ export async function GET(request: NextRequest) {
         for (const key of Object.keys(setting)) nmSettingKeys[key] = (nmSettingKeys[key] ?? 0) + 1;
       }
     }
+    // Распределение по тому, что WB сам говорит о кампании: модель оплаты и
+    // площадки. Именно из них должен собираться вид размещения.
+    const combos: Record<string, number> = {};
+    for (const row of rows) {
+      const settings = (row.raw as { settings?: { payment_type?: string; placements?: { search?: boolean; recommendations?: boolean } } } | null)?.settings;
+      const placements = settings?.placements;
+      const where = placements?.search && placements?.recommendations ? "поиск+полки"
+        : placements?.search ? "поиск"
+          : placements?.recommendations ? "полки"
+            : "не указано";
+      const key = `${row.bid_type ?? "?"} | ${settings?.payment_type ?? "?"} | ${where}`;
+      combos[key] = (combos[key] ?? 0) + 1;
+    }
     return NextResponse.json({
       sampled: rows.length,
       topLevelKeys: keyCounts,
       nmSettingKeys,
+      combos,
       sample: rows.slice(0, 2).map((row) => ({ advertId: row.advert_id, name: row.name, raw: row.raw })),
     });
   }
