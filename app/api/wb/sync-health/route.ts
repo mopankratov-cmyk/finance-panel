@@ -245,25 +245,44 @@ export async function GET(request: NextRequest) {
     // можно ли отнести расход кампании к артикулу без деления.
     const siblings = advertIds.length && dates.length
       ? await db.from("wb_advert_nm_campaign_daily")
-        .select("advert_id, date, nm_id")
+        .select("advert_id, date, nm_id, spent, spent_allocated")
         .eq("cabinet_id", cabinetId)
         .in("advert_id", advertIds)
         .in("date", dates)
+        .limit(20000)
       : { data: [], error: null };
     const nmCount = new Map<string, number>();
     for (const row of (siblings.data ?? []) as Array<{ advert_id: number; date: string }>) {
       const key = `${row.advert_id}|${row.date}`;
       nmCount.set(key, (nmCount.get(key) ?? 0) + 1);
     }
-    return NextResponse.json({
-      nmId,
-      rows: layer.slice(0, 25).map((row) => ({
+    // Сумма расхода по ВСЕМ артикулам кампании за день: без неё нельзя
+    // отличить «WB не разнёс расход» от «расход ушёл на другие артикулы той
+    // же кампании» — по одной строке эти случаи выглядят одинаково.
+    const nmSpentSum = new Map<string, number>();
+    for (const row of (siblings.data ?? []) as Array<{ advert_id: number; date: string; spent: number | string | null; spent_allocated: number | string | null }>) {
+      const key = `${row.advert_id}|${row.date}`;
+      nmSpentSum.set(key, (nmSpentSum.get(key) ?? 0) + Number(row.spent ?? 0) + Number(row.spent_allocated ?? 0));
+    }
+    const rows = layer.slice(0, 25).map((row) => {
+      const key = `${row.advert_id}|${row.date}`;
+      const campaignSpent = perCampaign.get(key) ?? null;
+      const nmSum = nmSpentSum.get(key) ?? null;
+      return {
         date: row.date,
         advertId: row.advert_id,
         nmSpent: Number(row.spent ?? 0),
-        campaignSpent: perCampaign.get(`${row.advert_id}|${row.date}`) ?? null,
-        nmsInCampaign: nmCount.get(`${row.advert_id}|${row.date}`) ?? null,
-      })),
+        campaignSpent,
+        allNmSpent: nmSum,
+        // Сколько расхода кампании не дошло ни до одного артикула.
+        gap: campaignSpent != null && nmSum != null ? Math.round((campaignSpent - nmSum) * 100) / 100 : null,
+        nmsInCampaign: nmCount.get(key) ?? null,
+      };
+    });
+    return NextResponse.json({
+      nmId,
+      rows,
+      totalGap: Math.round(rows.reduce((sum, row) => sum + (row.gap ?? 0), 0) * 100) / 100,
       campaignError: campaignLevel.error?.message ?? null,
     });
   }
