@@ -115,11 +115,6 @@ export async function GET(request: NextRequest) {
     { maxPages: 60, label: "Журнал РК: кампании", concurrency: 4 },
   ).catch(noteOn("кампании")) as AdvertRow[];
 
-  const advertByKey = new Map<string, AdvertRow>();
-  for (const advert of adverts) advertByKey.set(`${advert.cabinet_id ?? ""}|${advert.advert_id}`, advert);
-
-  const blockOf = rkAdvertBlock;
-
   // Снимки закрытых дней.
   const snapshots = await loadAllSupabasePages<JournalRow>(
     (start, end) => {
@@ -156,7 +151,7 @@ export async function GET(request: NextRequest) {
   // Кампании без разметки — для экрана «Без разметки»: WB не отдаёт вид
   // размещения, и владелец расставляет его руками один раз на кампанию.
   const unmarked = adverts
-    .filter((advert) => blockOf(advert) == null)
+    .filter((advert) => rkAdvertBlock(advert) == null)
     .map((advert) => ({
       advertId: advert.advert_id,
       cabinetId: advert.cabinet_id,
