@@ -236,6 +236,18 @@ interface LoadAllPagesOptions {
   pageSize?: number;
   maxPages?: number;
   retries?: number;
+  /**
+   * Сколько страниц запрашивать разом после первой. Замер 23.08.2026: один
+   * round-trip до базы стоит около 900 мс независимо от объёма ответа,
+   * поэтому длинная выборка платит их по одному. У Оптимы с её 18 артикулами
+   * так и набегали 6 секунд на заказы.
+   *
+   * Двойка, а не больше: страницы запрашиваются вслепую, и лишние обращения
+   * бьют по той же базе, конкуренция за соединения в которой и есть узкое
+   * место. Пачка из двух не запрашивает ничего сверх нужного на выборках,
+   * укладывающихся в нечётное число страниц.
+   */
+  concurrency?: number;
 }
 
 /** PostgREST/Supabase returns at most 1,000 rows by default. */
@@ -249,8 +261,9 @@ export async function loadAllPages<Row>(
   if (!Number.isInteger(pageSize) || pageSize <= 0) throw new Error("Некорректный размер страницы RNP");
   if (!Number.isInteger(maxPages) || maxPages <= 0) throw new Error("Некорректный лимит страниц RNP");
 
-  const rows: Row[] = [];
-  for (let page = 0; page < maxPages; page++) {
+  const concurrency = Math.max(1, Math.floor(options.concurrency ?? 2));
+
+  const fetchPage = async (page: number): Promise<Row[]> => {
     const from = page * pageSize;
     let result: PageResult<Row> | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -262,9 +275,27 @@ export async function loadAllPages<Row>(
     }
     if (!result) throw new Error("RNP не получил ответ от базы данных");
     if (result.error) throw new Error(result.error.message);
-    const pageRows = result.data ?? [];
-    rows.push(...pageRows);
-    if (pageRows.length < pageSize) return rows;
+    return result.data ?? [];
+  };
+
+  const rows: Row[] = [];
+  // Первая страница — всегда одна: подавляющее большинство выборок в неё и
+  // укладывается, и платить за пустые страницы вперёд незачем.
+  const first = await fetchPage(0);
+  rows.push(...first);
+  if (first.length < pageSize) return rows;
+
+  for (let page = 1; page < maxPages;) {
+    // Дальше пачками: round-trip до базы стоит около 900 мс независимо от
+    // объёма ответа, и длинная выборка не должна платить их по одному.
+    const batch = Math.min(concurrency, maxPages - page);
+    const pages = await Promise.all(
+      Array.from({ length: batch }, (_, index) => fetchPage(page + index)),
+    );
+    // Порядок строк сохраняется: пачка склеивается по номерам страниц.
+    for (const pageRows of pages) rows.push(...pageRows);
+    if (pages.some((pageRows) => pageRows.length < pageSize)) return rows;
+    page += batch;
   }
   throw new Error(`RNP превысил безопасный лимит ${pageSize * maxPages} строк`);
 }
