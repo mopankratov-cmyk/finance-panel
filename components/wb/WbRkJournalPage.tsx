@@ -221,16 +221,20 @@ export function WbRkJournalPage() {
     return counts;
   }, [data?.items, tagIdsByNm]);
 
-  const totals = useMemo(() => {
-    const acc = { spent: 0, carts: 0, orders: 0 };
+  // Итог по каждому дню — как строка «Итого» в листе владельца: CPO и CPL дня
+  // считаются от суммарных затрат и результатов, а не усреднением по строкам.
+  const dayTotals = useMemo(() => {
+    const acc = new Map<string, { spent: number; carts: number; orders: number }>();
     for (const item of visibleItems) {
-      for (const cell of Object.values(item.days)) {
-        acc.spent += cell.spent;
-        acc.carts += cell.carts;
-        acc.orders += cell.orders;
+      for (const [date, cell] of Object.entries(item.days)) {
+        const agg = acc.get(date) ?? { spent: 0, carts: 0, orders: 0 };
+        agg.spent += cell.spent;
+        agg.carts += cell.carts;
+        agg.orders += cell.orders;
+        acc.set(date, agg);
       }
     }
-    return { ...acc, cpo: costPerOrder(acc.spent, acc.orders), cpl: costPerCart(acc.spent, acc.carts) };
+    return acc;
   }, [visibleItems]);
 
   return (
@@ -450,12 +454,25 @@ export function WbRkJournalPage() {
                   <tfoot>
                     <tr className="bg-slate-50 font-semibold text-slate-800">
                       <td className="sticky left-0 z-10 bg-slate-50 px-2 py-1.5">Итого</td>
-                      <td className="px-2 py-1.5 text-slate-500">{visibleItems.length} строк</td>
-                      <td colSpan={Math.max(dates.length * 6, 1)} className="border-l border-slate-200 px-2 py-1.5 text-right tabular-nums">
-                        затраты {money(totals.spent)} ₽ · корзин {count(totals.carts)} · заказов {count(totals.orders)} ·
-                        <span className={`ml-1 rounded px-1 ${cpoTone(totals.cpo) ? WB_RK_TONE_CLASS[cpoTone(totals.cpo)!] : ""}`}>CPO {money2(totals.cpo)}</span>
-                        <span className={`ml-1 rounded px-1 ${cplTone(totals.cpl) ? WB_RK_TONE_CLASS[cplTone(totals.cpl)!] : ""}`}>CPL {money2(totals.cpl)}</span>
-                      </td>
+                      <td className="px-2 py-1.5 font-normal text-slate-500">{visibleItems.length} строк</td>
+                      {dates.map((date) => {
+                        const total = dayTotals.get(date);
+                        if (!total || (!total.spent && !total.carts && !total.orders)) {
+                          return <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">—</td>;
+                        }
+                        const cpo = costPerOrder(total.spent, total.orders);
+                        const cpl = costPerCart(total.spent, total.carts);
+                        return (
+                          <Fragment key={date}>
+                            <td className="border-l border-slate-200 px-2 py-1.5" />
+                            <td className="px-2 py-1.5 text-right tabular-nums">{count(total.carts)}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{count(total.orders)}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{money(total.spent)}</td>
+                            <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
+                            <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                          </Fragment>
+                        );
+                      })}
                     </tr>
                   </tfoot>
                 </table>
