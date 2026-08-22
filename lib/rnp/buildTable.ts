@@ -2106,8 +2106,7 @@ export async function buildRnpTable(
           adRows,
           funnelRows,
           feedbackRows,
-          advertTypeRows,
-          advertStatRows,
+          advertStatsAndTypes,
           returnRows,
           ordersRowCutoff,
           salesRowCutoff,
@@ -2118,18 +2117,18 @@ export async function buildRnpTable(
         ] = await Promise.all([
           allowed
             ? timed("base_facts_scoped", loadScopedBaseFacts(db, scope, allowed, from, to))
-            : timed("base_facts_rpc", Promise.all([
-              loadRnpDailySkuRows<SkuDailyRow>(db, {
+            : Promise.all([
+              timed("rpc_daily_sku", loadRnpDailySkuRows<SkuDailyRow>(db, {
                 from,
                 to,
                 cabinetId: scope.cabinetId,
                 label: `${scope.label}: RNP по дням`,
-              }),
-              loadCurrentStockRows(db, scope),
+              })),
+              timed("stocks", loadCurrentStockRows(db, scope)),
             ]).then(([skuRows, stockRows]) => ({
               skuRows,
               totals: buildLightweightProductTotals(skuRows, stockRows),
-            }))),
+            })),
           timed("advert_nm_daily", loadAllPages<AdNmRow>((start, end) => {
             let query = db
               .from("wb_advert_nm_daily")
@@ -2184,27 +2183,34 @@ export async function buildRnpTable(
           // Сплит рекламы по видам кампаний: тип живёт на кампании (wb_adverts),
           // дневная статистика — на кампании (wb_advert_stats). По SKU тип не
           // распределяется, поэтому эти ряды идут только в сводку.
-          timed("advert_types", loadAllPages<AdvertTypeRow>((start, end) => {
-            let query = db
-              .from("wb_adverts")
-              .select("advert_id, bid_type")
-              .order("advert_id", { ascending: true })
-              .range(start, end);
-            if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
-            return query as unknown as PromiseLike<PageResult<AdvertTypeRow>>;
-          })).catch(() => [] as AdvertTypeRow[]),
-          timed("advert_stats", loadAllPages<AdvertStatDayRow>((start, end) => {
-            let query = db
-              .from("wb_advert_stats")
-              .select("advert_id, date, views, clicks, sum_spent, orders, sum_orders")
-              .gte("date", from)
-              .lte("date", to)
-              .order("date", { ascending: true })
-              .order("advert_id", { ascending: true })
-              .range(start, end);
-            if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
-            return query as unknown as PromiseLike<PageResult<AdvertStatDayRow>>;
-          })).catch(() => [] as AdvertStatDayRow[]),
+          // Тип кампании нужен только тем, у кого в периоде была статистика.
+          // Раньше тянулись все кампании кабинета — у Оптимы это 4 360 строк
+          // и 2.5 секунды ради двух колонок.
+          timed("advert_stats_types", (async () => {
+            const stats = await loadAllPages<AdvertStatDayRow>((start, end) => {
+              let query = db
+                .from("wb_advert_stats")
+                .select("advert_id, date, views, clicks, sum_spent, orders, sum_orders")
+                .gte("date", from)
+                .lte("date", to)
+                .order("date", { ascending: true })
+                .order("advert_id", { ascending: true })
+                .range(start, end);
+              if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+              return query as unknown as PromiseLike<PageResult<AdvertStatDayRow>>;
+            }).catch(() => [] as AdvertStatDayRow[]);
+            const advertIds = [...new Set(stats.map((row) => Number(row.advert_id)).filter(Number.isFinite))];
+            if (!advertIds.length) return { stats, types: [] as AdvertTypeRow[] };
+            const types: AdvertTypeRow[] = [];
+            for (let index = 0; index < advertIds.length; index += 500) {
+              const chunk = advertIds.slice(index, index + 500);
+              let query = db.from("wb_adverts").select("advert_id, bid_type").in("advert_id", chunk);
+              if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
+              const { data } = await query;
+              types.push(...((data ?? []) as unknown as AdvertTypeRow[]));
+            }
+            return { stats, types };
+          })().catch(() => ({ stats: [] as AdvertStatDayRow[], types: [] as AdvertTypeRow[] }))),
           loadSalesReturns(db, scope, allowed, from, to),
           latestSourceDate("wb_orders", scope),
           latestSourceDate("wb_sales", scope),
@@ -2213,6 +2219,8 @@ export async function buildRnpTable(
           latestSyncStateDate(scope, "advert-stats"),
           latestSyncStateDate(scope, "funnel", { preferLastPeriodEnd: true }),
         ]);
+        const advertTypeRows = advertStatsAndTypes.types;
+        const advertStatRows = advertStatsAndTypes.stats;
         const ordersCutoff = latestKnownDate([ordersRowCutoff, ordersSyncCutoff]);
         const salesCutoff = latestKnownDate([salesRowCutoff, salesSyncCutoff]);
         const advertsCutoff = latestKnownDate([latestDate(adRows, (row) => row.date), advertsSyncCutoff]);
