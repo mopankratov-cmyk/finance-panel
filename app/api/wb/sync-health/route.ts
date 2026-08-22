@@ -5,6 +5,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess, sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { wbSyncHealthStatus } from "@/lib/sync/wbSyncHealthStatus";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
@@ -382,6 +383,35 @@ export async function GET(request: NextRequest) {
       nmSettingKeys,
       sample: rows.slice(0, 2).map((row) => ({ advertId: row.advert_id, name: row.name, raw: row.raw })),
     });
+  }
+
+  // ?promotion_count=1&cabinet=<uuid> — что отдаёт v1/promotion/count. Этот
+  // метод WB группирует кампании по ТИПУ (поиск, каталог, авто, единая), а
+  // синк берёт v2/adverts, где типа нет вовсе. Если типы приходят — вид
+  // размещения не нужно собирать из ставок и доразмечать руками.
+  if (sp.get("promotion_count") === "1") {
+    const cabinetId = sp.get("cabinet");
+    if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const target = (await getWbSyncTargets()).find((item) => item.cabinetId === cabinetId);
+    if (!target) return NextResponse.json({ error: "Кабинет без токена продвижения" }, { status: 400 });
+    const response = await fetch("https://advert-api.wildberries.ru/adv/v1/promotion/count", {
+      headers: { Authorization: target.advertToken },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return NextResponse.json({ error: `WB ${response.status}: ${(await response.text()).slice(0, 200)}` }, { status: 502 });
+    }
+    const json = await response.json() as { adverts?: Array<{ type?: number; status?: number; count?: number; advert_list?: Array<{ advertId?: number }> }>; all?: number };
+    const groups = (json.adverts ?? []).map((group) => ({
+      type: group.type ?? null,
+      status: group.status ?? null,
+      count: group.count ?? (group.advert_list?.length ?? 0),
+      sampleIds: (group.advert_list ?? []).slice(0, 3).map((item) => item.advertId),
+    }));
+    return NextResponse.json({ all: json.all ?? null, groups });
   }
 
   if (sp.get("advert_types") === "1") {
