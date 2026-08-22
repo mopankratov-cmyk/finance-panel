@@ -431,6 +431,21 @@ export async function GET(request: NextRequest) {
   // ?cards=1[&cabinet=<uuid>] — наполняется ли справочник карточек. Бренд и
   // предмет для фильтров РНП берутся отсюда: кэш Next между роутами не
   // разделяется, и до таблицы «Категория» была пуста у всех артикулов.
+  // ?basket_vols=1 — наполняется ли справочник «том → баскет». Пока он пуст,
+  // сборка РНП каждый раз опрашивает WB и упирается в свой секундомер.
+  if (sp.get("basket_vols") === "1") {
+    const { data, error, count } = await db
+      .from("wb_basket_vols")
+      .select("vol, basket, updated_at", { count: "exact" })
+      .order("updated_at", { ascending: false })
+      .limit(5);
+    return NextResponse.json({
+      rows: count ?? null,
+      error: error?.message ?? null,
+      sample: data ?? [],
+    });
+  }
+
   if (sp.get("cards") === "1") {
     const cabinetId = sp.get("cabinet");
     if (cabinetId && (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId)))) {
