@@ -142,20 +142,20 @@ export function loadCabinetPimRowsHourly(
 ): Promise<PimRow[]> {
   // Холодный обход Content API занимает до минуты на крупном кабинете и не
   // укладывается в лимит пользовательской функции — экран отдавал 504 целиком.
-  // Пользовательский путь читает только готовый снимок; греет его cron, где
-  // лимит времени в пять раз больше.
-  if (options.cacheOnly) {
-    return loadHourlyDashboard(
-      "wb-pim-cards",
-      { cabinetId, schema: 4 },
-      async () => { throw new PimSnapshotColdError(); },
-      options,
-    );
-  }
+  // Пользовательский путь читает только готовый снимок (cacheOnly); греет его
+  // cron, где лимит времени в пять раз больше.
+  //
+  // Колбэк ОДИН на оба режима. unstable_cache подмешивает в ключ саму
+  // функцию, поэтому отдельная ветка «только из кэша» со своим колбэком
+  // читала снимок под другим ключом — и всегда получала холод, сколько бы
+  // раз его ни грели. Отсюда пустые «Бренд» и «Категория» в РНП: карточек
+  // не было ни разу, хотя /api/pim отдавал их за пару секунд.
+  const { cacheOnly, ...cacheOptions } = options;
   return loadHourlyDashboard(
     "wb-pim-cards",
     { cabinetId, schema: 4 },
     async () => {
+      if (cacheOnly) throw new PimSnapshotColdError();
       // Общий снимок компонуется из кабинетных. Так один холодный обход
       // одновременно прогревает PIM, поставки и «Склейки» для каждого кабинета.
       if (cabinetId === null) {
@@ -166,14 +166,14 @@ export function loadCabinetPimRowsHourly(
           // одновременных 429 и всё равно укладывается в 300-секундный cron.
           const rows: PimRow[] = [];
           for (const cabinet of cabinets) {
-            rows.push(...await loadCabinetPimRowsHourly(cabinet.id, options));
+            rows.push(...await loadCabinetPimRowsHourly(cabinet.id, cacheOptions));
           }
           return rows;
         }
       }
       return fetchCabinetPimRows(cabinetId);
     },
-    options,
+    cacheOptions,
   );
 }
 

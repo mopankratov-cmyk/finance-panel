@@ -19,7 +19,19 @@ test("холодный снимок карточек не подменяется
   const cards = await read("../lib/wb/cards.ts");
   assert.match(cards, /class PimSnapshotColdError/);
   // Пустой список попал бы в часовой кэш и обесточил названия там, где они есть.
-  assert.match(cards, /if \(options\.cacheOnly\) \{[\s\S]*throw new PimSnapshotColdError\(\)/);
+  assert.match(cards, /if \(cacheOnly\) throw new PimSnapshotColdError\(\)/);
+});
+
+// unstable_cache подмешивает в ключ саму функцию-колбэк, поэтому отдельная
+// ветка «только из кэша» со своим колбэком читала снимок под другим ключом и
+// всегда получала холод: в РНП «Бренд» и «Категория» стояли пустыми, сколько
+// бы раз PIM ни грелся.
+test("режим «только из кэша» ходит в тот же ключ, что и прогрев", async () => {
+  const cards = await read("../lib/wb/cards.ts");
+  const calls = cards.match(/loadHourlyDashboard\(\s*"wb-pim-cards"/g) ?? [];
+  assert.equal(calls.length, 1, "у снимка карточек снова две точки входа — ключи разойдутся");
+  // Флаг живёт внутри общего колбэка, а не разводит вызовы.
+  assert.match(cards, /const \{ cacheOnly, \.\.\.cacheOptions \} = options/);
 });
 
 // Сброс ключа на каждом чтении устраивал вечную петлю: пока PIM холодный,
