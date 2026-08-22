@@ -2682,6 +2682,13 @@ export async function buildRnpTable(
       skus,
     };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Не удалось собрать РНП" };
+    // Тайминги нужнее всего именно при падении: снимок не собрался, и без них
+    // «statement timeout» не говорит, какой из источников встал.
+    const measured = Object.entries(timings)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, ms]) => `${name} ${ms}мс`)
+      .join(", ");
+    const reason = error instanceof Error ? error.message : "Не удалось собрать РНП";
+    return { error: measured ? `${reason} | ${measured}` : reason };
   }
 }
