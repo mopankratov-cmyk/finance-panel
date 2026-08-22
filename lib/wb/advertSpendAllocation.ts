@@ -39,18 +39,26 @@ export function allocateCampaignSpend(rows: SpendAllocationRow[], campaignSpent:
   // такое бывает при пересчётах; выдумывать отрицательный расход нельзя).
   if (rest <= EPSILON) return zero;
 
-  const weightOf = (row: SpendAllocationRow, base: "views" | "clicks" | "even") => {
+  // Остаток принадлежит тем артикулам, чей расход WB НЕ посчитал. Строку с
+  // измеренным расходом он уже посчитал — досыпать ей ещё значило бы завысить
+  // известное число. Если нулевых строк нет вовсе (WB занизил всем поровну),
+  // делим остаток по всем.
+  const unmeasured = rows.map((row) => !(Number.isFinite(row.spent) && row.spent > 0));
+  const targets = unmeasured.some(Boolean) ? unmeasured : rows.map(() => true);
+
+  const weightOf = (row: SpendAllocationRow, index: number, base: "views" | "clicks" | "even") => {
+    if (!targets[index]) return 0;
     if (base === "even") return 1;
     const value = row[base];
     return Number.isFinite(value) && value > 0 ? value : 0;
   };
 
   const base: "views" | "clicks" | "even" =
-    rows.some((row) => weightOf(row, "views") > 0) ? "views"
-      : rows.some((row) => weightOf(row, "clicks") > 0) ? "clicks"
+    rows.some((row, index) => weightOf(row, index, "views") > 0) ? "views"
+      : rows.some((row, index) => weightOf(row, index, "clicks") > 0) ? "clicks"
         : "even";
 
-  const weights = rows.map((row) => weightOf(row, base));
+  const weights = rows.map((row, index) => weightOf(row, index, base));
   const total = weights.reduce((sum, weight) => sum + weight, 0);
   if (total <= 0) return zero;
 

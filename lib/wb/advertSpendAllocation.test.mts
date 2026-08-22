@@ -21,10 +21,20 @@ test("нераспределённый остаток делится по пок
   assert.equal(shares[1], 170.92);
 });
 
-test("частичная разбивка добирается только на недостающую часть", () => {
+test("остаток достаётся тем, чей расход WB не посчитал", () => {
+  // У первой строки расход измерен — досыпать ей значило бы завысить факт,
+  // хотя показов у неё вчетверо больше.
   const rows = [{ spent: 400, views: 800, clicks: 20 }, { spent: 0, views: 200, clicks: 4 }];
   const shares = allocateCampaignSpend(rows, 500);
+  assert.deepEqual(shares, [0, 100]);
+});
+
+test("если нулевых строк нет, остаток делится по всем пропорционально показам", () => {
+  // WB занизил всем сразу — тогда «нетронутых» артикулов не существует.
+  const rows = [{ spent: 40, views: 800, clicks: 20 }, { spent: 10, views: 200, clicks: 4 }];
+  const shares = allocateCampaignSpend(rows, 150);
   assert.equal(sum(shares), 100);
+  assert.equal(shares[0], 80);
   assert.equal(shares[1], 20);
 });
 
