@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, Loader2, RefreshCw, Tags } from "lucide-react";
+import { ClipboardList, Download, Loader2, RefreshCw, Tags } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import {
@@ -237,6 +237,39 @@ export function WbRkJournalPage() {
     return acc;
   }, [visibleItems]);
 
+  // Выгрузка повторяет раскладку ручного листа: по дню шесть колонок в том же
+  // порядке. На переходный период команда сверяет журнал со своей таблицей.
+  const exportCsv = () => {
+    if (!data) return;
+    const header = ["Артикул", "Название", "Вид размещения", ...dates.flatMap((date) => [
+      `${dayLabel(date)} ставка`, `${dayLabel(date)} корзин`, `${dayLabel(date)} заказов`,
+      `${dayLabel(date)} затраты`, `${dayLabel(date)} CPO`, `${dayLabel(date)} CPL`,
+    ])];
+    const num = (value: number | null) => value == null ? "" : String(Math.round(value * 100) / 100);
+    const rows = visibleItems.map((item) => [
+      String(item.nm),
+      displaySkuName("", null, skuNames, item.nm),
+      item.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[item.block as WbRkBlock],
+      ...dates.flatMap((date) => {
+        const cell = item.days[date];
+        if (isEmpty(cell)) return ["", "", "", "", "", ""];
+        return [
+          num(cell.bid), String(cell.carts), String(cell.orders), num(cell.spent),
+          num(costPerOrder(cell.spent, cell.orders)), num(costPerCart(cell.spent, cell.carts)),
+        ];
+      }),
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(";"))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rk-journal-${data.from}-${data.to}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex min-h-0 flex-col">
       <WbModuleHeader
@@ -259,6 +292,15 @@ export function WbRkJournalPage() {
                 </button>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={!data || !visibleItems.length}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              CSV
+            </button>
             <button
               type="button"
               onClick={() => void load()}
