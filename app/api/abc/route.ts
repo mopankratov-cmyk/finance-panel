@@ -6,6 +6,7 @@ import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +29,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
   const allowedNmIds = await requestAllowedNmIds(p_cabinet);
+  const refresh = new URL(req.url).searchParams.get("refresh") === "1";
 
+  // Часовой снимок: ABC считается из тяжёлого rnp_report за месячное окно и
+  // ничего не кэшировал — каждый заход стоил 8 секунд на крупном кабинете.
+  // Данные суточной свежести, поэтому час здесь ничего не искажает.
+  const payload = await loadHourlyDashboard(
+    "wb-abc",
+    { cabinetId: p_cabinet, schema: 1, extra: allowedNmIds ? [...allowedNmIds].sort().join(",") : "all" },
+    async () => buildAbc(db, p_cabinet, allowedNmIds),
+    refresh ? { forceRefresh: true } : {},
+  );
+  return NextResponse.json(payload);
+}
+
+async function buildAbc(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  p_cabinet: string | null,
+  allowedNmIds: Set<number> | null,
+) {
   const [rpcRes, costsRes, comm] = await Promise.all([
     loadRnpReportRows<RpcRow>(db, p_cabinet, {
       allowedNmIds,
@@ -75,12 +94,12 @@ export async function GET(req: NextRequest) {
   const counts = { A: 0, B: 0, C: 0, D: tail.length };
   for (const r of ranked) counts[r.cls as "A" | "B" | "C"]++;
 
-  return NextResponse.json({
+  return {
     rows: [...ranked, ...tail],
     totalProfit,
     counts,
     skuTotal: items.length,
     aShareOfSku: items.length > 0 ? Math.round((counts.A / items.length) * 1000) / 10 : 0,
     period_days: 30,
-  });
+  };
 }
