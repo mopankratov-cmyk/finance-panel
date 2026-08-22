@@ -2213,8 +2213,13 @@ export async function buildRnpTable(
             return { stats, types };
           })().catch(() => ({ stats: [] as AdvertStatDayRow[], types: [] as AdvertTypeRow[] }))),
           timed("sales_returns", loadSalesReturns(db, scope, allowed, from, to)),
-          timed("cutoff_orders", latestSourceDate("wb_orders", scope)),
-          timed("cutoff_sales", latestSourceDate("wb_sales", scope)),
+          // Границы источников считаются из уже загруженных фактов, а не
+          // отдельными запросами к wb_orders и wb_sales: те два запроса шли
+          // вместе с десятком других, упирались в очередь к базе и стоили по
+          // 8.7 и 5.6 секунды — на них и падал statement timeout, хотя сами
+          // по себе это «последняя дата за период».
+          Promise.resolve(null),
+          Promise.resolve(null),
           latestSyncStateDate(scope, "orders"),
           latestSyncStateDate(scope, "sales"),
           latestSyncStateDate(scope, "advert-stats"),
@@ -2223,8 +2228,21 @@ export async function buildRnpTable(
         timings.sources_done = Date.now() - buildStartedAt;
         const advertTypeRows = advertStatsAndTypes.types;
         const advertStatRows = advertStatsAndTypes.stats;
-        const ordersCutoff = latestKnownDate([ordersRowCutoff, ordersSyncCutoff]);
-        const salesCutoff = latestKnownDate([salesRowCutoff, salesSyncCutoff]);
+        // День с фактом = день, за который в агрегате есть заказ/выкуп.
+        // Строка в wb_orders и ненулевой агрегат появляются вместе, поэтому
+        // граница выходит той же, что и у прежнего запроса к таблице.
+        const latestDayWith = (pick: (row: SkuDailyRow) => number | null | undefined) => {
+          let latest: string | null = null;
+          for (const row of baseFacts.skuRows) {
+            const value = Number(pick(row) ?? 0);
+            if (!value) continue;
+            const day = String(row.d).slice(0, 10);
+            if (!latest || day > latest) latest = day;
+          }
+          return latest;
+        };
+        const ordersCutoff = latestKnownDate([ordersRowCutoff ?? latestDayWith((row) => row.orders_count), ordersSyncCutoff]);
+        const salesCutoff = latestKnownDate([salesRowCutoff ?? latestDayWith((row) => row.buyouts_count), salesSyncCutoff]);
         const advertsCutoff = latestKnownDate([latestDate(adRows, (row) => row.date), advertsSyncCutoff]);
         const funnelCutoff = latestKnownDate([latestDate(funnelRows, (row) => row.date), funnelSyncCutoff]);
         return {
