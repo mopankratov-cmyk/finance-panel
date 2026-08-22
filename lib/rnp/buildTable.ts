@@ -1877,12 +1877,24 @@ async function loadScopedBaseFacts(
   allowed: number[],
   from: string,
   to: string,
+  timings?: Record<string, number>,
 ) {
+  // Ветка кабинетов с ограниченным ассортиментом читает сырые строки шестью
+  // запросами. На Оптиме она стоит 8.6 из 10.8 секунд ответа, и без разбивки
+  // непонятно, какой из шести это делает.
+  const step = <T,>(name: string, promise: PromiseLike<T>): Promise<T> => {
+    if (!timings) return Promise.resolve(promise);
+    const startedAt = Date.now();
+    return Promise.resolve(promise).then(
+      (value) => { timings[name] = Date.now() - startedAt; return value; },
+      (error) => { timings[name] = Date.now() - startedAt; throw error; },
+    );
+  };
   const dateFrom = `${from}T00:00:00.000Z`;
   const dateTo = `${nextIsoDate(to)}T00:00:00.000Z`;
   const [orders, sales, advertSpend, stocks, products, fbsFacts] = await Promise.all([
-    loadScopedOrders(db, scope, allowed, dateFrom, dateTo),
-    loadAllPages<ScopedSaleSourceRow>((start, end) => {
+    step("scoped_orders", loadScopedOrders(db, scope, allowed, dateFrom, dateTo)),
+    step("scoped_sales", loadAllPages<ScopedSaleSourceRow>((start, end) => {
       let query = db
         .from("wb_sales")
         .select("nm_id, date, price_with_disc, finished_price, sale_id")
@@ -1895,8 +1907,8 @@ async function loadScopedBaseFacts(
         .range(start, end);
       if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
       return query;
-    }),
-    loadAllPages<ScopedAdvertSpendRow>((start, end) => {
+    })),
+    step("scoped_advert_spend", loadAllPages<ScopedAdvertSpendRow>((start, end) => {
       let query = db
         .from("wb_advert_nm_daily")
         .select("nm_id, date, spent")
@@ -1908,8 +1920,8 @@ async function loadScopedBaseFacts(
         .range(start, end);
       if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
       return query;
-    }),
-    loadAllPages<ScopedStockSourceRow>((start, end) => {
+    })),
+    step("scoped_stocks", loadAllPages<ScopedStockSourceRow>((start, end) => {
       let query = db
         .from("wb_stocks")
         .select("nm_id, quantity, in_way_to_client, in_way_from_client")
@@ -1918,8 +1930,8 @@ async function loadScopedBaseFacts(
         .range(start, end);
       if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
       return query;
-    }),
-    loadAllPages<ScopedProductSourceRow>((start, end) => {
+    })),
+    step("scoped_products", loadAllPages<ScopedProductSourceRow>((start, end) => {
       let query = db
         .from("wb_cabinet_product_scope")
         .select("nm_id, article")
@@ -1928,8 +1940,8 @@ async function loadScopedBaseFacts(
         .range(start, end);
       if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
       return query;
-    }),
-    loadScopedFbsFacts(db, scope, allowed, dateFrom, dateTo),
+    })),
+    step("scoped_fbs", loadScopedFbsFacts(db, scope, allowed, dateFrom, dateTo)),
   ]);
   const articleSet = new Set<string>();
   for (const product of products) if (product.article) articleSet.add(product.article);
@@ -2117,7 +2129,7 @@ export async function buildRnpTable(
           funnelSyncCutoff,
         ] = await Promise.all([
           allowed
-            ? timed("base_facts_scoped", loadScopedBaseFacts(db, scope, allowed, from, to))
+            ? timed("base_facts_scoped", loadScopedBaseFacts(db, scope, allowed, from, to, timings))
             : Promise.all([
               timed("rpc_daily_sku", loadRnpDailySkuRows<SkuDailyRow>(db, {
                 from,
