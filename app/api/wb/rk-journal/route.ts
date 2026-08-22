@@ -68,9 +68,12 @@ interface AdvertRow {
 
 /** Кампания, о которой WB больше ничего не сообщает: ни ставки, ни типа. */
 function isArchived(advert: AdvertRow): boolean {
-  const noBid = !advert.bid_search_rub && !advert.bid_shelf_rub && !advert.bid_cpm_rub;
+  // Признаки, которые синк переписывает при каждом прогоне: если WB не отдал
+  // ни модель оплаты, ни площадки, ни тип ставки — кампании в его выдаче
+  // больше нет. Старую ставку из прошлых синков в расчёт не берём: у
+  // завершённых автокампаний она остаётся навсегда и маскировала архив.
   const noPlacement = advert.placement_search == null && advert.placement_shelf == null;
-  return noBid && !advert.bid_type && !advert.payment_type && noPlacement;
+  return noPlacement && !advert.payment_type && !advert.bid_type;
 }
 
 /** Миграция раскладки расхода могла ещё не примениться. */
