@@ -109,6 +109,8 @@ interface RnpTable {
   period: { label: string; period_type: string }[];
   summary: Metric[];
   skus: Sku[];
+  /** Источники, которые не прочитались при сборке снимка. */
+  notes?: string[];
   error?: string;
 }
 
@@ -1933,6 +1935,20 @@ export function WbRnpPage() {
       {error && activeData && (
         <ActionableError message={`${error} Показан последний готовый снимок для этого кабинета и периода.`} label="РНП" onRetry={() => setRetryKey((key) => key + 1)} compact tone="amber" className="mb-2" />
       )}
+
+      {/* Недочитанный источник раньше выглядел как отсутствие фактов: пустой
+          фильтр «Категория» месяцами читался как «категорий нет», хотя это
+          справочник карточек не прогрелся. Теперь экран говорит об этом сам. */}
+      {!error && activeData?.notes?.length ? (
+        <ActionableError
+          message={`Часть данных не прочиталась, цифры ниже неполные: ${activeData.notes.join("; ")}`}
+          label="РНП"
+          onRetry={() => setRetryKey((key) => key + 1)}
+          compact
+          tone="amber"
+          className="mb-2"
+        />
+      ) : null}
 
       {loading && !activeData ? (
         <>

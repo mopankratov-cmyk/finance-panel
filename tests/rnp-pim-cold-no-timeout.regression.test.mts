@@ -86,3 +86,21 @@ test("справочник карточек лежит в базе, а не то
   assert.ok(dbIndex > 0, "РНП не читает карточки из базы");
   assert.ok(dbIndex < snapshotIndex, "снимок опрашивается раньше базы — вернётся холод");
 });
+
+// Пустой фильтр «Категория» месяцами читался как «категорий нет», хотя это
+// справочник карточек не прогрелся. Недочитанный источник обязан называть
+// себя, а не притворяться отсутствием фактов.
+test("недочитанные источники попадают в снимок и на экран", async () => {
+  const build = await read("../lib/rnp/buildTable.ts");
+  // Тихие catch заменены на именованные заметки.
+  assert.doesNotMatch(build, /\.catch\(\(\) => \[\] as FeedbackNmRow\[\]\)/);
+  assert.match(build, /noteOn\("отзывы"/);
+  assert.match(build, /noteOn\("статистика кампаний"/);
+  assert.match(build, /noteOn\("типы кампаний"/);
+  // Холодный справочник карточек объясняется словами, а не только флагом.
+  assert.match(build, /справочник карточек WB не прогрет/);
+
+  const page = await read("../components/wb/WbRnpPage.tsx");
+  assert.match(page, /activeData\?\.notes\?\.length/);
+  assert.match(page, /Часть данных не прочиталась/);
+});

@@ -1471,6 +1471,8 @@ export interface RnpTable {
    * не должен лежать в кэше полсуток — см. lib/rnp/tableCache.ts.
    */
   pim_cold?: boolean;
+  /** Что не прочиталось при сборке. Пусто — прочиталось всё. */
+  notes?: string[];
   /** Длительности источников в мс — чтобы медленный экран можно было измерить. */
   timings?: Record<string, number>;
   period: { label: string; period_type: string }[];
@@ -2272,6 +2274,14 @@ export async function buildRnpTable(
   // кабинетах, и без разбивки не понять, какой запрос это делает.
   const timings: Record<string, number> = {};
   const buildStartedAt = Date.now();
+  // Источники, которые не прочитались. Раньше такие места молча возвращали
+  // пустой список: пользователь видел нули и не знал, что это сбой чтения, а
+  // не отсутствие фактов.
+  const notes: string[] = [];
+  const noteOn = <T,>(label: string, fallback: T) => (error: unknown) => {
+    notes.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+    return fallback;
+  };
   const timed = <T,>(name: string, promise: PromiseLike<T>): Promise<T> => {
     const startedAt = Date.now();
     return Promise.resolve(promise).then(
@@ -2390,7 +2400,7 @@ export async function buildRnpTable(
             if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
             if (allowed) query = query.in("nm_id", allowed);
             return query;
-          })).catch(() => [] as FeedbackNmRow[]),
+          })).catch(noteOn("отзывы", [] as FeedbackNmRow[])),
           // Сплит рекламы по видам кампаний: тип живёт на кампании (wb_adverts),
           // дневная статистика — на кампании (wb_advert_stats). По SKU тип не
           // распределяется, поэтому эти ряды идут только в сводку.
@@ -2409,7 +2419,7 @@ export async function buildRnpTable(
                 .range(start, end);
               if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
               return query as unknown as PromiseLike<PageResult<AdvertStatDayRow>>;
-            }).catch(() => [] as AdvertStatDayRow[]);
+            }).catch(noteOn("статистика кампаний", [] as AdvertStatDayRow[]));
             const advertIds = [...new Set(stats.map((row) => Number(row.advert_id)).filter(Number.isFinite))];
             if (!advertIds.length) return { stats, types: [] as AdvertTypeRow[] };
             const types: AdvertTypeRow[] = [];
@@ -2421,7 +2431,7 @@ export async function buildRnpTable(
               types.push(...((data ?? []) as unknown as AdvertTypeRow[]));
             }
             return { stats, types };
-          })().catch(() => ({ stats: [] as AdvertStatDayRow[], types: [] as AdvertTypeRow[] }))),
+          })().catch(noteOn("типы кампаний", { stats: [] as AdvertStatDayRow[], types: [] as AdvertTypeRow[] }))),
           timed("sales_returns", loadSalesReturns(db, scope, allowed, from, to)),
           // Границы источников считаются из уже загруженных фактов, а не
           // отдельными запросами к wb_orders и wb_sales: те два запроса шли
@@ -2905,6 +2915,9 @@ export async function buildRnpTable(
       shop_label: shopLabel || "Все кабинеты",
       sku_count: skus.length,
       ...(pimCold ? { pim_cold: true } : {}),
+      notes: pimCold
+        ? [...notes, "справочник карточек WB не прогрет — «Бренд» и «Категория» могут быть пустыми"]
+        : notes,
       timings: { ...timings, stage_total: Date.now() - buildStartedAt },
       generated_at: new Date().toISOString(),
       as_of: asOf,
