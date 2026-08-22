@@ -428,6 +428,33 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ all: json.all ?? null, groups });
   }
 
+  // ?cards=1[&cabinet=<uuid>] — наполняется ли справочник карточек. Бренд и
+  // предмет для фильтров РНП берутся отсюда: кэш Next между роутами не
+  // разделяется, и до таблицы «Категория» была пуста у всех артикулов.
+  if (sp.get("cards") === "1") {
+    const cabinetId = sp.get("cabinet");
+    if (cabinetId && (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId)))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const query = db
+      .from("wb_cards")
+      .select("nm_id, article, brand, subject, updated_at", { count: "exact" })
+      .order("updated_at", { ascending: false })
+      .limit(5);
+    const { data, error, count } = await (cabinetId ? query.eq("cabinet_id", cabinetId) : query);
+    return NextResponse.json({
+      rows: count ?? null,
+      error: error?.message ?? null,
+      sample: (data ?? []).map((row) => ({
+        nm: row.nm_id,
+        article: row.article,
+        brand: row.brand,
+        subject: row.subject,
+        updatedAt: row.updated_at,
+      })),
+    });
+  }
+
   if (sp.get("advert_types") === "1") {
     const cabinetId = sp.get("cabinet");
     if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
