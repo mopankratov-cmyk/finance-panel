@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
       label: "ABC WB: товары",
     }),
     db.from("product_costs").select("article, name"),
-    getWbCommissionForCabinet(p_cabinet, 30),
+    getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false }),
   ]);
   const nameByArt = new Map<string, string>();
   for (const c of costsRes.data ?? []) nameByArt.set(c.article as string, (c.name as string) ?? "");

@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: String((e as Error)?.message || e) }, { status: 500 });
   }
-  const comm = await getWbCommissionForCabinet(cabinetId, 30);
+  const comm = await getWbCommissionForCabinet(cabinetId, 30, { allowLiveFallback: false });
 
   // Воронка за окно: сумма открытий/корзин/заказов на nm.
   const fromDate = new Date(Date.now() - windowDays * 86400000).toISOString().slice(0, 10);

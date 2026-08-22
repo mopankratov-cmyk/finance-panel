@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: String((e as Error)?.message || e) }, { status: 500 });
   }
 
-  const comm = await getWbCommissionForCabinet(cabinetId, 30);
+  const comm = await getWbCommissionForCabinet(cabinetId, 30, { allowLiveFallback: false });
   if (comm.avgPct <= 0 || comm.avgAcqPct <= 0) {
     return NextResponse.json(
       { error: "Нет фактических комиссий и эквайринга WB. Дождитесь суточной синхронизации ставок — расчёт цены на дефолтах отключён." },

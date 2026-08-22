@@ -290,6 +290,10 @@ export async function getWbCommissionForCabinet(
   days = 30,
   options: { allowLiveFallback?: boolean } = {},
 ): Promise<WbCommission> {
+  // Пользовательские экраны передают false: живой обход WB за ставками идёт
+  // десятки секунд, и экран стоит всё это время. Кэш наполняет часовой крон
+  // /api/sync/commissions, а без него честнее показать расчёт по средней
+  // ставке, чем держать пользователя в ожидании сети.
   const allowLiveFallback = options.allowLiveFallback ?? true;
   if (!cabinetId) {
     const cached = await getWbCommissionFromCache();

@@ -332,7 +332,7 @@ export async function GET(req: NextRequest) {
     const [rpcRes, costsRes, comm, sppRates] = await Promise.all([
       db.rpc("unit_report_period", { p_cabinet, p_from: period.from, p_to: period.to }),
       db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
-      getWbCommissionForCabinet(p_cabinet, 30),
+      getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false }),
       loadUnitSppRates(db, {
         cabinetId: p_cabinet,
         from: period.from,
