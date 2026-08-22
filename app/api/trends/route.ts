@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
@@ -21,6 +22,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
   const allowedNmIds = await requestAllowedNmIds(p_cabinet);
+  const refresh = sp.get("refresh") === "1";
+
+  // Часовой снимок: динамика считается тем же rnp_daily_sku за двойное окно и
+  // раньше пересчитывалась на каждый заход — 5.6 секунды на крупном кабинете.
+  // Данные суточной свежести, поэтому час здесь ничего не искажает.
+  return NextResponse.json(await loadHourlyDashboard(
+    "wb-trends",
+    { cabinetId: p_cabinet, window: win, schema: 1, extra: allowedNmIds ? [...allowedNmIds].sort().join(",") : "all" },
+    () => buildTrends(db, p_cabinet, allowedNmIds, win),
+    refresh ? { forceRefresh: true } : {},
+  ));
+}
+
+async function buildTrends(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  p_cabinet: string | null,
+  allowedNmIds: Set<number> | null,
+  win: number,
+) {
 
   const to = new Date();
   const from = new Date(Date.now() - (win * 2 - 1) * 86400000);
@@ -36,7 +56,7 @@ export async function GET(req: NextRequest) {
       label: "Динамика WB: заказы по SKU",
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось загрузить динамику WB" }, { status: 500 });
+    throw error instanceof Error ? error : new Error("Не удалось загрузить динамику WB");
   }
 
   const byDate = new Map<string, DailyRow>();
@@ -83,5 +103,5 @@ export async function GET(req: NextRequest) {
     { key: "drr", label: "ДРР, %", kind: "pct", goodUp: false, current: Math.round(curDrr * 10) / 10, previous: Math.round(prevDrr * 10) / 10, deltaPct: delta(curDrr, prevDrr), series: curDays.map((d) => { const r = byDate.get(d); return r && r.orders_sum > 0 ? Math.round((r.ad_spent / r.orders_sum) * 1000) / 10 : 0; }) },
   ];
 
-  return NextResponse.json({ window: win, current: { from: curDays[0], to: curDays[curDays.length - 1] }, previous: { from: prevDays[0], to: prevDays[prevDays.length - 1] }, metrics });
+  return { window: win, current: { from: curDays[0], to: curDays[curDays.length - 1] }, previous: { from: prevDays[0], to: prevDays[prevDays.length - 1] }, metrics };
 }

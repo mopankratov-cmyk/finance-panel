@@ -15,7 +15,7 @@ interface WarmCallResult {
 
 export function wbDashboardWarmUrl(
   origin: string,
-  endpoint: "funnel-metrics" | "market-niches" | "market-pulse" | "seo" | "sklejki" | "unit" | "adverts" | "supplies",
+  endpoint: "funnel-metrics" | "market-niches" | "market-pulse" | "seo" | "sklejki" | "unit" | "adverts" | "supplies" | "abc" | "trends" | "rk-journal",
   scope: WbDashboardScope,
   subjectId?: number,
 ): string {
@@ -26,6 +26,9 @@ export function wbDashboardWarmUrl(
       : endpoint === "market-pulse" ? "/api/market/pulse"
         : endpoint === "adverts" ? "/api/adverts/list"
           : endpoint === "supplies" ? "/api/supplies"
+            : endpoint === "abc" ? "/api/abc"
+              : endpoint === "trends" ? "/api/trends"
+                : endpoint === "rk-journal" ? "/api/wb/rk-journal"
         : "/api/unit/table";
   const url = new URL(pathname, origin);
   url.searchParams.set("cabinet", scope.cabinetId || "all");
@@ -72,6 +75,9 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
     pim: WarmCallResult;
     unit: WarmCallResult;
     seo: WarmCallResult;
+    abc: WarmCallResult;
+    trends: WarmCallResult;
+    rkJournal: WarmCallResult;
     funnelMetrics: WarmCallResult;
     marketNiches: WarmCallResult;
     adverts: WarmCallResult;
@@ -95,7 +101,9 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
       url.searchParams.delete("refresh");
       return fetchWarmSnapshot(url.toString());
     };
-    const [sklejki, nichesResult, unit, seo, seoYesterday, seoMonth, funnelMetrics, adverts, supplies] = await Promise.all([
+    // ABC, Динамика и Журнал РК тоже греются: до этого они собирались только
+    // по заходу пользователя — ABC 11 секунд на холодную, Динамика 5.6.
+    const [sklejki, nichesResult, unit, seo, seoYesterday, seoMonth, funnelMetrics, adverts, supplies, abc, trends, rkJournal] = await Promise.all([
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "sklejki", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "market-niches", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "unit", scope)),
@@ -105,6 +113,11 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "funnel-metrics", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "adverts", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "supplies", scope)),
+      fetchWarmSnapshot(wbDashboardWarmUrl(origin, "abc", scope)),
+      fetchWarmSnapshot(wbDashboardWarmUrl(origin, "trends", scope)),
+      // Журнал РК своего снимка не держит, но прогрев поднимает его слои
+      // (кампании, статистика дня) в кэш базы — заход становится дешевле.
+      fetchWarmSnapshot(wbDashboardWarmUrl(origin, "rk-journal", scope)),
     ]);
     const niches = nichesResult.body && typeof nichesResult.body === "object" && "niches" in nichesResult.body
       ? (nichesResult.body as { niches?: Array<{ id?: unknown }> }).niches
@@ -116,7 +129,8 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
     const result = {
       scope: scope.label,
       ok: sklejki.ok && pim.ok && unit.ok && seo.ok && seoYesterday.ok && seoMonth.ok && funnelMetrics.ok
-        && nichesResult.ok && marketPulse.ok && adverts.ok && supplies.ok,
+        && nichesResult.ok && marketPulse.ok && adverts.ok && supplies.ok
+        && abc.ok && trends.ok && rkJournal.ok,
       sklejki: { ok: sklejki.ok, status: sklejki.status, error: sklejki.error },
       pim: { ok: pim.ok, status: pim.status, error: pim.error },
       unit: { ok: unit.ok, status: unit.status, error: unit.error },
@@ -126,6 +140,9 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
       marketNiches: { ok: nichesResult.ok, status: nichesResult.status, error: nichesResult.error },
       adverts: { ok: adverts.ok, status: adverts.status, error: adverts.error },
       supplies: { ok: supplies.ok, status: supplies.status, error: supplies.error },
+      abc: { ok: abc.ok, status: abc.status, error: abc.error },
+      trends: { ok: trends.ok, status: trends.status, error: trends.error },
+      rkJournal: { ok: rkJournal.ok, status: rkJournal.status, error: rkJournal.error },
       marketPulse: { ok: marketPulse.ok, status: marketPulse.status, error: marketPulse.error, skipped: "skipped" in marketPulse ? marketPulse.skipped : undefined },
     };
     snapshots.push(result);
