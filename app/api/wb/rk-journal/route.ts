@@ -109,13 +109,21 @@ export async function GET(request: NextRequest) {
     return [];
   };
 
+  // Период задаётся календарём (from/to); days остаётся для старых ссылок.
+  const iso = (value: string | null) => value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  const todayMsk = moscowToday();
+  const to = iso(sp.get("to")) ?? todayMsk;
   const daysRaw = Number(sp.get("days") ?? DAYS_DEFAULT);
   const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.round(daysRaw), 1), DAYS_MAX) : DAYS_DEFAULT;
-  const todayMsk = moscowToday();
-  const to = sp.get("to") && /^\d{4}-\d{2}-\d{2}$/.test(sp.get("to") as string) ? (sp.get("to") as string) : todayMsk;
-  const fromDate = new Date(`${to}T00:00:00Z`);
-  fromDate.setUTCDate(fromDate.getUTCDate() - (days - 1));
-  const from = fromDate.toISOString().slice(0, 10);
+  const fallbackFrom = new Date(`${to}T00:00:00Z`);
+  fallbackFrom.setUTCDate(fallbackFrom.getUTCDate() - (days - 1));
+  const requestedFrom = iso(sp.get("from")) ?? fallbackFrom.toISOString().slice(0, 10);
+  // Окно шире предела режем с начала: хвост ближе к сегодня полезнее.
+  const earliest = new Date(`${to}T00:00:00Z`);
+  earliest.setUTCDate(earliest.getUTCDate() - (DAYS_MAX - 1));
+  const from = requestedFrom < earliest.toISOString().slice(0, 10)
+    ? earliest.toISOString().slice(0, 10)
+    : requestedFrom > to ? to : requestedFrom;
   const dates = dayList(from, to);
 
   // Кампании нужны, чтобы разложить дни без снимка по видам размещения.

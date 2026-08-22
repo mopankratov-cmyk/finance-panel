@@ -3,6 +3,8 @@
 import { ChevronRight, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
+import { moscowToday } from "@/lib/ui/calendarGrid";
 import {
   WB_RK_BLOCKS,
   WB_RK_BLOCK_ATTRIBUTED,
@@ -16,7 +18,7 @@ import { costPerCart, costPerOrder, cplTone, cpoTone, WB_RK_TONE_CLASS } from "@
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
-import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
+import { nmMatchesTags, setWbTagAssignment, useRnpTags, WbTagFilterChips, WbTagPicker } from "./useRnpTags";
 import { displaySkuName, useWbSkuNames } from "./useWbSkuNames";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -58,7 +60,28 @@ interface JournalData {
   snapshotDates: string[];
 }
 
-const DAY_OPTIONS = [5, 7, 14, 30];
+// Пресеты как в РНП плюс «5 дней» — окно, в котором владелец читает поведение
+// кампаний. Произвольные даты выбираются календарём.
+const RANGE_PRESETS = [
+  { value: "5d", label: "5 дней" },
+  { value: "week", label: "Неделя" },
+  { value: "two_weeks", label: "2 недели" },
+  { value: "month", label: "Месяц" },
+] as const;
+
+function isoShift(days: number): string {
+  const base = new Date(`${moscowToday()}T00:00:00Z`);
+  base.setUTCDate(base.getUTCDate() - days);
+  return base.toISOString().slice(0, 10);
+}
+
+function rangeForPreset(preset: string): { from: string; to: string } {
+  const to = moscowToday();
+  if (preset === "week") return { from: isoShift(6), to };
+  if (preset === "two_weeks") return { from: isoShift(13), to };
+  if (preset === "month") return { from: isoShift(29), to };
+  return { from: isoShift(4), to };
+}
 // Сколько срезов кампаний добираем за одно нажатие. Больше — упрёмся в лимиты
 // WB и в терпение: у кабинета на тысячу кампаний полный круг это ~24 среза.
 const SYNC_MAX_PASSES = 8;
@@ -84,7 +107,7 @@ function ToneCell({ value, tone, fraction }: { value: number | null; tone: strin
 
 export function WbRkJournalPage() {
   const { cabinetId, hasExactCabinet, ready, canWrite } = useWbCabinet();
-  const [days, setDays] = useState(5);
+  const [range, setRange] = useState(() => ({ ...rangeForPreset("5d"), preset: "5d" as string }));
   const [data, setData] = useState<JournalData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +117,7 @@ export function WbRkJournalPage() {
   const [openNms, setOpenNms] = useState<Set<number>>(new Set());
   const elapsed = useElapsedSeconds(loading);
 
-  const { tags, tagIdsByNm } = useRnpTags(hasExactCabinet ? cabinetId : null);
+  const { tags, tagIdsByNm, reloadTags } = useRnpTags(hasExactCabinet ? cabinetId : null);
   const skuNames = useWbSkuNames(hasExactCabinet ? cabinetId : null);
   const { orderIndex } = useCabinetSkuOrder(hasExactCabinet ? cabinetId : null);
 
@@ -103,7 +126,7 @@ export function WbRkJournalPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ days: String(days) });
+      const params = new URLSearchParams({ from: range.from, to: range.to });
       if (cabinetId) params.set("cabinet", cabinetId);
       const response = await fetch(`/api/wb/rk-journal?${params}`, { cache: "no-store" });
       const body = await response.json().catch(() => ({}));
@@ -114,7 +137,7 @@ export function WbRkJournalPage() {
     } finally {
       setLoading(false);
     }
-  }, [cabinetId, days, ready]);
+  }, [cabinetId, range.from, range.to, ready]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -291,18 +314,14 @@ export function WbRkJournalPage() {
           : "Ставка, корзины, заказы, затраты, CPO и CPL по дням"}
         actions={(
           <>
-            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5">
-              {DAY_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setDays(option)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${days === option ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}
-                >
-                  {option} дн
-                </button>
-              ))}
-            </div>
+            <PeriodRangePicker
+              from={range.from}
+              to={range.to}
+              presets={RANGE_PRESETS}
+              activePreset={range.preset}
+              onApplyPreset={(value) => setRange({ ...rangeForPreset(value), preset: value })}
+              onApplyRange={(from, to) => setRange({ from, to, preset: "custom" })}
+            />
             <button
               type="button"
               onClick={() => void runSync()}
@@ -461,7 +480,21 @@ export function WbRkJournalPage() {
                                   className="h-11 w-9 shrink-0 rounded-md bg-slate-100 object-cover ring-1 ring-slate-200/60"
                                 />
                                 <div className="min-w-0">
-                                  <div className="text-[13px] font-bold tabular-nums tracking-[-0.01em] text-slate-800">{item.nm}</div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[13px] font-bold tabular-nums tracking-[-0.01em] text-slate-800">{item.nm}</span>
+                                    {canWrite && hasExactCabinet ? (
+                                      <WbTagPicker
+                                        tags={tags}
+                                        assignedIds={tagIdsByNm.get(item.nm) ?? []}
+                                        onToggle={async (tagId, assigned) => {
+                                          if (!cabinetId) return false;
+                                          const ok = await setWbTagAssignment(cabinetId, item.nm, tagId, assigned);
+                                          if (ok) reloadTags();
+                                          return ok;
+                                        }}
+                                      />
+                                    ) : null}
+                                  </div>
                                   {name ? <div className="max-w-[210px] truncate text-[11px] font-normal text-slate-400">{name}</div> : null}
                                 </div>
                               </div>

@@ -5,6 +5,7 @@ import test from "node:test";
 const hook = readFileSync(new URL("../components/wb/useRnpTags.tsx", import.meta.url), "utf8");
 const funnel = readFileSync(new URL("../components/wb/WbFunnelPage.tsx", import.meta.url), "utf8");
 const shelf = readFileSync(new URL("../components/wb/WbShelfPage.tsx", import.meta.url), "utf8");
+const journal = readFileSync(new URL("../components/wb/WbRkJournalPage.tsx", import.meta.url), "utf8");
 
 test("ярлыки РНП работают в Воронке и Полках", () => {
   // Запрос владельца: ярлык на модели → все цвета модели одним фильтром.
@@ -28,13 +29,33 @@ test("сводка по ярлыку в Воронке считается из �
   assert.match(funnel, /currentMetric\.kind === "pct"/);
 });
 
+test("журнал РК фильтруется ярлыками и выбирает период календарём", () => {
+  assert.match(journal, /nmMatchesTags\(tagIdsByNm, item\.nm, activeTagIds\)/);
+  assert.match(journal, /<PeriodRangePicker/);
+  // Период уходит в API датами, а не «сколько дней назад».
+  assert.match(journal, /params = new URLSearchParams\(\{ from: range\.from, to: range\.to \}\)/);
+});
+
 test("сводка Полок честна к выбранному ярлыку", () => {
   assert.match(shelf, /const withTop6 = taggedItems/);
   assert.match(shelf, /activeTagIds\.length \? "По ярлыку" : "В реестре"/);
 });
 
-test("ярлыки на чужих экранах — только чтение, недоступность не роняет экран", () => {
+test("недоступность ярлыков не роняет экран", () => {
+  // Ярлыки — вспомогательный слой: их отсутствие или ошибка API не должны
+  // ломать сам экран, ради которого пользователь пришёл.
   assert.match(hook, /catch\(\(\) => \{\}\)/);
   assert.match(hook, /cabinetId === "all"\) return/);
-  assert.doesNotMatch(hook, /method: "POST"/);
+});
+
+test("ярлык вешается там, где он понадобился, а список перечитывается с сервера", () => {
+  // Запрос владельца по журналу РК: ставить ярлык прямо в таблице, не уходя
+  // в РНП. Создание и переименование остались в РНП — здесь только
+  // назначение конкретному артикулу.
+  assert.match(hook, /action: "set_tag"/);
+  assert.match(hook, /export function WbTagPicker/);
+  // Оптимистичной подмены нет: после записи хук перечитывает назначения,
+  // иначе экран показывал бы то, что предположил, а не то, что записалось.
+  assert.match(hook, /reloadTags: \(\) => setReloadToken/);
+  assert.match(journal, /reloadTags\(\)/);
 });
