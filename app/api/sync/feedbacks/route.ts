@@ -59,7 +59,7 @@ function feedbackRow(cabinetId: string, feedback: WbFeedbackRaw, isAnswered: boo
  * проход начинаем заново, чтобы обновить ответы и новые отзывы.
  */
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
 
   const startedAt = new Date();

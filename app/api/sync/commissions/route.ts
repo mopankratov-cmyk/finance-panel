@@ -57,7 +57,7 @@ function savedAccumulator(value: unknown): CommissionAccumulator | null {
 // (см. lib/wb/commissions.ts). Полный финотчёт одного большого кабинета занимает
 // несколько минут, поэтому почасовой cron обходит кабинеты по кругу.
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
 
   const startedAt = new Date();

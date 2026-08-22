@@ -17,7 +17,7 @@ export const maxDuration = 60;
 // Классифицирует «узкое место» каждого SKU. persist=1 → пишет не-OK в agent_insights (идемпотентно за день).
 export async function GET(request: NextRequest) {
   // Доступ: валидный крон (Bearer CRON_SECRET) ИЛИ сессия пользователя.
-  const isCron = !!request.headers.get("authorization") && checkCronAuth(request) === null;
+  const isCron = !!request.headers.get("authorization") && (await checkCronAuth(request)) === null;
   if (!isCron) {
     const gate = await requireApiSession();
     if (gate) return gate;

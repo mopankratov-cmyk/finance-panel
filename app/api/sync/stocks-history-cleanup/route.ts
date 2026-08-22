@@ -8,7 +8,7 @@ export const maxDuration = 60;
 const RETENTION_DAYS = 90;
 
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
 
   const startedAt = new Date();

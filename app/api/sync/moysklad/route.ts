@@ -8,7 +8,7 @@ export const maxDuration = 60;
 // Периодический кабинетный healthcheck. Не импортирует ассортимент и не может
 // смешать аккаунты: каждая активная строка привязана к своему WB cabinet_id.
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
   const startedAt = new Date();
   const db = getSupabaseAdmin();

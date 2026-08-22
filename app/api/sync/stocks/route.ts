@@ -7,7 +7,7 @@ import { WbStocksApiError, wbWarehouseStockPages } from "@/lib/wb/stocksApi";
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
 
   const startedAt = new Date();

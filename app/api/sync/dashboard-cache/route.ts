@@ -91,7 +91,7 @@ async function warmWbRnp() {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
   if (request.nextUrl.searchParams.get("marketplace") === "wb") {
     try {

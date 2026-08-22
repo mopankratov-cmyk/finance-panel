@@ -9,7 +9,7 @@ export const maxDuration = 60;
 // GET — крон-прогон репрайсера по всем активным кабинетам (защита CRON_SECRET).
 // Расписание: после /api/sync/all (свежие данные). Привязку в vercel.json делает владелец.
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
 
   const strategies = await loadStrategies();

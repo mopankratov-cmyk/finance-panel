@@ -12,7 +12,7 @@ const JOBS = ["commissions", "feedbacks", "ozon-adverts"] as const;
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
 
   const secret = process.env.CRON_SECRET;

@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, Download, Loader2, RefreshCw, Tags } from "lucide-react";
+import { ClipboardList, Download, Loader2, PlayCircle, RefreshCw, Tags } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import {
@@ -90,6 +90,7 @@ export function WbRkJournalPage() {
   const [savingAdvert, setSavingAdvert] = useState<number | null>(null);
   const [markMask, setMarkMask] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [syncing, setSyncing] = useState<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
 
   const { tags, tagIdsByNm } = useRnpTags(hasExactCabinet ? cabinetId : null);
@@ -160,6 +161,25 @@ export function WbRkJournalPage() {
     setBulkSaving(true);
     await saveBlock(maskMatches, block);
     setBulkSaving(false);
+  };
+
+  // Ручной прогон синка рекламы: крон ходит раз в час и берёт очередной срез
+  // кампаний, а когда цифры нужны сейчас, ждать нечего.
+  const runSync = async () => {
+    setSyncing("Тянем статистику кампаний из WB…");
+    setError(null);
+    try {
+      const params = cabinetId ? `?cabinet=${encodeURIComponent(cabinetId)}` : "";
+      const stats = await fetch(`/api/sync/advert-stats${params}`, { cache: "no-store" });
+      const body = await stats.json().catch(() => ({}));
+      if (!stats.ok) throw new Error(body.error || `Ошибка ${stats.status}`);
+      setSyncing("Обновляем журнал…");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось прогнать синхронизацию");
+    } finally {
+      setSyncing(null);
+    }
   };
 
   const dates = data?.dates ?? [];
@@ -297,6 +317,15 @@ export function WbRkJournalPage() {
             </div>
             <button
               type="button"
+              onClick={() => void runSync()}
+              disabled={!canWrite || syncing != null || loading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-900 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+              Прогнать РК
+            </button>
+            <button
+              type="button"
               onClick={exportCsv}
               disabled={!data || !visibleItems.length}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
@@ -322,6 +351,11 @@ export function WbRkJournalPage() {
         {data?.notes?.length ? (
           <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
             Часть данных не прочиталась, цифры ниже неполные: {data.notes.join("; ")}
+          </div>
+        ) : null}
+        {syncing ? (
+          <div className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+            {syncing} Прогон берёт очередной срез кампаний — на весь кабинет их несколько.
           </div>
         ) : null}
         {loading && !data ? <LoadingBanner seconds={elapsed} hint="Собираем журнал РК" /> : null}

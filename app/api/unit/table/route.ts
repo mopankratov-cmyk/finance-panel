@@ -239,7 +239,7 @@ export async function GET(req: NextRequest) {
   const isCron = isConfiguredCronBearer(
     req.headers.get("authorization"),
     process.env.CRON_SECRET,
-  ) && checkCronAuth(req) === null;
+  ) && (await checkCronAuth(req)) === null;
   let session = null;
   if (!isCron) {
     const gate = await requireApiSession(["director", "finance", "manager", "seller"]);

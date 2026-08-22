@@ -11,7 +11,7 @@ export const maxDuration = 60;
 const SCOPES: WbScope[] = ["statistics", "marketplace", "analytics", "advert", "content", "prices", "feedbacks"];
 
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
   const startedAt = new Date();
   const cabinets = await getActiveWbCabinets();

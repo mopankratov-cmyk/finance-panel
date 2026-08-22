@@ -39,7 +39,7 @@ interface OzonAdvertSyncState extends Record<string, unknown> {
 // поэтому почасовой cron берёт самый старый/отсутствующий кеш; ручной ?all=1
 // оставлен для окружений с увеличенным лимитом функции.
 export async function GET(request: NextRequest) {
-  const authError = checkCronAuth(request);
+  const authError = await checkCronAuth(request);
   if (authError) return authError;
 
   const startedAt = new Date();
