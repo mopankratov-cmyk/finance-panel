@@ -64,15 +64,24 @@ export function nmMatchesTags(tagIdsByNm: Map<number, string[]>, nm: number, act
   return Boolean(assigned && assigned.some((id) => activeIds.includes(id)));
 }
 
-export function WbTagFilterChips({ tags, activeIds, counts, onToggle, onClear }: {
+export function WbTagFilterChips({ tags, activeIds, counts, onToggle, onClear, showEmpty }: {
   tags: WbTagOption[];
   activeIds: string[];
   /** Сколько строк текущего экрана несут ярлык — чтобы пустые были видны сразу. */
   counts: Map<string, number>;
   onToggle: (tagId: string) => void;
   onClear: () => void;
+  /**
+   * Показывать ярлыки, которых нет ни на одной строке экрана. Нужно там, где
+   * ярлык вешают прямо в таблице: пока он не присвоен никому, панель без него
+   * не отрисовывалась вовсе — и фильтра будто не существовало.
+   */
+  showEmpty?: boolean;
 }) {
-  const visible = useMemo(() => tags.filter((tag) => (counts.get(tag.id) ?? 0) > 0 || activeIds.includes(tag.id)), [activeIds, counts, tags]);
+  const visible = useMemo(
+    () => showEmpty ? tags : tags.filter((tag) => (counts.get(tag.id) ?? 0) > 0 || activeIds.includes(tag.id)),
+    [activeIds, counts, showEmpty, tags],
+  );
   if (!visible.length) return null;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label="Фильтр по ярлыкам">
@@ -87,8 +96,11 @@ export function WbTagFilterChips({ tags, activeIds, counts, onToggle, onClear }:
             type="button"
             aria-pressed={active}
             onClick={() => onToggle(tag.id)}
+            title={(counts.get(tag.id) ?? 0) === 0 ? "На этом экране ярлык пока никому не присвоен" : undefined}
             className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-semibold transition ${
-              active ? "border-violet-400 bg-violet-50 text-violet-800" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+              active ? "border-violet-400 bg-violet-50 text-violet-800"
+                : (counts.get(tag.id) ?? 0) === 0 ? "border-dashed border-slate-200 bg-white text-slate-400 hover:border-slate-300"
+                  : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
             }`}
           >
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />

@@ -409,17 +409,25 @@ export function WbRkJournalPage() {
               ))}
             </div>
 
-            {tags.length ? (
-              <div className="mb-3">
+            {/* Ярлыки показываем даже пустыми: их вешают тут же, в строке
+                артикула, и панель, которая появляется только после первого
+                назначения, выглядит как отсутствующая функция. */}
+            <div className="mb-3">
+              {tags.length ? (
                 <WbTagFilterChips
                   tags={tags}
                   activeIds={activeTagIds}
                   counts={tagCounts}
+                  showEmpty
                   onToggle={(id) => setActiveTagIds((prev) => prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id])}
                   onClear={() => setActiveTagIds([])}
                 />
-              </div>
-            ) : null}
+              ) : hasExactCabinet ? (
+                <p className="text-[10px] text-slate-400">
+                  Ярлыков в кабинете нет — создайте их в РНП, а вешать на артикулы можно прямо здесь, кнопкой «+ ярлык».
+                </p>
+              ) : null}
+            </div>
 
             {visibleItems.length ? (
               <div className="max-h-[calc(100vh-320px)] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
