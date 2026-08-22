@@ -6,6 +6,7 @@ import { isWbAdvertRateLimit } from "@/lib/wb/advertRateLimit";
 import { allowsNm, isScoped } from "@/lib/wb/productScope";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
+import { allocateCampaignSpend } from "@/lib/wb/advertSpendAllocation";
 
 const FULLSTATS_URL = "https://advert-api.wildberries.ru/adv/v3/fullstats";
 // fullstats: до 50 кампаний за раз (WB 400 при >50).
@@ -55,16 +56,22 @@ interface CampaignNmRow {
   carts: number;
   orders: number;
   orders_sum: number;
+  spent_allocated: number;
   cabinet_id: string | null;
 }
 
 /** Фолбэк без слоя кампаний: прежний агрегат из строк текущего среза. */
 function aggregateNmDaily(rows: CampaignNmRow[], cabinetId: string | null) {
-  const byKey = new Map<string, Record<string, unknown> & { views: number; clicks: number; spent: number; carts: number; orders: number; orders_sum: number }>();
+  const byKey = new Map<string, Record<string, unknown> & { views: number; clicks: number; spent: number; carts: number; orders: number; orders_sum: number; spent_allocated: number }>();
   for (const row of rows) {
     const key = `${row.nm_id}|${row.date}`;
-    const agg = byKey.get(key) ?? { nm_id: row.nm_id, date: row.date, views: 0, clicks: 0, spent: 0, carts: 0, orders: 0, orders_sum: 0, cabinet_id: cabinetId, synced_at: new Date().toISOString() };
-    agg.views += row.views; agg.clicks += row.clicks; agg.spent += row.spent;
+    const agg = byKey.get(key) ?? { nm_id: row.nm_id, date: row.date, views: 0, clicks: 0, spent: 0, carts: 0, orders: 0, orders_sum: 0, spent_allocated: 0, cabinet_id: cabinetId, synced_at: new Date().toISOString() };
+    agg.views += row.views; agg.clicks += row.clicks;
+    // В витрине spent — полный расход, отнесённый на артикул: Воронка и РНП
+    // читают её напрямую и должны видеть те же деньги, что списал WB.
+    const allocated = row.spent_allocated ?? 0;
+    agg.spent += row.spent + allocated;
+    agg.spent_allocated += allocated;
     agg.carts += row.carts; agg.orders += row.orders; agg.orders_sum += row.orders_sum;
     byKey.set(key, agg);
   }
@@ -90,7 +97,7 @@ async function rebuildNmDailyFromCampaigns(
     const chunk = nmIds.slice(index, index + 200);
     let query = db
       .from("wb_advert_nm_campaign_daily")
-      .select("nm_id, date, views, clicks, spent, carts, orders, orders_sum, cabinet_id")
+      .select("nm_id, date, views, clicks, spent, spent_allocated, carts, orders, orders_sum, cabinet_id")
       .gte("date", from)
       .lte("date", to)
       .in("nm_id", chunk)
@@ -205,7 +212,12 @@ export async function GET(request: NextRequest) {
       // кампаний ТЕКУЩЕГО среза» перезаписывал полную сумму частичной, когда
       // артикул размазан по кампаниям из разных срезов — отсюда мигающие нули
       // при включённой РК.
-      const campaignDaily = new Map<string, { advert_id: number; nm_id: number; date: string; views: number; clicks: number; spent: number; carts: number; orders: number; orders_sum: number; cabinet_id: string | null }>();
+      const campaignDaily = new Map<string, { advert_id: number; nm_id: number; date: string; views: number; clicks: number; spent: number; carts: number; orders: number; orders_sum: number; spent_allocated: number; cabinet_id: string | null }>();
+      // Расход кампании за день по данным самого WB — против суммы, которую он
+      // разнёс по артикулам. Разницу раскладываем после обхода всех срезов.
+      // Для кабинета с ограниченным ассортиментом раскладку не делаем: расход
+      // кампании включает чужие товары, и остаток осел бы на наших.
+      const campaignTotals = new Map<string, { campaignSpent: number; keys: string[] }>();
 
       // Батчи кампаний: каждый почасовой прогон берёт следующий срез.
       const idBatches: number[][] = [];
@@ -260,6 +272,7 @@ export async function GET(request: NextRequest) {
             const date = day.date.slice(0, 10);
             let scopedViews = 0, scopedClicks = 0, scopedSpent = 0, scopedOrders = 0, scopedOrdersSum = 0;
             let hasAllowedNm = false;
+            const dayNmKeys: string[] = [];
 
             for (const app of day.apps ?? []) {
               for (const nm of app.nms ?? []) {
@@ -272,6 +285,7 @@ export async function GET(request: NextRequest) {
                 scopedOrders += nm.orders ?? 0;
                 scopedOrdersSum += nm.sum_price ?? 0;
                 const key = `${adv.advertId}|${nm.nmId}|${date}`;
+                if (!dayNmKeys.includes(key)) dayNmKeys.push(key);
                 const agg = campaignDaily.get(key) ?? {
                   advert_id: adv.advertId,
                   nm_id: nm.nmId,
@@ -282,6 +296,7 @@ export async function GET(request: NextRequest) {
                   carts: 0,
                   orders: 0,
                   orders_sum: 0,
+                  spent_allocated: 0,
                   cabinet_id: t.cabinetId,
                 };
                 agg.views += nm.views ?? 0;
@@ -295,6 +310,15 @@ export async function GET(request: NextRequest) {
             }
 
             if (isScoped(t.productScope) && !hasAllowedNm) continue;
+            if (!isScoped(t.productScope)) {
+              const totalKey = `${adv.advertId}|${date}`;
+              const totals = campaignTotals.get(totalKey) ?? { campaignSpent: 0, keys: [] };
+              // day.sum приходит один раз на день кампании, а ключи артикулов
+              // копятся по всем площадкам (apps) этого дня.
+              totals.campaignSpent = day.sum ?? 0;
+              for (const nmKey of dayNmKeys) if (!totals.keys.includes(nmKey)) totals.keys.push(nmKey);
+              campaignTotals.set(totalKey, totals);
+            }
             const views = isScoped(t.productScope) ? scopedViews : (day.views ?? 0);
             const clicks = isScoped(t.productScope) ? scopedClicks : (day.clicks ?? 0);
             const spent = isScoped(t.productScope) ? scopedSpent : (day.sum ?? 0);
@@ -338,6 +362,27 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
+      // Раскладка нераспределённого расхода — после обхода срезов, когда все
+      // артикулы каждой (кампании, дня) уже собраны.
+      let allocatedTotal = 0;
+      for (const [, totals] of campaignTotals) {
+        const rows = totals.keys.map((key) => campaignDaily.get(key)).filter((row) => row != null);
+        if (!rows.length) continue;
+        const shares = allocateCampaignSpend(
+          rows.map((row) => ({ spent: row.spent, views: row.views, clicks: row.clicks })),
+          totals.campaignSpent,
+        );
+        shares.forEach((share, index) => {
+          if (share > 0) {
+            rows[index].spent_allocated = share;
+            allocatedTotal += share;
+          }
+        });
+      }
+      if (allocatedTotal > 0) {
+        rotated.push(`${t.name}: разложено ${Math.round(allocatedTotal)} ₽ нераспределённого расхода`);
+      }
+
       const campaignRows = [...campaignDaily.values()].map((r) => ({ ...r, synced_at: new Date().toISOString() }));
 
       const e1 = await chunkedUpsert("wb_advert_stats", dayRows, "cabinet_id,advert_id,date");
@@ -349,12 +394,21 @@ export async function GET(request: NextRequest) {
         });
         continue;
       }
-      const e0 = await chunkedUpsert(
+      let e0 = await chunkedUpsert(
         "wb_advert_nm_campaign_daily",
         campaignRows,
         // Constraint unique nulls not distinct — см. миграцию слоя.
         "cabinet_id,advert_id,nm_id,date",
       );
+      if (e0 && /spent_allocated/i.test(e0)) {
+        // Окно совместимости, пока миграция раскладки не применена: пишем
+        // только измеренный расход, раскладка появится следующим прогоном.
+        e0 = await chunkedUpsert(
+          "wb_advert_nm_campaign_daily",
+          campaignRows.map(({ spent_allocated, ...row }) => row),
+          "cabinet_id,advert_id,nm_id,date",
+        );
+      }
       // Молча глушим ровно один случай — отсутствующую ТАБЛИЦУ слоя (миграция
       // ещё не применена). Прежняя проверка ловила любое «does not exist», и
       // частично применённая миграция (нет колонки, нет constraint) уходила в
@@ -378,7 +432,15 @@ export async function GET(request: NextRequest) {
           nmRows = aggregateNmDaily(campaignRows, t.cabinetId);
         }
       }
-      const e2 = await chunkedUpsert("wb_advert_nm_daily", nmRows, "cabinet_id,nm_id,date");
+      let e2 = await chunkedUpsert("wb_advert_nm_daily", nmRows, "cabinet_id,nm_id,date");
+      if (e2 && /spent_allocated/i.test(e2)) {
+        // spent при этом остаётся полным: раскладка уже вошла в него выше.
+        e2 = await chunkedUpsert(
+          "wb_advert_nm_daily",
+          nmRows.map(({ spent_allocated, ...row }) => row),
+          "cabinet_id,nm_id,date",
+        );
+      }
       if (e2) {
         errors.push(`${t.name}: ${e2}`);
         if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {

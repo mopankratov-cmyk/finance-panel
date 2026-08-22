@@ -93,3 +93,33 @@ test("числовые строки из Postgres не превращаются 
   assert.equal(items[0].days["2026-08-21"].spent, 1000);
   assert.equal(items[0].days["2026-08-21"].ordersSum, 2001);
 });
+
+test("разложенный расход входит в затраты строки и остаётся видимым отдельно", () => {
+  const items = buildRkJournalItems([], [
+    { cabinet_id: "cab-1", advert_id: 101, nm_id: 7, date: "2026-08-22", spent: 0, spent_allocated: 569.74, carts: 3, orders: 1, views: 700 },
+  ], [advert]);
+
+  const day = items[0].days["2026-08-22"];
+  // Раньше здесь был ноль при живых корзинах — WB не разнёс расход по nm.
+  assert.equal(day.spent, 569.74);
+  assert.equal(day.spentAllocated, 569.74);
+});
+
+test("измеренное и разложенное складываются, а не подменяют друг друга", () => {
+  const items = buildRkJournalItems([], [
+    { cabinet_id: "cab-1", advert_id: 101, nm_id: 7, date: "2026-08-22", spent: 400, spent_allocated: 100, carts: 2, orders: 1 },
+    { cabinet_id: "cab-1", advert_id: 102, nm_id: 7, date: "2026-08-22", spent: 50, spent_allocated: 0, carts: 1, orders: 0 },
+  ], [advert, { ...advert, advert_id: 102 }]);
+
+  const day = items[0].days["2026-08-22"];
+  assert.equal(day.spent, 550);
+  assert.equal(day.spentAllocated, 100);
+});
+
+test("строки без раскладки не получают лишних денег", () => {
+  const items = buildRkJournalItems([], [
+    { cabinet_id: "cab-1", advert_id: 101, nm_id: 7, date: "2026-08-22", spent: 300, carts: 2, orders: 1 },
+  ], [advert]);
+  assert.equal(items[0].days["2026-08-22"].spent, 300);
+  assert.equal(items[0].days["2026-08-22"].spentAllocated, 0);
+});

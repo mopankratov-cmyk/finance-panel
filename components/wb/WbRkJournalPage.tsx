@@ -23,6 +23,7 @@ interface DayCell {
   views: number;
   clicks: number;
   spent: number;
+  spentAllocated: number;
   carts: number;
   orders: number;
   ordersSum: number;
@@ -172,11 +173,12 @@ export function WbRkJournalPage() {
   // Сводка по видам размещения: числитель и знаменатель складываются отдельно,
   // среднее из процентов по строкам дало бы неверный CPO/CPL.
   const blockSummary = useMemo(() => {
-    const acc = new Map<string, { spent: number; carts: number; orders: number; clicks: number; views: number; ordersSum: number; skus: Set<number> }>();
+    const acc = new Map<string, { spent: number; allocated: number; carts: number; orders: number; clicks: number; views: number; ordersSum: number; skus: Set<number> }>();
     for (const item of visibleItems) {
-      const agg = acc.get(item.block) ?? { spent: 0, carts: 0, orders: 0, clicks: 0, views: 0, ordersSum: 0, skus: new Set<number>() };
+      const agg = acc.get(item.block) ?? { spent: 0, allocated: 0, carts: 0, orders: 0, clicks: 0, views: 0, ordersSum: 0, skus: new Set<number>() };
       for (const cell of Object.values(item.days)) {
         agg.spent += cell.spent;
+        agg.allocated += cell.spentAllocated ?? 0;
         agg.carts += cell.carts;
         agg.orders += cell.orders;
         agg.clicks += cell.clicks;
@@ -195,6 +197,7 @@ export function WbRkJournalPage() {
           block,
           label: block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[block as WbRkBlock],
           spent: agg.spent,
+          allocated: agg.allocated,
           carts: agg.carts,
           orders: agg.orders,
           skus: agg.skus.size,
@@ -349,6 +352,14 @@ export function WbRkJournalPage() {
                     <div className="flex justify-between gap-2"><dt>ДРР</dt><dd className="tabular-nums">{summary.drr == null ? "—" : `${summary.drr.toFixed(1)}%`}</dd></div>
                     <div className="flex justify-between gap-2"><dt>Корзин / заказов</dt><dd className="tabular-nums">{count(summary.carts)} / {count(summary.orders)}</dd></div>
                     <div className="flex justify-between gap-2"><dt>Артикулов</dt><dd className="tabular-nums">{count(summary.skus)}</dd></div>
+                    {summary.allocated > 0 ? (
+                      // WB отдаёт часть расхода только суммой по кампании: эта
+                      // доля разложена по артикулам пропорционально показам.
+                      <div className="flex justify-between gap-2 text-slate-400">
+                        <dt>из них разложено</dt>
+                        <dd className="tabular-nums">{money(summary.allocated)} ₽</dd>
+                      </div>
+                    ) : null}
                   </dl>
                 </button>
               ))}

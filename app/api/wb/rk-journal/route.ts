@@ -29,6 +29,7 @@ interface JournalRow {
   views: number | null;
   clicks: number | null;
   spent: number | string | null;
+  spent_allocated?: number | string | null;
   carts: number | null;
   orders: number | null;
   orders_sum: number | string | null;
@@ -42,6 +43,7 @@ interface CampaignDayRow {
   views: number | null;
   clicks: number | null;
   spent: number | string | null;
+  spent_allocated?: number | string | null;
   carts: number | null;
   orders: number | null;
   orders_sum: number | string | null;
@@ -120,7 +122,7 @@ export async function GET(request: NextRequest) {
     (start, end) => {
       const q = db
         .from("wb_rk_journal_daily")
-        .select("cabinet_id, date, nm_id, block, bid, views, clicks, spent, carts, orders, orders_sum")
+        .select("cabinet_id, date, nm_id, block, bid, views, clicks, spent, spent_allocated, carts, orders, orders_sum")
         .gte("date", from)
         .lte("date", to);
       return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("date", { ascending: true }).range(start, end);
@@ -138,7 +140,7 @@ export async function GET(request: NextRequest) {
       (start, end) => {
         const q = db
           .from("wb_advert_nm_campaign_daily")
-          .select("cabinet_id, advert_id, nm_id, date, views, clicks, spent, carts, orders, orders_sum")
+          .select("cabinet_id, advert_id, nm_id, date, views, clicks, spent, spent_allocated, carts, orders, orders_sum")
           .in("date", liveDates);
         return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("date", { ascending: true }).range(start, end);
       },

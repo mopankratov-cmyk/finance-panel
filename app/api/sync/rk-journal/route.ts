@@ -21,6 +21,7 @@ interface CampaignDayRow {
   views: number | null;
   clicks: number | null;
   spent: number | string | null;
+  spent_allocated: number | string | null;
   carts: number | null;
   orders: number | null;
   orders_sum: number | string | null;
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
   try {
     const stats = await loadAllSupabasePages<CampaignDayRow>(
       (start, end) => db.from("wb_advert_nm_campaign_daily")
-        .select("cabinet_id, advert_id, nm_id, views, clicks, spent, carts, orders, orders_sum")
+        .select("cabinet_id, advert_id, nm_id, views, clicks, spent, spent_allocated, carts, orders, orders_sum")
         .eq("date", date)
         .order("advert_id", { ascending: true })
         .range(start, end),
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
     interface Agg {
       cabinet_id: string | null; nm_id: number; block: string;
       views: number; clicks: number; spent: number; carts: number; orders: number; orders_sum: number;
+      spentAllocated: number;
       campaigns: number; bidWeighted: number; bidWeight: number; bidPlain: number; bidPlainCount: number;
     }
     const byKey = new Map<string, Agg>();
@@ -102,14 +104,19 @@ export async function GET(request: NextRequest) {
       const key = `${row.cabinet_id ?? ""}|${row.nm_id}|${blockKey}`;
       const agg = byKey.get(key) ?? {
         cabinet_id: row.cabinet_id, nm_id: row.nm_id, block: blockKey,
-        views: 0, clicks: 0, spent: 0, carts: 0, orders: 0, orders_sum: 0,
+        views: 0, clicks: 0, spent: 0, spentAllocated: 0, carts: 0, orders: 0, orders_sum: 0,
         campaigns: 0, bidWeighted: 0, bidWeight: 0, bidPlain: 0, bidPlainCount: 0,
       };
 
-      const spent = num(row.spent);
+      // Полный расход, отнесённый на артикул: измеренный WB плюс разложенный
+      // остаток кампании. Разложенное дублируем отдельно — снимок должен
+      // помнить, сколько в нём восстановлено.
+      const allocated = num(row.spent_allocated);
+      const spent = num(row.spent) + allocated;
       agg.views += num(row.views);
       agg.clicks += num(row.clicks);
       agg.spent += spent;
+      agg.spentAllocated += allocated;
       agg.carts += num(row.carts);
       agg.orders += num(row.orders);
       agg.orders_sum += num(row.orders_sum);
@@ -148,6 +155,7 @@ export async function GET(request: NextRequest) {
       views: agg.views,
       clicks: agg.clicks,
       spent: Math.round(agg.spent * 100) / 100,
+      spent_allocated: Math.round(agg.spentAllocated * 100) / 100,
       carts: agg.carts,
       orders: agg.orders,
       orders_sum: Math.round(agg.orders_sum * 100) / 100,
@@ -155,7 +163,16 @@ export async function GET(request: NextRequest) {
       captured_at: new Date().toISOString(),
     }));
 
-    const upsertError = await chunkedUpsert("wb_rk_journal_daily", rows, "cabinet_id,date,nm_id,block");
+    let upsertError = await chunkedUpsert("wb_rk_journal_daily", rows, "cabinet_id,date,nm_id,block");
+    if (upsertError && /spent_allocated/i.test(upsertError)) {
+      // Окно совместимости, пока миграция раскладки не применена: spent уже
+      // полный, теряется только пометка о доле восстановленного.
+      upsertError = await chunkedUpsert(
+        "wb_rk_journal_daily",
+        rows.map(({ spent_allocated, ...row }) => row),
+        "cabinet_id,date,nm_id,block",
+      );
+    }
     if (upsertError) {
       await writeSyncLog("rk-journal", "error", null, upsertError, startedAt);
       return NextResponse.json({ error: upsertError }, { status: 500 });

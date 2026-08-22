@@ -15,6 +15,7 @@ export interface RkSnapshotRow {
   views?: number | null;
   clicks?: number | null;
   spent?: number | string | null;
+  spent_allocated?: number | string | null;
   carts?: number | null;
   orders?: number | null;
   orders_sum?: number | string | null;
@@ -28,6 +29,8 @@ export interface RkCampaignDayRow {
   views?: number | null;
   clicks?: number | null;
   spent?: number | string | null;
+  /** Доля расхода кампании, которую WB не разнёс по артикулам. */
+  spent_allocated?: number | string | null;
   carts?: number | null;
   orders?: number | null;
   orders_sum?: number | string | null;
@@ -47,7 +50,10 @@ export interface RkCell {
   bid: number | null;
   views: number;
   clicks: number;
+  /** Полный расход, отнесённый на артикул: измеренное WB плюс разложенное. */
   spent: number;
+  /** Сколько из spent восстановлено раскладкой, а не измерено. */
+  spentAllocated: number;
   carts: number;
   orders: number;
   ordersSum: number;
@@ -95,7 +101,7 @@ export function buildRkJournalItems(
     const row = rows.get(rowKey) ?? { nm, block, cells: new Map<string, RkCell>() };
     rows.set(rowKey, row);
     const cell = row.cells.get(date)
-      ?? { bid: null, views: 0, clicks: 0, spent: 0, carts: 0, orders: 0, ordersSum: 0, snapshot };
+      ?? { bid: null, views: 0, clicks: 0, spent: 0, spentAllocated: 0, carts: 0, orders: 0, ordersSum: 0, snapshot };
     row.cells.set(date, cell);
     return cell;
   };
@@ -105,7 +111,8 @@ export function buildRkJournalItems(
     cell.bid = row.bid == null ? cell.bid : rkNum(row.bid);
     cell.views += rkNum(row.views);
     cell.clicks += rkNum(row.clicks);
-    cell.spent += rkNum(row.spent);
+    cell.spent += rkNum(row.spent) + rkNum(row.spent_allocated);
+    cell.spentAllocated += rkNum(row.spent_allocated);
     cell.carts += rkNum(row.carts);
     cell.orders += rkNum(row.orders);
     cell.ordersSum += rkNum(row.orders_sum);
@@ -117,7 +124,9 @@ export function buildRkJournalItems(
     const cell = cellOf(row.nm_id, block ?? WB_RK_BLOCK_UNKNOWN, row.date, false);
     cell.views += rkNum(row.views);
     cell.clicks += rkNum(row.clicks);
-    cell.spent += rkNum(row.spent);
+    // Слой хранит факт WB и разложенное отдельно; журналу нужен полный расход.
+    cell.spent += rkNum(row.spent) + rkNum(row.spent_allocated);
+    cell.spentAllocated += rkNum(row.spent_allocated);
     cell.carts += rkNum(row.carts);
     cell.orders += rkNum(row.orders);
     cell.ordersSum += rkNum(row.orders_sum);
@@ -137,6 +146,7 @@ export function buildRkJournalItems(
     days: Object.fromEntries([...row.cells.entries()].map(([date, cell]) => [date, {
       ...cell,
       spent: Math.round(cell.spent * 100) / 100,
+      spentAllocated: Math.round(cell.spentAllocated * 100) / 100,
       ordersSum: Math.round(cell.ordersSum * 100) / 100,
     }])),
   }));
