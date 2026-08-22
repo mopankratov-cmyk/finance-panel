@@ -13,6 +13,7 @@ import {
   type WbRkBlock,
 } from "@/lib/wb/advertBlocks";
 import { costPerCart, costPerOrder, cplTone, cpoTone, WB_RK_TONE_CLASS } from "@/lib/wb/rkThresholds";
+import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
@@ -399,30 +400,35 @@ export function WbRkJournalPage() {
             ) : null}
 
             {visibleItems.length ? (
-              <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
+              <div className="max-h-[calc(100vh-320px)] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                 <table className="min-w-full border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500">
-                      <th className="sticky left-0 z-10 bg-slate-50 px-2 py-1.5 text-left font-medium">Артикул</th>
-                      <th className="px-2 py-1.5 text-left font-medium">Кампании</th>
+                  {/* Шапка липнет к верху контейнера, первая колонка — к левому
+                      краю: на 30 днях таблица уезжает в обе стороны, и без
+                      этого не понять, какой день и чей артикул перед глазами. */}
+                  <thead className="sticky top-0 z-30">
+                    <tr className="bg-slate-50 text-slate-500 shadow-[0_1px_0_rgba(226,232,240,1)]">
+                      <th className="sticky left-0 z-40 bg-slate-50 px-3 py-2 text-left font-semibold">Артикул</th>
+                      <th className="bg-slate-50 px-2 py-2 text-left font-medium">Кампании</th>
                       {dates.map((date) => (
-                        <th key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-semibold text-slate-700">
+                        <th key={date} colSpan={6} className="border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-700">
                           {dayLabel(date)}
-                          {data.snapshotDates.includes(date) ? null : <span className="ml-1 font-normal text-slate-400">live</span>}
+                          {data.snapshotDates.includes(date)
+                            ? <span className="ml-1 font-normal text-emerald-600" title="День снят в 06:00 МСК: ставка зафиксирована">снят</span>
+                            : <span className="ml-1 font-normal text-slate-400" title="День ещё не снят: считается на лету">live</span>}
                         </th>
                       ))}
                     </tr>
-                    <tr className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
-                      <th className="sticky left-0 z-10 bg-slate-50 px-2 pb-1.5" />
-                      <th className="px-2 pb-1.5" />
+                    <tr className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400 shadow-[0_1px_0_rgba(226,232,240,1)]">
+                      <th className="sticky left-0 z-40 bg-slate-50 px-3 pb-2" />
+                      <th className="bg-slate-50 px-2 pb-2" />
                       {dates.map((date) => (
                         <Fragment key={date}>
-                          <th className="border-l border-slate-200 px-2 pb-1.5 text-right font-normal">Ставка</th>
-                          <th className="px-2 pb-1.5 text-right font-normal">Корзин</th>
-                          <th className="px-2 pb-1.5 text-right font-normal">Заказов</th>
-                          <th className="px-2 pb-1.5 text-right font-normal">Затраты</th>
-                          <th className="px-2 pb-1.5 text-right font-normal">CPO</th>
-                          <th className="px-2 pb-1.5 text-right font-normal">CPL</th>
+                          <th className="border-l border-slate-200 bg-slate-50 px-2 pb-2 text-right font-normal">Ставка</th>
+                          <th className="bg-slate-50 px-2 pb-2 text-right font-normal">Корзин</th>
+                          <th className="bg-slate-50 px-2 pb-2 text-right font-normal">Заказов</th>
+                          <th className="bg-slate-50 px-2 pb-2 text-right font-normal">Затраты</th>
+                          <th className="bg-slate-50 px-2 pb-2 text-right font-normal">CPO</th>
+                          <th className="bg-slate-50 px-2 pb-2 text-right font-normal">CPL</th>
                         </Fragment>
                       ))}
                     </tr>
@@ -437,19 +443,26 @@ export function WbRkJournalPage() {
                       return (
                         <Fragment key={item.nm}>
                           <tr
-                            className="cursor-pointer bg-white font-medium hover:bg-slate-50/60"
+                            className={`group/row cursor-pointer font-medium transition-colors ${open ? "bg-violet-50/50" : "bg-white hover:bg-violet-50/25"}`}
                             onClick={() => setOpenNms((prev) => {
                               const next = new Set(prev);
                               if (next.has(item.nm)) next.delete(item.nm); else next.add(item.nm);
                               return next;
                             })}
                           >
-                            <td className="sticky left-0 z-10 bg-white px-2 py-1.5">
-                              <div className="flex items-start gap-1.5">
-                                <ChevronRight className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
+                            <td className={`sticky left-0 z-20 px-3 py-2 ${open ? "bg-violet-50/50" : "bg-white group-hover/row:bg-violet-50/25"}`}>
+                              <div className="flex items-center gap-2.5">
+                                <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={wbCardImageUrl(item.nm)}
+                                  alt=""
+                                  loading="lazy"
+                                  className="h-11 w-9 shrink-0 rounded-md bg-slate-100 object-cover ring-1 ring-slate-200/60"
+                                />
                                 <div className="min-w-0">
-                                  <div className="tabular-nums text-slate-800">{item.nm}</div>
-                                  {name ? <div className="max-w-[220px] truncate text-[11px] font-normal text-slate-500">{name}</div> : null}
+                                  <div className="text-[13px] font-bold tabular-nums tracking-[-0.01em] text-slate-800">{item.nm}</div>
+                                  {name ? <div className="max-w-[210px] truncate text-[11px] font-normal text-slate-400">{name}</div> : null}
                                 </div>
                               </div>
                             </td>
@@ -481,8 +494,8 @@ export function WbRkJournalPage() {
                             })}
                           </tr>
                           {open ? shown.map((campaign) => (
-                            <tr key={`${item.nm}-${campaign.advertId ?? campaign.block}`} className="bg-slate-50/40 text-slate-600">
-                              <td className="sticky left-0 z-10 bg-slate-50/40 py-1 pl-7 pr-2">
+                            <tr key={`${item.nm}-${campaign.advertId ?? campaign.block}`} className="bg-slate-50/60 text-slate-600 transition-colors hover:bg-violet-50/30">
+                              <td className="sticky left-0 z-20 bg-slate-50/60 py-1.5 pl-[68px] pr-3">
                                 <div className={`max-w-[240px] truncate text-[11px] ${campaign.block === WB_RK_BLOCK_ATTRIBUTED ? "italic text-slate-400" : ""}`} title={campaign.name ?? undefined}>
                                   {campaign.block === WB_RK_BLOCK_ATTRIBUTED
                                     ? WB_RK_BLOCK_ATTRIBUTED_LABEL
@@ -528,23 +541,23 @@ export function WbRkJournalPage() {
                       );
                     })}
                   </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-50 font-semibold text-slate-800">
-                      <td className="sticky left-0 z-10 bg-slate-50 px-2 py-1.5">Итого</td>
-                      <td className="px-2 py-1.5 font-normal text-slate-500">{visibleItems.length} артикулов</td>
+                  <tfoot className="sticky bottom-0 z-30">
+                    <tr className="bg-slate-100 font-semibold text-slate-800 shadow-[0_-1px_0_rgba(226,232,240,1)]">
+                      <td className="sticky left-0 z-40 bg-slate-100 px-3 py-2">Итого</td>
+                      <td className="bg-slate-100 px-2 py-2 font-normal text-slate-500">{visibleItems.length} артикулов</td>
                       {dates.map((date) => {
                         const total = dayTotals.get(date);
                         if (!total || (!total.spent && !total.carts && !total.orders)) {
-                          return <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">—</td>;
+                          return <td key={date} colSpan={6} className="border-l border-slate-200 bg-slate-100 px-2 py-2 text-center font-normal text-slate-300">—</td>;
                         }
                         const cpo = costPerOrder(total.spent, total.orders);
                         const cpl = costPerCart(total.spent, total.carts);
                         return (
                           <Fragment key={date}>
-                            <td className="border-l border-slate-200 px-2 py-1.5" />
-                            <td className="px-2 py-1.5 text-right tabular-nums">{count(total.carts)}</td>
-                            <td className="px-2 py-1.5 text-right tabular-nums">{count(total.orders)}</td>
-                            <td className="px-2 py-1.5 text-right tabular-nums">{money(total.spent)}</td>
+                            <td className="border-l border-slate-200 bg-slate-100 px-2 py-2" />
+                            <td className="bg-slate-100 px-2 py-2 text-right tabular-nums">{count(total.carts)}</td>
+                            <td className="bg-slate-100 px-2 py-2 text-right tabular-nums">{count(total.orders)}</td>
+                            <td className="bg-slate-100 px-2 py-2 text-right tabular-nums">{money(total.spent)}</td>
                             <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
                             <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
                           </Fragment>
