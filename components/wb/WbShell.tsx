@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  ClipboardList,
   CalendarRange,
   Calculator,
   ChartNoAxesCombined,
@@ -51,6 +52,7 @@ const ITEM_ICONS: Record<string, IconComponent> = {
   "/wb/seo": Search,
   "/wb/sklejki": Link2,
   "/wb/adverts": Megaphone,
+  "/wb/rk": ClipboardList,
   "/wb/ctr": FlaskConical,
   "/wb/shelf": Rows3,
   "/wb/market": ChartNoAxesCombined,

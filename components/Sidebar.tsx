@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  ClipboardList,
   Bot,
   Building2,
   Calendar,
@@ -61,6 +62,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/wb/adverts", label: "Реклама WB", icon: Megaphone },
       { href: "/wb/rnp", label: "РНП по SKU", icon: Table2 },
+      { href: "/wb/rk", label: "Журнал РК", icon: ClipboardList },
       { href: "/wb/seo", label: "SEO / Воронка", icon: Search },
       { href: "/wb/sklejki", label: "Склейки", icon: Layers },
       { href: "/wb/reviews", label: "Отзывы", icon: MessageSquare },

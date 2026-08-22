@@ -10,6 +10,7 @@ export const WB_NAVIGATION_ITEMS: WbNavigationItem[] = [
   { label: "План продаж", href: "/wb/planning" },
   { label: "Воронка / Репрайсер", href: "/wb/funnel" },
   { label: "Реклама", href: "/wb/adverts" },
+  { label: "Журнал РК", href: "/wb/rk" },
   { label: "Поставки", href: "/wb/supplies" },
   { label: "Юнит-экономика", href: "/wb/unit" },
   { label: "Товары", href: "/wb/product" },

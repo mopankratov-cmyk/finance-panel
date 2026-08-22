@@ -56,8 +56,20 @@ export async function GET(request: NextRequest) {
             ),
           ];
           const nmIds = allNmIds.filter((nm) => allowsNm(t.productScope, nm));
-          // Этот метод отдаёт ставку CPM, а не дневной бюджет.
-          const bid = a.nm_settings?.[0]?.bids_kopecks?.search;
+          // Этот метод отдаёт ставку, а не дневной бюджет. Ставок две — в поиске
+          // и на полках; журнал РК раскладывает кампании по видам размещения
+          // именно по тому, какая из них живая, поэтому берём обе. Первая
+          // карточка не показательна: у неё ставка бывает нулевой, когда у
+          // остальных она задана, — ищем первое ненулевое значение.
+          const firstBid = (pick: (s: NmSetting) => number | undefined) => {
+            for (const setting of a.nm_settings ?? []) {
+              const value = pick(setting);
+              if (value != null && value > 0) return value / 100;
+            }
+            return null;
+          };
+          const bidSearch = firstBid((s) => s.bids_kopecks?.search);
+          const bidShelf = firstBid((s) => s.bids_kopecks?.recommendations);
           return {
             advert_id: a.id as number,
             name: a.settings?.name ?? null,
@@ -65,7 +77,12 @@ export async function GET(request: NextRequest) {
             // Сырой тип ставки WB — без него рекламу не разложить по видам кампаний.
             bid_type: (a.bid_type as string | null) ?? null,
             status: a.status ?? null,
-            bid_cpm_rub: bid != null ? bid / 100 : null,
+            bid_cpm_rub: bidSearch ?? bidShelf,
+            bid_search_rub: bidSearch,
+            bid_shelf_rub: bidShelf,
+            // Сырая карточка: поля WB под виды размещения меняются, и без
+            // исходника разметку пришлось бы угадывать по именам кампаний.
+            raw: a as unknown as Record<string, unknown>,
             nm_ids: nmIds.length ? nmIds : null,
             cabinet_id: t.cabinetId,
             synced_at: new Date().toISOString(),
@@ -77,9 +94,16 @@ export async function GET(request: NextRequest) {
 
       let upsertError = await chunkedUpsert("wb_adverts", rows, "cabinet_id,advert_id");
       let fallbackRows: Record<string, unknown>[] = rows;
+      if (upsertError && /bid_search_rub|bid_shelf_rub|raw|schema cache|column/i.test(upsertError)) {
+        // Окно совместимости, пока миграция журнала РК не применена.
+        fallbackRows = rows.map(({ bid_search_rub, bid_shelf_rub, raw, ...row }) => ({ ...row }));
+        upsertError = await chunkedUpsert("wb_adverts", fallbackRows, "cabinet_id,advert_id");
+      }
       if (upsertError && /bid_type|schema cache|column/i.test(upsertError)) {
         // Миграция bid_type могла ещё не примениться — пишем без неё.
-        fallbackRows = rows.map(({ bid_type, ...row }) => ({ ...row }));
+        // От fallbackRows, а не от rows: иначе шаг вернул бы обратно колонки,
+        // отброшенные предыдущим фолбэком.
+        fallbackRows = fallbackRows.map(({ bid_type, ...row }) => ({ ...row }));
         upsertError = await chunkedUpsert("wb_adverts", fallbackRows, "cabinet_id,advert_id");
       }
       if (upsertError && /bid_cpm_rub|schema cache|column/i.test(upsertError)) {
