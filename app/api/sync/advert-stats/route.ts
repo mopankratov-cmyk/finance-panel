@@ -355,14 +355,20 @@ export async function GET(request: NextRequest) {
         // Constraint unique nulls not distinct — см. миграцию слоя.
         "cabinet_id,advert_id,nm_id,date",
       );
-      if (e0 && !/does not exist|42P01/i.test(e0)) {
-        errors.push(`${t.name}: ${e0}`);
+      // Молча глушим ровно один случай — отсутствующую ТАБЛИЦУ слоя (миграция
+      // ещё не применена). Прежняя проверка ловила любое «does not exist», и
+      // частично применённая миграция (нет колонки, нет constraint) уходила в
+      // тишину: синк рапортовал ok, а слой оставался пустым.
+      const layerMissing = /42P01|relation .*wb_advert_nm_campaign_daily.* does not exist|Could not find the table/i.test(e0 ?? "");
+      if (e0 && !layerMissing) {
+        errors.push(`${t.name}: слой кампаний: ${e0}`);
       }
       // Витрина по артикулу пересобирается из ВСЕХ кампаний затронутых
       // (nm, день) — а не из кампаний одного среза. Пока миграция слоя не
       // применена, живёт прежний (мигающий) агрегат — честная деградация.
       let nmRows: ReturnType<typeof aggregateNmDaily>;
       if (e0) {
+        // Слой не записался — витрина собирается прежним (мигающим) агрегатом.
         nmRows = aggregateNmDaily(campaignRows, t.cabinetId);
       } else {
         try {

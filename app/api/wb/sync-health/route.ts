@@ -155,6 +155,36 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ cabinetId, total: rows.length, byDayUtc: byDay, byDayMsk });
   }
 
+  // ?campaign_layer=1 — жив ли слой wb_advert_nm_campaign_daily: сколько строк,
+  // за какие даты и что отвечает пробный upsert. Синк рапортует ok даже когда
+  // слой не пишется (витрина собирается фолбэком), и без зонда «пусто» не
+  // отличить от «не применена миграция» и «нет constraint под on_conflict».
+  if (sp.get("campaign_layer") === "1") {
+    const probe = await db
+      .from("wb_advert_nm_campaign_daily")
+      .select("date", { count: "exact" })
+      .order("date", { ascending: false })
+      .limit(1);
+    const oldest = await db
+      .from("wb_advert_nm_campaign_daily")
+      .select("date")
+      .order("date", { ascending: true })
+      .limit(1);
+    const dryRun = await db
+      .from("wb_advert_nm_campaign_daily")
+      .upsert([{ cabinet_id: null, advert_id: -1, nm_id: -1, date: "1970-01-01", views: 0, clicks: 0, spent: 0, carts: 0, orders: 0, orders_sum: 0 }], { onConflict: "cabinet_id,advert_id,nm_id,date" });
+    if (!dryRun.error) {
+      await db.from("wb_advert_nm_campaign_daily").delete().eq("advert_id", -1).eq("nm_id", -1);
+    }
+    return NextResponse.json({
+      rows: probe.count ?? null,
+      newestDate: probe.data?.[0]?.date ?? null,
+      oldestDate: oldest.data?.[0]?.date ?? null,
+      selectError: probe.error?.message ?? null,
+      upsertError: dryRun.error?.message ?? null,
+    });
+  }
+
   if (sp.get("advert_types") === "1") {
     const cabinetId = sp.get("cabinet");
     if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
