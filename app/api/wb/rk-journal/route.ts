@@ -71,6 +71,11 @@ function missingAllocatedColumn(err: unknown): boolean {
   return /spent_allocated/i.test(err instanceof Error ? err.message : String(err));
 }
 
+/** То же для колонок снимка, которые приходят отдельными миграциями. */
+function missingSnapshotColumn(err: unknown): boolean {
+  return /spent_allocated|advert_id/i.test(err instanceof Error ? err.message : String(err));
+}
+
 function dayList(from: string, to: string): string[] {
   const days: string[] = [];
   const cursor = new Date(`${from}T00:00:00Z`);
@@ -129,7 +134,7 @@ export async function GET(request: NextRequest) {
   // Снимки закрытых дней.
   // Колонка раскладки появляется отдельной миграцией. Пока её нет, читаем без
   // неё: журнал должен показывать измеренный расход, а не пустоту.
-  const snapshotColumns = "cabinet_id, date, nm_id, advert_id, block, bid, views, clicks, spent, carts, orders, orders_sum";
+  const snapshotColumns = "cabinet_id, date, nm_id, block, bid, views, clicks, spent, carts, orders, orders_sum";
   const loadSnapshots = (columns: string) => loadAllSupabasePages<JournalRow>(
     (start, end) => {
       const q = db
@@ -143,8 +148,15 @@ export async function GET(request: NextRequest) {
     },
     { maxPages: 60, label: "Журнал РК: снимки", concurrency: 4 },
   );
-  const snapshots = await loadSnapshots(`${snapshotColumns}, spent_allocated`)
-    .catch((err) => missingAllocatedColumn(err) ? loadSnapshots(snapshotColumns) : Promise.reject(err))
+  // Колонки прибывают отдельными миграциями: сначала пробуем полный набор,
+  // затем отбрасываем недостающую. Без снимка по кампаниям день просто
+  // соберётся из слоя как живой — это лучше красной плашки на весь экран.
+  const snapshots = await loadSnapshots(`${snapshotColumns}, advert_id, spent_allocated`)
+    .catch((err) => missingSnapshotColumn(err)
+      ? loadSnapshots(`${snapshotColumns}, spent_allocated`).catch((second) => missingSnapshotColumn(second)
+        ? loadSnapshots(snapshotColumns)
+        : Promise.reject(second))
+      : Promise.reject(err))
     .catch(noteOn("снимки")) as JournalRow[];
 
   const snapshotDates = new Set(snapshots.map((row) => row.date));
