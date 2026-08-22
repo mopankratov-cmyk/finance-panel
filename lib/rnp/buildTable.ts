@@ -2278,6 +2278,7 @@ export async function buildRnpTable(
         adverts: item.advertsCutoff,
       },
     ));
+    timings.stage_daily_rows = Date.now() - buildStartedAt;
     const totals = scopeData.flatMap((item) => item.totals);
     const adRows = scopeData.flatMap((item) => item.adRows.filter((row) => !item.advertsCutoff || String(row.date).slice(0, 10) <= item.advertsCutoff));
     const funnelRows = scopeData.flatMap((item) => item.funnelRows.filter((row) => !item.funnelCutoff || String(row.date).slice(0, 10) <= item.funnelCutoff));
@@ -2549,6 +2550,7 @@ export async function buildRnpTable(
       for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }
       return any ? Math.round(acc) : null;
     });
+    timings.stage_skus_built = Date.now() - buildStartedAt;
     const grossDaily = sumDaily("gross");
     const costedSkus = skus.filter((sku) => sku.metrics.some((metric) => metric.field === "gross" && metric.total != null));
     const costedSkuCount = costedSkus.length;
@@ -2675,7 +2677,7 @@ export async function buildRnpTable(
       shop_label: shopLabel || "Все кабинеты",
       sku_count: skus.length,
       ...(pimCold ? { pim_cold: true } : {}),
-      timings,
+      timings: { ...timings, stage_total: Date.now() - buildStartedAt },
       generated_at: new Date().toISOString(),
       as_of: asOf,
       scope_freshness: scopeData.map((item) => ({
