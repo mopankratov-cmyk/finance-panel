@@ -21,15 +21,19 @@ function tone(value: number | null, limits: { green: number; amber: number }): W
 export const cpoTone = (value: number | null) => tone(value, WB_RK_CPO_LIMITS);
 export const cplTone = (value: number | null) => tone(value, WB_RK_CPL_LIMITS);
 
-/** Стоимость заказа. null — заказов не было, делить не на что. */
+/**
+ * Стоимость заказа. null — считать не из чего: либо заказов не было, либо
+ * расхода не было. Нулевой расход давал бы CPO 0,00 в зелёной заливке, то
+ * есть «идеальная эффективность» там, где рекламы фактически не крутилось.
+ */
 export function costPerOrder(spent: number | null, orders: number | null): number | null {
-  if (!orders || spent == null) return null;
+  if (!orders || !spent) return null;
   return spent / orders;
 }
 
-/** Стоимость корзины. null — корзин не было. */
+/** Стоимость корзины. null — не было корзин либо не было расхода. */
 export function costPerCart(spent: number | null, carts: number | null): number | null {
-  if (!carts || spent == null) return null;
+  if (!carts || !spent) return null;
   return spent / carts;
 }
 

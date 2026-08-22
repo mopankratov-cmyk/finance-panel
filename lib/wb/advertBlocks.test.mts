@@ -46,6 +46,14 @@ test("пороги владельца: 300/400 по CPO и 60/80 по CPL, гр�
   assert.equal(cplTone(100.25), "red");
 });
 
+test("день без расхода не выдаёт себя за идеальную эффективность", () => {
+  // Показы были, расход нулевой: CPO 0,00 в зелёной заливке читался бы как
+  // «заказы даром», хотя рекламы фактически не крутилось.
+  assert.equal(costPerOrder(0, 1), null);
+  assert.equal(costPerCart(0, 2), null);
+  assert.equal(cpoTone(costPerOrder(0, 1)), null);
+});
+
 test("расход без результата не красится зелёным, а честно молчит", () => {
   assert.equal(costPerOrder(2100, 0), null);
   assert.equal(costPerCart(644, 0), null);
