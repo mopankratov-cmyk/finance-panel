@@ -47,6 +47,7 @@ interface UnmarkedCampaign {
 }
 
 interface JournalData {
+  notes?: string[];
   from: string;
   to: string;
   dates: string[];
@@ -241,6 +242,11 @@ export function WbRkJournalPage() {
 
       <div className="min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-6">
         {error ? <WbErrorState message={error} onRetry={() => void load()} /> : null}
+        {data?.notes?.length ? (
+          <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+            Часть данных не прочиталась, цифры ниже неполные: {data.notes.join("; ")}
+          </div>
+        ) : null}
         {loading && !data ? <LoadingBanner seconds={elapsed} hint="Собираем журнал РК" /> : null}
 
         {data ? (

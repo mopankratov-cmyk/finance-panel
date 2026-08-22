@@ -110,6 +110,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
 
+  // Сбои источников не превращаем в тихие нули: экран должен сказать, что
+  // именно не прочиталось, иначе «журнал пустой» и «журнал сломан» выглядят
+  // одинаково.
+  const notes: string[] = [];
+  const noteOn = (label: string) => (err: unknown) => {
+    notes.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  };
+
   const daysRaw = Number(sp.get("days") ?? DAYS_DEFAULT);
   const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.round(daysRaw), 1), DAYS_MAX) : DAYS_DEFAULT;
   const todayMsk = moscowToday();
@@ -130,7 +139,7 @@ export async function GET(request: NextRequest) {
       return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("advert_id", { ascending: true }).range(start, end);
     },
     { maxPages: 60, label: "Журнал РК: кампании", concurrency: 4 },
-  ).catch(() => [] as AdvertRow[]);
+  ).catch(noteOn("кампании")) as AdvertRow[];
 
   const advertByKey = new Map<string, AdvertRow>();
   for (const advert of adverts) advertByKey.set(`${advert.cabinet_id ?? ""}|${advert.advert_id}`, advert);
@@ -156,7 +165,7 @@ export async function GET(request: NextRequest) {
       return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("date", { ascending: true }).range(start, end);
     },
     { maxPages: 60, label: "Журнал РК: снимки", concurrency: 4 },
-  ).catch(() => [] as JournalRow[]);
+  ).catch(noteOn("снимки")) as JournalRow[];
 
   const snapshotDates = new Set(snapshots.map((row) => row.date));
   const liveDates = dates.filter((date) => !snapshotDates.has(date));
@@ -173,7 +182,7 @@ export async function GET(request: NextRequest) {
         return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("date", { ascending: true }).range(start, end);
       },
       { maxPages: 120, label: "Журнал РК: дни без снимка", concurrency: 4 },
-    ).catch(() => [] as CampaignDayRow[]);
+    ).catch(noteOn("статистика кампаний")) as CampaignDayRow[];
   }
 
   // (артикул, блок) → день → ячейка
@@ -259,6 +268,7 @@ export async function GET(request: NextRequest) {
     unmarked,
     campaigns: adverts.length,
     snapshotDates: [...snapshotDates].sort(),
+    notes,
   });
 }
 
