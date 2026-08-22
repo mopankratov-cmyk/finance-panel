@@ -174,13 +174,16 @@ export async function wbCardImageUrlsByNmIds(nmIds: number[], size = "c246x328")
       const basket = await resolveWbBasketForVol(nmId).catch(() => 0);
       return [vol, basket] as const;
     }));
-    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), BASKET_PROBE_BUDGET_MS));
-    const probed = await Promise.race([probes, timeout]);
-    if (probed && store) {
-      // Ноль тоже запоминаем: у тома может не быть живого фото, и без записи
-      // он опрашивался бы заново каждый прогон.
-      void store.rememberBasketVols(new Map(probed)).catch(() => {});
+    // Запись подвешена к самому опросу, а не к гонке с таймером: иначе при
+    // срабатывании секундомера результат выбрасывался целиком, база не
+    // наполнялась, и каждый следующий прогон снова упирался в тот же лимит.
+    // Ноль тоже запоминаем — «живого фото у тома нет» такой же факт.
+    if (store) {
+      const target = store;
+      void probes.then((rows) => target.rememberBasketVols(new Map(rows))).catch(() => {});
     }
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), BASKET_PROBE_BUDGET_MS));
+    await Promise.race([probes, timeout]);
   }
 
   const out = new Map<number, string>();
