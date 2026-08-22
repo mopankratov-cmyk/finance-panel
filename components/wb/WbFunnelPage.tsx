@@ -11,6 +11,8 @@ import { closedMoscowDates } from "@/lib/wb/sklejki";
 import { WbProductImage } from "./WbProductImage";
 import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
 import { displaySkuName, useWbSkuNames } from "./useWbSkuNames";
+import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
+import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -67,7 +69,7 @@ function cellTone(metric: MetricKey, value: number | null | undefined) {
 }
 
 export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
-  const { cabinetId, activeCabinet, cabinets, ready, loading: cabinetsLoading, error: cabinetsError } = useWbCabinet();
+  const { cabinetId, activeCabinet, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet } = useWbCabinet();
   const [windowParam, setWindowParam] = useDashboardFilter<PeriodPresetValue>("days", "7", PERIOD_PRESETS.map((preset) => preset.value));
   const windowDays = Number(windowParam);
   const [customFrom, setCustomFrom] = useDashboardFilter<string>("date_from", "");
@@ -150,12 +152,18 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
 
   useEffect(() => setActiveTagIds([]), [cabinetId]);
 
+  // Ручной порядок артикулов (настраивается в РНП) раньше здесь игнорировался:
+  // пересохранение в РНП ничего не меняло в Воронке, и это выглядело как
+  // поломка порядка. Теперь перечисленные идут первыми, остальные — как отдал
+  // API (по сумме заказов), стабильно.
+  const { orderIndex } = useCabinetSkuOrder(hasExactCabinet ? cabinetId : null);
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
-    return (skus?.skus ?? [])
+    const base = (skus?.skus ?? [])
       .filter((sku) => !needle || `${sku.nm} ${sku.art} ${sku.name}`.toLocaleLowerCase("ru-RU").includes(needle))
       .filter((sku) => nmMatchesTags(tagIdsByNm, sku.nm, activeTagIds));
-  }, [activeTagIds, query, skus?.skus, tagIdsByNm]);
+    return sortByCustomSkuOrder(base, (sku) => sku.nm, orderIndex);
+  }, [activeTagIds, orderIndex, query, skus?.skus, tagIdsByNm]);
 
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();

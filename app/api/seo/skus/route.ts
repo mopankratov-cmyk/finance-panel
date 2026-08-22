@@ -60,13 +60,26 @@ export async function GET(request: NextRequest) {
   // произвольного диапазона считалась бы по чужому числу дней.
   const periodDays = funnelPeriodDates(period.start, period.end).length;
 
+  // ?timings=1 — длительности источников в ответе, чтобы мерить узкие места
+  // прямо на проде. Данных не раскрывает, роут и так под сессией.
+  const wantTimings = params.get("timings") === "1";
+  const timings: Record<string, number> = {};
+  const timed = <T,>(name: string, promise: Promise<T> | PromiseLike<T>): Promise<T> => {
+    if (!wantTimings) return Promise.resolve(promise);
+    const startedAt = Date.now();
+    const record = () => { timings[name] = Date.now() - startedAt; };
+    return Promise.resolve(promise).then(
+      (value) => { record(); return value; },
+      (error) => { record(); throw error; },
+    );
+  };
   const payload = await loadHourlyDashboard(
     "wb-seo-skus",
     // Cache schema: 3 used advertising clicks as a fallback conversion denominator.
     { cabinetId, start: period.start, end: period.end, days: periodDays, schema: 4 },
     async () => {
       const [funnel, ad, totals, costs, dailySku] = await Promise.all([
-        loadAllSupabasePages<FunnelRow>((from, to) => {
+        timed("funnel", loadAllSupabasePages<FunnelRow>((from, to) => {
           let query = db
             .from("wb_funnel_daily")
             .select("nm_id, date, open_card, add_to_cart, orders, orders_sum")
@@ -78,8 +91,8 @@ export async function GET(request: NextRequest) {
           if (cabinetId) query = query.eq("cabinet_id", cabinetId);
           if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
           return query;
-        }, { label: "SEO: воронка WB" }),
-        loadAllSupabasePages<AdRow>((from, to) => {
+        }, { label: "SEO: воронка WB", concurrency: 4 })),
+        timed("adverts", loadAllSupabasePages<AdRow>((from, to) => {
           let query = db
             .from("wb_advert_nm_daily")
             .select("nm_id, date, views, clicks, spent")
@@ -91,20 +104,20 @@ export async function GET(request: NextRequest) {
           if (cabinetId) query = query.eq("cabinet_id", cabinetId);
           if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
           return query;
-        }, { label: "SEO: реклама WB" }),
-        loadRnpReportRows<RpcTotal>(db, cabinetId, { allowedNmIds, label: "SEO: товары WB" }),
-        loadAllSupabasePages<ProductCostRow>((from, to) => db
+        }, { label: "SEO: реклама WB", concurrency: 4 })),
+        timed("totals_rpc", loadRnpReportRows<RpcTotal>(db, cabinetId, { allowedNmIds, label: "SEO: товары WB" })),
+        timed("costs", loadAllSupabasePages<ProductCostRow>((from, to) => db
           .from("product_costs")
           .select("article, name")
           .order("article", { ascending: true })
-          .range(from, to), { label: "SEO: себестоимость" }),
-        loadRnpDailySkuRows<DailySkuRow>(db, {
+          .range(from, to), { label: "SEO: себестоимость", concurrency: 4 })),
+        timed("daily_sku", loadRnpDailySkuRows<DailySkuRow>(db, {
           from: period.start,
           to: period.end,
           cabinetId,
           allowedNmIds,
           label: "SEO: заказы WB",
-        }),
+        })),
       ]);
 
   // Заказы по nm/день для выручки ДО СПП — через server-side агрегат rnp_daily_sku
@@ -133,7 +146,7 @@ export async function GET(request: NextRequest) {
   const nmIds = [...new Set([...funnel.map((r) => r.nm_id), ...ad.map((r) => r.nm_id), ...totals.map((t) => t.nm_id)])];
 
   // рейтинг/отзывы по SKU — уже наполненная wb_feedbacks (см. раздел /reviews), просто джойн
-  const fbRows = (await Promise.all(
+  const fbRows = (await timed("feedbacks", Promise.all(
     Array.from({ length: Math.ceil(Math.max(1, nmIds.length) / 100) }, (_, index) => {
       const chunk = nmIds.length ? nmIds.slice(index * 100, index * 100 + 100) : [-1];
       return loadAllSupabasePages<RatingRow>((from, to) => db
@@ -141,9 +154,9 @@ export async function GET(request: NextRequest) {
         .select("nm_id, rating")
         .in("nm_id", chunk)
         .order("nm_id", { ascending: true })
-        .range(from, to), { label: "SEO: отзывы WB" });
+        .range(from, to), { label: "SEO: отзывы WB", concurrency: 4 });
     }),
-  )).flat();
+  ))).flat();
   const ratingAgg = new Map<number, { sum: number; count: number }>();
   for (const r of fbRows) {
     const nm = r.nm_id;
@@ -214,5 +227,5 @@ export async function GET(request: NextRequest) {
       backgroundRefresh: params.get("background") === "1",
     },
   );
-  return NextResponse.json(payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
+  return NextResponse.json(wantTimings ? { ...payload, timings } : payload, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
 }

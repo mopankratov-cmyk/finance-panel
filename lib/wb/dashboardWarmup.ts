@@ -84,11 +84,24 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
     // агрегатов (loadCachedAdvertReportRows). Холодный он собирается тяжёлым
     // RPC и под нагрузкой уходит в statement timeout — пользователь получал
     // 500 на первом заходе. Прогрев уносит эту сборку в фон крона.
-    const [sklejki, nichesResult, unit, seo, funnelMetrics, adverts, supplies] = await Promise.all([
+    // Воронка живёт на трёх пресетах окна. Раньше грелось только окно 7 дней:
+    // «Вчера» и «30 дней» пользователь всегда собирал сам (у тяжёлых кабинетов
+    // 10с+ на холодном снимке). Дополнительные окна греем БЕЗ refresh=1 —
+    // достаточно собрать холодный снимок нового дня один раз, дальше кэш
+    // отдаёт мгновенно и обновляется в фоне сам.
+    const coldOnly = (window: number) => {
+      const url = new URL(wbDashboardWarmUrl(origin, "seo", scope));
+      url.searchParams.set("window", String(window));
+      url.searchParams.delete("refresh");
+      return fetchWarmSnapshot(url.toString());
+    };
+    const [sklejki, nichesResult, unit, seo, seoYesterday, seoMonth, funnelMetrics, adverts, supplies] = await Promise.all([
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "sklejki", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "market-niches", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "unit", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "seo", scope)),
+      coldOnly(1),
+      coldOnly(30),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "funnel-metrics", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "adverts", scope)),
       fetchWarmSnapshot(wbDashboardWarmUrl(origin, "supplies", scope)),
@@ -102,12 +115,13 @@ export async function warmWbSecondaryDashboards(origin: string, scopes: WbDashbo
       : { ok: nichesResult.ok, status: nichesResult.status, error: nichesResult.error, skipped: true };
     const result = {
       scope: scope.label,
-      ok: sklejki.ok && pim.ok && unit.ok && seo.ok && funnelMetrics.ok && nichesResult.ok && marketPulse.ok
-        && adverts.ok && supplies.ok,
+      ok: sklejki.ok && pim.ok && unit.ok && seo.ok && seoYesterday.ok && seoMonth.ok && funnelMetrics.ok
+        && nichesResult.ok && marketPulse.ok && adverts.ok && supplies.ok,
       sklejki: { ok: sklejki.ok, status: sklejki.status, error: sklejki.error },
       pim: { ok: pim.ok, status: pim.status, error: pim.error },
       unit: { ok: unit.ok, status: unit.status, error: unit.error },
       seo: { ok: seo.ok, status: seo.status, error: seo.error },
+      seoWindows: { yesterday: seoYesterday.ok, month: seoMonth.ok },
       funnelMetrics: { ok: funnelMetrics.ok, status: funnelMetrics.status, error: funnelMetrics.error },
       marketNiches: { ok: nichesResult.ok, status: nichesResult.status, error: nichesResult.error },
       adverts: { ok: adverts.ok, status: adverts.status, error: adverts.error },
