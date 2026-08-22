@@ -287,6 +287,67 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // ?cabinet_gap=1&cabinet=<uuid>&date=<ГГГГ-ММ-ДД> — сколько расхода кампаний
+  // не дошло до артикулов за день. Считаем ТОЛЬКО по кампаниям, которые в
+  // слое за этот день есть: кампания, до которой обход ещё не дошёл, — это
+  // «не собрано», а не «не разнесено», и мешать их нельзя.
+  if (sp.get("cabinet_gap") === "1") {
+    const cabinetId = sp.get("cabinet");
+    const date = sp.get("date");
+    if (!cabinetId || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return NextResponse.json({ error: "Нужны cabinet и date (ГГГГ-ММ-ДД)" }, { status: 400 });
+    }
+    if (!sessionHasCabinetAccess(session, cabinetId) || !(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const layer = await loadAllSupabasePages<{ advert_id: number; spent: number | string | null; spent_allocated: number | string | null }>(
+      (start, end) => db.from("wb_advert_nm_campaign_daily")
+        .select("advert_id, spent, spent_allocated")
+        .eq("cabinet_id", cabinetId)
+        .eq("date", date)
+        .order("advert_id", { ascending: true })
+        .range(start, end),
+      { maxPages: 60, label: "Диагностика недостачи расхода", concurrency: 4 },
+    );
+    const byCampaign = new Map<number, number>();
+    for (const row of layer) {
+      byCampaign.set(row.advert_id, (byCampaign.get(row.advert_id) ?? 0) + Number(row.spent ?? 0) + Number(row.spent_allocated ?? 0));
+    }
+    const stats = await loadAllSupabasePages<{ advert_id: number; sum_spent: number | string | null }>(
+      (start, end) => db.from("wb_advert_stats")
+        .select("advert_id, sum_spent")
+        .eq("cabinet_id", cabinetId)
+        .eq("date", date)
+        .order("advert_id", { ascending: true })
+        .range(start, end),
+      { maxPages: 60, label: "Диагностика расхода кампаний", concurrency: 4 },
+    );
+    let campaignTotal = 0, coveredCampaignTotal = 0, gap = 0, notCollected = 0, campaignsWithGap = 0;
+    for (const row of stats) {
+      const spent = Number(row.sum_spent ?? 0);
+      campaignTotal += spent;
+      const collected = byCampaign.get(row.advert_id);
+      if (collected == null) { notCollected += spent; continue; }
+      coveredCampaignTotal += spent;
+      const diff = Math.round((spent - collected) * 100) / 100;
+      if (diff > 0.01) { gap += diff; campaignsWithGap++; }
+    }
+    const layerTotal = [...byCampaign.values()].reduce((sum, value) => sum + value, 0);
+    return NextResponse.json({
+      date,
+      campaignTotal: Math.round(campaignTotal * 100) / 100,
+      layerTotal: Math.round(layerTotal * 100) / 100,
+      // Расход кампаний, до которых обход слоя ещё не дошёл.
+      notCollected: Math.round(notCollected * 100) / 100,
+      // Расход собранных кампаний, не дошедший ни до одного артикула.
+      gap: Math.round(gap * 100) / 100,
+      gapPct: coveredCampaignTotal > 0 ? Math.round(gap / coveredCampaignTotal * 1000) / 10 : null,
+      campaignsWithGap,
+      campaignsInStats: stats.length,
+      campaignsInLayer: byCampaign.size,
+    });
+  }
+
   if (sp.get("advert_types") === "1") {
     const cabinetId = sp.get("cabinet");
     if (!cabinetId) return NextResponse.json({ error: "Нужен cabinet" }, { status: 400 });
