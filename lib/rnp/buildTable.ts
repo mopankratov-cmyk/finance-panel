@@ -2061,6 +2061,7 @@ export async function buildRnpTable(
   // Длительности источников: РНП падал по statement timeout на живых
   // кабинетах, и без разбивки не понять, какой запрос это делает.
   const timings: Record<string, number> = {};
+  const buildStartedAt = Date.now();
   const timed = <T,>(name: string, promise: PromiseLike<T>): Promise<T> => {
     const startedAt = Date.now();
     return Promise.resolve(promise).then(
@@ -2211,14 +2212,15 @@ export async function buildRnpTable(
             }
             return { stats, types };
           })().catch(() => ({ stats: [] as AdvertStatDayRow[], types: [] as AdvertTypeRow[] }))),
-          loadSalesReturns(db, scope, allowed, from, to),
-          latestSourceDate("wb_orders", scope),
-          latestSourceDate("wb_sales", scope),
+          timed("sales_returns", loadSalesReturns(db, scope, allowed, from, to)),
+          timed("cutoff_orders", latestSourceDate("wb_orders", scope)),
+          timed("cutoff_sales", latestSourceDate("wb_sales", scope)),
           latestSyncStateDate(scope, "orders"),
           latestSyncStateDate(scope, "sales"),
           latestSyncStateDate(scope, "advert-stats"),
           latestSyncStateDate(scope, "funnel", { preferLastPeriodEnd: true }),
         ]);
+        timings.sources_done = Date.now() - buildStartedAt;
         const advertTypeRows = advertStatsAndTypes.types;
         const advertStatRows = advertStatsAndTypes.stats;
         const ordersCutoff = latestKnownDate([ordersRowCutoff, ordersSyncCutoff]);
@@ -2250,7 +2252,7 @@ export async function buildRnpTable(
         .select("article, name, cost_rub, brand, category")
         .order("article", { ascending: true })
         .range(start, end)),
-      getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false }),
+      timed("commissions", getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false })),
       // Бренд и предмет WB принадлежат карточке товара, а не кабинету.
       // Ошибка/лимит Content API не должны ломать сам РНП: в таком случае
       // ниже остаётся безопасный fallback на справочник себестоимости.
@@ -2261,9 +2263,10 @@ export async function buildRnpTable(
       // навсегда: замер на Retail Family — 64 карточки за 1–2 секунды, а
       // фильтры не работали месяцами. Таймбокс держит прежнюю страховку от
       // 504: не успели — отдаём экран без карточек, снимок дойдёт в фоне.
-      loadPimForRnp(p_cabinet),
+      timed("pim_catalog", loadPimForRnp(p_cabinet)),
     ]);
 
+    timings.all_sources_done = Date.now() - buildStartedAt;
     const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(
       applySalesReturnsAdjustment(
         applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
