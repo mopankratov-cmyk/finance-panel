@@ -68,6 +68,12 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
 
+  // Правка с параллельными чанками эффекта не дала: 4.5 с против 4.3 до неё.
+  // Значит узкое место не там, где я предположил, — меряем по этапам.
+  const startedAt = Date.now();
+  const timings: Record<string, number> = {};
+  const mark = (name: string) => { timings[name] = Date.now() - startedAt; };
+
   const searchParams = new URL(request.url).searchParams;
   const cabinetParam = searchParams.get("cabinet");
   const cabinetId = cabinetParam && cabinetParam !== "all" ? cabinetParam : null;
@@ -84,6 +90,7 @@ export async function GET(request: NextRequest) {
   if (cabinetId) watchQ = watchQ.eq("cabinet_id", cabinetId);
   const watchesRes = await watchQ;
   if (watchesRes.error) return NextResponse.json({ error: watchesRes.error.message }, { status: 502 });
+  mark("watches");
   const watches = (watchesRes.data ?? []) as WatchRow[];
   if (!watches.length) return NextResponse.json({ items: [], days });
 
@@ -98,6 +105,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  mark("settings");
   const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
   const watchIds = watches.map((watch) => watch.id);
   // PostgREST молча обрезает ответ (по умолчанию 1000 строк) — большие выборки
@@ -138,6 +146,7 @@ export async function GET(request: NextRequest) {
   const neededSnapshotIds = new Set<string>(snapshots.map((snapshot) => snapshot.id));
   for (const snapshot of latestByWatch.values()) neededSnapshotIds.add(snapshot.id);
 
+  mark("snapshots");
   const rowsBySnapshot = new Map<string, ShelfRow[]>();
   {
     const ids = [...neededSnapshotIds];
@@ -179,6 +188,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  mark("snapshot_rows");
   const items = watches.map((watch) => {
     const exclusionSet = buildShelfExclusionSet(
       watch.our_brand,
@@ -250,5 +260,6 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  return NextResponse.json({ items, days });
+  mark("total");
+  return NextResponse.json(searchParams.get("timings") === "1" ? { items, days, timings } : { items, days });
 }
