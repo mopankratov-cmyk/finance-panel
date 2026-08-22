@@ -10,12 +10,15 @@
 | Репрайсер | `/repricer` | `/api/repricer/*` | в main (#18) |
 | Докидывание рекламы | `/ad-docking` | `/api/adverts/dock*` | PR #19 |
 | CTR-тест (скелет) | — | `/api/ctrtest/*` | PR #20, живой путь не вкл |
+| Журнал РК (замена листа «Показы CTR CPC») | `/wb/rk` | `/api/wb/rk-journal`, снимок `/api/sync/rk-journal` | PR #520–531 |
 
 ## Миграции (применить в Supabase SQL Editor, если ещё нет)
 - `20260626_repricer.sql` — repricer_strategies/decisions (+ 4 сид-стратегии).
 - `20260627_advert_docking.sql` — advert_docking_config/log.
 - `20260628_ctrtest_engine.sql` — расширяет ctr_tests/ctr_variants + ctr_test_log.
-Проверка: `select name from repricer_strategies;` → 4 строки.
+- `202608220002_wb_advert_nm_campaign_daily.sql` — слой статистики по кампаниям + корзины из РК. Без него реклама по артикулу «мигает нулями», а журнал РК пуст.
+- `202608220003_wb_rk_journal.sql` — раздельные ставки поиска и полок, ручная разметка вида размещения, таблица снимков журнала.
+Проверка: `select name from repricer_strategies;` → 4 строки. Для журнала РК — зонд `/api/wb/sync-health?campaign_layer=1`: `roundTrip: 1` и растущий `rows`.
 
 ## Env (Vercel)
 - `CRON_SECRET` — уже есть (крон-аутентификация).
@@ -33,6 +36,7 @@
 | `/api/signals?persist=1` | 06:40 | дневные сигналы → agent_insights |
 | `/api/adverts/dock/cron` | ежечасно :05 | докидывание (только enabled-РК) |
 | `/api/ctrtest/advance/cron` | ежечасно :10 | ротация CTR-тестов (только enabled) |
+| `/api/sync/rk-journal` | 03:00 (06:00 МСК) | снимок журнала РК за вчерашний день |
 
 ## Как пользоваться
 
