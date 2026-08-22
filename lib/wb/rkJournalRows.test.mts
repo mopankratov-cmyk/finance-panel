@@ -190,3 +190,15 @@ test("артикул, у которого вообще нет живых кам�
   ], [{ cabinet_id: "cab-1", advert_id: 888, name: "пустая", bid_type: "manual", payment_type: "cpc", placement_search: true }]);
   assert.deepEqual(items, []);
 });
+
+test("кампания со своим артикулом в составе остаётся его кампанией и без показов в окне", () => {
+  // Крутилась раньше выбранного окна, заказ пришёл внутри него: в «конверсии
+  // из других кампаний» ей нельзя — WB держит артикул в её составе.
+  const items = buildRkJournalItems([], [
+    { cabinet_id: "cab-1", advert_id: 101, nm_id: 7, date: "2026-08-21", spent: 0, views: 0, clicks: 0, carts: 1, orders: 1 },
+  ], [{ ...advert, nm_ids: [7, 8] }]);
+
+  assert.equal(items[0].campaigns.length, 1);
+  assert.equal(items[0].campaigns[0].block, "cpc_search");
+  assert.equal(items[0].campaigns[0].nmCount, 2);
+});

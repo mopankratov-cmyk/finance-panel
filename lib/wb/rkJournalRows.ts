@@ -218,7 +218,12 @@ export function buildRkJournalItems(
     // Кампания, которая этот артикул не показывала и денег на него не
     // тратила, его кампанией не является: WB просто приписал ей конверсию
     // соседнего товара. Такие строки сливаются в одну — как в кабинете WB.
-    const worked = [...row.cells.values()].some((cell) => cell.views > 0 || cell.clicks > 0 || cell.spent > 0);
+    // Кампания принадлежит артикулу, если WB держит его в её составе — даже
+    // когда в выбранном окне она его не показывала (крутилась раньше, заказ
+    // пришёл позже). Показы и расход в окне — второй признак: состав у
+    // завершённых кампаний WB уже не отдаёт.
+    const owns = row.advertId != null && (advertById.get(row.advertId)?.nm_ids ?? []).includes(row.nm);
+    const worked = owns || [...row.cells.values()].some((cell) => cell.views > 0 || cell.clicks > 0 || cell.spent > 0);
     const idle = [...row.cells.values()].every((cell) =>
       cell.views === 0 && cell.clicks === 0 && cell.spent === 0 && cell.carts === 0 && cell.orders === 0);
     if (idle) continue;
