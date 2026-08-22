@@ -1,5 +1,6 @@
 // Карточки товаров кабинета(ов) через WB Content API: article + nm_id + name + цвет + ниша(subject).
 import { getActiveWbCabinets, getWbCabinetSources } from "@/lib/wb/cabinetTokens";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
 import type { ProductReadinessStatus } from "@/lib/wb/productReadiness";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
@@ -118,7 +119,64 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
   }));
   const failures = results.filter((result) => !result.ok).map((result) => result.error);
   if (failures.length) throw new Error(`Карточки WB загружены не полностью: ${failures.join("; ")}`);
-  return results.flatMap((result) => result.rows);
+  const rows = results.flatMap((result) => result.rows);
+  // Складываем в базу: кэш Next живёт внутри своего бандла, и снимок, записанный
+  // одним роутом, другой не находит. Базу видят все — оттуда фильтры РНП берут
+  // бренд и предмет, даже когда снимок холодный.
+  void persistCards(rows);
+  return rows;
+}
+
+/** Обновление справочника карточек. Ошибка записи не должна ронять обход. */
+async function persistCards(rows: PimRow[]): Promise<void> {
+  if (!rows.length) return;
+  const db = getSupabaseAdmin();
+  if (!db) return;
+  const payload = rows.map((row) => ({
+    cabinet_id: row.cabinetId ?? null,
+    nm_id: row.nmId,
+    imt_id: row.imtId ?? null,
+    article: row.article || null,
+    name: row.name || null,
+    brand: row.brand || null,
+    subject: row.subject || null,
+    shop: row.shop || null,
+    updated_at: new Date().toISOString(),
+  }));
+  for (let index = 0; index < payload.length; index += 500) {
+    const { error } = await db
+      .from("wb_cards")
+      .upsert(payload.slice(index, index + 500), { onConflict: "cabinet_id,nm_id" });
+    if (error) return; // таблицы ещё нет или запись недоступна — не мешаем обходу
+  }
+}
+
+/**
+ * Справочник карточек из базы: бренд и предмет для экранов, которым нельзя
+ * ждать обход Content API (на крупном кабинете он идёт больше минуты).
+ */
+export async function loadCardsFromDb(cabinetId: string | null): Promise<PimCardRef[]> {
+  const db = getSupabaseAdmin();
+  if (!db) return [];
+  const query = db.from("wb_cards").select("nm_id, article, name, brand, subject");
+  const { data, error } = await (cabinetId ? query.eq("cabinet_id", cabinetId) : query);
+  if (error || !data) return [];
+  return data.map((row) => ({
+    nmId: Number(row.nm_id),
+    article: String(row.article ?? ""),
+    name: String(row.name ?? ""),
+    brand: String(row.brand ?? ""),
+    subject: String(row.subject ?? ""),
+  }));
+}
+
+/** Минимум, который нужен экранам от карточки. */
+export interface PimCardRef {
+  nmId: number;
+  article: string;
+  name: string;
+  brand: string;
+  subject: string;
 }
 
 // Все тяжёлые GET-экраны используют один и тот же часовой снимок карточек.

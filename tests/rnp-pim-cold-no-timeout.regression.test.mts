@@ -66,3 +66,23 @@ test("флаг холодного PIM объявлен в форме снимк�
   assert.match(build, /pim_cold\?: boolean/);
   assert.match(build, /\.\.\.\(pimCold \? \{ pim_cold: true \} : \{\}\)/);
 });
+
+// Кэш Next между роутами не разделяется: ключ unstable_cache зависит от
+// текста функции после сборки, а он у разных бандлов разный. На проде это
+// выглядело так: /api/pim отдаёт 64 карточки за секунду (свой снимок тёплый),
+// а РНП в том же кабинете возвращает pim_cold и пустые «Бренд»/«Категория».
+// Обойти обходом нельзя — на Retail Family он идёт больше 45 секунд.
+test("справочник карточек лежит в базе, а не только в кэше", async () => {
+  const cards = await read("../lib/wb/cards.ts");
+  // Обход пишет в базу и не падает, если записать не вышло.
+  assert.match(cards, /void persistCards\(rows\)/);
+  assert.match(cards, /from\("wb_cards"\)\s*\n?\s*\.upsert/);
+  assert.match(cards, /export async function loadCardsFromDb/);
+
+  const build = await read("../lib/rnp/buildTable.ts");
+  // База — первый источник, снимок и обход остаются запасными.
+  const dbIndex = build.indexOf("loadCardsFromDb(cabinetId)");
+  const snapshotIndex = build.indexOf("loadCabinetPimRowsHourly(cabinetId, { cacheOnly: true })");
+  assert.ok(dbIndex > 0, "РНП не читает карточки из базы");
+  assert.ok(dbIndex < snapshotIndex, "снимок опрашивается раньше базы — вернётся холод");
+});

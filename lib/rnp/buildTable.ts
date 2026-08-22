@@ -12,7 +12,7 @@ import { wbBidTypeGroup, type WbBidTypeGroup } from "@/lib/wb/advertTypes";
 import { wbCardImageUrl, wbCardImageUrlsByNmIds } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
-import { loadCabinetPimRowsHourly, type PimRow } from "@/lib/wb/cards";
+import { loadCabinetPimRowsHourly, loadCardsFromDb, type PimCardRef, type PimRow } from "@/lib/wb/cards";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
@@ -1988,11 +1988,15 @@ async function loadCurrentStockRows(db: SupabaseAdmin, scope: CabinetScope) {
  */
 const RNP_PIM_TIMEOUT_MS = 8_000;
 
-async function loadPimForRnp(cabinetId: string | null): Promise<PimRow[] | "cold"> {
+async function loadPimForRnp(cabinetId: string | null): Promise<PimCardRef[] | "cold"> {
+  // База — первый источник: она видна всем роутам, в отличие от снимка в
+  // кэше Next, чей ключ зависит от бандла и между роутами не совпадает.
+  const stored = await loadCardsFromDb(cabinetId).catch(() => []);
+  if (stored.length) return stored;
   const cached = await loadCabinetPimRowsHourly(cabinetId, { cacheOnly: true }).catch(() => null);
   if (cached) return cached;
-  // Обход продолжится в фоне даже после нашего отказа ждать — и запишет
-  // снимок, поэтому следующий запрос экрана будет уже тёплым.
+  // Обход продолжится в фоне даже после нашего отказа ждать — и заполнит
+  // и базу, и снимок, поэтому следующий запрос экрана будет уже тёплым.
   const live = loadCabinetPimRowsHourly(cabinetId).catch(() => null);
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), RNP_PIM_TIMEOUT_MS));
   const rows = await Promise.race([live, timeout]);
