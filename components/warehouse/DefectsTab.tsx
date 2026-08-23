@@ -9,6 +9,7 @@ import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import { writeoffReason } from "@/lib/warehouse/reasons";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
+import { newDocKey } from "@/lib/warehouse/docKey";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
 const stamp = (value: string) =>
@@ -79,7 +80,7 @@ export function DefectsTab({
       const res = await fetch("/api/warehouse/writeoffs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityId, warehouseId: draft.warehouseId, reason: draft.reason, lines }),
+        body: JSON.stringify({ entityId, warehouseId: draft.warehouseId, reason: draft.reason, lines, docKey: newDocKey() }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось списать");
