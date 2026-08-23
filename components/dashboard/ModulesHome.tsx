@@ -26,37 +26,16 @@ interface ModuleCard {
   color: [string, string]; // [bg, text]
 }
 
-const MODULES: ModuleCard[] = [
-  { title: "Реклама WB", description: "Активные РК, расход по SKU, ДРР и баланс продвижения", href: "/wb/adverts", icon: Megaphone, agent: "Андер", zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
-  { title: "РНП по SKU", description: "Расход, выручка, выкуп, ДРР, маржа и GMROI по артикулам", href: "/wb/rnp", icon: Table2, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
-  { title: "SEO / Воронка", description: "Показы → CTR → корзина → заказ, ДРР и маржа по SKU", href: "/wb/seo", icon: Search, zone: "Аналитика", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
-  { title: "Склейки", description: "Объединённые карточки по imtID с воронкой и рекламой", href: "/wb/sklejki", icon: Layers, zone: "Аналитика", color: ["bg-purple-100", "text-purple-700"] },
-  { title: "Юнит-экономика", description: "Прибыль/ед: цена до СПП минус все расходы МП", href: "/wb/unit", icon: Sigma, zone: "Аналитика", color: ["bg-indigo-100", "text-indigo-700"] },
-  { title: "CTR-тесты", description: "CTR, CR и Video-тесты по реальным метрикам кабинета", href: "/wb/ctr", icon: FlaskConical, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
-  { title: "Ozon Cockpit", description: "Обзор, продажи, реклама, остатки, заказы и экономика", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
-
-  { title: "Финансы", description: "Календарь ДДС, платежи, счета, кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
-  { title: "ОПиУ WB+Ozon", description: "P&L до СПП + соинвест, маржа, налог", href: "/pnl", icon: LineChart, zone: "Финансы", color: ["bg-blue-100", "text-blue-700"] },
-  { title: "Где теряем", description: "Удержания: реклама, логистика, комиссия", href: "/losses", icon: TrendingDown, zone: "Финансы", color: ["bg-rose-100", "text-rose-700"] },
-
-  { title: "Поставки", description: "Распределение по складам, тара и контроль приёмки", href: "/wb/supplies", icon: Package, agent: "Саму", zone: "Операции", color: ["bg-cyan-100", "text-cyan-700"] },
-  { title: "Склад", description: "Свой остаток и себестоимость партий: приёмка, отгрузка на кабинеты, товары", href: "/warehouse", icon: Boxes, agent: "Саму", zone: "Операции", color: ["bg-teal-100", "text-teal-700"] },
-  { title: "Себестоимость", description: "Себес по артикулам — питает маржу", href: "/costs", icon: Coins, zone: "Операции", color: ["bg-amber-100", "text-amber-700"] },
-  { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
-
-  { title: "AI-агент", description: "Анализ данных, аномалии, рекомендации", href: "/agent", icon: Bot, agent: "Мэнси", zone: "AI", color: ["bg-fuchsia-100", "text-fuchsia-700"] },
-];
-
-const ZONES = ["Аналитика", "Финансы", "Операции", "AI"] as const;
-type Zone = (typeof ZONES)[number];
+type Zone = "Аналитика" | "Финансы" | "Операции" | "AI";
 
 const PRIMARY_MODULES: ModuleCard[] = [
   { title: "РНП WB", description: "Основной рабочий экран Wildberries: заказы, реклама, маржа и остатки по SKU", href: "/wb/rnp", icon: Table2, zone: "Аналитика", color: ["bg-violet-100", "text-violet-700"] },
   { title: "Ozon Cockpit", description: "Продажи, реклама, остатки, заказы и здоровье интеграций", href: "/ozon", icon: BarChart3, agent: "Озар", zone: "Аналитика", color: ["bg-sky-100", "text-sky-700"] },
   { title: "Финансы", description: "Календарь ДДС, платежи, счета и кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
+  { title: "Склад", description: "Товары и себестоимость, приёмка, остатки и отгрузка на кабинеты", href: "/warehouse", icon: Boxes, agent: "Саму", zone: "Операции", color: ["bg-teal-100", "text-teal-700"] },
+  { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 ];
 
-const PRIMARY_HREFS = new Set(PRIMARY_MODULES.map((module) => module.href));
 // v2 сбрасывает старое сохранённое раскрытие: после упрощения главная должна
 // впервые открываться компактной даже у пользователей с состоянием v1.
 const DISCLOSURE_STORAGE_KEY = "fp_dashboard_disclosure_v2";
@@ -88,7 +67,6 @@ export function ModulesHome() {
   const [unread, setUnread] = useState(0);
   const [insights, setInsights] = useState<AgentInsight[]>([]);
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
-  const [openZones, setOpenZones] = useState<Set<Zone>>(new Set());
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [disclosureReady, setDisclosureReady] = useState(false);
 
@@ -102,8 +80,7 @@ export function ModulesHome() {
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(DISCLOSURE_STORAGE_KEY) || "{}") as { zones?: string[]; attention?: boolean };
-      setOpenZones(new Set((saved.zones ?? []).filter((zone): zone is Zone => ZONES.includes(zone as Zone))));
+      const saved = JSON.parse(localStorage.getItem(DISCLOSURE_STORAGE_KEY) || "{}") as { attention?: boolean };
       setAttentionOpen(Boolean(saved.attention));
     } catch {
       // Повреждённое локальное состояние не должно ломать главную страницу.
@@ -114,11 +91,11 @@ export function ModulesHome() {
   useEffect(() => {
     if (!disclosureReady) return;
     try {
-      localStorage.setItem(DISCLOSURE_STORAGE_KEY, JSON.stringify({ zones: [...openZones], attention: attentionOpen }));
+      localStorage.setItem(DISCLOSURE_STORAGE_KEY, JSON.stringify({ attention: attentionOpen }));
     } catch {
       // В приватном режиме состояние просто не запомнится.
     }
-  }, [attentionOpen, disclosureReady, openZones]);
+  }, [attentionOpen, disclosureReady]);
 
   // топ-5 непрочитанных, сначала критичные — компактный превью «что требует внимания»
   const attention = useMemo(() => {
@@ -130,17 +107,7 @@ export function ModulesHome() {
   }, [insights]);
 
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }).catch(() => {}); router.push("/login"); router.refresh(); };
-  const visible = MODULES.filter((m) => !me || m.href.startsWith("http") || canAccess(me.role, m.href));
   const visiblePrimary = PRIMARY_MODULES.filter((m) => !me || canAccess(me.role, m.href));
-  const secondary = visible.filter((module) => !PRIMARY_HREFS.has(module.href));
-  const setZoneOpen = (zone: Zone, open: boolean) => {
-    setOpenZones((current) => {
-      const next = new Set(current);
-      if (open) next.add(zone); else next.delete(zone);
-      return next;
-    });
-  };
-
   const tourSteps: TourStep[] = [
     ...(attention.length > 0 ? [{ selector: '[data-tour="attention"]', title: "Что требует внимания", text: "Топ-5 самых срочных сигналов из правил и WB-аналитики — критичные вверху. Клик открывает полный список в AI-агенте." }] : []),
     { selector: '[data-tour="modules"]', title: "Модули", text: "Основные кабинеты доступны сразу. Остальные инструменты сгруппированы в компактные раскрывающиеся разделы." },
@@ -220,40 +187,14 @@ export function ModulesHome() {
         <div data-tour="modules">
           <section className="mb-6">
             <div className="mb-3 flex items-end justify-between gap-4">
-              <div><h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Основное</h2><p className="mt-1 text-xs text-gray-500">Главные рабочие кабинеты без лишней навигации</p></div>
-              <span className="text-xs tabular-nums text-gray-400">{visiblePrimary.length} модуля</span>
+              <div><h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Основное</h2><p className="mt-1 text-xs text-gray-500">Каждый модуль — отдельная рабочая зона</p></div>
+              <span className="text-xs tabular-nums text-gray-400">{visiblePrimary.length} модулей</span>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visiblePrimary.map((module) => <Link key={module.href} href={module.href} className="rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"><Card m={module} /></Link>)}
             </div>
           </section>
 
-          <div className="mb-3 mt-8"><h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Остальные инструменты</h2><p className="mt-1 text-xs text-gray-500">Раскройте только тот раздел, который нужен сейчас</p></div>
-          {ZONES.map((zone) => {
-            const items = secondary.filter((m) => m.zone === zone);
-            if (!items.length) return null;
-            const isOpen = openZones.has(zone);
-            return (
-              <details key={zone} open={isOpen} onToggle={(event) => setZoneOpen(zone, event.currentTarget.open)} className="group mb-3 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-                <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 outline-none transition-colors hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:px-5 [&::-webkit-details-marker]:hidden">
-                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-gray-900">{zone}</span><span className="block text-xs text-gray-500">{items.length} {items.length === 1 ? "инструмент" : items.length < 5 ? "инструмента" : "инструментов"}</span></span>
-                  {zone === "AI" && unread > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white">{unread}</span>}
-                  <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none group-open:rotate-180" />
-                </summary>
-                {isOpen && (
-                  <div className="grid gap-4 border-t border-gray-100 bg-gray-50/60 p-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {items.map((m) => {
-                      const inner = <Card m={m} badge={m.title === "AI-агент" ? unread : undefined} />;
-                      const focusClass = "rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2";
-                      return m.href.startsWith("http")
-                        ? <a key={m.title} href={m.href} target="_blank" rel="noreferrer" className={focusClass}>{inner}</a>
-                        : <Link key={m.title} href={m.href} className={focusClass}>{inner}</Link>;
-                    })}
-                  </div>
-                )}
-              </details>
-            );
-          })}
         </div>
       </main>
 
