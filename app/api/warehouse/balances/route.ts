@@ -12,6 +12,7 @@ export interface StockBalanceRow {
   warehouseKind: "own" | "fulfillment";
   productId: string;
   nmId: number | null;
+  photoUrl: string | null;
   article: string;
   name: string;
   qty: number;
@@ -30,6 +31,7 @@ interface DbBalance {
   warehouse_id: string;
   product_id: string;
   nm_id: number | null;
+  photo_url: string | null;
   article: string;
   name: string;
   qty: number;
@@ -70,7 +72,7 @@ export async function GET(request: NextRequest) {
     balances = await loadAllSupabasePages<DbBalance>((from, to) =>
       db
         .from("stock_balances")
-        .select("warehouse_id, product_id, nm_id, article, name, qty, amount, unit_cost, last_move_at")
+        .select("warehouse_id, product_id, nm_id, photo_url, article, name, qty, amount, unit_cost, last_move_at")
         .eq("legal_entity_id", entityId)
         .order("article", { ascending: true })
         .range(from, to),
@@ -94,6 +96,7 @@ export async function GET(request: NextRequest) {
         warehouseKind: warehouse?.kind ?? "own",
         productId: String(row.product_id),
         nmId: row.nm_id === null ? null : Number(row.nm_id),
+        photoUrl: row.photo_url,
         article: String(row.article ?? ""),
         name: String(row.name ?? ""),
         qty: Number(row.qty),

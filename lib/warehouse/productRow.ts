@@ -10,6 +10,7 @@ export interface ProductRow {
   category: string | null;
   brand: string | null;
   nmId: number | null;
+  photoUrl: string | null;
   factoryPrice: number | null;
   factoryCurrency: "CNY" | "RUB" | "USD";
   weightKg: number | null;
@@ -34,6 +35,7 @@ export interface DbProduct {
   category: string | null;
   brand: string | null;
   nm_id: number | null;
+  photo_url: string | null;
   factory_price: number | null;
   factory_currency: "CNY" | "RUB" | "USD";
   weight_kg: number | null;
@@ -71,6 +73,7 @@ export function toProductRow(row: DbProduct, entityNames: Map<string, string>): 
     category: row.category,
     brand: row.brand,
     nmId: row.nm_id === null ? null : Number(row.nm_id),
+    photoUrl: row.photo_url,
     factoryPrice: number(row.factory_price),
     factoryCurrency: row.factory_currency ?? "CNY",
     weightKg: number(row.weight_kg),
@@ -87,4 +90,4 @@ export function toProductRow(row: DbProduct, entityNames: Map<string, string>): 
 }
 
 export const PRODUCT_COLUMNS =
-  "id, legal_entity_id, article, name, barcode, category, brand, nm_id, factory_price, factory_currency, weight_kg, length_cm, width_cm, height_cm, volume_liters, min_stock, season, is_active, note";
+  "id, legal_entity_id, article, name, barcode, category, brand, nm_id, photo_url, factory_price, factory_currency, weight_kg, length_cm, width_cm, height_cm, volume_liters, min_stock, season, is_active, note";

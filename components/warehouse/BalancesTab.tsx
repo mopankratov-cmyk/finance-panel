@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
 
@@ -74,6 +75,7 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+              <th className="px-4 py-3 text-left font-medium"></th>
               <th className="px-4 py-3 text-left font-medium">Артикул</th>
               <th className="px-4 py-3 text-left font-medium">nmID</th>
               <th className="px-4 py-3 text-left font-medium">Склад</th>
@@ -85,6 +87,14 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
           <tbody>
             {data.rows.map((row) => (
               <tr key={`${row.warehouseId}-${row.nmId}`} className="border-b border-slate-100 last:border-0">
+                <td className="py-2 pl-4 pr-0">
+                  <WbProductImage
+                    nm={row.nmId ?? undefined}
+                    src={row.photoUrl ?? undefined}
+                    alt={row.article}
+                    className="h-10 w-10 rounded-lg border border-slate-100 bg-slate-50 object-cover"
+                  />
+                </td>
                 <td className="px-4 py-2.5 font-medium text-slate-900">{row.article || "—"}</td>
                 <td className="px-4 py-2.5 text-slate-500">{row.nmId}</td>
                 <td className="px-4 py-2.5 text-slate-600">

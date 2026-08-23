@@ -7,6 +7,7 @@ import type { ReceiptBatchRow } from "@/app/api/warehouse/receipts/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { ProductRow } from "@/lib/warehouse/productRow";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 
 const STATE_LABEL: Record<ReceiptBatchRow["state"], { text: string; className: string }> = {
   expected: { text: "ждём", className: "bg-slate-100 text-slate-600" },
@@ -184,6 +185,12 @@ export function ReceiptsTab({
           <div className="space-y-2">
             {draft.lines.map((line, index) => (
               <div key={index} className="flex flex-wrap items-center gap-2">
+                <WbProductImage
+                  nm={products.find((p) => p.id === line.productId)?.nmId ?? undefined}
+                  src={products.find((p) => p.id === line.productId)?.photoUrl ?? undefined}
+                  alt=""
+                  className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 bg-white object-cover"
+                />
                 <select
                   value={line.productId}
                   onChange={(e) => setDraft({

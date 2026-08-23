@@ -5,6 +5,7 @@ import { formatNumber } from "@/lib/analytics/format";
 import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 
 interface CabinetOption {
   id: string;
@@ -198,8 +199,18 @@ export function ShipmentTab({
                   return (
                     <tr key={row.productId} className="border-b border-slate-100 last:border-0">
                       <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <WbProductImage
+                            nm={row.nmId ?? undefined}
+                            src={row.photoUrl ?? undefined}
+                            alt={row.article}
+                            className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover"
+                          />
+                          <div>
                         <div className="font-medium text-slate-900">{row.article}</div>
                         <div className="text-xs text-slate-400">{row.unitCost.toFixed(2)} ₽/шт</div>
+                          </div>
+                        </div>
                       </td>
                       <td className={`px-4 py-2.5 text-right font-semibold ${tooMuch ? "text-red-600" : "text-slate-900"}`}>
                         {formatNumber(row.qty)}

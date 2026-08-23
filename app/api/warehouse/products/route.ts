@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
       category: String(body.category ?? "").trim() || null,
       brand: String(body.brand ?? "").trim() || null,
       nm_id: number(body.nmId),
+      photo_url: String(body.photoUrl ?? "").trim() || null,
       factory_price: number(body.factoryPrice),
       factory_currency: ["CNY", "RUB", "USD"].includes(String(body.factoryCurrency)) ? String(body.factoryCurrency) : "RUB",
       weight_kg: number(body.weightKg),

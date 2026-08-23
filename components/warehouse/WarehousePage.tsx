@@ -8,6 +8,7 @@ import { ReceiptsTab } from "@/components/warehouse/ReceiptsTab";
 import { ProductsTab } from "@/components/warehouse/ProductsTab";
 import { ShipmentTab } from "@/components/warehouse/ShipmentTab";
 import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
+import { WarehouseShell } from "@/components/warehouse/WarehouseShell";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 
@@ -86,56 +87,42 @@ export function WarehousePage() {
 
   const refresh = () => setRefreshKey((key) => key + 1);
 
+  const toolbar = (
+    <div className="ml-auto flex items-center gap-2">
+      <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <Building2 className="h-4 w-4 text-slate-400" />
+        <select
+          value={entityId ?? ""}
+          onChange={(e) => pickEntity(e.target.value)}
+          className="bg-transparent text-sm font-medium text-slate-700 outline-none"
+        >
+          {entities.map((row) => (
+            <option key={row.id} value={row.id}>{row.name}</option>
+          ))}
+        </select>
+      </div>
+      <button
+        onClick={refresh}
+        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+      >
+        <RefreshCw className="h-4 w-4" />
+        Обновить
+      </button>
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Склад</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Товар принадлежит юрлицу и лежит на его складах — маркетплейс об этом остатке не знает
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2">
-            <Building2 className="h-4 w-4 text-slate-400" />
-            <select
-              value={entityId ?? ""}
-              onChange={(e) => pickEntity(e.target.value)}
-              className="bg-transparent text-sm font-medium text-slate-700 outline-none"
-            >
-              {entities.map((row) => (
-                <option key={row.id} value={row.id}>{row.name}</option>
-              ))}
-            </select>
-          </div>
-          <button
-            onClick={refresh}
-            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Обновить
-          </button>
-        </div>
-      </div>
-
+    <WarehouseShell
+      title="Склад"
+      subtitle="Товары, приёмка, остатки"
+      tabs={TABS}
+      active={tab}
+      onSelect={setTab}
+      toolbar={toolbar}
+    >
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       )}
-
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
-              tab === key ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
 
       {entitiesLoading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
@@ -176,6 +163,6 @@ export function WarehousePage() {
       ) : (
         <WarehousesTab entityId={entityId} entity={entity} warehouses={warehouses} onChanged={refresh} />
       )}
-    </div>
+    </WarehouseShell>
   );
 }

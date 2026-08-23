@@ -45,6 +45,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if ("category" in body) patch.category = String(body.category ?? "").trim() || null;
   if ("brand" in body) patch.brand = String(body.brand ?? "").trim() || null;
   if ("nmId" in body) patch.nm_id = number(body.nmId);
+  if ("photoUrl" in body) patch.photo_url = String(body.photoUrl ?? "").trim() || null;
   if ("factoryPrice" in body) patch.factory_price = number(body.factoryPrice);
   if ("factoryCurrency" in body && ["CNY", "RUB", "USD"].includes(String(body.factoryCurrency))) {
     patch.factory_currency = String(body.factoryCurrency);

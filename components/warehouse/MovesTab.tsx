@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { StockMoveRow } from "@/app/api/warehouse/moves/route";
+import { WbProductImage } from "@/components/wb/WbProductImage";
 
 const KIND_LABEL: Record<StockMoveRow["kind"], string> = {
   receipt: "приёмка",
@@ -60,6 +61,7 @@ export function MovesTab({ entityId, refreshKey }: { entityId: string; refreshKe
             <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
               <th className="px-4 py-3 text-left font-medium">Когда</th>
               <th className="px-4 py-3 text-left font-medium">Что</th>
+              <th className="px-4 py-3 text-left font-medium"></th>
               <th className="px-4 py-3 text-left font-medium">Артикул</th>
               <th className="px-4 py-3 text-left font-medium">Склад</th>
               <th className="px-4 py-3 text-right font-medium">Кол-во</th>
@@ -71,6 +73,13 @@ export function MovesTab({ entityId, refreshKey }: { entityId: string; refreshKe
               <tr key={row.id} className="border-b border-slate-100 last:border-0">
                 <td className="px-4 py-2.5 text-slate-500">{stamp(row.occurredAt)}</td>
                 <td className="px-4 py-2.5 text-slate-700">{KIND_LABEL[row.kind]}</td>
+                <td className="py-2 pl-4 pr-0">
+                  <WbProductImage
+                    nm={row.nmId ?? undefined}
+                    alt={row.article}
+                    className="h-9 w-9 rounded-lg border border-slate-100 bg-slate-50 object-cover"
+                  />
+                </td>
                 <td className="px-4 py-2.5 font-medium text-slate-900">{row.article || row.nmId}</td>
                 <td className="px-4 py-2.5 text-slate-600">{row.warehouseName}</td>
                 <td className={`px-4 py-2.5 text-right font-semibold ${row.qty > 0 ? "text-emerald-600" : "text-red-600"}`}>

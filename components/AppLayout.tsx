@@ -10,9 +10,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // Страница входа и публичная политика конфиденциальности — без сайдбара и без гейта загрузки финансов
   if (pathname === "/login" || pathname === "/privacy") return <>{children}</>;
-  // Кокпиты WB и Ozon имеют собственные shell и кабинетные контексты и не должны
-  // ждать гидрацию финансового провайдера.
-  if (pathname.startsWith("/wb") || pathname.startsWith("/ozon")) return <div className="min-h-screen bg-gray-50">{children}</div>;
+  // Кокпиты WB, Ozon и «Склад» имеют собственные shell и кабинетные контексты и не
+  // должны ждать гидрацию финансового провайдера. Общий сайдбар им тоже не нужен:
+  // модуль показывает слева свои разделы, а не навигацию всей панели.
+  if (pathname.startsWith("/wb") || pathname.startsWith("/ozon") || pathname.startsWith("/warehouse")) {
+    return <div className="min-h-screen bg-gray-50">{children}</div>;
+  }
   // Главная — полноэкранная, без финансового сайдбара.
   const isLauncher = pathname === "/";
   const isFullscreen = isLauncher;
