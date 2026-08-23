@@ -11,12 +11,12 @@ import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 // проигрывал. Замер 23.08.2026: три захода подряд упирались в 429 даже с
 // паузой в две минуты. Здесь лимит времени 300 секунд и никто не ждёт ответа,
 // поэтому опрос идёт медленно и с запасом.
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 /** Сколько заданий добираем за прогон на кабинет. */
 const CODES_PER_RUN = 200;
 /** Пауза между запросами: у WB лимит на кабинет, спешить некуда. */
-const REQUEST_PAUSE_MS = 350;
+const REQUEST_PAUSE_MS = 250;
 const WINDOW_DAYS = 14;
 
 export async function GET(request: NextRequest) {
@@ -26,7 +26,10 @@ export async function GET(request: NextRequest) {
   const startedAt = new Date();
   const targets = await getWbSyncTargets();
   const summary: Array<{ cabinet: string; probed: number; found: number; left: number; error?: string }> = [];
-  const deadline = Date.now() + 260_000;
+  // Держимся заметно ниже лимита функции: прогон, убитый платформой, не
+  // пишет журнал — именно так пропал результат ручного запуска, и понять,
+  // сработал он или нет, было нельзя.
+  const deadline = Date.now() + 45_000;
 
   for (const target of targets) {
     if (!target.cabinetId) continue;
