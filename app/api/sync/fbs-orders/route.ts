@@ -18,7 +18,13 @@ export const maxDuration = 300;
 const ORDERS_URL = "https://marketplace-api.wildberries.ru/api/v3/orders";
 const PAGE_LIMIT = 1000;
 // Стартовое окно покрывает месячный экран РНП с запасом.
-const INITIAL_DAYS = 35;
+// Глубина первого прогона. У WB dateFrom не может быть старше 30 суток —
+// на 35 он отвечает 400 IncorrectParameter. Ловушка была самоподдерживающейся:
+// без успешного прогона кабинет не получал курсор, а без курсора снова просил
+// 35 дней. CLERIN и COSMOS так и не собрали ни одного задания.
+// Замер 23.08.2026: с окном 10 дней те же кабинеты прошли без ошибок (4457
+// строк), с 35 — падали каждый раз. Берём 28 с запасом на часовые пояса.
+const INITIAL_DAYS = 28;
 const JOB = "fbs-orders";
 
 interface MarketplaceOrder {
