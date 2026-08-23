@@ -81,6 +81,20 @@ const SELLER_READ_API_PREFIXES = [
   "/api/seo/",
 ] as const;
 
+// Оператор склада — сотрудник фулфилмента, то есть ДРУГОЙ компании, работающий
+// в нашей системе. Страницы ему закрыты ролью, а /api/* до этого пропускал любую
+// живую сессию: из консоли браузера открывались /api/opiu, /api/costs и
+// /api/purchase-orders — прибыль, закупочные цены по всем юрлицам и условия
+// фабрик. Решение показывать ему себестоимость касалось одной колонки на его
+// экране, а не всего финансового контура компании.
+function isWarehouseApiAllowed(pathname: string, method: string): boolean {
+  if (pathname.startsWith("/api/warehouse/")) return true;
+  // Отметка факта приёмки живёт в старом разделе поставок, но делает её тот же
+  // оператор из окна приёмки склада.
+  if (/^\/api\/supplies\/receipts\//.test(pathname)) return method === "PATCH" || method === "GET";
+  return false;
+}
+
 function isSellerApiAllowed(pathname: string, method: string): boolean {
   if (pathname === "/api/cabinets/self-service") return method === "GET" || method === "POST";
   // «Полки» открыты селлеру целиком: он сам ведёт конкурентов своего кабинета.
@@ -115,6 +129,9 @@ export async function proxy(req: NextRequest) {
     if (session) {
       if (session.role === "seller" && !isSellerApiAllowed(pathname, req.method)) {
         return NextResponse.json({ error: "Внешнему селлеру доступна только WB-аналитика" }, { status: 403 });
+      }
+      if (session.role === "warehouse" && !isWarehouseApiAllowed(pathname, req.method)) {
+        return NextResponse.json({ error: "Оператору склада доступен только модуль склада" }, { status: 403 });
       }
       return NextResponse.next();
     }

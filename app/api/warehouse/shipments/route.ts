@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as
-    | { entityId?: string; warehouseId?: string; note?: string; lines?: ShipmentLineInput[] }
+    | { entityId?: string; docKey?: string; warehouseId?: string; note?: string; lines?: ShipmentLineInput[] }
     | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -54,6 +55,12 @@ export async function POST(request: NextRequest) {
   if (!db) return fail("Supabase не настроен", 500);
   const session = await getServerSession();
 
+  // Ключ идемпотентности: второй клик по кнопке не должен давать второй документ.
+  const docKey = typeof body.docKey === "string" ? body.docKey.trim() || null : null;
+  const claim = await claimDocKey(db, docKey, "shipment", scope.entity.id, session?.email ?? null);
+  if (claim.state === "done") return NextResponse.json({ data: claim.result, error: null }, { status: 200 });
+  if (claim.state === "busy") return fail(BUSY_MESSAGE, 409);
+
   const { data, error } = await db.rpc("post_shipment", {
     p_legal_entity_id: scope.entity.id,
     p_warehouse_id: body.warehouseId,
@@ -66,6 +73,7 @@ export async function POST(request: NextRequest) {
     p_actor: session?.email ?? null,
   });
 
+  if (error) await releaseDocKey(db, docKey);
   if (error) {
     const shortage = error.message.match(/not enough stock for (.+?) : have (-?\d+), need (\d+)/);
     if (shortage) {
@@ -79,5 +87,6 @@ export async function POST(request: NextRequest) {
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 
+  await settleDocKey(db, docKey, data);
   return NextResponse.json({ data: data as ShipmentResult, error: null }, { status: 201 });
 }

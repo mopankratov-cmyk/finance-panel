@@ -9,6 +9,7 @@ import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
 import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
+import { newDocKey } from "@/lib/warehouse/docKey";
 
 interface CabinetOption {
   id: string;
@@ -117,7 +118,7 @@ export function ShipmentTab({
       const res = await fetch("/api/warehouse/shipments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityId, warehouseId, note, lines }),
+        body: JSON.stringify({ entityId, warehouseId, note, lines, docKey: newDocKey() }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось отгрузить");

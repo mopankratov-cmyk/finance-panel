@@ -11,6 +11,7 @@ import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
+import { newDocKey } from "@/lib/warehouse/docKey";
 
 type Mode = "transfer" | "return";
 
@@ -114,9 +115,10 @@ export function MovementTab({
     setDone(null);
     try {
       const url = mode === "transfer" ? "/api/warehouse/transfers" : "/api/warehouse/returns";
+      const docKey = newDocKey();
       const body = mode === "transfer"
-        ? { entityId, fromWarehouseId: fromWarehouse, toWarehouseId: toWarehouse, note, lines: payloadLines }
-        : { entityId, warehouseId: fromWarehouse, cabinetId, note, lines: payloadLines };
+        ? { entityId, fromWarehouseId: fromWarehouse, toWarehouseId: toWarehouse, note, lines: payloadLines, docKey }
+        : { entityId, warehouseId: fromWarehouse, cabinetId, note, lines: payloadLines, docKey };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
