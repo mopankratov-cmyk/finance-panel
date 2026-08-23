@@ -51,11 +51,21 @@ export type KizReconcileDays = 1 | 3 | 7 | 30 | 60 | 90;
  * состоялся — задание уходит в not_checked, иначе панель выдаёт своё незнание
  * за факт об обороте продавца.
  */
-export type KizBucket = "retire" | "check" | "not_checked" | "introduce";
+/**
+ * «Нет кода» отделён от «Вывести» намеренно.
+ *
+ * Раньше всё проданное без кода красилось красным как «вывести из оборота» —
+ * 632 строки по пеналам RIOBOX, которые вообще не маркируются. Это не риск по
+ * 15.12 КоАП, а отсутствие кода: выводить из оборота нечего, потому что в
+ * оборот ничего не вводили. Разделение подсмотрено у optimawb.ru, где счёт
+ * идёт как «Вывести: 3 · Нет кода: 497».
+ */
+export type KizBucket = "retire" | "no_code" | "check" | "not_checked" | "introduce";
 export type KizSource = "orders" | "statuses" | "meta" | "sales" | "claims";
 
 export const KIZ_BUCKET_LABELS: Record<KizBucket, string> = {
   retire: "Вывести",
+  no_code: "Нет кода",
   check: "Проверить",
   not_checked: "Не проверено",
   introduce: "Ввести в оборот",
@@ -564,7 +574,7 @@ export async function fetchReturnClaimReasons(options: {
 
 /* ───────────────────────────── сверка ───────────────────────────── */
 
-export type KizRowBucket = "retire" | "check" | "not_checked";
+export type KizRowBucket = "retire" | "no_code" | "check" | "not_checked";
 
 export interface KizReconcileRow {
   bucket: KizRowBucket;
@@ -573,6 +583,8 @@ export interface KizReconcileRow {
   nmId: number | null;
   article: string;
   brand: string | null;
+  /** Предмет WB — категория товара. По нему владелец скрывает немаркируемое. */
+  subject: string | null;
   barcode: string;
   code: string | null;
   /** Первые 9 знаков GTIN — технический ключ группировки, НЕ владелец кода. */
@@ -600,7 +612,7 @@ export interface KizReturnTask {
   overdue: boolean;
 }
 
-export interface KizReconcileCounts { retire: number; check: number; notChecked: number; introduce: number }
+export interface KizReconcileCounts { retire: number; noCode: number; check: number; notChecked: number; introduce: number }
 
 /**
  * Группа кодов по началу GTIN. Это НЕ владелец: длина префикса GS1 переменная
@@ -618,6 +630,10 @@ export interface KizReconcileResult {
 }
 
 export interface KizReconcileInput {
+  /** Предметы, скрытые владельцем как немаркируемые (в нижнем регистре). */
+  hiddenSubjects?: Set<string>;
+  /** Предмет WB по nmId — из справочника карточек. */
+  subjectByNm?: Map<number, string>;
   /**
    * Может ли у задания быть код Честного Знака. WB перечисляет допустимые
    * идентификаторы задания; отсутствие sgtin означает, что товар не
@@ -642,7 +658,7 @@ export interface KizReconcileInput {
 
 export function emptyKizReconcileResult(days: KizReconcileDays, warnings: string[] = []): KizReconcileResult {
   return {
-    counts: { retire: 0, check: 0, notChecked: 0, introduce: 0 },
+    counts: { retire: 0, noCode: 0, check: 0, notChecked: 0, introduce: 0 },
     coverage: { checked: 0, soldTotal: 0, days },
     rows: [],
     returns: [],
@@ -695,6 +711,7 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
   // Задания, для которых WB не допускает код маркировки: требовать по ним
   // действий нельзя, но и молчать нельзя — счёт покажем в предупреждении.
   let notMarkable = 0;
+  let hiddenBySubject = 0;
 
   for (const task of soldTasks) {
     const brand = brandOf(input, task.nmId, task.article);
@@ -704,9 +721,18 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
       nmId: task.nmId,
       article: task.article,
       brand,
+      subject: task.nmId === null ? null : input.subjectByNm?.get(task.nmId) ?? null,
       barcode: task.barcode,
       soldAt: task.createdAt,
     };
+    // Предмет скрыт владельцем: он знает, что категория не маркируется.
+    // Молча выкидывать нельзя — счёт покажем в предупреждении.
+    const subjectOfTask = base.subject;
+    if (subjectOfTask && input.hiddenSubjects?.has(subjectOfTask.trim().toLocaleLowerCase("ru-RU"))) {
+      hiddenBySubject += 1;
+      continue;
+    }
+
     const rawCodes = input.codesByTask.get(task.id);
 
     if (rawCodes === undefined) {
@@ -735,11 +761,11 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
       }
       rows.push({
         ...base,
-        bucket: "retire",
+        bucket: "no_code",
         code: null,
         gtinPrefix: null,
-        reason: "продан, но код не привязан к заданию — WB нечего выводить из оборота",
-        action: "вывести код из оборота вручную в ЛК Честный Знак либо привязать его в WB, пока задание открыто",
+        reason: "продан, но код не привязан к заданию — выводить из оборота нечего",
+        action: "если товар маркируется — дозагрузите код в WB, пока задание открыто; если нет — скройте предмет из сверки",
       });
       continue;
     }
@@ -790,6 +816,13 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
     }
   }
 
+  if (hiddenBySubject) {
+    warnings.push(
+      `Скрыто строк по предметам, отмеченным как немаркируемые: ${hiddenBySubject}. `
+      + `Снять можно там же, где скрывали.`,
+    );
+  }
+
   if (notMarkable) {
     warnings.push(
       `Не показано заданий, для которых WB не допускает код маркировки: ${notMarkable}. `
@@ -836,11 +869,12 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
     codeGroups.set(key, current);
   };
   // «Не проверено» в группы не идёт: там нечего группировать, кода мы не видели.
-  for (const row of rows) if (row.bucket === "retire" || row.bucket === "check") bumpGroup(row.gtinPrefix, "retire");
+  for (const row of rows) if (row.bucket === "retire" || row.bucket === "no_code" || row.bucket === "check") bumpGroup(row.gtinPrefix, "retire");
   for (const row of returns) bumpGroup(row.gtinPrefix, "introduce");
 
   const counts: KizReconcileCounts = {
     retire: rows.filter((row) => row.bucket === "retire").length,
+    noCode: rows.filter((row) => row.bucket === "no_code").length,
     check: rows.filter((row) => row.bucket === "check").length,
     notChecked: rows.filter((row) => row.bucket === "not_checked").length,
     introduce: returns.length,

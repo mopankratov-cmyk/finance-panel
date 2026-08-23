@@ -7,6 +7,7 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { cabinetProductScope, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { loadCabinetPimRowsHourly, PimSnapshotColdError, type PimRow } from "@/lib/wb/cards";
 import { allowsProduct } from "@/lib/wb/productScope";
+import { loadKizSettings, subjectKey } from "@/lib/wb/kizSettings";
 import {
   KIZ_META_LOOKUP_LIMIT,
   WbKizSourceError,
@@ -332,12 +333,16 @@ export async function GET(request: NextRequest) {
   const pimRows = await brandsPromise;
   const brandByNm = new Map<number, string>();
   const brandByArticle = new Map<string, string>();
+  const subjectByNm = new Map<number, string>();
   for (const row of pimRows) {
+    if (row.subject) subjectByNm.set(row.nmId, row.subject);
     if (!row.brand) continue;
     brandByNm.set(row.nmId, row.brand);
     const key = row.article.trim().toLocaleLowerCase("ru-RU");
     if (key) brandByArticle.set(key, row.brand);
   }
+
+  const kizSettings = await loadKizSettings(cabinetId).catch(() => ({ hiddenSubjects: [], notApplicable: false }));
 
   const result = reconcileKizFromWb({
     todayIso: generatedAt.toISOString(),
@@ -352,6 +357,8 @@ export async function GET(request: NextRequest) {
     reasonBySrid,
     brandByNm,
     brandByArticle,
+    subjectByNm,
+    hiddenSubjects: new Set(kizSettings.hiddenSubjects.map(subjectKey)),
   });
 
   const complete = statusesAvailable && result.coverage.checked === result.coverage.soldTotal && !warnings.length;

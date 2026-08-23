@@ -34,6 +34,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 const BUCKETS: { key: KizBucket; label: string; hint: string; tone: string; active: string }[] = [
   { key: "retire", label: "Вывести", hint: "продано, код не выведен", tone: "text-rose-600", active: "border-rose-300 bg-rose-50" },
+  // «Нет кода» намеренно не красный: кода не бывает у немаркируемого товара,
+  // и пугать статьёй там, где нарушения нет, — хуже, чем промолчать.
+  { key: "no_code", label: "Нет кода", hint: "код не привязан — выводить нечего", tone: "text-amber-600", active: "border-amber-300 bg-amber-50" },
   { key: "check", label: "Проверить", hint: "код противоречит фактам", tone: "text-amber-600", active: "border-amber-300 bg-amber-50" },
   // «Не проверено» ≠ «кода нет»: сюда попадают задания, про которые WB не ответил.
   { key: "not_checked", label: "Не проверено", hint: "WB не ответил — это не «кода нет»", tone: "text-slate-600", active: "border-slate-300 bg-slate-100" },
@@ -42,17 +45,19 @@ const BUCKETS: { key: KizBucket; label: string; hint: string; tone: string; acti
 
 const BUCKET_CHIP: Record<KizRowBucket, string> = {
   retire: "bg-rose-100 text-rose-700",
+  no_code: "bg-amber-100 text-amber-700",
   check: "bg-amber-100 text-amber-700",
   not_checked: "bg-slate-100 text-slate-600",
 };
 
 const BUCKET_ACTION_LABEL: Record<KizRowBucket, string> = {
   retire: "Вывести",
+  no_code: "Нет кода",
   check: "Проверить",
   not_checked: "Проверить ещё раз",
 };
 
-const rowColumns: Column<KizReconcileRow>[] = [
+const buildRowColumns = (onHide: ((subject: string) => void) | null): Column<KizReconcileRow>[] => [
   {
     key: "action",
     label: "Действие",
@@ -77,6 +82,27 @@ const rowColumns: Column<KizReconcileRow>[] = [
     csv: (row) => row.article || String(row.nmId ?? ""),
   },
   { key: "brand", label: "Бренд", sortable: true, render: (row) => <span className="text-slate-600">{row.brand ?? "—"}</span>, csv: (row) => row.brand ?? "" },
+  {
+    key: "subject",
+    label: "Предмет",
+    sortable: true,
+    render: (row) => (
+      <div className="min-w-[120px]">
+        <div className="text-slate-600">{row.subject ?? "—"}</div>
+        {onHide && row.subject ? (
+          <button
+            type="button"
+            onClick={() => onHide(row.subject!)}
+            className="mt-0.5 text-[11px] font-semibold text-slate-400 underline underline-offset-2 hover:text-violet-700"
+            title={`Скрыть «${row.subject}» из сверки: товар не маркируется`}
+          >
+            скрыть
+          </button>
+        ) : null}
+      </div>
+    ),
+    csv: (row) => row.subject ?? "",
+  },
   {
     key: "task",
     label: "Задание",
@@ -149,6 +175,13 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
   const [bucket, setBucket] = useState<KizBucket | null>(null);
   // Фильтр по технической группе кодов (первые 9 знаков GTIN), а не по владельцу.
   const [codeGroup, setCodeGroup] = useState<string>("");
+  // Предметы, отмеченные владельцем как немаркируемые, и отказ от раздела.
+  // Автоматика по метаданным WB закрывает не всё — это ручное дополнение.
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [notApplicable, setNotApplicable] = useState(false);
+  const [savingSetting, setSavingSetting] = useState(false);
+  // Меняется при скрытии предмета — сверка перечитывается сразу.
+  const [reloadKey, setReloadKey] = useState(0);
   const requestId = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const elapsed = useElapsedSeconds(loading);
@@ -183,7 +216,41 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
         setError(cause instanceof Error ? cause.message : "Не удалось выполнить сверку");
       })
       .finally(() => { if (current === requestId.current) setLoading(false); });
-  }, [cabinetId, days, singleCabinet]);
+  }, [cabinetId, days, singleCabinet, reloadKey]);
+
+  useEffect(() => {
+    if (!singleCabinet) return;
+    let alive = true;
+    fetch(`/api/supplies/kiz-settings?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((body) => {
+        if (!alive || !body?.data) return;
+        setHidden(body.data.hiddenSubjects ?? []);
+        setNotApplicable(Boolean(body.data.notApplicable));
+      })
+      .catch(() => {/* настройки не критичны: без них сверка просто ничего не прячет */});
+    return () => { alive = false; };
+  }, [cabinetId, singleCabinet]);
+
+  const saveSetting = useCallback(async (patch: Record<string, unknown>) => {
+    setSavingSetting(true);
+    try {
+      const response = await fetch(`/api/supplies/kiz-settings?cabinet=${encodeURIComponent(cabinetId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const body = await response.json();
+      if (body?.data) {
+        setHidden(body.data.hiddenSubjects ?? []);
+        setNotApplicable(Boolean(body.data.notApplicable));
+        // Сверку пересчитываем: скрытое должно исчезнуть сразу, а не после F5.
+        setReloadKey((value) => value + 1);
+      }
+    } finally {
+      setSavingSetting(false);
+    }
+  }, [cabinetId]);
 
   const result = payload?.data ?? null;
   const warnings = useMemo(
@@ -288,6 +355,42 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
         )}
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] text-slate-600">
+        <label className="flex cursor-pointer items-start gap-2">
+          <input
+            type="checkbox"
+            checked={notApplicable}
+            disabled={savingSetting}
+            onChange={(event) => void saveSetting({ notApplicable: event.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-violet-600"
+          />
+          <span>
+            <span className="font-semibold text-slate-700">Не торгую маркируемым товаром</span>
+            <span className="block text-[11px] text-slate-500">
+              Скрыть раздел целиком. Возите и то, и другое? Не ставьте галочку — прячьте немаркируемые
+              предметы по одному кнопкой «скрыть» в строке таблицы.
+            </span>
+          </span>
+        </label>
+        {hidden.length ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-slate-500">Скрыты как немаркируемые:</span>
+            {hidden.map((subject) => (
+              <button
+                key={subject}
+                type="button"
+                disabled={savingSetting}
+                onClick={() => void saveSetting({ showSubject: subject })}
+                className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-600 hover:border-violet-300 hover:text-violet-700 disabled:opacity-50"
+                title="Вернуть предмет в сверку"
+              >
+                {subject} ×
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
       {error ? (
         <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-800">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
@@ -316,6 +419,7 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
             {BUCKETS.map((item) => {
               const value = item.key === "retire" ? result.counts.retire
+                : item.key === "no_code" ? result.counts.noCode
                 : item.key === "check" ? result.counts.check
                 : item.key === "not_checked" ? result.counts.notChecked
                 : result.counts.introduce;
@@ -359,12 +463,14 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
           {showRows ? (
             <section className="space-y-2">
               <div className="text-[13px] font-semibold text-slate-700">
-                {bucket === "not_checked" ? "Задания с непроверенным кодом" : "Вывести из оборота"}
+                {bucket === "not_checked" ? "Задания с непроверенным кодом"
+                  : bucket === "no_code" ? "Продано без кода маркировки"
+                  : "Вывести из оборота"}
               </div>
               <AnalyticsTable
-                columns={rowColumns}
+                columns={buildRowColumns((subject) => void saveSetting({ hideSubject: subject }))}
                 data={rows}
-                filename={`kiz-${bucket === "not_checked" ? "ne-provereno" : "vyvesti"}-${cabinetName ?? "cabinet"}-${today()}.csv`}
+                filename={`kiz-${bucket === "not_checked" ? "ne-provereno" : bucket === "no_code" ? "net-koda" : "vyvesti"}-${cabinetName ?? "cabinet"}-${today()}.csv`}
                 emptyMessage="По выбранному фильтру заданий нет."
               />
             </section>
