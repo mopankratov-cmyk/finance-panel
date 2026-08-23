@@ -29,6 +29,15 @@ interface WbFbsRequest {
    * не соблюдались: проверка стояла между страницами, а не внутри запроса.
    */
   deadlineMs?: number;
+  /**
+   * Считать 404 честным «данных нет», а не сломанным адресом.
+   *
+   * Для списков 404 — это поломка, и молчать о ней нельзя. А вот у кода
+   * маркировки 404 означает ровно одно: у задания кода нет. Пока это
+   * трактовалось как ошибка, задание не отмечалось опрошенным, очередь не
+   * сдвигалась, и фоновый сборщик писал «опрошено 0» при полном бюджете.
+   */
+  notFoundIsEmpty?: boolean;
 }
 
 function retryAfterMs(response: Response, attempt: number): number {
@@ -85,6 +94,9 @@ async function wbFbsJson<T>(token: string, request: WbFbsRequest): Promise<T> {
     }
     // Пустой список солгал бы, что заданий нет: молчим только про честное «нет данных»,
     // а про сломанный адрес говорим вслух.
+    if (response.status === 404 && request.notFoundIsEmpty) {
+      return {} as T;
+    }
     if (response.status === 404 || response.status === 405) {
       throw new WbFbsApiError(`WB не отдаёт данные по адресу ${request.path}`, 502);
     }
@@ -309,6 +321,8 @@ export async function fetchFbsOrderMeta(
     path: `/orders/${orderId}/meta`,
     timeoutMs: 10_000,
     deadlineMs: options.deadlineMs,
+    // «Кода нет» — это ответ, а не сбой.
+    notFoundIsEmpty: true,
   });
   const meta = payload.meta ?? {};
   return {
