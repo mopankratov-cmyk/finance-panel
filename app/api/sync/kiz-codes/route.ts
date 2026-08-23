@@ -3,6 +3,7 @@ import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { fetchFbsOrders, fetchFbsOrdersMetaBatch } from "@/lib/wb/fbsMarketplace";
 import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
+import { allowsProduct, type WbProductScope } from "@/lib/wb/productScope";
 
 // Коды маркировки добираются в фоне, а не по заходу пользователя.
 //
@@ -49,14 +50,16 @@ interface CabinetResult {
   reason?: string;
   /** Сырая форма metaDetails с боевого ответа — чтобы разбор правился по факту. */
   sample?: string;
+  /** Сколько заданий отсеяно как чужие: у агентских кабинетов это большинство. */
+  foreign: number;
 }
 
 async function collectForCabinet(
-  target: { name: string; cabinetId: string; advertToken: string },
+  target: { name: string; cabinetId: string; advertToken: string; productScope: WbProductScope },
   startDay: number,
   deadline: number,
 ): Promise<CabinetResult> {
-  const result: CabinetResult = { cabinet: target.name, orders: 0, probed: 0, found: 0, left: 0, days: [], failed: 0 };
+  const result: CabinetResult = { cabinet: target.name, orders: 0, probed: 0, found: 0, left: 0, days: [], failed: 0, foreign: 0 };
 
   for (let step = 0; step < DAYS_PER_RUN; step++) {
     if (Date.now() > deadline || result.probed >= CODES_PER_RUN) break;
@@ -73,7 +76,13 @@ async function collectForCabinet(
       maxPages: 1,
       deadlineMs: Math.min(deadline, Date.now() + LIST_BUDGET_MS),
     });
-    const ids = orders.map((order) => order.id).filter((id) => Number.isFinite(id));
+    // Агентская схема: WB отдаёт задания ВСЕГО продавца, а кабинет ограничен
+    // своими товарами. Без отсева прогон тратил бюджет на чужие задания —
+    // у Оптимы это 500 опрошенных на 41 найденный код, а экран сверки прямо
+    // сообщал: «за 30 дн. просмотрено 20 000 заданий, все чужие».
+    const mine = orders.filter((order) => allowsProduct(target.productScope, order.nmId));
+    result.foreign += orders.length - mine.length;
+    const ids = mine.map((order) => order.id).filter((id) => Number.isFinite(id));
     result.orders += ids.length;
     if (!ids.length) continue;
 
@@ -136,12 +145,13 @@ export async function GET(request: NextRequest) {
           left: 0,
           days: [],
           failed: 0,
+          foreign: 0,
           error:
             item.reason instanceof Error ? item.reason.message.slice(0, 120) : "Не удалось добрать коды",
         },
   );
 
-  const worked = summary.filter((row) => row.probed || row.left || row.error || row.failed);
+  const worked = summary.filter((row) => row.probed || row.left || row.error || row.failed || row.foreign);
   const note =
     (worked.length ? worked : summary)
       .map((row) => {
@@ -149,7 +159,8 @@ export async function GET(request: NextRequest) {
         const where = row.days.length ? ` (${row.days.join(", ")})` : "";
         const why = row.failed ? `, отказов ${row.failed}: ${row.reason ?? "?"}` : "";
         const shape = row.sample ? ` · форма ${row.sample}` : "";
-        return `${row.cabinet}: опрошено ${row.probed}, с кодом ${row.found}${row.left ? `, осталось ${row.left}` : ""}${why}${where}${shape}`;
+        const alien = row.foreign ? `, чужих отсеяно ${row.foreign}` : "";
+        return `${row.cabinet}: опрошено ${row.probed}, с кодом ${row.found}${row.left ? `, осталось ${row.left}` : ""}${alien}${why}${where}${shape}`;
       })
       .join("; ") || "Незакрытых заданий не нашлось";
 
