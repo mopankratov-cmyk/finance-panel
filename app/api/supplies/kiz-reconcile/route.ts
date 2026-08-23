@@ -105,7 +105,8 @@ function cachedKizCodeResolver(
     const cached = known.get(id);
     if (cached?.length) return cached;
     const codes = await fetchTaskKizCodesDirect(token, id, deadline);
-    if (codes.length) discovered.set(id, codes);
+    // Пустой ответ тоже отмечаем: это «спрашивали», а не «кода нет».
+    discovered.set(id, codes);
     return codes;
   };
 }
@@ -232,9 +233,11 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
   // Известные коды поднимаются из базы одним запросом: они не меняются, и
   // задание, опрошенное когда-либо раньше, больше не стоит запроса к WB.
-  const knownKizCodes = statusesAvailable && soldTasks.length
-    ? await loadKnownKizCodes(cabinetId, soldTasks.map((task) => task.id)).catch(() => new Map<number, string[]>())
-    : new Map<number, string[]>();
+  const kizSnapshot = statusesAvailable && soldTasks.length
+    ? await loadKnownKizCodes(cabinetId, soldTasks.map((task) => task.id))
+      .catch(() => ({ codes: new Map<number, string[]>(), recentlyProbed: new Set<number>() }))
+    : { codes: new Map<number, string[]>(), recentlyProbed: new Set<number>() };
+  const knownKizCodes = kizSnapshot.codes;
   const discoveredKizCodes = new Map<number, string[]>();
 
   const meta: KizCodesLookupResult = statusesAvailable && soldTasks.length

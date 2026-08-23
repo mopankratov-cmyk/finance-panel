@@ -7,50 +7,73 @@
 
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-/** Известные коды по списку заданий. Ошибка чтения не мешает опросить WB. */
+/**
+ * Сколько задание считается «недавно опрошенным». Пустой ответ WB — это не
+ * факт «кода нет»: продавец привяжет код позже. Но и спрашивать про одни и
+ * те же задания при каждом заходе нельзя — тогда бюджет уходит на них, а до
+ * остальных очередь не доходит вовсе.
+ */
+const PROBE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+export interface KizCodeSnapshot {
+  /** Найденные коды. Пусто — WB на момент опроса кода не отдал. */
+  codes: Map<number, string[]>;
+  /** Задания, которые опрашивались недавно и ещё не стоят нового запроса. */
+  recentlyProbed: Set<number>;
+}
+
+/** Что уже известно по списку заданий. Ошибка чтения не мешает опросить WB. */
 export async function loadKnownKizCodes(
   cabinetId: string,
   orderIds: number[],
-): Promise<Map<number, string[]>> {
-  const known = new Map<number, string[]>();
-  if (!cabinetId || !orderIds.length) return known;
+): Promise<KizCodeSnapshot> {
+  const snapshot: KizCodeSnapshot = { codes: new Map(), recentlyProbed: new Set() };
+  if (!cabinetId || !orderIds.length) return snapshot;
   const db = getSupabaseAdmin();
-  if (!db) return known;
+  if (!db) return snapshot;
+  const freshAfter = Date.now() - PROBE_COOLDOWN_MS;
   for (let index = 0; index < orderIds.length; index += 500) {
     const { data, error } = await db
       .from("wb_fbs_order_kiz")
-      .select("order_id, codes")
+      .select("order_id, codes, checked_at")
       .eq("cabinet_id", cabinetId)
       .in("order_id", orderIds.slice(index, index + 500));
-    if (error || !data) return known;
+    if (error || !data) return snapshot;
     for (const row of data) {
+      const orderId = Number(row.order_id);
       const codes = Array.isArray(row.codes) ? row.codes.map(String).filter(Boolean) : [];
-      if (codes.length) known.set(Number(row.order_id), codes);
+      if (codes.length) {
+        snapshot.codes.set(orderId, codes);
+        continue;
+      }
+      const checkedAt = Date.parse(String(row.checked_at ?? ""));
+      if (Number.isFinite(checkedAt) && checkedAt > freshAfter) snapshot.recentlyProbed.add(orderId);
     }
   }
-  return known;
+  return snapshot;
 }
 
 /**
- * Запомнить найденные коды. Пустой список не пишем: «кода нет» — состояние
- * сегодняшнего дня, продавец привяжет код позже, и запись держала бы это
- * как факт.
+ * Запомнить результат опроса — и найденный код, и пустой ответ.
+ *
+ * Пустой ответ пишется НЕ как «кода нет», а как отметка «спрашивали тогда-то»:
+ * через PROBE_COOLDOWN_MS задание снова встанет в очередь. Без этой отметки
+ * бюджет каждого захода уходил на одни и те же задания — счётчик стоял на
+ * «120 из 598» и не двигался.
  */
 export async function rememberKizCodes(
   cabinetId: string,
-  found: Map<number, string[]>,
+  probed: Map<number, string[]>,
 ): Promise<void> {
-  if (!cabinetId || !found.size) return;
+  if (!cabinetId || !probed.size) return;
   const db = getSupabaseAdmin();
   if (!db) return;
-  const rows = [...found.entries()]
-    .filter(([, codes]) => codes.length > 0)
-    .map(([orderId, codes]) => ({
-      cabinet_id: cabinetId,
-      order_id: orderId,
-      codes,
-      checked_at: new Date().toISOString(),
-    }));
+  const rows = [...probed.entries()].map(([orderId, codes]) => ({
+    cabinet_id: cabinetId,
+    order_id: orderId,
+    codes,
+    checked_at: new Date().toISOString(),
+  }));
   if (!rows.length) return;
   for (let index = 0; index < rows.length; index += 500) {
     // Ошибку глотаем: не сохранили — просто опросим WB в следующий раз.

@@ -106,7 +106,8 @@ async function loadOrderKizCode(
   // Найденный код запоминаем навсегда — он у задания уже не изменится.
   // Отсутствие не запоминаем: продавец привяжет код через минуту, а запись
   // держала бы «кода нет» как факт.
-  if (code) discovered.set(orderId, [code]);
+  // Пишем и пустой ответ: это отметка «спрашивали», а не «кода нет».
+  discovered.set(orderId, code ? [code] : []);
   return code;
 }
 
@@ -225,8 +226,9 @@ export async function GET(request: NextRequest) {
     // Известные коды поднимаются из базы одним запросом, поэтому бюджет
     // тратится только на задания, которых там ещё нет: «проверено N из M»
     // растёт от захода к заходу, а не начинается каждый раз заново.
-    const knownCodes = await loadKnownKizCodes(cabinetId, candidates.map((row) => row.id))
-      .catch(() => new Map<number, string[]>());
+    const kizSnapshot = await loadKnownKizCodes(cabinetId, candidates.map((row) => row.id))
+      .catch(() => ({ codes: new Map<number, string[]>(), recentlyProbed: new Set<number>() }));
+    const knownCodes = kizSnapshot.codes;
     const discoveredCodes = new Map<number, string[]>();
     for (const row of candidates) {
       const cached = knownCodes.get(row.id);
@@ -235,7 +237,12 @@ export async function GET(request: NextRequest) {
       target.kizCode = cached[0];
       target.kizStatus = "present";
     }
-    const probed = candidates.filter((row) => !knownCodes.get(row.id)?.length).slice(0, META_BUDGET);
+    // Недавно опрошенные пропускаем: у них WB кода не дал, и повторять запрос
+    // сейчас — значит снова упереться в тот же бюджет, не добравшись до
+    // остальных заданий. Через несколько часов они вернутся в очередь.
+    const probed = candidates
+      .filter((row) => !knownCodes.get(row.id)?.length && !kizSnapshot.recentlyProbed.has(row.id))
+      .slice(0, META_BUDGET);
     let checked = 0;
     let metaFailed = 0;
     await mapWithConcurrency(probed, META_CONCURRENCY, async (row) => {
