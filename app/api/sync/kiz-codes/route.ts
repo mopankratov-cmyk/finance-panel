@@ -31,6 +31,9 @@ const REQUEST_PAUSE_MS = 250;
 const WINDOW_DAYS = 14;
 /** Сколько дней максимум пролистать за прогон в поисках незакрытых заданий. */
 const DAYS_PER_RUN = 4;
+/** Потолок на ОДНУ выборку списка. Без него список съедает весь прогон:
+ *  WB отвечает 429 и просит ждать до 20 секунд, а попыток три. */
+const LIST_BUDGET_MS = 12_000;
 /** Шаг ротации по дням: крон ходит четыре раза в час. */
 const SLOT_MS = 15 * 60_000;
 const DAY_MS = 86_400_000;
@@ -62,8 +65,10 @@ async function collectForCabinet(
     const { orders } = await fetchFbsOrders(target.advertToken, {
       fromMs,
       toMs,
-      maxPages: 3,
-      deadlineMs: deadline,
+      // Одной страницы (1000 заданий) с запасом хватает прогону на 80 кодов,
+      // а каждая лишняя страница — ещё один запрос в общий лимит продавца.
+      maxPages: 1,
+      deadlineMs: Math.min(deadline, Date.now() + LIST_BUDGET_MS),
     });
     const ids = orders.map((order) => order.id).filter((id) => Number.isFinite(id));
     result.orders += ids.length;
