@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { noWildberriesSourceReason, wildberriesOwnCabinets } from "@/lib/warehouse/cabinetChannels";
 import { planProductImport, type CatalogCard, type NewProduct } from "@/lib/warehouse/missingProducts";
 import { readCabinetCards } from "@/lib/wb/cabinetCards";
 
@@ -57,10 +58,10 @@ export async function POST(request: NextRequest) {
   const scope = await resolveEntity(body.entityId ?? null);
   if (!scope.ok) return fail(scope.error, scope.status);
 
-  // Только собственные кабинеты: в агентском карточки чужого продавца, и
-  // заводить их себе в справочник значило бы присвоить чужой товар.
-  const cabinets = scope.entity.cabinets.filter((link) => link.relation === "own");
-  if (cabinets.length === 0) return fail(`У юрлица «${scope.entity.name}» нет собственных кабинетов`, 400);
+  // Только собственные кабинеты Wildberries: в агентском карточки чужого
+  // продавца, а у Ozon карточки живут в другом API, которого мы ещё не читаем.
+  const cabinets = wildberriesOwnCabinets(scope.entity.cabinets);
+  if (cabinets.length === 0) return fail(noWildberriesSourceReason(scope.entity.name, scope.entity.cabinets), 400);
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
@@ -78,7 +79,9 @@ export async function POST(request: NextRequest) {
       cabinetStats.push({ name: link.cabinetName, cards: 0, complete: false, failed: true });
     }
   }
-  if (cards.length === 0) return fail("Не удалось прочитать карточки кабинетов", 502);
+  // Пустой результат при живых кабинетах — это сорванный обход, и повтор
+  // осмыслен. Случай «читать нечем» отсечён выше и говорит другим текстом.
+  if (cards.length === 0) return fail("Не удалось прочитать карточки кабинетов — обход WB оборвался. Попробуйте ещё раз.", 502);
 
   const wanted = (body.brands ?? []).map((brand) => brand.trim().toLowerCase()).filter(Boolean);
   const filtered = wanted.length > 0

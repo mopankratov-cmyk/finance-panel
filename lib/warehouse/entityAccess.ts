@@ -6,6 +6,10 @@ export interface EntityCabinetLink {
   cabinetId: string;
   cabinetName: string;
   relation: "own" | "agent";
+  /** Маркетплейс кабинета. Склад работает с обоими, но всё, что читает карточки
+   *  через Content API Wildberries, обязано отсеять чужие: в `wb_cabinets` лежат
+   *  и кабинеты Ozon, и их ключ — от совсем другого API. */
+  marketplace: "wb" | "ozon";
 }
 
 export interface LegalEntityRow {
@@ -47,25 +51,38 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
     };
   }
 
-  const linksResult = await db.from("legal_entity_cabinets").select("legal_entity_id, cabinet_id, relation");
+  // Порядок задаём явно: от него зависят умолчания в потребителях (какой кабинет
+  // подставится в приёмку), а порядок строк из базы ничем не гарантирован.
+  const linksResult = await db
+    .from("legal_entity_cabinets")
+    .select("legal_entity_id, cabinet_id, relation")
+    .order("relation")
+    .order("cabinet_id");
   if (linksResult.error) return { ok: false, error: linksResult.error.message, status: 500 };
 
   // Имена кабинетов отдаются отсюда же: оператору склада незачем открывать
   // кабинетный API, где живут маскированные токены.
   const cabinetIds = [...new Set((linksResult.data ?? []).map((link) => String(link.cabinet_id)))];
-  const cabinetNames = new Map<string, string>();
+  const cabinetInfo = new Map<string, { name: string; marketplace: "wb" | "ozon" }>();
   if (cabinetIds.length > 0) {
-    const named = await db.from("wb_cabinets").select("id, name").in("id", cabinetIds);
-    for (const row of named.data ?? []) cabinetNames.set(String(row.id), String(row.name ?? ""));
+    const named = await db.from("wb_cabinets").select("id, name, marketplace").in("id", cabinetIds);
+    for (const row of named.data ?? []) {
+      cabinetInfo.set(String(row.id), {
+        name: String(row.name ?? ""),
+        marketplace: row.marketplace === "ozon" ? "ozon" : "wb",
+      });
+    }
   }
 
   const byEntity = new Map<string, EntityCabinetLink[]>();
   for (const link of linksResult.data ?? []) {
     const list = byEntity.get(String(link.legal_entity_id)) ?? [];
+    const info = cabinetInfo.get(String(link.cabinet_id));
     list.push({
       cabinetId: String(link.cabinet_id),
-      cabinetName: cabinetNames.get(String(link.cabinet_id)) ?? "кабинет",
+      cabinetName: info?.name ?? "кабинет",
       relation: link.relation === "agent" ? "agent" : "own",
+      marketplace: info?.marketplace ?? "wb",
     });
     byEntity.set(String(link.legal_entity_id), list);
   }
@@ -93,7 +110,12 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
 
   const rows: LegalEntityRow[] = [];
   for (const raw of entitiesResult.data ?? []) {
-    const cabinets = byEntity.get(String(raw.id)) ?? [];
+    const cabinets = (byEntity.get(String(raw.id)) ?? []).slice().sort((a, b) =>
+      // Свои раньше агентских, Wildberries раньше Ozon, дальше по имени: список
+      // кабинетов не должен переставляться от запроса к запросу.
+      Number(a.relation === "agent") - Number(b.relation === "agent")
+      || Number(a.marketplace === "ozon") - Number(b.marketplace === "ozon")
+      || a.cabinetName.localeCompare(b.cabinetName, "ru"));
     const canSee = (cabinetId: string | null) =>
       sessionHasCabinetAccess(session, cabinetId)
       && (sellerCabinets === null || (cabinetId !== null && sellerCabinets.has(cabinetId)));

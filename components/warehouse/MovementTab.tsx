@@ -10,6 +10,7 @@ import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
+import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
 
 type Mode = "transfer" | "return";
 
@@ -213,7 +214,7 @@ export function MovementTab({
             >
               {(entity?.cabinets ?? []).map((link) => (
                 <option key={link.cabinetId} value={link.cabinetId}>
-                  {link.cabinetName}{link.relation === "agent" ? " · агент" : ""}
+                  {link.cabinetName} · {MARKETPLACE_LABEL[link.marketplace]}{link.relation === "agent" ? " · агент" : ""}
                 </option>
               ))}
             </select>

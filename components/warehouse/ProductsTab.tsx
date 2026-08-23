@@ -7,6 +7,7 @@ import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { VariantRow } from "@/app/api/warehouse/variants/route";
 import type { ProductImportResult, ProductImportPlanRow } from "@/app/api/warehouse/products/import/route";
+import { hasWildberriesSource, noWildberriesSourceReason } from "@/lib/warehouse/cabinetChannels";
 
 // Себестоимость вносится в рублях — курс тогда не нужен ни приёмке, ни остаткам.
 const CURRENCIES = ["RUB", "CNY", "USD"] as const;
@@ -82,6 +83,13 @@ export function ProductsTab({
   const [importPlan, setImportPlan] = useState<ProductImportResult | null>(null);
   const [pickedBrands, setPickedBrands] = useState<string[]>([]);
   const [withStale, setWithStale] = useState(false);
+
+  // Все три кнопки ниже читают карточки через Content API Wildberries. У юрлица
+  // с одними Ozon-кабинетами читать нечем — и честнее сказать это заранее, чем
+  // отправить человека ждать обхода, который не может закончиться.
+  const entity = entities.find((row) => row.id === entityId) ?? null;
+  const wbSource = entity ? hasWildberriesSource(entity.cabinets) : true;
+  const noWbReason = entity && !wbSource ? noWildberriesSourceReason(entity.name, entity.cabinets) : null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,6 +167,10 @@ export function ProductsTab({
       if (d.linkedByArticle > 0) parts.push(`связано с карточкой WB ${d.linkedByArticle}`);
       if (d.skippedNoProduct > 0) parts.push(`пропущено без товара ${d.skippedNoProduct}`);
       if (d.partial) parts.push("каталог WB отдан не полностью");
+      // Кабинет, который не прочитался, раньше молчал: роут его отмечал, а экран
+      // не показывал — и цифры выглядели полными, хотя половину не прочитали.
+      const cold = (d.cabinets ?? []).filter((row: { cold: boolean }) => row.cold);
+      if (cold.length > 0) parts.push(`не прочитаны: ${cold.map((row: { name: string }) => row.name).join(", ")}`);
       setImportResult(parts.join(" · "));
       await load();
     } catch (e) {
@@ -305,6 +317,12 @@ export function ProductsTab({
         </div>
       )}
 
+      {noWbReason && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+          {noWbReason} Отгружать и возвращать через этот кабинет можно как обычно — не работает только чтение справочника.
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <div className="relative min-w-56 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
@@ -321,16 +339,16 @@ export function ProductsTab({
         </label>
         <button
           onClick={() => void importFromWb()}
-          disabled={importing}
-          title="Прочитать карточки Wildberries и заполнить размеры с баркодами. Занимает несколько минут."
+          disabled={importing || !wbSource}
+          title={noWbReason ?? "Прочитать карточки Wildberries и заполнить размеры с баркодами. Занимает несколько минут."}
           className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
         >
           <Download className="h-4 w-4" /> {importing ? "Читаю карточки WB…" : "Размеры из WB"}
         </button>
         <button
           onClick={() => void scanCatalog(false)}
-          disabled={scanning}
-          title="Найти в карточках кабинетов товары, которых нет в справочнике. Сначала покажет список."
+          disabled={scanning || !wbSource}
+          title={noWbReason ?? "Найти в карточках кабинетов товары, которых нет в справочнике. Сначала покажет список."}
           className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
         >
           <ListPlus className="h-4 w-4" /> {scanning ? "Читаю карточки…" : "Товары из карточек"}

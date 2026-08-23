@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { noWildberriesSourceReason, wildberriesOwnCabinets } from "@/lib/warehouse/cabinetChannels";
 import { warmFbsBarcodeCatalog, type FbsBarcodeEntry } from "@/lib/wb/fbsBarcodeCatalog";
 
 export const dynamic = "force-dynamic";
@@ -40,9 +41,10 @@ export async function POST(request: NextRequest) {
   const scope = await resolveEntity(body.entityId ?? null);
   if (!scope.ok) return fail(scope.error, scope.status);
 
-  // Свои кабинеты: чужие карточки агентской схемы к нашему справочнику отношения не имеют.
-  const cabinets = scope.entity.cabinets.filter((link) => link.relation === "own");
-  if (cabinets.length === 0) return fail(`У юрлица «${scope.entity.name}» нет собственных кабинетов`, 400);
+  // Свои кабинеты Wildberries: у агентской схемы карточки чужие, а у Ozon
+  // Content API нет вовсе — его ключ в WB отправлять нельзя и незачем.
+  const cabinets = wildberriesOwnCabinets(scope.entity.cabinets);
+  if (cabinets.length === 0) return fail(noWildberriesSourceReason(scope.entity.name, scope.entity.cabinets), 400);
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);

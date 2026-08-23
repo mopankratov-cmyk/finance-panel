@@ -98,14 +98,28 @@ export async function getActiveWbCabinets(): Promise<WbCabinet[]> {
   return attachProductScopes(data as RawWbCabinet[]);
 }
 
+/**
+ * Кабинет Wildberries по идентификатору.
+ *
+ * Фильтр по маркетплейсу здесь не украшение, а замок. Таблица `wb_cabinets`
+ * хранит и кабинеты Ozon, у которых в поле `token` лежит ключ Ozon Seller API.
+ * Без фильтра такая строка возвращалась бы отсюда как полноценный WB-кабинет,
+ * `resolveWbToken` отдавал бы озоновский ключ, и он уходил бы в заголовке
+ * Authorization на content-api.wildberries.ru. Это не сломанная кнопка, а
+ * отправка нашего секрета на чужой хост.
+ *
+ * Раньше это было невозможно: с юрлицами связывались только WB-кабинеты. Как
+ * только к складу подключили Ozon, дверь открылась — и закрывать её надо здесь,
+ * в единственном месте, а не в каждом вызывающем.
+ */
 export async function getWbCabinet(id: string): Promise<WbCabinet | null> {
   const db = getSupabaseAdmin();
   if (!db) return null;
-  const primary = await db.from("wb_cabinets").select(CABINET_COLS).eq("id", id).maybeSingle();
+  const primary = await db.from("wb_cabinets").select(CABINET_COLS).eq("id", id).eq("marketplace", "wb").maybeSingle();
   let data = primary.data as RawWbCabinet | null;
   let error = primary.error;
   if (error?.code === "42703") {
-    const legacy = await db.from("wb_cabinets").select(LEGACY_CABINET_COLS).eq("id", id).maybeSingle();
+    const legacy = await db.from("wb_cabinets").select(LEGACY_CABINET_COLS).eq("id", id).eq("marketplace", "wb").maybeSingle();
     data = legacy.data as RawWbCabinet | null;
     error = legacy.error;
   }

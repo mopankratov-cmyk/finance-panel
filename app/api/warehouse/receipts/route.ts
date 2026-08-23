@@ -198,8 +198,16 @@ export async function PUT(request: NextRequest) {
 
   // Приёмка живёт в кабинете (так устроена purchase_receipts), поэтому нужен один
   // из собственных кабинетов юрлица — агентский чужой товар принимать не может.
-  const ownCabinets = scope.entity.cabinets.filter((link) => link.relation === "own").map((link) => link.cabinetId);
-  const cabinetId = body.cabinetId && ownCabinets.includes(body.cabinetId) ? body.cabinetId : ownCabinets[0];
+  //
+  // Кабинет здесь — только отметка в аудите: юрлицо приёмки задано явно, и от
+  // выбора кабинета ни остаток, ни себестоимость не зависят. Но выбор всё равно
+  // должен быть предсказуемым: раньше брался первый попавшийся из базы, и с
+  // подключением Ozon партия могла оказаться заведена в кабинете другого
+  // маркетплейса просто из-за порядка строк.
+  const own = scope.entity.cabinets.filter((link) => link.relation === "own");
+  const ownIds = own.map((link) => link.cabinetId);
+  const fallback = (own.find((link) => link.marketplace === "wb") ?? own[0])?.cabinetId;
+  const cabinetId = body.cabinetId && ownIds.includes(body.cabinetId) ? body.cabinetId : fallback;
   if (!cabinetId) return fail(`У юрлица «${scope.entity.name}» нет собственных кабинетов`, 400);
 
   const lines = (body.lines ?? []).filter((line) => Number(line.qty) > 0 && line.productId);

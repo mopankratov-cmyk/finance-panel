@@ -5,6 +5,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { resolveProductOwners, type OwnerCard, type OwnerSource } from "@/lib/warehouse/productOwners";
 import { readCabinetCards } from "@/lib/wb/cabinetCards";
+import { wildberriesOwnCabinets } from "@/lib/warehouse/cabinetChannels";
 
 export const dynamic = "force-dynamic";
 // Обход карточек всех своих кабинетов с обязательной паузой между страницами
@@ -42,9 +43,11 @@ export async function POST() {
   const sources: OwnerSource[] = [];
   const cabinetStats: ProductOwnersResult["cabinets"] = [];
   for (const entity of list.rows) {
-    for (const link of entity.cabinets) {
-      // Агентский кабинет о собственности не говорит: там чужие карточки.
-      if (link.relation !== "own") continue;
+    // Агентский кабинет о собственности не говорит: там чужие карточки. Кабинет
+    // Ozon свидетельством тоже не служит — не потому, что чужой, а потому, что
+    // его карточки живут в другом API; молчание такого кабинета не должно
+    // выглядеть как сбой чтения.
+    for (const link of wildberriesOwnCabinets(entity.cabinets)) {
       try {
         const { cards, complete } = await readCabinetCards(link.cabinetId);
         sources.push({ entityId: entity.id, cabinetName: link.cabinetName, cards });

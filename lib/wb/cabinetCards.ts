@@ -29,9 +29,11 @@ const MAX_PAGES = 80;
 
 export async function readCabinetCards(
   cabinetId: string,
-): Promise<{ cards: CabinetCard[]; complete: boolean }> {
+): Promise<{ cards: CabinetCard[]; complete: boolean; notWildberries?: boolean }> {
   const cabinet = await getWbCabinet(cabinetId);
-  if (!cabinet) return { cards: [], complete: true };
+  // Кабинет другого маркетплейса — не сбой обхода, а неприменимость. Разница
+  // важна для человека: обрыв обхода лечится повтором, а Ozon повтором нет.
+  if (!cabinet) return { cards: [], complete: true, notWildberries: true };
   const page = await fetchWbCardPages<RawCard>({
     token: resolveWbToken(cabinet, "content"),
     maxPagesThisRun: MAX_PAGES,

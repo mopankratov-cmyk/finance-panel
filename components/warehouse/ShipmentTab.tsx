@@ -8,11 +8,13 @@ import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
+import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
 
 interface CabinetOption {
   id: string;
   name: string;
   relation: "own" | "agent";
+  marketplace: "wb" | "ozon";
 }
 
 /** Ключ ячейки ввода: одна позиция может уехать в несколько кабинетов сразу. */
@@ -59,6 +61,7 @@ export function ShipmentTab({
         id: link.cabinetId,
         name: link.cabinetName,
         relation: link.relation,
+        marketplace: link.marketplace,
       })));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить данные");
@@ -183,6 +186,11 @@ export function ShipmentTab({
                   {cabinets.map((cabinet) => (
                     <th key={cabinet.id} className="px-4 py-3 text-right font-medium">
                       {cabinet.name}
+                      {/* Маркетплейс виден в шапке колонки: у кабинетов бывают похожие
+                          имена, а отгрузка не туда — это товар, уехавший не на ту площадку. */}
+                      <span className={`ml-1 rounded px-1 py-0.5 text-[10px] normal-case ${
+                        cabinet.marketplace === "ozon" ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"
+                      }`}>{MARKETPLACE_LABEL[cabinet.marketplace]}</span>
                       {cabinet.relation === "agent" && (
                         <span className="ml-1 rounded bg-slate-200 px-1 py-0.5 text-[10px] normal-case text-slate-600">агент</span>
                       )}

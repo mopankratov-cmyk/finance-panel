@@ -45,6 +45,8 @@ interface RawCatalogCard {
 const MAX_PAGES = 80;
 
 async function fetchCatalog(cabinetId: string): Promise<FbsBarcodeCatalog> {
+  // getWbCabinet отдаёт только кабинеты Wildberries: для Ozon-кабинета здесь
+  // придёт null, и мы вернём пустой каталог, не отправив его ключ в WB.
   const cabinet = await getWbCabinet(cabinetId);
   if (!cabinet) return { entries: [], complete: true };
   const scope = cabinetProductScope(cabinet);
