@@ -1,3 +1,4 @@
+import { previousOzonPeriod, type OzonPeriod } from "@/lib/ozon/period";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { calculateAdvertProfitGuardrail } from "@/lib/adverts/profitGuardrails";
 import type { OzonCabinetScope } from "@/lib/ozon/cabinet";
@@ -38,11 +39,9 @@ const pct = (part: number, total: number) => total > 0 ? r1((part / total) * 100
 const deltaPct = (current: number, previous: number) => previous !== 0 ? r1(((current - previous) / Math.abs(previous)) * 100) : null;
 const dateOnly = (value: Date | number) => new Date(value).toISOString().slice(0, 10);
 
-function period(days: number, multiplier = 1) {
-  const today = new Date();
-  const to = dateOnly(today);
-  const from = dateOnly(today.getTime() - (days * multiplier - 1) * DAY);
-  return { from, to };
+/** Период с запасом влево — нужен там, где рядом с текущим считается предыдущий. */
+function withPrevious(period: OzonPeriod) {
+  return { from: previousOzonPeriod(period).from, to: period.to };
 }
 
 function dateAxis(from: string, to: string) {
@@ -70,16 +69,22 @@ interface AdCacheRow {
   updated_at: string | null;
 }
 
-async function loadAdCache(scope: OzonCabinetScope, days: number) {
+async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
+  const days = period.days;
   const db = getSupabaseAdmin();
   const rows = new Map<string, { spent: number; ordersMoney: number; updatedAt: string | null }>();
   if (!db || !scope.cabinets.length) return rows;
   const clientIds = scope.cabinets.map((cabinet) => cabinet.clientId);
-  const { data } = await db
-    .from("ozon_ad_cache")
-    .select("client_id, sku, spent, orders_money, updated_at")
-    .in("client_id", clientIds)
-    .eq("days", days);
+  // Кэш расхода рекламы хранится по числу дней и означает «последние N дней».
+  // Для периода, который кончился в прошлом, эта строка — не тот период, и брать
+  // её значило бы показать расход не за то время. Такой период читаем живьём.
+  const { data } = period.endsToday
+    ? await db
+      .from("ozon_ad_cache")
+      .select("client_id, sku, spent, orders_money, updated_at")
+      .in("client_id", clientIds)
+      .eq("days", days)
+    : { data: [] };
   for (const row of (data ?? []) as AdCacheRow[]) {
     rows.set(`${row.client_id}:${row.sku}`, {
       spent: Number(row.spent ?? 0),
@@ -93,7 +98,7 @@ async function loadAdCache(scope: OzonCabinetScope, days: number) {
   // выглядело как нулевой расход. Кабинеты обновляются параллельно, ключ включает client_id.
   const missing = scope.cabinets.filter((cabinet) => cabinet.perf && ![...rows.keys()].some((key) => key.startsWith(`${cabinet.clientId}:`)));
   if (missing.length) {
-    const range = period(days);
+    const range = period;
     const reports = await Promise.all(missing.map(async (cabinet) => ({
       cabinet,
       report: await perfProductReport(cabinet.perf!, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
@@ -107,7 +112,11 @@ async function loadAdCache(scope: OzonCabinetScope, days: number) {
         freshRows.push({ client_id: cabinet.clientId, sku, days, spent: r0(value.spent), orders_money: r0(value.ordersMoney), updated_at: updatedAt });
       }
     }
-    if (freshRows.length) await db.from("ozon_ad_cache").upsert(freshRows, { onConflict: "client_id,sku,days" });
+    // Пишем в кэш только «последние N дней»: иначе строка соврёт следующему,
+    // кто спросит тот же N.
+    if (freshRows.length && period.endsToday) {
+      await db.from("ozon_ad_cache").upsert(freshRows, { onConflict: "client_id,sku,days" });
+    }
   }
   return rows;
 }
@@ -218,11 +227,13 @@ async function loadCabinetBase(
   };
 }
 
-export async function loadOverview(scope: OzonCabinetScope, days: number) {
-  const allPeriod = period(days, 2);
-  const currentPeriod = period(days);
-  const previousTo = dateOnly(new Date(`${currentPeriod.from}T00:00:00Z`).getTime() - DAY);
-  const previousFrom = dateOnly(new Date(`${previousTo}T00:00:00Z`).getTime() - (days - 1) * DAY);
+export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod) {
+  const days = current.days;
+  const allPeriod = withPrevious(current);
+  const currentPeriod = { from: current.from, to: current.to };
+  const previous = previousOzonPeriod(current);
+  const previousFrom = previous.from;
+  const previousTo = previous.to;
   const bases = await Promise.all(scope.cabinets.map((cabinet) => loadCabinetBase(
     cabinet,
     allPeriod.from,
@@ -238,7 +249,7 @@ export async function loadOverview(scope: OzonCabinetScope, days: number) {
     available: base.analyticsAvailable,
     error: base.analyticsError,
   })));
-  const adCache = await loadAdCache(scope, days);
+  const adCache = await loadAdCache(scope, current);
   const dates = dateAxis(currentPeriod.from, currentPeriod.to);
   const currentByDay = new Map(dates.map((day) => [day, { orders: 0, revenue: 0, adSpend: 0 }]));
   const currentTotals = emptyTotals();
@@ -395,10 +406,11 @@ export async function loadOverview(scope: OzonCabinetScope, days: number) {
   };
 }
 
-export async function loadSales(scope: OzonCabinetScope, days: number) {
-  const range = period(days);
+export async function loadSales(scope: OzonCabinetScope, current: OzonPeriod) {
+  const days = current.days;
+  const range = current;
   const dates = dateAxis(range.from, range.to);
-  const adCache = await loadAdCache(scope, days);
+  const adCache = await loadAdCache(scope, current);
   const bases = await Promise.all(scope.cabinets.map((cabinet) => loadCabinetBase(
     cabinet,
     range.from,
@@ -482,8 +494,9 @@ export async function loadSales(scope: OzonCabinetScope, days: number) {
   };
 }
 
-export async function loadStocks(scope: OzonCabinetScope, days: number) {
-  const range = period(days);
+export async function loadStocks(scope: OzonCabinetScope, current: OzonPeriod) {
+  const days = current.days;
+  const range = current;
   const bases = await Promise.all(scope.cabinets.map((cabinet) => loadCabinetBase(
     cabinet,
     range.from,
@@ -580,10 +593,10 @@ export async function loadStocks(scope: OzonCabinetScope, days: number) {
   };
 }
 
-export async function loadAdverts(scope: OzonCabinetScope) {
-  const days = 14;
-  const range = period(days);
-  const [cache, costs] = await Promise.all([loadAdCache(scope, days), loadCosts()]);
+export async function loadAdverts(scope: OzonCabinetScope, current: OzonPeriod) {
+  const days = current.days;
+  const range = current;
+  const [cache, costs] = await Promise.all([loadAdCache(scope, current), loadCosts()]);
   const rows: Record<string, unknown>[] = [];
   const warnings: string[] = [];
   const cabinetData = await Promise.all(scope.cabinets.map(async (cabinet) => {
@@ -693,8 +706,9 @@ export async function loadAdverts(scope: OzonCabinetScope) {
   };
 }
 
-export async function loadOrders(scope: OzonCabinetScope, days: number) {
-  const range = period(days);
+export async function loadOrders(scope: OzonCabinetScope, current: OzonPeriod) {
+  const days = current.days;
+  const range = current;
   const fromIso = `${range.from}T00:00:00.000Z`;
   const toIso = `${range.to}T23:59:59.999Z`;
   const rows: Record<string, unknown>[] = [];
@@ -746,9 +760,10 @@ export async function loadOrders(scope: OzonCabinetScope, days: number) {
   };
 }
 
-export async function loadEconomy(scope: OzonCabinetScope, days: number, taxPct: number) {
-  const range = period(days);
-  const cache = await loadAdCache(scope, days);
+export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, taxPct: number) {
+  const days = current.days;
+  const range = current;
+  const cache = await loadAdCache(scope, current);
   const costs = await loadCosts();
   // Налог и комиссия посредника задаются вручную на кабинет: у каждой компании
   // свой режим, а посредник есть не везде. Кабинет без настройки считается по
@@ -1007,14 +1022,14 @@ export async function loadHealth(scope: OzonCabinetScope) {
 export async function loadOzonCockpit(
   view: OzonCockpitView,
   scope: OzonCabinetScope,
-  days: number,
+  period: OzonPeriod,
   taxPct: number,
 ) {
-  if (view === "overview") return loadOverview(scope, days);
-  if (view === "sales") return loadSales(scope, days);
-  if (view === "adverts") return loadAdverts(scope);
-  if (view === "stocks") return loadStocks(scope, days);
-  if (view === "orders") return loadOrders(scope, days);
-  if (view === "economy") return loadEconomy(scope, days, taxPct);
+  if (view === "overview") return loadOverview(scope, period);
+  if (view === "sales") return loadSales(scope, period);
+  if (view === "adverts") return loadAdverts(scope, period);
+  if (view === "stocks") return loadStocks(scope, period);
+  if (view === "orders") return loadOrders(scope, period);
+  if (view === "economy") return loadEconomy(scope, period, taxPct);
   return loadHealth(scope);
 }

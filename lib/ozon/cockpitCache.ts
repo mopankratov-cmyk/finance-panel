@@ -6,6 +6,7 @@ import {
   type OzonCabinetScopeDescriptor,
 } from "@/lib/ozon/cabinet";
 import { loadOzonCockpit, type OzonCockpitView } from "@/lib/ozon/cockpit";
+import { resolveOzonPeriod } from "@/lib/ozon/period";
 
 export const OZON_COCKPIT_CACHE_SECONDS = 60 * 60;
 export const OZON_COCKPIT_CACHE_VERSION = "v5";
@@ -14,8 +15,12 @@ const OZON_COCKPIT_RELIABILITY_VERSION = "complete-sales-v1";
 export interface OzonCockpitCacheRequest {
   view: OzonCockpitView;
   scope: OzonCabinetScopeDescriptor;
+  /** Длина периода в днях. Работает как запасной вариант, если дат нет. */
   days: number;
   taxPct: number;
+  /** Явные границы периода из календаря. Без них — последние `days` дней. */
+  from?: string;
+  to?: string;
 }
 
 type OzonCockpitSnapshot = Awaited<ReturnType<typeof loadOzonCockpit>>;
@@ -36,6 +41,7 @@ export function ozonCockpitRevalidationProfile(
 }
 
 export function normalizeOzonCacheRequest(input: OzonCockpitCacheRequest): OzonCockpitCacheRequest {
+  const period = resolveOzonPeriod(input.from, input.to, input.days);
   return {
     view: input.view,
     scope: {
@@ -43,7 +49,11 @@ export function normalizeOzonCacheRequest(input: OzonCockpitCacheRequest): OzonC
       label: input.scope.label.trim(),
       cabinetIds: [...new Set(input.scope.cabinetIds)].filter(Boolean).sort(),
     },
-    days: Math.min(30, Math.max(7, Math.round(input.days))),
+    // Ключ кэша держит КОНКРЕТНЫЕ даты, а не число дней: снимок «за 14 дней»,
+    // снятый вчера, — это другой период, и отдавать его сегодня нельзя.
+    days: period.days,
+    from: period.from,
+    to: period.to,
     taxPct: Math.min(30, Math.max(0, Math.round(input.taxPct * 100) / 100)),
   };
 }
@@ -71,7 +81,8 @@ export async function loadCachedOzonCockpit(
     async () => {
       const scope = await resolveOzonScopeDescriptor(normalized.scope);
       if (!scope) throw new Error("Ozon-кабинеты для снимка больше недоступны");
-      const data = await loadOzonCockpit(normalized.view, scope, normalized.days, normalized.taxPct);
+      const period = resolveOzonPeriod(normalized.from, normalized.to, normalized.days);
+      const data = await loadOzonCockpit(normalized.view, scope, period, normalized.taxPct);
       return encodeCompressedJson(data);
     },
     [

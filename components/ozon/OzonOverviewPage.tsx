@@ -2,13 +2,13 @@
 
 import { AlertCircle, AlertTriangle, ArrowRight, BadgeRussianRuble, RotateCcw, ShoppingBag } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { withOzonCabinetScope } from "@/lib/ozon/navigation";
 import { useOzonCabinet } from "./OzonCabinetContext";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonPeriod } from "./useOzonPeriod";
 
 interface OverviewData {
   generatedAt: string;
@@ -27,12 +27,12 @@ interface OverviewData {
 }
 
 export function OzonOverviewPage() {
-  const [days, setDays] = useState(14);
+  const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const { cabinetId } = useOzonCabinet();
-  const { data, loading, error, refresh } = useOzonCockpit<OverviewData>("overview", days);
+  const { data, loading, error, refresh } = useOzonCockpit<OverviewData>("overview", period);
   return (
     <div>
-      <OzonModuleHeader eyebrow="Ozon Cockpit" title="Обзор" subtitle="Главная картина по продажам, рекламе, остаткам и удержаниям — с честными статусами полноты данных." days={days} onDaysChange={setDays} onRefresh={refresh} refreshing={loading} />
+      <OzonModuleHeader eyebrow="Ozon Cockpit" title="Обзор" subtitle="Главная картина по продажам, рекламе, остаткам и удержаниям — с честными статусами полноты данных." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
       <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 sm:px-5">
         {loading && !data ? <OzonLoading /> : error ? <OzonError message={error} onRetry={refresh} /> : !data ? <EmptyState title="Нет данных Ozon" detail="Подключите Seller API и выберите кабинет." href="/cabinets" /> : (
           <>
@@ -58,7 +58,7 @@ export function OzonOverviewPage() {
                   <div><h2 id="ozon-trend-title" className="text-sm font-bold text-slate-900">Динамика продаж и рекламы</h2><p className="mt-0.5 text-[11px] text-slate-500">Выручка и расход по дням; точные значения доступны в подсказке.</p></div>
                   <BadgeRussianRuble className="h-4 w-4 text-sky-600" />
                 </div>
-                <div className="min-h-[280px] min-w-0 w-full" role="img" aria-label={`График выручки и рекламы за ${days} дней`}>
+                <div className="min-h-[280px] min-w-0 w-full" role="img" aria-label={`График выручки и рекламы за ${period.days} дней`}>
                   <ResponsiveContainer width="100%" height={280} minWidth={0}>
                     <LineChart data={data.trend} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />

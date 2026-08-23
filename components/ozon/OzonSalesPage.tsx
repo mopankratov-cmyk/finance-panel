@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonPeriod } from "./useOzonPeriod";
 
 interface SalesRow {
   key: string; cabinet: string; sku: string; offerId: string; name: string; image: string | null;
@@ -27,11 +28,11 @@ function MiniBars({ values }: { values: number[] }) {
 }
 
 export function OzonSalesPage() {
-  const [days, setDays] = useState(14);
+  const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [tab, setTab] = useState<"rnp" | "funnel">("rnp");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("revenue");
-  const { data, loading, error, refresh } = useOzonCockpit<SalesData>("sales", days);
+  const { data, loading, error, refresh } = useOzonCockpit<SalesData>("sales", period);
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
     return [...(data?.rows ?? [])]
@@ -41,14 +42,14 @@ export function OzonSalesPage() {
 
   return (
     <div>
-      <OzonModuleHeader eyebrow="Ozon · Продажи" title="Продажи и воронка" subtitle="РНП по SKU, дневная динамика, реклама и доступные Ozon-метрики воронки без подмены отсутствующих данных." days={days} onDaysChange={setDays} onRefresh={refresh} refreshing={loading} />
+      <OzonModuleHeader eyebrow="Ozon · Продажи" title="Продажи и воронка" subtitle="РНП по SKU, дневная динамика, реклама и доступные Ozon-метрики воронки без подмены отсутствующих данных." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
       <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 sm:px-5">
         {loading && !data ? <OzonLoading rows={9} /> : error ? <OzonError message={error} onRetry={refresh} /> : !data ? <EmptyState title="Нет данных о продажах" detail="Проверьте выбранный кабинет и Seller API." /> : <>
           <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div>
           <OzonWarnings warnings={data.warnings} />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
             {tab === "funnel" && <><MetricCard label="Показы" value={data.funnelAvailable ? formatNumber(data.summary.views) : "—"} /><MetricCard label="В корзину" value={data.funnelAvailable ? formatNumber(data.summary.carts) : "—"} /></>}
-            <MetricCard label="Заказы" value={formatNumber(data.summary.orders)} detail={`${days} дней`} />
+            <MetricCard label="Заказы" value={formatNumber(data.summary.orders)} detail={`${period.days} дней`} />
             <MetricCard label="Выручка" value={formatMoney(data.summary.revenue)} />
             <MetricCard label="Средняя цена" value={formatMoney(data.summary.avgPrice)} />
             {tab === "funnel" && <><MetricCard label="CR в корзину" value={data.funnelAvailable ? formatPercent(data.summary.crCart) : "—"} /><MetricCard label="CR в заказ" value={data.funnelAvailable ? formatPercent(data.summary.crOrder) : "—"} /></>}

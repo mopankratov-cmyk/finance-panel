@@ -1,21 +1,28 @@
 "use client";
 
-import { CalendarDays, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
+import { OZON_PERIOD_PRESETS } from "@/lib/ozon/period";
 
 export function OzonModuleHeader({
   eyebrow,
   title,
   subtitle,
-  days,
-  onDaysChange,
+  period,
+  preset,
+  onApplyPreset,
+  onApplyRange,
   onRefresh,
   refreshing,
 }: {
   eyebrow: string;
   title: string;
   subtitle: string;
-  days?: number;
-  onDaysChange?: (days: number) => void;
+  /** Период показывается календарём — как в РНП Wildberries: пресеты слева, два месяца справа. */
+  period?: { from: string; to: string };
+  preset?: string;
+  onApplyPreset?: (value: string) => void;
+  onApplyRange?: (from: string, to: string) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
 }) {
@@ -28,13 +35,16 @@ export function OzonModuleHeader({
           <p className="mt-0.5 max-w-3xl text-xs text-slate-500">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {days && onDaysChange && (
-            <div className="flex h-11 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 sm:h-8">
-              <CalendarDays className="ml-1 h-3.5 w-3.5 text-slate-400" />
-              {[7, 14, 30].map((value) => (
-                <button key={value} type="button" onClick={() => onDaysChange(value)} className={`h-8 rounded-md px-2 text-[11px] font-semibold transition sm:h-6 ${days === value ? "bg-white text-sky-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>{value} дн.</button>
-              ))}
-            </div>
+          {period && onApplyPreset && onApplyRange && (
+            <PeriodRangePicker
+              from={period.from}
+              to={period.to}
+              presets={OZON_PERIOD_PRESETS}
+              activePreset={preset}
+              align="right"
+              onApplyPreset={onApplyPreset}
+              onApplyRange={onApplyRange}
+            />
           )}
           {onRefresh && (
             <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 hover:border-sky-200 hover:text-sky-700 disabled:cursor-wait disabled:opacity-60 sm:h-8">

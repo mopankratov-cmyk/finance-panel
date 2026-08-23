@@ -6,6 +6,7 @@ import type { AdvertProfitGuardrail } from "@/lib/adverts/profitGuardrails";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonWarnings, ProductCell, formatDateTime, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonPeriod } from "./useOzonPeriod";
 
 interface AdvertRow { key: string; cabinet: string; sku: string; offerId: string; name: string; image: string | null; spent: number; adRevenue: number; revenue: number; orders: number; drr: number; adDrr: number; roas: number | null; attributionCompatible: boolean; economics: AdvertProfitGuardrail; updatedAt: string | null }
 interface AdvertsData { generatedAt: string; scope: { label: string; count: number }; period: { from: string; to: string; days: number }; summary: { spent: number; adRevenue: number; revenue: number; drr: number; adDrr: number; roas: number | null; calculatedProfit: number | null; profitCoveragePct: number; recommendations: number; sku: number }; rows: AdvertRow[]; warnings: string[] }
@@ -28,13 +29,14 @@ function recommendationTone(action: AdvertProfitGuardrail["action"]) {
 export function OzonAdvertsPage() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"spent" | "revenue" | "adRevenue" | "drr" | "roas">("spent");
-  const { data, loading, error, refresh } = useOzonCockpit<AdvertsData>("adverts", 14);
+  const { period, preset, applyPreset, applyRange } = useOzonPeriod();
+  const { data, loading, error, refresh } = useOzonCockpit<AdvertsData>("adverts", period);
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
     return [...(data?.rows ?? [])].filter((row) => !needle || `${row.name} ${row.offerId} ${row.sku} ${row.cabinet}`.toLocaleLowerCase("ru-RU").includes(needle)).sort((a, b) => Number(b[sort] ?? -Infinity) - Number(a[sort] ?? -Infinity));
   }, [data?.rows, query, sort]);
   return <div>
-    <OzonModuleHeader eyebrow="Ozon · Performance" title="Реклама" subtitle="Расходы и атрибутированные продажи по SKU за 14 дней: общий ДРР, рекламный ДРР и ROAS." onRefresh={refresh} refreshing={loading} />
+    <OzonModuleHeader eyebrow="Ozon · Performance" title="Реклама" subtitle="Расходы и атрибутированные продажи по SKU: общий ДРР, рекламный ДРР и ROAS." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
     <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 sm:px-5">
       {loading && !data ? <OzonLoading rows={9} /> : error ? <OzonError message={error} onRetry={refresh} /> : !data ? <EmptyState title="Нет рекламных данных" detail="Подключите Performance API и запустите синхронизацию." href="/cabinets" /> : <>
         <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div>

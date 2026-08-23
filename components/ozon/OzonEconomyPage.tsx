@@ -19,6 +19,7 @@ import {
 } from "./OzonUi";
 import { useOzonCabinet } from "./OzonCabinetContext";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonPeriod } from "./useOzonPeriod";
 
 interface EconomyRow {
   key: string;
@@ -74,10 +75,10 @@ const money = (value: number | null) => (value == null ? "—" : formatMoney(val
 
 export function OzonEconomyPage() {
   const { activeCabinet, cabinetId, canWrite } = useOzonCabinet();
-  const [days, setDays] = useState(14);
+  const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [query, setQuery] = useState("");
   const [onlyProblem, setOnlyProblem] = useState(false);
-  const { data, loading, error, refresh } = useOzonCockpit<EconomyData>("economy", days);
+  const { data, loading, error, refresh } = useOzonCockpit<EconomyData>("economy", period);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
@@ -102,8 +103,10 @@ export function OzonEconomyPage() {
         eyebrow="Ozon · Экономика"
         title="Юнит-экономика"
         subtitle="Цена покупателя, себестоимость, комиссии, логистика, реклама и налог — по каждому товару."
-        days={days}
-        onDaysChange={setDays}
+        period={period}
+        preset={preset}
+        onApplyPreset={applyPreset}
+        onApplyRange={applyRange}
         onRefresh={refresh}
         refreshing={loading}
       />

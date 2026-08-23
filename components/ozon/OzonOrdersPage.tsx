@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonWarnings, formatDateTime, formatMoney, formatNumber } from "./OzonUi";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonPeriod } from "./useOzonPeriod";
 
 interface OrderProduct { offerId: string; name: string; quantity: number; price: number }
 interface OrderRow { key: string; cabinet: string; scheme: "FBO" | "FBS"; postingNumber: string; status: string; createdAt: string | null; shipmentDate: string | null; products: OrderProduct[]; units: number; amount: number; cancelled: boolean; delivered: boolean; delayed: boolean }
@@ -13,14 +14,14 @@ interface OrdersData { generatedAt: string; scope: { label: string; count: numbe
 const statusLabel = (row: OrderRow) => row.delayed ? "Просрочен" : row.cancelled ? "Отменён" : row.delivered ? "Доставлен" : row.status || "В работе";
 
 export function OzonOrdersPage() {
-  const [days, setDays] = useState(14);
+  const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [query, setQuery] = useState("");
   const [scheme, setScheme] = useState<"all" | "FBO" | "FBS">("all");
   const [state, setState] = useState<"all" | "active" | "delayed" | "delivered" | "cancelled">("all");
-  const { data, loading, error, refresh } = useOzonCockpit<OrdersData>("orders", days);
+  const { data, loading, error, refresh } = useOzonCockpit<OrdersData>("orders", period);
   const rows = useMemo(() => { const needle = query.trim().toLocaleLowerCase("ru-RU"); return (data?.rows ?? []).filter((row) => (scheme === "all" || row.scheme === scheme) && (state === "all" || (state === "active" && !row.cancelled && !row.delivered) || (state === "delayed" && row.delayed) || (state === "delivered" && row.delivered) || (state === "cancelled" && row.cancelled)) && (!needle || `${row.postingNumber} ${row.status} ${row.cabinet} ${row.products.map((product) => `${product.name} ${product.offerId}`).join(" ")}`.toLocaleLowerCase("ru-RU").includes(needle))); }, [data?.rows, query, scheme, state]);
   return <div>
-    <OzonModuleHeader eyebrow="Ozon · Операции" title="Заказы и возвраты" subtitle="FBO и FBS отправления, активные статусы, просрочки, отмены и сумма возвратов по финансовым транзакциям." days={days} onDaysChange={setDays} onRefresh={refresh} refreshing={loading} />
+    <OzonModuleHeader eyebrow="Ozon · Операции" title="Заказы и возвраты" subtitle="FBO и FBS отправления, активные статусы, просрочки, отмены и сумма возвратов по финансовым транзакциям." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
     <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 sm:px-5">
       {loading && !data ? <OzonLoading rows={10} /> : error ? <OzonError message={error} onRetry={refresh} /> : !data ? <EmptyState title="Нет заказов" detail="Проверьте период и Seller API." /> : <>
         <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div><OzonWarnings warnings={data.warnings} />
