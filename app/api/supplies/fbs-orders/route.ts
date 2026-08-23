@@ -5,6 +5,7 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
+import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 import {
   fbsOrderBucket,
   fbsStatusLabel,
@@ -87,28 +88,26 @@ const ALLOWED_DAYS = [1, 3, 7, 14, 30, 60] as const;
 const META_BUDGET = 120;
 const META_CONCURRENCY = 6;
 
-/** «Кода у задания нет» — результат, который кэшировать нельзя. */
-class MissingKizCodeError extends Error {}
-
 /**
  * Код маркировки задания из снимка. Привязанный код у задания уже не меняется,
  * поэтому найденное значение читается из кэша и не стоит запроса к WB при
  * каждом открытии вкладки — лимитер Marketplace API общий на продавца.
  */
-async function loadOrderKizCode(cabinetId: string, token: string, orderId: number): Promise<string | null> {
-  try {
-    return await loadHourlyDashboard("wb-fbs-order-kiz", { cabinetId, orderId, schema: 1 }, async () => {
-      const meta: WbFbsOrderMeta = await fetchFbsOrderMeta(token, orderId);
-      const code = meta.sgtin[0] ?? null;
-      // Отсутствие кода в кэш не пускаем: продавец привяжет код через минуту,
-      // а экран целый час обвинял бы задание в том, что кода нет.
-      if (!code) throw new MissingKizCodeError();
-      return code;
-    });
-  } catch (error) {
-    if (error instanceof MissingKizCodeError) return null;
-    throw error;
-  }
+async function loadOrderKizCode(
+  token: string,
+  orderId: number,
+  known: Map<number, string[]>,
+  discovered: Map<number, string[]>,
+): Promise<string | null> {
+  const cached = known.get(orderId);
+  if (cached?.length) return cached[0];
+  const meta: WbFbsOrderMeta = await fetchFbsOrderMeta(token, orderId);
+  const code = meta.sgtin[0] ?? null;
+  // Найденный код запоминаем навсегда — он у задания уже не изменится.
+  // Отсутствие не запоминаем: продавец привяжет код через минуту, а запись
+  // держала бы «кода нет» как факт.
+  if (code) discovered.set(orderId, [code]);
+  return code;
 }
 
 const metaEnvelope = (cabinetId: string, days: number, warnings: string[] = [], status: "ready" | "partial" = "ready") => ({
@@ -223,7 +222,20 @@ export async function GET(request: NextRequest) {
         const weight = (row: FbsOrderRow) => (row.bucket === "new" ? 0 : row.bucket === "assembling" ? 1 : 2);
         return weight(left) - weight(right) || (right.createdAt ?? "").localeCompare(left.createdAt ?? "");
       });
-    const probed = candidates.slice(0, META_BUDGET);
+    // Известные коды поднимаются из базы одним запросом, поэтому бюджет
+    // тратится только на задания, которых там ещё нет: «проверено N из M»
+    // растёт от захода к заходу, а не начинается каждый раз заново.
+    const knownCodes = await loadKnownKizCodes(cabinetId, candidates.map((row) => row.id))
+      .catch(() => new Map<number, string[]>());
+    const discoveredCodes = new Map<number, string[]>();
+    for (const row of candidates) {
+      const cached = knownCodes.get(row.id);
+      const target = byId.get(row.id);
+      if (!cached?.length || !target) continue;
+      target.kizCode = cached[0];
+      target.kizStatus = "present";
+    }
+    const probed = candidates.filter((row) => !knownCodes.get(row.id)?.length).slice(0, META_BUDGET);
     let checked = 0;
     let metaFailed = 0;
     await mapWithConcurrency(probed, META_CONCURRENCY, async (row) => {
@@ -231,7 +243,7 @@ export async function GET(request: NextRequest) {
       const target = byId.get(row.id);
       if (!target) return;
       try {
-        const code = await loadOrderKizCode(cabinetId, token, row.id);
+        const code = await loadOrderKizCode(token, row.id, knownCodes, discoveredCodes);
         checked += 1;
         target.kizCode = code;
         // «Кода нет» говорим только там, где WB сам объявил код обязательным.
@@ -243,6 +255,8 @@ export async function GET(request: NextRequest) {
         metaFailed += 1;
       }
     });
+
+    if (discoveredCodes.size) void rememberKizCodes(cabinetId, discoveredCodes).catch(() => {});
 
     if (candidates.length > probed.length) {
       warnings.push(

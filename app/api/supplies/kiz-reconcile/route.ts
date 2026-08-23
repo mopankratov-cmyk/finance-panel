@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
+import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
@@ -85,22 +86,27 @@ async function loadSoldIdsSnapshot(
  *  целый час утверждали бы, что кода нет. Такие задания перезапрашиваются. */
 class EmptyKizCodesError extends Error {}
 
-function cachedKizCodeResolver(cabinetId: string, token: string, deadline: number) {
+/**
+ * Резолвер кодов: сначала база, потом WB.
+ *
+ * Код, привязанный к заданию, уже не меняется, поэтому найденное запоминается
+ * навсегда и следующий заход тратит бюджет только на новые задания. Раньше
+ * кэш жил в unstable_cache — он не общий между роутами и умирает с каждой
+ * сборкой, так что прогресс терялся и опрос начинался почти с нуля.
+ */
+function cachedKizCodeResolver(
+  cabinetId: string,
+  token: string,
+  deadline: number,
+  known: Map<number, string[]>,
+  discovered: Map<number, string[]>,
+) {
   return async (id: number): Promise<string[]> => {
-    try {
-      return await loadHourlyDashboard<string[]>(
-        "wb-fbs-order-kiz-list",
-        { cabinetId, orderId: id, schema: 1 },
-        async () => {
-          const codes = await fetchTaskKizCodesDirect(token, id, deadline);
-          if (!codes.length) throw new EmptyKizCodesError();
-          return codes;
-        },
-      );
-    } catch (error) {
-      if (error instanceof EmptyKizCodesError) return [];
-      throw error;
-    }
+    const cached = known.get(id);
+    if (cached?.length) return cached;
+    const codes = await fetchTaskKizCodesDirect(token, id, deadline);
+    if (codes.length) discovered.set(id, codes);
+    return codes;
   };
 }
 
@@ -224,6 +230,13 @@ export async function GET(request: NextRequest) {
   const soldTasks = scoped
     .filter((task) => soldIds.has(task.id))
     .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  // Известные коды поднимаются из базы одним запросом: они не меняются, и
+  // задание, опрошенное когда-либо раньше, больше не стоит запроса к WB.
+  const knownKizCodes = statusesAvailable && soldTasks.length
+    ? await loadKnownKizCodes(cabinetId, soldTasks.map((task) => task.id)).catch(() => new Map<number, string[]>())
+    : new Map<number, string[]>();
+  const discoveredKizCodes = new Map<number, string[]>();
+
   const meta: KizCodesLookupResult = statusesAvailable && soldTasks.length
     ? await fetchFbsTaskKizCodes({
       token,
@@ -231,9 +244,12 @@ export async function GET(request: NextRequest) {
       deadline,
       // Уже опрошенные задания достаются из кэша мгновенно, поэтому за прогон
       // добираются новые — «проверено N из M» растёт от захода к заходу.
-      resolve: cachedKizCodeResolver(cabinetId, token, deadline),
+      resolve: cachedKizCodeResolver(cabinetId, token, deadline, knownKizCodes, discoveredKizCodes),
     })
     : { codes: new Map<number, string[]>(), failed: 0, skipped: 0, lookupStopped: false, stopReason: null, stopMessage: null };
+  // Найденное дописываем в базу, не задерживая ответ: не сохранилось —
+  // просто спросим WB в следующий раз.
+  if (discoveredKizCodes.size) void rememberKizCodes(cabinetId, discoveredKizCodes).catch(() => {});
   if (soldTasks.length > KIZ_META_LOOKUP_LIMIT) {
     warnings.push(`За прогон проверяется не больше ${KIZ_META_LOOKUP_LIMIT} заданий — остальные показаны в корзине «Не проверено».`);
   }
