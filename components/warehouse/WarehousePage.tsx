@@ -1,10 +1,11 @@
 "use client";
 
-import { Boxes, Building2, ClipboardCheck, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
+import { Boxes, Building2, ClipboardCheck, PackageX, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BalancesTab } from "@/components/warehouse/BalancesTab";
 import { MovesTab } from "@/components/warehouse/MovesTab";
 import { ReceiptsTab } from "@/components/warehouse/ReceiptsTab";
+import { DefectsTab } from "@/components/warehouse/DefectsTab";
 import { ProductsTab } from "@/components/warehouse/ProductsTab";
 import { ShipmentTab } from "@/components/warehouse/ShipmentTab";
 import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
@@ -12,12 +13,13 @@ import { WarehouseShell } from "@/components/warehouse/WarehouseShell";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 
-type Tab = "balances" | "receipts" | "shipment" | "products" | "moves" | "warehouses";
+type Tab = "balances" | "receipts" | "shipment" | "defects" | "products" | "moves" | "warehouses";
 
 const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "balances", label: "Остатки", icon: Boxes },
   { key: "receipts", label: "Приёмка", icon: ClipboardCheck },
   { key: "shipment", label: "Отгрузка", icon: Truck },
+  { key: "defects", label: "Брак", icon: PackageX },
   { key: "products", label: "Товары", icon: Package },
   { key: "moves", label: "Движения", icon: ScrollText },
   { key: "warehouses", label: "Склады", icon: WarehouseIcon },
@@ -39,8 +41,26 @@ export function WarehousePage() {
 
   const entity = useMemo(() => entities.find((row) => row.id === entityId) ?? null, [entities, entityId]);
 
+  const loadWarehouses = useCallback(async () => {
+    // Склады общие: список не зависит от выбранного юрлица.
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/warehouse/warehouses", { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось загрузить склады");
+      setWarehouses(json.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось загрузить склады");
+      setWarehouses([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
+    void loadWarehouses();
     (async () => {
       try {
         const res = await fetch("/api/warehouse/entities", { cache: "no-store" });
@@ -59,26 +79,9 @@ export function WarehousePage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [loadWarehouses]);
 
-  const loadWarehouses = useCallback(async () => {
-    if (!entityId) { setWarehouses([]); setLoading(false); return; }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/warehouse/warehouses", { cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Не удалось загрузить склады");
-      setWarehouses(json.data ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить склады");
-      setWarehouses([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [entityId]);
-
-  useEffect(() => { void loadWarehouses(); }, [loadWarehouses, refreshKey]);
+  useEffect(() => { if (refreshKey > 0) void loadWarehouses(); }, [loadWarehouses, refreshKey]);
 
   const pickEntity = (id: string) => {
     setEntityId(id);
@@ -156,6 +159,8 @@ export function WarehousePage() {
         <ReceiptsTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onPosted={refresh} />
       ) : tab === "shipment" ? (
         <ShipmentTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onShipped={refresh} />
+      ) : tab === "defects" ? (
+        <DefectsTab entityId={entityId} warehouses={warehouses} refreshKey={refreshKey} onChanged={refresh} />
       ) : tab === "products" ? (
         <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} />
       ) : tab === "moves" ? (

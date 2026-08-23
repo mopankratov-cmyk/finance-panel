@@ -48,6 +48,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { SalesPlanAddSkuModal, type SalesPlanCatalogSku } from "./SalesPlanAddSkuModal";
 import { SalesPlanFactView } from "./SalesPlanFactView";
 import { SalesPlanTable, type SalesPlanCellPosition, type SalesPlanFillState } from "./SalesPlanTable";
+import type { Role } from "@/lib/auth/session";
 
 type ViewMode = "edit" | "approved" | "rnp";
 type SaveAction = "save" | "submit" | "approve" | "return" | "new_version";
@@ -66,7 +67,9 @@ interface SalesPlanApiResponse {
 
 interface SalesPlanUser {
   email: string;
-  role: "director" | "finance" | "manager" | "seller";
+  // Список ролей не дублируем: он растёт (появился оператор склада), и копия
+  // разъезжается с оригиналом молча — компилятор ловит это только на стыке.
+  role: Role;
 }
 
 const number = (value: number) => Math.round(value || 0).toLocaleString("ru-RU");

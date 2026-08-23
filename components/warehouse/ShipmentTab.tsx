@@ -47,20 +47,15 @@ export function ShipmentTab({
     setLoading(true);
     setError(null);
     try {
-      const [balancesRes, cabinetsRes] = await Promise.all([
-        fetch(`/api/warehouse/balances?entity=${entityId}`, { cache: "no-store" }),
-        fetch("/api/cabinets", { cache: "no-store" }),
-      ]);
+      const balancesRes = await fetch(`/api/warehouse/balances?entity=${entityId}`, { cache: "no-store" });
       const balancesJson = await balancesRes.json();
       if (!balancesRes.ok) throw new Error(balancesJson.error || "Не удалось загрузить остатки");
       setBalances(balancesJson.data);
 
-      const cabinetsJson = await cabinetsRes.json();
-      const known: { id: string; name: string }[] = cabinetsJson.data ?? cabinetsJson ?? [];
-      const linked = entity?.cabinets ?? [];
-      setCabinets(linked.map((link) => ({
+      // Имена кабинетов приходят вместе с юрлицом — кабинетный API оператору склада закрыт.
+      setCabinets((entity?.cabinets ?? []).map((link) => ({
         id: link.cabinetId,
-        name: known.find((row) => row.id === link.cabinetId)?.name ?? "кабинет",
+        name: link.cabinetName,
         relation: link.relation,
       })));
     } catch (e) {

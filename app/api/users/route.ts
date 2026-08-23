@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const b = (await request.json().catch(() => ({}))) as { email?: string; password?: string; role?: string; cabinet_ids?: string[] };
   const email = (b.email || "").trim().toLowerCase();
-  const role = ["director", "finance", "manager", "seller"].includes(b.role || "") ? b.role : "manager";
+  const role = ["director", "finance", "manager", "seller", "warehouse"].includes(b.role || "") ? b.role : "manager";
   if (!email || !b.password || b.password.length < 10) return NextResponse.json({ error: "Email и пароль (≥10 символов)" }, { status: 400 });
   const password_hash = await hashPassword(b.password);
   const { data: existing } = await db.from("app_users").select("id,role,organization_id").eq("email", email).maybeSingle();
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
   let error;
   // Кабинет внешнего селлера связывается только self-service endpoint после
   // проверки WB-токена. Нельзя назначить ему чужой внутренний кабинет из формы.
-  const userPatch = { role, cabinet_ids: role === "seller" ? [] : b.cabinet_ids ?? [], organization_id: organizationId, password_hash, is_active: true };
+  const userPatch = { role, cabinet_ids: role === "seller" || role === "warehouse" ? [] : b.cabinet_ids ?? [], organization_id: organizationId, password_hash, is_active: true };
   if (existing) ({ error } = await db.from("app_users").update(userPatch).eq("id", existing.id));
   else ({ error } = await db.from("app_users").insert({ email, ...userPatch }));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

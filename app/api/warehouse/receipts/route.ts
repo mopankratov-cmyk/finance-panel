@@ -15,6 +15,7 @@ export interface ReceiptBatchRow {
   lineCount: number;
   expectedQty: number;
   receivedQty: number;
+  defectQty: number;
   /** ждём → приняли, но в остатке ещё нет → проведено в регистр */
   state: "expected" | "received" | "posted";
   postedAt: string | null;
@@ -30,6 +31,7 @@ interface DbReceipt {
   expected_at: string | null;
   warehouse: string | null;
   received_qty: number | null;
+  defect_qty: number | null;
   status: "expected" | "received";
   note: string | null;
   posted_at: string | null;
@@ -51,14 +53,48 @@ const fail = (error: string, status: number) => NextResponse.json({ data: null, 
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграции 202608230003_stock_ledger.sql и 202608230004_legal_entities.sql";
 
+export interface ReceiptLineRow {
+  id: number;
+  productId: string | null;
+  nmId: number | null;
+  article: string;
+  expectedQty: number;
+  receivedQty: number | null;
+  defectQty: number;
+  status: "expected" | "received";
+}
+
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
-  const scope = await resolveEntity(new URL(request.url).searchParams.get("entity"));
+  const url = new URL(request.url);
+  const scope = await resolveEntity(url.searchParams.get("entity"));
   if (!scope.ok) return fail(scope.error, scope.status);
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+
+  // Строки одной партии — для формы приёма: оператор вводит принято/брак по позициям.
+  const batchId = url.searchParams.get("batch");
+  if (batchId) {
+    const { data, error } = await db
+      .from("purchase_receipts")
+      .select("id, product_id, nm_id, article, expected_qty, received_qty, defect_qty, status")
+      .eq("batch_id", batchId)
+      .order("id");
+    if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
+    const lines: ReceiptLineRow[] = (data ?? []).map((row) => ({
+      id: Number(row.id),
+      productId: row.product_id ? String(row.product_id) : null,
+      nmId: row.nm_id === null ? null : Number(row.nm_id),
+      article: String(row.article ?? ""),
+      expectedQty: Number(row.expected_qty ?? 0),
+      receivedQty: row.received_qty === null ? null : Number(row.received_qty),
+      defectQty: Number(row.defect_qty ?? 0),
+      status: row.status === "received" ? "received" : "expected",
+    }));
+    return NextResponse.json({ data: lines, error: null });
+  }
 
   // Приёмка заводится в кабинете, а склад ведётся по юрлицу: собираем партии всех
   // собственных кабинетов юрлица. Агентские сюда не попадают — товар в них чужой.
@@ -69,7 +105,7 @@ export async function GET(request: NextRequest) {
 
   const receiptsResult = await db
     .from("purchase_receipts")
-    .select("batch_id, nm_id, expected_qty, expected_at, warehouse, received_qty, status, note, posted_at, stock_batch_id, created_by, created_at")
+    .select("batch_id, nm_id, expected_qty, expected_at, warehouse, received_qty, defect_qty, status, note, posted_at, stock_batch_id, created_by, created_at")
     .in("cabinet_id", ownCabinets)
     .order("created_at", { ascending: false });
 
@@ -101,6 +137,7 @@ export async function GET(request: NextRequest) {
       lineCount: 0,
       expectedQty: 0,
       receivedQty: 0,
+      defectQty: 0,
       state: "posted" as ReceiptBatchRow["state"],
       postedAt: null,
       createdAt: raw.created_at,
@@ -111,6 +148,7 @@ export async function GET(request: NextRequest) {
     current.lineCount += 1;
     current.expectedQty += Number(raw.expected_qty ?? 0);
     current.receivedQty += Number(raw.received_qty ?? 0);
+    current.defectQty += Number(raw.defect_qty ?? 0);
     if (raw.created_at < current.createdAt) current.createdAt = raw.created_at;
     if (raw.posted_at && (!current.postedAt || raw.posted_at > current.postedAt)) current.postedAt = raw.posted_at;
 

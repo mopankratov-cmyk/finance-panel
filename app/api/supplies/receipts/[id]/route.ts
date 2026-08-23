@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!db) return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
 
   const body = (await req.json().catch(() => ({}))) as {
-    receivedQty?: number; expectedQty?: number; expectedAt?: string; warehouse?: string; note?: string;
+    receivedQty?: number; defectQty?: number; expectedQty?: number; expectedAt?: string; warehouse?: string; note?: string;
   };
 
   const { data: existing, error: findErr } = await db.from("purchase_receipts").select("status, cabinet_id").eq("id", id).maybeSingle();
@@ -28,8 +28,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (typeof body.receivedQty === "number") {
     if (existing.status !== "expected") return NextResponse.json({ data: null, error: "Эта позиция уже принята" }, { status: 400 });
     if (!Number.isFinite(body.receivedQty) || body.receivedQty < 0) return NextResponse.json({ data: null, error: "Некорректное количество" }, { status: 400 });
+    // Брак фиксируется вместе с фактом: «принято 100, из них 3 брак» — одна операция ФФ.
+    const defect = Number.isFinite(body.defectQty) ? Math.max(0, Math.round(body.defectQty as number)) : 0;
+    if (defect > Math.round(body.receivedQty)) return NextResponse.json({ data: null, error: "Брак не может превышать принятое" }, { status: 400 });
     const { data, error } = await db.from("purchase_receipts")
-      .update({ received_qty: Math.round(body.receivedQty), received_at: new Date().toISOString(), status: "received", updated_at: new Date().toISOString() })
+      .update({ received_qty: Math.round(body.receivedQty), defect_qty: defect, received_at: new Date().toISOString(), status: "received", updated_at: new Date().toISOString() })
       .eq("id", id).select("*").single();
     if (error) return NextResponse.json({ data: null, error: error.message }, { status: 500 });
     return NextResponse.json({ data, error: null });

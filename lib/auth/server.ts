@@ -1,8 +1,13 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySession, type Session } from "./session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-export async function getServerSession(): Promise<Session | null> {
+// Каждая проверка доступа перечитывала пользователя из БД: на экране склада, где
+// прав спрашивают по каждому юрлицу и кабинету, набегал десяток лишних запросов.
+// cache() из React запоминает результат на время одного HTTP-запроса — отзыв доступа
+// по-прежнему применяется сразу, потому что следующий запрос читает заново.
+export const getServerSession = cache(async function getServerSession(): Promise<Session | null> {
   const c = await cookies();
   const signed = await verifySession(c.get(SESSION_COOKIE)?.value);
   if (!signed) return null;
@@ -40,4 +45,4 @@ export async function getServerSession(): Promise<Session | null> {
     cabinet_ids: Array.isArray(data.cabinet_ids) ? data.cabinet_ids.map(String) : [],
     organization_id: typeof data.organization_id === "string" ? data.organization_id : null,
   };
-}
+})

@@ -1,8 +1,10 @@
-import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export interface EntityCabinetLink {
   cabinetId: string;
+  cabinetName: string;
   relation: "own" | "agent";
 }
 
@@ -48,20 +50,56 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
   const linksResult = await db.from("legal_entity_cabinets").select("legal_entity_id, cabinet_id, relation");
   if (linksResult.error) return { ok: false, error: linksResult.error.message, status: 500 };
 
+  // Имена кабинетов отдаются отсюда же: оператору склада незачем открывать
+  // кабинетный API, где живут маскированные токены.
+  const cabinetIds = [...new Set((linksResult.data ?? []).map((link) => String(link.cabinet_id)))];
+  const cabinetNames = new Map<string, string>();
+  if (cabinetIds.length > 0) {
+    const named = await db.from("wb_cabinets").select("id, name").in("id", cabinetIds);
+    for (const row of named.data ?? []) cabinetNames.set(String(row.id), String(row.name ?? ""));
+  }
+
   const byEntity = new Map<string, EntityCabinetLink[]>();
   for (const link of linksResult.data ?? []) {
     const list = byEntity.get(String(link.legal_entity_id)) ?? [];
-    list.push({ cabinetId: String(link.cabinet_id), relation: link.relation === "agent" ? "agent" : "own" });
+    list.push({
+      cabinetId: String(link.cabinet_id),
+      cabinetName: cabinetNames.get(String(link.cabinet_id)) ?? "кабинет",
+      relation: link.relation === "agent" ? "agent" : "own",
+    });
     byEntity.set(String(link.legal_entity_id), list);
+  }
+
+  // Права считаются по одной прочитанной сессии, а не запросом на каждый кабинет:
+  // раньше на девять юрлиц набегал десяток обращений к базе, и экран ждал секунды.
+  const session = await getServerSession();
+  // Внешнему селлеру доступен только его собственный кабинет, и это единственный
+  // случай, где нужна проверка владельца кабинета — одним запросом на все сразу.
+  let sellerCabinets: Set<string> | null = null;
+  if (session?.role === "seller") {
+    const ids = [...new Set((linksResult.data ?? []).map((link) => String(link.cabinet_id)))];
+    if (ids.length === 0 || !session.organization_id) {
+      sellerCabinets = new Set();
+    } else {
+      const owned = await db
+        .from("wb_cabinets")
+        .select("id")
+        .in("id", ids)
+        .eq("marketplace", "wb")
+        .eq("organization_id", session.organization_id);
+      sellerCabinets = new Set((owned.data ?? []).map((row) => String(row.id)));
+    }
   }
 
   const rows: LegalEntityRow[] = [];
   for (const raw of entitiesResult.data ?? []) {
     const cabinets = byEntity.get(String(raw.id)) ?? [];
-    const checks = await Promise.all(cabinets.map((link) => hasCabinetAccess(link.cabinetId)));
+    const canSee = (cabinetId: string | null) =>
+      sessionHasCabinetAccess(session, cabinetId)
+      && (sellerCabinets === null || (cabinetId !== null && sellerCabinets.has(cabinetId)));
     const allowed = cabinets.length === 0
-      ? await hasCabinetAccess(null)
-      : checks.some(Boolean);
+      ? canSee(null)
+      : cabinets.some((link) => canSee(link.cabinetId));
     if (!allowed) continue;
     rows.push({
       id: String(raw.id),

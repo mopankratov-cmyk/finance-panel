@@ -6,6 +6,7 @@ export const ROLE_HOME: Record<Role, string> = {
   finance: "/pnl",
   manager: "/ozon",
   seller: "/wb/connect",
+  warehouse: "/warehouse",
 };
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -13,6 +14,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   finance: "Финотдел / аналитик",
   manager: "Менеджер МП",
   seller: "Внешний селлер WB",
+  warehouse: "Оператор склада",
 };
 
 // Доступные префиксы путей по роли. director — всё.
@@ -23,6 +25,9 @@ const ACCESS: Record<Role, string[]> = {
   // Внешний селлер работает только в собственном WB-контуре. Управляющие
   // инструменты (публикация контента, цены, системные настройки) не открываем.
   seller: ["/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect"],
+  // Оператор фулфилмента работает только в модуле «Склад»: приёмка, отгрузка, брак.
+  // Решение владельца: внутри модуля видит всё, включая себестоимость.
+  warehouse: ["/warehouse"],
 };
 
 export function canAccess(role: Role, path: string): boolean {

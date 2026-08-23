@@ -5,7 +5,7 @@ import { Loader2, Users as UsersIcon, Plus, Trash2 } from "lucide-react";
 
 interface U { id: string; email: string; role: string; cabinet_ids: string[]; is_active: boolean }
 interface Cab { id: string; name: string; marketplace: string }
-const ROLES = [["director", "Директор"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"], ["seller", "Внешний селлер WB"]] as const;
+const ROLES = [["director", "Директор"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"], ["seller", "Внешний селлер WB"], ["warehouse", "Оператор склада"]] as const;
 const roleLabel = (r: string) => ROLES.find(([k]) => k === r)?.[1] ?? r;
 
 export default function UsersPage() {

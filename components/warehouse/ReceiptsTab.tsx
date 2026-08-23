@@ -8,6 +8,8 @@ import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { ReceiveModal } from "@/components/warehouse/ReceiveModal";
+import { costNote } from "@/lib/warehouse/reasons";
 
 const STATE_LABEL: Record<ReceiptBatchRow["state"], { text: string; className: string }> = {
   expected: { text: "ждём", className: "bg-slate-100 text-slate-600" },
@@ -38,6 +40,7 @@ export function ReceiptsTab({
   const [draft, setDraft] = useState<{ expectedAt: string; note: string; lines: { productId: string; qty: string }[] } | null>(null);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [creating, setCreating] = useState(false);
+  const [receiving, setReceiving] = useState<string | null>(null);
 
   useEffect(() => {
     if (!target && warehouses.length > 0) setTarget(warehouses[0].id);
@@ -127,6 +130,13 @@ export function ReceiptsTab({
 
   return (
     <div className="space-y-4">
+      {receiving && (
+        <ReceiveModal
+          batchId={receiving}
+          onClose={() => setReceiving(null)}
+          onDone={() => { void load(); onPosted(); }}
+        />
+      )}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -293,6 +303,7 @@ export function ReceiptsTab({
                         {formatNumber(row.receivedQty)}
                       </span>
                       {short && <div className="text-xs text-amber-600">недовоз {formatNumber(row.expectedQty - row.receivedQty)}</div>}
+                      {row.defectQty > 0 && <div className="text-xs text-red-600">брак {formatNumber(row.defectQty)}</div>}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {row.cost ? (
@@ -300,7 +311,7 @@ export function ReceiptsTab({
                           <div className="font-medium text-slate-900">{formatNumber(Math.round(row.cost.total))} ₽</div>
                           <div className="text-xs text-slate-400">{row.cost.unit.toFixed(2)} ₽/шт</div>
                           {row.cost.basis === "estimated" && (
-                            <div className="mt-0.5 text-xs text-amber-600" title={row.cost.note ?? undefined}>
+                            <div className="mt-0.5 text-xs text-amber-600" title={costNote(row.cost.note) ?? undefined}>
                               ≈ расчётная
                             </div>
                           )}
@@ -310,6 +321,14 @@ export function ReceiptsTab({
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {row.state === "expected" && (
+                        <button
+                          onClick={() => setReceiving(row.batchId)}
+                          className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-sm font-medium text-violet-700 hover:bg-violet-50"
+                        >
+                          Принять
+                        </button>
+                      )}
                       {row.state === "received" && (
                         <button
                           onClick={() => void post(row.batchId)}
