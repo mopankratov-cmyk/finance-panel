@@ -46,6 +46,9 @@ interface CabinetResult {
   left: number;
   days: string[];
   error?: string;
+  /** Сколько запросов кода упало и с какой первой причиной. */
+  failed: number;
+  reason?: string;
 }
 
 async function collectForCabinet(
@@ -53,7 +56,7 @@ async function collectForCabinet(
   startDay: number,
   deadline: number,
 ): Promise<CabinetResult> {
-  const result: CabinetResult = { cabinet: target.name, orders: 0, probed: 0, found: 0, left: 0, days: [] };
+  const result: CabinetResult = { cabinet: target.name, orders: 0, probed: 0, found: 0, left: 0, days: [], failed: 0 };
 
   for (let step = 0; step < DAYS_PER_RUN; step++) {
     if (Date.now() > deadline || result.probed >= CODES_PER_RUN) break;
@@ -89,8 +92,14 @@ async function collectForCabinet(
         // Пустой ответ тоже пишем — как отметку «спрашивали», не как «кода нет».
         probed.set(id, codes);
         if (codes.length) result.found += 1;
-      } catch {
+      } catch (error) {
         // Одно упавшее задание не должно рвать прогон: вернёмся к нему позже.
+        // Но молча глотать причину нельзя — именно из-за этого «опрошено 0»
+        // трижды выглядело загадкой вместо диагноза.
+        result.failed += 1;
+        if (!result.reason) {
+          result.reason = error instanceof Error ? error.message.slice(0, 90) : "неизвестная причина";
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, REQUEST_PAUSE_MS));
     }
@@ -140,18 +149,20 @@ export async function GET(request: NextRequest) {
           found: 0,
           left: 0,
           days: [],
+          failed: 0,
           error:
             item.reason instanceof Error ? item.reason.message.slice(0, 120) : "Не удалось добрать коды",
         },
   );
 
-  const worked = summary.filter((row) => row.probed || row.left || row.error);
+  const worked = summary.filter((row) => row.probed || row.left || row.error || row.failed);
   const note =
     (worked.length ? worked : summary)
       .map((row) => {
         if (row.error) return `${row.cabinet}: ${row.error}`;
         const where = row.days.length ? ` (${row.days.join(", ")})` : "";
-        return `${row.cabinet}: опрошено ${row.probed}, с кодом ${row.found}${row.left ? `, осталось ${row.left}` : ""}${where}`;
+        const why = row.failed ? `, отказов ${row.failed}: ${row.reason ?? "?"}` : "";
+        return `${row.cabinet}: опрошено ${row.probed}, с кодом ${row.found}${row.left ? `, осталось ${row.left}` : ""}${why}${where}`;
       })
       .join("; ") || "Незакрытых заданий не нашлось";
 
