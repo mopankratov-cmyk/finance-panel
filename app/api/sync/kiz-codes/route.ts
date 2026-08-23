@@ -84,7 +84,7 @@ async function collectForCabinet(
     for (const id of queue.slice(0, CODES_PER_RUN - result.probed)) {
       if (Date.now() > deadline) break;
       try {
-        const meta = await fetchFbsOrderMeta(target.advertToken, id);
+        const meta = await fetchFbsOrderMeta(target.advertToken, id, { deadlineMs: deadline });
         const codes = [...meta.sgtin, ...meta.uin, ...meta.imei, ...meta.gtin].filter(Boolean);
         // Пустой ответ тоже пишем — как отметку «спрашивали», не как «кода нет».
         probed.set(id, codes);

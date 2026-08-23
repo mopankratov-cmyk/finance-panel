@@ -20,6 +20,15 @@ interface WbFbsRequest {
   method?: "GET" | "POST";
   body?: unknown;
   timeoutMs?: number;
+  /**
+   * Момент, после которого нельзя ни ждать, ни начинать новую попытку.
+   *
+   * Без него лестница повторов живёт своей жизнью: три попытки по 15 секунд
+   * с паузами до 20 секунд — до 85 секунд на ОДИН запрос. Внешние бюджеты
+   * (у фонового сборщика 45 секунд, у экрана сверки 50) при этом просто
+   * не соблюдались: проверка стояла между страницами, а не внутри запроса.
+   */
+  deadlineMs?: number;
 }
 
 function retryAfterMs(response: Response, attempt: number): number {
@@ -30,8 +39,15 @@ function retryAfterMs(response: Response, attempt: number): number {
 
 async function wbFbsJson<T>(token: string, request: WbFbsRequest): Promise<T> {
   const method = request.method ?? "GET";
-  const timeoutMs = request.timeoutMs ?? 15_000;
+  const asked = request.timeoutMs ?? 15_000;
+  const left = () => (request.deadlineMs ?? Number.POSITIVE_INFINITY) - Date.now();
   for (let attempt = 0; attempt < 3; attempt++) {
+    // Начинать попытку, на которую заведомо нет времени, — значит потратить
+    // остаток чужого бюджета и вернуться ни с чем.
+    if (left() <= 0) {
+      throw new WbFbsApiError("Не осталось времени на запрос к WB Marketplace API", 504);
+    }
+    const timeoutMs = Math.max(1_000, Math.min(asked, left()));
     let response: Response;
     try {
       response = await fetch(`${BASE}${request.path}`, {
@@ -52,7 +68,13 @@ async function wbFbsJson<T>(token: string, request: WbFbsRequest): Promise<T> {
       throw new WbFbsApiError("Не удалось связаться с WB Marketplace API", 502);
     }
     if (response.status === 429 && attempt < 2) {
-      await new Promise((resolve) => setTimeout(resolve, retryAfterMs(response, attempt)));
+      const wait = retryAfterMs(response, attempt);
+      // Ждать дольше, чем нам отпущено, бессмысленно: вызывающий всё равно
+      // уже не успеет распорядиться ответом.
+      if (wait >= left()) {
+        throw new WbFbsApiError("WB ограничил частоту запросов к сборочным заданиям — повторите через минуту", 429);
+      }
+      await new Promise((resolve) => setTimeout(resolve, wait));
       continue;
     }
     if (response.status === 429) {
@@ -211,7 +233,10 @@ export async function fetchFbsOrders(
       dateFrom: String(Math.floor(options.fromMs / 1000)),
       dateTo: String(Math.floor(options.toMs / 1000)),
     });
-    const payload = await wbFbsJson<{ next?: number; orders?: RawOrder[] }>(token, { path: `/orders?${query}` });
+    const payload = await wbFbsJson<{ next?: number; orders?: RawOrder[] }>(token, {
+      path: `/orders?${query}`,
+      deadlineMs: options.deadlineMs,
+    });
     const batch = Array.isArray(payload.orders) ? payload.orders : [];
     for (const raw of batch) {
       const order = normalizeOrder(raw);
@@ -275,10 +300,15 @@ function metaValues(value: unknown): string[] {
 }
 
 /** WB отдаёт meta (в т.ч. код маркировки) только по одному заданию за запрос. */
-export async function fetchFbsOrderMeta(token: string, orderId: number): Promise<WbFbsOrderMeta> {
+export async function fetchFbsOrderMeta(
+  token: string,
+  orderId: number,
+  options: { deadlineMs?: number } = {},
+): Promise<WbFbsOrderMeta> {
   const payload = await wbFbsJson<{ meta?: Record<string, unknown> }>(token, {
     path: `/orders/${orderId}/meta`,
     timeoutMs: 10_000,
+    deadlineMs: options.deadlineMs,
   });
   const meta = payload.meta ?? {};
   return {
