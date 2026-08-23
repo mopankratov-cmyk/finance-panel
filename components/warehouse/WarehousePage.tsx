@@ -1,21 +1,23 @@
 "use client";
 
-import { Boxes, Building2, ClipboardCheck, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
+import { Boxes, Building2, ClipboardCheck, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BalancesTab } from "@/components/warehouse/BalancesTab";
 import { MovesTab } from "@/components/warehouse/MovesTab";
 import { ReceiptsTab } from "@/components/warehouse/ReceiptsTab";
+import { ProductsTab } from "@/components/warehouse/ProductsTab";
 import { ShipmentTab } from "@/components/warehouse/ShipmentTab";
 import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 
-type Tab = "balances" | "receipts" | "shipment" | "moves" | "warehouses";
+type Tab = "balances" | "receipts" | "shipment" | "products" | "moves" | "warehouses";
 
 const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "balances", label: "Остатки", icon: Boxes },
   { key: "receipts", label: "Приёмка", icon: ClipboardCheck },
   { key: "shipment", label: "Отгрузка", icon: Truck },
+  { key: "products", label: "Товары", icon: Package },
   { key: "moves", label: "Движения", icon: ScrollText },
   { key: "warehouses", label: "Склады", icon: WarehouseIcon },
 ];
@@ -147,7 +149,7 @@ export function WarehousePage() {
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
           Загружаю склады…
         </div>
-      ) : warehouses.length === 0 && tab !== "warehouses" ? (
+      ) : warehouses.length === 0 && tab !== "warehouses" && tab !== "products" ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
           <p className="text-sm font-medium text-amber-900">Сначала заведите склад</p>
           <p className="mt-1 text-sm text-amber-800">
@@ -167,6 +169,8 @@ export function WarehousePage() {
         <ReceiptsTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onPosted={refresh} />
       ) : tab === "shipment" ? (
         <ShipmentTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onShipped={refresh} />
+      ) : tab === "products" ? (
+        <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} />
       ) : tab === "moves" ? (
         <MovesTab entityId={entityId} refreshKey={refreshKey} />
       ) : (

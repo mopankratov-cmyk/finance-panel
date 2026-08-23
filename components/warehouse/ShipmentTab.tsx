@@ -13,7 +13,7 @@ interface CabinetOption {
 }
 
 /** Ключ ячейки ввода: одна позиция может уехать в несколько кабинетов сразу. */
-const cellKey = (nmId: number, cabinetId: string) => `${nmId}:${cabinetId}`;
+const cellKey = (productId: string, cabinetId: string) => `${productId}:${cabinetId}`;
 
 export function ShipmentTab({
   entityId,
@@ -90,22 +90,21 @@ export function ShipmentTab({
   }, [amounts]);
 
   const overshoot = useMemo(() => {
-    const used = new Map<number, number>();
+    const used = new Map<string, number>();
     for (const [key, raw] of Object.entries(amounts)) {
       const value = Number(raw);
       if (!Number.isFinite(value) || value <= 0) continue;
-      const nmId = Number(key.split(":")[0]);
-      used.set(nmId, (used.get(nmId) ?? 0) + value);
+      const productId = key.split(":")[0];
+      used.set(productId, (used.get(productId) ?? 0) + value);
     }
-    return rows.filter((row) => (used.get(row.nmId) ?? 0) > row.qty).map((row) => row.nmId);
+    return rows.filter((row) => (used.get(row.productId) ?? 0) > row.qty).map((row) => row.productId);
   }, [amounts, rows]);
 
   const ship = async () => {
     const lines = Object.entries(amounts)
       .map(([key, raw]) => {
-        const [nmId, cabinetId] = key.split(":");
-        const row = rows.find((item) => item.nmId === Number(nmId));
-        return { nmId: Number(nmId), cabinetId, qty: Number(raw), article: row?.article ?? "" };
+        const [productId, cabinetId] = key.split(":");
+        return { productId, cabinetId, qty: Number(raw) };
       })
       .filter((line) => Number.isFinite(line.qty) && line.qty > 0);
 
@@ -195,11 +194,11 @@ export function ShipmentTab({
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const tooMuch = overshoot.includes(row.nmId);
+                  const tooMuch = overshoot.includes(row.productId);
                   return (
-                    <tr key={row.nmId} className="border-b border-slate-100 last:border-0">
+                    <tr key={row.productId} className="border-b border-slate-100 last:border-0">
                       <td className="px-4 py-2.5">
-                        <div className="font-medium text-slate-900">{row.article || row.nmId}</div>
+                        <div className="font-medium text-slate-900">{row.article}</div>
                         <div className="text-xs text-slate-400">{row.unitCost.toFixed(2)} ₽/шт</div>
                       </td>
                       <td className={`px-4 py-2.5 text-right font-semibold ${tooMuch ? "text-red-600" : "text-slate-900"}`}>
@@ -209,10 +208,10 @@ export function ShipmentTab({
                         <td key={cabinet.id} className="px-4 py-2.5 text-right">
                           <input
                             inputMode="numeric"
-                            value={amounts[cellKey(row.nmId, cabinet.id)] ?? ""}
+                            value={amounts[cellKey(row.productId, cabinet.id)] ?? ""}
                             onChange={(e) => setAmounts((prev) => ({
                               ...prev,
-                              [cellKey(row.nmId, cabinet.id)]: e.target.value.replace(/[^\d]/g, ""),
+                              [cellKey(row.productId, cabinet.id)]: e.target.value.replace(/[^\d]/g, ""),
                             }))}
                             placeholder="0"
                             className={`w-20 rounded-lg border px-2 py-1 text-right text-sm ${

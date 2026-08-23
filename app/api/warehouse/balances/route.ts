@@ -10,8 +10,10 @@ export interface StockBalanceRow {
   warehouseId: string;
   warehouseName: string;
   warehouseKind: "own" | "fulfillment";
-  nmId: number;
+  productId: string;
+  nmId: number | null;
   article: string;
+  name: string;
   qty: number;
   amount: number;
   unitCost: number;
@@ -26,8 +28,10 @@ export interface StockBalancesResponse {
 
 interface DbBalance {
   warehouse_id: string;
-  nm_id: number;
+  product_id: string;
+  nm_id: number | null;
   article: string;
+  name: string;
   qty: number;
   amount: number;
   unit_cost: number;
@@ -66,9 +70,9 @@ export async function GET(request: NextRequest) {
     balances = await loadAllSupabasePages<DbBalance>((from, to) =>
       db
         .from("stock_balances")
-        .select("warehouse_id, nm_id, article, qty, amount, unit_cost, last_move_at")
+        .select("warehouse_id, product_id, nm_id, article, name, qty, amount, unit_cost, last_move_at")
         .eq("legal_entity_id", entityId)
-        .order("nm_id", { ascending: true })
+        .order("article", { ascending: true })
         .range(from, to),
     );
   } catch (error) {
@@ -88,8 +92,10 @@ export async function GET(request: NextRequest) {
         warehouseId: String(row.warehouse_id),
         warehouseName: warehouse?.name ?? "склад удалён",
         warehouseKind: warehouse?.kind ?? "own",
-        nmId: Number(row.nm_id),
+        productId: String(row.product_id),
+        nmId: row.nm_id === null ? null : Number(row.nm_id),
         article: String(row.article ?? ""),
+        name: String(row.name ?? ""),
         qty: Number(row.qty),
         amount: Number(row.amount),
         unitCost: Number(row.unit_cost),
@@ -115,7 +121,7 @@ export async function GET(request: NextRequest) {
     totals: {
       qty: rows.reduce((sum, row) => sum + row.qty, 0),
       amount: rows.reduce((sum, row) => sum + row.amount, 0),
-      skuCount: new Set(rows.map((row) => row.nmId)).size,
+      skuCount: new Set(rows.map((row) => row.productId)).size,
     },
     warehouses: [...byWarehouse.values()].sort((a, b) => b.qty - a.qty),
   };

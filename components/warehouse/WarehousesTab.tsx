@@ -19,6 +19,24 @@ export function WarehousesTab({
   const [kind, setKind] = useState<"own" | "fulfillment">("own");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; name: string; kind: "own" | "fulfillment" } | null>(null);
+
+  const patch = async (id: string, body: Record<string, unknown>) => {
+    setError(null);
+    try {
+      const res = await fetch(`/api/warehouse/warehouses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось изменить склад");
+      setEditing(null);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось изменить склад");
+    }
+  };
 
   const create = async () => {
     if (!name.trim()) { setError("Укажите название склада"); return; }
@@ -89,22 +107,72 @@ export function WarehousesTab({
                 <th className="px-4 py-3 text-left font-medium">Название</th>
                 <th className="px-4 py-3 text-left font-medium">Тип</th>
                 <th className="px-4 py-3 text-left font-medium">Состояние</th>
+                <th className="px-4 py-3 text-right font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              {warehouses.map((warehouse) => (
-                <tr key={warehouse.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-2.5 font-medium text-slate-900">{warehouse.name}</td>
-                  <td className="px-4 py-2.5 text-slate-600">
-                    {warehouse.kind === "fulfillment" ? "фулфилмент" : "свой склад"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {warehouse.isActive
-                      ? <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">активен</span>
-                      : <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">в архиве</span>}
-                  </td>
-                </tr>
-              ))}
+              {warehouses.map((warehouse) => {
+                const isEditing = editing?.id === warehouse.id;
+                return (
+                  <tr key={warehouse.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-2.5 font-medium text-slate-900">
+                      {isEditing ? (
+                        <input
+                          value={editing.name}
+                          onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                          onKeyDown={(e) => { if (e.key === "Enter") void patch(warehouse.id, { name: editing.name, kind: editing.kind }); }}
+                          className="w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                        />
+                      ) : warehouse.name}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      {isEditing ? (
+                        <select
+                          value={editing.kind}
+                          onChange={(e) => setEditing({ ...editing, kind: e.target.value === "fulfillment" ? "fulfillment" : "own" })}
+                          className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                        >
+                          <option value="own">свой склад</option>
+                          <option value="fulfillment">фулфилмент</option>
+                        </select>
+                      ) : warehouse.kind === "fulfillment" ? "фулфилмент" : "свой склад"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {warehouse.isActive
+                        ? <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">активен</span>
+                        : <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">в архиве</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {isEditing ? (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => void patch(warehouse.id, { name: editing.name, kind: editing.kind })}
+                            className="rounded-lg bg-violet-600 px-3 py-1 text-xs font-medium text-white"
+                          >
+                            Сохранить
+                          </button>
+                          <button onClick={() => setEditing(null)} className="text-xs text-slate-500">Отмена</button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-3">
+                          <button
+                            onClick={() => setEditing({ id: warehouse.id, name: warehouse.name, kind: warehouse.kind })}
+                            className="text-xs text-violet-600 hover:underline"
+                          >
+                            Изменить
+                          </button>
+                          <button
+                            onClick={() => void patch(warehouse.id, { isActive: !warehouse.isActive })}
+                            className="text-xs text-slate-500 hover:underline"
+                          >
+                            {warehouse.isActive ? "В архив" : "Вернуть"}
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

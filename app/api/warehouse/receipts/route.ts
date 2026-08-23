@@ -145,6 +145,64 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ data: rows, error: null });
 }
 
+/** Завести ожидаемую поставку: строки по товарам справочника, без обращения к «Закупкам». */
+export async function PUT(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
+  const body = (await request.json().catch(() => null)) as
+    | { entityId?: string; cabinetId?: string; expectedAt?: string; note?: string;
+        lines?: { productId: string; qty: number }[] }
+    | null;
+  if (!body) return fail("Некорректное тело запроса", 400);
+
+  const scope = await resolveEntity(body.entityId ?? null);
+  if (!scope.ok) return fail(scope.error, scope.status);
+
+  // Приёмка живёт в кабинете (так устроена purchase_receipts), поэтому нужен один
+  // из собственных кабинетов юрлица — агентский чужой товар принимать не может.
+  const ownCabinets = scope.entity.cabinets.filter((link) => link.relation === "own").map((link) => link.cabinetId);
+  const cabinetId = body.cabinetId && ownCabinets.includes(body.cabinetId) ? body.cabinetId : ownCabinets[0];
+  if (!cabinetId) return fail(`У юрлица «${scope.entity.name}» нет собственных кабинетов`, 400);
+
+  const lines = (body.lines ?? []).filter((line) => Number(line.qty) > 0 && line.productId);
+  if (lines.length === 0) return fail("Добавьте хотя бы одну позицию с количеством", 400);
+
+  const db = getSupabaseAdmin();
+  if (!db) return fail("Supabase не настроен", 500);
+  const session = await getServerSession();
+
+  const productsResult = await db
+    .from("products")
+    .select("id, article, nm_id")
+    .in("id", lines.map((line) => line.productId));
+  if (productsResult.error) {
+    const code = productsResult.error.code;
+    return fail(missingMigration(code) ? migrationHint : productsResult.error.message, missingMigration(code) ? 503 : 500);
+  }
+  const products = new Map((productsResult.data ?? []).map((row) => [String(row.id), row]));
+
+  const batchId = crypto.randomUUID();
+  const rows = lines.map((line) => {
+    const product = products.get(line.productId);
+    return {
+      batch_id: batchId,
+      cabinet_id: cabinetId,
+      product_id: line.productId,
+      nm_id: product?.nm_id ?? null,
+      article: String(product?.article ?? ""),
+      expected_qty: Math.round(line.qty),
+      expected_at: body.expectedAt || null,
+      note: body.note?.trim() || null,
+      created_by: session?.email ?? null,
+    };
+  });
+
+  const { error } = await db.from("purchase_receipts").insert(rows);
+  if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
+
+  return NextResponse.json({ data: { batchId, lines: rows.length }, error: null }, { status: 201 });
+}
+
 /** Провести партию на склад: посчитать себестоимость и записать приход в регистр. */
 export async function POST(request: NextRequest) {
   const gate = await requireApiSession();

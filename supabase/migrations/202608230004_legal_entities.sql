@@ -101,12 +101,12 @@ from public.legal_entity_cabinets link
 where link.cabinet_id = m.cabinet_id and link.relation = 'own' and m.legal_entity_id is null;
 
 -- Склад без юрлица дальше не имеет смысла: приходовать не на кого.
-do $$
+do $warehouse_check$
 begin
   if exists (select 1 from public.warehouses where legal_entity_id is null) then
     raise exception 'есть склады, кабинет которых не связан ни с одним юрлицом — свяжите их до применения миграции';
   end if;
-end $$;
+end $warehouse_check$;
 
 alter table public.warehouses alter column legal_entity_id set not null;
 alter table public.stock_batches alter column legal_entity_id set not null;
@@ -169,7 +169,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $post_receipt_batch$
 declare
   v_cabinet_id      uuid;
   v_entity_id       uuid;
@@ -327,7 +327,7 @@ begin
     'costNote', v_note
   );
 end;
-$$;
+$post_receipt_batch$;
 
 -- ---------------------------------------------------------------------------
 -- 6. Доступы

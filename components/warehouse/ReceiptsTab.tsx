@@ -1,10 +1,12 @@
 "use client";
 
+import { Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { ReceiptBatchRow } from "@/app/api/warehouse/receipts/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
+import type { ProductRow } from "@/lib/warehouse/productRow";
 
 const STATE_LABEL: Record<ReceiptBatchRow["state"], { text: string; className: string }> = {
   expected: { text: "ждём", className: "bg-slate-100 text-slate-600" },
@@ -32,6 +34,9 @@ export function ReceiptsTab({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [target, setTarget] = useState<string>(warehouses[0]?.id ?? "");
+  const [draft, setDraft] = useState<{ expectedAt: string; note: string; lines: { productId: string; qty: string }[] } | null>(null);
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!target && warehouses.length > 0) setTarget(warehouses[0].id);
@@ -54,6 +59,45 @@ export function ReceiptsTab({
   }, [entityId]);
 
   useEffect(() => { void load(); }, [load, refreshKey]);
+
+  // Список товаров нужен только форме — тянем его при открытии, а не при каждом заходе.
+  const openDraft = async () => {
+    setDraft({ expectedAt: "", note: "", lines: [{ productId: "", qty: "" }] });
+    if (products.length > 0) return;
+    try {
+      const res = await fetch(`/api/warehouse/products?entity=${entityId}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось загрузить товары");
+      setProducts(json.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось загрузить товары");
+    }
+  };
+
+  const createReceipt = async () => {
+    if (!draft) return;
+    const lines = draft.lines
+      .filter((line) => line.productId && Number(line.qty) > 0)
+      .map((line) => ({ productId: line.productId, qty: Number(line.qty) }));
+    if (lines.length === 0) { setError("Добавьте позиции с количеством"); return; }
+    setCreating(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/warehouse/receipts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityId, expectedAt: draft.expectedAt || null, note: draft.note, lines }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось создать поставку");
+      setDraft(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось создать поставку");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const post = async (batchId: string) => {
     if (!target) { setError("Выберите склад, на который приходуем"); return; }
@@ -102,7 +146,101 @@ export function ReceiptsTab({
             {pending.length} {pending.length === 1 ? "партия ждёт" : "партий ждут"} проведения
           </span>
         )}
+        <button
+          onClick={() => void openDraft()}
+          className="ml-auto flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700"
+        >
+          <Plus className="h-4 w-4" /> Новая поставка
+        </button>
       </div>
+
+      {draft && (
+        <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-medium text-slate-900">Новая поставка</p>
+            <button onClick={() => setDraft(null)} className="text-slate-400 hover:text-slate-600">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mb-3 flex flex-wrap gap-2">
+            <label className="text-sm">
+              <span className="mr-2 text-slate-500">Ждём</span>
+              <input
+                type="date"
+                value={draft.expectedAt}
+                onChange={(e) => setDraft({ ...draft, expectedAt: e.target.value })}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
+              />
+            </label>
+            <input
+              value={draft.note}
+              onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+              placeholder="Комментарий"
+              className="min-w-48 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-300"
+            />
+          </div>
+
+          <div className="space-y-2">
+            {draft.lines.map((line, index) => (
+              <div key={index} className="flex flex-wrap items-center gap-2">
+                <select
+                  value={line.productId}
+                  onChange={(e) => setDraft({
+                    ...draft,
+                    lines: draft.lines.map((item, i) => i === index ? { ...item, productId: e.target.value } : item),
+                  })}
+                  className="min-w-64 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
+                >
+                  <option value="">выберите товар</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.article}{product.name && product.name !== product.article ? ` · ${product.name}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  inputMode="numeric"
+                  value={line.qty}
+                  onChange={(e) => setDraft({
+                    ...draft,
+                    lines: draft.lines.map((item, i) => i === index ? { ...item, qty: e.target.value.replace(/[^\d]/g, "") } : item),
+                  })}
+                  placeholder="кол-во"
+                  className="w-28 rounded-lg border border-slate-200 px-3 py-1.5 text-right text-sm text-slate-700 placeholder:text-slate-300"
+                />
+                {draft.lines.length > 1 && (
+                  <button
+                    onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_, i) => i !== index) })}
+                    className="text-slate-400 hover:text-red-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setDraft({ ...draft, lines: [...draft.lines, { productId: "", qty: "" }] })}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600"
+            >
+              + позиция
+            </button>
+            <button
+              onClick={() => void createReceipt()}
+              disabled={creating}
+              className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              {creating ? "Создаю…" : "Создать поставку"}
+            </button>
+            <p className="text-xs text-slate-400">
+              Поставка заводится как ожидаемая. Когда товар приедет — отметите факт и проведёте на склад.
+            </p>
+          </div>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
