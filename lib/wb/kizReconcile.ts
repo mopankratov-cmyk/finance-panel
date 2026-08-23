@@ -112,9 +112,17 @@ function timeoutMs(deadline: number): number {
   return Math.min(15_000, deadline - Date.now());
 }
 
+/**
+ * Сколько раз пробуем пережить лимит частоты WB. Лимитер общий на продавца:
+ * пока открыт экран, по тому же токену идут почасовые синки, и одной попытки
+ * с паузой в две секунды не хватало — сверка падала с «повторите через минуту»
+ * при живом токене и доступных данных.
+ */
+const RATE_LIMIT_ATTEMPTS = 4;
+
 async function wbJson<T>(request: WbRequest): Promise<T> {
   const label = SOURCE_LABELS[request.source];
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < RATE_LIMIT_ATTEMPTS; attempt++) {
     const budget = timeoutMs(request.deadline);
     if (budget <= 0) throw new WbKizSourceError(`WB не успел отдать ${label} за отведённое время`, 504, request.source);
     const response = await fetch(request.url, {
@@ -126,9 +134,15 @@ async function wbJson<T>(request: WbRequest): Promise<T> {
       cache: "no-store",
       signal: AbortSignal.timeout(budget),
     });
-    if (response.status === 429 && attempt === 0) {
+    if (response.status === 429 && attempt < RATE_LIMIT_ATTEMPTS - 1) {
+      // Своё время ожидания WB подсказывает заголовком — уважаем его; иначе
+      // ждём с нарастанием, потому что общий лимитер освобождается не сразу.
       const hinted = Number(response.headers.get("X-Ratelimit-Retry") ?? response.headers.get("Retry-After") ?? NaN);
-      const waitMs = Number.isFinite(hinted) && hinted > 0 ? Math.min(hinted * 1000, 10_000) : 2_100;
+      const waitMs = Number.isFinite(hinted) && hinted > 0
+        ? Math.min(hinted * 1000, 10_000)
+        : Math.min(1_500 * (attempt + 1), 6_000);
+      // Ждать дольше, чем осталось времени у запроса, бессмысленно — тогда
+      // честнее сказать про лимит сразу, чем упереться в таймаут.
       if (Date.now() + waitMs + 2_000 > request.deadline) {
         throw new WbKizSourceError(`WB ограничил частоту запросов (${label}) — повторите через минуту`, 429, request.source);
       }
