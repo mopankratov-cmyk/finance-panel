@@ -1,4 +1,5 @@
 import type { PayoutReport } from "./payoutReconciliation";
+import { ozonSellerFetch } from "@/lib/ozon/sellerGate";
 
 export interface ScheduleRow {
   id: string;
@@ -442,7 +443,9 @@ export async function loadOzonCashFlowReports({
   to,
   rules,
   identity,
-  fetchImpl = fetch,
+  // По умолчанию — через ворота кабинета: отчёты о движении денег читаются
+  // постранично и делят лимит Ozon со всеми остальными запросами кабинета.
+  fetchImpl = (input, init) => ozonSellerFetch(creds.clientId, String(input), init),
   deadline,
   deadlineOptions,
 }: {

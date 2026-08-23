@@ -33,6 +33,19 @@ export function humanizeApiError(message: string | null | undefined, label = "Д
     };
   }
 
+  // 429 — это «слишком часто», а не «сломалось». Совет проверять интеграцию тут
+  // вреден: он отправляет человека чинить исправное.
+  if (/\b429\b|rate limit|too many requests|слишком много запросов/i.test(normalized)) {
+    const provider = /ozon|озон/i.test(`${normalized} ${label}`)
+      ? "Ozon"
+      : /(^|[^a-z])wb([^a-z]|$)|wildberries|вайлдбер/i.test(`${normalized} ${label}`) ? "Wildberries" : "Маркетплейс";
+    return {
+      title: `${provider} ограничил частоту запросов`,
+      detail: `Обращений подряд оказалось больше, чем разрешено, и ${provider} ответил отказом.`,
+      action: "Подождите минуту и повторите. Токен и настройки интеграции здесь ни при чём.",
+    };
+  }
+
   if (/vercel security check|deployment protection/i.test(normalized)) {
     return {
       title: "Vercel отдал страницу защиты вместо данных",
