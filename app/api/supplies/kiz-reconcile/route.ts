@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
-import { loadKnownKizCodes, loadReturnFactsFromDb, rememberKizCodes } from "@/lib/wb/fbsKizStore";
+import { loadAssemblyTasksFromDb, loadKnownKizCodes, loadReturnFactsFromDb, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
@@ -53,6 +53,12 @@ async function loadTasksSnapshot(
   deadline: number,
   forceRefresh: boolean,
 ): Promise<KizTasksSnapshot> {
+  // Сперва своя база. Снимок ниже живёт в unstable_cache — он не общий между
+  // роутами и умирает с каждой сборкой, так что после деплоя экран заново
+  // качал у WB весь список продавца. В базе те же задания и только свои.
+  const stored = await loadAssemblyTasksFromDb(cabinetId, fromMs, toMs, 20_000).catch(() => null);
+  if (stored) return { tasks: stored, truncated: false };
+
   return loadHourlyDashboard<KizTasksSnapshot>(
     "wb-kiz-tasks",
     { cabinetId, days, schema: 1 },

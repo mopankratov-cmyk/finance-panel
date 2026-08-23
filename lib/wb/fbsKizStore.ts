@@ -198,3 +198,69 @@ export async function loadOrderIdsFromDb(
   // сделать вид, что заданий не было.
   return ids.length ? ids : null;
 }
+
+/* ────────────────────── сборочные задания из базы ────────────────────── */
+
+export interface StoredAssemblyTask {
+  id: number;
+  srid: string;
+  nmId: number | null;
+  article: string;
+  barcode: string;
+  createdAt: string | null;
+}
+
+/**
+ * Сборочные задания из своей базы вместо выкачивания списка у WB.
+ *
+ * Экран сверки держал список в unstable_cache — кэше, который не общий между
+ * роутами и умирает с каждой сборкой. После любого деплоя экран заново качал
+ * у WB 20 000 заданий (на агентском кабинете свои среди них — 304), и обычное
+ * открытие страницы упиралось в «WB ограничил частоту».
+ *
+ * Синк fbs-orders хранит те же задания и только свои — отсев по товарному
+ * контуру он делает ещё при записи.
+ *
+ * Возвращает null, если читать нельзя: колонок нет, они не заполнены или в
+ * окне вовсе ничего не нашлось. Тогда вызывающий идёт к WB — пустая база не
+ * должна выдаваться за «заданий не было».
+ */
+export async function loadAssemblyTasksFromDb(
+  cabinetId: string,
+  fromMs: number,
+  toMs: number,
+  limit: number,
+): Promise<StoredAssemblyTask[] | null> {
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+
+  const { data, error } = await db
+    .from("wb_fbs_orders")
+    .select("order_id, srid, nm_id, article, barcode, created_at_wb")
+    .eq("cabinet_id", cabinetId)
+    .gte("created_at_wb", new Date(fromMs).toISOString())
+    .lt("created_at_wb", new Date(toMs).toISOString())
+    .not("order_id", "is", null)
+    .limit(limit);
+
+  if (error || !data?.length) return null;
+
+  const tasks: StoredAssemblyTask[] = [];
+  for (const row of data) {
+    const id = Number(row.order_id);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    // Баркод участвует в сопоставлении кода с товаром: строка без него
+    // соврала бы «код не подходит». Такие задания оставляем спросить у WB.
+    if (!String(row.barcode ?? "").trim()) return null;
+    const nmId = Number(row.nm_id);
+    tasks.push({
+      id,
+      srid: String(row.srid ?? "").trim(),
+      nmId: Number.isFinite(nmId) ? nmId : null,
+      article: String(row.article ?? "").trim(),
+      barcode: String(row.barcode ?? "").trim(),
+      createdAt: row.created_at_wb ? String(row.created_at_wb) : null,
+    });
+  }
+  return tasks.length ? tasks : null;
+}

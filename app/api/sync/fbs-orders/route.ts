@@ -33,6 +33,9 @@ interface MarketplaceOrder {
   rid?: string;
   nmId?: number;
   createdAt?: string;
+  article?: string;
+  /** Баркоды задания. Первый участвует в сопоставлении кода маркировки. */
+  skus?: string[];
 }
 
 export async function GET(request: NextRequest) {
@@ -114,6 +117,12 @@ export async function GET(request: NextRequest) {
             // Без него фоновый сборщик выкачивал этот же список у WB заново
             // на каждом прогоне — только чтобы узнать идентификаторы.
             order_id: Number.isFinite(orderId) ? orderId : null,
+            // Артикул и баркод — чтобы экран сверки читал задания из базы, а
+            // не выкачивал у WB весь список после каждой сборки.
+            article: String(order.article ?? "").trim() || null,
+            barcode: Array.isArray(order.skus) && order.skus.length
+              ? String(order.skus[0] ?? "").trim() || null
+              : null,
             created_at_wb: order.createdAt ?? null,
             synced_at: startedAt.toISOString(),
           });
@@ -125,7 +134,7 @@ export async function GET(request: NextRequest) {
       // order_id помечен необязательным: до применения миграции синк просто
       // не пишет колонку, а не падает целиком.
       const upsertResult = rows.length
-        ? await chunkedUpsertWithOptionalColumns("wb_fbs_orders", rows, "cabinet_id,srid", ["order_id"])
+        ? await chunkedUpsertWithOptionalColumns("wb_fbs_orders", rows, "cabinet_id,srid", ["order_id", "article", "barcode"])
         : null;
       const upsertError = upsertResult?.error ?? null;
       if (upsertError) throw new Error(upsertError);
