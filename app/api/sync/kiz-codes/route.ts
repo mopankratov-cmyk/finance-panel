@@ -13,8 +13,14 @@ import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 // поэтому опрос идёт медленно и с запасом.
 export const maxDuration = 300;
 
-/** Сколько заданий добираем за прогон на кабинет. */
+/** Сколько заданий добираем за прогон. */
 const CODES_PER_RUN = 200;
+/**
+ * Сколько времени отводим на выборку списка заданий. Первый прогон показал,
+ * что весь бюджет уходит именно на неё: у Оптимы в окне 12 000 заданий, и до
+ * опроса кодов очередь не доходила — «+0 из 0» при очереди 12 000.
+ */
+const LIST_BUDGET_MS = 60_000;
 /** Пауза между запросами: у WB лимит на кабинет, спешить некуда. */
 const REQUEST_PAUSE_MS = 350;
 const WINDOW_DAYS = 14;
@@ -24,9 +30,16 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const targets = await getWbSyncTargets();
+  const allTargets = (await getWbSyncTargets()).filter((target) => target.cabinetId);
   const summary: Array<{ cabinet: string; probed: number; found: number; left: number; error?: string }> = [];
   const deadline = Date.now() + 260_000;
+
+  // Один кабинет за прогон, по кругу: список заданий у крупного кабинета сам по
+  // себе стоит десятки секунд, и пытаться обойти все пять за один раз значит не
+  // успеть нигде. Крон ходит дважды в час, поэтому каждый кабинет получает свой
+  // прогон примерно раз в два с половиной часа.
+  const slot = Math.floor(Date.now() / (30 * 60_000));
+  const targets = allTargets.length ? [allTargets[slot % allTargets.length]] : [];
 
   for (const target of targets) {
     if (!target.cabinetId) continue;
@@ -35,7 +48,9 @@ export async function GET(request: NextRequest) {
       const { orders } = await fetchFbsOrders(target.advertToken, {
         fromMs: Date.now() - WINDOW_DAYS * 86_400_000,
         toMs: Date.now(),
-        deadlineMs: deadline,
+        // Своя граница: остаток времени принадлежит опросу кодов, ради
+        // которого прогон и существует.
+        deadlineMs: Math.min(deadline, Date.now() + LIST_BUDGET_MS),
       });
       const ids = orders.map((order) => order.id).filter((id) => Number.isFinite(id));
       if (!ids.length) {
