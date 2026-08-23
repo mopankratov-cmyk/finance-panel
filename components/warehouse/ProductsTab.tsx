@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 
-const CURRENCIES = ["CNY", "RUB", "USD"] as const;
+// Себестоимость вносится в рублях — курс тогда не нужен ни приёмке, ни остаткам.
+const CURRENCIES = ["RUB", "CNY", "USD"] as const;
 
 /** Пустая форма нового товара: артикул обязателен, остальное дозаполняется по мере жизни. */
 const emptyDraft = (entityId: string | null) => ({
@@ -17,7 +18,7 @@ const emptyDraft = (entityId: string | null) => ({
   brand: "",
   nmId: "",
   factoryPrice: "",
-  factoryCurrency: "CNY" as (typeof CURRENCIES)[number],
+  factoryCurrency: "RUB" as (typeof CURRENCIES)[number],
   weightKg: "",
   lengthCm: "",
   widthCm: "",
@@ -185,7 +186,7 @@ export function ProductsTab({
             </label>
 
             <label>
-              <span className="text-xs text-slate-500">Цена фабрики</span>
+              <span className="text-xs text-slate-500">Себестоимость единицы</span>
               <div className="mt-1 flex gap-1">
                 <input
                   value={editing.draft.factoryPrice}
@@ -239,8 +240,8 @@ export function ProductsTab({
               Отмена
             </button>
             <p className="text-xs text-slate-400">
-              Цена фабрики, вес и габариты нужны для расчёта логистики и бюджета закупки — без них позиция
-              не считается.
+              Себестоимость вносится в рублях: тогда приёмке не нужен курс. Вес и габариты нужны для расчёта
+              логистики и бюджета закупки — без них позиция не считается.
             </p>
           </div>
         </div>
@@ -264,7 +265,7 @@ export function ProductsTab({
                 <th className="px-4 py-3 text-left font-medium">Название</th>
                 <th className="px-4 py-3 text-left font-medium">Категория</th>
                 <th className="px-4 py-3 text-left font-medium">Юрлицо</th>
-                <th className="px-4 py-3 text-right font-medium">Цена фабрики</th>
+                <th className="px-4 py-3 text-right font-medium">Себестоимость</th>
                 <th className="px-4 py-3 text-left font-medium">WB</th>
                 <th className="px-4 py-3 text-left font-medium">Чего не хватает</th>
               </tr>

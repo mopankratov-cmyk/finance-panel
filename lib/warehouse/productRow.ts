@@ -57,7 +57,7 @@ export function toProductRow(row: DbProduct, entityNames: Map<string, string>): 
   // Позиция без цены фабрики или габаритов не считается в бюджете закупки и логистике —
   // молчать об этом нельзя, иначе итог занижается незаметно.
   const missing: string[] = [];
-  if (row.factory_price === null) missing.push("цена фабрики");
+  if (row.factory_price === null) missing.push("себестоимость");
   if (row.weight_kg === null) missing.push("вес");
   if (row.length_cm === null || row.width_cm === null || row.height_cm === null) missing.push("габариты");
 
