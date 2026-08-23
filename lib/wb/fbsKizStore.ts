@@ -160,3 +160,41 @@ export async function loadReturnFactsFromDb(
     };
   });
 }
+
+/**
+ * Очередь заданий из своей базы вместо выкачивания списка у WB.
+ *
+ * Синк fbs-orders уже сохраняет задания кабинета — и, в отличие от WB,
+ * только СВОИ: чужие он отсекает по товарному контуру ещё при записи. Значит
+ * фоновому сборщику незачем каждые 15 минут качать у WB список, где на 304
+ * своих задания приходится 3696 чужих.
+ *
+ * Возвращает null, если колонки order_id ещё нет или она не заполнена —
+ * тогда вызывающий работает по-старому, через список WB.
+ */
+export async function loadOrderIdsFromDb(
+  cabinetId: string,
+  fromMs: number,
+  toMs: number,
+  limit: number,
+): Promise<number[] | null> {
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+
+  const { data, error } = await db
+    .from("wb_fbs_orders")
+    .select("order_id")
+    .eq("cabinet_id", cabinetId)
+    .gte("created_at_wb", new Date(fromMs).toISOString())
+    .lt("created_at_wb", new Date(toMs).toISOString())
+    .not("order_id", "is", null)
+    .limit(limit);
+
+  if (error) return null;
+  const ids = (data ?? [])
+    .map((row) => Number(row.order_id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+  // Пусто — синк по этим датам ещё не прошёл; честнее спросить WB, чем
+  // сделать вид, что заданий не было.
+  return ids.length ? ids : null;
+}

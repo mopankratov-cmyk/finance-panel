@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
+import { checkCronAuth, chunkedUpsertWithOptionalColumns, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsNm } from "@/lib/wb/productScope";
@@ -22,6 +22,8 @@ const INITIAL_DAYS = 35;
 const JOB = "fbs-orders";
 
 interface MarketplaceOrder {
+  /** Числовой id сборочного задания — по нему запрашиваются коды маркировки. */
+  id?: number;
   rid?: string;
   nmId?: number;
   createdAt?: string;
@@ -97,10 +99,15 @@ export async function GET(request: NextRequest) {
           const nmId = Number(order.nmId);
           if (!srid || !Number.isFinite(nmId)) continue;
           if (!allowsNm(target.productScope, nmId)) continue;
+          const orderId = Number(order.id);
           rows.push({
             cabinet_id: cabinetId,
             srid,
             nm_id: nmId,
+            // Числовой id задания: по нему запрашиваются коды маркировки.
+            // Без него фоновый сборщик выкачивал этот же список у WB заново
+            // на каждом прогоне — только чтобы узнать идентификаторы.
+            order_id: Number.isFinite(orderId) ? orderId : null,
             created_at_wb: order.createdAt ?? null,
             synced_at: startedAt.toISOString(),
           });
@@ -109,7 +116,12 @@ export async function GET(request: NextRequest) {
         if (orders.length < PAGE_LIMIT || !next) break;
       }
 
-      const upsertError = rows.length ? await chunkedUpsert("wb_fbs_orders", rows, "cabinet_id,srid") : null;
+      // order_id помечен необязательным: до применения миграции синк просто
+      // не пишет колонку, а не падает целиком.
+      const upsertResult = rows.length
+        ? await chunkedUpsertWithOptionalColumns("wb_fbs_orders", rows, "cabinet_id,srid", ["order_id"])
+        : null;
+      const upsertError = upsertResult?.error ?? null;
       if (upsertError) throw new Error(upsertError);
       total += rows.length;
       // Принудительное окно тоже двигает состояние: период фактически покрыт,

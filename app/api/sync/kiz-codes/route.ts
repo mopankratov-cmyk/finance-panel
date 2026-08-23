@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { fetchFbsOrders, fetchFbsOrdersMetaBatch } from "@/lib/wb/fbsMarketplace";
-import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
+import { loadKnownKizCodes, loadOrderIdsFromDb, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 import { allowsProduct, type WbProductScope } from "@/lib/wb/productScope";
 
 // Коды маркировки добираются в фоне, а не по заходу пользователя.
@@ -67,6 +67,27 @@ async function collectForCabinet(
     const dayOffset = (startDay + step) % WINDOW_DAYS;
     const toMs = Date.now() - dayOffset * DAY_MS;
     const fromMs = toMs - DAY_MS;
+
+    // Сперва своя база: синк fbs-orders хранит задания кабинета и, в отличие
+    // от WB, только свои. Тогда запросов к WB не нужно вовсе — ни одного на
+    // список, весь бюджет уходит на сами коды.
+    const stored = await loadOrderIdsFromDb(target.cabinetId, fromMs, toMs, CODES_PER_RUN * 4);
+    if (stored) {
+      result.orders += stored.length;
+      const known = await loadKnownKizCodes(target.cabinetId, stored);
+      const queue = stored.filter((id) => !known.codes.get(id)?.length && !known.recentlyProbed.has(id));
+      if (!queue.length) continue;
+      result.days.push(new Date(fromMs).toISOString().slice(0, 10));
+      const batch = await fetchFbsOrdersMetaBatch(target.advertToken, queue.slice(0, CODES_PER_RUN - result.probed), {
+        deadlineMs: deadline,
+      });
+      for (const codes of batch.codes.values()) if (codes.length) result.found += 1;
+      if (batch.sample && !result.sample) result.sample = batch.sample;
+      await rememberKizCodes(target.cabinetId, batch.codes);
+      result.probed += batch.codes.size;
+      result.left += Math.max(0, queue.length - batch.codes.size);
+      continue;
+    }
 
     const { orders } = await fetchFbsOrders(target.advertToken, {
       fromMs,
