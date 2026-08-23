@@ -15,6 +15,7 @@ import {
   Megaphone,
   Menu,
   MessageSquare,
+  Boxes,
   LogOut,
   PackageSearch,
   CalendarRange,
@@ -97,6 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Операции",
     items: [
       { href: "/wb/supplies", label: "Закупки", icon: Truck },
+      { href: "/warehouse", label: "Склад", icon: Boxes },
       { href: "/costs", label: "Себестоимость", icon: Coins },
       { href: "/wb/funnel?view=repricer", label: "Цена и маржа", icon: Tag },
     ],
@@ -138,6 +140,7 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
     id: "finance-data",
     label: "Учёт",
     items: [
+      { href: "/warehouse", label: "Склад", icon: Boxes },
       { href: "/costs", label: "Себестоимость", icon: Coins },
     ],
   },

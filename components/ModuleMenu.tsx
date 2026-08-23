@@ -13,6 +13,7 @@ const MODULES: { href: string; label: string; group: string }[] = [
   { href: "/summary", label: "Сводка МП", group: "Финансы" },
   { href: "/calendar", label: "Календарь / ДДС", group: "Финансы" },
   { href: "/supplies", label: "Закупки", group: "Операции" },
+  { href: "/warehouse", label: "Склад", group: "Операции" },
   { href: "/costs", label: "Себестоимость", group: "Операции" },
   { href: "/cabinets", label: "Кабинеты", group: "Операции" },
 ];
