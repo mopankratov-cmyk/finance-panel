@@ -98,7 +98,9 @@ async function wbFbsJson<T>(token: string, request: WbFbsRequest): Promise<T> {
       return {} as T;
     }
     if (response.status === 404 || response.status === 405) {
-      throw new WbFbsApiError(`WB не отдаёт данные по адресу ${request.path}`, 502);
+      // Код ответа обязателен: без него «не отдаёт данные» неотличимо от
+      // «нет кода» (404) и от «метод не тот» (405) — а лечатся они по-разному.
+      throw new WbFbsApiError(`WB ${response.status} по адресу ${request.path}`, response.status);
     }
     if (!response.ok) {
       throw new WbFbsApiError(`WB ${response.status}: ${(await response.text()).slice(0, 240)}`, response.status);
