@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Plus, Search, X } from "lucide-react";
+import { Building2, Download, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
@@ -74,6 +74,9 @@ export function ProductsTab({
   const [variantBusy, setVariantBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [owners, setOwners] = useState(false);
+  const [ownersResult, setOwnersResult] = useState<string | null>(null);
+  const [ownerConflicts, setOwnerConflicts] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,6 +163,39 @@ export function ProductsTab({
     }
   };
 
+  // Кому принадлежит товар — вопрос с ответом в карточках WB: номер карточки
+  // глобально уникален, и кабинет, в котором она заведена, связан с юрлицом.
+  const detectOwners = async () => {
+    setOwners(true);
+    setError(null);
+    setOwnersResult(null);
+    setOwnerConflicts([]);
+    try {
+      const res = await fetch("/api/warehouse/products/owners", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось определить юрлица");
+      const d = json.data;
+      const parts = [`проставлено ${d.assigned}`];
+      if (d.byNm > 0) parts.push(`по карточке ${d.byNm}`);
+      if (d.byArticle > 0) parts.push(`по артикулу ${d.byArticle}`);
+      if (d.byLabel > 0) parts.push(`по метке из финансов ${d.byLabel}`);
+      parts.push(`подтверждено ${d.confirmed}`);
+      if (d.unresolved.length > 0) parts.push(`владелец неизвестен у ${d.unresolved.length}`);
+      const failed = d.cabinets.filter((row: { failed: boolean }) => row.failed);
+      if (failed.length > 0) parts.push(`не прочитаны кабинеты: ${failed.map((row: { name: string }) => row.name).join(", ")}`);
+      setOwnersResult(parts.join(" · "));
+      setOwnerConflicts(d.conflicts.map(
+        (row: { article: string; current: string; found: string; evidence: string }) =>
+          `${row.article}: стоит «${row.current}», карточка в «${row.evidence}» → «${row.found}»`,
+      ));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось определить юрлица");
+    } finally {
+      setOwners(false);
+    }
+  };
+
   const save = async () => {
     if (!editing) return;
     if (!editing.draft.article.trim()) { setError("Укажите артикул"); return; }
@@ -215,6 +251,24 @@ export function ProductsTab({
           Размеры из WB: {importResult}
         </div>
       )}
+      {owners && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+          Читаю карточки своих кабинетов, чтобы понять, чей товар. Обход постраничный, это занимает несколько минут.
+        </div>
+      )}
+      {ownersResult && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          Юрлица по карточкам: {ownersResult}
+        </div>
+      )}
+      {ownerConflicts.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <p className="font-medium">Карточка спорит с тем, что записано — не трогали, решите руками:</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            {ownerConflicts.map((row) => <li key={row}>{row}</li>)}
+          </ul>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <div className="relative min-w-56 flex-1">
@@ -237,6 +291,14 @@ export function ProductsTab({
           className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
         >
           <Download className="h-4 w-4" /> {importing ? "Читаю карточки WB…" : "Размеры из WB"}
+        </button>
+        <button
+          onClick={() => void detectOwners()}
+          disabled={owners}
+          title="Прочитать карточки своих кабинетов и проставить товарам юрлицо владельца. Занимает несколько минут."
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <Building2 className="h-4 w-4" /> {owners ? "Определяю…" : "Юрлица по карточкам"}
         </button>
         <button
           onClick={() => { setEditing({ id: null, draft: emptyDraft(entityId) }); setVariants([]); }}
