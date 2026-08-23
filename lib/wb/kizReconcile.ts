@@ -295,21 +295,63 @@ export interface KizCodesLookupResult extends KizCodesLookupState {
  * остаются без ключа в codes и попадают в корзину «Не проверено», а причина
  * обрыва возвращается наружу, чтобы роут показал предупреждение.
  */
+/**
+ * Пакетное чтение кодов маркировки.
+ *
+ * Одиночный `GET /api/v3/orders/{id}/meta` WB закрыл — он отвечает 405, и
+ * экран из-за этого честно писал «WB не отдал коды по 400 заданиям», хотя
+ * дело было не в лимите и не в бюджете. Действующий метод — пакетный POST
+ * на другом префиксе, до 100 заданий за запрос.
+ */
+const ORDERS_META_URL = "https://marketplace-api.wildberries.ru/api/marketplace/v3/orders/meta";
+const META_BATCH_SIZE = 100;
+const META_CODE_KEYS = new Set(["sgtin", "uin", "imei", "gtin"]);
+
+/** Боевой ответ: [{ key: "sgtin", value: "...", decision: "optional" }, ...]. */
+function metaDetailCodes(details: unknown): string[] {
+  if (!Array.isArray(details)) return [];
+  const codes: string[] = [];
+  for (const item of details) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const key = typeof row.key === "string" ? row.key : "";
+    if (!META_CODE_KEYS.has(key)) continue;
+    codes.push(...metaCodes(row.value));
+  }
+  return [...new Set(codes)];
+}
+
+export async function fetchTaskKizCodesBatch(
+  token: string,
+  ids: number[],
+  deadline: number,
+): Promise<Map<number, string[]>> {
+  const out = new Map<number, string[]>();
+  for (let index = 0; index < ids.length; index += META_BATCH_SIZE) {
+    const chunk = ids.slice(index, index + META_BATCH_SIZE);
+    const json = await wbJson<{ orders?: Array<{ id?: unknown; metaDetails?: unknown }> }>({
+      url: ORDERS_META_URL,
+      token,
+      source: "meta",
+      deadline,
+      method: "POST",
+      body: { orders: chunk },
+    });
+    for (const row of json.orders ?? []) {
+      const id = Number(row?.id);
+      if (!Number.isFinite(id)) continue;
+      out.set(id, metaDetailCodes(row?.metaDetails));
+    }
+    // Задание, которого WB не вернул, всё равно спрошено — иначе очередь стоит.
+    for (const id of chunk) if (!out.has(id)) out.set(id, []);
+  }
+  return out;
+}
+
 /** Прямой опрос кодов одного сборочного задания у WB (без кэша). */
 export async function fetchTaskKizCodesDirect(token: string, id: number, deadline: number): Promise<string[]> {
-  const json = await wbJson<{ meta?: Record<string, unknown> }>({
-    url: `${ORDERS_URL}/${id}/meta`,
-    token,
-    source: "meta",
-    deadline,
-  });
-  const meta = json.meta ?? {};
-  return [
-    ...metaCodes(meta.sgtin),
-    ...metaCodes(meta.uin),
-    ...metaCodes(meta.imei),
-    ...metaCodes(meta.gtin),
-  ];
+  const codes = await fetchTaskKizCodesBatch(token, [id], deadline);
+  return codes.get(id) ?? [];
 }
 
 export async function fetchFbsTaskKizCodes(options: {

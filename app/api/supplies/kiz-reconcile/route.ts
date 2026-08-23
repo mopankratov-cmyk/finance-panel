@@ -15,6 +15,7 @@ import {
   fetchFbsSoldTaskIds,
   fetchFbsTaskKizCodes,
   fetchReturnClaimReasons,
+  fetchTaskKizCodesBatch,
   fetchTaskKizCodesDirect,
   fetchWbReturnFacts,
   reconcileKizFromWb,
@@ -102,6 +103,10 @@ function cachedKizCodeResolver(
   discovered: Map<number, string[]>,
 ) {
   return async (id: number): Promise<string[]> => {
+    // Пустой ответ — тоже ответ: без этой проверки задания без кода
+    // переспрашивались бы у WB на каждом заходе.
+    const already = discovered.get(id);
+    if (already) return already;
     const cached = known.get(id);
     if (cached?.length) return cached;
     const codes = await fetchTaskKizCodesDirect(token, id, deadline);
@@ -239,6 +244,24 @@ export async function GET(request: NextRequest) {
     : { codes: new Map<number, string[]>(), recentlyProbed: new Set<number>() };
   const knownKizCodes = kizSnapshot.codes;
   const discoveredKizCodes = new Map<number, string[]>();
+
+  // Пакетный добор: WB отдаёт до 100 заданий за запрос, поэтому 400 заданий
+  // стоят четырёх запросов, а не четырёхсот. Поштучный цикл ниже остаётся
+  // страховкой — он доберёт то, чего не оказалось в пачке.
+  if (statusesAvailable && soldTasks.length) {
+    const wanted = soldTasks
+      .map((task) => task.id)
+      .slice(0, KIZ_META_LOOKUP_LIMIT)
+      .filter((id) => !knownKizCodes.get(id)?.length);
+    if (wanted.length) {
+      try {
+        const fetched = await fetchTaskKizCodesBatch(token, wanted, deadline);
+        for (const [id, codes] of fetched) discoveredKizCodes.set(id, codes);
+      } catch {
+        // Не вышло пачкой — поштучный цикл сам сообщит причину обрыва.
+      }
+    }
+  }
 
   const meta: KizCodesLookupResult = statusesAvailable && soldTasks.length
     ? await fetchFbsTaskKizCodes({
