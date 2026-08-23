@@ -84,6 +84,9 @@ export async function GET(request: NextRequest) {
     const units = unitsByOffer[off] ?? 0;
     // реальная цена продажи = выручка/заказы; если продаж нет — каталожная
     const price = units > 0 ? Math.round((revByOffer[off] ?? 0) / units) : Math.round(p.price);
+    // Прайсовая цена рядом с фактической: у пеналов прайс 1 990 ₽ при
+    // фактической продаже по 300 ₽, и без этой пары непонятно, что показано.
+    const listPrice = Math.round(p.price);
     const productName = nameByOffer.get(off) ?? "";
     const costMatch = costs.resolve({ offerId: off, names: [productName] });
     const cost = costMatch?.cost ?? 0;
@@ -103,7 +106,7 @@ export async function GET(request: NextRequest) {
     const margin = price > 0 ? Math.round((profit / price) * 1000) / 10 : null;
     return {
       art: off, product_id: p.product_id, name: productName || costMatch?.name || off, img_url: imgs.byOffer[off] ?? null,
-      price, cost: Math.round(cost), units,
+      price, list_price: listPrice, price_source: units > 0 ? "fact" : "list", cost: Math.round(cost), units,
       // Цена покупателя пустая, если отчёт о реализации по этому товару фактов не дал.
       buyer_price: discountShare == null ? null : Math.round(buyerPrice),
       ozon_discount_pct: discountShare == null ? null : Math.round(discountShare * 1000) / 10,
