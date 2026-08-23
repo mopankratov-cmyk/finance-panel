@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Boxes,
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
   FlaskConical,
   Package, TrendingDown, Wallet, Building2, ArrowUpRight, ChevronDown,
@@ -39,6 +40,7 @@ const MODULES: ModuleCard[] = [
   { title: "Где теряем", description: "Удержания: реклама, логистика, комиссия", href: "/losses", icon: TrendingDown, zone: "Финансы", color: ["bg-rose-100", "text-rose-700"] },
 
   { title: "Поставки", description: "Распределение по складам, тара и контроль приёмки", href: "/wb/supplies", icon: Package, agent: "Саму", zone: "Операции", color: ["bg-cyan-100", "text-cyan-700"] },
+  { title: "Склад", description: "Свой остаток и себестоимость партий: приёмка, отгрузка на кабинеты, товары", href: "/warehouse", icon: Boxes, agent: "Саму", zone: "Операции", color: ["bg-teal-100", "text-teal-700"] },
   { title: "Себестоимость", description: "Себес по артикулам — питает маржу", href: "/costs", icon: Coins, zone: "Операции", color: ["bg-amber-100", "text-amber-700"] },
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
 
