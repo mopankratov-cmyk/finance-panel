@@ -266,8 +266,16 @@ export async function GET(request: NextRequest) {
     if (discoveredCodes.size) void rememberKizCodes(cabinetId, discoveredCodes).catch(() => {});
 
     if (candidates.length > probed.length) {
+      // Раньше здесь стояло «проверено 120 из 598» — это был размер бюджета, а
+      // не накопленный результат: цифра не двигалась от захода к заходу, хотя
+      // опрос каждый раз брал новые задания. Считаем то, что действительно
+      // накопилось: коды из базы, спрошенное сейчас и остаток очереди.
+      const withCode = candidates.filter((row) => knownCodes.get(row.id)?.length).length;
+      const waiting = candidates.length - withCode - probed.length;
       warnings.push(
-        `Код маркировки проверен у ${probed.length} заданий из ${candidates.length}: WB отдаёт код только по одному заданию за запрос. Остальные показаны как «не проверен» — сузьте период.`,
+        `Код маркировки известен у ${withCode} заданий, за этот заход спрошено ещё ${probed.length}`
+        + (waiting > 0 ? `, в очереди ${waiting}` : "")
+        + ". WB отдаёт код по одному заданию за запрос, поэтому список обходится за несколько заходов.",
       );
     }
     if (metaFailed > 0) {
