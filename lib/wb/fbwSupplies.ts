@@ -82,3 +82,96 @@ export async function fetchFbwSupplySnapshot(token: string, supplyId: number) {
   ]);
   return { detail, goods, packages, capturedAt: new Date().toISOString() };
 }
+
+/* ------------------------------ список поставок ------------------------------ */
+
+/**
+ * Статусы поставки по справочнику WB (models.HandySupplyStatus).
+ * Числа приходят с сервера, слова — для человека.
+ */
+export const FBW_SUPPLY_STATUS: Record<number, string> = {
+  1: "Не запланировано",
+  2: "Запланировано",
+  3: "Отгрузка разрешена",
+  4: "Идёт приёмка",
+  5: "Принято",
+  6: "Отгружено на воротах",
+};
+
+export interface FbwSupplyListRow {
+  /** id поставки. null — пока только предзаказ, поставка ещё не создана. */
+  supplyId: number | null;
+  preorderId: number | null;
+  statusId: number;
+  status: string;
+  boxTypeId: number | null;
+  createdAt: string | null;
+  /** Плановая дата поставки. */
+  plannedAt: string | null;
+  /** Фактическая дата приёмки. */
+  factAt: string | null;
+  updatedAt: string | null;
+}
+
+interface RawSupplyRow {
+  supplyID?: number | null;
+  preorderID?: number | null;
+  statusID?: number;
+  boxTypeID?: number | null;
+  createDate?: string | null;
+  supplyDate?: string | null;
+  factDate?: string | null;
+  updatedDate?: string | null;
+}
+
+/**
+ * Список поставок продавца.
+ *
+ * Метод именно POST — GET на этот адрес не отвечает, и по одному этому его
+ * легко не найти. Лимит у WB жёсткий: 30 запросов в минуту на аккаунт,
+ * интервал 2 секунды, поэтому список читается разом (до 1000 записей), а не
+ * постранично по чуть-чуть.
+ *
+ * Названия складов в списке НЕ приходят — они только в деталях поставки
+ * (GET /api/v1/supplies/{ID}). Дёргать детали на каждую строку значит выесть
+ * лимит, поэтому склад подтягивается отдельно и по счётчику.
+ */
+export async function fetchFbwSupplyList(
+  token: string,
+  options: { limit?: number; statusIds?: number[] } = {},
+): Promise<FbwSupplyListRow[]> {
+  const limit = Math.min(1000, Math.max(1, options.limit ?? 1000));
+  const url = `${BASE}?limit=${limit}&offset=0`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: token.trim(), "Content-Type": "application/json" },
+    body: JSON.stringify(options.statusIds?.length ? { statusIDs: options.statusIds } : {}),
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (response.status === 401 || response.status === 403) {
+    throw new WbFbwSupplyError("WB-токен не имеет категории «Поставки»", response.status);
+  }
+  if (response.status === 429) {
+    throw new WbFbwSupplyError("WB ограничил частоту запросов к поставкам — повторите через минуту", 429);
+  }
+  if (!response.ok) {
+    throw new WbFbwSupplyError(`WB ${response.status}: ${(await response.text()).slice(0, 240)}`, response.status);
+  }
+  const payload = await response.json() as RawSupplyRow[] | { supplies?: RawSupplyRow[] };
+  const rows = Array.isArray(payload) ? payload : payload?.supplies ?? [];
+  return rows.map((raw) => {
+    const statusId = Number(raw.statusID ?? 0);
+    return {
+      supplyId: Number.isFinite(Number(raw.supplyID)) && raw.supplyID !== null ? Number(raw.supplyID) : null,
+      preorderId: Number.isFinite(Number(raw.preorderID)) && raw.preorderID !== null ? Number(raw.preorderID) : null,
+      statusId,
+      status: FBW_SUPPLY_STATUS[statusId] ?? "Статус не распознан",
+      boxTypeId: Number.isFinite(Number(raw.boxTypeID)) && raw.boxTypeID !== null ? Number(raw.boxTypeID) : null,
+      createdAt: raw.createDate ?? null,
+      plannedAt: raw.supplyDate ?? null,
+      factAt: raw.factDate ?? null,
+      updatedAt: raw.updatedDate ?? null,
+    };
+  });
+}
