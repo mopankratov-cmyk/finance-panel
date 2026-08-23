@@ -29,7 +29,11 @@ const ORDERS_PAGE_LIMIT = 1000;
 const ORDERS_MAX_PAGES = 20;
 const STATUS_CHUNK = 1000;
 /** Потолок на прогон: meta читается по одному заданию, лимит WB — сотни запросов в минуту. */
-export const KIZ_META_LOOKUP_LIMIT = 400;
+// Потолок ставился, когда каждое задание стоило отдельного запроса к WB.
+// С пакетным чтением 2000 заданий — это 20 запросов, а не 2000, и они
+// укладываются в бюджет прогона с запасом (замер 23.08.2026: 400 заданий
+// за 13 секунд против 48 прежних).
+export const KIZ_META_LOOKUP_LIMIT = 2000;
 const META_CONCURRENCY = 6;
 const CLAIMS_PAGE_LIMIT = 200;
 const CLAIMS_MAX_PAGES = 5;
