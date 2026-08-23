@@ -19,6 +19,7 @@
     { "path": "/api/sync/commissions", "schedule": "15 * * * *" },
     { "path": "/api/sync/rk-journal", "schedule": "0 3 * * *" },
     { "path": "/api/sync/screen-latency", "schedule": "30 4 * * *" },
+    { "path": "/api/sync/kiz-codes", "schedule": "20,50 * * * *" },
     { "path": "/api/sync/token-health", "schedule": "15 6 * * *" },
     { "path": "/api/opiu/monitor", "schedule": "0 5 * * *" },
     { "path": "/api/repricer/run/cron", "schedule": "30 6 * * *" },
