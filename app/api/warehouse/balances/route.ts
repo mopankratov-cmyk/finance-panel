@@ -3,13 +3,14 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { parseWarehouseKind, type WarehouseKind } from "@/lib/warehouse/warehouseKind";
 
 export const dynamic = "force-dynamic";
 
 export interface StockBalanceRow {
   warehouseId: string;
   warehouseName: string;
-  warehouseKind: "own" | "fulfillment";
+  warehouseKind: WarehouseKind;
   variantId: string;
   productId: string;
   nmId: number | null;
@@ -27,7 +28,7 @@ export interface StockBalanceRow {
 export interface StockBalancesResponse {
   rows: StockBalanceRow[];
   totals: { qty: number; amount: number; skuCount: number };
-  warehouses: { id: string; name: string; kind: "own" | "fulfillment"; qty: number; amount: number }[];
+  warehouses: { id: string; name: string; kind: WarehouseKind; qty: number; amount: number }[];
 }
 
 interface DbBalance {
@@ -68,9 +69,9 @@ export async function GET(request: NextRequest) {
     return fail(missingMigration(code) ? migrationHint : warehousesResult.error.message, missingMigration(code) ? 503 : 500);
   }
 
-  const names = new Map<string, { name: string; kind: "own" | "fulfillment" }>();
+  const names = new Map<string, { name: string; kind: WarehouseKind }>();
   for (const row of warehousesResult.data ?? []) {
-    names.set(String(row.id), { name: String(row.name), kind: row.kind === "fulfillment" ? "fulfillment" : "own" });
+    names.set(String(row.id), { name: String(row.name), kind: parseWarehouseKind(row.kind) });
   }
 
   let balances: DbBalance[];
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest) {
     })
     .sort((a, b) => b.qty - a.qty);
 
-  const byWarehouse = new Map<string, { id: string; name: string; kind: "own" | "fulfillment"; qty: number; amount: number }>();
+  const byWarehouse = new Map<string, { id: string; name: string; kind: WarehouseKind; qty: number; amount: number }>();
   for (const [id, warehouse] of names) {
     byWarehouse.set(id, { id, name: warehouse.name, kind: warehouse.kind, qty: 0, amount: 0 });
   }

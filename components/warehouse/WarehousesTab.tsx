@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
+import { parseWarehouseKind, warehouseKindLabel, type WarehouseKind } from "@/lib/warehouse/warehouseKind";
 
 export function WarehousesTab({
   entityId,
@@ -16,10 +17,10 @@ export function WarehousesTab({
   onChanged: () => void;
 }) {
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<"own" | "fulfillment">("own");
+  const [kind, setKind] = useState<WarehouseKind>("own");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ id: string; name: string; kind: "own" | "fulfillment" } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; name: string; kind: WarehouseKind } | null>(null);
 
   const patch = async (id: string, body: Record<string, unknown>) => {
     setError(null);
@@ -75,11 +76,12 @@ export function WarehousesTab({
           />
           <select
             value={kind}
-            onChange={(e) => setKind(e.target.value === "fulfillment" ? "fulfillment" : "own")}
+            onChange={(e) => setKind(parseWarehouseKind(e.target.value))}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
           >
             <option value="own">свой склад</option>
             <option value="fulfillment">фулфилмент</option>
+            <option value="transit">в пути</option>
           </select>
           <button
             onClick={() => void create()}
@@ -92,6 +94,7 @@ export function WarehousesTab({
         <p className="mt-2 text-xs text-slate-400">
           Склад — это место хранения, а не собственность юрлица: на одном фулфилменте может лежать товар
           нескольких ИП. Чей товар и сколько — видно в остатках, они считаются по паре «склад + юрлицо».
+          Тип «в пути» — для фуры между городами: товар в дороге виден в остатках, а не пропадает на неделю.
         </p>
       </div>
 
@@ -129,13 +132,14 @@ export function WarehousesTab({
                       {isEditing ? (
                         <select
                           value={editing.kind}
-                          onChange={(e) => setEditing({ ...editing, kind: e.target.value === "fulfillment" ? "fulfillment" : "own" })}
+                          onChange={(e) => setEditing({ ...editing, kind: parseWarehouseKind(e.target.value) })}
                           className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
                         >
                           <option value="own">свой склад</option>
                           <option value="fulfillment">фулфилмент</option>
+                          <option value="transit">в пути</option>
                         </select>
-                      ) : warehouse.kind === "fulfillment" ? "фулфилмент" : "свой склад"}
+                      ) : warehouseKindLabel(warehouse.kind)}
                     </td>
                     <td className="px-4 py-2.5">
                       {warehouse.isActive

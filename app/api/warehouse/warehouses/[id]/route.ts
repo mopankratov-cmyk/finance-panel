@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { parseWarehouseKind } from "@/lib/warehouse/warehouseKind";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     if (!name) return fail("Название не может быть пустым", 400);
     patch.name = name;
   }
-  if ("kind" in body) patch.kind = body.kind === "fulfillment" ? "fulfillment" : "own";
+  if ("kind" in body) patch.kind = parseWarehouseKind(body.kind);
   if ("note" in body) patch.note = String(body.note ?? "").trim() || null;
   if ("isActive" in body) {
     patch.is_active = Boolean(body.isActive);

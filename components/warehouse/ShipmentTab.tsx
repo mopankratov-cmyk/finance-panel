@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
+import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
@@ -154,7 +155,7 @@ export function ShipmentTab({
         >
           {warehouses.map((warehouse) => (
             <option key={warehouse.id} value={warehouse.id}>
-              {warehouse.name}{warehouse.kind === "fulfillment" ? " · ФФ" : ""}
+              {warehouse.name}{warehouseKindSuffix(warehouse.kind)}
             </option>
           ))}
         </select>

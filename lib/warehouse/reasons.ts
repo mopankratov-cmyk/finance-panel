@@ -5,6 +5,7 @@
 
 const WRITEOFF_REASONS: Record<string, string> = {
   defect_on_receipt: "брак при приёмке",
+  defect_on_return: "брак в возврате",
 };
 
 const COST_NOTES: Record<string, string> = {

@@ -16,6 +16,16 @@ export interface VariantRow {
   position: number;
 }
 
+/** Позиция справочника целиком — размер вместе с моделью, к которой он приписан.
+ *  Нужна там, где выбирают из всего каталога, а не из размеров одной карточки:
+ *  возврат оформляют и на то, чего на складе давно нет. */
+export interface CatalogVariantRow extends VariantRow {
+  article: string;
+  name: string;
+  nmId: number | null;
+  photoUrl: string | null;
+}
+
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграции 202608230014 и 202608230015";
@@ -40,10 +50,37 @@ export async function GET(request: NextRequest) {
   if (!list.ok) return fail(list.error, list.status);
 
   const productId = new URL(request.url).searchParams.get("product");
-  if (!productId) return fail("Не указан товар", 400);
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+
+  // Без указания товара отдаём весь справочник размеров с моделями: экраны,
+  // где выбирают позицию «вообще», иначе тянули бы карточки по одной.
+  if (!productId) {
+    const catalog = await db
+      .from("product_variants")
+      .select(`${COLUMNS}, products!inner(article, name, nm_id, photo_url)`)
+      .eq("is_active", true)
+      .order("position")
+      .order("size_label");
+    if (catalog.error) {
+      const code = catalog.error.code;
+      return fail(missingMigration(code) ? migrationHint : catalog.error.message, missingMigration(code) ? 503 : 500);
+    }
+    const rows: CatalogVariantRow[] = (catalog.data ?? []).map((row) => {
+      const record = row as Record<string, unknown>;
+      const product = (record.products ?? {}) as Record<string, unknown>;
+      return {
+        ...toRow(record),
+        article: String(product.article ?? ""),
+        name: String(product.name ?? ""),
+        nmId: product.nm_id === null || product.nm_id === undefined ? null : Number(product.nm_id),
+        photoUrl: (product.photo_url as string | null) ?? null,
+      };
+    });
+    rows.sort((a, b) => a.article.localeCompare(b.article, "ru") || a.sizeLabel.localeCompare(b.sizeLabel, "ru"));
+    return NextResponse.json({ data: rows, error: null });
+  }
 
   const { data, error } = await db
     .from("product_variants")

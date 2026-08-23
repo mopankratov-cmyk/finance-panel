@@ -3,13 +3,14 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { parseWarehouseKind, type WarehouseKind } from "@/lib/warehouse/warehouseKind";
 
 export const dynamic = "force-dynamic";
 
 export interface WarehouseRow {
   id: string;
   name: string;
-  kind: "own" | "fulfillment";
+  kind: WarehouseKind;
   isActive: boolean;
   position: number;
   note: string | null;
@@ -18,7 +19,7 @@ export interface WarehouseRow {
 interface DbRow {
   id: string;
   name: string;
-  kind: "own" | "fulfillment";
+  kind: WarehouseKind;
   is_active: boolean;
   position: number;
   note: string | null;
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
 
   const name = String(body.name ?? "").trim();
   if (!name) return fail("Укажите название склада", 400);
-  const kind = body.kind === "fulfillment" ? "fulfillment" : "own";
+  const kind = parseWarehouseKind(body.kind);
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);

@@ -11,6 +11,7 @@ const KIND_LABEL: Record<StockMoveRow["kind"], string> = {
   writeoff: "списание",
   return: "возврат",
   adjustment: "корректировка",
+  transfer: "перемещение",
 };
 
 const stamp = (value: string) =>

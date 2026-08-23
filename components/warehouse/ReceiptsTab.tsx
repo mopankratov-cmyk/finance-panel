@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { ReceiptBatchRow } from "@/app/api/warehouse/receipts/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
+import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import { WbProductImage } from "@/components/wb/WbProductImage";
@@ -148,7 +149,7 @@ export function ReceiptsTab({
         >
           {warehouses.map((warehouse) => (
             <option key={warehouse.id} value={warehouse.id}>
-              {warehouse.name}{warehouse.kind === "fulfillment" ? " · ФФ" : ""}
+              {warehouse.name}{warehouseKindSuffix(warehouse.kind)}
             </option>
           ))}
         </select>

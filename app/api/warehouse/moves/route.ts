@@ -15,7 +15,7 @@ export interface StockMoveRow {
   article: string;
   qty: number;
   amount: number;
-  kind: "receipt" | "shipment" | "writeoff" | "return" | "adjustment";
+  kind: "receipt" | "shipment" | "writeoff" | "return" | "adjustment" | "transfer";
   docType: string;
   docId: string | null;
   occurredAt: string;

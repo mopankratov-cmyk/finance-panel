@@ -109,6 +109,9 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
                   {row.warehouseKind === "fulfillment" && (
                     <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">ФФ</span>
                   )}
+                  {row.warehouseKind === "transit" && (
+                    <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">в пути</span>
+                  )}
                 </td>
                 <td className={`px-4 py-2.5 text-right font-semibold ${row.qty < 0 ? "text-red-600" : "text-slate-900"}`}>
                   {formatNumber(row.qty)}
