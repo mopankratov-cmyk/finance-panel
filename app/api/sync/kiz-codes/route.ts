@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
-import { fetchFbsOrders, fetchFbsOrderMeta } from "@/lib/wb/fbsMarketplace";
+import { fetchFbsOrders, fetchFbsOrdersMetaBatch } from "@/lib/wb/fbsMarketplace";
 import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 
 // Коды маркировки добираются в фоне, а не по заходу пользователя.
@@ -24,9 +24,7 @@ import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 export const maxDuration = 60;
 
 /** Сколько заданий добираем за прогон на кабинет. Потолок ставит дедлайн. */
-const CODES_PER_RUN = 80;
-/** Пауза между запросами внутри кабинета: лимит общий, спешить некуда. */
-const REQUEST_PAUSE_MS = 250;
+const CODES_PER_RUN = 500;
 /** Глубина окна в днях: столько суток обходим по кругу. */
 const WINDOW_DAYS = 14;
 /** Сколько дней максимум пролистать за прогон в поисках незакрытых заданий. */
@@ -49,6 +47,8 @@ interface CabinetResult {
   /** Сколько запросов кода упало и с какой первой причиной. */
   failed: number;
   reason?: string;
+  /** Сырая форма metaDetails с боевого ответа — чтобы разбор правился по факту. */
+  sample?: string;
 }
 
 async function collectForCabinet(
@@ -82,30 +82,16 @@ async function collectForCabinet(
     if (!queue.length) continue;
 
     result.days.push(new Date(fromMs).toISOString().slice(0, 10));
-    const probed = new Map<number, string[]>();
 
-    for (const id of queue.slice(0, CODES_PER_RUN - result.probed)) {
-      if (Date.now() > deadline) break;
-      try {
-        const meta = await fetchFbsOrderMeta(target.advertToken, id, { deadlineMs: deadline });
-        const codes = [...meta.sgtin, ...meta.uin, ...meta.imei, ...meta.gtin].filter(Boolean);
-        // Пустой ответ тоже пишем — как отметку «спрашивали», не как «кода нет».
-        probed.set(id, codes);
-        if (codes.length) result.found += 1;
-      } catch (error) {
-        // Одно упавшее задание не должно рвать прогон: вернёмся к нему позже.
-        // Но молча глотать причину нельзя — именно из-за этого «опрошено 0»
-        // трижды выглядело загадкой вместо диагноза.
-        result.failed += 1;
-        if (!result.reason) {
-          result.reason = error instanceof Error ? error.message.slice(0, 90) : "неизвестная причина";
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, REQUEST_PAUSE_MS));
-    }
+    // Пакетом по 100: одиночный запрос WB закрыл (405), да и 1000 заданий
+    // одним по одному в бюджет прогона не влезали никогда.
+    const batch = await fetchFbsOrdersMetaBatch(target.advertToken, queue.slice(0, CODES_PER_RUN), {
+      deadlineMs: deadline,
+    });
+    const probed = batch.codes;
+    for (const codes of probed.values()) if (codes.length) result.found += 1;
+    if (batch.sample && !result.sample) result.sample = batch.sample;
 
-    // Пишем сразу за днём: если платформа оборвёт прогон, уже опрошенное
-    // останется в базе, а не пропадёт вместе с функцией.
     await rememberKizCodes(target.cabinetId, probed);
     result.probed += probed.size;
     result.left += Math.max(0, queue.length - probed.size);
@@ -162,7 +148,8 @@ export async function GET(request: NextRequest) {
         if (row.error) return `${row.cabinet}: ${row.error}`;
         const where = row.days.length ? ` (${row.days.join(", ")})` : "";
         const why = row.failed ? `, отказов ${row.failed}: ${row.reason ?? "?"}` : "";
-        return `${row.cabinet}: опрошено ${row.probed}, с кодом ${row.found}${row.left ? `, осталось ${row.left}` : ""}${why}${where}`;
+        const shape = row.sample ? ` · форма ${row.sample}` : "";
+        return `${row.cabinet}: опрошено ${row.probed}, с кодом ${row.found}${row.left ? `, осталось ${row.left}` : ""}${why}${where}${shape}`;
       })
       .join("; ") || "Незакрытых заданий не нашлось";
 

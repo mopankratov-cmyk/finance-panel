@@ -59,7 +59,10 @@ async function wbFbsJson<T>(token: string, request: WbFbsRequest): Promise<T> {
     const timeoutMs = Math.max(1_000, Math.min(asked, left()));
     let response: Response;
     try {
-      response = await fetch(`${BASE}${request.path}`, {
+      // Пакетное чтение кодов живёт на другом префиксе (/api/marketplace/v3),
+      // а не на /api/v3 — поэтому путь может быть абсолютным.
+      const url = request.path.startsWith("http") ? request.path : `${BASE}${request.path}`;
+      response = await fetch(url, {
         method,
         headers: {
           Authorization: token.trim(),
@@ -391,4 +394,95 @@ export async function fetchFbsStocks(
     checked += chunk.length;
   }
   return { amounts, checked, complete: true };
+}
+
+/* ─────────────────────── коды маркировки: пакетное чтение ─────────────────────── */
+
+/**
+ * Чтение кодов маркировки сборочных заданий.
+ *
+ * Одиночный `GET /api/v3/orders/{id}/meta` WB закрыл — он отвечает 405, и
+ * замер 23.08.2026 показал ровно это: 47 отказов за прогон, ни одного кода.
+ * Действующий метод — пакетный POST на ДРУГОМ префиксе, до 100 заданий за
+ * запрос (док WB: лимит 300 запросов в минуту на продавца, интервал 200 мс;
+ * ответ 4XX считается за 10 запросов — поэтому промахи дороги вдесятеро).
+ */
+const META_BATCH_URL = "https://marketplace-api.wildberries.ru/api/marketplace/v3/orders/meta";
+const META_BATCH_SIZE = 100;
+
+const META_CODE_KEYS = new Set(["sgtin", "uin", "imei", "gtin"]);
+
+/**
+ * Достаём коды, не полагаясь на одну форму ответа.
+ *
+ * Документация показывает лишь пустой `metaDetails: []`, поэтому разбираем и
+ * `{ sgtin: "..." }`, и `{ key: "sgtin", value: "..." }` — что бы ни пришло.
+ */
+function extractMetaCodes(details: unknown): string[] {
+  const codes: string[] = [];
+  const visit = (node: unknown, key?: string) => {
+    if (node === null || node === undefined) return;
+    if (typeof node === "string") {
+      if (key && META_CODE_KEYS.has(key) && node.trim()) codes.push(node.trim());
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, key);
+      return;
+    }
+    if (typeof node === "object") {
+      const record = node as Record<string, unknown>;
+      const named = typeof record.key === "string" ? record.key : null;
+      for (const [field, value] of Object.entries(record)) {
+        if (field === "value" && typeof value === "string") {
+          if (named && META_CODE_KEYS.has(named) && value.trim()) codes.push(value.trim());
+          continue;
+        }
+        visit(value, field);
+      }
+    }
+  };
+  visit(details);
+  return [...new Set(codes)];
+}
+
+export interface FbsMetaBatchResult {
+  /** Коды по каждому спрошенному заданию. Пустой массив — «спрашивали, кода нет». */
+  codes: Map<number, string[]>;
+  /** Сырой кусок ответа для первого задания с непустым metaDetails — чтобы
+   *  форма разбиралась по факту, а не по догадке. */
+  sample?: string;
+}
+
+export async function fetchFbsOrdersMetaBatch(
+  token: string,
+  orderIds: number[],
+  options: { deadlineMs?: number } = {},
+): Promise<FbsMetaBatchResult> {
+  const codes = new Map<number, string[]>();
+  let sample: string | undefined;
+
+  for (let index = 0; index < orderIds.length; index += META_BATCH_SIZE) {
+    if (options.deadlineMs && Date.now() > options.deadlineMs) break;
+    const chunk = orderIds.slice(index, index + META_BATCH_SIZE);
+    const payload = await wbFbsJson<{ orders?: Array<{ id?: unknown; metaDetails?: unknown }> }>(token, {
+      path: META_BATCH_URL,
+      method: "POST",
+      body: { orders: chunk },
+      deadlineMs: options.deadlineMs,
+    });
+
+    for (const row of payload.orders ?? []) {
+      const id = Number(row?.id);
+      if (!Number.isFinite(id)) continue;
+      codes.set(id, extractMetaCodes(row?.metaDetails));
+      if (!sample && Array.isArray(row?.metaDetails) && row.metaDetails.length) {
+        sample = JSON.stringify(row.metaDetails).slice(0, 120);
+      }
+    }
+    // Задание, которого WB не вернул, тоже спрошено: отметим, чтобы очередь шла.
+    for (const id of chunk) if (!codes.has(id)) codes.set(id, []);
+  }
+
+  return { codes, sample };
 }
