@@ -81,3 +81,82 @@ export async function rememberKizCodes(
       .upsert(rows.slice(index, index + 500), { onConflict: "cabinet_id,order_id" });
   }
 }
+
+/* ───────────────────────────── возвраты из базы ───────────────────────────── */
+
+export interface StoredReturnFact {
+  saleId: string;
+  srid: string;
+  nmId: number | null;
+  article: string;
+  barcode: string;
+  brand: string;
+  returnedAt: string | null;
+}
+
+/**
+ * Возвраты из своей базы вместо живого запроса к статистике WB.
+ *
+ * У статистики лимит один запрос в минуту на продавца, и на агентской Оптиме
+ * экран сверки стабильно получал «WB ограничил частоту (продажи и возвраты)»
+ * — раздел возвратов оставался пустым. При этом продажи синкаются ежечасно
+ * ВМЕСТЕ с возвратами (saleID на «R…»), не хватало только srid.
+ *
+ * Возвращает null, когда прочитать из базы нельзя — колонки ещё нет или srid
+ * не заполнен. Тогда вызывающий честно идёт к WB, а не показывает пустоту.
+ */
+export async function loadReturnFactsFromDb(
+  cabinetId: string,
+  fromIso: string,
+): Promise<StoredReturnFact[] | null> {
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+
+  const { data, error } = await db
+    .from("wb_sales")
+    .select("sale_id, srid, nm_id, date")
+    .eq("cabinet_id", cabinetId)
+    .gte("date", fromIso)
+    .like("sale_id", "R%")
+    .limit(20_000);
+
+  // Колонки ещё нет — миграция не применена.
+  if (error) return null;
+  if (!data?.length) return [];
+
+  const withSrid = data.filter((row) => String(row.srid ?? "").trim());
+  // Строки есть, а srid пуст — синк ещё не дошёл до этих дат. Показывать
+  // пустой раздел нельзя: это выглядело бы как «возвратов не было».
+  if (!withSrid.length) return null;
+
+  const nmIds = [...new Set(withSrid.map((row) => Number(row.nm_id)).filter(Number.isFinite))];
+  const cards = new Map<number, { article: string; brand: string }>();
+  for (let index = 0; index < nmIds.length; index += 500) {
+    const { data: chunk } = await db
+      .from("wb_cards")
+      .select("nm_id, article, brand")
+      .eq("cabinet_id", cabinetId)
+      .in("nm_id", nmIds.slice(index, index + 500));
+    for (const card of chunk ?? []) {
+      cards.set(Number(card.nm_id), {
+        article: String(card.article ?? ""),
+        brand: String(card.brand ?? ""),
+      });
+    }
+  }
+
+  return withSrid.map((row) => {
+    const nmId = Number(row.nm_id);
+    const card = cards.get(nmId);
+    return {
+      saleId: String(row.sale_id ?? ""),
+      srid: String(row.srid ?? "").trim(),
+      nmId: Number.isFinite(nmId) ? nmId : null,
+      article: card?.article ?? "",
+      // Баркод в сверке не участвует: сопоставление идёт по srid.
+      barcode: "",
+      brand: card?.brand ?? "",
+      returnedAt: row.date ? String(row.date).slice(0, 10) : null,
+    };
+  });
+}

@@ -156,12 +156,16 @@ export async function GET(request: NextRequest) {
             price_with_disc: priceWithDiscFromSale(sale),
             spp: numericOrNull(sale.spp),
             warehouse_type: (sale.warehouseType as string | null) ?? null,
+            // srid связывает возврат со сборочным заданием: без него сверка КИЗ
+            // вынуждена спрашивать возвраты у WB живьём, а там лимит один
+            // запрос в минуту на продавца.
+            srid: ((sale.srid as string | null) ?? "").trim() || null,
             cabinet_id: target.cabinetId,
             synced_at: syncedAt,
           }))
           .filter((row) => row.sale_id)
           .filter((row) => !toDate || String(row.date) < toDate);
-        const upsertResult = await chunkedUpsertWithOptionalColumns("wb_sales", rows, "sale_id", ["price_with_disc", "spp", "warehouse_type"], forceFrom ? 100_000 : undefined);
+        const upsertResult = await chunkedUpsertWithOptionalColumns("wb_sales", rows, "sale_id", ["price_with_disc", "spp", "warehouse_type", "srid"], forceFrom ? 100_000 : undefined);
         if (upsertResult.skippedColumns.length) {
           deferred.push(`${target.name}: примените SQL-миграцию WB СПП, временно не записаны ${upsertResult.skippedColumns.join(", ")}`);
         }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
-import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
+import { loadKnownKizCodes, loadReturnFactsFromDb, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
@@ -296,7 +296,13 @@ export async function GET(request: NextRequest) {
 
   let returns: WbReturnFact[] = [];
   try {
-    returns = (await fetchWbReturnFacts({ token, fromIso, deadline }))
+    // Сперва своя база: у статистики WB лимит один запрос в минуту на
+    // продавца, и на агентском кабинете живой запрос стабильно упирался в
+    // «WB ограничил частоту», оставляя раздел возвратов пустым. Продажи
+    // синкаются ежечасно вместе с возвратами, так что данные уже есть.
+    const stored = await loadReturnFactsFromDb(cabinetId, fromIso).catch(() => null);
+    const source = stored ?? (await fetchWbReturnFacts({ token, fromIso, deadline }));
+    returns = source
       .filter((row) => (row.returnedAt ?? "") >= fromIso.slice(0, 10))
       .filter((row) => allowsProduct(scope, row.nmId, row.brand));
   } catch (error) {
