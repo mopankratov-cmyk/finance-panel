@@ -6,6 +6,7 @@ import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { variantLabel } from "@/lib/warehouse/variantLabel";
 
 interface CabinetOption {
   id: string;
@@ -14,7 +15,7 @@ interface CabinetOption {
 }
 
 /** Ключ ячейки ввода: одна позиция может уехать в несколько кабинетов сразу. */
-const cellKey = (productId: string, cabinetId: string) => `${productId}:${cabinetId}`;
+const cellKey = (variantId: string, cabinetId: string) => `${variantId}:${cabinetId}`;
 
 export function ShipmentTab({
   entityId,
@@ -90,17 +91,17 @@ export function ShipmentTab({
     for (const [key, raw] of Object.entries(amounts)) {
       const value = Number(raw);
       if (!Number.isFinite(value) || value <= 0) continue;
-      const productId = key.split(":")[0];
-      used.set(productId, (used.get(productId) ?? 0) + value);
+      const variantId = key.split(":")[0];
+      used.set(variantId, (used.get(variantId) ?? 0) + value);
     }
-    return rows.filter((row) => (used.get(row.productId) ?? 0) > row.qty).map((row) => row.productId);
+    return rows.filter((row) => (used.get(row.variantId) ?? 0) > row.qty).map((row) => row.variantId);
   }, [amounts, rows]);
 
   const ship = async () => {
     const lines = Object.entries(amounts)
       .map(([key, raw]) => {
-        const [productId, cabinetId] = key.split(":");
-        return { productId, cabinetId, qty: Number(raw) };
+        const [variantId, cabinetId] = key.split(":");
+        return { variantId, cabinetId, qty: Number(raw) };
       })
       .filter((line) => Number.isFinite(line.qty) && line.qty > 0);
 
@@ -190,9 +191,9 @@ export function ShipmentTab({
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const tooMuch = overshoot.includes(row.productId);
+                  const tooMuch = overshoot.includes(row.variantId);
                   return (
-                    <tr key={row.productId} className="border-b border-slate-100 last:border-0">
+                    <tr key={row.variantId} className="border-b border-slate-100 last:border-0">
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2.5">
                           <WbProductImage
@@ -202,7 +203,7 @@ export function ShipmentTab({
                             className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                           />
                           <div>
-                        <div className="font-medium text-slate-900">{row.article}</div>
+                        <div className="font-medium text-slate-900">{variantLabel(row.article, row.sizeLabel)}</div>
                         <div className="text-xs text-slate-400">{row.unitCost.toFixed(2)} ₽/шт</div>
                           </div>
                         </div>
@@ -214,10 +215,10 @@ export function ShipmentTab({
                         <td key={cabinet.id} className="px-4 py-2.5 text-right">
                           <input
                             inputMode="numeric"
-                            value={amounts[cellKey(row.productId, cabinet.id)] ?? ""}
+                            value={amounts[cellKey(row.variantId, cabinet.id)] ?? ""}
                             onChange={(e) => setAmounts((prev) => ({
                               ...prev,
-                              [cellKey(row.productId, cabinet.id)]: e.target.value.replace(/[^\d]/g, ""),
+                              [cellKey(row.variantId, cabinet.id)]: e.target.value.replace(/[^\d]/g, ""),
                             }))}
                             placeholder="0"
                             className={`w-20 rounded-lg border px-2 py-1 text-right text-sm ${

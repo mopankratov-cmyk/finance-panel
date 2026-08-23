@@ -12,9 +12,11 @@ export interface WriteoffRow {
   id: number;
   warehouseId: string;
   warehouseName: string;
+  variantId: string;
   productId: string;
   nmId: number | null;
   article: string;
+  sizeLabel: string;
   qty: number;
   amount: number;
   reason: string | null;
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await db
     .from("stock_moves")
-    .select("id, warehouse_id, product_id, nm_id, article, qty, amount, note, doc_type, occurred_at, created_by")
+    .select("id, warehouse_id, variant_id, product_id, nm_id, article, qty, amount, note, doc_type, occurred_at, created_by")
     .eq("legal_entity_id", scope.entity.id)
     .eq("kind", "writeoff")
     .order("occurred_at", { ascending: false })
@@ -56,13 +58,23 @@ export async function GET(request: NextRequest) {
     .limit(PAGE_SIZE);
   if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
 
+  // Размер подтягиваем одним запросом: журнал должен называть, какой именно размер списан.
+  const variantIds = [...new Set((data ?? []).map((row) => String(row.variant_id)).filter(Boolean))];
+  const sizes = new Map<string, string>();
+  if (variantIds.length > 0) {
+    const variants = await db.from("product_variants").select("id, size_label").in("id", variantIds);
+    for (const variant of variants.data ?? []) sizes.set(String(variant.id), String(variant.size_label ?? ""));
+  }
+
   const rows: WriteoffRow[] = (data ?? []).map((row) => ({
     id: Number(row.id),
     warehouseId: String(row.warehouse_id),
     warehouseName: names.get(String(row.warehouse_id)) ?? "склад удалён",
+    variantId: String(row.variant_id),
     productId: String(row.product_id),
     nmId: row.nm_id === null ? null : Number(row.nm_id),
     article: String(row.article ?? ""),
+    sizeLabel: sizes.get(String(row.variant_id)) ?? "",
     qty: Math.abs(Number(row.qty)),
     amount: Math.abs(Number(row.amount)),
     reason: row.note,
@@ -90,7 +102,7 @@ export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as
-    | { entityId?: string; warehouseId?: string; reason?: string; lines?: { productId: string; qty: number }[] }
+    | { entityId?: string; warehouseId?: string; reason?: string; lines?: { variantId: string; qty: number }[] }
     | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -100,7 +112,7 @@ export async function POST(request: NextRequest) {
   const reason = String(body.reason ?? "").trim();
   if (!reason) return fail("Укажите причину списания — «просто пропало» не бывает", 400);
 
-  const lines = (body.lines ?? []).filter((line) => line.productId && Number(line.qty) > 0);
+  const lines = (body.lines ?? []).filter((line) => line.variantId && Number(line.qty) > 0);
   if (lines.length === 0) return fail("Добавьте хотя бы одну позицию", 400);
 
   const db = getSupabaseAdmin();
@@ -110,7 +122,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await db.rpc("post_writeoff", {
     p_legal_entity_id: scope.entity.id,
     p_warehouse_id: body.warehouseId,
-    p_lines: lines.map((line) => ({ productId: line.productId, qty: Math.round(line.qty) })),
+    p_lines: lines.map((line) => ({ variantId: line.variantId, qty: Math.round(line.qty) })),
     p_reason: reason,
     p_actor: session?.email ?? null,
   });

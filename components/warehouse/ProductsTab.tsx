@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import type { VariantRow } from "@/app/api/warehouse/variants/route";
 
 // Себестоимость вносится в рублях — курс тогда не нужен ни приёмке, ни остаткам.
 const CURRENCIES = ["RUB", "CNY", "USD"] as const;
@@ -68,6 +69,9 @@ export function ProductsTab({
   const [editing, setEditing] = useState<{ id: string | null; draft: Draft } | null>(null);
   const [saving, setSaving] = useState(false);
   const [onlyEntity, setOnlyEntity] = useState(true);
+  const [variants, setVariants] = useState<VariantRow[]>([]);
+  const [newSize, setNewSize] = useState({ sizeLabel: "", barcode: "" });
+  const [variantBusy, setVariantBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,6 +95,40 @@ export function ProductsTab({
     const timer = setTimeout(() => { void load(); }, query ? 300 : 0);
     return () => clearTimeout(timer);
   }, [load, refreshKey, query]);
+
+  // Размеры грузятся только при открытии карточки: в списке они не нужны.
+  const loadVariants = async (productId: string) => {
+    setVariants([]);
+    try {
+      const res = await fetch(`/api/warehouse/variants?product=${productId}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось загрузить размеры");
+      setVariants(json.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось загрузить размеры");
+    }
+  };
+
+  const addSize = async (productId: string) => {
+    if (!newSize.sizeLabel.trim()) { setError("Укажите размер"); return; }
+    setVariantBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/warehouse/variants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, sizeLabel: newSize.sizeLabel, barcode: newSize.barcode }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось добавить размер");
+      setNewSize({ sizeLabel: "", barcode: "" });
+      await loadVariants(productId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось добавить размер");
+    } finally {
+      setVariantBusy(false);
+    }
+  };
 
   const save = async () => {
     if (!editing) return;
@@ -149,7 +187,7 @@ export function ProductsTab({
           только этого юрлица
         </label>
         <button
-          onClick={() => setEditing({ id: null, draft: emptyDraft(entityId) })}
+          onClick={() => { setEditing({ id: null, draft: emptyDraft(entityId) }); setVariants([]); }}
           className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"
         >
           <Plus className="h-4 w-4" /> Новый товар
@@ -232,6 +270,55 @@ export function ProductsTab({
             {field("note", "Заметка", { wide: true })}
           </div>
 
+          {editing.id && (
+            <div className="mt-4 border-t border-violet-200 pt-4">
+              <p className="text-sm font-medium text-slate-900">Размеры</p>
+              <p className="mt-0.5 text-xs text-slate-400">
+                У каждого размера свой баркод — им WB адресует сборочное задание, и на него же
+                Честный Знак выдаёт GTIN. Пока размеров нет, товар живёт одной позицией.
+              </p>
+
+              <div className="mt-3 space-y-1.5">
+                {variants.filter((variant) => !variant.isDefault).map((variant) => (
+                  <div key={variant.id} className="flex items-center gap-2 text-sm">
+                    <span className="min-w-16 rounded bg-slate-100 px-2 py-1 text-center font-medium text-slate-700">
+                      {variant.sizeLabel}
+                    </span>
+                    <span className="flex-1 font-mono text-xs text-slate-500">
+                      {variant.barcode ?? <span className="text-slate-300">баркод не заведён</span>}
+                    </span>
+                    {variant.chrtId && <span className="font-mono text-xs text-slate-400">chrt {variant.chrtId}</span>}
+                  </div>
+                ))}
+                {variants.filter((variant) => !variant.isDefault).length === 0 && (
+                  <p className="text-xs text-slate-400">Размеров нет — товар считается безразмерным.</p>
+                )}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  value={newSize.sizeLabel}
+                  onChange={(e) => setNewSize({ ...newSize, sizeLabel: e.target.value })}
+                  placeholder="Размер: S, 46, 42-44"
+                  className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-300"
+                />
+                <input
+                  value={newSize.barcode}
+                  onChange={(e) => setNewSize({ ...newSize, barcode: e.target.value })}
+                  placeholder="Баркод WB"
+                  className="w-52 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-300"
+                />
+                <button
+                  onClick={() => void addSize(editing.id!)}
+                  disabled={variantBusy}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 disabled:opacity-50"
+                >
+                  {variantBusy ? "Добавляю…" : "+ размер"}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="mt-4 flex items-center gap-2">
             <button
               onClick={() => void save()}
@@ -279,7 +366,7 @@ export function ProductsTab({
               {rows.map((row) => (
                 <tr
                   key={row.id}
-                  onClick={() => setEditing({ id: row.id, draft: fromRow(row) })}
+                  onClick={() => { setEditing({ id: row.id, draft: fromRow(row) }); void loadVariants(row.id); }}
                   className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50"
                 >
                   <td className="py-2 pl-4 pr-0">

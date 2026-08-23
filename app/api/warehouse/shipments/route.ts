@@ -7,7 +7,7 @@ import { resolveEntity } from "@/lib/warehouse/entityAccess";
 export const dynamic = "force-dynamic";
 
 export interface ShipmentLineInput {
-  productId: string;
+  variantId: string;
   cabinetId: string;
   qty: number;
 }
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     if (!allowedCabinets.has(line.cabinetId)) {
       return fail(`Кабинет не связан с юрлицом «${scope.entity.name}»`, 400);
     }
-    if (!line.productId) return fail("В строке не указан товар", 400);
+    if (!line.variantId) return fail("В строке не указан товар", 400);
   }
 
   const db = getSupabaseAdmin();
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     p_legal_entity_id: scope.entity.id,
     p_warehouse_id: body.warehouseId,
     p_lines: lines.map((line) => ({
-      productId: line.productId,
+      variantId: line.variantId,
       cabinetId: line.cabinetId,
       qty: Math.round(line.qty),
     })),
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     if (shortage) {
       return fail(`На складе не хватает «${shortage[1]}»: есть ${shortage[2]}, нужно ${shortage[3]}`, 409);
     }
-    if (error.message.includes("product not found")) return fail("Товар не найден", 404);
+    if (error.message.includes("variant not found")) return fail("Размер не найден", 404);
     if (error.message.includes("warehouse not found")) return fail("Склад не найден", 404);
     if (error.message.includes("warehouse is archived")) return fail("Склад в архиве", 400);
     if (error.message.includes("shipment has no lines")) return fail("Укажите хотя бы одну позицию", 400);

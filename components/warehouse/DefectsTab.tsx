@@ -8,6 +8,7 @@ import type { WriteoffsResponse } from "@/app/api/warehouse/writeoffs/route";
 import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import { writeoffReason } from "@/lib/warehouse/reasons";
+import { variantLabel } from "@/lib/warehouse/variantLabel";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
 const stamp = (value: string) =>
@@ -33,7 +34,7 @@ export function DefectsTab({
   const [stock, setStock] = useState<StockBalancesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ warehouseId: string; reason: string; lines: { productId: string; qty: string }[] } | null>(null);
+  const [draft, setDraft] = useState<{ warehouseId: string; reason: string; lines: { variantId: string; qty: string }[] } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -54,7 +55,7 @@ export function DefectsTab({
   useEffect(() => { void load(); }, [load, refreshKey]);
 
   const openDraft = async () => {
-    setDraft({ warehouseId: warehouses[0]?.id ?? "", reason: "", lines: [{ productId: "", qty: "" }] });
+    setDraft({ warehouseId: warehouses[0]?.id ?? "", reason: "", lines: [{ variantId: "", qty: "" }] });
     if (stock) return;
     try {
       const res = await fetch(`/api/warehouse/balances?entity=${entityId}`, { cache: "no-store" });
@@ -69,8 +70,8 @@ export function DefectsTab({
   const submit = async () => {
     if (!draft) return;
     const lines = draft.lines
-      .filter((line) => line.productId && Number(line.qty) > 0)
-      .map((line) => ({ productId: line.productId, qty: Number(line.qty) }));
+      .filter((line) => line.variantId && Number(line.qty) > 0)
+      .map((line) => ({ variantId: line.variantId, qty: Number(line.qty) }));
     if (lines.length === 0) { setError("Добавьте позиции с количеством"); return; }
     setSaving(true);
     setError(null);
@@ -129,7 +130,7 @@ export function DefectsTab({
           <div className="mb-3 flex flex-wrap gap-2">
             <select
               value={draft.warehouseId}
-              onChange={(e) => setDraft({ ...draft, warehouseId: e.target.value, lines: [{ productId: "", qty: "" }] })}
+              onChange={(e) => setDraft({ ...draft, warehouseId: e.target.value, lines: [{ variantId: "", qty: "" }] })}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
             >
               {warehouses.map((warehouse) => (
@@ -148,17 +149,17 @@ export function DefectsTab({
             {draft.lines.map((line, index) => (
               <div key={index} className="flex flex-wrap items-center gap-2">
                 <select
-                  value={line.productId}
+                  value={line.variantId}
                   onChange={(e) => setDraft({
                     ...draft,
-                    lines: draft.lines.map((item, i) => i === index ? { ...item, productId: e.target.value } : item),
+                    lines: draft.lines.map((item, i) => i === index ? { ...item, variantId: e.target.value } : item),
                   })}
                   className="min-w-64 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
                 >
                   <option value="">выберите позицию со склада</option>
                   {available.map((row) => (
-                    <option key={row.productId} value={row.productId}>
-                      {row.article} — на складе {row.qty}
+                    <option key={row.variantId} value={row.variantId}>
+                      {variantLabel(row.article, row.sizeLabel)} — на складе {row.qty}
                     </option>
                   ))}
                 </select>
@@ -186,7 +187,7 @@ export function DefectsTab({
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setDraft({ ...draft, lines: [...draft.lines, { productId: "", qty: "" }] })}
+              onClick={() => setDraft({ ...draft, lines: [...draft.lines, { variantId: "", qty: "" }] })}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600"
             >
               + позиция
@@ -234,7 +235,7 @@ export function DefectsTab({
                       className="h-9 w-9 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                     />
                   </td>
-                  <td className="px-4 py-2.5 font-medium text-slate-900">{row.article || "—"}</td>
+                  <td className="px-4 py-2.5 font-medium text-slate-900">{variantLabel(row.article, row.sizeLabel) || "—"}</td>
                   <td className="px-4 py-2.5 text-slate-500">{stamp(row.occurredAt)}</td>
                   <td className="px-4 py-2.5 text-slate-600">{SOURCE[row.docType] ?? row.docType}</td>
                   <td className="max-w-xs truncate px-4 py-2.5 text-slate-500">{writeoffReason(row.reason)}</td>
