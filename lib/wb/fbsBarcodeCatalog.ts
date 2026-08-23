@@ -24,6 +24,8 @@ export interface FbsBarcodeEntry {
   article: string;
   brand: string;
   size: string;
+  /** Характеристика размера в WB — ею адресуются цены и остатки конкретного размера. */
+  chrtId: number | null;
 }
 
 export interface FbsBarcodeCatalog {
@@ -36,7 +38,7 @@ interface RawCatalogCard {
   nmID?: number;
   vendorCode?: string;
   brand?: string;
-  sizes?: { techSize?: string; wbSize?: string; skus?: string[] }[];
+  sizes?: { chrtID?: number; techSize?: string; wbSize?: string; skus?: string[] }[];
 }
 
 /** Потолок обхода: 100 карточек на страницу × 80 страниц = 8 000 карточек. */
@@ -65,7 +67,14 @@ async function fetchCatalog(cabinetId: string): Promise<FbsBarcodeCatalog> {
         const barcode = String(sku ?? "").trim();
         if (!barcode || seen.has(barcode)) continue;
         seen.add(barcode);
-        entries.push({ barcode, nmId, article, brand, size: label });
+        entries.push({
+          barcode,
+          nmId,
+          article,
+          brand,
+          size: label,
+          chrtId: Number.isFinite(Number(size.chrtID)) ? Number(size.chrtID) : null,
+        });
       }
     }
   }
@@ -86,7 +95,7 @@ export class FbsBarcodeCatalogColdError extends Error {
 
 const CATALOG_NAMESPACE = "wb-fbs-barcodes";
 /** Ключ снимка обязан совпадать у читателя и у прогрева, иначе прогрев греет мимо. */
-const catalogIdentity = (cabinetId: string) => ({ cabinetId, schema: 1 });
+const catalogIdentity = (cabinetId: string) => ({ cabinetId, schema: 2 });
 
 export function loadFbsBarcodeCatalogHourly(
   cabinetId: string,

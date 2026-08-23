@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Search, X } from "lucide-react";
+import { Download, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
@@ -72,6 +72,8 @@ export function ProductsTab({
   const [variants, setVariants] = useState<VariantRow[]>([]);
   const [newSize, setNewSize] = useState({ sizeLabel: "", barcode: "" });
   const [variantBusy, setVariantBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,6 +132,34 @@ export function ProductsTab({
     }
   };
 
+  // Размеры и баркоды берутся из карточек WB: вбивать их руками для сотен позиций
+  // бессмысленно, а опечатка в баркоде ломает и ФБС, и коды маркировки.
+  const importFromWb = async () => {
+    setImporting(true);
+    setError(null);
+    setImportResult(null);
+    try {
+      const res = await fetch("/api/warehouse/variants/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось загрузить размеры");
+      const d = json.data;
+      const parts = [`заведено ${d.created}`, `дополнено ${d.updated}`, `моделей ${d.products}`];
+      if (d.linkedByArticle > 0) parts.push(`связано с карточкой WB ${d.linkedByArticle}`);
+      if (d.skippedNoProduct > 0) parts.push(`пропущено без товара ${d.skippedNoProduct}`);
+      if (d.partial) parts.push("каталог WB отдан не полностью");
+      setImportResult(parts.join(" · "));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось загрузить размеры");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const save = async () => {
     if (!editing) return;
     if (!editing.draft.article.trim()) { setError("Укажите артикул"); return; }
@@ -170,7 +200,21 @@ export function ProductsTab({
 
   return (
     <div className="space-y-4">
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+      {importing && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+          Читаю карточки Wildberries — обход идёт постранично с паузами, это занимает несколько минут.
+        </div>
+      )}
+      {importResult && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          Размеры из WB: {importResult}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <div className="relative min-w-56 flex-1">
@@ -186,6 +230,14 @@ export function ProductsTab({
           <input type="checkbox" checked={onlyEntity} onChange={(e) => setOnlyEntity(e.target.checked)} />
           только этого юрлица
         </label>
+        <button
+          onClick={() => void importFromWb()}
+          disabled={importing}
+          title="Прочитать карточки Wildberries и заполнить размеры с баркодами. Занимает несколько минут."
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" /> {importing ? "Читаю карточки WB…" : "Размеры из WB"}
+        </button>
         <button
           onClick={() => { setEditing({ id: null, draft: emptyDraft(entityId) }); setVariants([]); }}
           className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"
