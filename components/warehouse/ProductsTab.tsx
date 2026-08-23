@@ -1,11 +1,12 @@
 "use client";
 
-import { Building2, Download, Plus, Search, X } from "lucide-react";
+import { Building2, Download, ListPlus, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { VariantRow } from "@/app/api/warehouse/variants/route";
+import type { ProductImportResult, ProductImportPlanRow } from "@/app/api/warehouse/products/import/route";
 
 // Себестоимость вносится в рублях — курс тогда не нужен ни приёмке, ни остаткам.
 const CURRENCIES = ["RUB", "CNY", "USD"] as const;
@@ -77,6 +78,10 @@ export function ProductsTab({
   const [owners, setOwners] = useState(false);
   const [ownersResult, setOwnersResult] = useState<string | null>(null);
   const [ownerConflicts, setOwnerConflicts] = useState<string[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [importPlan, setImportPlan] = useState<ProductImportResult | null>(null);
+  const [pickedBrands, setPickedBrands] = useState<string[]>([]);
+  const [withStale, setWithStale] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,6 +165,36 @@ export function ProductsTab({
       setError(e instanceof Error ? e.message : "Не удалось загрузить размеры");
     } finally {
       setImporting(false);
+    }
+  };
+
+  // Сначала разведка, потом запись: человек видит, что именно появится в
+  // справочнике, и по каким брендам. Кнопка, которая молча заводит полсотни
+  // чужих позиций, — это не помощь.
+  const scanCatalog = async (apply: boolean) => {
+    setScanning(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/warehouse/products/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entityId,
+          apply,
+          includeStale: withStale,
+          brands: apply && pickedBrands.length > 0 ? pickedBrands : undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось прочитать карточки");
+      const data = json.data as ProductImportResult;
+      setImportPlan(data);
+      if (!apply) setPickedBrands(data.plan.map((row) => row.brand));
+      if (apply) { setPickedBrands([]); await load(); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось прочитать карточки");
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -293,6 +328,14 @@ export function ProductsTab({
           <Download className="h-4 w-4" /> {importing ? "Читаю карточки WB…" : "Размеры из WB"}
         </button>
         <button
+          onClick={() => void scanCatalog(false)}
+          disabled={scanning}
+          title="Найти в карточках кабинетов товары, которых нет в справочнике. Сначала покажет список."
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <ListPlus className="h-4 w-4" /> {scanning ? "Читаю карточки…" : "Товары из карточек"}
+        </button>
+        <button
           onClick={() => void detectOwners()}
           disabled={owners}
           title="Прочитать карточки своих кабинетов и проставить товарам юрлицо владельца. Занимает несколько минут."
@@ -307,6 +350,62 @@ export function ProductsTab({
           <Plus className="h-4 w-4" /> Новый товар
         </button>
       </div>
+
+      {importPlan && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          {importPlan.applied ? (
+            <p className="text-sm text-emerald-700">
+              Заведено товаров: {importPlan.created}. Себестоимость у них пустая — карточка WB цену закупки не знает.
+            </p>
+          ) : importPlan.plan.length === 0 && importPlan.stale.length === 0 ? (
+            <p className="text-sm text-slate-500">Все карточки кабинетов уже есть в справочнике.</p>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-slate-700">Есть в карточках, нет в справочнике — отметьте, что заводить:</p>
+              <div className="mt-2 space-y-1">
+                {importPlan.plan.map((row: ProductImportPlanRow) => (
+                  <label key={row.brand} className="flex items-start gap-2 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={pickedBrands.includes(row.brand)}
+                      onChange={(e) => setPickedBrands(e.target.checked
+                        ? [...pickedBrands, row.brand]
+                        : pickedBrands.filter((brand) => brand !== row.brand))}
+                    />
+                    <span>
+                      <span className="font-medium text-slate-800">{row.brand}</span> — {row.cards.length} шт:{" "}
+                      <span className="text-slate-400">{row.cards.slice(0, 6).map((card) => card.article).join(", ")}{row.cards.length > 6 ? " …" : ""}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {importPlan.stale.length > 0 && (
+                <label className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-800">
+                  <input type="checkbox" className="mt-1" checked={withStale} onChange={(e) => { setWithStale(e.target.checked); void scanCatalog(false); }} />
+                  <span>
+                    Ещё {importPlan.stale.reduce((sum, row) => sum + row.cards.length, 0)} карточек старше полугода без единого заказа —
+                    по умолчанию не заводим, чтобы справочник не зарастал мёртвыми позициями.
+                    Отметьте, если нужны и они.
+                  </span>
+                </label>
+              )}
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => void scanCatalog(true)}
+                  disabled={scanning || pickedBrands.length === 0}
+                  className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {scanning ? "Завожу…" : "Завести отмеченные"}
+                </button>
+                <button onClick={() => setImportPlan(null)} className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-600">
+                  Закрыть
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {editing && (
         <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">

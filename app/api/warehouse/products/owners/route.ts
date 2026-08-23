@@ -4,8 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { resolveProductOwners, type OwnerCard, type OwnerSource } from "@/lib/warehouse/productOwners";
-import { fetchWbCardPages } from "@/lib/wb/cardPagination";
-import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
+import { readCabinetCards } from "@/lib/wb/cabinetCards";
 
 export const dynamic = "force-dynamic";
 // Обход карточек всех своих кабинетов с обязательной паузой между страницами
@@ -30,27 +29,6 @@ export interface ProductOwnersResult {
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
 
-interface CardRow { nmID?: number; vendorCode?: string }
-
-/** Собственный кабинет отдаёт карточки целиком: всё, что в нём заведено, —
- *  товар его юрлица. Товарный контур (brand_filters) тут не применяем: он
- *  сделан для агентских кабинетов, где карточки чужие, а в своём отсеял бы
- *  половину настоящего ассортимента. */
-async function readCards(cabinetId: string): Promise<{ cards: OwnerCard[]; complete: boolean }> {
-  const cabinet = await getWbCabinet(cabinetId);
-  if (!cabinet) return { cards: [], complete: true };
-  const page = await fetchWbCardPages<CardRow>({
-    token: resolveWbToken(cabinet, "content"),
-    maxPagesThisRun: 80,
-  });
-  const cards: OwnerCard[] = [];
-  for (const card of page.rows) {
-    const nmId = Number(card.nmID);
-    cards.push({ nmId: Number.isFinite(nmId) ? nmId : 0, article: String(card.vendorCode ?? "").trim() });
-  }
-  return { cards, complete: page.caughtUp };
-}
-
 /** Проставить товарам юрлицо по карточкам WB. Кнопка на вкладке «Товары». */
 export async function POST() {
   const gate = await requireApiSession();
@@ -68,7 +46,7 @@ export async function POST() {
       // Агентский кабинет о собственности не говорит: там чужие карточки.
       if (link.relation !== "own") continue;
       try {
-        const { cards, complete } = await readCards(link.cabinetId);
+        const { cards, complete } = await readCabinetCards(link.cabinetId);
         sources.push({ entityId: entity.id, cabinetName: link.cabinetName, cards });
         cabinetStats.push({ name: link.cabinetName, cards: cards.length, complete, failed: false });
       } catch {
