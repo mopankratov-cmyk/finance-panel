@@ -325,12 +325,27 @@ function metaDetailCodes(details: unknown): string[] {
   return [...new Set(codes)];
 }
 
+export interface KizBatchResult {
+  codes: Map<number, string[]>;
+  /**
+   * Возможен ли у задания код Честного Знака.
+   *
+   * WB перечисляет в metaDetails ВСЕ идентификаторы, допустимые для задания.
+   * Если sgtin там не назван — у товара кода быть не может (док WB: «если
+   * requiredMeta и optionalMeta не содержат идентификатор, значит у задания
+   * его не может быть»). Без этой проверки панель требовала вывести из
+   * оборота 632 пенала RIOBOX, которые под маркировку не подпадают вовсе.
+   */
+  markable: Map<number, boolean>;
+}
+
 export async function fetchTaskKizCodesBatch(
   token: string,
   ids: number[],
   deadline: number,
-): Promise<Map<number, string[]>> {
+): Promise<KizBatchResult> {
   const out = new Map<number, string[]>();
+  const markable = new Map<number, boolean>();
   for (let index = 0; index < ids.length; index += META_BATCH_SIZE) {
     const chunk = ids.slice(index, index + META_BATCH_SIZE);
     const json = await wbJson<{ orders?: Array<{ id?: unknown; metaDetails?: unknown }> }>({
@@ -345,17 +360,27 @@ export async function fetchTaskKizCodesBatch(
       const id = Number(row?.id);
       if (!Number.isFinite(id)) continue;
       out.set(id, metaDetailCodes(row?.metaDetails));
+      markable.set(id, offersSgtin(row?.metaDetails));
     }
     // Задание, которого WB не вернул, всё равно спрошено — иначе очередь стоит.
     for (const id of chunk) if (!out.has(id)) out.set(id, []);
   }
-  return out;
+  return { codes: out, markable };
+}
+
+/** Назвал ли WB sgtin среди возможных идентификаторов задания. */
+function offersSgtin(details: unknown): boolean {
+  if (!Array.isArray(details)) return true; // форма неизвестна — не берёмся судить
+  return details.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    return (item as Record<string, unknown>).key === "sgtin";
+  });
 }
 
 /** Прямой опрос кодов одного сборочного задания у WB (без кэша). */
 export async function fetchTaskKizCodesDirect(token: string, id: number, deadline: number): Promise<string[]> {
-  const codes = await fetchTaskKizCodesBatch(token, [id], deadline);
-  return codes.get(id) ?? [];
+  const batch = await fetchTaskKizCodesBatch(token, [id], deadline);
+  return batch.codes.get(id) ?? [];
 }
 
 export async function fetchFbsTaskKizCodes(options: {
@@ -593,6 +618,13 @@ export interface KizReconcileResult {
 }
 
 export interface KizReconcileInput {
+  /**
+   * Может ли у задания быть код Честного Знака. WB перечисляет допустимые
+   * идентификаторы задания; отсутствие sgtin означает, что товар не
+   * маркируется. Без этого панель требовала вывести из оборота пеналы
+   * RIOBOX, которые под маркировку не подпадают.
+   */
+  markable?: Map<number, boolean>;
   todayIso: string;
   days: KizReconcileDays;
   tasks: FbsAssemblyTask[];
@@ -660,6 +692,9 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
   const rows: KizReconcileRow[] = [];
   const codeBySrid = new Map<string, KizCode>();
   let checked = 0;
+  // Задания, для которых WB не допускает код маркировки: требовать по ним
+  // действий нельзя, но и молчать нельзя — счёт покажем в предупреждении.
+  let notMarkable = 0;
 
   for (const task of soldTasks) {
     const brand = brandOf(input, task.nmId, task.article);
@@ -691,6 +726,13 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
     checked += 1;
 
     if (!rawCodes.length) {
+      // Товар не подлежит маркировке — «кода нет» здесь норма, а не нарушение.
+      // Иначе панель требовала вывести из оборота 632 пенала RIOBOX и пугала
+      // статьёй 15.12 КоАП там, где нарушения нет.
+      if (input.markable?.get(task.id) === false) {
+        notMarkable += 1;
+        continue;
+      }
       rows.push({
         ...base,
         bucket: "retire",
@@ -746,6 +788,13 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
       }
       // Код привязан и непротиворечив — WB выведет его сам, строка не нужна.
     }
+  }
+
+  if (notMarkable) {
+    warnings.push(
+      `Не показано заданий, для которых WB не допускает код маркировки: ${notMarkable}. `
+      + `Это не нарушение оборота: у таких товаров кода Честного Знака не бывает.`,
+    );
   }
 
   const returns: KizReturnTask[] = input.returns.map((row) => {

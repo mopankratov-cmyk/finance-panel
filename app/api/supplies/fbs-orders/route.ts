@@ -9,7 +9,7 @@ import { loadKnownKizCodes, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 import {
   fbsOrderBucket,
   fbsStatusLabel,
-  fetchFbsOrderMeta,
+  fetchFbsOrdersMetaBatch,
   fetchFbsOrderStatuses,
   fetchFbsOrders,
   WB_FBS_BUCKET_LABELS,
@@ -88,28 +88,6 @@ const ALLOWED_DAYS = [1, 3, 7, 14, 30, 60] as const;
 const META_BUDGET = 120;
 const META_CONCURRENCY = 6;
 
-/**
- * Код маркировки задания из снимка. Привязанный код у задания уже не меняется,
- * поэтому найденное значение читается из кэша и не стоит запроса к WB при
- * каждом открытии вкладки — лимитер Marketplace API общий на продавца.
- */
-async function loadOrderKizCode(
-  token: string,
-  orderId: number,
-  known: Map<number, string[]>,
-  discovered: Map<number, string[]>,
-): Promise<string | null> {
-  const cached = known.get(orderId);
-  if (cached?.length) return cached[0];
-  const meta: WbFbsOrderMeta = await fetchFbsOrderMeta(token, orderId);
-  const code = meta.sgtin[0] ?? null;
-  // Найденный код запоминаем навсегда — он у задания уже не изменится.
-  // Отсутствие не запоминаем: продавец привяжет код через минуту, а запись
-  // держала бы «кода нет» как факт.
-  // Пишем и пустой ответ: это отметка «спрашивали», а не «кода нет».
-  discovered.set(orderId, code ? [code] : []);
-  return code;
-}
 
 const metaEnvelope = (cabinetId: string, days: number, warnings: string[] = [], status: "ready" | "partial" = "ready") => ({
   cabinetId,
@@ -215,10 +193,19 @@ export async function GET(request: NextRequest) {
     });
 
     // Код маркировки WB отдаёт только точечно, по одному заданию за запрос.
+    // Вкладка про работу склада: нужны задания, которые ещё предстоит собрать.
+    // Уехавшие и архивные собирать уже нечего, а бюджет опроса они выедали —
+    // на скриншоте 23.08.2026 это 1356 заданий, из которых на сборке 0.
+    const pending = rows.filter((row) => row.bucket === "new" || row.bucket === "assembling");
+    const doneCount = rows.length - pending.length;
+    if (doneCount) {
+      warnings.push(`Скрыто уже собранных и уехавших заданий: ${doneCount} — собирать по ним нечего.`);
+    }
+
     // Спрашиваем сначала те, где риск живой: задание ещё не уехало.
-    const byId = new Map(rows.map((row) => [row.id, row]));
-    const candidates = rows
-      .filter((row) => row.kizStatus === "unknown" && row.bucket !== "cancelled")
+    const byId = new Map(pending.map((row) => [row.id, row]));
+    const candidates = pending
+      .filter((row) => row.kizStatus === "unknown")
       .sort((left, right) => {
         const weight = (row: FbsOrderRow) => (row.bucket === "new" ? 0 : row.bucket === "assembling" ? 1 : 2);
         return weight(left) - weight(right) || (right.createdAt ?? "").localeCompare(left.createdAt ?? "");
@@ -245,23 +232,27 @@ export async function GET(request: NextRequest) {
       .slice(0, META_BUDGET);
     let checked = 0;
     let metaFailed = 0;
-    await mapWithConcurrency(probed, META_CONCURRENCY, async (row) => {
-      if (Date.now() > deadlineMs) return;
-      const target = byId.get(row.id);
-      if (!target) return;
-      try {
-        const code = await loadOrderKizCode(token, row.id, knownCodes, discoveredCodes);
+    // Пакетом: одиночный GET .../meta WB закрыл (405), и вкладка честно
+    // показывала «код известен у 0 заданий». Действующий метод отдаёт до 100
+    // заданий за запрос.
+    try {
+      const batch = await fetchFbsOrdersMetaBatch(token, probed.map((row) => row.id), { deadlineMs });
+      for (const [id, codes] of batch.codes) {
+        const target = byId.get(id);
+        if (!target) continue;
         checked += 1;
+        const code = codes[0] ?? null;
         target.kizCode = code;
+        discoveredCodes.set(id, code ? [code] : []);
         // «Кода нет» говорим только там, где WB сам объявил код обязательным.
         // Если WB промолчал про требование — остаёмся при «не проверен», а не
         // вешаем на продавца несуществующий риск.
-        target.kizStatus = code ? "present" : kizRequirement.get(row.id) === true ? "missing" : "unknown";
-      } catch {
-        // Одно упавшее задание не должно ронять экран: оставляем «не проверено».
-        metaFailed += 1;
+        target.kizStatus = code ? "present" : kizRequirement.get(id) === true ? "missing" : "unknown";
       }
-    });
+    } catch {
+      // Не вышло пачкой — оставляем «не проверено», а не выдаём за «кода нет».
+      metaFailed = probed.length;
+    }
 
     if (discoveredCodes.size) void rememberKizCodes(cabinetId, discoveredCodes).catch(() => {});
 
@@ -288,14 +279,16 @@ export async function GET(request: NextRequest) {
       count: rows.filter((row) => row.bucket === bucket).length,
     }));
 
-    const kizMissing = rows.filter((row) => row.kizStatus === "missing").length;
-    const kizRequired = rows.filter((row) => row.kizStatus !== "not_required").length;
-    const kizUnchecked = rows.filter((row) => row.kizStatus === "unknown").length;
+    // Счёт по кодам — только по тем заданиям, с которыми ещё можно что-то
+    // сделать: по уехавшим цифра «не проверено» не значит ничего.
+    const kizMissing = pending.filter((row) => row.kizStatus === "missing").length;
+    const kizRequired = pending.filter((row) => row.kizStatus !== "not_required").length;
+    const kizUnchecked = pending.filter((row) => row.kizStatus === "unknown").length;
     const partial = !orderPage.complete || !statusPage.complete || candidates.length > probed.length;
 
     return NextResponse.json<FbsOrdersResponse>({
       meta: metaEnvelope(cabinetId, days, warnings, partial ? "partial" : "ready"),
-      data: { rows, buckets, kizMissing, kizChecked: checked, kizRequired, kizUnchecked },
+      data: { rows: pending, buckets, kizMissing, kizChecked: checked, kizRequired, kizUnchecked },
       error: null,
     });
   } catch (error) {

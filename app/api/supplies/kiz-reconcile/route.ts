@@ -250,6 +250,10 @@ export async function GET(request: NextRequest) {
     : { codes: new Map<number, string[]>(), recentlyProbed: new Set<number>() };
   const knownKizCodes = kizSnapshot.codes;
   const discoveredKizCodes = new Map<number, string[]>();
+  // Может ли у задания вообще быть код Честного Знака: WB перечисляет
+  // допустимые идентификаторы, и если sgtin среди них нет — товар не
+  // маркируется, требовать по нему действий нельзя.
+  const markableByTask = new Map<number, boolean>();
 
   // Пакетный добор: WB отдаёт до 100 заданий за запрос, поэтому 400 заданий
   // стоят четырёх запросов, а не четырёхсот. Поштучный цикл ниже остаётся
@@ -262,7 +266,8 @@ export async function GET(request: NextRequest) {
     if (wanted.length) {
       try {
         const fetched = await fetchTaskKizCodesBatch(token, wanted, deadline);
-        for (const [id, codes] of fetched) discoveredKizCodes.set(id, codes);
+        for (const [id, codes] of fetched.codes) discoveredKizCodes.set(id, codes);
+        for (const [id, can] of fetched.markable) markableByTask.set(id, can);
       } catch {
         // Не вышло пачкой — поштучный цикл сам сообщит причину обрыва.
       }
@@ -341,6 +346,7 @@ export async function GET(request: NextRequest) {
     soldIds,
     codesByTask: meta.codes,
     codesLookup: meta,
+    markable: markableByTask,
     statusesAvailable,
     returns,
     reasonBySrid,
