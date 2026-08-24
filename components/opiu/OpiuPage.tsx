@@ -3,9 +3,10 @@
 import { formatPct, formatRub, formatTime } from "@/lib/analytics/format";
 import { currentMonthParam } from "@/lib/opiu/weeks";
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
+import { checkReportConsistency } from "@/lib/opiu/dataHealthCheck";
 import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
-import { Loader2, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type OpiuTab = "sale_date" | "report_date";
 
@@ -160,6 +161,11 @@ export function OpiuPage() {
   const weekCount = report?.weeks.length ?? 4;
   const colCount = weekCount + 2;
 
+  const healthIssues = useMemo(() => {
+    if (!data?.report || !data.reportByReportDate) return [];
+    return checkReportConsistency(data.report, data.reportByReportDate);
+  }, [data]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -211,6 +217,27 @@ export function OpiuPage() {
             </>
           )}
         </p>
+      )}
+
+      {healthIssues.length > 0 && !loading && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div>
+              <p className="font-medium">
+                Расхождение между сводами по дате продажи и по дате отчёта за месяц
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {healthIssues.map((issue) => (
+                  <li key={issue.id}>
+                    {issue.label}: {formatRub(issue.saleDateTotal)} vs {formatRub(issue.reportDateTotal)}
+                    {" "}(разница {formatPct(issue.diffPct)})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="flex gap-1 border-b border-slate-200">
