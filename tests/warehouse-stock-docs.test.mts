@@ -41,3 +41,16 @@ test("сторно отказывается работать по чернови
   // Карточка сторно не должна пережить неудачную запись движений.
   assert.match(src, /await db\.from\("stock_docs"\)\.delete\(\)/);
 });
+
+test("печатная форма открыта той же роли, что и модуль склада", async () => {
+  const { canAccess } = await import("../lib/auth/roles.ts");
+  assert.equal(canAccess("warehouse", "/warehouse/print/abc"), true, "оператор ФФ должен печатать бумагу");
+  assert.equal(canAccess("warehouse", "/opiu"), false, "и не должен ходить в финансы");
+});
+
+test("печатная форма перемещения не задваивает позиции", () => {
+  // Перемещение пишет пару движений на строку: минус на источнике, плюс на
+  // приёмнике. Печатать обе значит показать в накладной двойное количество.
+  const src = readFileSync(new URL("../components/warehouse/PrintableDoc.tsx", import.meta.url), "utf8");
+  assert.match(src, /kind === "transfer" \? doc\.lines\.filter\(\(row\) => row\.qty < 0\)/);
+});
