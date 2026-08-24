@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw } from "lucide-react";
+import { Printer, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { StockDocRow, StockDocsResponse } from "@/app/api/warehouse/docs/route";
@@ -122,6 +122,15 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                   </td>
                   <td className="px-4 py-2.5 text-xs text-slate-400">{row.createdBy ?? "—"}</td>
                   <td className="px-4 py-2.5 text-right">
+                    <a
+                      href={`/warehouse/print/${row.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Печатная форма: бумага под подпись для фулфилмента"
+                      className="mr-3 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-600"
+                    >
+                      <Printer className="h-3.5 w-3.5" /> Печать
+                    </a>
                     {row.status === "posted" && !row.reversedByNumber && (
                       <button
                         onClick={() => void reverse(row)}
