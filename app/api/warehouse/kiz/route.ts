@@ -30,6 +30,8 @@ export interface KizWithdrawalSummary {
   withoutPrice: number;
   firstSoldAt: string | null;
   lastSoldAt: string | null;
+  /** Ждут вывода дольше трёх рабочих дней — срок по правилам маркировки нарушен. */
+  overdue: number;
 }
 
 export interface KizUploadResult {
@@ -54,6 +56,10 @@ async function summarize(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): 
   const rows = await db.from("kiz_withdrawals").select("status, price, sold_at");
   const data = rows.data ?? [];
   const pending = data.filter((row) => row.status === "sold");
+  // Вывести из оборота положено не позднее трёх рабочих дней после отгрузки.
+  // Считаем календарно с запасом: пять календарных дней покрывают три рабочих
+  // с выходными, а завышать просрочку хуже, чем занижать.
+  const overdueBefore = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
   const sortedDates = data.map((row) => row.sold_at).filter(Boolean).map(String).sort();
   return {
     pending: pending.length,
@@ -64,6 +70,7 @@ async function summarize(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): 
     withoutPrice: pending.filter((row) => row.price === null || row.price === undefined).length,
     firstSoldAt: sortedDates[0] ?? null,
     lastSoldAt: sortedDates[sortedDates.length - 1] ?? null,
+    overdue: pending.filter((row) => row.sold_at && String(row.sold_at) < overdueBefore).length,
   };
 }
 

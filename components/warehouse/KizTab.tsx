@@ -1,9 +1,10 @@
 "use client";
 
-import { Download, FileUp } from "lucide-react";
+import { CloudDownload, Download, FileUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { KizUploadResult, KizWithdrawalSummary } from "@/app/api/warehouse/kiz/route";
+import type { KizCollectResult } from "@/app/api/warehouse/kiz/collect/route";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
 
@@ -19,6 +20,7 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collected, setCollected] = useState<KizCollectResult | null>(null);
   const soldRef = useRef<HTMLInputElement>(null);
   const returnsRef = useRef<HTMLInputElement>(null);
 
@@ -59,6 +61,31 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       if (returnsRef.current) returnsRef.current.value = "";
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить выгрузки");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Главный путь: коды тянутся из отчёта WB по маркированным товарам. Он помнит
+  // около полугода и отдаёт длинное окно одним запросом — ручные выгрузки нужны
+  // только для того, что старше его горизонта.
+  const collect = async () => {
+    setBusy(true);
+    setError(null);
+    setCollected(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/warehouse/kiz/collect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось собрать коды");
+      setCollected(json.data as KizCollectResult);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось собрать коды");
     } finally {
       setBusy(false);
     }
@@ -123,6 +150,14 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
         </div>
       </div>
 
+      {(summary?.overdue ?? 0) > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <b>{formatNumber(summary!.overdue)}</b> кодов ждут вывода дольше трёх рабочих дней.
+          По правилам маркировки вывести из оборота положено не позднее трёх рабочих дней после отгрузки —
+          за нарушение сроков предусмотрен штраф по статье 15.12.1 КоАП. Выгрузите их и передайте тому, кто выводит.
+        </div>
+      )}
+
       {summary?.firstSoldAt && (
         <p className="text-xs text-slate-400">
           В реестре продажи с {summary.firstSoldAt} по {summary.lastSoldAt}.
@@ -131,8 +166,41 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Загрузить период</p>
+        <p className="text-sm font-medium text-slate-700">Собрать коды из Wildberries</p>
         <p className="mt-1 text-xs text-slate-500">
+          Отчёт по маркированным товарам помнит около полугода и отдаёт весь период одним запросом.
+          Из него берутся код, цена реализации и признак операции: продано или вернулось в оборот.
+          Чужие коды отсекаются товарным контуром кабинета — у агентского кабинета в отчёте
+          большинство строк не наши, и вывести их из оборота мы всё равно не можем.
+        </p>
+        <button
+          onClick={() => void collect()}
+          disabled={busy}
+          className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+        >
+          <CloudDownload className="h-4 w-4" /> {busy ? "Читаю отчёт WB…" : "Собрать за полгода"}
+        </button>
+        {collected && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+            <p>Период {collected.from} — {collected.to}. Добавлено {formatNumber(collected.addedTotal)}
+              {collected.returnedTotal > 0 && `, переведено в «вернулись» ${formatNumber(collected.returnedTotal)}`}.</p>
+            <ul className="mt-1 space-y-0.5 text-xs">
+              {collected.cabinets.map((row) => (
+                <li key={row.name} className={row.error ? "text-red-700" : "text-emerald-700"}>
+                  {row.name}: {row.error
+                    ? row.error
+                    : `отчёт ${formatNumber(row.rows)} строк, наших ${formatNumber(row.ours)}, добавлено ${formatNumber(row.added)}${row.skipped ? `, уже знали ${formatNumber(row.skipped)}` : ""}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-medium text-slate-700">Загрузить период файлами</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Запасной путь для периодов старше горизонта отчёта WB.
           Первый файл — «Поставки → ФБС → завершённые заказы» с фильтром «товар выкуплен»: в нём КИЗ и цена реализации.
           Второй — «Аналитика → Отчёты → по возвратам и перемещению товара» за тот же диапазон дат.
           Возвраты вычитаются: вернувшийся товар снова в обороте WB, и выводить его нельзя.
