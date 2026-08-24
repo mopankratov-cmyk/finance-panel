@@ -81,3 +81,28 @@ test("цена разбирается из разных написаний, а �
   assert.equal(parsePrice("—"), null, "прочерк не должен превращаться в нулевую цену");
   assert.equal(parsePrice(""), null);
 });
+
+test("отчёт WB отдаёт код ровно в том виде, который нужен Честному Знаку", async () => {
+  // Проверено на боевых токенах 24.08.2026: excise_short — ровно 31 символ,
+  // 01 + GTIN(14) + 21 + серийник(13). Криптохвост в документ вывода не идёт.
+  const { parseKizCode } = await import("../lib/wb/kizCodes.ts");
+  const fromReport = "0104640655797946215=QeZHoDouLe!";
+  assert.equal(fromReport.length, 31);
+  const parsed = parseKizCode(fromReport);
+  assert.equal(parsed.code, fromReport, "код из отчёта не должен ничего терять при разборе");
+  assert.equal(parsed.gtin, "04640655797946");
+});
+
+test("экспорт ограничен лимитом документа Честного Знака", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../app/api/warehouse/kiz/export/route.ts", import.meta.url), "utf8");
+  assert.match(src, /CHZ_DOC_LIMIT = 30_000/, "больше 30 000 кодов в одном документе ЧЗ не принимает");
+});
+
+test("сборщик фильтрует чужие коды товарным контуром кабинета", async () => {
+  // У агентского кабинета в отчёте большинство строк не наши: за август
+  // «Оптима» вернула 90 470 строк. Вывести из оборота чужой код нельзя.
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../app/api/warehouse/kiz/collect/route.ts", import.meta.url), "utf8");
+  assert.match(src, /allowsProduct\(scope, row\.nmId\)/);
+});
