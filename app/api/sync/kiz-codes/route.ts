@@ -106,6 +106,12 @@ async function collectForCabinet(
     // сообщал: «за 30 дн. просмотрено 20 000 заданий, все чужие».
     const mine = orders.filter((order) => allowsProduct(target.productScope, order.nmId));
     result.foreign += orders.length - mine.length;
+    // rid задания — это и есть srid продажи. В этой ветке он под рукой, и не
+    // сохранить его значило бы снова оставить код без связи с выкупом: искать
+    // связь потом негде, order_id в таблице заданий заполнен не у всех строк.
+    for (const order of mine) {
+      if (order.rid) sridByOrderId.set(Number(order.id), String(order.rid));
+    }
     const ids = mine.map((order) => order.id).filter((id) => Number.isFinite(id));
     result.orders += ids.length;
     if (!ids.length) continue;
