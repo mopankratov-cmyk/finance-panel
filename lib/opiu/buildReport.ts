@@ -31,17 +31,9 @@ function pct(numerator: number, denominator: number): number | null {
   return (numerator / denominator) * 100;
 }
 
-/**
- * % выкупа = Выручка без СПП / Заказы. Физически не может быть больше 100% —
- * если формула даёт больше, это всегда значит, что revenueWithoutSpp
- * (по дате продажи) и ordersRub (по дате заказа) сравнивают разные периоды
- * (например, заказы ещё не подтянулись за свежую неделю), а не реальный
- * бизнес-показатель. Показываем null, а не вводящее в заблуждение число.
- */
+/** % выкупа = Выручка без СПП / Заказы — показываем реальное значение как есть, даже если >100%. */
 function buyoutPct(revenueWithoutSpp: number, ordersRub: number): number | null {
-  const value = pct(revenueWithoutSpp, ordersRub);
-  if (value === null || value > 100) return null;
-  return value;
+  return pct(revenueWithoutSpp, ordersRub);
 }
 
 /**
