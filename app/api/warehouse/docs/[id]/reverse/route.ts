@@ -1,0 +1,106 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getServerSession } from "@/lib/auth/server";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveEntity } from "@/lib/warehouse/entityAccess";
+
+export const dynamic = "force-dynamic";
+
+const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
+const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205", "42883"].includes(code ?? "");
+const migrationHint = "Примените миграции 202608240021 и 202608240022";
+
+/**
+ * Сторнировать документ.
+ *
+ * Не отмена и не удаление: регистр append-only, и правка в нём запрещена
+ * триггером — это правильно, история не должна переписываться. Сторно пишет те
+ * же строки со знаком минус и связывает их с исходным документом. В остатке
+ * результат тот же, а в журнале видно и ошибку, и её исправление.
+ */
+export async function POST(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
+  const { id } = await ctx.params;
+  const body = (await request.json().catch(() => null)) as { entityId?: string; note?: string } | null;
+
+  const scope = await resolveEntity(body?.entityId ?? null);
+  if (!scope.ok) return fail(scope.error, scope.status);
+
+  const db = getSupabaseAdmin();
+  if (!db) return fail("Supabase не настроен", 500);
+  const session = await getServerSession();
+
+  const docResult = await db
+    .from("stock_docs")
+    .select("id, number, kind, status, legal_entity_id, warehouse_id, target_warehouse_id, cabinet_id, movement_doc_id, reversed_by")
+    .eq("id", id)
+    .maybeSingle();
+  if (docResult.error) {
+    const code = docResult.error.code;
+    return fail(missingMigration(code) ? migrationHint : docResult.error.message, missingMigration(code) ? 503 : 500);
+  }
+  const doc = docResult.data;
+  if (!doc) return fail("Документ не найден", 404);
+  if (String(doc.legal_entity_id) !== scope.entity.id) return fail("Документ другого юрлица", 403);
+  if (doc.status === "reversed" || doc.reversed_by) return fail("Документ уже сторнирован", 409);
+  if (doc.status === "draft") return fail("Черновик сторнировать нечем — он ещё не проведён", 400);
+  if (!doc.movement_doc_id) return fail("У документа нет движений — сторнировать нечего", 400);
+
+  // Номер сторно берём того же вида, что и исходный документ: так в журнале
+  // сразу видно, чего именно касается отмена.
+  const numberResult = await db.rpc("next_stock_doc_number", { p_kind: doc.kind, p_at: new Date().toISOString() });
+  if (numberResult.error) {
+    const code = numberResult.error.code;
+    return fail(missingMigration(code) ? migrationHint : numberResult.error.message, missingMigration(code) ? 503 : 500);
+  }
+
+  const created = await db
+    .from("stock_docs")
+    .insert({
+      number: String(numberResult.data),
+      kind: doc.kind,
+      status: "posted",
+      legal_entity_id: scope.entity.id,
+      warehouse_id: doc.warehouse_id,
+      target_warehouse_id: doc.target_warehouse_id,
+      cabinet_id: doc.cabinet_id,
+      note: body?.note?.trim() || `Сторно ${doc.number}`,
+      reverses: doc.id,
+      created_by: session?.email ?? null,
+    })
+    .select("id, number")
+    .single();
+  if (created.error || !created.data) return fail(created.error?.message ?? "Не удалось завести сторно", 500);
+
+  const movementDocId = `reversal:${created.data.id}`;
+  const { data, error } = await db.rpc("post_doc_reversal", {
+    p_source_movement_doc_id: doc.movement_doc_id,
+    p_new_movement_doc_id: movementDocId,
+    p_source_number: String(doc.number),
+    p_actor: session?.email ?? null,
+  });
+
+  if (error) {
+    // Движения не записались — карточку сторно убираем, иначе в журнале повиснет
+    // документ без строк, и повтор упрётся в «уже сторнирован».
+    await db.from("stock_docs").delete().eq("id", created.data.id);
+    if (error.message.includes("already reversed")) return fail("Документ уже сторнирован", 409);
+    if (error.message.includes("no movements")) return fail("У документа нет движений — сторнировать нечего", 400);
+    return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
+  }
+
+  await db
+    .from("stock_docs")
+    .update({ movement_doc_id: movementDocId, result: data, updated_at: new Date().toISOString() })
+    .eq("id", created.data.id);
+  await db
+    .from("stock_docs")
+    .update({ status: "reversed", reversed_by: created.data.id, updated_at: new Date().toISOString() })
+    .eq("id", doc.id);
+
+  return NextResponse.json({
+    data: { number: String(created.data.number), reverses: String(doc.number), ...(data as Record<string, unknown>) },
+    error: null,
+  }, { status: 201 });
+}
