@@ -3,7 +3,8 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { listAccessibleEntities, resolveEntity } from "@/lib/warehouse/entityAccess";
+import { matchFbsSales, type VariantRef } from "@/lib/warehouse/fbsSales";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -35,7 +36,7 @@ export interface FbsSalesResult {
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205", "42883"].includes(code ?? "");
-const migrationHint = "Примените миграцию 202608240019_fbs_sales.sql";
+const migrationHint = "Примените миграции 202608240019 и 202608240020";
 
 interface OrderRow { srid: string; nm_id: number; supplier_article: string; date: string; cabinet_id: string }
 
@@ -82,8 +83,8 @@ export async function POST(request: NextRequest) {
     .select("id, product_id, barcode, nm_id, article, legal_entity_id, is_default");
   if (variantsResult.error) return fail(variantsResult.error.message, 500);
 
-  const byBarcode = new Map<string, { id: string; entityId: string | null }>();
-  const byNm = new Map<number, { id: string; entityId: string | null }[]>();
+  const byBarcode = new Map<string, VariantRef>();
+  const byNm = new Map<number, VariantRef[]>();
   for (const row of variantsResult.data ?? []) {
     const entry = { id: String(row.id), entityId: row.legal_entity_id ? String(row.legal_entity_id) : null };
     const barcode = String(row.barcode ?? "").trim();
@@ -92,7 +93,15 @@ export async function POST(request: NextRequest) {
     if (nmId) byNm.set(nmId, [...(byNm.get(nmId) ?? []), entry]);
   }
 
-  const cabinetIds = scope.entity.cabinets.map((link) => link.cabinetId);
+  // Заказы читаем из ВСЕХ доступных кабинетов, а не только из кабинетов этого
+  // юрлица. Причина в том же принципе: владельца определяет товар. Пеналы ООО
+  // РИО продаются через кабинет Оптимы, а у самого РИО кабинета нет вовсе — если
+  // ограничиться его кабинетами, продажи РИО не найдутся никогда. Чужие товары
+  // отсеются ниже, по владельцу позиции.
+  const all = await listAccessibleEntities();
+  if (!all.ok) return fail(all.error, all.status);
+  const cabinetIds = [...new Set(all.rows.flatMap((row) => row.cabinets.map((link) => link.cabinetId)))];
+  if (cabinetIds.length === 0) return fail("Нет кабинетов, из которых читать продажи", 400);
   const earliest = settings
     .map((row) => String(row.fbs_sales_since))
     .sort()[0];
@@ -128,37 +137,30 @@ export async function POST(request: NextRequest) {
     return fail(error instanceof Error ? error.message : "Не удалось прочитать заказы", 500);
   }
 
-  const unresolved = new Map<string, number>();
-  let otherEntity = 0;
   const linesByWarehouse = new Map<string, Record<string, unknown>[]>();
+  const unresolvedTotals = new Map<string, number>();
+  let otherEntity = 0;
 
   for (const setting of settings) {
-    const warehouseId = String(setting.warehouse_id);
-    const since = String(setting.fbs_sales_since);
-    const lines: Record<string, unknown>[] = [];
-    for (const order of orders) {
-      if (!order.srid || order.date < since) continue;
-      const barcode = barcodeBySrid.get(String(order.srid));
-      const byCard = byNm.get(Number(order.nm_id));
-      // По карточке размер определяется, только если он у неё один: иначе
-      // непонятно, какой именно размер уехал, и молча выбрать любой — соврать.
-      const variant = (barcode ? byBarcode.get(barcode) : undefined)
-        ?? (byCard && byCard.length === 1 ? byCard[0] : undefined);
-      if (!variant) {
-        const key = String(order.supplier_article ?? order.nm_id);
-        unresolved.set(key, (unresolved.get(key) ?? 0) + 1);
-        continue;
-      }
-      if (variant.entityId && variant.entityId !== scope.entity.id) { otherEntity += 1; continue; }
-      lines.push({
-        srid: order.srid,
-        variantId: variant.id,
-        cabinetId: order.cabinet_id,
-        qty: 1,
-        occurredAt: order.date,
-      });
+    const matched = matchFbsSales({
+      orders: orders.map((row) => ({
+        srid: String(row.srid),
+        nmId: Number(row.nm_id),
+        article: String(row.supplier_article ?? ""),
+        date: String(row.date),
+        cabinetId: String(row.cabinet_id),
+      })),
+      barcodeBySrid,
+      variantByBarcode: byBarcode,
+      variantsByNmId: byNm,
+      entityId: scope.entity.id,
+      since: String(setting.fbs_sales_since),
+    });
+    linesByWarehouse.set(String(setting.warehouse_id), matched.lines as unknown as Record<string, unknown>[]);
+    otherEntity = Math.max(otherEntity, matched.otherEntity);
+    for (const row of matched.unresolved) {
+      unresolvedTotals.set(row.article, Math.max(unresolvedTotals.get(row.article) ?? 0, row.count));
     }
-    linesByWarehouse.set(warehouseId, lines);
   }
 
   const results: FbsSalesWarehouseResult[] = [];
@@ -199,7 +201,7 @@ export async function POST(request: NextRequest) {
 
   const result: FbsSalesResult = {
     warehouses: results,
-    unresolved: [...unresolved.entries()]
+    unresolved: [...unresolvedTotals.entries()]
       .map(([article, count]) => ({ article, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 20),

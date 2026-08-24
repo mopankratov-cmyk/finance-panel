@@ -43,7 +43,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     }, { onConflict: "legal_entity_id,warehouse_id" });
     if (error) {
       const missing = ["42P01", "42703", "PGRST204", "PGRST205"].includes(error.code ?? "");
-      return fail(missing ? "Примените миграцию 202608240019_fbs_sales.sql" : error.message, missing ? 503 : 500);
+      return fail(missing ? "Примените миграции 202608240019 и 202608240020" : error.message, missing ? 503 : 500);
     }
     if (Object.keys(body).length === 2) {
       return NextResponse.json({ data: { id, fbsSalesSince: since ? since.toISOString() : null }, error: null });
