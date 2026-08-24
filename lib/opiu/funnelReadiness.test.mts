@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  funnelTrustCutoff,
   isFunnelSyncReady,
   type FunnelSyncStateRow,
 } from "./funnelReadiness";
@@ -135,6 +136,10 @@ function mockClient(options: MockOptions) {
           filters.push([relation, column, value]);
           return query;
         },
+        lt(column: string, value: string) {
+          filters.push([relation, column, value]);
+          return query;
+        },
         order() {
           return query;
         },
@@ -201,7 +206,11 @@ test("TOCTOU state gate requires the same exact ready fingerprint after paginati
   });
   const cases: Array<[string, FunnelSyncStateRow | null, string | undefined, number]> = [
     ["ready to running", readyState({ status: "running" }), undefined, 0],
-    ["ready to new ready timestamp", changedTimestamp, undefined, 0],
+    // Раньше здесь ждали 0 — строгое сравнение fingerprint валило запрос
+    // при ЛЮБОМ изменении state, даже если он остался полностью готовым.
+    // funnelTrustCutoff вместо этого просто перепроверяет готовность
+    // финального состояния — если оно всё ещё готово, данным можно доверять.
+    ["ready to new ready timestamp", changedTimestamp, undefined, 1],
     ["ready to missing", null, undefined, 0],
     ["ready to query error", readyState(), "database unavailable", 0],
     ["ready unchanged", readyState(), undefined, 1],
@@ -332,4 +341,70 @@ test("factual zero replaces wb_orders only after ready state proves the overlay"
     NOW,
   );
   assert.deepEqual(overlayFunnelOrders(fallback, partialFacts, CABINET), fallback);
+});
+
+test("funnelTrustCutoff exposes the job's current in-progress window as a cutoff date", () => {
+  const pendingMidCycle = readyState({
+    status: "pending",
+    state: {
+      coveragePct: 69,
+      nextBatch: 2,
+      lastSyncedAt: "2026-07-28T12:00:00.000Z",
+      lastPeriod: { begin: "2026-07-22", end: "2026-07-28", mode: "7d-recovery" },
+    },
+  });
+
+  assert.deepEqual(
+    funnelTrustCutoff(pendingMidCycle, CABINET, NOW),
+    { ready: true, cutoff: "2026-07-22" },
+    "pending mid-cycle exposes lastPeriod.begin as the cutoff",
+  );
+
+  // Реальный сбой (ошибка/ретраи) должен блокировать в любом случае.
+  assert.deepEqual(
+    funnelTrustCutoff(
+      readyState({ ...pendingMidCycle, last_error: "rate limited" }),
+      CABINET,
+      NOW,
+    ),
+    { ready: false, cutoff: null },
+    "real failure fails closed regardless of range",
+  );
+
+  // caught_up остаётся готовым без ограничений, как и раньше.
+  assert.deepEqual(
+    funnelTrustCutoff(readyState(), CABINET, NOW),
+    { ready: true, cutoff: null },
+    "caught_up trusts the whole range",
+  );
+});
+
+test("loadReadyFunnelFacts returns facts for a settled week while the job is mid-cycle on a later week", async () => {
+  const pendingMidCycle = readyState({
+    status: "pending",
+    state: {
+      coveragePct: 69,
+      nextBatch: 2,
+      lastSyncedAt: "2026-07-28T12:00:00.000Z",
+      lastPeriod: { begin: "2026-07-22", end: "2026-07-28", mode: "7d-recovery" },
+    },
+  });
+  const row = {
+    cabinet_id: CABINET,
+    nm_id: 101,
+    date: "2026-07-14",
+    orders: 3,
+    orders_sum: 900,
+  };
+  const client = mockClient({ state: pendingMidCycle, funnelRows: [row] });
+
+  const facts = await loadReadyFunnelFacts(
+    client,
+    CABINET,
+    "2026-07-10",
+    "2026-07-16",
+    NOW,
+  );
+
+  assert.equal(facts.length, 1);
 });
