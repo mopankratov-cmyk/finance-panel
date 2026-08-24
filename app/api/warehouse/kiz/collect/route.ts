@@ -199,9 +199,10 @@ export async function POST(request: NextRequest) {
           // с операцией «вывод из оборота» означает, что код уже выведен: при
           // FBW это сделал маркетплейс, при FBS — значит, мы это уже сделали
           // раньше. Ни то, ни другое не ждёт отправки.
-          status: back.has(row.code)
-            ? "returned"
-            : scheme === "fbw" ? "fbw" : scheme === "fbs" ? "withdrawn" : "unknown",
+          // Кто именно вывел — важно для отчётности, но не для решения. Строка
+          // отчёта с операцией вывода означает, что код уже вне оборота, даже
+          // когда схему продажи определить не удалось. Отправлять его нельзя.
+          status: back.has(row.code) ? "returned" : scheme === "fbw" ? "fbw" : "withdrawn",
           source: `Отчёт WB по маркировке ${from}…${to}`,
           updated_at: new Date().toISOString(),
         };

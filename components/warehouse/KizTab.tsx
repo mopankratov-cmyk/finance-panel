@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { KizUploadResult, KizWithdrawalSummary } from "@/app/api/warehouse/kiz/route";
 import type { KizCollectResult } from "@/app/api/warehouse/kiz/collect/route";
+import type { KizSalesResult } from "@/app/api/warehouse/kiz/sales/route";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
 
@@ -25,6 +26,7 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
   // 5 часов, период режется на месячные окна, и лишние месяцы — это выброшенные
   // запросы. Там, где наших товаров в кабинете ещё не было, читать нечего.
   const [since, setSince] = useState("");
+  const [sales, setSales] = useState<KizSalesResult | null>(null);
   const soldRef = useRef<HTMLInputElement>(null);
   const returnsRef = useRef<HTMLInputElement>(null);
 
@@ -95,6 +97,30 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
     }
   };
 
+  // Главный автоматический источник списка К ВЫВОДУ: детализация реализации
+  // отдаёт код прямо в строке продажи, вместе с ценой. В отличие от отчёта по
+  // маркированным товарам показывает то, что ещё НЕ выведено.
+  const collectSales = async () => {
+    setBusy(true);
+    setError(null);
+    setSales(null);
+    try {
+      const res = await fetch("/api/warehouse/kiz/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(since ? { from: since } : {}),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось собрать проданное");
+      setSales(json.data as KizSalesResult);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось собрать проданное");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const download = async () => {
     setBusy(true);
     setError(null);
@@ -159,11 +185,10 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
         </div>
       </div>
 
-      {(summary?.unknown ?? 0) > 0 && (
+      {(summary?.withdrawn ?? 0) > 0 && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          У {formatNumber(summary!.unknown)} кодов не удалось определить схему продажи: заказ по srid не нашёлся
-          в нашей базе. В файл на вывод они не пойдут — если такой код окажется FBW, мы попробуем вывести уже
-          выведенное. Синхронизируйте заказы за нужный период, и схема определится.
+          {formatNumber(summary!.withdrawn)} кодов уже выведены из оборота по данным Wildberries.
+          В файл они не пойдут: вывести один код дважды нельзя.
         </div>
       )}
 
@@ -232,10 +257,40 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Собрать список к выводу</p>
+        <p className="text-sm font-medium text-slate-700">Собрать проданное из Wildberries</p>
         <p className="mt-1 text-xs text-slate-500">
-          Это главный путь: КИЗ проставляются в сборочном задании при сборке, и в выгрузке завершённых
-          заказов они уже есть — а из оборота их ещё никто не выводил.
+          Детализация отчёта о реализации отдаёт код маркировки прямо в строке продажи, вместе с ценой.
+          Это то же, что выгружать завершённые заказы руками, только без выгрузки. Учтите задержку:
+          в отчёт о реализации продажа попадает после выкупа и расчёта, поэтому вчерашние продажи там
+          ещё не появятся.
+        </p>
+        <button
+          onClick={() => void collectSales()}
+          disabled={busy}
+          className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+        >
+          <CloudDownload className="h-4 w-4" /> {busy ? "Читаю реализацию…" : "Собрать проданное"}
+        </button>
+        {sales && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+            <p>Период {sales.from} — {sales.to}. Добавлено к выводу {formatNumber(sales.addedTotal)}.</p>
+            <ul className="mt-1 space-y-0.5 text-xs">
+              {sales.cabinets.map((row) => (
+                <li key={row.name} className={row.error ? "text-red-700" : "text-emerald-700"}>
+                  {row.name}: {row.error
+                    ? row.error
+                    : `строк с кодом ${formatNumber(row.withCode)}, наших ${formatNumber(row.ours)} · FBS ${formatNumber(row.fbs)}, FBW ${formatNumber(row.fbw)}, схема неизвестна ${formatNumber(row.unknown)} · возвратов ${formatNumber(row.returns)} · записано ${formatNumber(row.added)}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-medium text-slate-700">Загрузить файлами, если нужно вручную</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Запасной путь, если в отчёте о реализации нужного периода ещё нет.
           Первый файл — «Поставки → ФБС → завершённые заказы» с фильтром «товар выкуплен»: в нём КИЗ и цена реализации.
           Второй — «Аналитика → Отчёты → по возвратам и перемещению товара» за тот же диапазон дат.
           Возвраты вычитаются: вернувшийся товар снова в обороте WB, и выводить его нельзя.

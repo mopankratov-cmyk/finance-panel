@@ -35,8 +35,8 @@ export interface KizWithdrawalSummary {
   overdue: number;
   /** Продано по FBW: из оборота их вывел сам маркетплейс, нам делать нечего. */
   fbw: number;
-  /** Схему продажи определить не удалось — отправлять такие коды нельзя. */
-  unknown: number;
+  /** Уже выведены из оборота по данным WB — второй раз не отправляем. */
+  withdrawn: number;
 }
 
 export interface KizUploadResult {
@@ -78,7 +78,7 @@ async function summarize(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): 
     lastSoldAt: sortedDates[sortedDates.length - 1] ?? null,
     overdue: pending.filter((row) => row.sold_at && String(row.sold_at) < overdueBefore).length,
     fbw: data.filter((row) => row.status === "fbw").length,
-    unknown: data.filter((row) => row.status === "unknown").length,
+    withdrawn: data.filter((row) => row.status === "withdrawn").length,
   };
 }
 
