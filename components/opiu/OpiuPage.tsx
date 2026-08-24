@@ -2,6 +2,7 @@
 
 import { formatPct, formatRub, formatTime } from "@/lib/analytics/format";
 import { currentMonthParam } from "@/lib/opiu/weeks";
+import type { MonthWeek } from "@/lib/opiu/weeks";
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
 import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -75,6 +76,8 @@ export function OpiuPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingWeeks, setSavingWeeks] = useState<Set<string>>(() => new Set());
+  const [resyncingWeeks, setResyncingWeeks] = useState<Set<string>>(() => new Set());
+  const [resyncError, setResyncError] = useState<string | null>(null);
 
   const fetchReport = useCallback(async (
     m: string,
@@ -154,6 +157,29 @@ export function OpiuPage() {
     return coordinator.saveWarehouse({ month, weekStart, amount });
   };
 
+  const handleResyncWeek = async (week: MonthWeek) => {
+    setResyncError(null);
+    setResyncingWeeks((current) => new Set(current).add(week.weekStart));
+    try {
+      const res = await fetch("/api/opiu/report-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dateFrom: week.rangeFrom, dateTo: week.rangeTo }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Ошибка пересинка");
+      await coordinator.loadReport(month, true);
+    } catch (e) {
+      setResyncError(e instanceof Error ? e.message : "Ошибка пересинка");
+    } finally {
+      setResyncingWeeks((current) => {
+        const next = new Set(current);
+        next.delete(week.weekStart);
+        return next;
+      });
+    }
+  };
+
   const report = tab === "report_date"
     ? data?.reportByReportDate
     : data?.report;
@@ -196,6 +222,12 @@ export function OpiuPage() {
       {error && (
         <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {resyncError && (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Пересинк не удался: {resyncError}
         </div>
       )}
 
@@ -254,7 +286,23 @@ export function OpiuPage() {
                     key={w.weekStart}
                     className="w-[120px] px-3 py-3 text-right font-medium"
                   >
-                    {w.label}
+                    <div className="flex items-center justify-end gap-1">
+                      <span>{w.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => void handleResyncWeek(w)}
+                        disabled={resyncingWeeks.has(w.weekStart)}
+                        title="Пересинкать финотчёт WB за эту неделю"
+                        aria-label="Пересинкать неделю"
+                        className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50"
+                      >
+                        {resyncingWeeks.has(w.weekStart) ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </th>
                 ))}
                 <th className="w-[120px] px-4 py-3 text-right font-bold text-slate-900">
