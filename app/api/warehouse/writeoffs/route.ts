@@ -4,6 +4,7 @@ import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
+import { recordStockDoc } from "@/lib/warehouse/stockDocs";
 
 export const dynamic = "force-dynamic";
 
@@ -153,6 +154,19 @@ export async function POST(request: NextRequest) {
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 
-  await settleDocKey(db, docKey, data);
-  return NextResponse.json({ data, error: null }, { status: 201 });
+  // Документ пишется ПОСЛЕ проводки и её не отменяет: движения уже в регистре,
+  // и отказ из-за незаписанной карточки соврал бы про неудачу там, где операция
+  // прошла. Без номера операция просто останется безымянной.
+  const doc = await recordStockDoc(db, {
+    kind: "writeoff",
+    legalEntityId: scope.entity.id,
+    warehouseId: body.warehouseId, cabinetId: null, targetWarehouseId: null,
+    note: body.reason?.trim() || null,
+    result: data,
+    actor: session?.email ?? null,
+  });
+
+  const payload = doc ? { ...(data as Record<string, unknown>), docNumber: doc.number, docId: doc.id } : data;
+  await settleDocKey(db, docKey, payload);
+  return NextResponse.json({ data: payload, error: null }, { status: 201 });
 }
