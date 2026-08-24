@@ -125,7 +125,7 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
     <div className="space-y-4">
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-5">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-400">Ждут вывода</p>
           <p className="text-xl font-bold text-violet-700">{formatNumber(summary?.pending ?? 0)}</p>
@@ -141,6 +141,11 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
           <p className="text-xl font-bold text-slate-900">{formatNumber(summary?.returned ?? 0)}</p>
           <p className="mt-1 text-xs text-slate-400">выводить нельзя</p>
         </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-xs text-slate-400">Выводит Wildberries</p>
+          <p className="text-xl font-bold text-slate-900">{formatNumber(summary?.fbw ?? 0)}</p>
+          <p className="mt-1 text-xs text-slate-400">продажи FBW — не наше дело</p>
+        </div>
         <div className={`rounded-xl border p-4 ${summary?.returnedAfterSent ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}>
           <p className="text-xs text-slate-400">Вернулись после отправки</p>
           <p className={`text-xl font-bold ${summary?.returnedAfterSent ? "text-red-700" : "text-slate-900"}`}>
@@ -149,6 +154,14 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
           <p className="mt-1 text-xs text-slate-400">разбирать руками</p>
         </div>
       </div>
+
+      {(summary?.unknown ?? 0) > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          У {formatNumber(summary!.unknown)} кодов не удалось определить схему продажи: заказ по srid не нашёлся
+          в нашей базе. В файл на вывод они не пойдут — если такой код окажется FBW, мы попробуем вывести уже
+          выведенное. Синхронизируйте заказы за нужный период, и схема определится.
+        </div>
+      )}
 
       {(summary?.overdue ?? 0) > 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
@@ -172,6 +185,8 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
           Из него берутся код, цена реализации и признак операции: продано или вернулось в оборот.
           Чужие коды отсекаются товарным контуром кабинета — у агентского кабинета в отчёте
           большинство строк не наши, и вывести их из оборота мы всё равно не можем.
+          Отдельно отсекается FBW: при этой схеме товар в момент продажи принадлежит маркетплейсу,
+          и код из оборота выводит он сам. Нам остаётся только FBS.
         </p>
         <button
           onClick={() => void collect()}
