@@ -95,6 +95,8 @@ export function WarehousesTab({
           Склад — это место хранения, а не собственность юрлица: на одном фулфилменте может лежать товар
           нескольких ИП. Чей товар и сколько — видно в остатках, они считаются по паре «склад + юрлицо».
           Тип «в пути» — для фуры между городами: товар в дороге виден в остатках, а не пропадает на неделю.
+          Дата в колонке «Продажи FBS» — с какого дня остатку склада можно верить: с неё продажи со склада продавца
+          начнут списывать остаток этого юрлица. Пока даты нет, списание выключено.
         </p>
       </div>
 
@@ -110,6 +112,7 @@ export function WarehousesTab({
                 <th className="px-4 py-3 text-left font-medium">Название</th>
                 <th className="px-4 py-3 text-left font-medium">Тип</th>
                 <th className="px-4 py-3 text-left font-medium">Состояние</th>
+                <th className="px-4 py-3 text-left font-medium">Продажи FBS списывать с</th>
                 <th className="px-4 py-3 text-right font-medium"></th>
               </tr>
             </thead>
@@ -145,6 +148,25 @@ export function WarehousesTab({
                       {warehouse.isActive
                         ? <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">активен</span>
                         : <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">в архиве</span>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {/* Дата — обещание, что остатку склада с этого дня можно верить.
+                          Пока её нет, продажи не вычитаются: иначе остаток ушёл бы
+                          в минус на всю историю торговли. */}
+                      <input
+                        type="date"
+                        value={warehouse.fbsSalesSince ? warehouse.fbsSalesSince.slice(0, 10) : ""}
+                        onChange={(e) => void patch(warehouse.id, {
+                          entityId,
+                          fbsSalesSince: e.target.value ? new Date(`${e.target.value}T00:00:00`).toISOString() : null,
+                        })}
+                        className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      />
+                      {warehouse.fbsSyncedAt && (
+                        <span className="ml-2 text-[10px] text-slate-400">
+                          сверено {new Date(warehouse.fbsSyncedAt).toLocaleDateString("ru-RU")}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       {isEditing ? (

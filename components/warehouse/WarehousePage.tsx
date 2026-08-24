@@ -44,11 +44,13 @@ export function WarehousePage() {
   const entity = useMemo(() => entities.find((row) => row.id === entityId) ?? null, [entities, entityId]);
 
   const loadWarehouses = useCallback(async () => {
-    // Склады общие: список не зависит от выбранного юрлица.
+    // Склады общие, но настройки пары «юрлицо + склад» — нет: дату, с которой
+    // продажи FBS списывают склад, каждое юрлицо выставляет себе само.
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/warehouse/warehouses", { cache: "no-store" });
+      const query = entityId ? `?entity=${encodeURIComponent(entityId)}` : "";
+      const res = await fetch(`/api/warehouse/warehouses${query}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось загрузить склады");
       setWarehouses(json.data ?? []);
@@ -58,11 +60,15 @@ export function WarehousePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [entityId]);
+
+  // Юрлица читаются один раз, склады — на каждую смену юрлица: у них разные
+  // причины меняться, и сливать их в один эффект значило бы перечитывать
+  // справочник юрлиц при каждом переключении и сбрасывать выбор.
+  useEffect(() => { void loadWarehouses(); }, [loadWarehouses]);
 
   useEffect(() => {
     let cancelled = false;
-    void loadWarehouses();
     (async () => {
       try {
         const res = await fetch("/api/warehouse/entities", { cache: "no-store" });
@@ -81,7 +87,7 @@ export function WarehousePage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [loadWarehouses]);
+  }, []);
 
   useEffect(() => { if (refreshKey > 0) void loadWarehouses(); }, [loadWarehouses, refreshKey]);
 

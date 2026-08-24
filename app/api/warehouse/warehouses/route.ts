@@ -14,6 +14,11 @@ export interface WarehouseRow {
   isActive: boolean;
   position: number;
   note: string | null;
+  /** С какой даты продажи FBS списывают этот склад у выбранного юрлица.
+   *  null — списание выключено: пока остатку склада нельзя верить, вычитание
+   *  продаж увело бы его в минус на всю историю торговли. */
+  fbsSalesSince: string | null;
+  fbsSyncedAt: string | null;
 }
 
 interface DbRow {
@@ -29,18 +34,20 @@ const fail = (error: string, status: number) => NextResponse.json({ data: null, 
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграции 202608230003_stock_ledger.sql и 202608230004_legal_entities.sql";
 
-const toRow = (r: DbRow): WarehouseRow => ({
+const toRow = (r: DbRow, settings?: Map<string, { since: string | null; syncedAt: string | null }>): WarehouseRow => ({
   id: r.id,
   name: r.name,
   kind: r.kind,
   isActive: r.is_active,
   position: r.position,
   note: r.note,
+  fbsSalesSince: settings?.get(String(r.id))?.since ?? null,
+  fbsSyncedAt: settings?.get(String(r.id))?.syncedAt ?? null,
 });
 
 // Склад — общее место хранения, а не собственность юрлица: на одном фулфилменте
 // лежит товар нескольких ИП. Поэтому список складов не фильтруется по юрлицу.
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const list = await listAccessibleEntities();
@@ -57,7 +64,25 @@ export async function GET(_request: NextRequest) {
     .order("name", { ascending: true });
 
   if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
-  return NextResponse.json({ data: (data ?? []).map((r) => toRow(r as DbRow)), error: null });
+
+  // Настройки пары «юрлицо + склад» — своя дата доверия у каждого юрлица на
+  // общем складе. Без выбранного юрлица настроек нет, и это не ошибка.
+  const entityId = new URL(request.url).searchParams.get("entity");
+  const settings = new Map<string, { since: string | null; syncedAt: string | null }>();
+  if (entityId && list.rows.some((row) => row.id === entityId)) {
+    const result = await db
+      .from("legal_entity_warehouses")
+      .select("warehouse_id, fbs_sales_since, fbs_synced_at")
+      .eq("legal_entity_id", entityId);
+    for (const row of result.data ?? []) {
+      settings.set(String(row.warehouse_id), {
+        since: row.fbs_sales_since ? String(row.fbs_sales_since) : null,
+        syncedAt: row.fbs_synced_at ? String(row.fbs_synced_at) : null,
+      });
+    }
+  }
+
+  return NextResponse.json({ data: (data ?? []).map((r) => toRow(r as DbRow, settings)), error: null });
 }
 
 export async function POST(request: NextRequest) {

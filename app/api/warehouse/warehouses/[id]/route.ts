@@ -15,7 +15,8 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if (gate) return gate;
   const { id } = await ctx.params;
   const body = (await request.json().catch(() => null)) as
-    | { name?: string; kind?: string; note?: string; isActive?: boolean }
+    | { name?: string; kind?: string; note?: string; isActive?: boolean;
+        entityId?: string; fbsSalesSince?: string | null }
     | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -25,6 +26,29 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+
+  // Дата списания продаж FBS — свойство пары «юрлицо + склад», а не склада:
+  // склад общий, а доверять его остатку каждое юрлицо начинает со своей приёмки.
+  if ("fbsSalesSince" in body) {
+    if (!body.entityId || !list.rows.some((row) => row.id === body.entityId)) {
+      return fail("Нет доступа к юрлицу", 403);
+    }
+    const since = body.fbsSalesSince ? new Date(body.fbsSalesSince) : null;
+    if (since && Number.isNaN(since.getTime())) return fail("Некорректная дата", 400);
+    const { error } = await db.from("legal_entity_warehouses").upsert({
+      legal_entity_id: body.entityId,
+      warehouse_id: id,
+      fbs_sales_since: since ? since.toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "legal_entity_id,warehouse_id" });
+    if (error) {
+      const missing = ["42P01", "42703", "PGRST204", "PGRST205"].includes(error.code ?? "");
+      return fail(missing ? "Примените миграции 202608240019 и 202608240020" : error.message, missing ? 503 : 500);
+    }
+    if (Object.keys(body).length === 2) {
+      return NextResponse.json({ data: { id, fbsSalesSince: since ? since.toISOString() : null }, error: null });
+    }
+  }
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if ("name" in body) {
