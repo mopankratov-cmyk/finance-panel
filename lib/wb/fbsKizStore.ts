@@ -64,6 +64,12 @@ export async function loadKnownKizCodes(
 export async function rememberKizCodes(
   cabinetId: string,
   probed: Map<number, string[]>,
+  /**
+   * srid задания. Сохраняем рядом с кодом, потому что связать код с продажей
+   * иначе нечем: в wb_fbs_orders колонка order_id заполнена не у всех строк,
+   * и связь через неё рвётся ровно там, где код есть.
+   */
+  sridByOrderId?: Map<number, string>,
 ): Promise<void> {
   if (!cabinetId || !probed.size) return;
   const db = getSupabaseAdmin();
@@ -72,6 +78,7 @@ export async function rememberKizCodes(
     cabinet_id: cabinetId,
     order_id: orderId,
     codes,
+    srid: sridByOrderId?.get(orderId) ?? null,
     checked_at: new Date().toISOString(),
   }));
   if (!rows.length) return;
@@ -177,13 +184,15 @@ export async function loadOrderIdsFromDb(
   fromMs: number,
   toMs: number,
   limit: number,
+  /** Заполняется srid’ами заданий: их незачем искать второй раз. */
+  sridSink?: Map<number, string>,
 ): Promise<number[] | null> {
   const db = getSupabaseAdmin();
   if (!db) return null;
 
   const { data, error } = await db
     .from("wb_fbs_orders")
-    .select("order_id")
+    .select("order_id, srid")
     .eq("cabinet_id", cabinetId)
     .gte("created_at_wb", new Date(fromMs).toISOString())
     .lt("created_at_wb", new Date(toMs).toISOString())
@@ -191,9 +200,13 @@ export async function loadOrderIdsFromDb(
     .limit(limit);
 
   if (error) return null;
-  const ids = (data ?? [])
-    .map((row) => Number(row.order_id))
-    .filter((id) => Number.isFinite(id) && id > 0);
+  const ids: number[] = [];
+  for (const row of data ?? []) {
+    const id = Number(row.order_id);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    ids.push(id);
+    if (sridSink && row.srid) sridSink.set(id, String(row.srid));
+  }
   // Пусто — синк по этим датам ещё не прошёл; честнее спросить WB, чем
   // сделать вид, что заданий не было.
   return ids.length ? ids : null;

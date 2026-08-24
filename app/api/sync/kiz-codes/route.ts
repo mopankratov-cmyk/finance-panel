@@ -71,7 +71,10 @@ async function collectForCabinet(
     // Сперва своя база: синк fbs-orders хранит задания кабинета и, в отличие
     // от WB, только свои. Тогда запросов к WB не нужно вовсе — ни одного на
     // список, весь бюджет уходит на сами коды.
-    const stored = await loadOrderIdsFromDb(target.cabinetId, fromMs, toMs, CODES_PER_RUN * 4);
+    // srid собираем заодно: он известен из очереди заданий, и сохранить его
+    // рядом с кодом дешевле, чем потом искать связь заново.
+    const sridByOrderId = new Map<number, string>();
+    const stored = await loadOrderIdsFromDb(target.cabinetId, fromMs, toMs, CODES_PER_RUN * 4, sridByOrderId);
     if (stored) {
       result.orders += stored.length;
       const known = await loadKnownKizCodes(target.cabinetId, stored);
@@ -83,7 +86,7 @@ async function collectForCabinet(
       });
       for (const codes of batch.codes.values()) if (codes.length) result.found += 1;
       if (batch.sample && !result.sample) result.sample = batch.sample;
-      await rememberKizCodes(target.cabinetId, batch.codes);
+      await rememberKizCodes(target.cabinetId, batch.codes, sridByOrderId);
       result.probed += batch.codes.size;
       result.left += Math.max(0, queue.length - batch.codes.size);
       continue;
@@ -122,7 +125,7 @@ async function collectForCabinet(
     for (const codes of probed.values()) if (codes.length) result.found += 1;
     if (batch.sample && !result.sample) result.sample = batch.sample;
 
-    await rememberKizCodes(target.cabinetId, probed);
+    await rememberKizCodes(target.cabinetId, probed, sridByOrderId);
     result.probed += probed.size;
     result.left += Math.max(0, queue.length - probed.size);
   }

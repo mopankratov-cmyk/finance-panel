@@ -6,6 +6,7 @@ import { formatNumber } from "@/lib/analytics/format";
 import type { KizUploadResult, KizWithdrawalSummary } from "@/app/api/warehouse/kiz/route";
 import type { KizCollectResult } from "@/app/api/warehouse/kiz/collect/route";
 import type { KizSalesResult } from "@/app/api/warehouse/kiz/sales/route";
+import type { KizTasksResult } from "@/app/api/warehouse/kiz/tasks/route";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
 
@@ -27,6 +28,7 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
   // запросы. Там, где наших товаров в кабинете ещё не было, читать нечего.
   const [since, setSince] = useState("");
   const [sales, setSales] = useState<KizSalesResult | null>(null);
+  const [tasks, setTasks] = useState<KizTasksResult | null>(null);
   const soldRef = useRef<HTMLInputElement>(null);
   const returnsRef = useRef<HTMLInputElement>(null);
 
@@ -116,6 +118,26 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось собрать проданное");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Самый быстрый источник: КИЗ проставляется в сборочное задание при сборке,
+  // то есть код известен в день отгрузки, а не через неделю. Для трёхдневного
+  // срока вывода это решающая разница.
+  const collectTasks = async () => {
+    setBusy(true);
+    setError(null);
+    setTasks(null);
+    try {
+      const res = await fetch("/api/warehouse/kiz/tasks", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось прочитать сборочные задания");
+      setTasks(json.data as KizTasksResult);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось прочитать сборочные задания");
     } finally {
       setBusy(false);
     }
@@ -257,7 +279,38 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Собрать проданное из Wildberries</p>
+        <p className="text-sm font-medium text-slate-700">Взять из сборочных заданий</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Самый быстрый путь. КИЗ проставляется в задание при сборке, значит код известен в день отгрузки,
+          а не через неделю, когда продажа дойдёт до отчёта о реализации. Для трёхдневного срока вывода это
+          решающая разница. В список попадает только выкупленное: пока товар едет, выводить нечего,
+          а отказ покупателя вернёт код в оборот.
+        </p>
+        <button
+          onClick={() => void collectTasks()}
+          disabled={busy}
+          className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+        >
+          <CloudDownload className="h-4 w-4" /> {busy ? "Читаю задания…" : "Взять из заданий"}
+        </button>
+        {tasks && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+            <p>
+              Заданий с кодами {formatNumber(tasks.withCodes)} · связано с продажей {formatNumber(tasks.linked)} ·
+              выкуплено {formatNumber(tasks.bought)} · добавлено к выводу {formatNumber(tasks.added)}
+            </p>
+            {tasks.unlinked > 0 && (
+              <p className="mt-1 text-xs text-amber-700">
+                У {formatNumber(tasks.unlinked)} заданий код есть, но связать с продажей нечем: не сохранён srid.
+                Он записывается при опросе — эти задания подтянутся, когда синхронизация пройдёт по ним заново.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-medium text-slate-700">Добрать из отчёта о реализации</p>
         <p className="mt-1 text-xs text-slate-500">
           Детализация отчёта о реализации отдаёт код маркировки прямо в строке продажи, вместе с ценой.
           Это то же, что выгружать завершённые заказы руками, только без выгрузки. Учтите задержку:
