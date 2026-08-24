@@ -435,10 +435,10 @@ export function aggregateWeek(
     forPay: weekSales.reduce((s, r) => s + forPayRub(r), 0),
     cogs: cogsForSales(weekSales, costLookup),
     commission: weekSales.reduce((s, r) => s + commissionResidualRub(r), 0),
-    logistics: weekSales.reduce(
-      (s, r) => s + expenseRub(r.delivery_rub) + expenseRub(r.rebill_logistic_cost),
-      0,
-    ),
+    // rebill_logistic_cost (возмещение издержек по перевозке/складским
+    // операциям) намеренно исключён — это отдельная статья, не совпадающая
+    // со "Стоимостью логистики" в эталонной выгрузке (delivery_rub).
+    logistics: weekSales.reduce((s, r) => s + expenseRub(r.delivery_rub), 0),
     // acquiring_fee (эквайринг) намеренно не входит в пул — не относится
     // никуда в P&L по решению владельца, не вычитается из прибыли.
     // storage_fee уходит в warehousePackaging (строка "Хранение") ниже,
