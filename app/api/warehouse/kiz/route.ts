@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import {
@@ -30,6 +31,12 @@ export interface KizWithdrawalSummary {
   withoutPrice: number;
   firstSoldAt: string | null;
   lastSoldAt: string | null;
+  /** Ждут вывода дольше трёх рабочих дней — срок по правилам маркировки нарушен. */
+  overdue: number;
+  /** Продано по FBW: из оборота их вывел сам маркетплейс, нам делать нечего. */
+  fbw: number;
+  /** Уже выведены из оборота по данным WB — второй раз не отправляем. */
+  withdrawn: number;
 }
 
 export interface KizUploadResult {
@@ -51,9 +58,14 @@ const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRS
 const migrationHint = "Примените миграцию 202608240023_kiz_withdrawal.sql";
 
 async function summarize(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<KizWithdrawalSummary> {
-  const rows = await db.from("kiz_withdrawals").select("status, price, sold_at");
-  const data = rows.data ?? [];
+  const data = await loadAllSupabasePages<{ status: string; price: number | null; sold_at: string | null }>((from, to) =>
+    db.from("kiz_withdrawals").select("status, price, sold_at").order("code").range(from, to),
+    { maxPages: 500, label: "Реестр кодов: сводка" });
   const pending = data.filter((row) => row.status === "sold");
+  // Вывести из оборота положено не позднее трёх рабочих дней после отгрузки.
+  // Считаем календарно с запасом: пять календарных дней покрывают три рабочих
+  // с выходными, а завышать просрочку хуже, чем занижать.
+  const overdueBefore = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
   const sortedDates = data.map((row) => row.sold_at).filter(Boolean).map(String).sort();
   return {
     pending: pending.length,
@@ -64,6 +76,9 @@ async function summarize(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): 
     withoutPrice: pending.filter((row) => row.price === null || row.price === undefined).length,
     firstSoldAt: sortedDates[0] ?? null,
     lastSoldAt: sortedDates[sortedDates.length - 1] ?? null,
+    overdue: pending.filter((row) => row.sold_at && String(row.sold_at) < overdueBefore).length,
+    fbw: data.filter((row) => row.status === "fbw").length,
+    withdrawn: data.filter((row) => row.status === "withdrawn").length,
   };
 }
 
@@ -136,18 +151,28 @@ export async function POST(request: NextRequest) {
 
   // Что уже знает реестр: отправленное второй раз не отправляем, возвращённое
   // не выводим вовсе.
-  const knownResult = await db.from("kiz_withdrawals").select("code, status");
-  if (knownResult.error) {
-    const code = knownResult.error.code;
-    return fail(missingMigration(code) ? migrationHint : knownResult.error.message, missingMigration(code) ? 503 : 500);
+  // Постранично: без range PostgREST отдаёт только первую тысячу строк, и
+  // реестр на десятки тысяч кодов выглядел бы почти пустым.
+  let knownRows: { code: string; status: string }[];
+  try {
+    knownRows = await loadAllSupabasePages<{ code: string; status: string }>((from, to) =>
+      db.from("kiz_withdrawals").select("code, status").order("code").range(from, to),
+      { maxPages: 500, label: "Реестр кодов маркировки" });
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    return fail(missingMigration(code) ? migrationHint : String(error), missingMigration(code) ? 503 : 500);
   }
   const alreadySent = new Set<string>();
   const alreadyReturned = new Set<string>();
   const known = new Set<string>();
-  for (const row of knownResult.data ?? []) {
+  for (const row of knownRows) {
     const code = String(row.code);
     known.add(code);
-    if (row.status === "sent" || row.status === "returned_after_sent") alreadySent.add(code);
+    // Уже отправленное и уже выведенное второй раз не отправляем. Коды, которые
+    // вывел сам маркетплейс (FBW), сюда же: выводить их нам не нужно и нельзя.
+    if (row.status === "sent" || row.status === "returned_after_sent" || row.status === "withdrawn" || row.status === "fbw") {
+      alreadySent.add(code);
+    }
     if (row.status === "returned" || row.status === "returned_after_sent") alreadyReturned.add(code);
   }
 
@@ -185,16 +210,20 @@ export async function POST(request: NextRequest) {
 
   let added = 0;
   for (let offset = 0; offset < fresh.length; offset += 500) {
-    const { error } = await db.from("kiz_withdrawals").insert(fresh.slice(offset, offset + 500));
-    if (!error) added += Math.min(500, fresh.length - offset);
+    const { data, error } = await db
+      .from("kiz_withdrawals")
+      .upsert(fresh.slice(offset, offset + 500), { onConflict: "code", ignoreDuplicates: true })
+      .select("code");
+    if (!error) added += (data ?? []).length;
   }
 
   // Возвраты по кодам, которые уже лежат в реестре как проданные: переводим в
   // «вернулось». Отправленные ранее — в отдельный статус, это сигнал человеку.
   let updatedByReturn = 0;
   const returnedCodes = returnsParsed.lines.map((line) => line.code.code!).filter(Boolean);
-  for (let offset = 0; offset < returnedCodes.length; offset += 300) {
-    const chunk = returnedCodes.slice(offset, offset + 300);
+  // Пачки короткие: код длинный, фильтр по сотне кодов не влезает в URL запроса.
+  for (let offset = 0; offset < returnedCodes.length; offset += 40) {
+    const chunk = returnedCodes.slice(offset, offset + 40);
     const { data } = await db
       .from("kiz_withdrawals")
       .update({ status: "returned", updated_at: stamp })

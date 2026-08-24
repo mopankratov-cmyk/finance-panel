@@ -32,11 +32,17 @@ export async function POST(request: NextRequest) {
   if (!db) return fail("Supabase не настроен", 500);
   const session = await getServerSession();
 
-  const limit = Math.min(100_000, Math.max(1, Number(body?.limit) || 100_000));
+  // Честный Знак принимает не больше 30 000 кодов в одном документе вывода.
+  // Отдать больше значит отдать файл, который получатель не сможет загрузить.
+  const CHZ_DOC_LIMIT = 30_000;
+  const limit = Math.min(CHZ_DOC_LIMIT, Math.max(1, Number(body?.limit) || CHZ_DOC_LIMIT));
   const { data, error } = await db
     .from("kiz_withdrawals")
     .select("code, raw_code, price, article, task_id, sold_at, nm_id")
     .eq("status", "sold")
+    // Сортировка для человека, который будет сверять файл глазами: сначала по
+    // товару, внутри товара по дате продажи.
+    .order("article", { ascending: true })
     .order("sold_at", { ascending: true })
     .order("code", { ascending: true })
     .limit(limit);
@@ -78,11 +84,14 @@ export async function POST(request: NextRequest) {
   }
 
   const name = `kiz-na-vyvod-${new Date().toISOString().slice(0, 10)}-${rows.length}.xlsx`;
+  // Сколько осталось после этой партии: если кодов больше лимита документа,
+  // человек должен знать, что файл не последний.
   return new NextResponse(new Uint8Array(file), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="${name}"`,
       "X-Kiz-Count": String(rows.length),
+      "X-Kiz-Limit": String(CHZ_DOC_LIMIT),
     },
   });
 }
