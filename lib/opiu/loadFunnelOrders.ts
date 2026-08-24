@@ -1,7 +1,6 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import {
-  funnelReadinessFingerprint,
-  isFunnelSyncReady,
+  funnelTrustCutoff,
   type FunnelSyncStateRow,
 } from "./funnelReadiness";
 import type { FunnelOrderFact } from "./metrics";
@@ -22,6 +21,7 @@ interface FunnelPageQuery {
   eq(column: string, value: string): FunnelPageQuery;
   gte(column: string, value: string): FunnelPageQuery;
   lte(column: string, value: string): FunnelPageQuery;
+  lt(column: string, value: string): FunnelPageQuery;
   order(column: string, options: { ascending: boolean }): FunnelPageQuery;
   range(from: number, to: number): PromiseLike<QueryResult<FunnelRow[]>>;
 }
@@ -39,6 +39,13 @@ export interface FunnelReadClient {
 }
 
 type FunnelReadClock = () => Date;
+
+/** null = "без ограничений" (позже любой конкретной даты). */
+function cutoffAtLeast(cutoff: string | null, other: string | null): boolean {
+  if (cutoff === null) return true;
+  if (other === null) return false;
+  return other >= cutoff;
+}
 
 async function queryFunnelState(
   client: FunnelReadClient,
@@ -64,42 +71,43 @@ export async function loadReadyFunnelFacts(
 
     const initialState = stateResult.data;
     const initialNow = typeof now === "function" ? now() : now;
-    if (
-      stateResult.error
-      || !isFunnelSyncReady(initialState, cabinetId, initialNow)
-    ) {
-      return [];
-    }
-    if (initialState === null) return [];
-    const initialFingerprint = funnelReadinessFingerprint(initialState);
-    if (initialFingerprint === null) return [];
+    if (stateResult.error) return [];
+    const initialTrust = funnelTrustCutoff(initialState, cabinetId, initialNow);
+    if (!initialTrust.ready) return [];
+    // Часть диапазона на/после cutoff ещё не досинкана предыдущими проходами —
+    // если весь диапазон уже упирается в неё, нет смысла даже запрашивать.
+    if (initialTrust.cutoff !== null && initialTrust.cutoff <= dateFrom) return [];
 
     const rows = await loadAllSupabasePages<FunnelRow>(
-      (from, to) => (client.from("wb_funnel_daily") as FunnelPageQuery)
-        .select("cabinet_id, nm_id, date, orders, orders_sum")
-        .eq("cabinet_id", cabinetId)
-        .gte("date", dateFrom)
-        .lte("date", dateTo)
-        .order("date", { ascending: true })
-        .order("nm_id", { ascending: true })
-        .order("cabinet_id", { ascending: true })
-        .range(from, to),
+      (from, to) => {
+        let query = (client.from("wb_funnel_daily") as FunnelPageQuery)
+          .select("cabinet_id, nm_id, date, orders, orders_sum")
+          .eq("cabinet_id", cabinetId)
+          .gte("date", dateFrom)
+          .lte("date", dateTo);
+        if (initialTrust.cutoff !== null) query = query.lt("date", initialTrust.cutoff);
+        return query
+          .order("date", { ascending: true })
+          .order("nm_id", { ascending: true })
+          .order("cabinet_id", { ascending: true })
+          .range(from, to);
+      },
       { maxPages: 300, label: "ОПиУ: заказы Funnel WB" },
     );
 
     const finalStateResult = await queryFunnelState(client, cabinetId);
     const finalState = finalStateResult.data;
     const finalNow = typeof now === "function" ? now() : now;
-    if (
-      finalStateResult.error
-      || !isFunnelSyncReady(finalState, cabinetId, finalNow)
-    ) {
+    if (finalStateResult.error) return [];
+    const finalTrust = funnelTrustCutoff(finalState, cabinetId, finalNow);
+    if (!finalTrust.ready) return [];
+    // Окно доверия не должно было сжаться, пока мы читали wb_funnel_daily —
+    // иначе часть уже прочитанных строк могла оказаться недосинканной.
+    // (null = "без ограничений" — сравниваем через cutoffAtLeast, а не
+    // напрямую, чтобы поймать и случай "было null, стало ограничено".)
+    if (!cutoffAtLeast(initialTrust.cutoff, finalTrust.cutoff)) {
       return [];
     }
-    if (
-      finalState === null
-      || funnelReadinessFingerprint(finalState) !== initialFingerprint
-    ) return [];
 
     return rows.map((row) => ({
       cabinetId: row.cabinet_id,
