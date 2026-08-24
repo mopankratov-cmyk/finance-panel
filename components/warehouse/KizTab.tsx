@@ -21,6 +21,10 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collected, setCollected] = useState<KizCollectResult | null>(null);
+  // С какой даты читать отчёт. Не украшение: у метода лимит 10 запросов за
+  // 5 часов, период режется на месячные окна, и лишние месяцы — это выброшенные
+  // запросы. Там, где наших товаров в кабинете ещё не было, читать нечего.
+  const [since, setSince] = useState("");
   const soldRef = useRef<HTMLInputElement>(null);
   const returnsRef = useRef<HTMLInputElement>(null);
 
@@ -78,7 +82,7 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       const res = await fetch("/api/warehouse/kiz/collect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(since ? { from: since } : {}),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось собрать коды");
@@ -179,22 +183,36 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Собрать коды из Wildberries</p>
+        <p className="text-sm font-medium text-slate-700">Отметить то, что уже выведено</p>
         <p className="mt-1 text-xs text-slate-500">
-          Отчёт по маркированным товарам помнит около полугода и отдаёт весь период одним запросом.
-          Из него берутся код, цена реализации и признак операции: продано или вернулось в оборот.
-          Чужие коды отсекаются товарным контуром кабинета — у агентского кабинета в отчёте
-          большинство строк не наши, и вывести их из оборота мы всё равно не можем.
-          Отдельно отсекается FBW: при этой схеме товар в момент продажи принадлежит маркетплейсу,
-          и код из оборота выводит он сам. Нам остаётся только FBS.
+          Отчёт Wildberries по маркированным товарам показывает <b>совершённые</b> операции с кодом: вывод из
+          оборота и возврат в оборот. При FBW там всё, потому что маркетплейс выводит сам; при FBS там пусто
+          ровно потому, что никто ещё не вывел. Поэтому отчёт даёт не список к выводу, а список «этого делать
+          не надо» — он вычитается из того, что уходит на вывод, чтобы не выводить дважды.
+          Чужие коды отсекаются товарным контуром кабинета: у агентского кабинета большинство строк не наши.
         </p>
-        <button
-          onClick={() => void collect()}
-          disabled={busy}
-          className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-        >
-          <CloudDownload className="h-4 w-4" /> {busy ? "Читаю отчёт WB…" : "Собрать за полгода"}
-        </button>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            С даты
+            <input
+              type="date"
+              value={since}
+              onChange={(e) => setSince(e.target.value)}
+              className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <button
+            onClick={() => void collect()}
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+          >
+            <CloudDownload className="h-4 w-4" /> {busy ? "Читаю отчёт WB…" : since ? "Собрать с этой даты" : "Собрать за полгода"}
+          </button>
+          <span className="text-xs text-slate-400">
+            Пусто — полгода назад, дальше отчёт не помнит. Ставьте дату, с которой ваши товары появились в кабинете:
+            период режется на месячные окна, а у метода лимит 10 запросов за 5 часов.
+          </span>
+        </div>
         {collected && (
           <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
             <p>Период {collected.from} — {collected.to}. Добавлено {formatNumber(collected.addedTotal)}
@@ -204,7 +222,8 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
                 <li key={row.name} className={row.error ? "text-red-700" : "text-emerald-700"}>
                   {row.name}: {row.error
                     ? row.error
-                    : `отчёт ${formatNumber(row.rows)} строк, наших ${formatNumber(row.ours)}, добавлено ${formatNumber(row.added)}${row.skipped ? `, уже знали ${formatNumber(row.skipped)}` : ""}`}
+                    : `отчёт ${formatNumber(row.rows)} строк за ${row.windows} окон, наших ${formatNumber(row.ours)} · FBS ${formatNumber(row.fbs)}, FBW ${formatNumber(row.fbw)}, схема неизвестна ${formatNumber(row.unknown)} · записано ${formatNumber(row.added)}`}
+                  {row.failedWindows.length > 0 && ` · не отдались окна: ${row.failedWindows.join(", ")}`}
                 </li>
               ))}
             </ul>
@@ -213,9 +232,10 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Загрузить период файлами</p>
+        <p className="text-sm font-medium text-slate-700">Собрать список к выводу</p>
         <p className="mt-1 text-xs text-slate-500">
-          Запасной путь для периодов старше горизонта отчёта WB.
+          Это главный путь: КИЗ проставляются в сборочном задании при сборке, и в выгрузке завершённых
+          заказов они уже есть — а из оборота их ещё никто не выводил.
           Первый файл — «Поставки → ФБС → завершённые заказы» с фильтром «товар выкуплен»: в нём КИЗ и цена реализации.
           Второй — «Аналитика → Отчёты → по возвратам и перемещению товара» за тот же диапазон дат.
           Возвраты вычитаются: вернувшийся товар снова в обороте WB, и выводить его нельзя.

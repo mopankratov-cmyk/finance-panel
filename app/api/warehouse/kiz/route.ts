@@ -168,7 +168,11 @@ export async function POST(request: NextRequest) {
   for (const row of knownRows) {
     const code = String(row.code);
     known.add(code);
-    if (row.status === "sent" || row.status === "returned_after_sent") alreadySent.add(code);
+    // Уже отправленное и уже выведенное второй раз не отправляем. Коды, которые
+    // вывел сам маркетплейс (FBW), сюда же: выводить их нам не нужно и нельзя.
+    if (row.status === "sent" || row.status === "returned_after_sent" || row.status === "withdrawn" || row.status === "fbw") {
+      alreadySent.add(code);
+    }
     if (row.status === "returned" || row.status === "returned_after_sent") alreadyReturned.add(code);
   }
 
