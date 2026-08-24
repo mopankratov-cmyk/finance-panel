@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, PackageX, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
+import { ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, QrCode, PackageX, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BalancesTab } from "@/components/warehouse/BalancesTab";
 import { DocsTab } from "@/components/warehouse/DocsTab";
+import { KizTab } from "@/components/warehouse/KizTab";
 import { MovementTab } from "@/components/warehouse/MovementTab";
 import { MovesTab } from "@/components/warehouse/MovesTab";
 import { ReceiptsTab } from "@/components/warehouse/ReceiptsTab";
@@ -15,7 +16,7 @@ import { WarehouseShell } from "@/components/warehouse/WarehouseShell";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 
-type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "products" | "docs" | "moves" | "warehouses";
+type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "products" | "kiz" | "docs" | "moves" | "warehouses";
 
 const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "balances", label: "Остатки", icon: Boxes },
@@ -24,6 +25,7 @@ const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: s
   { key: "movement", label: "Перемещение", icon: ArrowLeftRight },
   { key: "defects", label: "Брак", icon: PackageX },
   { key: "products", label: "Товары", icon: Package },
+  { key: "kiz", label: "Маркировка", icon: QrCode },
   { key: "docs", label: "Документы", icon: FileText },
   { key: "moves", label: "Движения", icon: ScrollText },
   { key: "warehouses", label: "Склады", icon: WarehouseIcon },
@@ -175,6 +177,8 @@ export function WarehousePage() {
         <DefectsTab entityId={entityId} warehouses={warehouses} refreshKey={refreshKey} onChanged={refresh} />
       ) : tab === "products" ? (
         <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} />
+      ) : tab === "kiz" ? (
+        <KizTab refreshKey={refreshKey} />
       ) : tab === "docs" ? (
         <DocsTab entityId={entityId} refreshKey={refreshKey} onChanged={refresh} />
       ) : tab === "moves" ? (
