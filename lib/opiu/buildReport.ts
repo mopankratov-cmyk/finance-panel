@@ -128,7 +128,7 @@ export function buildOpiuReport(
     { id: "logistics_pct",  label: "% логистики",                                     kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.logistics, m.revenue)) },
     { id: "cogs",           label: "Себестоимость, руб",                              kind: "metric",  expense: true, values: cols((m) => m.cogs) },
     { id: "cogs_pct",       label: "% себестоимости",                                 kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.cogs, m.revenue)) },
-    { id: "warehouse",      label: "Хранение / упаковка склада, руб",                 kind: "metric",  expense: true, editable: true, values: cols((m) => m.warehousePackaging) },
+    { id: "warehouse",      label: "Хранение / упаковка склада, руб",                 kind: "metric",  expense: true, values: cols((m) => m.warehousePackaging) },
     { id: "storage_pct",    label: "% хранения",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.warehousePackaging, m.revenue)) },
     { id: "penalties",      label: "Штрафы и доплаты, руб",                           kind: "metric",  expense: true, values: cols((m) => m.penalties) },
     { id: "other",          label: "Прочие удержания, руб",                           kind: "metric",  expense: true, values: cols((m) => m.otherDeductions) },
