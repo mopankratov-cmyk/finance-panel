@@ -31,17 +31,9 @@ function pct(numerator: number, denominator: number): number | null {
   return (numerator / denominator) * 100;
 }
 
-/**
- * % выкупа физически не может быть больше 100% — если формула даёт больше,
- * это всегда значит, что revenue (по дате продажи) и ordersRub (по дате заказа)
- * сравнивают разные периоды (например, заказы ещё не подтянулись за свежую
- * неделю), а не реальный бизнес-показатель. Показываем null, а не вводящее
- * в заблуждение число.
- */
-function buyoutPct(revenue: number, ordersRub: number): number | null {
-  const value = pct(revenue, ordersRub);
-  if (value === null || value > 100) return null;
-  return value;
+/** % выкупа = Выручка без СПП / Заказы — показываем реальное значение как есть, даже если >100%. */
+function buyoutPct(revenueWithoutSpp: number, ordersRub: number): number | null {
+  return pct(revenueWithoutSpp, ordersRub);
 }
 
 /**
@@ -69,7 +61,7 @@ function derived(m: WeekRawMetrics) {
     m.withdrawNow;
   const gross = marginal - m.adsSpend;
   return {
-    buyoutPct: buyoutPct(m.revenue, m.ordersRub),
+    buyoutPct: buyoutPct(m.revenueWithoutSpp, m.ordersRub),
     marginal,
     marginalPct: pct(marginal, m.revenueWithoutSpp),
     gross,
