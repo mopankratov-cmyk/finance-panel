@@ -40,6 +40,9 @@ export async function POST(request: NextRequest) {
     .from("kiz_withdrawals")
     .select("code, raw_code, price, article, task_id, sold_at, nm_id")
     .eq("status", "sold")
+    // Сортировка для человека, который будет сверять файл глазами: сначала по
+    // товару, внутри товара по дате продажи.
+    .order("article", { ascending: true })
     .order("sold_at", { ascending: true })
     .order("code", { ascending: true })
     .limit(limit);

@@ -97,48 +97,43 @@ export async function POST(request: NextRequest) {
         else if (!sold.has(row.code)) sold.set(row.code, row);
       }
 
-      const known = new Map<string, string>();
-      const codes = [...new Set([...sold.keys(), ...back])];
-      for (let offset = 0; offset < codes.length; offset += 400) {
-        const chunk = codes.slice(offset, offset + 400);
-        const { data, error } = await db.from("kiz_withdrawals").select("code, status").in("code", chunk);
-        if (error) {
-          if (missingMigration(error.code)) return fail(migrationHint, 503);
-          throw new Error(error.message);
-        }
-        for (const row of data ?? []) known.set(String(row.code), String(row.status));
-      }
-
-      const fresh = [...sold.values()]
-        .filter((row) => !known.has(row.code))
-        .map((row) => ({
-          code: row.code,
-          raw_code: row.code,
-          gtin: row.code.slice(2, 16),
-          serial: row.code.slice(18, 31),
-          cabinet_id: link.cabinetId,
-          nm_id: row.nmId,
-          barcode: row.barcode,
-          price: row.price,
-          sold_at: row.fiscalAt,
-          // Код, по которому в этом же окне пришёл возврат, продавать обратно
-          // нельзя: он снова в обороте.
-          status: back.has(row.code) ? "returned" : "sold",
-          source: `Отчёт WB по маркировке ${from}…${to}`,
-          updated_at: new Date().toISOString(),
-        }));
+      // Дедуп держит первичный ключ таблицы, а не предварительное чтение.
+      // Читать «что уже знаем» списком кодов нельзя: код длинный, и запрос с
+      // сотнями кодов в строке URL просто не доходит до базы.
+      const fresh = [...sold.values()].map((row) => ({
+        code: row.code,
+        raw_code: row.code,
+        gtin: row.code.slice(2, 16),
+        serial: row.code.slice(18, 31),
+        cabinet_id: link.cabinetId,
+        nm_id: row.nmId,
+        barcode: row.barcode,
+        price: row.price,
+        sold_at: row.fiscalAt,
+        // Код, по которому в этом же окне пришёл возврат, продавать обратно
+        // нельзя: он снова в обороте.
+        status: back.has(row.code) ? "returned" : "sold",
+        source: `Отчёт WB по маркировке ${from}…${to}`,
+        updated_at: new Date().toISOString(),
+      }));
 
       for (let offset = 0; offset < fresh.length; offset += 500) {
-        const { error } = await db.from("kiz_withdrawals").insert(fresh.slice(offset, offset + 500));
-        if (!error) stat.added += Math.min(500, fresh.length - offset);
+        const chunk = fresh.slice(offset, offset + 500);
+        const { data, error } = await db
+          .from("kiz_withdrawals")
+          .upsert(chunk, { onConflict: "code", ignoreDuplicates: true })
+          .select("code");
+        if (error) throw new Error(error.message);
+        stat.added += (data ?? []).length;
       }
-      stat.skipped = sold.size - fresh.length;
+      stat.skipped = sold.size - stat.added;
 
       // Возвраты по кодам, уже лежащим в реестре: проданное переводим, а
       // отправленное помечаем отдельно — это сигнал человеку, а не тихая правка.
-      const backCodes = [...back].filter((code) => known.has(code));
-      for (let offset = 0; offset < backCodes.length; offset += 300) {
-        const chunk = backCodes.slice(offset, offset + 300);
+      // Пачки короткие: код длинный, и фильтр по сотне кодов уже не влезает в URL.
+      const backCodes = [...back];
+      for (let offset = 0; offset < backCodes.length; offset += 40) {
+        const chunk = backCodes.slice(offset, offset + 40);
         const stamp = new Date().toISOString();
         const { data } = await db.from("kiz_withdrawals")
           .update({ status: "returned", updated_at: stamp }).in("code", chunk).eq("status", "sold").select("code");
