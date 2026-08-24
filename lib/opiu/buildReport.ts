@@ -44,26 +44,32 @@ function buyoutPct(revenue: number, ordersRub: number): number | null {
   return value;
 }
 
+/**
+ * Маржинальный доход = Выручка без СПП минус операционные расходы:
+ * комиссия, логистика, себестоимость, штрафы, хранение, прочие удержания,
+ * Джем, транзитные поставки, платная приёмка. "Подготовка" (упаковка) сюда
+ * тоже входит по методологии, но пока это строка-заглушка без метрики —
+ * добавится сама, как только появится поле в WeekRawMetrics.
+ * "Вывести сейчас", "Перевод на баланс заёмщика" и "Пени" сознательно НЕ
+ * входят — это не операционные расходы, а движения денег/долга.
+ */
 function derived(m: WeekRawMetrics) {
   const marginal =
-    m.revenue -
-    m.cogs -
-    m.warehousePackaging -
+    m.revenueWithoutSpp -
     m.commission -
     m.logistics -
-    m.otherDeductions -
+    m.cogs -
     m.penalties -
+    m.warehousePackaging -
+    m.otherDeductions -
     m.subscriptionJem -
     m.transitDelivery -
-    m.withdrawNow -
-    m.acceptance -
-    m.loanTransfer -
-    m.penaltyLoan;
+    m.acceptance;
   const gross = marginal - m.adsSpend;
   return {
     buyoutPct: buyoutPct(m.revenue, m.ordersRub),
     marginal,
-    marginalPct: pct(marginal, m.revenue),
+    marginalPct: pct(marginal, m.revenueWithoutSpp),
     gross,
     grossPct: pct(gross, m.revenue),
   };
