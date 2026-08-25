@@ -28,6 +28,7 @@ export interface StockDocDetail {
   entityInn: string | null;
   warehouseName: string | null;
   targetWarehouseName: string | null;
+  cabinetName: string | null;
   occurredAt: string;
   note: string | null;
   createdBy: string | null;
@@ -72,11 +73,15 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
   // должно быть, иначе бумага и учёт разойдутся.
   let lines: StockDocLine[] = [];
   if (doc.movement_doc_id) {
-    const movesResult = await db
+    // Одна проводка может держать несколько накладных — по одной на кабинет.
+    // Документ показывает только свои строки, иначе бумага на Ozon перечислит
+    // и то, что уехало на Wildberries.
+    let movesQuery = db
       .from("stock_moves")
       .select("warehouse_id, cabinet_id, variant_id, nm_id, article, qty, amount, kind, note")
-      .eq("doc_id", String(doc.movement_doc_id))
-      .order("id");
+      .eq("doc_id", String(doc.movement_doc_id));
+    if (doc.cabinet_id) movesQuery = movesQuery.eq("cabinet_id", String(doc.cabinet_id));
+    const movesResult = await movesQuery.order("id");
     if (movesResult.error) return fail(movesResult.error.message, 500);
 
     const variantIds = [...new Set((movesResult.data ?? []).map((row) => String(row.variant_id)).filter(Boolean))];
@@ -118,6 +123,7 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
     entityInn: entity.inn,
     warehouseName: doc.warehouse_id ? names.get(String(doc.warehouse_id)) ?? null : null,
     targetWarehouseName: doc.target_warehouse_id ? names.get(String(doc.target_warehouse_id)) ?? null : null,
+    cabinetName: doc.cabinet_id ? cabinets.get(String(doc.cabinet_id)) ?? "кабинет" : null,
     occurredAt: String(doc.occurred_at),
     note: doc.note,
     createdBy: doc.created_by,

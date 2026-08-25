@@ -19,6 +19,8 @@ export interface ShipmentResult {
   lines: number;
   qty: number;
   amount: number;
+  /** По накладной на кабинет: машина на склад Wildberries и машина на Ozon — разные. */
+  docs?: { number: string; cabinetId: string; qty: number }[];
 }
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
@@ -88,19 +90,42 @@ export async function POST(request: NextRequest) {
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 
-  // Документ пишется ПОСЛЕ проводки и её не отменяет: движения уже в регистре,
+  // Документы пишутся ПОСЛЕ проводки и её не отменяют: движения уже в регистре,
   // и отказ из-за незаписанной карточки соврал бы про неудачу там, где операция
   // прошла. Без номера операция просто останется безымянной.
-  const doc = await recordStockDoc(db, {
-    kind: "shipment",
-    legalEntityId: scope.entity.id,
-    warehouseId: body.warehouseId, cabinetId: null, targetWarehouseId: null,
-    note: body.note?.trim() || null,
-    result: data,
-    actor: session?.email ?? null,
-  });
+  //
+  // Проводка одна — накладных столько, сколько кабинетов: товар уезжает разными
+  // машинами в разные места, и общий лист на три кабинета водитель предъявить
+  // не может. Атомарность при этом сохраняется: остаток списан одним вызовом,
+  // и частично уехавшей отгрузки не бывает.
+  const movementDocId = (data as Record<string, unknown> | null)?.shipmentId;
+  const moves = typeof movementDocId === "string" && movementDocId
+    ? await db.from("stock_moves").select("cabinet_id, qty, amount").eq("doc_id", movementDocId)
+    : { data: [], error: null };
+  const byCabinet = new Map<string, { qty: number; amount: number; lines: number }>();
+  for (const row of ((moves.data ?? []) as { cabinet_id: string | null; qty: number; amount: number }[])) {
+    const key = row.cabinet_id ? String(row.cabinet_id) : "";
+    const bucket = byCabinet.get(key) ?? { qty: 0, amount: 0, lines: 0 };
+    bucket.qty += Math.abs(Number(row.qty));
+    bucket.amount += Math.abs(Number(row.amount));
+    bucket.lines += 1;
+    byCabinet.set(key, bucket);
+  }
 
-  const payload = doc ? { ...(data as Record<string, unknown>), docNumber: doc.number, docId: doc.id } : data;
+  const docs: { number: string; cabinetId: string; qty: number }[] = [];
+  for (const [cabinetId, totals] of byCabinet) {
+    const doc = await recordStockDoc(db, {
+      kind: "shipment",
+      legalEntityId: scope.entity.id,
+      warehouseId: body.warehouseId, cabinetId: cabinetId || null, targetWarehouseId: null,
+      note: body.note?.trim() || null,
+      result: { shipmentId: movementDocId, cabinetId: cabinetId || null, ...totals },
+      actor: session?.email ?? null,
+    });
+    if (doc) docs.push({ number: doc.number, cabinetId, qty: totals.qty });
+  }
+
+  const payload = { ...(data as Record<string, unknown>), docs };
   await settleDocKey(db, docKey, payload);
   return NextResponse.json({ data: payload as ShipmentResult, error: null }, { status: 201 });
 }

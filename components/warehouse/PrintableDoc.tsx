@@ -21,6 +21,9 @@ export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
   // В перемещении строки идут парами «минус там, плюс тут» — печатаем только
   // расходную половину, иначе в накладной каждая позиция задвоится.
   const lines = doc.kind === "transfer" ? doc.lines.filter((row) => row.qty < 0) : doc.lines;
+  // Кабинет в строках нужен только там, где их несколько: у накладной на один
+  // кабинет он уже стоит в шапке, и колонка с одним и тем же словом — шум.
+  const showCabinetColumn = doc.kind === "shipment" && !doc.cabinetName;
 
   return (
     <div className="mx-auto max-w-[820px] bg-white p-8 text-slate-900 print:p-0">
@@ -58,6 +61,12 @@ export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
               <td className="py-1">{doc.warehouseName}{doc.targetWarehouseName ? ` → ${doc.targetWarehouseName}` : ""}</td>
             </tr>
           )}
+          {doc.cabinetName && (
+            <tr>
+              <td className="py-1 align-top text-slate-500">{doc.kind === "shipment" ? "Кому" : "Кабинет"}</td>
+              <td className="py-1 font-medium">{doc.cabinetName}</td>
+            </tr>
+          )}
           {doc.note && (
             <tr><td className="py-1 align-top text-slate-500">Основание</td><td className="py-1">{doc.note}</td></tr>
           )}
@@ -70,7 +79,7 @@ export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
             <th className="w-8 py-2 text-left font-semibold">№</th>
             <th className="py-2 text-left font-semibold">Товар</th>
             <th className="py-2 text-left font-semibold">Штрихкод</th>
-            {doc.kind === "shipment" && <th className="py-2 text-left font-semibold">Кабинет</th>}
+            {showCabinetColumn && <th className="py-2 text-left font-semibold">Кабинет</th>}
             <th className="py-2 text-right font-semibold">Кол-во</th>
             <th className="py-2 text-right font-semibold">Сумма, ₽</th>
           </tr>
@@ -84,7 +93,7 @@ export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
                 {row.nmId && <span className="ml-2 text-xs text-slate-400">WB {row.nmId}</span>}
               </td>
               <td className="py-2 text-slate-500">{row.barcode ?? "—"}</td>
-              {doc.kind === "shipment" && <td className="py-2 text-slate-600">{row.cabinetName ?? "—"}</td>}
+              {showCabinetColumn && <td className="py-2 text-slate-600">{row.cabinetName ?? "—"}</td>}
               <td className="py-2 text-right font-semibold tabular-nums">{formatNumber(Math.abs(row.qty))}</td>
               <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(Math.abs(row.amount)))}</td>
             </tr>
@@ -92,7 +101,7 @@ export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-400 font-semibold">
-            <td className="py-2" colSpan={doc.kind === "shipment" ? 4 : 3}>Итого</td>
+            <td className="py-2" colSpan={showCabinetColumn ? 4 : 3}>Итого</td>
             <td className="py-2 text-right tabular-nums">{formatNumber(doc.totalQty)}</td>
             <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(doc.totalAmount))}</td>
           </tr>

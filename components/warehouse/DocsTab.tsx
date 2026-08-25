@@ -111,6 +111,7 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                   <td className="px-4 py-2.5 text-slate-600">
                     {row.warehouseName ?? "—"}
                     {row.targetWarehouseName && <span className="text-slate-400"> → {row.targetWarehouseName}</span>}
+                    {row.cabinetName && <span className="text-slate-400"> → {row.cabinetName}</span>}
                   </td>
                   <td className="px-4 py-2.5 text-right text-slate-600">{row.lines || "—"}</td>
                   <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{formatNumber(row.qty)}</td>

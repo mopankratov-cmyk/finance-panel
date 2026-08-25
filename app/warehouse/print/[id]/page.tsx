@@ -38,11 +38,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   let lines: StockDocLine[] = [];
   if (doc.movement_doc_id) {
-    const moves = await db
+    let movesQuery = db
       .from("stock_moves")
       .select("warehouse_id, cabinet_id, variant_id, nm_id, article, qty, amount, kind, note")
-      .eq("doc_id", String(doc.movement_doc_id))
-      .order("id");
+      .eq("doc_id", String(doc.movement_doc_id));
+    if (doc.cabinet_id) movesQuery = movesQuery.eq("cabinet_id", String(doc.cabinet_id));
+    const moves = await movesQuery.order("id");
     const variantIds = [...new Set((moves.data ?? []).map((row) => String(row.variant_id)).filter(Boolean))];
     const sizes = new Map<string, { size: string; barcode: string | null }>();
     if (variantIds.length > 0) {
@@ -73,6 +74,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     entityName: entity.name,
     entityInn: entity.inn,
     warehouseName: doc.warehouse_id ? names.get(String(doc.warehouse_id)) ?? null : null,
+    cabinetName: doc.cabinet_id ? cabinets.get(String(doc.cabinet_id)) ?? "кабинет" : null,
     targetWarehouseName: doc.target_warehouse_id ? names.get(String(doc.target_warehouse_id)) ?? null : null,
     occurredAt: String(doc.occurred_at),
     note: doc.note,

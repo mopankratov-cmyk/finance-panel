@@ -141,7 +141,16 @@ export function ShipmentTab({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось отгрузить");
-      setDone(`Отгружено ${formatNumber(json.data.qty)} шт на ${formatNumber(Math.round(json.data.amount))} ₽`);
+      // Накладных столько, сколько кабинетов: человек должен знать, сколько
+      // бумаг печатать и какая куда.
+      const papers = (json.data.docs ?? []) as { number: string; cabinetId: string; qty: number }[];
+      const named = papers
+        .map((doc) => `${doc.number} → ${cabinets.find((cabinet) => cabinet.id === doc.cabinetId)?.name ?? "кабинет"} (${formatNumber(doc.qty)} шт)`)
+        .join(", ");
+      setDone(
+        `Отгружено ${formatNumber(json.data.qty)} шт на ${formatNumber(Math.round(json.data.amount))} ₽`
+        + (named ? `. Накладные: ${named}` : ""),
+      );
       setAmounts({});
       setNote("");
       forget();

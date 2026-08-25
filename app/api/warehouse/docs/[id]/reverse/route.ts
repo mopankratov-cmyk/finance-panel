@@ -7,7 +7,7 @@ import { resolveEntity } from "@/lib/warehouse/entityAccess";
 export const dynamic = "force-dynamic";
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
-const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205", "42883"].includes(code ?? "");
+const missingMigration = (code?: string) => ["42P01", "42703", "PGRST202", "PGRST204", "PGRST205", "42883"].includes(code ?? "");
 const migrationHint = "Примените миграции 202608240021 и 202608240022";
 
 /**
@@ -74,11 +74,15 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   if (created.error || !created.data) return fail(created.error?.message ?? "Не удалось завести сторно", 500);
 
   const movementDocId = `reversal:${created.data.id}`;
+  // Кабинет документа — граница отмены. Одна проводка может держать несколько
+  // накладных, и отмена поездки на Ozon не должна возвращать на склад то, что
+  // уже уехало на Wildberries.
   const { data, error } = await db.rpc("post_doc_reversal", {
     p_source_movement_doc_id: doc.movement_doc_id,
     p_new_movement_doc_id: movementDocId,
     p_source_number: String(doc.number),
     p_actor: session?.email ?? null,
+    p_cabinet_id: doc.cabinet_id ?? null,
   });
 
   if (error) {
@@ -87,6 +91,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     await db.from("stock_docs").delete().eq("id", created.data.id);
     if (error.message.includes("already reversed")) return fail("Документ уже сторнирован", 409);
     if (error.message.includes("no movements")) return fail("У документа нет движений — сторнировать нечего", 400);
+    if (missingMigration(error.code)) {
+      return fail("Примените миграцию 202608250027_doc_reversal_cabinet.sql", 503);
+    }
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 

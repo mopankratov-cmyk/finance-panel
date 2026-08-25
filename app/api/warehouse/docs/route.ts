@@ -15,6 +15,8 @@ export interface StockDocRow {
   status: "draft" | "posted" | "reversed";
   warehouseName: string | null;
   targetWarehouseName: string | null;
+  /** Кабинет-адресат отгрузки. У перемещения и списания его нет. */
+  cabinetName: string | null;
   occurredAt: string;
   note: string | null;
   qty: number;
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await db
     .from("stock_docs")
-    .select("id, number, kind, status, warehouse_id, target_warehouse_id, occurred_at, note, result, created_by, reversed_by, reverses")
+    .select("id, number, kind, status, warehouse_id, target_warehouse_id, cabinet_id, occurred_at, note, result, created_by, reversed_by, reverses")
     .eq("legal_entity_id", scope.entity.id)
     .order("occurred_at", { ascending: false })
     .order("number", { ascending: false })
@@ -61,6 +63,7 @@ export async function GET(request: NextRequest) {
 
   const warehousesResult = await db.from("warehouses").select("id, name");
   const names = new Map((warehousesResult.data ?? []).map((row) => [String(row.id), String(row.name)]));
+  const cabinets = new Map(scope.entity.cabinets.map((link) => [link.cabinetId, link.cabinetName]));
 
   // Номера связанных документов: в журнале ссылка должна читаться как номер,
   // а не как идентификатор.
@@ -78,6 +81,7 @@ export async function GET(request: NextRequest) {
     status: row.status as StockDocRow["status"],
     warehouseName: row.warehouse_id ? names.get(String(row.warehouse_id)) ?? "склад удалён" : null,
     targetWarehouseName: row.target_warehouse_id ? names.get(String(row.target_warehouse_id)) ?? "склад удалён" : null,
+    cabinetName: row.cabinet_id ? cabinets.get(String(row.cabinet_id)) ?? "кабинет" : null,
     occurredAt: String(row.occurred_at),
     note: row.note,
     qty: num(row.result, "qty"),
