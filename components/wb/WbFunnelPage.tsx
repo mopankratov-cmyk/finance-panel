@@ -33,6 +33,9 @@ interface FunnelSku {
   orders_sum_window: number;
   drr_window: number | null;
   stock: number;
+  stock_fbo: number;
+  /** null — остатки склада продавца ещё не собирались: это не ноль. */
+  stock_fbs: number | null;
 }
 
 interface SkusData { skus: FunnelSku[]; metrics_period: string; error?: string }
@@ -97,10 +100,13 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
    *              объёма показов вводит в заблуждение (12,5% с восьми показов);
    *   воронка  → «Заказы, ₽»: деньги, ради которых считается всё остальное.
    */
-  const [collapsed, setCollapsed] = useState<{ ads: boolean; funnel: boolean }>({ ads: false, funnel: false });
-  const toggleGroup = (key: "ads" | "funnel") => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+  const [collapsed, setCollapsed] = useState<{ ads: boolean; funnel: boolean; stocks: boolean }>({ ads: false, funnel: false, stocks: true });
+  const toggleGroup = (key: "ads" | "funnel" | "stocks") => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   const adsCols = collapsed.ads ? 1 : 2;
   const funnelCols = collapsed.funnel ? 1 : 5;
+  // Остатки по умолчанию свёрнуты до общего: он отвечает на вопрос «хватит ли
+  // товара», а разбивка нужна, только когда ответ «нет».
+  const stockCols = collapsed.stocks ? 1 : 3;
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
@@ -204,7 +210,14 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
     const ordersSum = sum((sku) => sku.orders_sum_window);
     const advert = filtered.reduce((total, sku) =>
       total + (sku.drr_window != null ? (sku.drr_window * sku.orders_sum_window) / 100 : 0), 0);
+    const stockFbo = sum((sku) => sku.stock_fbo);
+    // Если хоть по одному SKU остатки продавца не собирались, суммы по ярлыку
+    // нет: сложить известное с неизвестным и выдать это за итог — обман.
+    const fbsKnown = filtered.every((sku) => sku.stock_fbs != null);
     return {
+      stockFbo,
+      stockFbs: fbsKnown ? sum((sku) => sku.stock_fbs) : null,
+      stockTotal: sum((sku) => sku.stock),
       shows,
       ctr: shows > 0 ? (clicks / shows) * 100 : null,
       openCard,
@@ -280,6 +293,11 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                       Товарная воронка <span aria-hidden="true" className="text-slate-300">{collapsed.funnel ? "▸" : "▾"}</span>
                     </button>
                   </th>
+                  <th colSpan={stockCols} className="border-b border-r border-slate-200 p-0 text-center">
+                    <button type="button" onClick={() => toggleGroup("stocks")} title={collapsed.stocks ? "Развернуть остатки по схемам" : "Свернуть до общего остатка"} className="w-full px-2 py-1 text-[9px] uppercase tracking-wide text-slate-400 hover:text-violet-600">
+                      Остатки <span aria-hidden="true" className="text-slate-300">{collapsed.stocks ? "▸" : "▾"}</span>
+                    </button>
+                  </th>
                   <th rowSpan={2} title={MARKETPLACE_METRICS.drrOrders.definition} className="min-w-[86px] border-b border-r border-slate-200 px-2 text-right">ДРР к заказам</th>
                   {dates.map((date) => <th rowSpan={2} key={date} className="min-w-[76px] border-b border-slate-200 px-1 text-center font-semibold">{dayLabel(date)}</th>)}
                 </tr>
@@ -293,6 +311,11 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                     <th className="min-w-[68px] border-b border-slate-200 px-2 text-right">Заказы, шт</th>
                   </>}
                   <th title={MARKETPLACE_METRICS.ordersRevenue.definition} className="min-w-[92px] border-b border-r border-slate-200 px-2 text-right">Заказы, ₽</th>
+                  {collapsed.stocks ? null : <>
+                    <th title="Остаток на складах Wildberries" className="min-w-[72px] border-b border-slate-200 px-2 text-right">FBO</th>
+                    <th title="Остаток на складе продавца. Прочерк — обход ещё не собирал этот кабинет" className="min-w-[72px] border-b border-slate-200 px-2 text-right">FBS</th>
+                  </>}
+                  <th title="FBO плюс склад продавца" className="min-w-[76px] border-b border-r border-slate-200 px-2 text-right">Общий</th>
                 </tr>
               </thead>
               <tbody>
@@ -308,6 +331,11 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                       <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.ordersCount)}</td>
                     </>}
                     <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.ordersSum)} ₽</td>
+                    {collapsed.stocks ? null : <>
+                      <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.stockFbo)}</td>
+                      <td className="border-b border-violet-100 px-2 text-right tabular-nums">{tagSummary.stockFbs == null ? "—" : fmt(tagSummary.stockFbs)}</td>
+                    </>}
+                    <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.stockTotal)}</td>
                     <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.drr)}</td>
                     {dates.map((date) => {
                       if (currentMetric.kind === "pct") return <td key={date} className="border-b border-violet-100 px-1 text-center text-violet-300">—</td>;
@@ -319,9 +347,9 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                     })}
                   </tr>
                 ) : null}
-                {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + dates.length} /></tr> : null}
-                {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => { const value = daily?.metrics[String(sku.nm)]?.[date]?.[metric]; return <td key={date} className="border-b border-slate-100 px-1 text-center"><span className={`inline-flex min-h-7 min-w-[66px] items-center justify-center rounded-md px-1 font-semibold tabular-nums ${cellTone(metric, value)}`}>{formatCell(value)}</span></td>; })}</tr>)}
-                {rowWindow.end < filtered.length ? <tr aria-hidden="true" style={{ height: (filtered.length - rowWindow.end) * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + dates.length} /></tr> : null}
+                {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + stockCols + dates.length} /></tr> : null}
+                {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td>{collapsed.stocks ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.stock_fbo)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{sku.stock_fbs == null ? <span className="text-slate-300" title="Остатки склада продавца ещё не собирались">—</span> : fmt(sku.stock_fbs)}</td></>}<td className={`border-b border-r border-slate-100 px-2 text-right tabular-nums ${sku.stock === 0 ? "font-semibold text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => { const value = daily?.metrics[String(sku.nm)]?.[date]?.[metric]; return <td key={date} className="border-b border-slate-100 px-1 text-center"><span className={`inline-flex min-h-7 min-w-[66px] items-center justify-center rounded-md px-1 font-semibold tabular-nums ${cellTone(metric, value)}`}>{formatCell(value)}</span></td>; })}</tr>)}
+                {rowWindow.end < filtered.length ? <tr aria-hidden="true" style={{ height: (filtered.length - rowWindow.end) * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + stockCols + dates.length} /></tr> : null}
               </tbody>
             </table>
           </div>

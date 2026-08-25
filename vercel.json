@@ -1,29 +1,108 @@
 {
   "crons": [
-    { "path": "/api/sync/all?hourly=1", "schedule": "0 * * * *" },
-    { "path": "/api/sync/sales", "schedule": "2 * * * *" },
-    { "path": "/api/sync/stocks", "schedule": "4 * * * *" },
-    { "path": "/api/sync/stocks-history", "schedule": "0 */4 * * *" },
-    { "path": "/api/sync/stocks-history-cleanup", "schedule": "0 3 * * *" },
-    { "path": "/api/sync/dashboard-cache?marketplace=wb", "schedule": "45 * * * *" },
-    { "path": "/api/sync/feedbacks", "schedule": "10 * * * *" },
-    { "path": "/api/sync/funnel", "schedule": "20 * * * *" },
-    { "path": "/api/sync/ozon-adverts", "schedule": "25 * * * *" },
-    { "path": "/api/sync/dashboard-cache?view=overview", "schedule": "31 * * * *" },
-    { "path": "/api/sync/dashboard-cache?view=sales", "schedule": "35 * * * *" },
-    { "path": "/api/sync/dashboard-cache?view=adverts", "schedule": "39 * * * *" },
-    { "path": "/api/sync/dashboard-cache?view=stocks", "schedule": "43 * * * *" },
-    { "path": "/api/sync/dashboard-cache?view=orders", "schedule": "47 * * * *" },
-    { "path": "/api/sync/dashboard-cache?view=economy", "schedule": "51 * * * *" },
-    { "path": "/api/sync/dashboard-cache?view=health", "schedule": "55 * * * *" },
-    { "path": "/api/sync/commissions", "schedule": "15 * * * *" },
-    { "path": "/api/sync/rk-journal", "schedule": "0 3 * * *" },
-    { "path": "/api/sync/screen-latency", "schedule": "30 4 * * *" },
-    { "path": "/api/warehouse/kiz/nightly", "schedule": "10 4 * * *" },
-    { "path": "/api/sync/kiz-codes", "schedule": "5,20,35,50 * * * *" },
-    { "path": "/api/sync/token-health", "schedule": "15 6 * * *" },
-    { "path": "/api/opiu/monitor", "schedule": "0 5 * * *" },
-    { "path": "/api/repricer/run/cron", "schedule": "30 6 * * *" },
-    { "path": "/api/signals?persist=1", "schedule": "40 6 * * *" }
+    {
+      "path": "/api/sync/all?hourly=1",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/sync/sales",
+      "schedule": "2 * * * *"
+    },
+    {
+      "path": "/api/sync/stocks",
+      "schedule": "4 * * * *"
+    },
+    {
+      "path": "/api/sync/fbs-stocks",
+      "schedule": "40 * * * *"
+    },
+    {
+      "path": "/api/sync/stocks-history",
+      "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/sync/stocks-history-cleanup",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/sync/dashboard-cache?marketplace=wb",
+      "schedule": "45 * * * *"
+    },
+    {
+      "path": "/api/sync/feedbacks",
+      "schedule": "10 * * * *"
+    },
+    {
+      "path": "/api/sync/funnel",
+      "schedule": "20 * * * *"
+    },
+    {
+      "path": "/api/sync/ozon-adverts",
+      "schedule": "25 * * * *"
+    },
+    {
+      "path": "/api/sync/dashboard-cache?view=overview",
+      "schedule": "31 * * * *"
+    },
+    {
+      "path": "/api/sync/dashboard-cache?view=sales",
+      "schedule": "35 * * * *"
+    },
+    {
+      "path": "/api/sync/dashboard-cache?view=adverts",
+      "schedule": "39 * * * *"
+    },
+    {
+      "path": "/api/sync/dashboard-cache?view=stocks",
+      "schedule": "43 * * * *"
+    },
+    {
+      "path": "/api/sync/dashboard-cache?view=orders",
+      "schedule": "47 * * * *"
+    },
+    {
+      "path": "/api/sync/dashboard-cache?view=economy",
+      "schedule": "51 * * * *"
+    },
+    {
+      "path": "/api/sync/dashboard-cache?view=health",
+      "schedule": "55 * * * *"
+    },
+    {
+      "path": "/api/sync/commissions",
+      "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/sync/rk-journal",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/sync/screen-latency",
+      "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/warehouse/kiz/nightly",
+      "schedule": "10 4 * * *"
+    },
+    {
+      "path": "/api/sync/kiz-codes",
+      "schedule": "5,20,35,50 * * * *"
+    },
+    {
+      "path": "/api/sync/token-health",
+      "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/opiu/monitor",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/repricer/run/cron",
+      "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/signals?persist=1",
+      "schedule": "40 6 * * *"
+    }
   ]
 }

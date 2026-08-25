@@ -16,6 +16,23 @@ export const maxDuration = 60;
 interface FunnelRow { nm_id: number; date: string; open_card: number; add_to_cart: number; orders: number; orders_sum: number }
 interface AdRow { nm_id: number; date: string; views: number; clicks: number; spent: number }
 interface RpcTotal { nm_id: number; article: string; stock: number; cost: number | null }
+
+/**
+ * Остатки склада продавца. В wb_stocks их нет: там только склады WB (FBO),
+ * а FBS приходит другим методом Marketplace API и собирается в фоне
+ * (app/api/sync/fbs-stocks). Отсутствие строки — это «не собирали», а не ноль,
+ * поэтому экран отличает пустую карту от нулевого остатка.
+ */
+async function loadFbsStocks(cabinetId: string | null): Promise<Map<number, number> | null> {
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+  const query = db.from("wb_fbs_stocks").select("nm_id, quantity");
+  const { data, error } = await (cabinetId ? query.eq("cabinet_id", cabinetId) : query);
+  // Таблицы ещё нет или доступа нет — молчим и отдаём null: колонка честно
+  // скажет «не собирали», вместо того чтобы показать нули.
+  if (error || !data) return null;
+  return new Map(data.map((row) => [Number(row.nm_id), Number(row.quantity ?? 0)]));
+}
 interface DailySkuRow { nm_id: number; d: string; orders_count: number; orders_sum: number }
 interface ProductCostRow { article: string; name: string | null }
 interface RatingRow { nm_id: number; rating: number }
@@ -78,7 +95,7 @@ export async function GET(request: NextRequest) {
     // Cache schema: 3 used advertising clicks as a fallback conversion denominator.
     { cabinetId, start: period.start, end: period.end, days: periodDays, schema: 4 },
     async () => {
-      const [funnel, ad, totals, costs, dailySku] = await Promise.all([
+      const [funnel, ad, totals, fbsStocks, costs, dailySku] = await Promise.all([
         timed("funnel", loadAllSupabasePages<FunnelRow>((from, to) => {
           let query = db
             .from("wb_funnel_daily")
@@ -106,6 +123,7 @@ export async function GET(request: NextRequest) {
           return query;
         }, { label: "SEO: реклама WB", concurrency: 4 })),
         timed("totals_rpc", loadRnpReportRows<RpcTotal>(db, cabinetId, { allowedNmIds, label: "SEO: товары WB" })),
+        timed("fbs_stocks", loadFbsStocks(cabinetId)),
         timed("costs", loadAllSupabasePages<ProductCostRow>((from, to) => db
           .from("product_costs")
           .select("article, name")
@@ -181,7 +199,11 @@ export async function GET(request: NextRequest) {
     const t = totalByNm.get(nm);
     const art = t?.article || String(nm);
     const cost = Number(t?.cost ?? 0);
-    const stock = Number(t?.stock ?? 0);
+    // FBO — склады WB (wb_stocks), FBS — склад продавца (собирается отдельно).
+    // Складываем, а не подменяем: общий остаток должен видеть оба контура.
+    const stockFbo = Number(t?.stock ?? 0);
+    const stockFbs = fbsStocks ? (fbsStocks.get(nm) ?? 0) : null;
+    const stock = stockFbo + (stockFbs ?? 0);
 
     const w = agg(nm, selected);
     const y = agg(nm, "yest");
@@ -213,7 +235,7 @@ export async function GET(request: NextRequest) {
       margin_pct_4d: mb4, sae_4d: drr4, profitability_4d: mb4 != null && drr4 != null ? r2(mb4 - drr4) : null,
       // общие
       price_before_spp_unit: priceUnit(w) || priceUnit(y),
-      stock, turnover_4d: turn,
+      stock, stock_fbo: stockFbo, stock_fbs: stockFbs, turnover_4d: turn,
       rating: (() => { const fb = ratingAgg.get(nm); return fb ? Math.round((fb.sum / fb.count) * 10) / 10 : null; })(),
       reviews: ratingAgg.get(nm)?.count ?? null,
     };
