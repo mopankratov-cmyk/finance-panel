@@ -56,8 +56,14 @@ const migrationHint = "Примените миграции 202608230003_stock_le
 export interface ReceiptLineRow {
   id: number;
   productId: string | null;
+  variantId: string | null;
   nmId: number | null;
   article: string;
+  /** Размер. Пустой у безразмерного товара — крема, сумки, пенала. */
+  sizeLabel: string;
+  /** Чем позиция отзывается на сканер. Без баркода строку можно только вбить руками. */
+  barcode: string | null;
+  photoUrl: string | null;
   expectedQty: number;
   receivedQty: number | null;
   defectQty: number;
@@ -79,20 +85,45 @@ export async function GET(request: NextRequest) {
   if (batchId) {
     const { data, error } = await db
       .from("purchase_receipts")
-      .select("id, product_id, nm_id, article, expected_qty, received_qty, defect_qty, status")
+      .select("id, product_id, variant_id, nm_id, article, expected_qty, received_qty, defect_qty, status")
       .eq("batch_id", batchId)
       .order("id");
     if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
-    const lines: ReceiptLineRow[] = (data ?? []).map((row) => ({
-      id: Number(row.id),
-      productId: row.product_id ? String(row.product_id) : null,
-      nmId: row.nm_id === null ? null : Number(row.nm_id),
-      article: String(row.article ?? ""),
-      expectedQty: Number(row.expected_qty ?? 0),
-      receivedQty: row.received_qty === null ? null : Number(row.received_qty),
-      defectQty: Number(row.defect_qty ?? 0),
-      status: row.status === "received" ? "received" : "expected",
-    }));
+
+    // Размер и баркод — из справочника вариантов: в строке приёмки лежит только
+    // ссылка, а сканеру нужен именно баркод, и он живёт на размере, не на модели.
+    const variantIds = [...new Set((data ?? []).map((row) => row.variant_id).filter(Boolean).map(String))];
+    const productIds = [...new Set((data ?? []).map((row) => row.product_id).filter(Boolean).map(String))];
+    const [variantsResult, productsResult] = await Promise.all([
+      variantIds.length === 0
+        ? Promise.resolve({ data: [], error: null })
+        : db.from("product_variants").select("id, size_label, barcode").in("id", variantIds),
+      productIds.length === 0
+        ? Promise.resolve({ data: [], error: null })
+        : db.from("products").select("id, photo_url").in("id", productIds),
+    ]);
+    const variants = new Map(((variantsResult.data ?? []) as { id: string; size_label: string | null; barcode: string | null }[])
+      .map((row) => [String(row.id), row]));
+    const photos = new Map(((productsResult.data ?? []) as { id: string; photo_url: string | null }[])
+      .map((row) => [String(row.id), row.photo_url]));
+
+    const lines: ReceiptLineRow[] = (data ?? []).map((row) => {
+      const variant = row.variant_id ? variants.get(String(row.variant_id)) : undefined;
+      return {
+        id: Number(row.id),
+        productId: row.product_id ? String(row.product_id) : null,
+        variantId: row.variant_id ? String(row.variant_id) : null,
+        nmId: row.nm_id === null ? null : Number(row.nm_id),
+        article: String(row.article ?? ""),
+        sizeLabel: String(variant?.size_label ?? ""),
+        barcode: variant?.barcode ?? null,
+        photoUrl: row.product_id ? (photos.get(String(row.product_id)) ?? null) : null,
+        expectedQty: Number(row.expected_qty ?? 0),
+        receivedQty: row.received_qty === null ? null : Number(row.received_qty),
+        defectQty: Number(row.defect_qty ?? 0),
+        status: row.status === "received" ? "received" : "expected",
+      };
+    });
     return NextResponse.json({ data: lines, error: null });
   }
 
@@ -189,7 +220,7 @@ export async function PUT(request: NextRequest) {
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as
     | { entityId?: string; cabinetId?: string; expectedAt?: string; note?: string;
-        lines?: { productId: string; qty: number }[] }
+        lines?: { productId: string; variantId?: string | null; qty: number }[] }
     | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -227,6 +258,27 @@ export async function PUT(request: NextRequest) {
   }
   const products = new Map((productsResult.data ?? []).map((row) => [String(row.id), row]));
 
+  // Размер проверяем по справочнику, а не по слову клиента: строка приёмки с
+  // чужим вариантом развалила бы остаток тихо — не тем размером на складе.
+  const wantedVariants = [...new Set(lines.map((line) => line.variantId).filter(Boolean).map(String))];
+  const variantOwner = new Map<string, string>();
+  if (wantedVariants.length > 0) {
+    const variantsResult = await db.from("product_variants").select("id, product_id").in("id", wantedVariants);
+    if (variantsResult.error) {
+      const code = variantsResult.error.code;
+      return fail(missingMigration(code) ? migrationHint : variantsResult.error.message, missingMigration(code) ? 503 : 500);
+    }
+    for (const row of (variantsResult.data ?? []) as { id: string; product_id: string }[]) {
+      variantOwner.set(String(row.id), String(row.product_id));
+    }
+    for (const line of lines) {
+      if (!line.variantId) continue;
+      if (variantOwner.get(String(line.variantId)) !== line.productId) {
+        return fail("Размер не принадлежит выбранному товару", 400);
+      }
+    }
+  }
+
   const batchId = crypto.randomUUID();
   const rows = lines.map((line) => {
     const product = products.get(line.productId);
@@ -234,6 +286,7 @@ export async function PUT(request: NextRequest) {
       batch_id: batchId,
       cabinet_id: cabinetId,
       product_id: line.productId,
+      variant_id: line.variantId ?? null,
       nm_id: product?.nm_id ?? null,
       article: String(product?.article ?? ""),
       expected_qty: Math.round(line.qty),
@@ -247,6 +300,116 @@ export async function PUT(request: NextRequest) {
   if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
 
   return NextResponse.json({ data: { batchId, lines: rows.length }, error: null }, { status: 201 });
+}
+
+/** Отметить факт приёмки по всей партии разом и, если попросили, сразу поставить
+ *  её на остаток.
+ *
+ *  Раньше окно приёма било строки по одной: сто позиций — сто запросов, и обрыв
+ *  на пятидесятой оставлял партию наполовину принятой без всякого следа о том,
+ *  где она встала. Здесь партия — один документ: либо принята вся, либо ни одной
+ *  строки. */
+export async function PATCH(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
+  const body = (await request.json().catch(() => null)) as
+    | {
+        entityId?: string;
+        batchId?: string;
+        warehouseId?: string;
+        post?: boolean;
+        lines?: { id: number; receivedQty: number; defectQty?: number }[];
+      }
+    | null;
+  if (!body) return fail("Некорректное тело запроса", 400);
+
+  const scope = await resolveEntity(body.entityId ?? null);
+  if (!scope.ok) return fail(scope.error, scope.status);
+  if (!body.batchId) return fail("Не указана партия приёмки", 400);
+  if (body.post && !body.warehouseId) return fail("Выберите склад, на который приходуем", 400);
+
+  const db = getSupabaseAdmin();
+  if (!db) return fail("Supabase не настроен", 500);
+  const session = await getServerSession();
+
+  const ownCabinets = scope.entity.cabinets.filter((link) => link.relation === "own").map((link) => link.cabinetId);
+  if (ownCabinets.length === 0) return fail(`У юрлица «${scope.entity.name}» нет собственных кабинетов`, 400);
+
+  const existing = await db
+    .from("purchase_receipts")
+    .select("id, cabinet_id, status")
+    .eq("batch_id", body.batchId);
+  if (existing.error) {
+    const code = existing.error.code;
+    return fail(missingMigration(code) ? migrationHint : existing.error.message, missingMigration(code) ? 503 : 500);
+  }
+  const known = new Map(((existing.data ?? []) as { id: number; cabinet_id: string; status: string }[])
+    .map((row) => [Number(row.id), row]));
+  if (known.size === 0) return fail("Партия не найдена", 404);
+  // Партия целиком принадлежит кабинету юрлица — проверяем до записи, а не по строке.
+  for (const row of known.values()) {
+    if (!ownCabinets.includes(String(row.cabinet_id))) return fail("Партия принадлежит другому юрлицу", 403);
+  }
+
+  const now = new Date().toISOString();
+  const updates: { id: number; received: number; defect: number }[] = [];
+  for (const line of body.lines ?? []) {
+    const row = known.get(Number(line.id));
+    if (!row) return fail("В партии нет такой позиции", 400);
+    if (row.status !== "expected") continue; // уже принято — повторный ввод не трогаем
+    const received = Math.round(Number(line.receivedQty));
+    const defect = Math.max(0, Math.round(Number(line.defectQty ?? 0)));
+    if (!Number.isFinite(received) || received < 0) return fail("Некорректное количество", 400);
+    if (defect > received) return fail("Брака больше, чем принято", 400);
+    updates.push({ id: Number(line.id), received, defect });
+  }
+
+  for (const line of updates) {
+    const { error } = await db
+      .from("purchase_receipts")
+      .update({
+        received_qty: line.received,
+        defect_qty: line.defect,
+        received_at: now,
+        status: "received",
+        updated_at: now,
+      })
+      .eq("id", line.id)
+      .eq("status", "expected");
+    if (error) return fail(error.message, 500);
+  }
+
+  if (!body.post) {
+    return NextResponse.json({ data: { saved: updates.length, posted: null }, error: null });
+  }
+
+  const { data, error } = await db.rpc("post_receipt_batch", {
+    p_batch_id: body.batchId,
+    p_warehouse_id: body.warehouseId,
+    p_actor: session?.email ?? null,
+  });
+  if (error) return fail(postError(error.message) ?? error.message, 400);
+
+  const result = (data ?? {}) as { posted?: number };
+  if (!result.posted) {
+    // Факт приёмки уже записан — сообщаем именно про проводку, чтобы человек не
+    // вводил количества заново.
+    return NextResponse.json(
+      { data: { saved: updates.length, posted: 0 }, error: "Приёмка сохранена, но на остаток не встала: проводить нечего" },
+      { status: 200 },
+    );
+  }
+  return NextResponse.json({ data: { saved: updates.length, posted: result, warehouseId: body.warehouseId }, error: null });
+}
+
+/** Человеческие имена ошибок проводки — общие для одиночной и совмещённой. */
+function postError(message: string): string | null {
+  if (message.includes("warehouse belongs to another legal entity")) return "Склад принадлежит другому юрлицу";
+  if (message.includes("cabinet has no legal entity")) return "У кабинета приёмки не указано юрлицо — свяжите их в справочнике";
+  if (message.includes("warehouse not found")) return "Склад не найден";
+  if (message.includes("warehouse is archived")) return "Склад в архиве";
+  if (message.includes("defect exceeds received")) return "В партии брака больше, чем принято";
+  return null;
 }
 
 /** Провести партию на склад: посчитать себестоимость и записать приход в регистр. */
@@ -274,10 +437,8 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    if (error.message.includes("warehouse belongs to another legal entity")) return fail("Склад принадлежит другому юрлицу", 400);
-    if (error.message.includes("cabinet has no legal entity")) return fail("У кабинета приёмки не указано юрлицо — свяжите их в справочнике", 400);
-    if (error.message.includes("warehouse not found")) return fail("Склад не найден", 404);
-    if (error.message.includes("warehouse is archived")) return fail("Склад в архиве", 400);
+    const known = postError(error.message);
+    if (known) return fail(known, error.message.includes("not found") ? 404 : 400);
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 

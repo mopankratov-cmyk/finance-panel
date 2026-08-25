@@ -11,6 +11,11 @@ import type { ProductRow } from "@/lib/warehouse/productRow";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { ReceiveModal } from "@/components/warehouse/ReceiveModal";
 import { costNote } from "@/lib/warehouse/reasons";
+import type { VariantRow } from "@/app/api/warehouse/variants/route";
+
+/** Строка новой поставки. Количество живёт либо в `qty` — у безразмерного
+ *  товара, либо в `sizes` — по одному числу на размер. */
+interface DraftLine { productId: string; qty: string; sizes: Record<string, string> }
 
 const STATE_LABEL: Record<ReceiptBatchRow["state"], { text: string; className: string }> = {
   expected: { text: "ждём", className: "bg-slate-100 text-slate-600" },
@@ -38,8 +43,11 @@ export function ReceiptsTab({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [target, setTarget] = useState<string>(warehouses[0]?.id ?? "");
-  const [draft, setDraft] = useState<{ expectedAt: string; note: string; lines: { productId: string; qty: string }[] } | null>(null);
+  const [draft, setDraft] = useState<{ expectedAt: string; note: string; lines: DraftLine[] } | null>(null);
   const [products, setProducts] = useState<ProductRow[]>([]);
+  // Размеры выбранных моделей. Тянем по одной карточке: справочник вариантов
+  // целиком — это тысячи строк ради трёх позиций в форме.
+  const [sizes, setSizes] = useState<Record<string, VariantRow[]>>({});
   const [creating, setCreating] = useState(false);
   const [receiving, setReceiving] = useState<string | null>(null);
 
@@ -66,8 +74,21 @@ export function ReceiptsTab({
   useEffect(() => { void load(); }, [load, refreshKey]);
 
   // Список товаров нужен только форме — тянем его при открытии, а не при каждом заходе.
+  const loadSizes = useCallback(async (productId: string) => {
+    if (!productId || sizes[productId]) return;
+    try {
+      const res = await fetch(`/api/warehouse/variants?product=${productId}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось загрузить размеры");
+      setSizes((prev) => ({ ...prev, [productId]: json.data ?? [] }));
+    } catch {
+      // Без размеров позиция останется безразмерной — приёмка на этом не встанет.
+      setSizes((prev) => ({ ...prev, [productId]: [] }));
+    }
+  }, [sizes]);
+
   const openDraft = async () => {
-    setDraft({ expectedAt: "", note: "", lines: [{ productId: "", qty: "" }] });
+    setDraft({ expectedAt: "", note: "", lines: [{ productId: "", qty: "", sizes: {} }] });
     if (products.length > 0) return;
     try {
       const res = await fetch(`/api/warehouse/products?entity=${entityId}`, { cache: "no-store" });
@@ -81,9 +102,16 @@ export function ReceiptsTab({
 
   const createReceipt = async () => {
     if (!draft) return;
-    const lines = draft.lines
-      .filter((line) => line.productId && Number(line.qty) > 0)
-      .map((line) => ({ productId: line.productId, qty: Number(line.qty) }));
+    // Размерная позиция разворачивается в строку на каждый размер: склад ведёт
+    // остаток по размеру, и «40 штук куртки» на нём не лежат.
+    const lines = draft.lines.flatMap((line): { productId: string; variantId: string | null; qty: number }[] => {
+      if (!line.productId) return [];
+      const bySize = Object.entries(line.sizes)
+        .filter(([, qty]) => Number(qty) > 0)
+        .map(([variantId, qty]) => ({ productId: line.productId, variantId, qty: Number(qty) }));
+      if (bySize.length > 0) return bySize;
+      return Number(line.qty) > 0 ? [{ productId: line.productId, variantId: null, qty: Number(line.qty) }] : [];
+    });
     if (lines.length === 0) { setError("Добавьте позиции с количеством"); return; }
     setCreating(true);
     setError(null);
@@ -125,6 +153,11 @@ export function ReceiptsTab({
     }
   };
 
+  /** Размеры модели, из которых выбирают. Базовый вариант безразмерного товара
+   *  сюда не попадает: он представляет модель там, где размера просто нет. */
+  const sized = (productId: string) => (sizes[productId] ?? []).filter((variant) => variant.isActive && !variant.isDefault);
+  const lineTotal = (line: DraftLine) => Object.values(line.sizes).reduce((sum, qty) => sum + Number(qty || 0), 0);
+
   if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю приёмки…</div>;
 
   const pending = rows.filter((row) => row.state === "received");
@@ -134,6 +167,9 @@ export function ReceiptsTab({
       {receiving && (
         <ReceiveModal
           batchId={receiving}
+          entityId={entityId}
+          warehouseId={target}
+          warehouseName={warehouses.find((warehouse) => warehouse.id === target)?.name ?? "не выбран"}
           onClose={() => setReceiving(null)}
           onDone={() => { void load(); onPosted(); }}
         />
@@ -204,10 +240,14 @@ export function ReceiptsTab({
                 />
                 <select
                   value={line.productId}
-                  onChange={(e) => setDraft({
-                    ...draft,
-                    lines: draft.lines.map((item, i) => i === index ? { ...item, productId: e.target.value } : item),
-                  })}
+                  onChange={(e) => {
+                    const productId = e.target.value;
+                    void loadSizes(productId);
+                    setDraft({
+                      ...draft,
+                      lines: draft.lines.map((item, i) => i === index ? { productId, qty: "", sizes: {} } : item),
+                    });
+                  }}
                   className="min-w-64 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
                 >
                   <option value="">выберите товар</option>
@@ -217,16 +257,40 @@ export function ReceiptsTab({
                     </option>
                   ))}
                 </select>
-                <input
-                  inputMode="numeric"
-                  value={line.qty}
-                  onChange={(e) => setDraft({
-                    ...draft,
-                    lines: draft.lines.map((item, i) => i === index ? { ...item, qty: e.target.value.replace(/[^\d]/g, "") } : item),
-                  })}
-                  placeholder="кол-во"
-                  className="w-28 rounded-lg border border-slate-200 px-3 py-1.5 text-right text-sm text-slate-700 placeholder:text-slate-300"
-                />
+                {sized(line.productId).length === 0 ? (
+                  <input
+                    inputMode="numeric"
+                    value={line.qty}
+                    onChange={(e) => setDraft({
+                      ...draft,
+                      lines: draft.lines.map((item, i) => i === index ? { ...item, qty: e.target.value.replace(/[^\d]/g, "") } : item),
+                    })}
+                    placeholder="кол-во"
+                    className="w-28 rounded-lg border border-slate-200 px-3 py-1.5 text-right text-sm text-slate-700 placeholder:text-slate-300"
+                  />
+                ) : (
+                  <div className="flex flex-wrap items-end gap-1.5">
+                    {sized(line.productId).map((variant) => (
+                      <label key={variant.id} className="w-16">
+                        <span className="block text-center text-[11px] text-slate-400">{variant.sizeLabel}</span>
+                        <input
+                          inputMode="numeric"
+                          value={line.sizes[variant.id] ?? ""}
+                          onChange={(e) => setDraft({
+                            ...draft,
+                            lines: draft.lines.map((item, i) => i === index
+                              ? { ...item, sizes: { ...item.sizes, [variant.id]: e.target.value.replace(/[^\d]/g, "") } }
+                              : item),
+                          })}
+                          className="w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm text-slate-700"
+                        />
+                      </label>
+                    ))}
+                    <span className="pb-1.5 text-xs text-slate-400">
+                      {lineTotal(line) > 0 ? `${formatNumber(lineTotal(line))} шт` : ""}
+                    </span>
+                  </div>
+                )}
                 {draft.lines.length > 1 && (
                   <button
                     onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_, i) => i !== index) })}
@@ -241,7 +305,7 @@ export function ReceiptsTab({
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setDraft({ ...draft, lines: [...draft.lines, { productId: "", qty: "" }] })}
+              onClick={() => setDraft({ ...draft, lines: [...draft.lines, { productId: "", qty: "", sizes: {} }] })}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600"
             >
               + позиция
