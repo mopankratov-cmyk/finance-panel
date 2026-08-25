@@ -107,6 +107,23 @@ function ToneCell({ value, tone, fraction }: { value: number | null; tone: strin
   );
 }
 
+/**
+ * Ставка артикула за день — диапазон по его кампаниям.
+ *
+ * Одной цифры здесь быть не может: у CPC-поиска и CPM-полок ставки разные, и
+ * усреднять их бессмысленно — это разные валюты внимания. Показываем границы,
+ * а совпадающие ставки схлопываем в одно число.
+ */
+function bidRange(campaigns: JournalCampaign[], date: string): string {
+  const bids = campaigns
+    .map((campaign) => campaign.days[date]?.bid)
+    .filter((bid): bid is number => bid != null && Number.isFinite(bid));
+  if (!bids.length) return "—";
+  const min = Math.min(...bids);
+  const max = Math.max(...bids);
+  return min === max ? money2(min) : `${money2(min)}–${money2(max)}`;
+}
+
 export function WbRkJournalPage() {
   const { cabinetId, hasExactCabinet, ready, canWrite } = useWbCabinet();
   const [range, setRange] = useState(() => ({ ...rangeForPreset("5d"), preset: "5d" as string }));
@@ -545,7 +562,7 @@ export function WbRkJournalPage() {
                       <th className="sticky left-0 z-40 bg-slate-50 px-3 py-2 text-left font-semibold">Артикул</th>
                       <th className="bg-slate-50 px-2 py-2 text-left font-medium">Кампании</th>
                       {dates.map((date) => (
-                        <th key={date} colSpan={6} className="border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-700">
+                        <th key={date} colSpan={7} className="border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-700">
                           {dayLabel(date)}
                           {data.snapshotDates.includes(date)
                             ? <span className="ml-1 font-normal text-emerald-600" title="День снят в 06:00 МСК: ставка зафиксирована">снят</span>
@@ -564,6 +581,7 @@ export function WbRkJournalPage() {
                           <th className="bg-slate-50 px-2 pb-2 text-right font-normal">Затраты</th>
                           <th className="bg-slate-50 px-2 pb-2 text-right font-normal">CPO</th>
                           <th className="bg-slate-50 px-2 pb-2 text-right font-normal">CPL</th>
+                          <th className="bg-slate-50 px-2 pb-2 text-center font-normal">Задача</th>
                         </Fragment>
                       ))}
                     </tr>
@@ -631,12 +649,12 @@ export function WbRkJournalPage() {
                                   type="button"
                                   onClick={(event) => { event.stopPropagation(); setNoteEdit({ nm: item.nm, advertId: null, date, title: article || `WB ${item.nm}`, subtitle: "Задача по товару" }); }}
                                   title={note ? `${note.done ? "Сделано: " : ""}${note.note}` : "Добавить задачу на этот день"}
-                                  className={`ml-1 align-middle text-[10px] leading-none ${note ? (note.done ? "text-emerald-500" : "text-violet-500") : "text-slate-200 hover:text-violet-400"}`}
+                                  className={`text-[11px] leading-none ${note ? (note.done ? "text-emerald-600" : "text-violet-600") : "text-slate-400 hover:text-violet-600"}`}
                                 >{note ? (note.done ? "✓" : "●") : "+"}</button>
                               ) : null;
                               if (isEmpty(cell)) {
                                 return (
-                                  <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">
+                                  <td key={date} colSpan={7} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">
                                     —{noteBadge}
                                   </td>
                                 );
@@ -645,14 +663,16 @@ export function WbRkJournalPage() {
                               const cpl = costPerCart(cell.spent, cell.carts);
                               return (
                                 <Fragment key={date}>
-                                  {/* Ставка у артикула не показывается: у его кампаний она разная.
-                                      Пустая колонка — удобное место для значка задачи. */}
-                                  <td className="border-l border-slate-200 px-2 py-1.5 text-center">{noteBadge}</td>
+                                  {/* Ставка у артикула — диапазон по его кампаниям: одна цифра
+                                      здесь была бы выдумкой, ставки у кампаний разные. Колонка
+                                      пустовала, и это выглядело поломкой. */}
+                                  <td className="border-l border-slate-200 px-2 py-1.5 text-right tabular-nums text-slate-500">{bidRange(shown, date)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.carts)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.orders)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{money(cell.spent)}</td>
                                   <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
                                   <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                                  <td className="px-1 py-1.5 text-center">{noteBadge}</td>
                                 </Fragment>
                               );
                             })}
@@ -685,12 +705,12 @@ export function WbRkJournalPage() {
                                     type="button"
                                     onClick={(event) => { event.stopPropagation(); setNoteEdit({ nm: item.nm, advertId: campaign.advertId, date, title: campaign.name ?? `Кампания ${campaign.advertId}`, subtitle: article || `WB ${item.nm}` }); }}
                                     title={cNote ? `${cNote.done ? "Сделано: " : ""}${cNote.note}` : "Добавить задачу по кампании"}
-                                    className={`ml-1 align-middle text-[10px] leading-none ${cNote ? (cNote.done ? "text-emerald-500" : "text-violet-500") : "text-slate-200 hover:text-violet-400"}`}
+                                    className={`text-[11px] leading-none ${cNote ? (cNote.done ? "text-emerald-600" : "text-violet-600") : "text-slate-400 hover:text-violet-600"}`}
                                   >{cNote ? (cNote.done ? "✓" : "●") : "+"}</button>
                                 ) : null;
                                 if (isEmpty(cell)) {
                                   return (
-                                    <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1 text-center text-slate-300">
+                                    <td key={date} colSpan={7} className="border-l border-slate-200 px-2 py-1 text-center text-slate-300">
                                       —{cBadge}
                                     </td>
                                   );
@@ -700,13 +720,14 @@ export function WbRkJournalPage() {
                                 return (
                                   <Fragment key={date}>
                                     <td className="border-l border-slate-200 px-2 py-1 text-right tabular-nums">
-                                      {cell.bid == null ? "—" : money2(cell.bid)}{cBadge}
+                                      {cell.bid == null ? "—" : money2(cell.bid)}
                                     </td>
                                     <td className="px-2 py-1 text-right tabular-nums">{count(cell.carts)}</td>
                                     <td className="px-2 py-1 text-right tabular-nums">{count(cell.orders)}</td>
                                     <td className="px-2 py-1 text-right tabular-nums">{money(cell.spent)}</td>
                                     <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
                                     <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                                    <td className="px-1 py-1 text-center">{cBadge}</td>
                                   </Fragment>
                                 );
                               })}
@@ -723,7 +744,7 @@ export function WbRkJournalPage() {
                       {dates.map((date) => {
                         const total = dayTotals.get(date);
                         if (!total || (!total.spent && !total.carts && !total.orders)) {
-                          return <td key={date} colSpan={6} className="border-l border-slate-200 bg-slate-100 px-2 py-2 text-center font-normal text-slate-300">—</td>;
+                          return <td key={date} colSpan={7} className="border-l border-slate-200 bg-slate-100 px-2 py-2 text-center font-normal text-slate-300">—</td>;
                         }
                         const cpo = costPerOrder(total.spent, total.orders);
                         const cpl = costPerCart(total.spent, total.carts);
