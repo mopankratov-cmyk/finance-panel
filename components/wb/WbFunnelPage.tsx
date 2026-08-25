@@ -3,6 +3,7 @@
 import { ChevronDown, ChevronRight, Filter, MessageSquare, Package, Search, X } from "lucide-react";
 import { WbCtrDayPopup } from "./WbCtrDayPopup";
 import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
+import type { CtrPaymentType, CtrTypeMap } from "@/app/api/wb/ctr-by-type/route";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
@@ -108,6 +109,28 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const funnelCols = collapsed.funnel ? 1 : 5;
   const stockCols = collapsed.stocks ? 1 : 3;
 
+
+  /**
+   * Разрез CTR по типу оплаты рекламы.
+   *
+   * По одному артикулу за день обычно идут и CPC, и CPM. Общий CTR — среднее
+   * по ним, и оно врёт: ярко запущенная CPC вытягивает цифру вверх, а решения
+   * принимаются по поиску. Переключатель считает долю только по выбранному
+   * типу; «всё» оставляет прежнее поведение.
+   */
+  const [ctrType, setCtrType] = useState<"all" | CtrPaymentType>("all");
+  const [ctrByType, setCtrByType] = useState<CtrTypeMap>({});
+
+  useEffect(() => {
+    if (!cabinetId || cabinetId === "all") return;
+    const controller = new AbortController();
+    fetch(`/api/wb/ctr-by-type?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : { byType: {} })
+      .then((body) => { if (!controller.signal.aborted) setCtrByType(body.byType ?? {}); })
+      // Разрез — надстройка: без него таблица показывает общий CTR, как раньше.
+      .catch(() => {});
+    return () => controller.abort();
+  }, [cabinetId]);
 
   const [ctrPopup, setCtrPopup] = useState<{ nm: number; date: string; article: string; views: number; clicks: number } | null>(null);
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
@@ -314,6 +337,20 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
       <div className="px-2 py-3 sm:px-6">
         <div className="mb-2 flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center">
           {embedded ? periodPicker : null}
+          {metric === "ctr" ? (
+            <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="Тип рекламы для CTR">
+              {([["all", "Всё"], ["cpc", "CPC"], ["cpm", "CPM"]] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCtrType(key)}
+                  aria-pressed={ctrType === key}
+                  title={key === "all" ? "CTR по всем кампаниям" : `CTR только по кампаниям с оплатой за ${key === "cpc" ? "клик" : "показы"}`}
+                  className={`min-h-8 rounded-md px-2 text-[10px] font-semibold ${ctrType === key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                >{label}</button>
+              ))}
+            </div>
+          ) : null}
           <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
           <WbTagFilterChips
             tags={tags}
@@ -402,11 +439,23 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                 {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + stockCols + dates.length} /></tr> : null}
                 {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td>{collapsed.stocks ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.stock_fbo)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{sku.stock_fbs == null ? <span className="text-slate-300" title="Остатки склада продавца ещё не собирались">—</span> : fmt(sku.stock_fbs)}</td></>}<td className={`border-b border-r border-slate-100 px-2 text-right tabular-nums ${sku.stock === 0 ? "font-semibold text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => {
                   const cell = daily?.metrics[String(sku.nm)]?.[date];
-                  const value = cell?.[metric];
                   const isCtr = metric === "ctr";
+                  const types = isCtr ? ctrByType[`${sku.nm}|${date}`] : undefined;
+                  // Пометка типа: чем сложилась цифра. Показываем всегда, даже
+                  // в режиме «всё» — иначе непонятно, среднее чего перед тобой.
+                  const presentTypes = types
+                    ? (["cpc", "cpm", "erk"] as const).filter((key) => (types[key]?.views ?? 0) > 0)
+                    : [];
+                  // В режиме типа берём его показы и клики, а не общие: доля
+                  // должна отвечать переключателю, иначе он ничего не значит.
+                  const picked = isCtr && ctrType !== "all" ? types?.[ctrType] : null;
+                  const views = isCtr && ctrType !== "all" ? (picked?.views ?? 0) : (cell?.views ?? 0);
+                  const value = isCtr && ctrType !== "all"
+                    ? (picked && picked.views > 0 ? (picked.clicks / picked.views) * 100 : null)
+                    : cell?.[metric];
                   // Доля клика на горстке показов — шум. Прячем саму долю, но
                   // не факт: показы и клики видны в разборе по кампаниям.
-                  const тонкийЗамер = isCtr && (cell?.views ?? 0) < CTR_MIN_VIEWS;
+                  const тонкийЗамер = isCtr && views < CTR_MIN_VIEWS;
                   const hasNote = notes.has(noteKey(sku.nm, date));
                   const shown = тонкийЗамер ? null : value;
                   return (
@@ -419,6 +468,12 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                           className={`inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 ${тонкийЗамер ? "text-slate-300" : cellTone(metric, shown)}`}
                         >
                           {тонкийЗамер ? "—" : formatCell(shown)}
+                          {presentTypes.length && ctrType === "all" ? (
+                            <span
+                              className="shrink-0 text-[7px] font-bold uppercase leading-none tracking-tight text-slate-400"
+                              title={`Сложился из: ${presentTypes.map((key) => key.toUpperCase()).join(" + ")}`}
+                            >{presentTypes.map((key) => key === "erk" ? "Е" : key === "cpc" ? "C" : "M").join("")}</span>
+                          ) : null}
                           {hasNote ? <MessageSquare className="h-2.5 w-2.5 shrink-0 text-violet-500" aria-label="есть заметка" /> : null}
                         </button>
                       ) : (

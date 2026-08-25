@@ -181,9 +181,35 @@ export function WbRkJournalPage() {
 
   const visibleItems = useMemo(() => {
     const items = (data?.items ?? []).filter((item) => nmMatchesTags(tagIdsByNm, item.nm, activeTagIds));
+    // Выбранный вид размещения — это ПУЛ, а не подсветка: внутри артикула
+    // остаются только его кампании, и итог по дню пересчитывается по ним.
+    // Раньше фильтр оставлял артикул целиком, и при выборе «CPC поиск» строка
+    // всё равно показывала сумму вместе с CPM — цифра не отвечала фильтру.
     const byBlock = blockFilter === "all"
       ? items
-      : items.filter((item) => item.campaigns.some((campaign) => campaign.block === blockFilter));
+      : items
+        .map((item) => {
+          const campaigns = item.campaigns.filter((campaign) => campaign.block === blockFilter);
+          if (!campaigns.length) return null;
+          const days: Record<string, DayCell> = {};
+          for (const campaign of campaigns) {
+            for (const [date, cell] of Object.entries(campaign.days)) {
+              const acc = days[date] ?? { views: 0, clicks: 0, spent: 0, spentAllocated: 0, carts: 0, orders: 0, ordersSum: 0, snapshot: false };
+              acc.views += cell.views;
+              acc.clicks += cell.clicks;
+              acc.spent += cell.spent;
+              acc.spentAllocated += cell.spentAllocated;
+              acc.carts += cell.carts;
+              acc.orders += cell.orders;
+              acc.ordersSum += cell.ordersSum;
+              // Снимок у дня общий: если хоть одна кампания из снимка, день снят.
+              acc.snapshot = acc.snapshot || cell.snapshot;
+              days[date] = acc;
+            }
+          }
+          return { ...item, campaigns, days };
+        })
+        .filter((item): item is JournalItem => item !== null);
     return sortByCustomSkuOrder(byBlock, (item) => item.nm, orderIndex);
   }, [activeTagIds, blockFilter, data?.items, orderIndex, tagIdsByNm]);
 
