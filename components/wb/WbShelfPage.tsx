@@ -651,12 +651,23 @@ export function WbShelfPage() {
                       </div>
                       <div className="truncate text-[11px] font-normal tabular-nums text-slate-400">WB {watch.nmId}</div>
                       {displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId) ? <div className="truncate text-[11px] font-normal text-slate-500">{displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId)}</div> : null}
-                      <div className="mt-1 text-[12px] text-slate-400">
-                        nm {watch.nmId}
-                        {watch.active ? "" : " · сбор выключен"}
-                        {!watch.ourBrand ? " · бренд появится после первого сбора" : ""}
-                        {age ? <span className={age.stale ? "text-amber-600" : ""}> · {age.label}{age.stale ? " — сборщик молчит" : ""}</span> : null}
-                      </div>
+                      {/* Номер WB стоит строкой выше — здесь только состояние
+                          сбора. Раньше строка начиналась с «nm 1224062420», и
+                          после появления строки «WB 1224062420» номер оказался
+                          на карточке дважды. */}
+                      {(!watch.active || !watch.ourBrand || age) ? (
+                        <div className="mt-1 text-[12px] text-slate-400">
+                          {[
+                            watch.active ? null : "сбор выключен",
+                            watch.ourBrand ? null : "бренд появится после первого сбора",
+                          ].filter(Boolean).join(" · ")}
+                          {age ? (
+                            <span className={age.stale ? "text-amber-600" : ""}>
+                              {(!watch.active || !watch.ourBrand) ? " · " : ""}{age.label}{age.stale ? " — сборщик молчит" : ""}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
                       {latest ? (
