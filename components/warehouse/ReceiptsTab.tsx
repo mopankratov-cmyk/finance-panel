@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { FileWarning, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { ReceiptBatchRow } from "@/app/api/warehouse/receipts/route";
@@ -386,6 +386,16 @@ export function ReceiptsTab({
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {row.state !== "expected" && (row.receivedQty !== row.expectedQty || row.defectQty > 0) && (
+                        <a
+                          href={`/warehouse/print/receipt/${row.batchId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mr-2 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                        >
+                          <FileWarning className="h-3.5 w-3.5" /> Акт расхождений
+                        </a>
+                      )}
                       {row.state === "expected" && (
                         <button
                           onClick={() => setReceiving(row.batchId)}
