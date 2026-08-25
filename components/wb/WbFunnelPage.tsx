@@ -86,6 +86,21 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 18 });
   const { tags, tagIdsByNm } = useRnpTags(cabinetId);
   const skuNames = useWbSkuNames(cabinetId || "all");
+
+  /**
+   * Свёрнутые группы колонок.
+   *
+   * Таблица широкая: реклама и воронка занимают семь колонок, из-за чего
+   * посуточная часть уезжает за экран. В свёрнутом виде от группы остаётся
+   * одна колонка — та, что отвечает на главный вопрос:
+   *   реклама  → «Рекл. показы»: рекламируется ли товар вообще. CTR без
+   *              объёма показов вводит в заблуждение (12,5% с восьми показов);
+   *   воронка  → «Заказы, ₽»: деньги, ради которых считается всё остальное.
+   */
+  const [collapsed, setCollapsed] = useState<{ ads: boolean; funnel: boolean }>({ ads: false, funnel: false });
+  const toggleGroup = (key: "ads" | "funnel") => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+  const adsCols = collapsed.ads ? 1 : 2;
+  const funnelCols = collapsed.funnel ? 1 : 5;
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
@@ -255,18 +270,28 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
               <thead className="sticky top-0 z-30 bg-slate-50 text-slate-500">
                 <tr className="h-6 text-[9px] uppercase tracking-wide text-slate-400">
                   <th rowSpan={2} className="sticky left-0 z-40 min-w-[245px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left font-semibold">Товар</th>
-                  <th colSpan={2} className="border-b border-r border-slate-200 text-center">Реклама</th>
-                  <th colSpan={5} className="border-b border-r border-slate-200 text-center">Товарная воронка</th>
+                  <th colSpan={adsCols} className="border-b border-r border-slate-200 p-0 text-center">
+                    <button type="button" onClick={() => toggleGroup("ads")} title={collapsed.ads ? "Развернуть рекламу" : "Свернуть до показов"} className="w-full px-2 py-1 text-[9px] uppercase tracking-wide text-slate-400 hover:text-violet-600">
+                      Реклама <span aria-hidden="true" className="text-slate-300">{collapsed.ads ? "▸" : "▾"}</span>
+                    </button>
+                  </th>
+                  <th colSpan={funnelCols} className="border-b border-r border-slate-200 p-0 text-center">
+                    <button type="button" onClick={() => toggleGroup("funnel")} title={collapsed.funnel ? "Развернуть воронку" : "Свернуть до заказов в рублях"} className="w-full px-2 py-1 text-[9px] uppercase tracking-wide text-slate-400 hover:text-violet-600">
+                      Товарная воронка <span aria-hidden="true" className="text-slate-300">{collapsed.funnel ? "▸" : "▾"}</span>
+                    </button>
+                  </th>
                   <th rowSpan={2} title={MARKETPLACE_METRICS.drrOrders.definition} className="min-w-[86px] border-b border-r border-slate-200 px-2 text-right">ДРР к заказам</th>
                   {dates.map((date) => <th rowSpan={2} key={date} className="min-w-[76px] border-b border-slate-200 px-1 text-center font-semibold">{dayLabel(date)}</th>)}
                 </tr>
                 <tr className="h-8">
-                  <th title={MARKETPLACE_METRICS.views.definition} className="min-w-[88px] border-b border-slate-200 px-2 text-right">Рекл. показы</th>
-                  <th title={MARKETPLACE_METRICS.ctr.definition} className="min-w-[72px] border-b border-r border-slate-200 px-2 text-right">Рекл. CTR</th>
-                  <th className="min-w-[92px] border-b border-slate-200 px-2 text-right">Переходы</th>
-                  <th className="min-w-[72px] border-b border-slate-200 px-2 text-right">Корзины</th>
-                  <th title={MARKETPLACE_METRICS.cardToCartCr.definition} className="min-w-[82px] border-b border-slate-200 px-2 text-right">% в корзину</th>
-                  <th className="min-w-[68px] border-b border-slate-200 px-2 text-right">Заказы, шт</th>
+                  <th title={MARKETPLACE_METRICS.views.definition} className={`min-w-[88px] border-b border-slate-200 px-2 text-right${collapsed.ads ? " border-r" : ""}`}>Рекл. показы</th>
+                  {collapsed.ads ? null : <th title={MARKETPLACE_METRICS.ctr.definition} className="min-w-[72px] border-b border-r border-slate-200 px-2 text-right">Рекл. CTR</th>}
+                  {collapsed.funnel ? null : <>
+                    <th className="min-w-[92px] border-b border-slate-200 px-2 text-right">Переходы</th>
+                    <th className="min-w-[72px] border-b border-slate-200 px-2 text-right">Корзины</th>
+                    <th title={MARKETPLACE_METRICS.cardToCartCr.definition} className="min-w-[82px] border-b border-slate-200 px-2 text-right">% в корзину</th>
+                    <th className="min-w-[68px] border-b border-slate-200 px-2 text-right">Заказы, шт</th>
+                  </>}
                   <th title={MARKETPLACE_METRICS.ordersRevenue.definition} className="min-w-[92px] border-b border-r border-slate-200 px-2 text-right">Заказы, ₽</th>
                 </tr>
               </thead>
@@ -274,12 +299,14 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                 {tagSummary ? (
                   <tr className="h-12 bg-violet-50/60 font-semibold text-violet-950">
                     <td className="sticky left-0 z-10 border-b border-r border-violet-100 bg-violet-50 px-3 text-[10px]">Итого по ярлыку · {filtered.length} SKU</td>
-                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.shows)}</td>
-                    <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.ctr)}</td>
-                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.openCard)}</td>
-                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.carts)}</td>
-                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.cvCart)}</td>
-                    <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.ordersCount)}</td>
+                    <td className={`border-b border-violet-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(tagSummary.shows)}</td>
+                    {collapsed.ads ? null : <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.ctr)}</td>}
+                    {collapsed.funnel ? null : <>
+                      <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.openCard)}</td>
+                      <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.carts)}</td>
+                      <td className="border-b border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.cvCart)}</td>
+                      <td className="border-b border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.ordersCount)}</td>
+                    </>}
                     <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{fmt(tagSummary.ordersSum)} ₽</td>
                     <td className="border-b border-r border-violet-100 px-2 text-right tabular-nums">{pct(tagSummary.drr)}</td>
                     {dates.map((date) => {
@@ -292,9 +319,9 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                     })}
                   </tr>
                 ) : null}
-                {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={9 + dates.length} /></tr> : null}
-                {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[185px]" /></div></td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.shows_window)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td><td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => { const value = daily?.metrics[String(sku.nm)]?.[date]?.[metric]; return <td key={date} className="border-b border-slate-100 px-1 text-center"><span className={`inline-flex min-h-7 min-w-[66px] items-center justify-center rounded-md px-1 font-semibold tabular-nums ${cellTone(metric, value)}`}>{formatCell(value)}</span></td>; })}</tr>)}
-                {rowWindow.end < filtered.length ? <tr aria-hidden="true" style={{ height: (filtered.length - rowWindow.end) * ROW_HEIGHT }}><td colSpan={9 + dates.length} /></tr> : null}
+                {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + dates.length} /></tr> : null}
+                {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => { const value = daily?.metrics[String(sku.nm)]?.[date]?.[metric]; return <td key={date} className="border-b border-slate-100 px-1 text-center"><span className={`inline-flex min-h-7 min-w-[66px] items-center justify-center rounded-md px-1 font-semibold tabular-nums ${cellTone(metric, value)}`}>{formatCell(value)}</span></td>; })}</tr>)}
+                {rowWindow.end < filtered.length ? <tr aria-hidden="true" style={{ height: (filtered.length - rowWindow.end) * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + dates.length} /></tr> : null}
               </tbody>
             </table>
           </div>
