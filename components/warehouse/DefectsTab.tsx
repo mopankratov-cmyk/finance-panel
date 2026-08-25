@@ -2,6 +2,8 @@
 
 import { Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useDraft } from "@/lib/warehouse/useDraft";
+import { DraftNotice } from "@/components/warehouse/DraftNotice";
 import { formatNumber } from "@/lib/analytics/format";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { WriteoffsResponse } from "@/app/api/warehouse/writeoffs/route";
@@ -55,9 +57,7 @@ export function DefectsTab({
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
-  const openDraft = async () => {
-    setDraft({ warehouseId: warehouses[0]?.id ?? "", reason: "", lines: [{ variantId: "", qty: "" }] });
-    if (stock) return;
+  const loadStock = useCallback(async () => {
     try {
       const res = await fetch(`/api/warehouse/balances?entity=${entityId}`, { cache: "no-store" });
       const json = await res.json();
@@ -66,7 +66,22 @@ export function DefectsTab({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить остатки");
     }
+  }, [entityId]);
+
+  const openDraft = async () => {
+    setDraft({ warehouseId: warehouses[0]?.id ?? "", reason: "", lines: [{ variantId: "", qty: "" }] });
+    if (!stock) await loadStock();
   };
+
+  // Незаконченное списание переживает перезагрузку: форма открывается там же,
+  // где её оставили, вместе с позициями и причиной.
+  const { restoredAt, forget } = useDraft(
+    loading ? null : `warehouse:writeoff:${entityId}`,
+    draft,
+    useCallback((value: typeof draft) =>
+      !value || (!value.reason && value.lines.every((line) => !line.variantId && !line.qty)), []),
+    useCallback((value: typeof draft) => { setDraft(value); void loadStock(); }, [loadStock]),
+  );
 
   const submit = async () => {
     if (!draft) return;
@@ -85,6 +100,7 @@ export function DefectsTab({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось списать");
       setDraft(null);
+      forget();
       await load();
       onChanged();
     } catch (e) {
@@ -99,6 +115,7 @@ export function DefectsTab({
   return (
     <div className="space-y-4">
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+      <DraftNotice at={restoredAt} onForget={() => { setDraft(null); forget(); }} />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -125,7 +142,7 @@ export function DefectsTab({
         <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-medium text-slate-900">Новое списание</p>
-            <button onClick={() => setDraft(null)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+            <button onClick={() => { setDraft(null); forget(); }} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
           </div>
 
           <div className="mb-3 flex flex-wrap gap-2">

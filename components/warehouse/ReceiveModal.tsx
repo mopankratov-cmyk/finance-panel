@@ -2,6 +2,8 @@
 
 import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useDraft } from "@/lib/warehouse/useDraft";
+import { DraftNotice } from "@/components/warehouse/DraftNotice";
 import { formatNumber } from "@/lib/analytics/format";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { ReceiptLineRow } from "@/app/api/warehouse/receipts/route";
@@ -24,6 +26,9 @@ export function ReceiveModal({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Что предложил сервер. Совпадение с этим — «человек ничего не менял»,
+  // такой черновик хранить незачем.
+  const [defaults, setDefaults] = useState<string>("{}");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,10 +39,12 @@ export function ReceiveModal({
       const rows: ReceiptLineRow[] = json.data ?? [];
       setLines(rows);
       // По умолчанию пришло сколько ждали: расхождение — исключение, а не правило.
-      setDraft(Object.fromEntries(rows.map((row) => [row.id, {
+      const fresh = Object.fromEntries(rows.map((row) => [row.id, {
         received: String(row.receivedQty ?? row.expectedQty),
         defect: String(row.defectQty || ""),
-      }])));
+      }]));
+      setDraft(fresh);
+      setDefaults(JSON.stringify(fresh));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить позиции");
     } finally {
@@ -46,6 +53,15 @@ export function ReceiveModal({
   }, [batchId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Партию пересчитывают долго и вручную. Черновик держится за партией, а не за
+  // окном: закрыли модалку случайно — открыли снова и продолжили с того же места.
+  const { restoredAt, forget } = useDraft(
+    loading ? null : `warehouse:receive:${batchId}`,
+    draft,
+    useCallback((value: Record<number, Draft>) => JSON.stringify(value) === defaults, [defaults]),
+    useCallback((value: Record<number, Draft>) => setDraft(value), []),
+  );
 
   const save = async () => {
     setSaving(true);
@@ -66,6 +82,7 @@ export function ReceiveModal({
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Не удалось сохранить приём");
       }
+      forget();
       onDone();
       onClose();
     } catch (e) {
@@ -89,6 +106,11 @@ export function ReceiveModal({
         </div>
 
         {error && <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        {restoredAt !== null && (
+          <div className="mx-5 mt-4">
+            <DraftNotice at={restoredAt} onForget={() => { forget(); void load(); }} />
+          </div>
+        )}
 
         {loading ? (
           <div className="p-10 text-center text-sm text-slate-400">Загружаю позиции…</div>

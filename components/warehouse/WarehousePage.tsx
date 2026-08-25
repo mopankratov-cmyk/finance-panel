@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, QrCode, PackageX, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BalancesTab } from "@/components/warehouse/BalancesTab";
 import { DocsTab } from "@/components/warehouse/DocsTab";
 import { KizTab } from "@/components/warehouse/KizTab";
@@ -32,6 +32,19 @@ const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: s
 ];
 
 const STORAGE_KEY = "warehouse:entity";
+const TAB_KEYS = new Set(TABS.map((item) => item.key));
+
+/** Что открыто — часть адреса, а не памяти вкладки: `F5` возвращает на то же
+ *  место, а ссылку можно кинуть коллеге и попасть туда же, где стоял сам. */
+function readAddress(): { tab: Tab | null; entity: string | null } {
+  if (typeof window === "undefined") return { tab: null, entity: null };
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  return {
+    tab: tab && TAB_KEYS.has(tab as Tab) ? (tab as Tab) : null,
+    entity: params.get("entity"),
+  };
+}
 
 export function WarehousePage() {
   const [tab, setTab] = useState<Tab>("balances");
@@ -44,6 +57,9 @@ export function WarehousePage() {
   // а просто ещё не знаем. Без него экран мигает пустым состоянием.
   const [entitiesLoading, setEntitiesLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Пока адрес не прочитан, писать в него нечего: иначе первый же рендер
+  // затрёт `?tab=` значением по умолчанию.
+  const addressRead = useRef(false);
 
   const entity = useMemo(() => entities.find((row) => row.id === entityId) ?? null, [entities, entityId]);
 
@@ -71,6 +87,14 @@ export function WarehousePage() {
   // справочник юрлиц при каждом переключении и сбрасывать выбор.
   useEffect(() => { void loadWarehouses(); }, [loadWarehouses]);
 
+  // Адрес читается отдельно от справочника: упал справочник юрлиц — вкладка
+  // всё равно та, что в ссылке.
+  useEffect(() => {
+    const address = readAddress();
+    if (address.tab) setTab(address.tab);
+    addressRead.current = true;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -81,8 +105,15 @@ export function WarehousePage() {
         if (cancelled) return;
         const rows: LegalEntityRow[] = json.data ?? [];
         setEntities(rows);
+        const address = readAddress();
         const saved = typeof window === "undefined" ? null : window.localStorage.getItem(STORAGE_KEY);
-        const preferred = rows.find((row) => row.id === saved) ?? rows.find((row) => row.cabinets.length > 0) ?? rows[0];
+        // Адрес важнее последнего выбора: по ссылке человек ждёт именно то юрлицо,
+        // которое в ней записано, а не то, с которым сидел вчера.
+        const preferred =
+          rows.find((row) => row.id === address.entity)
+          ?? rows.find((row) => row.id === saved)
+          ?? rows.find((row) => row.cabinets.length > 0)
+          ?? rows[0];
         setEntityId(preferred?.id ?? null);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Не удалось загрузить юрлица");
@@ -94,6 +125,12 @@ export function WarehousePage() {
   }, []);
 
   useEffect(() => { if (refreshKey > 0) void loadWarehouses(); }, [loadWarehouses, refreshKey]);
+
+  useEffect(() => {
+    if (!addressRead.current || !entityId) return;
+    const url = `${window.location.pathname}?tab=${tab}&entity=${encodeURIComponent(entityId)}`;
+    if (url !== window.location.pathname + window.location.search) window.history.replaceState(null, "", url);
+  }, [tab, entityId]);
 
   const pickEntity = (id: string) => {
     setEntityId(id);

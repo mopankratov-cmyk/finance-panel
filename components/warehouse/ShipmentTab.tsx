@@ -10,6 +10,8 @@ import { WbProductImage } from "@/components/wb/WbProductImage";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
 import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
 import { newDocKey } from "@/lib/warehouse/docKey";
+import { useDraft } from "@/lib/warehouse/useDraft";
+import { DraftNotice } from "@/components/warehouse/DraftNotice";
 
 interface CabinetOption {
   id: string;
@@ -73,6 +75,23 @@ export function ShipmentTab({
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
+  // Ключ появляется, когда остатки уже пришли: до этого форма пустая не потому,
+  // что её очистили, а потому что ей нечего показывать.
+  const draftKey = loading || !warehouseId ? null : `warehouse:ship:${entityId}:${warehouseId}`;
+  const draftValue = useMemo(() => ({ amounts, note }), [amounts, note]);
+  const { restoredAt, forget } = useDraft(
+    draftKey,
+    draftValue,
+    useCallback((value: { amounts: Record<string, string>; note: string }) =>
+      Object.values(value.amounts).every((raw) => !raw) && !value.note, []),
+    useCallback((value: { amounts: Record<string, string>; note: string }) => {
+      setAmounts(value.amounts ?? {});
+      setNote(value.note ?? "");
+    }, []),
+  );
+
+  const startOver = () => { setAmounts({}); setNote(""); forget(); };
+
   const rows = useMemo(
     () => (balances?.rows ?? []).filter((row) => row.warehouseId === warehouseId && row.qty > 0),
     [balances, warehouseId],
@@ -125,6 +144,7 @@ export function ShipmentTab({
       setDone(`Отгружено ${formatNumber(json.data.qty)} шт на ${formatNumber(Math.round(json.data.amount))} ₽`);
       setAmounts({});
       setNote("");
+      forget();
       await load();
       onShipped();
     } catch (e) {
@@ -149,6 +169,7 @@ export function ShipmentTab({
     <div className="space-y-4">
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {done && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{done}</div>}
+      <DraftNotice at={restoredAt} onForget={startOver} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <span className="text-sm text-slate-500">Отгружаем со склада</span>

@@ -12,6 +12,8 @@ import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
 import { newDocKey } from "@/lib/warehouse/docKey";
+import { useDraft } from "@/lib/warehouse/useDraft";
+import { DraftNotice } from "@/components/warehouse/DraftNotice";
 
 type Mode = "transfer" | "return";
 
@@ -100,6 +102,19 @@ export function MovementTab({
     setNote("");
   };
 
+  // Перемещение и возврат заполняют по-разному, поэтому черновика два.
+  const draftValue = useMemo(() => ({ lines, note }), [lines, note]);
+  const { restoredAt, forget } = useDraft(
+    loading ? null : `warehouse:move:${mode}:${entityId}`,
+    draftValue,
+    useCallback((value: { lines: DraftLine[]; note: string }) =>
+      !value.note && value.lines.every((line) => !line.variantId && !line.qty && !line.defectQty), []),
+    useCallback((value: { lines: DraftLine[]; note: string }) => {
+      if (value.lines?.length) setLines(value.lines);
+      setNote(value.note ?? "");
+    }, []),
+  );
+
   const submit = async () => {
     const payloadLines = lines
       .filter((line) => line.variantId && Number(line.qty) > 0)
@@ -130,6 +145,7 @@ export function MovementTab({
         ? `Перемещено ${formatNumber(json.data.qty)} шт`
         : `Возвращено ${formatNumber(json.data.qty)} шт${json.data.defects ? `, из них брак ${json.data.defects}` : ""}`);
       reset();
+      forget();
       await load();
       onChanged();
     } catch (e) {
@@ -145,6 +161,7 @@ export function MovementTab({
     <div className="space-y-4">
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {done && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{done}</div>}
+      <DraftNotice at={restoredAt} onForget={() => { reset(); forget(); }} />
 
       <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
         {([["transfer", "Перемещение", ArrowRight], ["return", "Возврат с МП", Undo2]] as const).map(([key, label, Icon]) => (
