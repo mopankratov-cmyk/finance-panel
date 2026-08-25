@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { Check, ChevronRight, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
@@ -15,7 +15,7 @@ import {
   type WbRkBlock,
 } from "@/lib/wb/advertBlocks";
 import { costPerCart, costPerOrder, cplTone, cpoTone, WB_RK_TONE_CLASS } from "@/lib/wb/rkThresholds";
-import { wbCardImageUrl } from "@/lib/wb/cardImage";
+import { WbProductImage } from "./WbProductImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { nmMatchesTags, setWbTagAssignment, useRnpTags, WbTagFilterChips, WbTagPicker } from "./useRnpTags";
@@ -613,11 +613,12 @@ export function WbRkJournalPage() {
                             <td className={`sticky left-0 z-20 px-3 py-2 ${open ? "bg-violet-100" : "bg-white group-hover/row:bg-violet-50"}`}>
                               <div className="flex items-center gap-2.5">
                                 <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={wbCardImageUrl(item.nm)}
-                                  alt=""
-                                  loading="lazy"
+                                {/* Картинка WB лежит на одном из нескольких «баскетов», и по
+                                    номеру он только угадывается. Одна ссылка промахивалась —
+                                    у части артикулов вместо фото была заглушка. Компонент
+                                    перебирает варианты, как в Воронке и Полках. */}
+                                <WbProductImage
+                                  nm={item.nm}
                                   className="h-11 w-9 shrink-0 rounded-md bg-slate-100 object-cover ring-1 ring-slate-200/60"
                                 />
                                 <div className="min-w-0">
@@ -652,14 +653,24 @@ export function WbRkJournalPage() {
                                   type="button"
                                   onClick={(event) => { event.stopPropagation(); setNoteEdit({ nm: item.nm, advertId: null, date, title: article || `WB ${item.nm}`, subtitle: "Задача по товару" }); }}
                                   title={note ? `${note.done ? "Сделано: " : ""}${note.note}` : "Добавить задачу на этот день"}
-                                  className={`text-[11px] leading-none ${note ? (note.done ? "text-emerald-600" : "text-violet-600") : "text-slate-400 hover:text-violet-600"}`}
-                                >{note ? (note.done ? "✓" : "●") : "+"}</button>
+                                  aria-label={note ? "Открыть задачу" : "Добавить задачу"}
+                                  className={`inline-grid h-5 w-5 place-items-center rounded-full border transition-colors ${
+                                    note
+                                      ? note.done
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                                        : "border-violet-200 bg-violet-100 text-violet-700"
+                                      : "border-dashed border-slate-200 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
+                                  }`}
+                                >{note ? (note.done ? <Check className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />) : <Plus className="h-3 w-3" />}</button>
                               ) : null;
                               if (isEmpty(cell)) {
                                 return (
-                                  <td key={date} colSpan={7} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">
-                                    —{noteBadge}
-                                  </td>
+                                  <Fragment key={date}>
+                                    {/* Прочерк объединяет только колонки метрик: раньше он
+                                        захватывал и «Задачу», и кнопка оказывалась посреди дня. */}
+                                    <td colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">—</td>
+                                    <td className="px-1 py-1.5 text-center">{noteBadge}</td>
+                                  </Fragment>
                                 );
                               }
                               const cpo = costPerOrder(cell.spent, cell.orders);
@@ -708,14 +719,22 @@ export function WbRkJournalPage() {
                                     type="button"
                                     onClick={(event) => { event.stopPropagation(); setNoteEdit({ nm: item.nm, advertId: campaign.advertId, date, title: campaign.name ?? `Кампания ${campaign.advertId}`, subtitle: article || `WB ${item.nm}` }); }}
                                     title={cNote ? `${cNote.done ? "Сделано: " : ""}${cNote.note}` : "Добавить задачу по кампании"}
-                                    className={`text-[11px] leading-none ${cNote ? (cNote.done ? "text-emerald-600" : "text-violet-600") : "text-slate-400 hover:text-violet-600"}`}
-                                  >{cNote ? (cNote.done ? "✓" : "●") : "+"}</button>
+                                    aria-label={cNote ? "Открыть задачу" : "Добавить задачу"}
+                                    className={`inline-grid h-5 w-5 place-items-center rounded-full border transition-colors ${
+                                      cNote
+                                        ? cNote.done
+                                          ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                                          : "border-violet-200 bg-violet-100 text-violet-700"
+                                        : "border-dashed border-slate-200 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
+                                    }`}
+                                  >{cNote ? (cNote.done ? <Check className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />) : <Plus className="h-3 w-3" />}</button>
                                 ) : null;
                                 if (isEmpty(cell)) {
                                   return (
-                                    <td key={date} colSpan={7} className="border-l border-slate-200 px-2 py-1 text-center text-slate-300">
-                                      —{cBadge}
-                                    </td>
+                                    <Fragment key={date}>
+                                      <td colSpan={6} className="border-l border-slate-200 px-2 py-1 text-center text-slate-300">—</td>
+                                      <td className="px-1 py-1 text-center">{cBadge}</td>
+                                    </Fragment>
                                   );
                                 }
                                 const cpo = costPerOrder(cell.spent, cell.orders);

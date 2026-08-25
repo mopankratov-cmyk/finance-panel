@@ -8,6 +8,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
 import { displaySkuArticle, displaySkuName, useWbSkuNames } from "./useWbSkuNames";
+import { WbProductImage } from "./WbProductImage";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -639,7 +640,7 @@ export function WbShelfPage() {
                 <section key={watch.id} className={`group bg-white transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-violet-50/25 ${watch.active ? "" : "opacity-60"}`}>
                   <button type="button" onClick={() => setExpandedId(expanded ? null : watch.id)} aria-expanded={expanded} className="flex w-full flex-wrap items-center gap-4 px-4 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={watch.ourImg || wbCardImageUrl(watch.nmId)} alt="" loading="lazy" className="h-16 w-[52px] shrink-0 rounded-lg bg-slate-100 object-cover ring-1 ring-slate-200/60" />
+                    <WbProductImage nm={watch.nmId} src={watch.ourImg} className="h-16 w-[52px] shrink-0 rounded-lg bg-slate-100 object-cover ring-1 ring-slate-200/60" />
                     <div className="min-w-0">
                       {/* Три строки опознания, как в воронке: артикул склада,
                           номер WB для поиска в кабинете, название карточки.
@@ -722,7 +723,7 @@ export function WbShelfPage() {
                                           className="group flex items-center gap-2"
                                         >
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img src={row.img || wbCardImageUrl(row.nmId)} alt="" loading="lazy" className="h-10 w-8 rounded bg-slate-100 object-cover" />
+                                          <WbProductImage nm={row.nmId} src={row.img} className="h-10 w-8 rounded bg-slate-100 object-cover" />
                                           <span className="tabular-nums font-semibold text-violet-700 group-hover:underline">{row.nmId}</span>
                                         </a>
                                       ) : (
