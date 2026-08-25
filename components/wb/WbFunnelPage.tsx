@@ -1,6 +1,8 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Filter, Package, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Filter, MessageSquare, Package, Search, X } from "lucide-react";
+import { WbCtrDayPopup } from "./WbCtrDayPopup";
+import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
@@ -105,6 +107,26 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const adsCols = collapsed.ads ? 1 : 2;
   const funnelCols = collapsed.funnel ? 1 : 5;
   const stockCols = collapsed.stocks ? 1 : 3;
+
+
+  const [ctrPopup, setCtrPopup] = useState<{ nm: number; date: string; article: string } | null>(null);
+  const [notes, setNotes] = useState<Map<string, string>>(new Map());
+  const noteKey = (nm: number, date: string) => `${nm}|${date}`;
+
+  // Заметки грузим окном сразу: значки должны стоять с первого показа.
+  useEffect(() => {
+    if (!cabinetId || cabinetId === "all") return;
+    const controller = new AbortController();
+    fetch(`/api/wb/ctr-notes?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : { notes: [] })
+      .then((body) => {
+        if (controller.signal.aborted) return;
+        setNotes(new Map((body.notes ?? []).map((row: { nmId: number; date: string; note: string }) => [`${row.nmId}|${row.date}`, row.note])));
+      })
+      // Заметки — вспомогательный слой: без них таблица работает как раньше.
+      .catch(() => {});
+    return () => controller.abort();
+  }, [cabinetId]);
 
   /**
    * Заголовок группы — кнопка со стрелкой и счётчиком скрытых колонок.
@@ -303,6 +325,20 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
           <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:w-72 lg:min-h-8"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="nm, артикул, название" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />{query ? <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}</label>
         </div>
 
+        {ctrPopup && cabinetId ? (
+          <WbCtrDayPopup
+            cabinetId={cabinetId}
+            nmId={ctrPopup.nm}
+            date={ctrPopup.date}
+            article={ctrPopup.article}
+            onClose={() => setCtrPopup(null)}
+            onNoteSaved={(nm, date, note) => setNotes((prev) => {
+              const next = new Map(prev);
+              if (note) next.set(`${nm}|${date}`, note); else next.delete(`${nm}|${date}`);
+              return next;
+            })}
+          />
+        ) : null}
         {loading ? <><LoadingBanner seconds={elapsed} hint="Собираем посуточную воронку" /><div className="rounded-xl border border-slate-200 bg-white"><SkeletonTableRows rows={12} cols={8} /></div></> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : filtered.length === 0 ? <WbEmptyState>Нет SKU с данными за выбранный период.</WbEmptyState> : (
           <div className="h-[calc(100vh-190px)] min-h-[470px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" onScroll={(event) => updateWindow(event.currentTarget)}>
             <table className="min-w-max border-separate border-spacing-0 text-[10px]">
@@ -362,7 +398,33 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                   </tr>
                 ) : null}
                 {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + stockCols + dates.length} /></tr> : null}
-                {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td>{collapsed.stocks ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.stock_fbo)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{sku.stock_fbs == null ? <span className="text-slate-300" title="Остатки склада продавца ещё не собирались">—</span> : fmt(sku.stock_fbs)}</td></>}<td className={`border-b border-r border-slate-100 px-2 text-right tabular-nums ${sku.stock === 0 ? "font-semibold text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => { const value = daily?.metrics[String(sku.nm)]?.[date]?.[metric]; return <td key={date} className="border-b border-slate-100 px-1 text-center"><span className={`inline-flex min-h-7 min-w-[66px] items-center justify-center rounded-md px-1 font-semibold tabular-nums ${cellTone(metric, value)}`}>{formatCell(value)}</span></td>; })}</tr>)}
+                {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td>{collapsed.stocks ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.stock_fbo)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{sku.stock_fbs == null ? <span className="text-slate-300" title="Остатки склада продавца ещё не собирались">—</span> : fmt(sku.stock_fbs)}</td></>}<td className={`border-b border-r border-slate-100 px-2 text-right tabular-nums ${sku.stock === 0 ? "font-semibold text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => {
+                  const cell = daily?.metrics[String(sku.nm)]?.[date];
+                  const value = cell?.[metric];
+                  const isCtr = metric === "ctr";
+                  // Доля клика на горстке показов — шум. Прячем саму долю, но
+                  // не факт: показы и клики видны в разборе по кампаниям.
+                  const тонкийЗамер = isCtr && (cell?.views ?? 0) < CTR_MIN_VIEWS;
+                  const hasNote = notes.has(noteKey(sku.nm, date));
+                  const shown = тонкийЗамер ? null : value;
+                  return (
+                    <td key={date} className="border-b border-slate-100 px-1 text-center">
+                      {isCtr ? (
+                        <button
+                          type="button"
+                          onClick={() => setCtrPopup({ nm: sku.nm, date, article: sku.art })}
+                          title={тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит. Нажмите, чтобы увидеть кампании` : "Разбор по кампаниям и заметка"}
+                          className={`inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 ${тонкийЗамер ? "text-slate-300" : cellTone(metric, shown)}`}
+                        >
+                          {тонкийЗамер ? "—" : formatCell(shown)}
+                          {hasNote ? <MessageSquare className="h-2.5 w-2.5 shrink-0 text-violet-500" aria-label="есть заметка" /> : null}
+                        </button>
+                      ) : (
+                        <span className={`inline-flex min-h-7 min-w-[66px] items-center justify-center rounded-md px-1 font-semibold tabular-nums ${cellTone(metric, value)}`}>{formatCell(value)}</span>
+                      )}
+                    </td>
+                  );
+                })}</tr>)}
                 {rowWindow.end < filtered.length ? <tr aria-hidden="true" style={{ height: (filtered.length - rowWindow.end) * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + stockCols + dates.length} /></tr> : null}
               </tbody>
             </table>
