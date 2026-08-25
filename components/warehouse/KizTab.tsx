@@ -75,6 +75,7 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
     if (!res.ok) throw new Error(json.error || "Не удалось обновить");
     const d = json.data as KizTasksResult;
     const lines = [d.added > 0 ? `К выводу добавлено ${formatNumber(d.added)}` : "Новых кодов нет — всё уже собрано"];
+    if (d.enriched > 0) lines.push(`${formatNumber(d.enriched)} кодам дописаны дата продажи и товар`);
     if (d.unlinked > 0) lines.push(`${formatNumber(d.unlinked)} кодов ждут связи с продажей — подтянутся сами`);
     return lines;
   });

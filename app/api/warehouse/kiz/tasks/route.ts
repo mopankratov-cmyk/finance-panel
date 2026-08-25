@@ -20,7 +20,23 @@ export interface KizTasksResult {
   added: number;
   /** Код есть, но связать с продажей нечем: у задания не сохранён srid. */
   unlinked: number;
+  /** Прежним строкам дописаны дата продажи и товар. */
+  enriched: number;
+  /** Строк, которым дописать нечего: продажа по их srid не нашлась. */
+  stillBlank: number;
 }
+
+/** Что продажа знает про код: цену, дату выкупа и товар. */
+interface Sale {
+  price: number | null;
+  soldAt: string | null;
+  nmId: number | null;
+  article: string | null;
+}
+
+/** Сколько прежних строк без даты чиним за один заход. Потолок нужен затем,
+ *  чтобы разовый долг не превращал быстрый шаг в долгий. */
+const BLANK_LIMIT = 1000;
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
@@ -94,18 +110,46 @@ export async function POST(_request: NextRequest) {
   }
 
   // Выкуп и возврат: номер продажи начинается с S, возврата — с R.
+  //
+  // Из продажи берём не только цену. Дата выкупа — это начало трёхсуточного
+  // срока вывода из оборота: без неё код лежит в реестре вечно свежим, и
+  // «просрочено» никогда не загорится по самому быстрому источнику. Товар нужен
+  // затем, чтобы код в реестре можно было опознать глазами и привязать к юрлицу.
   const srids = [...bySrid.keys()];
-  const bought = new Map<string, number | null>();
+  const bought = new Map<string, Sale>();
   const returned = new Set<string>();
   for (let offset = 0; offset < srids.length; offset += 100) {
     const { data } = await db
       .from("wb_sales")
-      .select("srid, sale_id, price_with_disc, for_pay, date")
+      .select("srid, sale_id, price_with_disc, for_pay, date, nm_id")
       .in("srid", srids.slice(offset, offset + 100));
     for (const row of data ?? []) {
       const id = String(row.sale_id ?? "");
       if (id.startsWith("R")) returned.add(String(row.srid));
-      else if (id.startsWith("S")) bought.set(String(row.srid), Number(row.price_with_disc ?? row.for_pay) || null);
+      else if (id.startsWith("S")) {
+        bought.set(String(row.srid), {
+          price: Number(row.price_with_disc ?? row.for_pay) || null,
+          soldAt: row.date ? String(row.date).slice(0, 10) : null,
+          nmId: row.nm_id === null || row.nm_id === undefined ? null : Number(row.nm_id),
+          article: null,
+        });
+      }
+    }
+  }
+
+  // Артикул лежит в заказе, а не в продаже. Спрашиваем только за то, что уже
+  // признано выкупленным: тянуть заказы под все задания было бы впустую.
+  const boughtSrids = [...bought.keys()];
+  for (let offset = 0; offset < boughtSrids.length; offset += 100) {
+    const { data } = await db
+      .from("wb_orders")
+      .select("srid, supplier_article, nm_id")
+      .in("srid", boughtSrids.slice(offset, offset + 100));
+    for (const row of data ?? []) {
+      const sale = bought.get(String(row.srid));
+      if (!sale) continue;
+      sale.article = row.supplier_article ? String(row.supplier_article) : null;
+      if (sale.nmId === null && row.nm_id !== null && row.nm_id !== undefined) sale.nmId = Number(row.nm_id);
     }
   }
 
@@ -113,6 +157,7 @@ export async function POST(_request: NextRequest) {
   const fresh: Record<string, unknown>[] = [];
   for (const [srid, task] of bySrid) {
     if (!bought.has(srid)) continue;
+    const sale = bought.get(srid)!;
     for (const raw of task.codes) {
       const parsed = parseKizCode(raw);
       if (!parsed.code) continue;
@@ -126,7 +171,10 @@ export async function POST(_request: NextRequest) {
         // Код из сборочного задания — это по определению FBS: заданий у других
         // схем не бывает.
         scheme: "fbs",
-        price: bought.get(srid),
+        price: sale.price,
+        sold_at: sale.soldAt,
+        nm_id: sale.nmId,
+        article: sale.article,
         status: returned.has(srid) ? "returned" : "sold",
         source: "Сборочные задания FBS",
         updated_at: stamp,
@@ -144,6 +192,35 @@ export async function POST(_request: NextRequest) {
     added += (data ?? []).length;
   }
 
+  // Строки, записанные до того, как источник научился сохранять дату и товар,
+  // сами по себе не исправятся: запись в реестр идёт через upsert с
+  // ignoreDuplicates, и существующую строку он не трогает никогда. Дописываем
+  // адресно и только пустое — чужую дату продажи затирать нельзя.
+  let enriched = 0;
+  const blanks = await db
+    .from("kiz_withdrawals")
+    .select("code, srid")
+    .is("sold_at", null)
+    .not("srid", "is", null)
+    .limit(BLANK_LIMIT);
+  const blankBySrid = new Map<string, string[]>();
+  for (const row of blanks.data ?? []) {
+    const key = String(row.srid);
+    blankBySrid.set(key, [...(blankBySrid.get(key) ?? []), String(row.code)]);
+  }
+  let stillBlank = 0;
+  for (const [srid, codes] of blankBySrid) {
+    const sale = bought.get(srid);
+    if (!sale?.soldAt) { stillBlank += codes.length; continue; }
+    const { data } = await db
+      .from("kiz_withdrawals")
+      .update({ sold_at: sale.soldAt, nm_id: sale.nmId, article: sale.article, price: sale.price, updated_at: stamp })
+      .in("code", codes)
+      .is("sold_at", null)
+      .select("code");
+    enriched += (data ?? []).length;
+  }
+
   const result: KizTasksResult = {
     withCodes: withCodes.length,
     linked: bySrid.size,
@@ -151,6 +228,8 @@ export async function POST(_request: NextRequest) {
     returned: returned.size,
     added,
     unlinked: withCodes.length - bySrid.size,
+    enriched,
+    stillBlank,
   };
   return NextResponse.json({ data: result, error: null });
 }

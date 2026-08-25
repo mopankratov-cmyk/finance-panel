@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { buildWithdrawalPlan, parsePrice, parseReturnedKiz, parseSoldKiz } from "../lib/wb/kizWithdrawal.ts";
 
 const CODE_A = "0104660691960104215mT+XtQEaCHos";
@@ -105,4 +106,22 @@ test("сборщик фильтрует чужие коды товарным к�
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("../app/api/warehouse/kiz/collect/route.ts", import.meta.url), "utf8");
   assert.match(src, /allowsProduct\(scope, row\.nmId\)/);
+});
+
+test("сборщик заданий сохраняет дату продажи, иначе срок вывода не начинается", () => {
+  const src = readFileSync(new URL("../app/api/warehouse/kiz/tasks/route.ts", import.meta.url), "utf8");
+  // Дата выкупа — начало трёхсуточного срока. Без неё код вечно «свежий»:
+  // сводка намеренно считает строку без даты не просроченной.
+  assert.match(src, /sold_at: sale\.soldAt/, "дата продажи не записывается");
+  assert.match(src, /nm_id: sale\.nmId/, "товар не записывается");
+  assert.match(src, /article: sale\.article/, "артикул не записывается");
+  assert.match(src, /select\("srid, sale_id, price_with_disc, for_pay, date, nm_id"\)/, "товар не запрашивается у продажи");
+});
+
+test("добор прежних строк не затирает уже известную дату", () => {
+  const src = readFileSync(new URL("../app/api/warehouse/kiz/tasks/route.ts", import.meta.url), "utf8");
+  // Запись в реестр идёт через upsert с ignoreDuplicates — существующую строку
+  // он не трогает. Значит добор идёт отдельным update, и он обязан быть узким.
+  assert.match(src, /\.is\("sold_at", null\)\s*\n\s*\.select\("code"\)/, "добор не ограничен пустыми строками");
+  assert.match(src, /BLANK_LIMIT/, "у добора нет потолка");
 });
