@@ -59,3 +59,14 @@ export function displaySkuName(article: string, serverName: string | null | unde
   if (server && server !== article) return server;
   return directory.get(nm)?.name || "";
 }
+
+/**
+ * Артикул для показа. Ручной артикул Полок важнее: владелец вводит его под
+ * свой склад. Но он заполнен далеко не везде, и тогда берём артикул карточки
+ * WB — иначе в строке товара оказывается номер вместо артикула.
+ */
+export function displaySkuArticle(manual: string | null | undefined, directory: Map<number, WbSkuIdentity>, nm: number) {
+  const own = (manual ?? "").trim();
+  if (own) return own;
+  return directory.get(nm)?.article || "";
+}
