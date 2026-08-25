@@ -7,7 +7,7 @@ import type { ShelfMarkedRow, ShelfSliceResult } from "@/lib/shelf/slices";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
-import { displaySkuName, useWbSkuNames } from "./useWbSkuNames";
+import { displaySkuArticle, displaySkuName, useWbSkuNames } from "./useWbSkuNames";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -646,7 +646,7 @@ export function WbShelfPage() {
                           Компонент воронки сюда не годится — там мелкая
                           табличная ячейка, здесь заголовок карточки. */}
                       <div className="flex items-baseline gap-2">
-                        <span className="truncate text-[17px] font-bold tracking-[-0.01em] text-slate-800">{watch.supplierArticle || `WB ${watch.nmId}`}</span>
+                        <span className="truncate text-[17px] font-bold tracking-[-0.01em] text-slate-800">{displaySkuArticle(watch.supplierArticle, skuNames, watch.nmId) || `WB ${watch.nmId}`}</span>
                         {watch.ourBrand ? <span className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">{watch.ourBrand}</span> : null}
                       </div>
                       <div className="truncate text-[11px] font-normal tabular-nums text-slate-400">WB {watch.nmId}</div>
