@@ -23,12 +23,16 @@ const pct = (value: number | null) => (value == null ? "—" : `${value.toFixed(
  * помнит, почему 18-го числа было так.
  */
 export function WbCtrDayPopup({
-  cabinetId, nmId, date, article, onClose, onNoteSaved,
+  cabinetId, nmId, date, article, cellViews, cellClicks, onClose, onNoteSaved,
 }: {
   cabinetId: string;
   nmId: number;
   date: string;
   article: string;
+  /** Показы и клики из самой клетки: по ним отличаем «кампаний не было» от
+   *  «разбивку не сохраняли». Без этого пустой разбор врал бы про день. */
+  cellViews: number;
+  cellClicks: number;
   onClose: () => void;
   /** Сообщаем таблице, чтобы она обновила значок заметки без перезагрузки. */
   onNoteSaved: (nmId: number, date: string, note: string) => void;
@@ -163,6 +167,17 @@ export function WbCtrDayPopup({
                     </tr>
                   </tbody>
                 </table>
+              ) : cellViews > 0 ? (
+                // Показы в этот день были, а разбивки нет: сырой слой по
+                // кампаниям начали вести позже. Сказать «кампаний не было»
+                // значило бы соврать про день, которого мы просто не помним.
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
+                  <div className="font-semibold">Разбивка по кампаниям за этот день не сохранялась</div>
+                  <p className="mt-0.5">
+                    Реклама в этот день шла — {fmt(cellViews)} показов и {fmt(cellClicks)} кликов, — но по каким
+                    кампаниям, мы не знаем: слой с разбивкой начали вести позже. За свежие дни разбор полный.
+                  </p>
+                </div>
               ) : (
                 <p className="text-[13px] text-slate-500">В этот день по артикулу не было ни одной кампании с показами.</p>
               )}

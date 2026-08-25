@@ -109,7 +109,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const stockCols = collapsed.stocks ? 1 : 3;
 
 
-  const [ctrPopup, setCtrPopup] = useState<{ nm: number; date: string; article: string } | null>(null);
+  const [ctrPopup, setCtrPopup] = useState<{ nm: number; date: string; article: string; views: number; clicks: number } | null>(null);
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
   const noteKey = (nm: number, date: string) => `${nm}|${date}`;
 
@@ -331,6 +331,8 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
             nmId={ctrPopup.nm}
             date={ctrPopup.date}
             article={ctrPopup.article}
+            cellViews={ctrPopup.views}
+            cellClicks={ctrPopup.clicks}
             onClose={() => setCtrPopup(null)}
             onNoteSaved={(nm, date, note) => setNotes((prev) => {
               const next = new Map(prev);
@@ -412,7 +414,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                       {isCtr ? (
                         <button
                           type="button"
-                          onClick={() => setCtrPopup({ nm: sku.nm, date, article: sku.art })}
+                          onClick={() => setCtrPopup({ nm: sku.nm, date, article: sku.art, views: cell?.views ?? 0, clicks: cell?.clicks ?? 0 })}
                           title={тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит. Нажмите, чтобы увидеть кампании` : "Разбор по кампаниям и заметка"}
                           className={`inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 ${тонкийЗамер ? "text-slate-300" : cellTone(metric, shown)}`}
                         >
