@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { Check, ChevronRight, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
@@ -463,15 +463,19 @@ export function WbRkJournalPage() {
             Часть данных не прочиталась, цифры ниже неполные: {data.notes.join("; ")}
           </div>
         ) : null}
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-          {/* Карточки видов размещения выглядели как сводка, и что они кликабельны,
-              было не видно. Говорим прямо. */}
-          <span>Нажмите на вид размещения, чтобы оставить только его кампании.</span>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {/* Карточки видов размещения выглядели как сводка. Тихая серая строка
+              подсказки терялась, поэтому она стала заметным блоком с иконкой —
+              её задача не украшать, а объяснить, что по карточкам можно кликать. */}
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[12px] font-medium text-violet-800">
+            <MousePointerClick className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            Нажмите на карточку вида размещения — в таблице останутся только его кампании
+          </span>
           {blockFilter !== "all" ? (
             <button
               type="button"
               onClick={() => setBlockFilter("all")}
-              className="inline-flex items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 font-semibold text-violet-700"
+              className="inline-flex items-center gap-1 rounded-full border border-violet-300 bg-white px-2.5 py-1 text-[12px] font-semibold text-violet-700 hover:bg-violet-50"
             >
               Показаны только «{WB_RK_BLOCK_LABELS[blockFilter as WbRkBlock] ?? blockFilter}» · сбросить ✕
             </button>
@@ -480,7 +484,7 @@ export function WbRkJournalPage() {
             type="button"
             onClick={() => setShowNotes((value) => !value)}
             aria-pressed={showNotes}
-            className={`ml-auto rounded-lg border px-2 py-0.5 font-semibold ${showNotes ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
+            className={`ml-auto rounded-lg border px-2.5 py-1 text-[12px] font-semibold ${showNotes ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
           >
             {showNotes ? "Задачи показаны" : "Показать задачи"}
           </button>
@@ -500,9 +504,12 @@ export function WbRkJournalPage() {
                   key={summary.block}
                   type="button"
                   onClick={() => setBlockFilter(blockFilter === summary.block ? "all" : summary.block)}
-                  className={`rounded-xl border p-2.5 text-left transition ${blockFilter === summary.block ? "border-slate-900 bg-white shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                  className={`group/card relative cursor-pointer rounded-xl border p-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-md ${blockFilter === summary.block ? "border-violet-500 bg-violet-50/40 shadow-sm ring-1 ring-violet-200" : "border-slate-200 bg-white hover:border-violet-300"}`}
                 >
-                  <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">{summary.label}</div>
+                  {/* Иконка фильтра проявляется под курсором: карточка сама
+                      сообщает, что она не просто сводка. */}
+                  <Filter className={`absolute right-2 top-2 h-3 w-3 transition-opacity ${blockFilter === summary.block ? "text-violet-600 opacity-100" : "text-violet-400 opacity-0 group-hover/card:opacity-100"}`} aria-hidden="true" />
+                  <div className={`truncate pr-4 text-[11px] font-semibold uppercase tracking-wide ${blockFilter === summary.block ? "text-violet-700" : "text-slate-500"}`}>{summary.label}</div>
                   <div className="mt-1 text-lg font-bold tabular-nums text-slate-900">{money(summary.spent)} ₽</div>
                   <dl className="mt-1 space-y-0.5 text-[11px] text-slate-500">
                     <div className="flex justify-between gap-2">
