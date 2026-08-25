@@ -26,12 +26,32 @@ test("сбой записи документа не отменяет прове�
   assert.equal(doc, null);
 });
 
-test("все четыре проводки заводят документ", () => {
-  for (const route of ["shipments", "writeoffs", "transfers", "returns"]) {
+test("все четыре проводки заводят документ и называют его номер", () => {
+  for (const route of ["writeoffs", "transfers", "returns"]) {
     const src = readFileSync(new URL(`../app/api/warehouse/${route}/route.ts`, import.meta.url), "utf8");
     assert.match(src, /recordStockDoc\(/, `${route}: не заводит документ`);
     assert.match(src, /docNumber: doc\.number/, `${route}: не отдаёт номер в ответе`);
   }
+
+  // Отгрузка — исключение: одна проводка уезжает в разные кабинеты, и накладных
+  // у неё столько, сколько адресатов. Номер приходит списком, а не полем.
+  const shipments = readFileSync(new URL("../app/api/warehouse/shipments/route.ts", import.meta.url), "utf8");
+  assert.match(shipments, /recordStockDoc\(/, "shipments: не заводит документ");
+  assert.match(shipments, /docs\.push\(\{ number: doc\.number/, "shipments: не отдаёт номера накладных");
+  assert.match(shipments, /cabinetId: cabinetId \|\| null/, "shipments: документ не помнит своего кабинета");
+});
+
+test("сторно отгрузки не трогает соседние накладные той же проводки", () => {
+  const src = readFileSync(new URL("../app/api/warehouse/docs/[id]/reverse/route.ts", import.meta.url), "utf8");
+  // Без кабинета функция отменит ВСЕ движения проводки — то есть и то, что
+  // уехало в другой кабинет по другой накладной.
+  assert.match(src, /p_cabinet_id: doc\.cabinet_id/, "сторно не передаёт кабинет документа");
+
+  const sql = readFileSync(new URL("../supabase/migrations/202608250027_doc_reversal_cabinet.sql", import.meta.url), "utf8");
+  assert.match(sql, /p_cabinet_id is null or cabinet_id = p_cabinet_id/, "функция не сужает отмену по кабинету");
+  // Старую сигнатуру обязательно снять: иначе вызов с четырьмя аргументами
+  // станет неоднозначным между ней и новой с умолчанием.
+  assert.match(sql, /drop function if exists public\.post_doc_reversal\(text, text, text, text\)/);
 });
 
 test("сторно отказывается работать по черновику и по уже сторнированному", () => {
