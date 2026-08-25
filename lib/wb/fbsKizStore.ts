@@ -20,6 +20,12 @@ export interface KizCodeSnapshot {
   codes: Map<number, string[]>;
   /** Задания, которые опрашивались недавно и ещё не стоят нового запроса. */
   recentlyProbed: Set<number>;
+  /**
+   * Код есть, а srid — нет. Такое задание нужно опросить ещё раз, хотя код у
+   * него уже найден: без srid код невозможно связать с выкупом, а значит и
+   * вывести из оборота. Раньше такие задания выпадали из очереди навсегда.
+   */
+  codesWithoutSrid: Set<number>;
 }
 
 /** Что уже известно по списку заданий. Ошибка чтения не мешает опросить WB. */
@@ -27,7 +33,7 @@ export async function loadKnownKizCodes(
   cabinetId: string,
   orderIds: number[],
 ): Promise<KizCodeSnapshot> {
-  const snapshot: KizCodeSnapshot = { codes: new Map(), recentlyProbed: new Set() };
+  const snapshot: KizCodeSnapshot = { codes: new Map(), recentlyProbed: new Set(), codesWithoutSrid: new Set() };
   if (!cabinetId || !orderIds.length) return snapshot;
   const db = getSupabaseAdmin();
   if (!db) return snapshot;
@@ -35,7 +41,7 @@ export async function loadKnownKizCodes(
   for (let index = 0; index < orderIds.length; index += 500) {
     const { data, error } = await db
       .from("wb_fbs_order_kiz")
-      .select("order_id, codes, checked_at")
+      .select("order_id, codes, checked_at, srid")
       .eq("cabinet_id", cabinetId)
       .in("order_id", orderIds.slice(index, index + 500));
     if (error || !data) return snapshot;
@@ -44,6 +50,7 @@ export async function loadKnownKizCodes(
       const codes = Array.isArray(row.codes) ? row.codes.map(String).filter(Boolean) : [];
       if (codes.length) {
         snapshot.codes.set(orderId, codes);
+        if (!row.srid) snapshot.codesWithoutSrid.add(orderId);
         continue;
       }
       const checkedAt = Date.parse(String(row.checked_at ?? ""));
@@ -51,6 +58,35 @@ export async function loadKnownKizCodes(
     }
   }
   return snapshot;
+}
+
+/**
+ * Дописать srid к уже сохранённым кодам.
+ *
+ * Задание с кодом, но без srid — мёртвый груз: связать код с выкупом нечем, а
+ * значит и вывести из оборота. Возвращать такое задание в очередь опроса было
+ * бы расточительно: srid известен из той же очереди, откуда задание пришло, и
+ * второй запрос к WB ради него не нужен.
+ */
+export async function backfillKizSrid(
+  cabinetId: string,
+  sridByOrderId: Map<number, string>,
+): Promise<number> {
+  if (!cabinetId || !sridByOrderId.size) return 0;
+  const db = getSupabaseAdmin();
+  if (!db) return 0;
+  let filled = 0;
+  for (const [orderId, srid] of sridByOrderId) {
+    const { data } = await db
+      .from("wb_fbs_order_kiz")
+      .update({ srid })
+      .eq("cabinet_id", cabinetId)
+      .eq("order_id", orderId)
+      .is("srid", null)
+      .select("order_id");
+    filled += (data ?? []).length;
+  }
+  return filled;
 }
 
 /**

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { fetchFbsOrders, fetchFbsOrdersMetaBatch } from "@/lib/wb/fbsMarketplace";
-import { loadKnownKizCodes, loadOrderIdsFromDb, rememberKizCodes } from "@/lib/wb/fbsKizStore";
+import { backfillKizSrid, loadKnownKizCodes, loadOrderIdsFromDb, rememberKizCodes } from "@/lib/wb/fbsKizStore";
 import { allowsProduct, type WbProductScope } from "@/lib/wb/productScope";
 
 // Коды маркировки добираются в фоне, а не по заходу пользователя.
@@ -47,6 +47,8 @@ interface CabinetResult {
   error?: string;
   /** Сколько запросов кода упало и с какой первой причиной. */
   failed: number;
+  /** Заданиям с кодом дописан srid — без него код не связать с выкупом. */
+  sridFilled: number;
   reason?: string;
   /** Сырая форма metaDetails с боевого ответа — чтобы разбор правился по факту. */
   sample?: string;
@@ -59,7 +61,7 @@ async function collectForCabinet(
   startDay: number,
   deadline: number,
 ): Promise<CabinetResult> {
-  const result: CabinetResult = { cabinet: target.name, orders: 0, probed: 0, found: 0, left: 0, days: [], failed: 0, foreign: 0 };
+  const result: CabinetResult = { cabinet: target.name, orders: 0, probed: 0, found: 0, left: 0, days: [], failed: 0, foreign: 0, sridFilled: 0 };
 
   for (let step = 0; step < DAYS_PER_RUN; step++) {
     if (Date.now() > deadline || result.probed >= CODES_PER_RUN) break;
@@ -78,6 +80,16 @@ async function collectForCabinet(
     if (stored) {
       result.orders += stored.length;
       const known = await loadKnownKizCodes(target.cabinetId, stored);
+      // Заданию с кодом, но без srid, повторный опрос не нужен: srid известен
+      // из этой же очереди. Дописываем его молча и бюджет не тратим.
+      if (known.codesWithoutSrid.size) {
+        const missing = new Map<number, string>();
+        for (const id of known.codesWithoutSrid) {
+          const srid = sridByOrderId.get(id);
+          if (srid) missing.set(id, srid);
+        }
+        result.sridFilled += await backfillKizSrid(target.cabinetId, missing);
+      }
       const queue = stored.filter((id) => !known.codes.get(id)?.length && !known.recentlyProbed.has(id));
       if (!queue.length) continue;
       result.days.push(new Date(fromMs).toISOString().slice(0, 10));
@@ -117,6 +129,14 @@ async function collectForCabinet(
     if (!ids.length) continue;
 
     const known = await loadKnownKizCodes(target.cabinetId, ids);
+    if (known.codesWithoutSrid.size) {
+      const missing = new Map<number, string>();
+      for (const id of known.codesWithoutSrid) {
+        const srid = sridByOrderId.get(id);
+        if (srid) missing.set(id, srid);
+      }
+      result.sridFilled += await backfillKizSrid(target.cabinetId, missing);
+    }
     const queue = ids.filter((id) => !known.codes.get(id)?.length && !known.recentlyProbed.has(id));
     if (!queue.length) continue;
 
@@ -176,6 +196,7 @@ export async function GET(request: NextRequest) {
           days: [],
           failed: 0,
           foreign: 0,
+          sridFilled: 0,
           error:
             item.reason instanceof Error ? item.reason.message.slice(0, 120) : "Не удалось добрать коды",
         },

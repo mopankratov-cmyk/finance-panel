@@ -76,11 +76,21 @@ export async function POST(_request: NextRequest) {
     for (const row of data ?? []) if (row.srid) sridByOrder.set(Number(row.order_id), String(row.srid));
   }
 
+  // Найденный srid дописываем обратно к коду: искать одну и ту же связь при
+  // каждом заходе — лишняя работа, а таблица заданий заполняется неравномерно.
+  const backfill: { cabinet_id: string; order_id: number; srid: string }[] = [];
+
   const bySrid = new Map<string, { cabinetId: string; codes: string[] }>();
   for (const row of withCodes) {
     const srid = row.srid ?? sridByOrder.get(Number(row.order_id)) ?? null;
     if (!srid) continue;
+    if (!row.srid) backfill.push({ cabinet_id: String(row.cabinet_id), order_id: Number(row.order_id), srid: String(srid) });
     bySrid.set(String(srid), { cabinetId: String(row.cabinet_id), codes: (row.codes ?? []).map(String) });
+  }
+
+  for (const row of backfill) {
+    await db.from("wb_fbs_order_kiz").update({ srid: row.srid })
+      .eq("cabinet_id", row.cabinet_id).eq("order_id", row.order_id);
   }
 
   // Выкуп и возврат: номер продажи начинается с S, возврата — с R.
