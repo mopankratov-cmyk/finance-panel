@@ -20,6 +20,8 @@ import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { nmMatchesTags, setWbTagAssignment, useRnpTags, WbTagFilterChips, WbTagPicker } from "./useRnpTags";
 import { displaySkuArticle, displaySkuName, useWbSkuNames } from "./useWbSkuNames";
+import { WbRkNotePopup } from "./WbRkNotePopup";
+import { rkNoteKey, type RkNote } from "@/lib/wb/rkNotes";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 
@@ -113,6 +115,15 @@ export function WbRkJournalPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [blockFilter, setBlockFilter] = useState<string>("all");
+
+  /**
+   * Заметки менеджеру: что сделать с товаром или кампанией в этот день.
+   * Хранятся на клетку (артикул × кампания × день); кампания может быть
+   * пустой — тогда заметка про товар целиком.
+   */
+  const [notes, setNotes] = useState<Map<string, RkNote>>(new Map());
+  const [showNotes, setShowNotes] = useState(true);
+  const [noteEdit, setNoteEdit] = useState<{ nm: number; advertId: number | null; date: string; title: string; subtitle: string } | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [openNms, setOpenNms] = useState<Set<number>>(new Set());
   const elapsed = useElapsedSeconds(loading);
@@ -140,6 +151,32 @@ export function WbRkJournalPage() {
   }, [cabinetId, range.from, range.to, ready]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Заметки грузим окном сразу: значки должны стоять с первого показа, а не
+  // появляться по клику.
+  useEffect(() => {
+    if (!hasExactCabinet || !cabinetId) { setNotes(new Map()); return; }
+    const controller = new AbortController();
+    fetch(`/api/wb/rk-notes?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : { notes: [] })
+      .then((body) => {
+        if (controller.signal.aborted) return;
+        setNotes(new Map((body.notes ?? []).map((row: RkNote) => [rkNoteKey(row.nmId, row.advertId, row.date), row])));
+      })
+      // Заметки — надстройка: без них журнал работает как раньше.
+      .catch(() => {});
+    return () => controller.abort();
+  }, [cabinetId, hasExactCabinet]);
+
+  const applyNote = useCallback((nm: number, advertId: number | null, date: string, note: string, done: boolean) => {
+    setNotes((prev) => {
+      const next = new Map(prev);
+      const key = rkNoteKey(nm, advertId, date);
+      if (note) next.set(key, { nmId: nm, advertId, date, note, done, updatedAt: new Date().toISOString() });
+      else next.delete(key);
+      return next;
+    });
+  }, []);
 
   // Ручной прогон синка рекламы: крон ходит раз в час и берёт очередной срез
   // кампаний, а когда цифры нужны сейчас, ждать нечего.
@@ -386,6 +423,22 @@ export function WbRkJournalPage() {
         )}
       />
 
+      {noteEdit && cabinetId ? (
+        <WbRkNotePopup
+          cabinetId={cabinetId}
+          nmId={noteEdit.nm}
+          advertId={noteEdit.advertId}
+          date={noteEdit.date}
+          title={noteEdit.title}
+          subtitle={noteEdit.subtitle}
+          initialNote={notes.get(rkNoteKey(noteEdit.nm, noteEdit.advertId, noteEdit.date))?.note ?? ""}
+          initialDone={notes.get(rkNoteKey(noteEdit.nm, noteEdit.advertId, noteEdit.date))?.done ?? false}
+          canWrite={canWrite && hasExactCabinet}
+          onClose={() => setNoteEdit(null)}
+          onSaved={applyNote}
+        />
+      ) : null}
+
       <div className="min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-6">
         {error ? <WbErrorState message={error} onRetry={() => void load()} /> : null}
         {data?.notes?.length ? (
@@ -393,6 +446,28 @@ export function WbRkJournalPage() {
             Часть данных не прочиталась, цифры ниже неполные: {data.notes.join("; ")}
           </div>
         ) : null}
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+          {/* Карточки видов размещения выглядели как сводка, и что они кликабельны,
+              было не видно. Говорим прямо. */}
+          <span>Нажмите на вид размещения, чтобы оставить только его кампании.</span>
+          {blockFilter !== "all" ? (
+            <button
+              type="button"
+              onClick={() => setBlockFilter("all")}
+              className="inline-flex items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 font-semibold text-violet-700"
+            >
+              Показаны только «{WB_RK_BLOCK_LABELS[blockFilter as WbRkBlock] ?? blockFilter}» · сбросить ✕
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setShowNotes((value) => !value)}
+            aria-pressed={showNotes}
+            className={`ml-auto rounded-lg border px-2 py-0.5 font-semibold ${showNotes ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
+          >
+            {showNotes ? "Задачи показаны" : "Показать задачи"}
+          </button>
+        </div>
         {syncing ? (
           <div className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
             {syncing} Прогон берёт очередной срез кампаний — на весь кабинет их несколько.
@@ -550,10 +625,19 @@ export function WbRkJournalPage() {
                             </td>
                             {dates.map((date) => {
                               const cell = item.days[date];
+                              const note = notes.get(rkNoteKey(item.nm, null, date));
+                              const noteBadge = showNotes ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => { event.stopPropagation(); setNoteEdit({ nm: item.nm, advertId: null, date, title: article || `WB ${item.nm}`, subtitle: "Задача по товару" }); }}
+                                  title={note ? `${note.done ? "Сделано: " : ""}${note.note}` : "Добавить задачу на этот день"}
+                                  className={`ml-1 align-middle text-[10px] leading-none ${note ? (note.done ? "text-emerald-500" : "text-violet-500") : "text-slate-200 hover:text-violet-400"}`}
+                                >{note ? (note.done ? "✓" : "●") : "+"}</button>
+                              ) : null;
                               if (isEmpty(cell)) {
                                 return (
                                   <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">
-                                    —
+                                    —{noteBadge}
                                   </td>
                                 );
                               }
@@ -561,8 +645,9 @@ export function WbRkJournalPage() {
                               const cpl = costPerCart(cell.spent, cell.carts);
                               return (
                                 <Fragment key={date}>
-                                  {/* Ставка у артикула не показывается: у его кампаний она разная. */}
-                                  <td className="border-l border-slate-200 px-2 py-1.5" />
+                                  {/* Ставка у артикула не показывается: у его кампаний она разная.
+                                      Пустая колонка — удобное место для значка задачи. */}
+                                  <td className="border-l border-slate-200 px-2 py-1.5 text-center">{noteBadge}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.carts)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.orders)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{money(cell.spent)}</td>
@@ -592,10 +677,21 @@ export function WbRkJournalPage() {
                               </td>
                               {dates.map((date) => {
                                 const cell = campaign.days[date];
+                                // Заметка по кампании: «поднять ставку» относится к ней,
+                                // а не к товару целиком — уровни разные.
+                                const cNote = campaign.advertId == null ? undefined : notes.get(rkNoteKey(item.nm, campaign.advertId, date));
+                                const cBadge = showNotes && campaign.advertId != null ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => { event.stopPropagation(); setNoteEdit({ nm: item.nm, advertId: campaign.advertId, date, title: campaign.name ?? `Кампания ${campaign.advertId}`, subtitle: article || `WB ${item.nm}` }); }}
+                                    title={cNote ? `${cNote.done ? "Сделано: " : ""}${cNote.note}` : "Добавить задачу по кампании"}
+                                    className={`ml-1 align-middle text-[10px] leading-none ${cNote ? (cNote.done ? "text-emerald-500" : "text-violet-500") : "text-slate-200 hover:text-violet-400"}`}
+                                  >{cNote ? (cNote.done ? "✓" : "●") : "+"}</button>
+                                ) : null;
                                 if (isEmpty(cell)) {
                                   return (
                                     <td key={date} colSpan={6} className="border-l border-slate-200 px-2 py-1 text-center text-slate-300">
-                                      —
+                                      —{cBadge}
                                     </td>
                                   );
                                 }
@@ -604,7 +700,7 @@ export function WbRkJournalPage() {
                                 return (
                                   <Fragment key={date}>
                                     <td className="border-l border-slate-200 px-2 py-1 text-right tabular-nums">
-                                      {cell.bid == null ? "—" : money2(cell.bid)}
+                                      {cell.bid == null ? "—" : money2(cell.bid)}{cBadge}
                                     </td>
                                     <td className="px-2 py-1 text-right tabular-nums">{count(cell.carts)}</td>
                                     <td className="px-2 py-1 text-right tabular-nums">{count(cell.orders)}</td>
