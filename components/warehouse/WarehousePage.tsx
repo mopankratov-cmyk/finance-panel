@@ -12,6 +12,7 @@ import { DefectsTab } from "@/components/warehouse/DefectsTab";
 import { ProductsTab } from "@/components/warehouse/ProductsTab";
 import { ShipmentTab } from "@/components/warehouse/ShipmentTab";
 import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
+import { TodoBar } from "@/components/warehouse/TodoBar";
 import { WarehouseShell } from "@/components/warehouse/WarehouseShell";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
@@ -175,6 +176,8 @@ export function WarehousePage() {
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       )}
+
+      {entityId && <TodoBar entityId={entityId} refreshKey={refreshKey} onGo={setTab} />}
 
       {entitiesLoading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
