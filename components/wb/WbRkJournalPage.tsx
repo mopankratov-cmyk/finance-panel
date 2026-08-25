@@ -19,7 +19,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { nmMatchesTags, setWbTagAssignment, useRnpTags, WbTagFilterChips, WbTagPicker } from "./useRnpTags";
-import { displaySkuName, useWbSkuNames } from "./useWbSkuNames";
+import { displaySkuArticle, displaySkuName, useWbSkuNames } from "./useWbSkuNames";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 
@@ -292,7 +292,7 @@ export function WbRkJournalPage() {
   // порядке. На переходный период команда сверяет журнал со своей таблицей.
   const exportCsv = () => {
     if (!data) return;
-    const header = ["Артикул", "Название", "Кампания", "Вид размещения", ...dates.flatMap((date) => [
+    const header = ["Артикул", "Номер WB", "Название", "Кампания", "Вид размещения", ...dates.flatMap((date) => [
       `${dayLabel(date)} ставка`, `${dayLabel(date)} корзин`, `${dayLabel(date)} заказов`,
       `${dayLabel(date)} затраты`, `${dayLabel(date)} CPO`, `${dayLabel(date)} CPL`,
     ])];
@@ -300,7 +300,11 @@ export function WbRkJournalPage() {
 
     const rows = visibleItems.flatMap((item) => {
       const name = displaySkuName("", null, skuNames, item.nm);
+      // Колонка «Артикул» раньше содержала номер WB — в выгрузке это сбивало
+      // с толку так же, как на экране. Теперь их две, как и в таблице.
+      const article = displaySkuArticle(null, skuNames, item.nm);
       return item.campaigns.map((campaign) => [
+        article,
         String(item.nm),
         name,
         campaign.block === WB_RK_BLOCK_ATTRIBUTED
@@ -492,6 +496,10 @@ export function WbRkJournalPage() {
                   <tbody className="divide-y divide-slate-100">
                     {visibleItems.map((item) => {
                       const name = displaySkuName("", null, skuNames, item.nm);
+                      // Тот же вид, что в Полках и Воронке: артикул склада,
+                      // номер WB, название карточки. Раньше здесь был только
+                      // номер — по нему товар не опознать без кабинета WB.
+                      const article = displaySkuArticle(null, skuNames, item.nm);
                       const open = openNms.has(item.nm);
                       const shown = blockFilter === "all"
                         ? item.campaigns
@@ -518,7 +526,7 @@ export function WbRkJournalPage() {
                                 />
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-[13px] font-bold tabular-nums tracking-[-0.01em] text-slate-800">{item.nm}</span>
+                                    <span className="max-w-[190px] truncate text-[13px] font-bold tracking-[-0.01em] text-slate-800">{article || `WB ${item.nm}`}</span>
                                     {canWrite && hasExactCabinet ? (
                                       <WbTagPicker
                                         tags={tags}
@@ -532,7 +540,8 @@ export function WbRkJournalPage() {
                                       />
                                     ) : null}
                                   </div>
-                                  {name ? <div className="max-w-[210px] truncate text-[11px] font-normal text-slate-400">{name}</div> : null}
+                                  <div className="max-w-[210px] truncate text-[11px] font-normal tabular-nums text-slate-400">WB {item.nm}</div>
+                                  {name ? <div className="max-w-[210px] truncate text-[11px] font-normal text-slate-500">{name}</div> : null}
                                 </div>
                               </div>
                             </td>
