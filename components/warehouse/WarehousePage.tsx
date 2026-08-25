@@ -13,24 +13,32 @@ import { ProductsTab } from "@/components/warehouse/ProductsTab";
 import { ShipmentTab } from "@/components/warehouse/ShipmentTab";
 import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
 import { TodoBar } from "@/components/warehouse/TodoBar";
-import { WarehouseShell } from "@/components/warehouse/WarehouseShell";
+import { WarehouseShell, type ShellTab } from "@/components/warehouse/WarehouseShell";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 
 type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "products" | "kiz" | "docs" | "moves" | "warehouses";
 
-const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { key: "balances", label: "Остатки", icon: Boxes },
-  { key: "receipts", label: "Приёмка", icon: ClipboardCheck },
-  { key: "shipment", label: "Отгрузка", icon: Truck },
-  { key: "movement", label: "Перемещение", icon: ArrowLeftRight },
-  { key: "defects", label: "Брак", icon: PackageX },
-  { key: "products", label: "Товары", icon: Package },
-  { key: "kiz", label: "Маркировка", icon: QrCode },
-  { key: "docs", label: "Документы", icon: FileText },
-  { key: "moves", label: "Движения", icon: ScrollText },
-  { key: "warehouses", label: "Склады", icon: WarehouseIcon },
+/** Порядок — рабочий день склада: сначала то, что делают руками, потом то, чем
+ *  сверяются, и в конце то, что настраивают раз в месяц. */
+const TABS: ShellTab<Tab>[] = [
+  { key: "receipts", label: "Приёмка", icon: ClipboardCheck, group: "Работа" },
+  { key: "shipment", label: "Отгрузка", icon: Truck, group: "Работа" },
+  { key: "movement", label: "Перемещение", icon: ArrowLeftRight, group: "Работа" },
+  { key: "defects", label: "Брак", icon: PackageX, group: "Работа" },
+  { key: "balances", label: "Остатки", icon: Boxes, group: "Учёт" },
+  { key: "kiz", label: "Маркировка", icon: QrCode, group: "Учёт" },
+  { key: "docs", label: "Документы", icon: FileText, group: "Учёт" },
+  { key: "moves", label: "Движения", icon: ScrollText, group: "Учёт" },
+  { key: "products", label: "Товары", icon: Package, group: "Справочники" },
+  { key: "warehouses", label: "Склады", icon: WarehouseIcon, group: "Справочники" },
 ];
+
+/** Оператор склада приходит работать руками, а не сверять журналы: ему видны
+ *  вкладки, куда он что-то вводит, плюс остатки — чтобы знать, что на полке.
+ *  Справочники, документы и вывод кодов из оборота — не его работа. */
+const OPERATOR_TABS = new Set<Tab>(["receipts", "shipment", "movement", "defects", "balances"]);
+const HOME_TAB: Record<string, Tab> = { warehouse: "receipts" };
 
 const STORAGE_KEY = "warehouse:entity";
 const TAB_KEYS = new Set(TABS.map((item) => item.key));
@@ -48,6 +56,7 @@ function readAddress(): { tab: Tab | null; entity: string | null } {
 }
 
 export function WarehousePage() {
+  const [me, setMe] = useState<{ email: string; role: string } | null>(null);
   const [tab, setTab] = useState<Tab>("balances");
   const [entities, setEntities] = useState<LegalEntityRow[]>([]);
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -95,6 +104,29 @@ export function WarehousePage() {
     if (address.tab) setTab(address.tab);
     addressRead.current = true;
   }, []);
+
+  // Роль решает, куда человек попадает и что видит. Ссылка на чужую вкладку
+  // оператору не откроется: он уедет на свою домашнюю.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        const user = json.user ?? null;
+        setMe(user);
+        const home = HOME_TAB[user?.role ?? ""];
+        if (!home) return;
+        setTab((current) => (readAddress().tab && OPERATOR_TABS.has(current) ? current : home));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const tabs = useMemo(
+    () => (me?.role === "warehouse" ? TABS.filter((item) => OPERATOR_TABS.has(item.key)) : TABS),
+    [me],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -168,10 +200,11 @@ export function WarehousePage() {
     <WarehouseShell
       title="Склад"
       subtitle="Товары, приёмка, остатки"
-      tabs={TABS}
+      tabs={tabs}
       active={tab}
       onSelect={setTab}
       toolbar={toolbar}
+      me={me}
     >
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>

@@ -3,12 +3,23 @@
 import { Grid3x3, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+
+
+const ROLE_TITLE: Record<string, string> = {
+  director: "Директор",
+  finance: "Финансы",
+  manager: "Менеджер",
+  warehouse: "Оператор склада",
+  seller: "Селлер",
+};
 
 export interface ShellTab<T extends string> {
   key: T;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Заголовок раздела в сайдбаре. Десять равнозначных пунктов подряд читаются
+   *  как список настроек, а не как рабочее место. */
+  group?: string;
 }
 
 /** Оболочка модуля: слева его собственные разделы, а не навигация всей панели.
@@ -20,6 +31,7 @@ export function WarehouseShell<T extends string>({
   active,
   onSelect,
   toolbar,
+  me,
   children,
 }: {
   title: string;
@@ -28,17 +40,12 @@ export function WarehouseShell<T extends string>({
   active: T;
   onSelect: (tab: T) => void;
   toolbar?: React.ReactNode;
+  /** Кто вошёл. Приходит от страницы: она же решает по роли, какие вкладки
+   *  показывать, и второй запрос за тем же ответом здесь не нужен. */
+  me: { email: string; role: string } | null;
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [me, setMe] = useState<{ email: string; role: string } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => setMe(j.user ?? null))
-      .catch(() => {});
-  }, []);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -55,19 +62,25 @@ export function WarehouseShell<T extends string>({
         </div>
 
         <nav className="flex-1 space-y-1 p-3">
-          {tabs.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => onSelect(key)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                active === key
-                  ? "bg-violet-50 font-medium text-violet-700"
-                  : "text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {label}
-            </button>
+          {tabs.map(({ key, label, icon: Icon, group }, index) => (
+            <div key={key}>
+              {group && group !== tabs[index - 1]?.group && (
+                <p className={`px-3 pb-1 text-[11px] uppercase tracking-wide text-slate-400 ${index === 0 ? "" : "pt-3"}`}>
+                  {group}
+                </p>
+              )}
+              <button
+                onClick={() => onSelect(key)}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                  active === key
+                    ? "bg-violet-50 font-medium text-violet-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </button>
+            </div>
           ))}
         </nav>
 
@@ -82,7 +95,7 @@ export function WarehouseShell<T extends string>({
           <div className="flex items-center gap-2 px-3 py-2">
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs text-slate-600">{me?.email ?? "…"}</p>
-              <p className="text-[11px] text-slate-400">{me?.role === "director" ? "Директор" : me?.role ?? ""}</p>
+              <p className="text-[11px] text-slate-400">{ROLE_TITLE[me?.role ?? ""] ?? me?.role ?? ""}</p>
             </div>
             <button onClick={() => void logout()} title="Выйти" className="text-slate-400 hover:text-slate-700">
               <LogOut className="h-4 w-4" />
