@@ -77,13 +77,25 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   // Кабинет документа — граница отмены. Одна проводка может держать несколько
   // накладных, и отмена поездки на Ozon не должна возвращать на склад то, что
   // уже уехало на Wildberries.
-  const { data, error } = await db.rpc("post_doc_reversal", {
+  const args = {
     p_source_movement_doc_id: doc.movement_doc_id,
     p_new_movement_doc_id: movementDocId,
     p_source_number: String(doc.number),
     p_actor: session?.email ?? null,
-    p_cabinet_id: doc.cabinet_id ?? null,
-  });
+  };
+  let { data, error } = await db.rpc("post_doc_reversal", { ...args, p_cabinet_id: doc.cabinet_id ?? null });
+
+  // База может быть ещё без миграции с кабинетом. Для документа без кабинета
+  // старая функция делает ровно то же самое — зовём её и не мешаем человеку
+  // работать. А вот отдельную накладную на кабинет ею отменять нельзя: она
+  // вернула бы на склад и то, что уехало по соседней.
+  if (error && missingMigration(error.code)) {
+    if (doc.cabinet_id) {
+      await db.from("stock_docs").delete().eq("id", created.data.id);
+      return fail("Примените миграцию 202608250027_doc_reversal_cabinet.sql — без неё отмена накладной задела бы соседние", 503);
+    }
+    ({ data, error } = await db.rpc("post_doc_reversal", args));
+  }
 
   if (error) {
     // Движения не записались — карточку сторно убираем, иначе в журнале повиснет
@@ -91,9 +103,6 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     await db.from("stock_docs").delete().eq("id", created.data.id);
     if (error.message.includes("already reversed")) return fail("Документ уже сторнирован", 409);
     if (error.message.includes("no movements")) return fail("У документа нет движений — сторнировать нечего", 400);
-    if (missingMigration(error.code)) {
-      return fail("Примените миграцию 202608250027_doc_reversal_cabinet.sql", 503);
-    }
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 
