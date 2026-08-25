@@ -37,7 +37,13 @@ export const getServerSession = cache(async function getServerSession(): Promise
     error = legacy.error;
   }
   if (error || !data?.is_active) return null;
-  if (!["director", "finance", "manager", "seller"].includes(String(data.role))) return null;
+  // Список ролей, которым разрешено держать сессию. Роль оператора склада
+  // объявлена в Role, принимается isRole(), имеет свою домашнюю страницу в
+  // roles.ts и свой фильтр в гейте — но здесь её не было, и getServerSession
+  // возвращал null. Страницу оператор открывал (гейт проверяет подписанную
+  // куку), а любой запрос к данным отвечал «Требуется вход»: модуль склада был
+  // для этой роли мёртв целиком.
+  if (!["director", "finance", "manager", "seller", "warehouse"].includes(String(data.role))) return null;
   return {
     uid: String(data.id),
     email: String(data.email),
