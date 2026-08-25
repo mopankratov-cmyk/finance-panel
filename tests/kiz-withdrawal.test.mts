@@ -148,15 +148,18 @@ test("полоса дел считает коды своего юрлица", ()
 
 test("владелец кода — чей товар, а не чей агент", () => {
   const sql = readFileSync(new URL("../supabase/migrations/202608250031_kiz_legal_entity_functions.sql", import.meta.url), "utf8");
-  // Правило 1 идёт по товару: код выпущен на товар, у товара есть владелец.
-  const byProduct = sql.indexOf("v_by_product = row_count");
-  const byCabinet = sql.indexOf("v_by_cabinet = row_count");
-  assert.ok(byProduct > 0 && byCabinet > byProduct, "правило по товару должно применяться раньше правила по кабинету");
+  // Правило по товару стоит первым аргументом coalesce, кабинетное — вторым.
+  const coalesce = sql.slice(sql.indexOf("coalesce("), sql.indexOf("updated_at = now()"));
+  assert.ok(coalesce.indexOf("public.products") < coalesce.indexOf("legal_entity_cabinets"),
+    "правило по товару должно стоять раньше правила по кабинету");
+  // Редактор Supabase не принимает plpgsql в этом файле — только чистый SQL.
+  assert.match(sql, /language sql/, "функция снова на plpgsql — она не применится");
+  assert.equal((sql.match(/create or replace function/g) ?? []).length, 1, "в файле больше одной функции");
   // Агентская связь не даёт владения: агент не владеет товаром, значит и кодом.
-  assert.match(sql, /where relation = 'own'/, "кабинетное правило не ограничено собственным кабинетом");
+  assert.match(sql, /l\.relation = 'own'/, "кабинетное правило не ограничено собственным кабинетом");
   assert.doesNotMatch(sql, /relation = 'agent'/, "агентская связь не должна давать владения");
   // Неразобранное остаётся null, а не приписывается наугад.
-  assert.match(sql, /'left', v_left/, "функция не сообщает, сколько кодов осталось без владельца");
+  assert.match(sql, /'left',/, "функция не сообщает, сколько кодов осталось без владельца");
 });
 
 test("сводка считается в базе, а не вычиткой всего реестра", () => {
