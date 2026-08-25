@@ -79,3 +79,27 @@ test("печатная форма перемещения не задваивае
   const src = readFileSync(new URL("../components/warehouse/PrintableDoc.tsx", import.meta.url), "utf8");
   assert.match(src, /kind === "transfer" \? doc\.lines\.filter\(\(row\) => row\.qty < 0\)/);
 });
+
+test("номер, однажды выданный, нельзя выдать второй раз", () => {
+  // Регистр append-only: отметка сторно с номером документа лежит в базе вечно.
+  // Обнулённый счётчик выдаёт номер заново — и свежая накладная наследует чужую
+  // отметку, отказываясь сторнироваться со словами «уже сторнирован».
+  const sql = readFileSync(new URL("../supabase/migrations/202608250029_ledger_number_functions.sql", import.meta.url), "utf8");
+  assert.match(sql, /before update or delete on public\.stock_doc_counters/, "счётчик номеров ничем не защищён");
+  assert.match(sql, /new\.last < old\.last/, "уменьшение счётчика не запрещено");
+  assert.match(sql, /tg_op = 'DELETE'/, "удаление счётчика не запрещено");
+});
+
+test("повторное сторно узнаётся по проводке, а не по строке номера", () => {
+  const schema = readFileSync(new URL("../supabase/migrations/202608250028_ledger_number_safety.sql", import.meta.url), "utf8");
+  assert.match(schema, /add column if not exists reverses_doc_id text/, "нет точного ключа отмены");
+  assert.doesNotMatch(schema, /^create (or replace )?function/m, "схема и процедуры должны лежать в разных файлах");
+
+  const fn = readFileSync(new URL("../supabase/migrations/202608250029_ledger_number_functions.sql", import.meta.url), "utf8");
+  assert.match(fn, /reverses_doc_id = p_source_movement_doc_id/, "сторожок не смотрит на проводку");
+  assert.match(fn, /cabinet_id is not distinct from p_cabinet_id/, "сторожок не различает кабинеты");
+  // Строки сторно, записанные до появления ключа, обязаны проверяться по-старому.
+  assert.match(fn, /reverses_doc_id is null and note = p_source_number/, "старые строки сторно остались без защиты");
+  // И сама отметка обязана записываться, иначе ключ всегда пустой.
+  assert.match(fn, /doc_id, reverses_doc_id, note, created_by/, "сторно не записывает свой ключ");
+});
