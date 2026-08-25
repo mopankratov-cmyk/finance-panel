@@ -607,7 +607,10 @@ export function WbRkJournalPage() {
                               return next;
                             })}
                           >
-                            <td className={`sticky left-0 z-20 px-3 py-2 ${open ? "bg-violet-50/50" : "bg-white group-hover/row:bg-violet-50/25"}`}>
+                            {/* Фон закреплённой колонки только сплошной: под ней проезжают колонки
+                                дней, и через полупрозрачный фон их цифры просвечивали прямо
+                                поверх артикула — выглядело как наложение строк. */}
+                            <td className={`sticky left-0 z-20 px-3 py-2 ${open ? "bg-violet-100" : "bg-white group-hover/row:bg-violet-50"}`}>
                               <div className="flex items-center gap-2.5">
                                 <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -679,7 +682,7 @@ export function WbRkJournalPage() {
                           </tr>
                           {open ? shown.map((campaign) => (
                             <tr key={`${item.nm}-${campaign.advertId ?? campaign.block}`} className="bg-slate-50/60 text-slate-600 transition-colors hover:bg-violet-50/30">
-                              <td className="sticky left-0 z-20 bg-slate-50/60 py-1.5 pl-[68px] pr-3">
+                              <td className="sticky left-0 z-20 bg-slate-50 py-1.5 pl-[68px] pr-3">
                                 <div className={`max-w-[240px] truncate text-[11px] ${campaign.block === WB_RK_BLOCK_ATTRIBUTED ? "italic text-slate-400" : ""}`} title={campaign.name ?? undefined}>
                                   {campaign.block === WB_RK_BLOCK_ATTRIBUTED
                                     ? WB_RK_BLOCK_ATTRIBUTED_LABEL

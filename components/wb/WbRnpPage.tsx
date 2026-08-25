@@ -2535,22 +2535,28 @@ function OptimaMatrixTable({
             return (
               <Fragment key={group.id}>
                 <tr>
-                  <td colSpan={totalColumns} className="h-8 border-b border-[#eceef4] bg-white px-3">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedGroups((current) => {
-                        const next = new Set(current);
-                        if (next.has(group.id)) next.delete(group.id);
-                        else next.add(group.id);
-                        return next;
-                      })}
-                      className="flex h-full w-full items-center gap-1.5 text-left text-[10px] font-semibold text-slate-600 hover:text-violet-700"
-                      aria-expanded={expanded}
-                    >
-                      <span className="text-slate-400">{expanded ? "▼" : "▶"}</span>
-                      {group.label}
-                      {!expanded ? <span className="ml-1 text-[9px] font-normal text-slate-400">{group.metrics.length}</span> : null}
-                    </button>
+                  <td colSpan={totalColumns} className="h-8 border-b border-[#eceef4] bg-white p-0">
+                    {/* Подпись группы прикреплена к левому краю. Ячейка тянется на
+                        всю ширину таблицы, и при горизонтальной прокрутке заголовок
+                        уезжал вместе с ней: на экране оставалось «зное» вместо
+                        «Основное» и «ажи и возвраты» вместо «Продажи и возвраты». */}
+                    <div className="sticky left-0 z-10 w-fit max-w-[280px] bg-white pl-3 pr-4">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedGroups((current) => {
+                          const next = new Set(current);
+                          if (next.has(group.id)) next.delete(group.id);
+                          else next.add(group.id);
+                          return next;
+                        })}
+                        className="flex h-8 w-full items-center gap-1.5 whitespace-nowrap text-left text-[10px] font-semibold text-slate-600 hover:text-violet-700"
+                        aria-expanded={expanded}
+                      >
+                        <span className="text-slate-400">{expanded ? "▼" : "▶"}</span>
+                        {group.label}
+                        {!expanded ? <span className="ml-1 text-[9px] font-normal text-slate-400">{group.metrics.length}</span> : null}
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 {expanded ? group.metrics.map((metric) => {

@@ -473,7 +473,7 @@ export function WbUnitPage() {
               <table className="hidden w-full min-w-[1560px] border-collapse text-[11px] md:table">
                 <thead className="sticky top-0 z-30">
                   <tr className="h-[26px] bg-slate-100/90 backdrop-blur">
-                    <th className="sticky left-0 z-40 w-[245px] min-w-[245px] border-b border-r border-slate-200 bg-slate-100/90 px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">Товар</th>
+                    <th className="sticky left-0 z-40 w-[245px] min-w-[245px] border-b border-r border-slate-200 bg-slate-100 px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">Товар</th>
                     {groupSpans(data.headers.slice(FIRST_DATA_COL)).map((group, index) => (
                       <th
                         key={`${group.title}-${index}`}
