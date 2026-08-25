@@ -2,6 +2,7 @@
 
 import { Loader2, MessageSquare, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CtrCampaignRow } from "@/app/api/wb/ctr-breakdown/route";
 
 interface Breakdown {
@@ -44,6 +45,11 @@ export function WbCtrDayPopup({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // Портал в body: окно рендерится внутри прокручиваемого контейнера таблицы,
+  // и без портала затемнение оставалось бы внутри него — шапка и боковое меню
+  // светились бы поверх. Через body перекрывается весь экран.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -74,7 +80,14 @@ export function WbCtrDayPopup({
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     dialogRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
+    // Прокрутка страницы под затемнением сбивает с толку: таблица уезжает,
+    // а окно остаётся. Возвращаем прежнее значение, а не ставим "" вслепую.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [onClose]);
 
   const save = useCallback(async () => {
@@ -100,8 +113,13 @@ export function WbCtrDayPopup({
   const dirty = note.trim() !== savedNote.trim();
   const dayLabel = new Date(`${date}T00:00:00`).toLocaleDateString("ru-RU", { day: "2-digit", month: "long" });
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -211,6 +229,7 @@ export function WbCtrDayPopup({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
