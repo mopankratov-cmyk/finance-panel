@@ -93,7 +93,10 @@ export async function GET(request: NextRequest) {
   const payload = await loadHourlyDashboard(
     "wb-seo-skus",
     // Cache schema: 3 used advertising clicks as a fallback conversion denominator.
-    { cabinetId, start: period.start, end: period.end, days: periodDays, schema: 4 },
+    // Схема 5: в строке появились stock_fbo и stock_fbs. Версию обязательно
+    // поднимать вместе с формой данных — иначе экран получает вчерашний снимок
+    // без новых полей, а по коду кажется, что фича раскатана.
+    { cabinetId, start: period.start, end: period.end, days: periodDays, schema: 5 },
     async () => {
       const [funnel, ad, totals, fbsStocks, costs, dailySku] = await Promise.all([
         timed("funnel", loadAllSupabasePages<FunnelRow>((from, to) => {
