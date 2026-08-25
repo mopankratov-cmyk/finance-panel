@@ -8,8 +8,11 @@ import { useEffect, useState } from "react";
  * вовсе; Воронка и РНП берут имя из себестоимости/PIM-снимка, и у кабинетов
  * без заполненной себестоимости показывают артикул дважды).
  *
- * Источник — /api/pim: реальные заголовки карточек из WB Content API с
- * часовым кэшем. Побочный бонус: первый заход прогревает кэш и для РНП.
+ * Источник — /api/wb/sku-directory: таблица wb_cards, которую наполняет обход
+ * Content API. Раньше брали из /api/pim, но тот держит результат в кэше
+ * сборки: кэш не общий между роутами и обнуляется каждым деплоем, поэтому
+ * названия то были, то пропадали, а на Полках отсутствовали почти всегда.
+ * Чтение таблицы отдаёт их сразу и переживает выкладки.
  */
 export interface WbSkuIdentity {
   article: string;
@@ -27,7 +30,7 @@ export function useWbSkuNames(cabinetId: string | null | undefined) {
     setNames(new Map());
     if (!cabinetId) return;
     const controller = new AbortController();
-    fetch(`/api/pim?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
+    fetch(`/api/wb/sku-directory?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
       .then((response) => response.ok ? (response.json() as Promise<PimResponse>) : null)
       .then((body) => {
         if (!body || controller.signal.aborted) return;

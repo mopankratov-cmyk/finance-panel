@@ -642,8 +642,10 @@ export function WbShelfPage() {
                     <img src={watch.ourImg || wbCardImageUrl(watch.nmId)} alt="" loading="lazy" className="h-16 w-[52px] shrink-0 rounded-lg bg-slate-100 object-cover ring-1 ring-slate-200/60" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-[17px] font-bold tracking-[-0.01em] text-slate-800">{watch.supplierArticle || watch.nmId}</span>
-                        {displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId) ? <span className="truncate text-[11px] font-normal text-slate-400">{displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId)}</span> : null}
+                        <span className="truncate text-[17px] font-bold tracking-[-0.01em] text-slate-800">{watch.supplierArticle || `WB ${watch.nmId}`}</span>
+                        {/* Номер WB и название — всегда, а не только когда артикула нет. */}
+                        <span className="truncate text-[11px] font-normal tabular-nums text-slate-400">WB {watch.nmId}</span>
+                        {displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId) ? <span className="truncate text-[11px] font-normal text-slate-500">{displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId)}</span> : null}
                         {watch.ourBrand ? <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">{watch.ourBrand}</span> : null}
                       </div>
                       <div className="mt-1 text-[12px] text-slate-400">
