@@ -31,6 +31,10 @@ async function loadFbsStocks(cabinetId: string | null): Promise<Map<number, numb
   // Таблицы ещё нет или доступа нет — молчим и отдаём null: колонка честно
   // скажет «не собирали», вместо того чтобы показать нули.
   if (error || !data) return null;
+  // И ни одной строки по кабинету — тоже «не собирали». Без этой ветки пустая
+  // таблица давала уверенный ноль по каждому товару: обход ещё не запускался,
+  // а экран уже утверждал, что на складе продавца пусто.
+  if (!data.length) return null;
   return new Map(data.map((row) => [Number(row.nm_id), Number(row.quantity ?? 0)]));
 }
 interface DailySkuRow { nm_id: number; d: string; orders_count: number; orders_sum: number }
