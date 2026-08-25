@@ -96,13 +96,9 @@ export function MovesTab({ entityId, refreshKey }: { entityId: string; refreshKe
       </div>
       {truncated && (
         <p className="text-xs text-amber-600">
-          Показаны последние 200 движений — журнал длиннее. Фильтры по SKU и складу добавим, когда журнал вырастет.
+          Показаны последние 200 движений.
         </p>
       )}
-      <p className="text-xs text-slate-400">
-        Записи не редактируются и не удаляются: ошибку исправляют обратным движением, иначе остаток перестаёт
-        быть суммой журнала.
-      </p>
     </div>
   );
 }

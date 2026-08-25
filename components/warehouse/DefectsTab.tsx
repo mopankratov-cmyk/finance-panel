@@ -248,10 +248,6 @@ export function DefectsTab({
           </table>
         </div>
       )}
-
-      <p className="text-xs text-slate-400">
-        Списанное уходит из остатка и из денег в товаре. Сумма за месяц — то, что попадёт в ОПиУ как потери склада.
-      </p>
     </div>
   );
 }

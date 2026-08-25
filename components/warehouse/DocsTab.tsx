@@ -44,7 +44,7 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
   const reverse = async (row: StockDocRow) => {
     // Спрашиваем подтверждение: сторно пишет в регистр новые движения, и отменить
     // само сторно можно будет только ещё одним сторно.
-    if (!window.confirm(`Сторнировать ${row.number}? В регистр уйдут обратные движения, исходный документ останется в журнале.`)) return;
+    if (!window.confirm(`Отменить ${row.number}? Товар вернётся в остаток, документ останется в журнале с пометкой.`)) return;
     setBusy(row.id);
     setError(null);
     setDone(null);
@@ -56,7 +56,7 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось сторнировать");
-      setDone(`${json.data.number} сторнирует ${json.data.reverses}: ${formatNumber(json.data.qty)} шт вернулись в остаток`);
+      setDone(`${formatNumber(json.data.qty)} шт вернулись в остаток · ${json.data.number} отменяет ${json.data.reverses}`);
       await load();
       onChanged();
     } catch (e) {
@@ -76,10 +76,7 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
       {!data || data.rows.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
           <p className="text-sm font-medium text-slate-700">Документов пока нет</p>
-          <p className="mt-1 text-sm text-slate-400">
-            Документ заводится сам при каждом проведении: отгрузке, перемещении, списании и возврате.
-            Операции, проведённые до этого, номера не получили — они остались в журнале движений.
-          </p>
+          <p className="mt-1 text-sm text-slate-400">Номер появляется при первом же проведении.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
@@ -103,10 +100,10 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                   <td className="px-4 py-2.5 font-medium text-slate-900">
                     {row.number}
                     {row.reversesNumber && (
-                      <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">сторно {row.reversesNumber}</span>
+                      <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">отменяет {row.reversesNumber}</span>
                     )}
                     {row.reversedByNumber && (
-                      <span className="ml-1.5 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">сторнирован {row.reversedByNumber}</span>
+                      <span className="ml-1.5 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">отменён {row.reversedByNumber}</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-slate-700">{KIND_LABEL[row.kind]}</td>
@@ -135,11 +132,11 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                       <button
                         onClick={() => void reverse(row)}
                         disabled={busy === row.id}
-                        title="Записать обратные движения со ссылкой на этот документ"
+                        title="Вернуть товар в остаток и пометить документ отменённым"
                         className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-red-600 disabled:opacity-50"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        {busy === row.id ? "Сторнирую…" : "Сторно"}
+                        {busy === row.id ? "Отменяю…" : "Отменить"}
                       </button>
                     )}
                   </td>
@@ -153,11 +150,6 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
       {data?.truncated && (
         <p className="text-xs text-amber-600">Показаны последние 100 документов — журнал длиннее.</p>
       )}
-      <p className="text-xs text-slate-400">
-        Сторно не удаляет проведённое: регистр движений только дописывается, и переписать историю нельзя.
-        Оно записывает те же строки со знаком минус и связывает их с исходным документом — в остатке результат
-        тот же, а в журнале видно и ошибку, и её исправление.
-      </p>
     </div>
   );
 }

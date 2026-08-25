@@ -158,10 +158,6 @@ export function ReceiveModal({
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4">
-          <p className="max-w-md text-xs text-slate-400">
-            Брак спишется тем же документом по себестоимости партии: в остаток попадёт годное,
-            а деньги брака будут видны отдельной строкой в журнале.
-          </p>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Отмена</button>
             <button

@@ -97,9 +97,7 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
         {salesPanel}
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
           <p className="text-sm font-medium text-slate-700">Остатка пока нет</p>
-          <p className="mt-1 text-sm text-slate-400">
-            Остаток появляется, когда приёмка проведена на склад: до этого товар только числится приехавшим.
-          </p>
+          <p className="mt-1 text-sm text-slate-400">Проведите приёмку, и товар появится здесь.</p>
           <button
             onClick={() => void syncSales()}
             disabled={syncing}
@@ -115,9 +113,7 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-400">
-          Остаток свёрнут из движений регистра: приёмки, отгрузки, перемещения, списания и продажи FBS.
-        </p>
+
         <button
           onClick={() => void syncSales()}
           disabled={syncing}
@@ -208,11 +204,6 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
           </tbody>
         </table>
       </div>
-
-      <p className="text-xs text-slate-400">
-        Остаток — сумма движений регистра, а не отдельно хранимое число. Себестоимость — взвешенное среднее
-        по проведённым приёмкам. Остаток маркетплейса живёт отдельно: он в разделе «Закупки».
-      </p>
     </div>
   );
 }

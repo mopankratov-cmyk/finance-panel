@@ -254,7 +254,7 @@ export function ReceiptsTab({
               {creating ? "Создаю…" : "Создать поставку"}
             </button>
             <p className="text-xs text-slate-400">
-              Поставка заводится как ожидаемая. Когда товар приедет — отметите факт и проведёте на склад.
+              Отметьте факт приёмки, когда товар приедет.
             </p>
           </div>
         </div>
@@ -336,7 +336,7 @@ export function ReceiptsTab({
                           disabled={busy === row.batchId || !target}
                           className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
                         >
-                          {busy === row.batchId ? "Провожу…" : "Оприходовать"}
+                          {busy === row.batchId ? "Ставлю…" : "Поставить на остаток"}
                         </button>
                       )}
                     </td>
@@ -347,12 +347,6 @@ export function ReceiptsTab({
           </table>
         </div>
       )}
-
-      <p className="text-xs text-slate-400">
-        Себестоимость партии считается из заказа фабрике: товар по цене позиций, курс, логистика и прочие расходы,
-        разнесённые по стоимости строк. Пометка «≈ расчётная» означает, что часть данных не нашлась — наведите
-        курсор, чтобы увидеть, какая именно.
-      </p>
     </div>
   );
 }

@@ -290,7 +290,7 @@ export function ProductsTab({
       )}
       {importing && (
         <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          Читаю карточки Wildberries — обход идёт постранично с паузами, это занимает несколько минут.
+          Читаю карточки Wildberries — несколько минут.
         </div>
       )}
       {importResult && (
@@ -300,7 +300,7 @@ export function ProductsTab({
       )}
       {owners && (
         <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          Читаю карточки своих кабинетов, чтобы понять, чей товар. Обход постраничный, это занимает несколько минут.
+          Читаю карточки кабинетов — несколько минут.
         </div>
       )}
       {ownersResult && (
@@ -504,10 +504,6 @@ export function ProductsTab({
           {editing.id && (
             <div className="mt-4 border-t border-violet-200 pt-4">
               <p className="text-sm font-medium text-slate-900">Размеры</p>
-              <p className="mt-0.5 text-xs text-slate-400">
-                У каждого размера свой баркод — им WB адресует сборочное задание, и на него же
-                Честный Знак выдаёт GTIN. Пока размеров нет, товар живёт одной позицией.
-              </p>
 
               <div className="mt-3 space-y-1.5">
                 {variants.filter((variant) => !variant.isDefault).map((variant) => (
@@ -561,10 +557,6 @@ export function ProductsTab({
             <button onClick={() => setEditing(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">
               Отмена
             </button>
-            <p className="text-xs text-slate-400">
-              Себестоимость вносится в рублях: тогда приёмке не нужен курс. Вес и габариты нужны для расчёта
-              логистики и бюджета закупки — без них позиция не считается.
-            </p>
           </div>
         </div>
       )}
@@ -631,11 +623,6 @@ export function ProductsTab({
           </table>
         </div>
       )}
-
-      <p className="text-xs text-slate-400">
-        Артикул — ваш, карточка маркетплейса необязательна: товар можно завести и принять до того, как появится
-        карточка на WB, а nmID проставить позже. Клик по строке открывает карточку.
-      </p>
     </div>
   );
 }

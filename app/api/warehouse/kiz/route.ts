@@ -37,6 +37,15 @@ export interface KizWithdrawalSummary {
   fbw: number;
   /** Уже выведены из оборота по данным WB — второй раз не отправляем. */
   withdrawn: number;
+  /** Схему продажи определить не удалось: отправлять такой код нельзя. */
+  unknown: number;
+  /** Без цены реализации: в файле цена будет пустой. */
+  withoutPriceCount: number;
+  /**
+   * Ждущие вывода по возрасту продажи. Решение здесь принимается по возрасту,
+   * а не по количеству: свежие коды ждут, просроченные горят.
+   */
+  ageBuckets: { overdue: number; lastDay: number; twoDays: number; fresh: number };
 }
 
 export interface KizUploadResult {
@@ -65,7 +74,8 @@ async function summarize(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): 
   // Вывести из оборота положено не позднее трёх рабочих дней после отгрузки.
   // Считаем календарно с запасом: пять календарных дней покрывают три рабочих
   // с выходными, а завышать просрочку хуже, чем занижать.
-  const overdueBefore = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
+  const day = (offset: number) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
+  const overdueBefore = day(5);
   const sortedDates = data.map((row) => row.sold_at).filter(Boolean).map(String).sort();
   return {
     pending: pending.length,
@@ -79,6 +89,16 @@ async function summarize(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): 
     overdue: pending.filter((row) => row.sold_at && String(row.sold_at) < overdueBefore).length,
     fbw: data.filter((row) => row.status === "fbw").length,
     withdrawn: data.filter((row) => row.status === "withdrawn").length,
+    unknown: data.filter((row) => row.status === "unknown").length,
+    withoutPriceCount: pending.filter((row) => row.price === null || row.price === undefined).length,
+    ageBuckets: {
+      // Без даты продажи возраст неизвестен — считаем свежим, а не просроченным:
+      // обвинить систему в просрочке дороже, чем пропустить один код.
+      overdue: pending.filter((row) => row.sold_at && String(row.sold_at) < overdueBefore).length,
+      lastDay: pending.filter((row) => row.sold_at && String(row.sold_at) >= overdueBefore && String(row.sold_at) < day(4)).length,
+      twoDays: pending.filter((row) => row.sold_at && String(row.sold_at) >= day(4) && String(row.sold_at) < day(2)).length,
+      fresh: pending.filter((row) => !row.sold_at || String(row.sold_at) >= day(2)).length,
+    },
   };
 }
 

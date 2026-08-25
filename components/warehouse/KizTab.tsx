@@ -1,34 +1,37 @@
 "use client";
 
-import { CloudDownload, Download, FileUp } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, FileUp, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { KizUploadResult, KizWithdrawalSummary } from "@/app/api/warehouse/kiz/route";
-import type { KizCollectResult } from "@/app/api/warehouse/kiz/collect/route";
 import type { KizSalesResult } from "@/app/api/warehouse/kiz/sales/route";
 import type { KizTasksResult } from "@/app/api/warehouse/kiz/tasks/route";
+import type { KizCollectResult } from "@/app/api/warehouse/kiz/collect/route";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
 
 /**
  * Вывод из оборота проданного по FBS.
  *
- * Порядок работы задан тем, кто выводит коды, и экран повторяет его буквально:
- * две выгрузки за период → вычитание возвратов → файл «КИЗ + цена».
+ * Экран отвечает на один вопрос — надо ли что-то делать сегодня, — и потому
+ * начинается вердиктом, а не показателями. Ось решения здесь возраст кода, а не
+ * количество: четыреста свежих и четыреста просроченных требуют разного, хотя
+ * число одинаковое.
+ *
+ * Источники кодов сведены к одной кнопке намеренно. Их порядок выводится из их
+ * свойств: первый читает нашу базу и бесплатен, второй стоит минуту на кабинет,
+ * третий ничего не добавляет, а вычитает уже выведенное. Человеку тут не из
+ * чего выбирать, и решение это не его.
  */
 export function KizTab({ refreshKey }: { refreshKey: number }) {
   const [summary, setSummary] = useState<KizWithdrawalSummary | null>(null);
-  const [result, setResult] = useState<KizUploadResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<null | "refresh" | "wb" | "upload" | "file">(null);
   const [error, setError] = useState<string | null>(null);
-  const [collected, setCollected] = useState<KizCollectResult | null>(null);
-  // С какой даты читать отчёт. Не украшение: у метода лимит 10 запросов за
-  // 5 часов, период режется на месячные окна, и лишние месяцы — это выброшенные
-  // запросы. Там, где наших товаров в кабинете ещё не было, читать нечего.
-  const [since, setSince] = useState("");
-  const [sales, setSales] = useState<KizSalesResult | null>(null);
-  const [tasks, setTasks] = useState<KizTasksResult | null>(null);
+  const [report, setReport] = useState<string[] | null>(null);
+  const [reportBad, setReportBad] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const soldRef = useRef<HTMLInputElement>(null);
   const returnsRef = useRef<HTMLInputElement>(null);
 
@@ -49,12 +52,66 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
+  const run = async (kind: "refresh" | "wb", fn: () => Promise<string[]>, bad = false) => {
+    setBusy(kind);
+    setError(null);
+    setReport(null);
+    try {
+      const lines = await fn();
+      setReport(lines);
+      setReportBad(bad);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не получилось");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Быстрый шаг: только наша база, без обращений к WB и без лимитов. */
+  const refresh = () => run("refresh", async () => {
+    const res = await fetch("/api/warehouse/kiz/tasks", { method: "POST" });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Не удалось обновить");
+    const d = json.data as KizTasksResult;
+    const lines = [d.added > 0 ? `К выводу добавлено ${formatNumber(d.added)}` : "Новых кодов нет — всё уже собрано"];
+    if (d.unlinked > 0) lines.push(`${formatNumber(d.unlinked)} кодов ждут связи с продажей — подтянутся сами`);
+    return lines;
+  });
+
+  /** Медленный шаг: чтение отчётов WB. Отдельно, потому что стоит минуты. */
+  const fromWb = () => run("wb", async () => {
+    const lines: string[] = [];
+    let bad = false;
+    const sales = await fetch("/api/warehouse/kiz/sales", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    }).then((r) => r.json());
+    if (sales.data) {
+      const d = sales.data as KizSalesResult;
+      lines.push(d.addedTotal > 0 ? `Из отчёта о реализации: +${formatNumber(d.addedTotal)}` : "Из отчёта о реализации новых кодов нет");
+      for (const row of d.cabinets.filter((c) => c.error)) { lines.push(`${row.name}: ${row.error}`); bad = true; }
+      if (d.skipped.length) { lines.push(`Не успели: ${d.skipped.join(", ")}`); bad = true; }
+    } else if (sales.error) { lines.push(String(sales.error)); bad = true; }
+
+    const collect = await fetch("/api/warehouse/kiz/collect", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    }).then((r) => r.json());
+    if (collect.data) {
+      const d = collect.data as KizCollectResult;
+      const failed = d.cabinets.filter((c) => c.error);
+      lines.push(`Сверено с выведенным: отмечено ${formatNumber(d.addedTotal)}`);
+      for (const row of failed) { lines.push(`${row.name}: ${row.error}`); bad = true; }
+    } else if (collect.error) { lines.push(String(collect.error)); bad = true; }
+    setReportBad(bad);
+    return lines;
+  });
+
   const upload = async () => {
     const sold = soldRef.current?.files?.[0];
     if (!sold) { setError("Выберите выгрузку завершённых заказов"); return; }
-    setBusy(true);
+    setBusy("upload");
     setError(null);
-    setResult(null);
+    setReport(null);
     try {
       const form = new FormData();
       form.set("sold", sold);
@@ -62,95 +119,34 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
       if (returns) form.set("returns", returns);
       const res = await fetch("/api/warehouse/kiz", { method: "POST", body: form });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Не удалось загрузить выгрузки");
-      setResult(json.data as KizUploadResult);
-      setSummary((json.data as KizUploadResult).summary);
+      if (!res.ok) throw new Error(json.error || "Не удалось загрузить");
+      const d = json.data as KizUploadResult;
+      const lines = [d.added > 0 ? `Из файлов добавлено ${formatNumber(d.added)}` : "Все коды из файла уже в реестре"];
+      if (d.updatedByReturn > 0) lines.push(`Вернулись в оборот: ${formatNumber(d.updatedByReturn)}`);
+      if (d.withoutPrice > 0) lines.push(`Без цены реализации: ${formatNumber(d.withoutPrice)}`);
+      if (d.returnedAfterSent.length > 0) lines.push(`Вернулись после отправки: ${d.returnedAfterSent.length}`);
+      setReport(lines);
+      setReportBad(d.returnedAfterSent.length > 0);
       if (soldRef.current) soldRef.current.value = "";
       if (returnsRef.current) returnsRef.current.value = "";
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить выгрузки");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Главный путь: коды тянутся из отчёта WB по маркированным товарам. Он помнит
-  // около полугода и отдаёт длинное окно одним запросом — ручные выгрузки нужны
-  // только для того, что старше его горизонта.
-  const collect = async () => {
-    setBusy(true);
-    setError(null);
-    setCollected(null);
-    setResult(null);
-    try {
-      const res = await fetch("/api/warehouse/kiz/collect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(since ? { from: since } : {}),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Не удалось собрать коды");
-      setCollected(json.data as KizCollectResult);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось собрать коды");
+      setError(e instanceof Error ? e.message : "Не удалось загрузить");
     } finally {
-      setBusy(false);
-    }
-  };
-
-  // Главный автоматический источник списка К ВЫВОДУ: детализация реализации
-  // отдаёт код прямо в строке продажи, вместе с ценой. В отличие от отчёта по
-  // маркированным товарам показывает то, что ещё НЕ выведено.
-  const collectSales = async () => {
-    setBusy(true);
-    setError(null);
-    setSales(null);
-    try {
-      const res = await fetch("/api/warehouse/kiz/sales", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(since ? { from: since } : {}),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Не удалось собрать проданное");
-      setSales(json.data as KizSalesResult);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось собрать проданное");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Самый быстрый источник: КИЗ проставляется в сборочное задание при сборке,
-  // то есть код известен в день отгрузки, а не через неделю. Для трёхдневного
-  // срока вывода это решающая разница.
-  const collectTasks = async () => {
-    setBusy(true);
-    setError(null);
-    setTasks(null);
-    try {
-      const res = await fetch("/api/warehouse/kiz/tasks", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Не удалось прочитать сборочные задания");
-      setTasks(json.data as KizTasksResult);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось прочитать сборочные задания");
-    } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   const download = async () => {
-    setBusy(true);
+    if (!window.confirm(
+      `Отправить ${formatNumber(summary?.pending ?? 0)} кодов на вывод?\n\n`
+      + "Коды будут помечены отправленными. Повторно собрать их файлом нельзя — только через того, кто выводит.",
+    )) return;
+    setBusy("file");
     setError(null);
     try {
       const res = await fetch("/api/warehouse/kiz/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markSent: true }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markSent: true }),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => null);
@@ -167,277 +163,180 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось собрать файл");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Читаю реестр кодов…</div>;
+  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Читаю реестр…</div>;
+
+  const pending = summary?.pending ?? 0;
+  const age = summary?.ageBuckets ?? { overdue: 0, lastDay: 0, twoDays: 0, fresh: 0 };
+  const max = Math.max(1, age.overdue, age.lastDay, age.twoDays, age.fresh);
+  const bar = (value: number, tone: string) => (
+    <div className="h-2 rounded-full" style={{ width: `${Math.max(2, (value / max) * 100)}%`, background: tone }} />
+  );
 
   return (
     <div className="space-y-4">
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
-      <div className="grid gap-3 sm:grid-cols-5">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-400">Ждут вывода</p>
-          <p className="text-xl font-bold text-violet-700">{formatNumber(summary?.pending ?? 0)}</p>
-          <p className="mt-1 text-xs text-slate-400">на {money(summary?.pendingAmount ?? 0)}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-400">Отправлено</p>
-          <p className="text-xl font-bold text-slate-900">{formatNumber(summary?.sent ?? 0)}</p>
-          <p className="mt-1 text-xs text-slate-400">уже у того, кто выводит</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-400">Вернулись в оборот</p>
-          <p className="text-xl font-bold text-slate-900">{formatNumber(summary?.returned ?? 0)}</p>
-          <p className="mt-1 text-xs text-slate-400">выводить нельзя</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-400">Выводит Wildberries</p>
-          <p className="text-xl font-bold text-slate-900">{formatNumber(summary?.fbw ?? 0)}</p>
-          <p className="mt-1 text-xs text-slate-400">продажи FBW — не наше дело</p>
-        </div>
-        <div className={`rounded-xl border p-4 ${summary?.returnedAfterSent ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}>
-          <p className="text-xs text-slate-400">Вернулись после отправки</p>
-          <p className={`text-xl font-bold ${summary?.returnedAfterSent ? "text-red-700" : "text-slate-900"}`}>
-            {formatNumber(summary?.returnedAfterSent ?? 0)}
-          </p>
-          <p className="mt-1 text-xs text-slate-400">разбирать руками</p>
-        </div>
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm font-medium text-slate-700">Вывод из оборота</p>
+        <button onClick={() => setHowOpen(!howOpen)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600">
+          Как это работает <ChevronDown className={`h-3 w-3 transition-transform ${howOpen ? "rotate-180" : ""}`} />
+        </button>
       </div>
 
-      {(summary?.withdrawn ?? 0) > 0 && (
+      {howOpen && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          {formatNumber(summary!.withdrawn)} кодов уже выведены из оборота по данным Wildberries.
-          В файл они не пойдут: вывести один код дважды нельзя.
+          <ol className="list-inside list-decimal space-y-1">
+            <li>Продали по FBS — код надо вывести из оборота за три рабочих дня.</li>
+            <li>Система собирает коды сама: из сборочных заданий, из отчёта о реализации и из отчёта по маркировке — что уже выведено.</li>
+            <li>Вы собираете файл и передаёте тому, кто выводит в Честном Знаке. Отправленные коды помечаются и дважды не уйдут.</li>
+            <li>FBW не наше дело: там из оборота выводит сам Wildberries.</li>
+          </ol>
         </div>
       )}
 
-      {(summary?.overdue ?? 0) > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          <b>{formatNumber(summary!.overdue)}</b> кодов ждут вывода дольше трёх рабочих дней.
-          По правилам маркировки вывести из оборота положено не позднее трёх рабочих дней после отгрузки —
-          за нарушение сроков предусмотрен штраф по статье 15.12.1 КоАП. Выгрузите их и передайте тому, кто выводит.
-        </div>
-      )}
-
-      {summary?.firstSoldAt && (
-        <p className="text-xs text-slate-400">
-          В реестре продажи с {summary.firstSoldAt} по {summary.lastSoldAt}.
-          {summary.withoutPrice > 0 && ` У ${formatNumber(summary.withoutPrice)} кодов нет цены реализации — проверьте, та ли колонка была в выгрузке.`}
-        </p>
-      )}
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Отметить то, что уже выведено</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Отчёт Wildberries по маркированным товарам показывает <b>совершённые</b> операции с кодом: вывод из
-          оборота и возврат в оборот. При FBW там всё, потому что маркетплейс выводит сам; при FBS там пусто
-          ровно потому, что никто ещё не вывел. Поэтому отчёт даёт не список к выводу, а список «этого делать
-          не надо» — он вычитается из того, что уходит на вывод, чтобы не выводить дважды.
-          Чужие коды отсекаются товарным контуром кабинета: у агентского кабинета большинство строк не наши.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            С даты
-            <input
-              type="date"
-              value={since}
-              onChange={(e) => setSince(e.target.value)}
-              className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-            />
-          </label>
-          <button
-            onClick={() => void collect()}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-          >
-            <CloudDownload className="h-4 w-4" /> {busy ? "Читаю отчёт WB…" : since ? "Собрать с этой даты" : "Собрать за полгода"}
-          </button>
-          <span className="text-xs text-slate-400">
-            Пусто — полгода назад, дальше отчёт не помнит. Ставьте дату, с которой ваши товары появились в кабинете:
-            период режется на месячные окна, а у метода лимит 10 запросов за 5 часов.
-          </span>
-        </div>
-        {collected && (
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-            <p>Период {collected.from} — {collected.to}. Добавлено {formatNumber(collected.addedTotal)}
-              {collected.returnedTotal > 0 && `, переведено в «вернулись» ${formatNumber(collected.returnedTotal)}`}.</p>
-            <ul className="mt-1 space-y-0.5 text-xs">
-              {collected.cabinets.map((row) => (
-                <li key={row.name} className={row.error ? "text-red-700" : "text-emerald-700"}>
-                  {row.name}: {row.error
-                    ? row.error
-                    : `отчёт ${formatNumber(row.rows)} строк за ${row.windows} окон, наших ${formatNumber(row.ours)} · FBS ${formatNumber(row.fbs)}, FBW ${formatNumber(row.fbw)}, схема неизвестна ${formatNumber(row.unknown)} · записано ${formatNumber(row.added)}`}
-                  {row.failedWindows.length > 0 && ` · не отдались окна: ${row.failedWindows.join(", ")}`}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Взять из сборочных заданий</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Самый быстрый путь. КИЗ проставляется в задание при сборке, значит код известен в день отгрузки,
-          а не через неделю, когда продажа дойдёт до отчёта о реализации. Для трёхдневного срока вывода это
-          решающая разница. В список попадает только выкупленное: пока товар едет, выводить нечего,
-          а отказ покупателя вернёт код в оборот.
-        </p>
-        <button
-          onClick={() => void collectTasks()}
-          disabled={busy}
-          className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-        >
-          <CloudDownload className="h-4 w-4" /> {busy ? "Читаю задания…" : "Взять из заданий"}
-        </button>
-        {tasks && (
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-            <p>
-              Заданий с кодами {formatNumber(tasks.withCodes)} · связано с продажей {formatNumber(tasks.linked)} ·
-              выкуплено {formatNumber(tasks.bought)} · добавлено к выводу {formatNumber(tasks.added)}
-            </p>
-            {tasks.unlinked > 0 && (
-              <p className="mt-1 text-xs text-amber-700">
-                У {formatNumber(tasks.unlinked)} заданий код есть, но связать с продажей нечем: не сохранён srid.
-                Это старые записи. Синхронизация теперь возвращает такие задания в очередь и дописывает им srid —
-                они подтянутся сами в течение суток. Ждать от них многого не стоит: почти всё это заказы,
-                которые ещё едут к покупателю, а выводить можно только выкупленное.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Добрать из отчёта о реализации</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Детализация отчёта о реализации отдаёт код маркировки прямо в строке продажи, вместе с ценой.
-          Это то же, что выгружать завершённые заказы руками, только без выгрузки. Учтите задержку:
-          в отчёт о реализации продажа попадает после выкупа и расчёта, поэтому вчерашние продажи там
-          ещё не появятся.
-        </p>
-        <button
-          onClick={() => void collectSales()}
-          disabled={busy}
-          className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-        >
-          <CloudDownload className="h-4 w-4" /> {busy ? "Читаю реализацию, это займёт несколько минут…" : "Собрать проданное"}
-        </button>
-        {sales && (() => {
-          // Зелёная плашка с красными строками внутри читается как успех, хотя
-          // это отказ. Тон панели должен совпадать с тем, что в ней написано.
-          const failed = sales.cabinets.filter((row) => row.error).length;
-          const allFailed = failed > 0 && failed === sales.cabinets.length;
-          return (
-          <div className={`mt-3 rounded-lg border p-3 text-sm ${
-            allFailed ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-800"
-          }`}>
-            <p>Период {sales.from} — {sales.to}. Добавлено к выводу {formatNumber(sales.addedTotal)}.</p>
-            <ul className="mt-1 space-y-0.5 text-xs">
-              {sales.cabinets.map((row) => (
-                <li key={row.name} className={row.error ? "text-red-700" : "text-emerald-700"}>
-                  {row.name}: {row.error
-                    ? row.error
-                    : `строк с кодом ${formatNumber(row.withCode)}, наших ${formatNumber(row.ours)} · FBS ${formatNumber(row.fbs)}, FBW ${formatNumber(row.fbw)}, схема неизвестна ${formatNumber(row.unknown)} · возвратов ${formatNumber(row.returns)} · записано ${formatNumber(row.added)}`}
-                </li>
-              ))}
-            </ul>
-            {sales.skipped.length > 0 && (
-              <p className="mt-1 text-xs">
-                Не успели за отведённое время: {sales.skipped.join(", ")}. Нажмите ещё раз — они пойдут следующими.
-              </p>
-            )}
-            {allFailed && (
-              <p className="mt-1 text-xs">
-                Wildberries пускает один запрос в минуту на продавца. Кнопка ждёт это окно сама,
-                но если только что уже собирали — дайте минуте пройти и повторите.
-              </p>
-            )}
-          </div>
-          );
-        })()}
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-medium text-slate-700">Загрузить файлами, если нужно вручную</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Запасной путь, если в отчёте о реализации нужного периода ещё нет.
-          Первый файл — «Поставки → ФБС → завершённые заказы» с фильтром «товар выкуплен»: в нём КИЗ и цена реализации.
-          Второй — «Аналитика → Отчёты → по возвратам и перемещению товара» за тот же диапазон дат.
-          Возвраты вычитаются: вернувшийся товар снова в обороте WB, и выводить его нельзя.
-        </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="text-xs text-slate-500">Завершённые заказы (обязательно)</span>
-            <input ref={soldRef} type="file" accept=".xlsx" className="mt-1 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-1.5 file:text-violet-700" />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-500">Возвраты за тот же период</span>
-            <input ref={returnsRef} type="file" accept=".xlsx" className="mt-1 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-slate-700" />
-          </label>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            onClick={() => void upload()}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-          >
-            <FileUp className="h-4 w-4" /> {busy ? "Разбираю…" : "Загрузить"}
-          </button>
-          <button
-            onClick={() => void download()}
-            disabled={busy || !summary?.pending}
-            title="Собрать файл «КИЗ + цена» и пометить коды отправленными"
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" /> Выгрузить на вывод ({formatNumber(summary?.pending ?? 0)})
-          </button>
-        </div>
-      </div>
-
-      {result && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-          <p>
-            Добавлено кодов: <b>{formatNumber(result.added)}</b>
-            {result.updatedByReturn > 0 && ` · переведено в «вернулись»: ${formatNumber(result.updatedByReturn)}`}
-            {result.alreadyKnown > 0 && ` · уже отправлялись: ${formatNumber(result.alreadyKnown)}`}
-            {result.duplicatesInFile > 0 && ` · дублей в файле: ${formatNumber(result.duplicatesInFile)}`}
+      {/* Вердикт: три состояния, три тона. Первое, что видит человек. */}
+      <div className={`rounded-xl border p-5 ${
+        age.overdue > 0 ? "border-red-200 bg-red-50"
+        : pending > 0 ? "border-violet-200 bg-violet-50"
+        : "border-slate-200 bg-white"
+      }`}>
+        {age.overdue > 0 ? (
+          <p className="text-base font-semibold text-red-700">
+            {formatNumber(age.overdue)} кодов просрочены — срок вывода истёк
           </p>
-          {result.withoutPrice > 0 && (
-            <p className="mt-1 text-amber-700">
-              Без цены реализации: {formatNumber(result.withoutPrice)} строк. Прочитанные колонки: {Object.values(result.soldColumns).join(", ") || "—"}.
-            </p>
+        ) : pending > 0 ? (
+          <p className="text-base font-semibold text-violet-800">
+            Соберите файл: {formatNumber(pending)} кодов
+          </p>
+        ) : (
+          <p className="text-base font-medium text-slate-600">Сегодня выводить нечего</p>
+        )}
+
+        {pending > 0 && (
+          <p className="mt-1 text-sm text-slate-600">
+            Всего к выводу {formatNumber(pending)} · {money(summary?.pendingAmount ?? 0)}
+          </p>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          {pending > 0 && (
+            <button
+              onClick={() => void download()}
+              disabled={busy !== null}
+              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              <Download className="mr-1.5 inline h-4 w-4" />
+              Собрать файл на {formatNumber(pending)} кодов
+            </button>
           )}
-          {result.returnedAfterSent.length > 0 && (
-            <p className="mt-1 font-medium text-red-700">
-              {formatNumber(result.returnedAfterSent.length)} кодов вернулись уже после отправки на вывод.
-              Их вывели, а товар вернулся в оборот — сообщите тому, кто выводит: сами мы это исправить не можем.
-            </p>
-          )}
-          {result.returnsWithoutSale > 0 && (
-            <p className="mt-1 text-slate-600">
-              Возвратов без известной продажи: {formatNumber(result.returnsWithoutSale)} — их продажа в другом периоде, загрузите его тоже.
-            </p>
-          )}
-          {result.issues.length > 0 && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs text-slate-600">Строки, которые не прочитались ({result.issues.length})</summary>
-              <ul className="mt-1 list-inside list-disc text-xs text-slate-500">
-                {result.issues.map((issue) => <li key={issue.line}>строка {issue.line}: {issue.reason}</li>)}
-              </ul>
-            </details>
-          )}
+          <button
+            onClick={() => void refresh()}
+            disabled={busy !== null}
+            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${busy === "refresh" ? "animate-spin" : ""}`} />
+            {busy === "refresh" ? "Обновляю…" : "Обновить"}
+          </button>
+        </div>
+      </div>
+
+      {pending > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="mb-3 text-xs uppercase tracking-wide text-slate-400">Срок вывода</p>
+          <div className="space-y-1.5">
+            {([
+              ["просрочено", age.overdue, "#ef4444"],
+              ["крайний день", age.lastDay, "#f59e0b"],
+              ["2 дня", age.twoDays, "#a78bfa"],
+              ["свежие", age.fresh, "#c4b5fd"],
+            ] as const).map(([label, value, tone]) => (
+              <div key={label} className="grid grid-cols-[110px_1fr_56px] items-center gap-2 text-xs text-slate-500">
+                <span>{label}</span>
+                {bar(value, tone)}
+                <span className="text-right font-medium tabular-nums text-slate-700">{formatNumber(value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report && (
+        <div className={`rounded-lg border p-4 text-sm ${
+          reportBad ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-800"
+        }`}>
+          {report.map((line) => <p key={line}>{line}</p>)}
+        </div>
+      )}
+
+      {(summary?.returnedAfterSent ?? 0) > 0 && (
+        <div className="rounded-xl border border-red-300 bg-red-50 p-4">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-red-800">
+            <AlertTriangle className="h-4 w-4" />
+            Вернулись после отправки: {formatNumber(summary!.returnedAfterSent)}
+          </p>
+          <p className="mt-1 text-sm text-red-700">
+            Коды выведены, а товар снова в обороте. Сами исправить не можем — сообщите тому, кто выводит.
+          </p>
         </div>
       )}
 
       <p className="text-xs text-slate-400">
-        Реестр помнит все коды за всю историю, поэтому периоды можно загружать в любом порядке и с перекрытием:
-        один и тот же КИЗ не уйдёт на вывод дважды. Выгрузка помечает коды отправленными — если файл не дошёл,
-        повторить его можно только через тех, кто выводит.
+        Отправлено {formatNumber(summary?.sent ?? 0)} · выведено WB {formatNumber(summary?.withdrawn ?? 0)} ·
+        FBW {formatNumber(summary?.fbw ?? 0)} · вернулись {formatNumber(summary?.returned ?? 0)}
+        {(summary?.unknown ?? 0) > 0 && ` · схема не ясна ${formatNumber(summary!.unknown)}`}
+        {(summary?.withoutPriceCount ?? 0) > 0 && ` · без цены ${formatNumber(summary!.withoutPriceCount)}`}
       </p>
+
+      <div className="rounded-xl border border-slate-200 bg-white">
+        <button
+          onClick={() => setMoreOpen(!moreOpen)}
+          className="flex w-full items-center justify-between p-4 text-sm text-slate-600"
+        >
+          Добрать вручную
+          <ChevronDown className={`h-4 w-4 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+        </button>
+        {moreOpen && (
+          <div className="space-y-4 border-t border-slate-100 p-4">
+            <div>
+              <p className="text-sm text-slate-600">Из отчётов Wildberries</p>
+              <p className="mt-0.5 text-xs text-slate-400">Несколько минут: WB пускает один запрос в минуту на кабинет.</p>
+              <button
+                onClick={() => void fromWb()}
+                disabled={busy !== null}
+                className="mt-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {busy === "wb" ? "Читаю отчёты…" : "Добрать из WB"}
+              </button>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-sm text-slate-600">Из выгрузок кабинета</p>
+              <p className="mt-0.5 text-xs text-slate-400">Для периодов старше полугода — дальше отчёты WB не помнят.</p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-slate-500">
+                  Завершённые заказы ФБС
+                  <input ref={soldRef} type="file" accept=".xlsx" className="mt-1 block w-full text-xs text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-slate-700" />
+                </label>
+                <label className="text-xs text-slate-500">
+                  Возвраты за тот же период
+                  <input ref={returnsRef} type="file" accept=".xlsx" className="mt-1 block w-full text-xs text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-slate-700" />
+                </label>
+              </div>
+              <button
+                onClick={() => void upload()}
+                disabled={busy !== null}
+                className="mt-2 flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <FileUp className="h-4 w-4" /> {busy === "upload" ? "Разбираю…" : "Загрузить"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
