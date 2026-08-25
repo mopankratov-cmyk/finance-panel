@@ -135,7 +135,13 @@ export async function POST(request: NextRequest) {
       // позволяет без опаски.
       const token = resolveWbToken(cabinet, "analytics");
       const rows: ExciseRow[] = [];
+      // Между окнами короткая пауза: метод терпит десять запросов за пять
+      // часов, и подряд идущие запросы он встречает отказом чаще, чем
+      // разнесённые. Дешевле подождать секунду, чем потерять окно.
+      let first = true;
       for (const window of windows(from, to)) {
+        if (!first) await new Promise((resolve) => setTimeout(resolve, 1500));
+        first = false;
         try {
           rows.push(...await fetchExciseReport(token, window.from, window.to));
           stat.windows += 1;

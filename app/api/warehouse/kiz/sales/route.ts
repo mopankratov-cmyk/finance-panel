@@ -21,6 +21,22 @@ const FBS_WAREHOUSE_TYPE = "Склад продавца";
 /** Отчёт помнит продажи примерно с февраля 2025 — глубже кодов в нём нет. */
 const MAX_DAYS_BACK = 200;
 
+/**
+ * Пауза между запросами.
+ *
+ * WB держит лимит «один запрос в минуту на продавца». Кабинеты — разные
+ * продавцы, но лимит срабатывает и на них: без паузы первый же кабинет
+ * съедает окно, а остальные получают 429 мгновенно. Именно так и вышло на
+ * первом боевом нажатии — четыре кабинета, четыре отказа подряд.
+ */
+const PAUSE_MS = 61_000;
+
+/** Оставляем запас до конца лямбды: лучше вернуть частичный результат с
+ *  честной пометкой, чем оборваться на середине без единой строки. */
+const BUDGET_MS = 260_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export interface KizSalesCabinet {
   name: string;
   /** Строк с кодом маркировки в отчёте. */
@@ -44,6 +60,8 @@ export interface KizSalesResult {
   to: string;
   cabinets: KizSalesCabinet[];
   addedTotal: number;
+  /** Кабинеты, до которых не дошла очередь: времени не хватило. */
+  skipped: string[];
 }
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
@@ -83,9 +101,16 @@ export async function POST(request: NextRequest) {
   if (cabinets.length === 0) return fail("Нет кабинетов Wildberries, связанных с юрлицами", 400);
 
   const stats: KizSalesCabinet[] = [];
+  const skipped: string[] = [];
   let addedTotal = 0;
+  const deadline = Date.now() + BUDGET_MS;
+  let requested = false;
 
   for (const link of cabinets) {
+    if (Date.now() > deadline) { skipped.push(link.cabinetName); continue; }
+    // Пауза нужна только между запросами: перед первым ждать нечего.
+    if (requested) await sleep(PAUSE_MS);
+
     const stat: KizSalesCabinet = {
       name: link.cabinetName, withCode: 0, ours: 0, fbs: 0, fbw: 0, unknown: 0,
       returns: 0, added: 0, pages: 0, error: null,
@@ -103,7 +128,20 @@ export async function POST(request: NextRequest) {
       const rows: SalesDetailRow[] = [];
       let cursor = 0;
       for (let page = 0; page < 3; page += 1) {
-        const chunk = await fetchSalesDetailPage(token, from, to, cursor);
+        if (page > 0) {
+          if (Date.now() + PAUSE_MS > deadline) break;
+          await sleep(PAUSE_MS);
+        }
+        requested = true;
+        let chunk: SalesDetailRow[] = [];
+        try {
+          chunk = await fetchSalesDetailPage(token, from, to, cursor);
+        } catch (error) {
+          // Одна встреча с лимитом — не приговор: ждём окно и пробуем ещё раз.
+          if (!(error instanceof SalesDetailRateLimitError) || Date.now() + PAUSE_MS > deadline) throw error;
+          await sleep(PAUSE_MS);
+          chunk = await fetchSalesDetailPage(token, from, to, cursor);
+        }
         stat.pages += 1;
         if (chunk.length === 0) break;
         rows.push(...chunk);
@@ -187,6 +225,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const result: KizSalesResult = { from, to, cabinets: stats, addedTotal };
+  const result: KizSalesResult = { from, to, cabinets: stats, addedTotal, skipped };
   return NextResponse.json({ data: result, error: null });
 }

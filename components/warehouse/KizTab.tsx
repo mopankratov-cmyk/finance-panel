@@ -322,10 +322,17 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
           disabled={busy}
           className="mt-3 flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
         >
-          <CloudDownload className="h-4 w-4" /> {busy ? "Читаю реализацию…" : "Собрать проданное"}
+          <CloudDownload className="h-4 w-4" /> {busy ? "Читаю реализацию, это займёт несколько минут…" : "Собрать проданное"}
         </button>
-        {sales && (
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+        {sales && (() => {
+          // Зелёная плашка с красными строками внутри читается как успех, хотя
+          // это отказ. Тон панели должен совпадать с тем, что в ней написано.
+          const failed = sales.cabinets.filter((row) => row.error).length;
+          const allFailed = failed > 0 && failed === sales.cabinets.length;
+          return (
+          <div className={`mt-3 rounded-lg border p-3 text-sm ${
+            allFailed ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-800"
+          }`}>
             <p>Период {sales.from} — {sales.to}. Добавлено к выводу {formatNumber(sales.addedTotal)}.</p>
             <ul className="mt-1 space-y-0.5 text-xs">
               {sales.cabinets.map((row) => (
@@ -336,8 +343,20 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
                 </li>
               ))}
             </ul>
+            {sales.skipped.length > 0 && (
+              <p className="mt-1 text-xs">
+                Не успели за отведённое время: {sales.skipped.join(", ")}. Нажмите ещё раз — они пойдут следующими.
+              </p>
+            )}
+            {allFailed && (
+              <p className="mt-1 text-xs">
+                Wildberries пускает один запрос в минуту на продавца. Кнопка ждёт это окно сама,
+                но если только что уже собирали — дайте минуте пройти и повторите.
+              </p>
+            )}
           </div>
-        )}
+          );
+        })()}
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
