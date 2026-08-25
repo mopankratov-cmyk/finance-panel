@@ -3,7 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { listAccessibleEntities, resolveEntity } from "@/lib/warehouse/entityAccess";
 import {
   buildWithdrawalPlan,
   parseReturnedKiz,
@@ -11,6 +11,7 @@ import {
   type SoldKizLine,
 } from "@/lib/wb/kizWithdrawal";
 import { readXlsxRows } from "@/lib/xlsx/read";
+import { attachKizEntities } from "@/lib/warehouse/kizEntity";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -46,6 +47,8 @@ export interface KizWithdrawalSummary {
    * а не по количеству: свежие коды ждут, просроченные горят.
    */
   ageBuckets: { overdue: number; lastDay: number; twoDays: number; fresh: number };
+  /** Коды, которым владелец не установлен: они не попадают ни в одно юрлицо. */
+  noEntity: number;
 }
 
 export interface KizUploadResult {
@@ -63,60 +66,70 @@ export interface KizUploadResult {
 }
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
-const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
+const missingMigration = (code?: string) => ["42P01", "42703", "PGRST202", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграцию 202608240023_kiz_withdrawal.sql";
 
-async function summarize(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>): Promise<KizWithdrawalSummary> {
-  const data = await loadAllSupabasePages<{ status: string; price: number | null; sold_at: string | null }>((from, to) =>
-    db.from("kiz_withdrawals").select("status, price, sold_at").order("code").range(from, to),
-    { maxPages: 500, label: "Реестр кодов: сводка" });
-  const pending = data.filter((row) => row.status === "sold");
-  // Вывести из оборота положено не позднее трёх рабочих дней после отгрузки.
-  // Считаем календарно с запасом: пять календарных дней покрывают три рабочих
-  // с выходными, а завышать просрочку хуже, чем занижать.
-  const day = (offset: number) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
-  const overdueBefore = day(5);
-  const sortedDates = data.map((row) => row.sold_at).filter(Boolean).map(String).sort();
+/**
+ * Состояние реестра — считает база.
+ *
+ * Раньше это делал JS: тянул весь реестр страницами по тысяче и складывал
+ * статусы в памяти. Одиннадцать тысяч строк — дюжина запросов на каждое
+ * открытие вкладки, и потолок, за которым экран перестал бы работать.
+ */
+async function summarize(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  entityId: string | null,
+): Promise<KizWithdrawalSummary> {
+  const { data, error } = await db.rpc("kiz_summary", { p_entity: entityId });
+  if (error) throw error;
+  const row = (data ?? {}) as Record<string, number | string | null>;
+  const num = (key: string) => Number(row[key] ?? 0) || 0;
   return {
-    pending: pending.length,
-    pendingAmount: pending.reduce((sum, row) => sum + Number(row.price ?? 0), 0),
-    sent: data.filter((row) => row.status === "sent").length,
-    returned: data.filter((row) => row.status === "returned").length,
-    returnedAfterSent: data.filter((row) => row.status === "returned_after_sent").length,
-    withoutPrice: pending.filter((row) => row.price === null || row.price === undefined).length,
-    firstSoldAt: sortedDates[0] ?? null,
-    lastSoldAt: sortedDates[sortedDates.length - 1] ?? null,
-    overdue: pending.filter((row) => row.sold_at && String(row.sold_at) < overdueBefore).length,
-    fbw: data.filter((row) => row.status === "fbw").length,
-    withdrawn: data.filter((row) => row.status === "withdrawn").length,
-    unknown: data.filter((row) => row.status === "unknown").length,
-    withoutPriceCount: pending.filter((row) => row.price === null || row.price === undefined).length,
+    pending: num("pending"),
+    pendingAmount: num("pendingAmount"),
+    sent: num("sent"),
+    returned: num("returned"),
+    returnedAfterSent: num("returnedAfterSent"),
+    withoutPrice: num("withoutPrice"),
+    firstSoldAt: (row.firstSoldAt as string | null) ?? null,
+    lastSoldAt: (row.lastSoldAt as string | null) ?? null,
+    overdue: num("overdue"),
+    fbw: num("fbw"),
+    withdrawn: num("withdrawn"),
+    unknown: num("unknown"),
+    withoutPriceCount: num("withoutPrice"),
     ageBuckets: {
-      // Без даты продажи возраст неизвестен — считаем свежим, а не просроченным:
-      // обвинить систему в просрочке дороже, чем пропустить один код.
-      overdue: pending.filter((row) => row.sold_at && String(row.sold_at) < overdueBefore).length,
-      lastDay: pending.filter((row) => row.sold_at && String(row.sold_at) >= overdueBefore && String(row.sold_at) < day(4)).length,
-      twoDays: pending.filter((row) => row.sold_at && String(row.sold_at) >= day(4) && String(row.sold_at) < day(2)).length,
-      fresh: pending.filter((row) => !row.sold_at || String(row.sold_at) >= day(2)).length,
+      overdue: num("ageOverdue"),
+      lastDay: num("ageLastDay"),
+      twoDays: num("ageTwoDays"),
+      fresh: num("ageFresh"),
     },
+    noEntity: num("noEntity"),
   };
 }
 
-/** Состояние реестра. */
-export async function GET() {
+/** Состояние реестра. Без юрлица в адресе — весь реестр, как и было. */
+export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
-  const list = await listAccessibleEntities();
-  if (!list.ok) return fail(list.error, list.status);
+
+  const wanted = new URL(request.url).searchParams.get("entity");
+  const scope = await resolveEntity(wanted);
+  if (wanted && !scope.ok) return fail(scope.error, scope.status);
+  if (!wanted) {
+    const list = await listAccessibleEntities();
+    if (!list.ok) return fail(list.error, list.status);
+  }
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
   try {
-    return NextResponse.json({ data: await summarize(db), error: null });
+    return NextResponse.json({ data: await summarize(db, scope.ok ? scope.entity.id : null), error: null });
   } catch (error) {
     const code = (error as { code?: string })?.code;
-    return fail(missingMigration(code) ? migrationHint : String(error), missingMigration(code) ? 503 : 500);
+    const hint = missingMigration(code) ? "Примените миграции 202608250030 и 202608250031" : String(error);
+    return fail(hint, missingMigration(code) ? 503 : 500);
   }
 }
 
@@ -258,6 +271,10 @@ export async function POST(request: NextRequest) {
       .eq("status", "sent");
   }
 
+  // Загруженным кодам сразу проставляем владельца — по тому же правилу, что и
+  // собранным автоматически.
+  await attachKizEntities(db);
+
   const result: KizUploadResult = {
     added,
     updatedByReturn,
@@ -269,7 +286,7 @@ export async function POST(request: NextRequest) {
     soldColumns: soldParsed.columns,
     returnColumns: returnsParsed.columns,
     withoutPrice: soldParsed.withoutPrice,
-    summary: await summarize(db),
+    summary: await summarize(db, null),
   };
   void session;
   return NextResponse.json({ data: result, error: null }, { status: 201 });

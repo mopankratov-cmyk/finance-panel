@@ -125,3 +125,42 @@ test("добор прежних строк не затирает уже изве
   assert.match(src, /\.is\("sold_at", null\)\s*\n\s*\.select\("code"\)/, "добор не ограничен пустыми строками");
   assert.match(src, /BLANK_LIMIT/, "у добора нет потолка");
 });
+
+test("сбор файла сужен юрлицом — иначе привязка опаснее, чем её отсутствие", () => {
+  // Отметку «отправлено» штатно не откатить: собрать чужие коды в свой документ
+  // вывода — ошибка навсегда. Поэтому экспорт обязан фильтровать, а не только экран.
+  const src = readFileSync(new URL("../app/api/warehouse/kiz/export/route.ts", import.meta.url), "utf8");
+  assert.match(src, /query\.eq\("legal_entity_id", entityId\)/, "экспорт не сужен юрлицом");
+  assert.match(src, /resolveEntity\(wanted\)/, "экспорт не проверяет доступ к юрлицу");
+
+  const tab = readFileSync(new URL("../components/warehouse/KizTab.tsx", import.meta.url), "utf8");
+  assert.match(tab, /markSent: true, entityId/, "вкладка не передаёт юрлицо в сбор файла");
+});
+
+test("полоса дел считает коды своего юрлица", () => {
+  const src = readFileSync(new URL("../app/api/warehouse/todo/route.ts", import.meta.url), "utf8");
+  const kizLines = src.split("\n").filter((line) => line.includes("kiz_withdrawals"));
+  assert.equal(kizLines.length, 2, "ожидались ровно два запроса к реестру");
+  for (const line of kizLines) {
+    assert.match(line, /legal_entity_id", entityId/, `запрос к реестру не сужен юрлицом: ${line.trim()}`);
+  }
+});
+
+test("владелец кода — чей товар, а не чей агент", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/202608250031_kiz_legal_entity_functions.sql", import.meta.url), "utf8");
+  // Правило 1 идёт по товару: код выпущен на товар, у товара есть владелец.
+  const byProduct = sql.indexOf("v_by_product = row_count");
+  const byCabinet = sql.indexOf("v_by_cabinet = row_count");
+  assert.ok(byProduct > 0 && byCabinet > byProduct, "правило по товару должно применяться раньше правила по кабинету");
+  // Агентская связь не даёт владения: агент не владеет товаром, значит и кодом.
+  assert.match(sql, /where relation = 'own'/, "кабинетное правило не ограничено собственным кабинетом");
+  assert.doesNotMatch(sql, /relation = 'agent'/, "агентская связь не должна давать владения");
+  // Неразобранное остаётся null, а не приписывается наугад.
+  assert.match(sql, /'left', v_left/, "функция не сообщает, сколько кодов осталось без владельца");
+});
+
+test("сводка считается в базе, а не вычиткой всего реестра", () => {
+  const src = readFileSync(new URL("../app/api/warehouse/kiz/route.ts", import.meta.url), "utf8");
+  assert.match(src, /db\.rpc\("kiz_summary", \{ p_entity: entityId \}\)/, "сводка не переехала в базу");
+  assert.doesNotMatch(src, /loadAllSupabasePages[\s\S]{0,200}kiz_withdrawals[\s\S]{0,200}status, price, sold_at/, "старая вычитка реестра осталась");
+});

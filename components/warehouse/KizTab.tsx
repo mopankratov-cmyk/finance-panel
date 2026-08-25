@@ -23,7 +23,7 @@ const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
  * третий ничего не добавляет, а вычитает уже выведенное. Человеку тут не из
  * чего выбирать, и решение это не его.
  */
-export function KizTab({ refreshKey }: { refreshKey: number }) {
+export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey: number }) {
   const [summary, setSummary] = useState<KizWithdrawalSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<null | "refresh" | "wb" | "upload" | "file">(null);
@@ -38,7 +38,7 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/warehouse/kiz", { cache: "no-store" });
+      const res = await fetch(`/api/warehouse/kiz?entity=${encodeURIComponent(entityId)}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось прочитать реестр");
       setSummary(json.data);
@@ -48,7 +48,7 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [entityId]);
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
@@ -147,7 +147,11 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
     setError(null);
     try {
       const res = await fetch("/api/warehouse/kiz/export", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markSent: true }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Юрлицо обязательно: сбор файла необратим, и чужие коды в свой документ
+        // вывода попасть не должны.
+        body: JSON.stringify({ markSent: true, entityId }),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => null);
@@ -291,6 +295,15 @@ export function KizTab({ refreshKey }: { refreshKey: number }) {
         {(summary?.unknown ?? 0) > 0 && ` · схема не ясна ${formatNumber(summary!.unknown)}`}
         {(summary?.withoutPriceCount ?? 0) > 0 && ` · без цены ${formatNumber(summary!.withoutPriceCount)}`}
       </p>
+
+      {(summary?.noEntity ?? 0) > 0 && (
+        // Коды, у которых владелец не установлен, не попадают ни в одно юрлицо.
+        // Спрятать их значило бы показать неполный реестр и не сказать об этом.
+        <p className="text-xs text-amber-700">
+          {formatNumber(summary!.noEntity)} кодов без владельца — они не видны ни под одним юрлицом.
+          Заведите товар в справочнике или свяжите кабинет с юрлицом.
+        </p>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white">
         <button

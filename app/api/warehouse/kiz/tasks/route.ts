@@ -4,6 +4,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { parseKizCode } from "@/lib/wb/kizCodes";
+import { attachKizEntities } from "@/lib/warehouse/kizEntity";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -220,6 +221,10 @@ export async function POST(_request: NextRequest) {
       .select("code");
     enriched += (data ?? []).length;
   }
+
+  // Свежим кодам сразу проставляем владельца: иначе они повиснут «ничьими»
+  // до следующего захода и не попадут ни в одно юрлицо на экране.
+  await attachKizEntities(db);
 
   const result: KizTasksResult = {
     withCodes: withCodes.length,

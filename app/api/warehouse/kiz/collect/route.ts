@@ -5,6 +5,7 @@ import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { cabinetProductScope, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { ExciseRateLimitError, fetchExciseReport, type ExciseRow } from "@/lib/wb/exciseReport";
 import { allowsProduct } from "@/lib/wb/productScope";
+import { attachKizEntities } from "@/lib/warehouse/kizEntity";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -247,6 +248,8 @@ export async function POST(request: NextRequest) {
         : error instanceof Error ? error.message.slice(0, 200) : "не удалось прочитать отчёт";
     }
   }
+
+  await attachKizEntities(db);
 
   const result: KizCollectResult = { from, to, cabinets: stats, addedTotal, returnedTotal };
   return NextResponse.json({ data: result, error: null });

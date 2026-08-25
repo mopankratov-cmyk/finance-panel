@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { listAccessibleEntities, resolveEntity } from "@/lib/warehouse/entityAccess";
 import { buildXlsx } from "@/lib/xlsx/write";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +23,21 @@ const fail = (error: string, status: number) => NextResponse.json({ data: null, 
 export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
-  const list = await listAccessibleEntities();
-  if (!list.ok) return fail(list.error, list.status);
 
-  const body = (await request.json().catch(() => null)) as { markSent?: boolean; limit?: number } | null;
+  const body = (await request.json().catch(() => null)) as
+    { markSent?: boolean; limit?: number; entityId?: string | null } | null;
+
+  // Сбор файла — необратимое действие: отправленные коды помечаются и второй
+  // раз не собираются. Поэтому сузить его юрлицом важнее, чем сузить экран:
+  // собрать чужие коды в свой документ вывода — ошибка, которую не откатить.
+  const wanted = body?.entityId ?? null;
+  const scope = await resolveEntity(wanted);
+  if (wanted && !scope.ok) return fail(scope.error, scope.status);
+  if (!wanted) {
+    const list = await listAccessibleEntities();
+    if (!list.ok) return fail(list.error, list.status);
+  }
+  const entityId = scope.ok ? scope.entity.id : null;
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
@@ -36,10 +47,12 @@ export async function POST(request: NextRequest) {
   // Отдать больше значит отдать файл, который получатель не сможет загрузить.
   const CHZ_DOC_LIMIT = 30_000;
   const limit = Math.min(CHZ_DOC_LIMIT, Math.max(1, Number(body?.limit) || CHZ_DOC_LIMIT));
-  const { data, error } = await db
+  let query = db
     .from("kiz_withdrawals")
     .select("code, raw_code, price, article, task_id, sold_at, nm_id")
-    .eq("status", "sold")
+    .eq("status", "sold");
+  if (entityId) query = query.eq("legal_entity_id", entityId);
+  const { data, error } = await query
     // Сортировка для человека, который будет сверять файл глазами: сначала по
     // товару, внутри товара по дате продажи.
     .order("article", { ascending: true })
@@ -47,11 +60,15 @@ export async function POST(request: NextRequest) {
     .order("code", { ascending: true })
     .limit(limit);
   if (error) {
-    const missing = ["42P01", "42703", "PGRST204", "PGRST205"].includes(error.code ?? "");
-    return fail(missing ? "Примените миграцию 202608240023_kiz_withdrawal.sql" : error.message, missing ? 503 : 500);
+    const missing = ["42P01", "42703", "PGRST202", "PGRST204", "PGRST205"].includes(error.code ?? "");
+    return fail(missing ? "Примените миграции 202608250030 и 202608250031" : error.message, missing ? 503 : 500);
   }
   const rows = data ?? [];
-  if (rows.length === 0) return fail("Нечего выгружать: все проданные коды уже отправлены или вернулись в оборот", 400);
+  if (rows.length === 0) {
+    return fail(entityId
+      ? `У юрлица «${scope.ok ? scope.entity.name : ""}» нечего выгружать: коды уже отправлены, вернулись в оборот или принадлежат другому юрлицу`
+      : "Нечего выгружать: все проданные коды уже отправлены или вернулись в оборот", 400);
+  }
 
   const sheet: (string | number | null)[][] = [
     ["КИЗ", "Цена реализации, ₽", "Артикул", "Номер задания", "Дата продажи", "Артикул WB"],
@@ -74,6 +91,8 @@ export async function POST(request: NextRequest) {
     const stamp = new Date().toISOString();
     const codes = rows.map((row) => String(row.code));
     for (let offset = 0; offset < codes.length; offset += 300) {
+      // Пометка идёт по тем же кодам, что попали в файл, и только по ним:
+      // отметить отправленным то, чего в документе нет, — потерять код навсегда.
       await db
         .from("kiz_withdrawals")
         .update({ status: "sent", batch_id: batchId, sent_at: stamp, updated_at: stamp })

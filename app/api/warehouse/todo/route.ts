@@ -37,12 +37,13 @@ export async function GET(request: NextRequest) {
   const entityId = scope.entity.id;
   const ownCabinets = scope.entity.cabinets.filter((link) => link.relation === "own").map((link) => link.cabinetId);
   // Три рабочих дня на вывод из оборота, считаем календарно с запасом — так же,
-  // как их считает вкладка «Маркировка».
+  // как их считает вкладка «Маркировка». Коды теперь принадлежат юрлицу: до
+  // этого «столько-то кодов просрочены» было одним числом для всех девяти.
   const overdueBefore = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
 
   const [kizPending, kizOverdue, receipts, balances, products] = await Promise.all([
-    db.from("kiz_withdrawals").select("code", { count: "exact", head: true }).eq("status", "sold"),
-    db.from("kiz_withdrawals").select("code", { count: "exact", head: true }).eq("status", "sold").lt("sold_at", overdueBefore),
+    db.from("kiz_withdrawals").select("code", { count: "exact", head: true }).eq("status", "sold").eq("legal_entity_id", entityId),
+    db.from("kiz_withdrawals").select("code", { count: "exact", head: true }).eq("status", "sold").eq("legal_entity_id", entityId).lt("sold_at", overdueBefore),
     ownCabinets.length === 0
       ? Promise.resolve({ data: [], error: null })
       : db.from("purchase_receipts").select("batch_id").in("cabinet_id", ownCabinets).eq("status", "received").is("posted_at", null),

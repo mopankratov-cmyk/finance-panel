@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { cabinetProductScope, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { parseKizCode } from "@/lib/wb/kizCodes";
+import { attachKizEntities } from "@/lib/warehouse/kizEntity";
 import { allowsProduct } from "@/lib/wb/productScope";
 import {
   fetchSalesDetailPage,
@@ -224,6 +225,8 @@ export async function POST(request: NextRequest) {
         : error instanceof Error ? error.message.slice(0, 200) : "не удалось прочитать отчёт";
     }
   }
+
+  await attachKizEntities(db);
 
   const result: KizSalesResult = { from, to, cabinets: stats, addedTotal, skipped };
   return NextResponse.json({ data: result, error: null });

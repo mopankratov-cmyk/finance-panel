@@ -251,7 +251,7 @@ export function WarehousePage() {
       ) : tab === "products" ? (
         <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} />
       ) : tab === "kiz" ? (
-        <KizTab refreshKey={refreshKey} />
+        <KizTab entityId={entityId} refreshKey={refreshKey} />
       ) : tab === "docs" ? (
         <DocsTab entityId={entityId} refreshKey={refreshKey} onChanged={refresh} />
       ) : tab === "moves" ? (
