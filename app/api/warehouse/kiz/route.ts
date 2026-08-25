@@ -12,6 +12,7 @@ import {
 } from "@/lib/wb/kizWithdrawal";
 import { readXlsxRows } from "@/lib/xlsx/read";
 import { attachKizEntities } from "@/lib/warehouse/kizEntity";
+import { KIZ_NIGHTLY_JOB } from "@/lib/warehouse/kizTasks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -49,6 +50,12 @@ export interface KizWithdrawalSummary {
   ageBuckets: { overdue: number; lastDay: number; twoDays: number; fresh: number };
   /** Коды, которым владелец не установлен: они не попадают ни в одно юрлицо. */
   noEntity: number;
+  /** Последняя собранная партия — её можно скачать заново. */
+  lastBatch: { id: string; count: number; at: string | null } | null;
+  /** Когда реестр пополнялся сам в последний раз. */
+  lastRunAt: string | null;
+  lastRunStatus: "ok" | "error" | null;
+  lastRunError: string | null;
 }
 
 export interface KizUploadResult {
@@ -105,6 +112,61 @@ async function summarize(
       fresh: num("ageFresh"),
     },
     noEntity: num("noEntity"),
+    lastBatch: await lastSentBatch(db, entityId),
+    ...(await lastNightlyRun(db)),
+  };
+}
+
+/**
+ * Последняя партия, отправленная на вывод.
+ *
+ * Нужна затем, что отметка «отправлено» ставится до того, как файл доедет до
+ * диска: браузер закрылся, сеть оборвалась, человек промахнулся мимо
+ * «Сохранить» — и партия была бы потеряна навсегда, потому что второй раз эти
+ * коды не соберутся. Пока номер партии виден на экране, её можно скачать снова.
+ */
+async function lastSentBatch(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  entityId: string | null,
+) {
+  let query = db
+    .from("kiz_withdrawals")
+    .select("batch_id, sent_at")
+    .eq("status", "sent")
+    .not("batch_id", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(1);
+  if (entityId) query = query.eq("legal_entity_id", entityId);
+  const { data } = await query;
+  const row = (data ?? [])[0] as { batch_id?: string; sent_at?: string } | undefined;
+  if (!row?.batch_id) return null;
+
+  let countQuery = db
+    .from("kiz_withdrawals")
+    .select("code", { count: "exact", head: true })
+    .eq("batch_id", row.batch_id);
+  if (entityId) countQuery = countQuery.eq("legal_entity_id", entityId);
+  const { count } = await countQuery;
+  return { id: String(row.batch_id), count: count ?? 0, at: row.sent_at ?? null };
+}
+
+/** Отметка последнего ночного прогона. Без неё «собирается само» — обещание,
+ *  которое человеку нечем проверить. */
+async function lastNightlyRun(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>) {
+  const { data } = await db
+    .from("sync_log")
+    .select("status, error, started_at, finished_at")
+    .eq("job", KIZ_NIGHTLY_JOB)
+    .order("id", { ascending: false })
+    .limit(1);
+  const row = (data ?? [])[0] as { status?: string; error?: string | null; started_at?: string; finished_at?: string } | undefined;
+  if (!row) return { lastRunAt: null, lastRunStatus: null, lastRunError: null };
+  return {
+    // Показываем момент окончания: человека интересует, насколько свежи данные,
+    // а не когда прогон начался.
+    lastRunAt: String(row.finished_at ?? row.started_at ?? ""),
+    lastRunStatus: row.status === "ok" ? ("ok" as const) : ("error" as const),
+    lastRunError: row.error ?? null,
   };
 }
 

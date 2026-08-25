@@ -23,6 +23,9 @@ const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
  * третий ничего не добавляет, а вычитает уже выведенное. Человеку тут не из
  * чего выбирать, и решение это не его.
  */
+/** Потолок документа вывода в Честном Знаке. Тот же, что на сервере. */
+const CHZ_DOC_LIMIT = 30_000;
+
 export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey: number }) {
   const [summary, setSummary] = useState<KizWithdrawalSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +73,12 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
 
   /** Быстрый шаг: только наша база, без обращений к WB и без лимитов. */
   const refresh = () => run("refresh", async () => {
-    const res = await fetch("/api/warehouse/kiz/tasks", { method: "POST" });
+    const res = await fetch("/api/warehouse/kiz/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Собираем по кабинетам того юрлица, чьи числа человек видит на экране.
+      body: JSON.stringify({ entityId }),
+    });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Не удалось обновить");
     const d = json.data as KizTasksResult;
@@ -85,7 +93,7 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
     const lines: string[] = [];
     let bad = false;
     const sales = await fetch("/api/warehouse/kiz/sales", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entityId }),
     }).then((r) => r.json());
     if (sales.data) {
       const d = sales.data as KizSalesResult;
@@ -95,7 +103,7 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
     } else if (sales.error) { lines.push(String(sales.error)); bad = true; }
 
     const collect = await fetch("/api/warehouse/kiz/collect", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entityId }),
     }).then((r) => r.json());
     if (collect.data) {
       const d = collect.data as KizCollectResult;
@@ -139,9 +147,16 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
   };
 
   const download = async () => {
+    // Честный Знак не примет больше 30 000 кодов в одном документе, и сервер
+    // режет партию по этому потолку. Обещать в подтверждении всё количество
+    // значило бы соврать ровно в том месте, где человек соглашается на
+    // необратимое.
+    const pending = summary?.pending ?? 0;
+    const inBatch = Math.min(pending, CHZ_DOC_LIMIT);
     if (!window.confirm(
-      `Отправить ${formatNumber(summary?.pending ?? 0)} кодов на вывод?\n\n`
-      + "Коды будут помечены отправленными. Повторно собрать их файлом нельзя — только через того, кто выводит.",
+      `Отправить ${formatNumber(inBatch)} кодов на вывод?\n\n`
+      + (pending > inBatch ? `Это первая партия из ${formatNumber(pending)}: больше ${formatNumber(CHZ_DOC_LIMIT)} в один документ не принимают.\n\n` : "")
+      + "Коды будут помечены отправленными. Повторно собрать их файлом нельзя — только скачать эту же партию заново.",
     )) return;
     setBusy("file");
     setError(null);
@@ -295,6 +310,34 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
         {(summary?.unknown ?? 0) > 0 && ` · схема не ясна ${formatNumber(summary!.unknown)}`}
         {(summary?.withoutPriceCount ?? 0) > 0 && ` · без цены ${formatNumber(summary!.withoutPriceCount)}`}
       </p>
+
+      {summary?.lastBatch && (
+        <p className="text-xs text-slate-400">
+          Последняя партия: {formatNumber(summary.lastBatch.count)} кодов
+          {summary.lastBatch.at ? ` от ${new Date(summary.lastBatch.at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+          {" · "}
+          <a
+            href={`/api/warehouse/kiz/export?batch=${encodeURIComponent(summary.lastBatch.id)}&entity=${encodeURIComponent(entityId)}`}
+            className="underline underline-offset-2 hover:text-slate-600"
+          >
+            скачать заново
+          </a>
+        </p>
+      )}
+
+      {summary && !summary.lastRunAt && (
+        // Молчание экрана неотличимо от «всё хорошо». Если ночной сбор ни разу
+        // не отработал, это надо сказать: скорее всего, не задан секрет крона.
+        <p className="text-xs text-amber-700">Ночной сбор ещё ни разу не отработал</p>
+      )}
+
+      {summary?.lastRunAt && (
+        <p className={`text-xs ${summary.lastRunStatus === "error" ? "text-red-600" : "text-slate-400"}`}>
+          {summary.lastRunStatus === "error"
+            ? `Ночной сбор не прошёл: ${summary.lastRunError ?? "причина не записана"}`
+            : `Собрано само ${new Date(summary.lastRunAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`}
+        </p>
+      )}
 
       {(summary?.noEntity ?? 0) > 0 && (
         // Коды, у которых владелец не установлен, не попадают ни в одно юрлицо.

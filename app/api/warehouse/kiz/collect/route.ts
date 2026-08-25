@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { wbCabinetsForScope } from "@/lib/warehouse/kizScope";
 import { cabinetProductScope, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { ExciseRateLimitError, fetchExciseReport, type ExciseRow } from "@/lib/wb/exciseReport";
 import { allowsProduct } from "@/lib/wb/productScope";
@@ -98,10 +98,11 @@ const migrationHint = "Примените миграцию 202608240023_kiz_with
 export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
-  const list = await listAccessibleEntities();
-  if (!list.ok) return fail(list.error, list.status);
+  const body = (await request.json().catch(() => null)) as
+    { from?: string; to?: string; entityId?: string | null } | null;
+  const scope = await wbCabinetsForScope(body?.entityId ?? null);
+  if (!scope.ok) return fail(scope.error, scope.status);
 
-  const body = (await request.json().catch(() => null)) as { from?: string; to?: string } | null;
   const today = new Date().toISOString().slice(0, 10);
   const earliest = new Date(Date.now() - MAX_DAYS_BACK * 86_400_000).toISOString().slice(0, 10);
   const from = body?.from && body.from >= earliest ? body.from : earliest;
@@ -111,10 +112,7 @@ export async function POST(request: NextRequest) {
   if (!db) return fail("Supabase не настроен", 500);
 
   // Только кабинеты, связанные с нашими юрлицами: чужой кабинет в реестр не идёт.
-  const cabinets = [...new Map(
-    list.rows.flatMap((entity) => entity.cabinets.filter((link) => link.marketplace === "wb").map((link) => [link.cabinetId, link])),
-  ).values()];
-  if (cabinets.length === 0) return fail("Нет кабинетов Wildberries, связанных с юрлицами", 400);
+  const cabinets = scope.cabinets;
 
   const stats: KizCollectCabinet[] = [];
   let addedTotal = 0;
