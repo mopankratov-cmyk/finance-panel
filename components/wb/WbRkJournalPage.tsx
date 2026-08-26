@@ -494,7 +494,7 @@ export function WbRkJournalPage() {
             aria-pressed={showNotes}
             className={`ml-auto rounded-lg border px-2.5 py-1 text-[12px] font-semibold ${showNotes ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
           >
-            {showNotes ? "Задачи показаны" : "Показать задачи"}
+            {showNotes ? "Скрыть столбец задач" : "Показать столбец задач"}
           </button>
         </div>
         {syncing ? (
