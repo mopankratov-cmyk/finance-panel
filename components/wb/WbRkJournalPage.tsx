@@ -643,7 +643,7 @@ export function WbRkJournalPage() {
                     <div className="flex justify-between gap-2"><dt>CPC</dt><dd className="tabular-nums">{money2(summary.cpc)}</dd></div>
                     <div className="flex justify-between gap-2"><dt>CPM</dt><dd className="tabular-nums">{money(summary.cpm)}</dd></div>
                     <div className="flex justify-between gap-2"><dt>ДРР</dt><dd className="tabular-nums">{summary.drr == null ? "—" : `${summary.drr.toFixed(1)}%`}</dd></div>
-                    <div className="flex justify-between gap-2"><dt>Корзин / заказов</dt><dd className="tabular-nums">{count(summary.carts)} / {count(summary.orders)}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="whitespace-nowrap">Корзин/заказов</dt><dd className="whitespace-nowrap tabular-nums">{count(summary.carts)}/{count(summary.orders)}</dd></div>
                     <div className="flex justify-between gap-2"><dt>Артикулов</dt><dd className="tabular-nums">{count(summary.skus)}</dd></div>
                     {summary.allocated > 0 ? (
                       // WB отдаёт часть расхода только суммой по кампании: эта
