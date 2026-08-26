@@ -393,7 +393,7 @@ export function OpiuPage() {
                   Показатель
                 </th>
                 {isRangeTab ? (
-                  <th className="w-[140px] px-4 py-3.5 text-right text-sm font-medium">
+                  <th className="w-[140px] px-4 py-3.5 text-center text-sm font-medium">
                     {report.weeks[0]?.label ?? "Период"}
                   </th>
                 ) : (
@@ -401,9 +401,9 @@ export function OpiuPage() {
                     {report.weeks.map((w) => (
                       <th
                         key={w.weekStart}
-                        className="w-[120px] px-3 py-3.5 text-right text-sm font-medium"
+                        className="w-[120px] px-3 py-3.5 text-center text-sm font-medium"
                       >
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-center gap-1">
                           <span>{w.label}</span>
                           <button
                             type="button"
@@ -422,7 +422,7 @@ export function OpiuPage() {
                         </div>
                       </th>
                     ))}
-                    <th className="w-[120px] px-4 py-3.5 text-right text-sm font-semibold text-slate-900">
+                    <th className="w-[120px] px-4 py-3.5 text-center text-sm font-semibold text-slate-900">
                       Итого
                     </th>
                   </>
@@ -475,7 +475,7 @@ export function OpiuPage() {
                           {row.label}
                         </td>
                         <td
-                          className={`px-4 ${rowPad} text-right tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
+                          className={`px-4 ${rowPad} text-center tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
                         >
                           {formatCell(val, row)}
                         </td>
@@ -499,7 +499,7 @@ export function OpiuPage() {
 
                         if (isEditable && week) {
                           return (
-                            <td key={week.weekStart} className="px-2 py-1.5 text-right">
+                            <td key={week.weekStart} className="px-2 py-1.5 text-center">
                               <input
                                 key={`${week.weekStart}-${val}`}
                                 type="text"
@@ -521,7 +521,7 @@ export function OpiuPage() {
                                     (e.target as HTMLInputElement).blur();
                                   }
                                 }}
-                                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-right text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-center text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                               />
                             </td>
                           );
@@ -530,14 +530,14 @@ export function OpiuPage() {
                         return (
                           <td
                             key={week?.weekStart ?? i}
-                            className={`px-3 ${rowPad} text-right tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
+                            className={`px-3 ${rowPad} text-center tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
                           >
                             {formatCell(val, row)}
                           </td>
                         );
                       })}
                       <td
-                        className={`px-4 ${rowPad} text-right tabular-nums ${
+                        className={`px-4 ${rowPad} text-center tabular-nums ${
                           isTotal ? "text-[15px] font-bold" : isPercent ? "text-xs font-medium" : "text-[15px] font-semibold"
                         } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
                       >
