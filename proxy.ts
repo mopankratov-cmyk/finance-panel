@@ -69,7 +69,14 @@ const SELLER_READ_API_EXACT = [
   "/api/trends",
   "/api/unit/price-solver",
   "/api/unit/table",
+  // Уровень сотрудника в кабинете: интерфейсу нужно знать, показывать ли
+  // кнопки. Решение всё равно принимает сервер при записи.
+  "/api/wb/cabinet-rights",
+  // Разбивка дневного CTR по кампаниям и справочник «артикул → название» —
+  // сопровождение тех же экранов, которые селлеру уже открыты.
+  "/api/wb/ctr-breakdown",
   "/api/wb/losses",
+  "/api/wb/sku-directory",
   "/api/wb/sync-health",
 ] as const;
 
@@ -108,6 +115,17 @@ function isSellerApiAllowed(pathname: string, method: string): boolean {
   // Журнал РК: только чтение — вид размещения приходит от WB, размечать
   // руками нечего.
   if (pathname === "/api/wb/rk-journal") return method === "GET";
+  // Задачи менеджера в журнале РК и комментарии к дневному CTR — рабочие
+  // пометки владельца кабинета по своему же кабинету. Без них человек видит
+  // экран, но не может на нём работать: ровно это и выглядело как «нет
+  // возможности ставить задачи». Право на запись проверяет сам роут —
+  // hasCabinetAccess плюс уровень в кабинете (cabinetRights).
+  if (pathname === "/api/wb/rk-notes") return method === "GET" || method === "POST";
+  if (pathname === "/api/wb/ctr-notes") return method === "GET" || method === "POST";
+  // Команда своей организации: админ кабинета заводит сотрудников сам.
+  // Роут держит границу жёстко — своя организация, свои кабинеты, роль
+  // новому сотруднику всегда seller.
+  if (pathname === "/api/wb/team") return method === "GET" || method === "POST";
   if (/^\/api\/rnp\/[^/]+\/(plan|operations)$/.test(pathname)) return method === "GET" || method === "POST";
   if (method !== "GET") return false;
   return SELLER_READ_API_EXACT.includes(pathname as (typeof SELLER_READ_API_EXACT)[number])
