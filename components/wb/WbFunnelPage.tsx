@@ -74,6 +74,37 @@ function cellTone(metric: MetricKey, value: number | null | undefined) {
   return METRIC_CELL_TONE[metricId ? marketplaceMetricStatus(metricId, value) : value == null ? "unknown" : "neutral"];
 }
 
+/**
+ * Заголовок группы — кнопка со стрелкой и счётчиком скрытых колонок.
+ *
+ * Первый заход открывается со всеми свёрнутыми группами: экран начинается с
+ * главных чисел и посуточной части, а разбивка вызывается по требованию.
+ * Раньше указателем служил символ ▸ в тексте — его не замечали, поэтому
+ * стрелка теперь настоящая иконка, кнопка подсвечивается под курсором, а
+ * рядом стоит «+N»: сколько колонок прячется за свёрткой.
+ *
+ * Живёт на модульном уровне: объявление внутри рендера родителя давало React
+ * новый тип компонента на каждую отрисовку — заголовки перемонтировались.
+ * Поэтому состояние свёртки приходит пропсами, а не через замыкание.
+ */
+function GroupHeader({ label, hidden, span, hint, isCollapsed, onToggle }: { label: string; hidden: number; span: number; hint: string; isCollapsed: boolean; onToggle: () => void }) {
+  return (
+    <th colSpan={span} className="border-b border-r border-slate-200 p-0 text-center">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!isCollapsed}
+        title={isCollapsed ? `Развернуть: ${hint}` : "Свернуть группу"}
+        className="flex w-full items-center justify-center gap-1 px-2 py-1 text-[9px] uppercase tracking-wide text-slate-500 transition-colors hover:bg-violet-50 hover:text-violet-700"
+      >
+        {isCollapsed ? <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" /> : <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />}
+        <span className="truncate">{label}</span>
+        {isCollapsed ? <span className="shrink-0 rounded bg-slate-200 px-1 text-[8px] font-bold tabular-nums text-slate-600">+{hidden}</span> : null}
+      </button>
+    </th>
+  );
+}
+
 export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const { cabinetId, activeCabinet, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, hasExactCabinet } = useWbCabinet();
   const [windowParam, setWindowParam] = useDashboardFilter<PeriodPresetValue>("days", "7", PERIOD_PRESETS.map((preset) => preset.value));
@@ -129,33 +160,6 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
     return () => controller.abort();
   }, [cabinetId]);
 
-  /**
-   * Заголовок группы — кнопка со стрелкой и счётчиком скрытых колонок.
-   *
-   * Первый заход открывается со всеми свёрнутыми группами: экран начинается с
-   * главных чисел и посуточной части, а разбивка вызывается по требованию.
-   * Раньше указателем служил символ ▸ в тексте — его не замечали, поэтому
-   * стрелка теперь настоящая иконка, кнопка подсвечивается под курсором, а
-   * рядом стоит «+N»: сколько колонок прячется за свёрткой.
-   */
-  const GroupHeader = ({ group, label, hidden, span, hint }: { group: "ads" | "funnel" | "stocks"; label: string; hidden: number; span: number; hint: string }) => {
-    const isCollapsed = collapsed[group];
-    return (
-      <th colSpan={span} className="border-b border-r border-slate-200 p-0 text-center">
-        <button
-          type="button"
-          onClick={() => toggleGroup(group)}
-          aria-expanded={!isCollapsed}
-          title={isCollapsed ? `Развернуть: ${hint}` : "Свернуть группу"}
-          className="flex w-full items-center justify-center gap-1 px-2 py-1 text-[9px] uppercase tracking-wide text-slate-500 transition-colors hover:bg-violet-50 hover:text-violet-700"
-        >
-          {isCollapsed ? <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" /> : <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />}
-          <span className="truncate">{label}</span>
-          {isCollapsed ? <span className="shrink-0 rounded bg-slate-200 px-1 text-[8px] font-bold tabular-nums text-slate-600">+{hidden}</span> : null}
-        </button>
-      </th>
-    );
-  };
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
@@ -348,9 +352,9 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
               <thead className="sticky top-0 z-30 bg-slate-50 text-slate-500">
                 <tr className="h-6 text-[9px] uppercase tracking-wide text-slate-400">
                   <th rowSpan={2} className="sticky left-0 z-40 min-w-[245px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left font-semibold">Товар</th>
-                  <GroupHeader group="ads" label="Реклама" hidden={1} span={adsCols} hint="показать Рекл. CTR" />
-                  <GroupHeader group="funnel" label="Товарная воронка" hidden={4} span={funnelCols} hint="переходы, корзины, % в корзину, заказы в штуках" />
-                  <GroupHeader group="stocks" label="Остатки" hidden={2} span={stockCols} hint="FBO и FBS по отдельности" />
+                  <GroupHeader label="Реклама" hidden={1} span={adsCols} hint="показать Рекл. CTR" isCollapsed={collapsed.ads} onToggle={() => toggleGroup("ads")} />
+                  <GroupHeader label="Товарная воронка" hidden={4} span={funnelCols} hint="переходы, корзины, % в корзину, заказы в штуках" isCollapsed={collapsed.funnel} onToggle={() => toggleGroup("funnel")} />
+                  <GroupHeader label="Остатки" hidden={2} span={stockCols} hint="FBO и FBS по отдельности" isCollapsed={collapsed.stocks} onToggle={() => toggleGroup("stocks")} />
                   <th rowSpan={2} title={MARKETPLACE_METRICS.drrOrders.definition} className="min-w-[86px] border-b border-r border-slate-200 px-2 text-right">ДРР к заказам</th>
                   {dates.map((date) => <th rowSpan={2} key={date} className="min-w-[76px] border-b border-slate-200 px-1 text-center font-semibold">{dayLabel(date)}</th>)}
                 </tr>
