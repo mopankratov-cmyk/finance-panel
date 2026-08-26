@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronRight, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
 import { moscowToday } from "@/lib/ui/calendarGrid";
@@ -20,8 +20,9 @@ import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { nmMatchesTags, setWbTagAssignment, useRnpTags, WbTagFilterChips, WbTagPicker } from "./useRnpTags";
 import { displaySkuArticle, displaySkuName, useWbSkuNames } from "./useWbSkuNames";
+import { WbRkNoteQuickPick } from "./WbRkNoteQuickPick";
 import { WbRkNotePopup } from "./WbRkNotePopup";
-import { rkNoteKey, type RkNote } from "@/lib/wb/rkNotes";
+import { rkNoteKey, rkNoteShort, rkNoteTone, type RkNote } from "@/lib/wb/rkNotes";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 
@@ -141,6 +142,12 @@ export function WbRkJournalPage() {
   const [notes, setNotes] = useState<Map<string, RkNote>>(new Map());
   const [showNotes, setShowNotes] = useState(true);
   const [noteEdit, setNoteEdit] = useState<{ nm: number; advertId: number | null; date: string; title: string; subtitle: string } | null>(null);
+  // Быстрый выбор задачи открывается у самой клетки, поэтому носит с собой
+  // координаты клика: список повторяющихся задач должен появляться там, где
+  // человек уже смотрит, а не в центре экрана.
+  const [notePick, setNotePick] = useState<
+    { nm: number; advertId: number | null; date: string; title: string; subtitle: string; x: number; y: number } | null
+  >(null);
   /**
    * Выключенные задачи убирают КОЛОНКУ, а не только значки в ней. Пустой
    * столбец без содержимого всё равно ест ширину и сбивает чтение таблицы,
@@ -153,6 +160,55 @@ export function WbRkJournalPage() {
   // на КАЖДОЙ его ячейке — иначе полоса рвётся везде, где у дня есть цифры, то
   // есть почти везде, и столбец перестаёт читаться как столбец.
   const TASK_CELL = "bg-violet-50/70 border-l border-violet-100";
+  // Цвет задачи — её смысл, а не украшение: выключено, круглосуточно, вечерний
+  // режим. Сделанная гасится, чтобы взгляд цеплялся за невыполненные.
+  const NOTE_TONE: Record<string, string> = {
+    off: "border-rose-200 bg-rose-50 text-rose-700",
+    round: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    evening: "border-amber-200 bg-amber-50 text-amber-700",
+    custom: "border-violet-200 bg-violet-100 text-violet-700",
+  };
+
+  /**
+   * Клетка задачи. Раньше здесь стояла точка, а текст жил в подсказке — чтобы
+   * узнать, что назначено, приходилось наводить курсор на каждую клетку по
+   * очереди. Теперь задача читается прямо на листе.
+   */
+  const noteChip = (
+    entry: RkNote | undefined,
+    open: (event: ReactMouseEvent<HTMLButtonElement>) => void,
+    emptyHint: string,
+  ) => (
+    <button
+      type="button"
+      onClick={open}
+      title={entry ? `${entry.done ? "Сделано: " : ""}${entry.note}` : emptyHint}
+      aria-label={entry ? `Задача: ${entry.note}` : emptyHint}
+      className={`inline-flex max-w-[116px] items-center gap-1 rounded-md border py-0.5 text-[10px] font-semibold leading-4 transition-colors ${
+        entry
+          ? `px-1.5 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-60" : ""}`
+          : "border-dashed border-slate-200 px-1 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
+      }`}
+    >
+      {entry ? (
+        <>
+          {entry.done ? <Check className="h-3 w-3 shrink-0" /> : null}
+          <span className="truncate">{rkNoteShort(entry.note)}</span>
+        </>
+      ) : <Plus className="h-3 w-3" />}
+    </button>
+  );
+
+  /** Клик по клетке: пишущему — список повторяющихся задач, остальным — просмотр. */
+  const openNote = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    place: { nm: number; advertId: number | null; date: string; title: string; subtitle: string },
+  ) => {
+    event.stopPropagation();
+    if (!canWrite || !hasExactCabinet) { setNoteEdit(place); return; }
+    const box = event.currentTarget.getBoundingClientRect();
+    setNotePick({ ...place, x: box.left + box.width / 2, y: box.bottom });
+  };
   const [syncing, setSyncing] = useState<string | null>(null);
   const [openNms, setOpenNms] = useState<Set<number>>(new Set());
   const elapsed = useElapsedSeconds(loading);
@@ -460,6 +516,24 @@ export function WbRkJournalPage() {
           </>
         )}
       />
+      {notePick && cabinetId ? (
+        <WbRkNoteQuickPick
+          cabinetId={cabinetId}
+          nmId={notePick.nm}
+          advertId={notePick.advertId}
+          date={notePick.date}
+          note={notes.get(rkNoteKey(notePick.nm, notePick.advertId, notePick.date))?.note ?? ""}
+          done={notes.get(rkNoteKey(notePick.nm, notePick.advertId, notePick.date))?.done ?? false}
+          anchor={{ x: notePick.x, y: notePick.y }}
+          onSaved={applyNote}
+          onClose={() => setNotePick(null)}
+          onOpenFull={() => setNoteEdit({
+            nm: notePick.nm, advertId: notePick.advertId, date: notePick.date,
+            title: notePick.title, subtitle: notePick.subtitle,
+          })}
+        />
+      ) : null}
+
 
       {noteEdit && cabinetId ? (
         <WbRkNotePopup
@@ -688,21 +762,10 @@ export function WbRkJournalPage() {
                             {dates.map((date) => {
                               const cell = item.days[date];
                               const note = notes.get(rkNoteKey(item.nm, null, date));
-                              const noteBadge = showNotes ? (
-                                <button
-                                  type="button"
-                                  onClick={(event) => { event.stopPropagation(); setNoteEdit({ nm: item.nm, advertId: null, date, title: article || `WB ${item.nm}`, subtitle: "Задача по товару" }); }}
-                                  title={note ? `${note.done ? "Сделано: " : ""}${note.note}` : "Добавить задачу на этот день"}
-                                  aria-label={note ? "Открыть задачу" : "Добавить задачу"}
-                                  className={`inline-grid h-5 w-5 place-items-center rounded-full border transition-colors ${
-                                    note
-                                      ? note.done
-                                        ? "border-emerald-200 bg-emerald-50 text-emerald-600"
-                                        : "border-violet-200 bg-violet-100 text-violet-700"
-                                      : "border-dashed border-slate-200 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
-                                  }`}
-                                >{note ? (note.done ? <Check className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />) : <Plus className="h-3 w-3" />}</button>
-                              ) : null;
+                              const noteBadge = showNotes ? noteChip(note, (event) => openNote(event, {
+                                nm: item.nm, advertId: null, date,
+                                title: article || `WB ${item.nm}`, subtitle: "Задача по товару",
+                              }), "Добавить задачу на этот день") : null;
                               if (isEmpty(cell)) {
                                 return (
                                   <Fragment key={date}>
@@ -754,21 +817,10 @@ export function WbRkJournalPage() {
                                 // Заметка по кампании: «поднять ставку» относится к ней,
                                 // а не к товару целиком — уровни разные.
                                 const cNote = campaign.advertId == null ? undefined : notes.get(rkNoteKey(item.nm, campaign.advertId, date));
-                                const cBadge = showNotes && campaign.advertId != null ? (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => { event.stopPropagation(); setNoteEdit({ nm: item.nm, advertId: campaign.advertId, date, title: campaign.name ?? `Кампания ${campaign.advertId}`, subtitle: article || `WB ${item.nm}` }); }}
-                                    title={cNote ? `${cNote.done ? "Сделано: " : ""}${cNote.note}` : "Добавить задачу по кампании"}
-                                    aria-label={cNote ? "Открыть задачу" : "Добавить задачу"}
-                                    className={`inline-grid h-5 w-5 place-items-center rounded-full border transition-colors ${
-                                      cNote
-                                        ? cNote.done
-                                          ? "border-emerald-200 bg-emerald-50 text-emerald-600"
-                                          : "border-violet-200 bg-violet-100 text-violet-700"
-                                        : "border-dashed border-slate-200 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
-                                    }`}
-                                  >{cNote ? (cNote.done ? <Check className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />) : <Plus className="h-3 w-3" />}</button>
-                                ) : null;
+                                const cBadge = showNotes && campaign.advertId != null ? noteChip(cNote, (event) => openNote(event, {
+                                  nm: item.nm, advertId: campaign.advertId, date,
+                                  title: campaign.name ?? `Кампания ${campaign.advertId}`, subtitle: article || `WB ${item.nm}`,
+                                }), "Добавить задачу по кампании") : null;
                                 if (isEmpty(cell)) {
                                   return (
                                     <Fragment key={date}>
