@@ -380,10 +380,10 @@ export function buildCostLookup(
 ): {
   byArticle: Map<string, number>;
   byBarcode: Map<string, number>;
-  packagingByArticle: Map<string, number>;
-  packagingByBarcode: Map<string, number>;
-  costByGiBarcode: Map<string, number>;
-  packagingByGiBarcode: Map<string, number>;
+  packagingByArticle?: Map<string, number>;
+  packagingByBarcode?: Map<string, number>;
+  costByGiBarcode?: Map<string, number>;
+  packagingByGiBarcode?: Map<string, number>;
 } {
   const byArticle = new Map<string, number>();
   const byBarcode = new Map<string, number>();
@@ -424,7 +424,7 @@ function unitCost(
   const giId = rowGiId(row);
   const barcode = String(row.barcode ?? "");
   if (giId && barcode) {
-    const v = lookup.costByGiBarcode.get(`${giId}|${barcode}`);
+    const v = lookup.costByGiBarcode?.get(`${giId}|${barcode}`);
     if (v !== undefined) return v;
   }
   const article = String(row.sa_name ?? "").trim().toUpperCase();
@@ -438,11 +438,11 @@ function unitPackaging(
   const giId = rowGiId(row);
   const barcode = String(row.barcode ?? "");
   if (giId && barcode) {
-    const v = lookup.packagingByGiBarcode.get(`${giId}|${barcode}`);
+    const v = lookup.packagingByGiBarcode?.get(`${giId}|${barcode}`);
     if (v !== undefined) return v;
   }
   const article = String(row.sa_name ?? "").trim().toUpperCase();
-  return lookup.packagingByArticle.get(article) ?? lookup.packagingByBarcode.get(barcode) ?? 0;
+  return lookup.packagingByArticle?.get(article) ?? lookup.packagingByBarcode?.get(barcode) ?? 0;
 }
 
 function cogsForSales(
