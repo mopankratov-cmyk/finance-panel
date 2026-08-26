@@ -75,6 +75,11 @@ const SELLER_SYSTEM_NAV: NavItem[] = [
   { label: "Подключение WB", href: "/wb/connect", icon: KeyRound },
 ];
 
+// Команда кабинета — пункт для админа кабинета. Экран существовал, но попасть
+// на него можно было только по прямой ссылке: человек, которому выдали право
+// заводить сотрудников, не видел этого нигде в интерфейсе.
+const SELLER_TEAM_NAV: NavItem = { label: "Команда", href: "/wb/team", icon: Users };
+
 function RailLink({ item, active, cabinetId, expanded, onNavigate }: { item: NavItem; active: boolean; cabinetId: string; expanded: boolean; onNavigate?: () => void }) {
   const Icon = item.icon;
   const href = item.target ? `${item.href}?cabinet=${encodeURIComponent(cabinetId)}` : item.href;
@@ -103,12 +108,18 @@ function RailLink({ item, active, cabinetId, expanded, onNavigate }: { item: Nav
 export function WbShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { cabinetId, cabinets, user } = useWbCabinet();
+  const { cabinetId, cabinets, user, cabinetLevel } = useWbCabinet();
   // Пока сессия не загрузилась, роль неизвестна — рисуем скелетон, а не меню
   // «по умолчанию»: иначе внешний селлер на каждой перезагрузке видел вспышку
   // владельческой навигации (Полки, Кабинеты, Сотрудники) с мёртвыми ссылками.
   const roleKnown = Boolean(user);
-  const systemNav = !roleKnown ? [] : user?.role === "seller" ? SELLER_SYSTEM_NAV : INTERNAL_SYSTEM_NAV;
+  const systemNav = !roleKnown
+    ? []
+    : user?.role === "seller"
+    // Пункт видит только админ кабинета: рядовому сотруднику экран ответит
+    // отказом, и ссылка была бы обманом.
+    ? (cabinetLevel === "lead" ? [...SELLER_SYSTEM_NAV, SELLER_TEAM_NAV] : SELLER_SYSTEM_NAV)
+    : INTERNAL_SYSTEM_NAV;
   const workNav = !roleKnown || (user?.role === "seller" && cabinets.length === 0)
     ? []
     : user?.role === "seller"

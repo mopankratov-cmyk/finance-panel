@@ -192,8 +192,14 @@ export async function POST(request: NextRequest) {
     }
 
     const password_hash = await hashPassword(password);
+    // Кабинеты, которыми руководит сам заводящий, — иначе новый сотрудник
+    // войдёт в пустую панель: доступ селлера требует и совпадения организации,
+    // и наличия кабинета в списке (lib/auth/cabinetAccess.ts), а пустой список
+    // означает «доступа нет». Шире собственных кабинетов не выдаём: админ
+    // одного кабинета не должен заводить людей в соседние.
+    const cabinetIds = [...caller.cabinetIds];
     // Роль всегда seller: заводить директоров и менеджеров панели отсюда нельзя.
-    const patch = { role: "seller", cabinet_ids: [], organization_id: caller.organizationId, password_hash, is_active: true };
+    const patch = { role: "seller", cabinet_ids: cabinetIds, organization_id: caller.organizationId, password_hash, is_active: true };
     const { error } = existing
       ? await db.from("app_users").update(patch).eq("id", existing.id)
       : await db.from("app_users").insert({ email, ...patch });
