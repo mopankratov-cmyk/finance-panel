@@ -216,6 +216,9 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
         setError(cause instanceof Error ? cause.message : "Не удалось выполнить сверку");
       })
       .finally(() => { if (current === requestId.current) setLoading(false); });
+    // reloadKey здесь намеренно «лишний»: его инкремент пересоздаёт колбэк и
+    // тем запускает повторную сверку по кнопке «Обновить».
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cabinetId, days, singleCabinet, reloadKey]);
 
   useEffect(() => {
