@@ -626,6 +626,7 @@ export function WbRkJournalPage() {
                                     перебирает варианты, как в Воронке и Полках. */}
                                 <WbProductImage
                                   nm={item.nm}
+                                  label={article}
                                   className="h-11 w-9 shrink-0 rounded-md bg-slate-100 object-cover ring-1 ring-slate-200/60"
                                 />
                                 <div className="min-w-0">
