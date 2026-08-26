@@ -302,13 +302,22 @@ export function WbRkJournalPage() {
       acc.set(campaign.block, agg);
       }
     }
+    // Показываем ВСЕ виды размещения, даже пустые. Раньше карточка появлялась
+    // только там, где кампании нашлись: набор менялся от кабинета к кабинету,
+    // и отсутствующий вид читался как неподдерживаемый. «CPC полки» на СЛОЁНО
+    // нет, а в Оптиме есть — панель обязана показывать это как ноль, а не как
+    // отсутствие возможности.
+    //
+    // «Вид не определён» — исключение: это не тип размещения, а признак того,
+    // что WB не отдал настройки. Пустым его рисовать незачем.
     const order = [...WB_RK_BLOCKS, WB_RK_BLOCK_UNKNOWN];
     return order
-      .filter((block) => acc.has(block))
+      .filter((block) => acc.has(block) || block !== WB_RK_BLOCK_UNKNOWN)
       .map((block) => {
-        const agg = acc.get(block)!;
+        const agg = acc.get(block) ?? { spent: 0, allocated: 0, carts: 0, orders: 0, clicks: 0, views: 0, ordersSum: 0, skus: new Set<number>() };
         return {
           block,
+          empty: !acc.has(block),
           label: block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[block as WbRkBlock],
           spent: agg.spent,
           allocated: agg.allocated,
@@ -515,15 +524,23 @@ export function WbRkJournalPage() {
                 <button
                   key={summary.block}
                   type="button"
-                  onClick={() => setBlockFilter(blockFilter === summary.block ? "all" : summary.block)}
-                  className={`group/card relative cursor-pointer rounded-xl border p-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-md ${blockFilter === summary.block ? "border-violet-500 bg-violet-50/40 shadow-sm ring-1 ring-violet-200" : "border-slate-200 bg-white hover:border-violet-300"}`}
+                  onClick={() => { if (!summary.empty) setBlockFilter(blockFilter === summary.block ? "all" : summary.block); }}
+                  disabled={summary.empty}
+                  title={summary.empty ? "В этом кабинете сейчас нет кампаний такого вида" : undefined}
+                  className={
+                    summary.empty
+                      // Пустой вид показываем, но приглушённо и без наведения: это
+                      // «ноль кампаний», а не «фильтр, который ничего не даст».
+                      ? "relative rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-2.5 text-left"
+                      : `group/card relative cursor-pointer rounded-xl border p-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-md ${blockFilter === summary.block ? "border-violet-500 bg-violet-50/40 shadow-sm ring-1 ring-violet-200" : "border-slate-200 bg-white hover:border-violet-300"}`
+                  }
                 >
                   {/* Иконка фильтра проявляется под курсором: карточка сама
                       сообщает, что она не просто сводка. */}
-                  <Filter className={`absolute right-2 top-2 h-3 w-3 transition-opacity ${blockFilter === summary.block ? "text-violet-600 opacity-100" : "text-violet-400 opacity-0 group-hover/card:opacity-100"}`} aria-hidden="true" />
-                  <div className={`truncate pr-4 text-[11px] font-semibold uppercase tracking-wide ${blockFilter === summary.block ? "text-violet-700" : "text-slate-500"}`}>{summary.label}</div>
-                  <div className="mt-1 text-lg font-bold tabular-nums text-slate-900">{money(summary.spent)} ₽</div>
-                  <dl className="mt-1 space-y-0.5 text-[11px] text-slate-500">
+                  {summary.empty ? null : <Filter className={`absolute right-2 top-2 h-3 w-3 transition-opacity ${blockFilter === summary.block ? "text-violet-600 opacity-100" : "text-violet-400 opacity-0 group-hover/card:opacity-100"}`} aria-hidden="true" />}
+                  <div className={`truncate pr-4 text-[11px] font-semibold uppercase tracking-wide ${summary.empty ? "text-slate-400" : blockFilter === summary.block ? "text-violet-700" : "text-slate-500"}`}>{summary.label}</div>
+                  <div className={`mt-1 text-lg font-bold tabular-nums ${summary.empty ? "text-slate-300" : "text-slate-900"}`}>{summary.empty ? "нет кампаний" : `${money(summary.spent)} ₽`}</div>
+                  {summary.empty ? null : <dl className="mt-1 space-y-0.5 text-[11px] text-slate-500">
                     <div className="flex justify-between gap-2">
                       <dt>CPO</dt>
                       <dd className={`rounded px-1 font-medium tabular-nums ${cpoTone(summary.cpo) ? WB_RK_TONE_CLASS[cpoTone(summary.cpo)!] : ""}`}>{money2(summary.cpo)}</dd>
@@ -545,7 +562,7 @@ export function WbRkJournalPage() {
                         <dd className="tabular-nums">{money(summary.allocated)} ₽</dd>
                       </div>
                     ) : null}
-                  </dl>
+                  </dl>}
                 </button>
               ))}
             </div>
