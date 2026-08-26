@@ -417,18 +417,6 @@ export function buildCostLookup(
   };
 }
 
-/** true, если для строки не нашлось себестоимости поставки — ни в таблице поставок, ни в фоллбэке. */
-function isUncoveredCost(
-  row: WbReportRow,
-  lookup: ReturnType<typeof buildCostLookup>,
-): boolean {
-  const giId = rowGiId(row);
-  const barcode = String(row.barcode ?? "");
-  if (giId && barcode && lookup.costByGiBarcode.has(`${giId}|${barcode}`)) return false;
-  const article = String(row.sa_name ?? "").trim().toUpperCase();
-  return !lookup.byArticle.has(article) && !lookup.byBarcode.has(barcode);
-}
-
 function unitCost(
   row: WbReportRow,
   lookup: ReturnType<typeof buildCostLookup>,
@@ -475,33 +463,6 @@ function packagingForSales(
     const qty = Math.abs(num(row.quantity) || 1);
     return sum + unitPackaging(row, lookup) * qty;
   }, 0);
-}
-
-export interface UncoveredCostSale {
-  giId: string;
-  barcode: string;
-  article: string;
-  qty: number;
-}
-
-/** Проданные строки, для которых не нашлось себестоимости ни по поставке, ни по фоллбэку. */
-export function uncoveredCostSales(
-  sales: WbReportRow[],
-  lookup: ReturnType<typeof buildCostLookup>,
-): UncoveredCostSale[] {
-  const byKey = new Map<string, UncoveredCostSale>();
-  for (const row of sales) {
-    if (!isSale(row) || !isUncoveredCost(row, lookup)) continue;
-    const giId = rowGiId(row);
-    const barcode = String(row.barcode ?? "");
-    const article = String(row.sa_name ?? "").trim().toUpperCase();
-    const key = `${giId}|${barcode}`;
-    const qty = Math.abs(num(row.quantity) || 1);
-    const existing = byKey.get(key);
-    if (existing) existing.qty += qty;
-    else byKey.set(key, { giId, barcode, article, qty });
-  }
-  return [...byKey.values()];
 }
 
 function adsSpendInRange(adStats: WbAdStat[], from: string, to: string): number {

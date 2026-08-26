@@ -343,31 +343,6 @@ export function OpiuPage() {
         </p>
       )}
 
-      {report && report.uncoveredCostSales.length > 0 && !activeLoading && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <p className="font-medium">
-            Проданы товары без себестоимости — {report.uncoveredCostSales.length}{" "}
-            {report.uncoveredCostSales.length === 1 ? "позиция" : "позиций"}
-          </p>
-          <p className="mt-1 text-amber-700">
-            Не нашлись ни в таблице «Себестоимость поставок WB», ни в базовом справочнике —
-            себестоимость и подготовка для них сейчас считаются как 0. Внеси данные в таблицу
-            поставок, чтобы цифры не терялись.
-          </p>
-          <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
-            {report.uncoveredCostSales.slice(0, 8).map((s) => (
-              <li key={`${s.giId}|${s.barcode}`}>
-                {s.article || "—"} · баркод {s.barcode || "—"}
-                {s.giId ? ` · поставка ${s.giId}` : ""} · продано {s.qty} шт
-              </li>
-            ))}
-            {report.uncoveredCostSales.length > 8 && (
-              <li>и ещё {report.uncoveredCostSales.length - 8}…</li>
-            )}
-          </ul>
-        </div>
-      )}
-
       <div className="flex gap-1 border-b border-slate-200">
         {(
           [

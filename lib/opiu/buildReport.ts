@@ -3,10 +3,8 @@ import {
   aggregateWeek,
   buildCostLookup,
   sumWeeks,
-  uncoveredCostSales,
   type OpiuOrder,
   type ProductCostRow,
-  type UncoveredCostSale,
   type WeekRawMetrics,
 } from "./metrics";
 import type { DeliveryCostRow } from "./fetchGoogleCosts";
@@ -28,8 +26,6 @@ export interface OpiuReport {
   weeks: MonthWeek[];
   rows: OpiuTableRow[];
   warehouseByWeek: Record<string, number>;
-  /** Проданные товары без себестоимости/подготовки — ни по поставке, ни в фоллбэке. */
-  uncoveredCostSales: UncoveredCostSale[];
 }
 
 function pct(numerator: number, denominator: number): number | null {
@@ -152,5 +148,5 @@ export function buildOpiuReport(
     { id: "penalty_loan",   label: "Пени",                                            kind: "metric",  expense: true, values: cols((m) => m.penaltyLoan) },
   ];
 
-  return { weeks, rows, warehouseByWeek, uncoveredCostSales: uncoveredCostSales(sales, costLookup) };
+  return { weeks, rows, warehouseByWeek };
 }
