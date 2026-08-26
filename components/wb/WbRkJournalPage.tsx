@@ -758,7 +758,7 @@ export function WbRkJournalPage() {
                                 />
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="max-w-[190px] truncate text-[13px] font-bold tracking-[-0.01em] text-slate-800">{article || `WB ${item.nm}`}</span>
+                                    <span className="max-w-[150px] truncate text-[13px] font-bold tracking-[-0.01em] text-slate-800" title={article || `WB ${item.nm}`}>{article || `WB ${item.nm}`}</span>
                                     {canWrite && hasExactCabinet ? (
                                       <WbTagPicker
                                         tags={tags}
@@ -772,8 +772,8 @@ export function WbRkJournalPage() {
                                       />
                                     ) : null}
                                   </div>
-                                  <div className="max-w-[210px] truncate text-[11px] font-normal tabular-nums text-slate-400">WB {item.nm}</div>
-                                  {name ? <div className="max-w-[210px] truncate text-[11px] font-normal text-slate-500">{name}</div> : null}
+                                  <div className="max-w-[168px] truncate text-[11px] font-normal tabular-nums text-slate-400">WB {item.nm}</div>
+                                  {name ? <div className="max-w-[168px] truncate text-[11px] font-normal text-slate-500" title={name}>{name}</div> : null}
                                 </div>
                               </div>
                             </td>
@@ -818,7 +818,7 @@ export function WbRkJournalPage() {
                           {open ? shown.map((campaign) => (
                             <tr key={`${item.nm}-${campaign.advertId ?? campaign.block}`} className="bg-slate-50/60 text-slate-600 transition-colors hover:bg-violet-50/30">
                               <td className={`sticky left-0 z-20 bg-slate-50 py-1.5 pl-[68px] pr-3 ${STICKY_EDGE}`}>
-                                <div className={`max-w-[240px] truncate text-[11px] ${campaign.block === WB_RK_BLOCK_ATTRIBUTED ? "italic text-slate-400" : ""}`} title={campaign.name ?? undefined}>
+                                <div className={`max-w-[196px] truncate text-[11px] ${campaign.block === WB_RK_BLOCK_ATTRIBUTED ? "italic text-slate-400" : ""}`} title={campaign.name ?? undefined}>
                                   {campaign.block === WB_RK_BLOCK_ATTRIBUTED
                                     ? WB_RK_BLOCK_ATTRIBUTED_LABEL
                                     : campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : "—")}
