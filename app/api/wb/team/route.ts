@@ -24,6 +24,12 @@ interface Caller {
   email: string;
   organizationId: string;
   isPanelDirector: boolean;
+  /**
+   * Кабинеты, которыми он ВПРАВЕ управлять. Организации мало: в ней бывает
+   * несколько кабинетов, и руководитель одного не должен раздавать уровни в
+   * соседних. Для директора панели — все кабинеты организации.
+   */
+  cabinetIds: string[];
 }
 
 /** Кто вправе управлять командой организации. */
@@ -35,12 +41,17 @@ async function resolveCaller(): Promise<{ caller: Caller } | { error: NextRespon
   if (!db) return { error: NextResponse.json({ error: "Нет доступа к базе" }, { status: 503 }) };
 
   if (session.role === "director") {
+    const { data: all } = await db
+      .from("wb_cabinets")
+      .select("id")
+      .eq("organization_id", session.organization_id ?? "");
     return {
       caller: {
         uid: session.uid,
         email: session.email,
         organizationId: session.organization_id ?? "",
         isPanelDirector: true,
+        cabinetIds: (all ?? []).map((row) => String(row.id)),
       },
     };
   }
@@ -70,12 +81,24 @@ async function resolveCaller(): Promise<{ caller: Caller } | { error: NextRespon
     return { error: NextResponse.json({ error: "Заводить сотрудников может руководитель кабинета" }, { status: 403 }) };
   }
 
+  // Управлять можно только теми кабинетами, где он сам руководитель, и только
+  // если они вообще ему доступны. Список из сессии сужает дальше: у менеджера
+  // и селлера он жёсткий.
+  const ledCabinets = (levels ?? []).map((row) => String(row.cabinet_id));
+  const allowed = session.cabinet_ids.length
+    ? ledCabinets.filter((id) => session.cabinet_ids.includes(id))
+    : ledCabinets;
+  if (!allowed.length) {
+    return { error: NextResponse.json({ error: "Нет кабинетов, которыми вы руководите" }, { status: 403 }) };
+  }
+
   return {
     caller: {
       uid: session.uid,
       email: session.email,
       organizationId: session.organization_id,
       isPanelDirector: false,
+      cabinetIds: allowed,
     },
   };
 }
@@ -92,12 +115,10 @@ export async function GET() {
     .eq("organization_id", gate.caller.organizationId)
     .order("created_at");
 
-  const { data: cabinets } = await db
-    .from("wb_cabinets")
-    .select("id, name")
-    .eq("organization_id", gate.caller.organizationId);
-
-  const cabinetIds = (cabinets ?? []).map((row) => String(row.id));
+  const cabinetIds = gate.caller.cabinetIds;
+  const { data: cabinets } = cabinetIds.length
+    ? await db.from("wb_cabinets").select("id, name").in("id", cabinetIds)
+    : { data: [] as { id: string; name: string }[] };
   const { data: access } = cabinetIds.length
     ? await db.from("cabinet_access").select("user_id, cabinet_id, level").in("cabinet_id", cabinetIds)
     : { data: [] as { user_id: string; cabinet_id: string; level: string }[] };
@@ -145,6 +166,9 @@ export async function POST(request: NextRequest) {
 
   /** Кабинет должен принадлежать моей организации. */
   const ownCabinet = async (cabinetId: string) => {
+    // Не «кабинет моей организации», а «кабинет, которым я руковожу»: иначе
+    // руководитель одного кабинета раздавал бы права в соседних.
+    if (!caller.cabinetIds.includes(cabinetId)) return false;
     const { data } = await db
       .from("wb_cabinets")
       .select("id")
