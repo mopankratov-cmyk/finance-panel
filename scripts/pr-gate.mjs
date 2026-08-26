@@ -5,9 +5,9 @@
 //
 // Логика (безопасно-по-умолчанию):
 //   • авто-мёрж разрешён ТОЛЬКО если ВСЕ изменённые файлы либо из allowlist (доки/текст/картинки),
-//     либо целиком внутри зоны «Финансы» (FINANCE_SCOPE — вкладка, которую дорабатывают сотрудники),
+//     либо целиком внутри продуктовой зоны панели (PANEL_SCOPE: app/components/lib/public/hooks),
 //     PR не из форка, дифф не огромный, нет deny-флагов И ассистент сказал approve+low;
-//   • что угодно иное (общий код, завод, авторизация, миграции, файлы вне зоны) → escalate
+//   • что угодно иное (авторизация, миграции, зависимости, CI, инфра, файлы вне зоны) → escalate
 //     (красный чек + пинг владельцу, вливает он сам);
 //   • любая ошибка/недоступность → escalate (fail-safe).
 //
@@ -43,7 +43,7 @@ const RISK_RULES = [
   [/(^|\/)(middleware|proxy)\.(ts|js|tsx|jsx|mjs|cjs)$/i, "middleware / proxy"],
   [/(auth|authz|session|permission|oauth|token|password|secret|credential)/i, "авторизация / секреты"],
   // NB: bare «payment» намеренно НЕ ловим — раздел «Платежи» у нас = планирование ДДС (учёт/прогноз,
-  // не процессинг денег), он внутри FINANCE_SCOPE и должен авто-мёржиться. Реальный процессинг/биллинг
+  // не процессинг денег), он внутри PANEL_SCOPE и должен авто-мёржиться. Реальный процессинг/биллинг
   // ловим по этим словам:
   [/(billing|stripe|webhook|checkout|invoice|payout)/i, "оплата / биллинг / вебхуки"],
 ];
@@ -88,18 +88,28 @@ function allFilesSafe(files) {
 // СОЗНАТЕЛЬНО ВНЕ зоны (→ к владельцу): общие /api/{wb,ozon,supplies}, CabinetSwitcher,
 // useActiveCabinet и прочий общий код. Раздел «Платежи» ВХОДИТ в зону и авто-мёржится —
 // это планирование ДДС (учёт/прогноз), не процессинг денег (см. RISK_RULES: bare «payment» не ловим).
-const FINANCE_SCOPE = [
-  /^app\/(calendar|pnl|opiu|losses|summary|payments|loans)\//,  // страницы вкладки
-  /^app\/api\/opiu\//,                                          // финансовый бэкенд (mp, warehouse)
-  /^components\/(calendar|payments|loans|opiu)\//,              // UI-код разделов
-  /^components\/FinanceTabs\.tsx$/,                             // табы финансов
-  /^lib\/opiu\//,                                               // логика P&L
+// Зона продуктового кода панели. Раньше здесь была узкая FINANCE_SCOPE — вкладка
+// «Финансы», единственное, что дорабатывал внешний сотрудник. Теперь разработчик
+// ведёт панель целиком, и держать его каждый PR на ручном ревью значит сделать
+// владельца узким местом с первого дня.
+//
+// Расширение безопасно, потому что защиту даёт не эта зона, а RISK_RULES выше:
+// секреты, миграции, SQL, зависимости, CI, сам гейт, исполняемые скрипты,
+// деплой-конфиги, middleware/proxy, авторизация и биллинг по-прежнему уходят
+// владельцу — независимо от того, в какой папке лежит файл.
+const PANEL_SCOPE = [
+  /^app\//,          // страницы и роуты
+  /^components\//,   // UI
+  /^lib\//,          // логика
+  /^public\//,       // статика
+  /^hooks\//,        // React-хуки
 ];
 
-// finance-allowlist: каждый файл — внутри зоны Финансы и только добавлен/изменён (без удалений/переименований).
-function allFinanceScoped(files) {
+// allowlist: каждый файл — внутри продуктовой зоны и только добавлен/изменён
+// (удаления и переименования всегда к владельцу: снести файл легче, чем заметить).
+function allPanelScoped(files) {
   if (!files.length) return false;
-  return files.every((f) => FINANCE_SCOPE.some((re) => re.test(f.path)) && /^(add|modif|chang)/.test(f.status));
+  return files.every((f) => PANEL_SCOPE.some((re) => re.test(f.path)) && /^(add|modif|chang)/.test(f.status));
 }
 
 async function askCockpit(pr, diff) {
@@ -200,7 +210,7 @@ async function main() {
   const lineCount = Number(pr.additions || 0) + Number(pr.deletions || 0);
   const tooMany = changeCount > 25 || lineCount > 1500;
   const safe = allFilesSafe(files);
-  const financeScoped = allFinanceScoped(files);
+  const financeScoped = allPanelScoped(files);
   const mergeable = safe || financeScoped; // доки/картинки ИЛИ целиком в зоне Финансы
 
   const approved = mergeable && !flags.length && !tooBig && !isFork && !baseNotMain && !tooMany && !fileListBad
