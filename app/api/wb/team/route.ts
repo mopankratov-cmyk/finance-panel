@@ -78,7 +78,18 @@ async function resolveCaller(): Promise<{ caller: Caller } | { error: NextRespon
     .in("cabinet_id", cabinetIds);
 
   if (!levels?.length) {
-    return { error: NextResponse.json({ error: "Заводить сотрудников может руководитель кабинета" }, { status: 403 }) };
+    return { error: NextResponse.json({ error: "Заводить сотрудников может админ кабинета" }, { status: 403 }) };
+  }
+
+  // Управлять можно только теми кабинетами, где он сам руководитель, и только
+  // если они вообще ему доступны. Список из сессии сужает дальше: у менеджера
+  // и селлера он жёсткий.
+  const ledCabinets = (levels ?? []).map((row) => String(row.cabinet_id));
+  const allowed = session.cabinet_ids.length
+    ? ledCabinets.filter((id) => session.cabinet_ids.includes(id))
+    : ledCabinets;
+  if (!allowed.length) {
+    return { error: NextResponse.json({ error: "Нет кабинетов, где вы админ" }, { status: 403 }) };
   }
 
   // Управлять можно только теми кабинетами, где он сам руководитель, и только

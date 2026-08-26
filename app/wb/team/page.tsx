@@ -75,7 +75,7 @@ export default function TeamPage() {
       <h1 className="text-xl font-semibold text-slate-900">Команда кабинета</h1>
       <p className="mt-1 text-sm text-slate-500">
         Сотрудники вашей организации и их уровни доступа. Заводить людей и выдавать уровни
-        может руководитель кабинета.
+        может админ кабинета.
       </p>
 
       {msg ? (
@@ -170,8 +170,8 @@ export default function TeamPage() {
                           className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs disabled:bg-slate-50 disabled:text-slate-400"
                         >
                           <option value="">не задано</option>
-                          <option value="manager">менеджер</option>
-                          <option value="lead">руководитель</option>
+                          <option value="manager">менеджер кабинета</option>
+                          <option value="lead">админ кабинета</option>
                         </select>
                       </div>
                     );
@@ -184,8 +184,8 @@ export default function TeamPage() {
       </section>
 
       <p className="mt-4 text-xs text-slate-400">
-        <b>Менеджер</b> ведёт задачи, заметки и ярлыки. <b>Руководитель</b> — плюс ставки,
-        статусы кампаний и цены, и может заводить сотрудников. Не задано — работает
+        <b>Менеджер кабинета</b> ведёт задачи, заметки и ярлыки. <b>Админ кабинета</b> — плюс
+        ставки, статусы кампаний и цены, и может заводить сотрудников. Не задано — работает
         обычная роль сотрудника.
       </p>
     </div>
