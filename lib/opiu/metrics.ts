@@ -1,5 +1,6 @@
 import type { WbAdStat, WbOrder, WbReportRow } from "@/lib/wb/types";
 import type { MonthWeek } from "./weeks";
+import type { DeliveryCostRow } from "./fetchGoogleCosts";
 
 export interface OpiuOrder extends WbOrder {
   nmId?: number;
@@ -21,6 +22,8 @@ export interface ProductCostRow {
   article: string;
   wb_barcode: string | null;
   cost_rub: number;
+  /** Подготовка (упаковка, маркировка, отгрузка) — руб/ед. */
+  warehouse_expenses: number | null;
 }
 
 export interface WeekRawMetrics {
@@ -52,6 +55,8 @@ export interface WeekRawMetrics {
   penaltyLoan: number;
   adsSpend: number;
   warehousePackaging: number;
+  /** Подготовка (упаковка, маркировка, отгрузка) — из product_costs.warehouse_expenses. */
+  packaging: number;
   /** Компенсация скидки по программе лояльности (cashback_discount). */
   loyaltyCompensation: number;
 }
@@ -365,26 +370,91 @@ function penaltyLoanRub(row: WbReportRow): number {
     : 0;
 }
 
-function buildCostLookup(costs: ProductCostRow[]): {
+function rowGiId(row: WbReportRow): string {
+  return String((row as Record<string, unknown>).gi_id ?? "").trim();
+}
+
+export function buildCostLookup(
+  costs: ProductCostRow[],
+  deliveryCosts: DeliveryCostRow[] = [],
+): {
   byArticle: Map<string, number>;
   byBarcode: Map<string, number>;
+  packagingByArticle: Map<string, number>;
+  packagingByBarcode: Map<string, number>;
+  costByGiBarcode: Map<string, number>;
+  packagingByGiBarcode: Map<string, number>;
 } {
   const byArticle = new Map<string, number>();
   const byBarcode = new Map<string, number>();
+  const packagingByArticle = new Map<string, number>();
+  const packagingByBarcode = new Map<string, number>();
   for (const c of costs) {
-    byArticle.set(c.article.trim().toUpperCase(), c.cost_rub);
+    const article = c.article.trim().toUpperCase();
+    byArticle.set(article, c.cost_rub);
     if (c.wb_barcode) byBarcode.set(c.wb_barcode, c.cost_rub);
+    const packaging = num(c.warehouse_expenses);
+    packagingByArticle.set(article, packaging);
+    if (c.wb_barcode) packagingByBarcode.set(c.wb_barcode, packaging);
   }
-  return { byArticle, byBarcode };
+  // Приоритетный источник: точное совпадение поставка (gi_id) + баркод —
+  // «Себестоимость поставок WB» (гугл-таблица, ведётся вручную по фактическим
+  // закупочным ценам каждой поставки).
+  const costByGiBarcode = new Map<string, number>();
+  const packagingByGiBarcode = new Map<string, number>();
+  for (const d of deliveryCosts) {
+    const key = `${d.gi_id}|${d.barcode}`;
+    costByGiBarcode.set(key, d.cost_rub);
+    packagingByGiBarcode.set(key, d.packaging_rub);
+  }
+  return {
+    byArticle,
+    byBarcode,
+    packagingByArticle,
+    packagingByBarcode,
+    costByGiBarcode,
+    packagingByGiBarcode,
+  };
+}
+
+/** true, если для строки не нашлось себестоимости поставки — ни в таблице поставок, ни в фоллбэке. */
+function isUncoveredCost(
+  row: WbReportRow,
+  lookup: ReturnType<typeof buildCostLookup>,
+): boolean {
+  const giId = rowGiId(row);
+  const barcode = String(row.barcode ?? "");
+  if (giId && barcode && lookup.costByGiBarcode.has(`${giId}|${barcode}`)) return false;
+  const article = String(row.sa_name ?? "").trim().toUpperCase();
+  return !lookup.byArticle.has(article) && !lookup.byBarcode.has(barcode);
 }
 
 function unitCost(
   row: WbReportRow,
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  const article = String(row.sa_name ?? "").trim().toUpperCase();
+  const giId = rowGiId(row);
   const barcode = String(row.barcode ?? "");
+  if (giId && barcode) {
+    const v = lookup.costByGiBarcode.get(`${giId}|${barcode}`);
+    if (v !== undefined) return v;
+  }
+  const article = String(row.sa_name ?? "").trim().toUpperCase();
   return lookup.byArticle.get(article) ?? lookup.byBarcode.get(barcode) ?? 0;
+}
+
+function unitPackaging(
+  row: WbReportRow,
+  lookup: ReturnType<typeof buildCostLookup>,
+): number {
+  const giId = rowGiId(row);
+  const barcode = String(row.barcode ?? "");
+  if (giId && barcode) {
+    const v = lookup.packagingByGiBarcode.get(`${giId}|${barcode}`);
+    if (v !== undefined) return v;
+  }
+  const article = String(row.sa_name ?? "").trim().toUpperCase();
+  return lookup.packagingByArticle.get(article) ?? lookup.packagingByBarcode.get(barcode) ?? 0;
 }
 
 function cogsForSales(
@@ -395,6 +465,43 @@ function cogsForSales(
     const qty = Math.abs(num(row.quantity) || 1);
     return sum + unitCost(row, lookup) * qty;
   }, 0);
+}
+
+function packagingForSales(
+  sales: WbReportRow[],
+  lookup: ReturnType<typeof buildCostLookup>,
+): number {
+  return sales.filter(isSale).reduce((sum, row) => {
+    const qty = Math.abs(num(row.quantity) || 1);
+    return sum + unitPackaging(row, lookup) * qty;
+  }, 0);
+}
+
+export interface UncoveredCostSale {
+  giId: string;
+  barcode: string;
+  article: string;
+  qty: number;
+}
+
+/** Проданные строки, для которых не нашлось себестоимости ни по поставке, ни по фоллбэку. */
+export function uncoveredCostSales(
+  sales: WbReportRow[],
+  lookup: ReturnType<typeof buildCostLookup>,
+): UncoveredCostSale[] {
+  const byKey = new Map<string, UncoveredCostSale>();
+  for (const row of sales) {
+    if (!isSale(row) || !isUncoveredCost(row, lookup)) continue;
+    const giId = rowGiId(row);
+    const barcode = String(row.barcode ?? "");
+    const article = String(row.sa_name ?? "").trim().toUpperCase();
+    const key = `${giId}|${barcode}`;
+    const qty = Math.abs(num(row.quantity) || 1);
+    const existing = byKey.get(key);
+    if (existing) existing.qty += qty;
+    else byKey.set(key, { giId, barcode, article, qty });
+  }
+  return [...byKey.values()];
 }
 
 function adsSpendInRange(adStats: WbAdStat[], from: string, to: string): number {
@@ -434,6 +541,7 @@ export function aggregateWeek(
     revenue: weekSales.reduce((s, r) => s + revenueRub(r), 0),
     forPay: weekSales.reduce((s, r) => s + forPayRub(r), 0),
     cogs: cogsForSales(weekSales, costLookup),
+    packaging: packagingForSales(weekSales, costLookup),
     commission: weekSales.reduce((s, r) => s + commissionResidualRub(r), 0),
     // rebill_logistic_cost (возмещение издержек по перевозке/складским
     // операциям) намеренно исключён — это отдельная статья, не совпадающая
@@ -484,6 +592,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       revenue: acc.revenue + w.revenue,
       forPay: acc.forPay + w.forPay,
       cogs: acc.cogs + w.cogs,
+      packaging: acc.packaging + w.packaging,
       commission: acc.commission + w.commission,
       logistics: acc.logistics + w.logistics,
       otherDeductions: acc.otherDeductions + w.otherDeductions,
@@ -505,6 +614,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       revenue: 0,
       forPay: 0,
       cogs: 0,
+      packaging: 0,
       commission: 0,
       logistics: 0,
       otherDeductions: 0,

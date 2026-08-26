@@ -16,7 +16,7 @@ test("weekly OPIU compares sales and orders on the same pre-SPP basis", () => {
     [{ rr_dt: "2026-07-02", doc_type_name: "Продажа", retail_amount: 900, quantity: 1 }],
     [{ date: "2026-07-02", totalPrice: 1_000, discountPercent: 10, finishedPrice: 700, isCancel: false }],
     [],
-    { byArticle: new Map(), byBarcode: new Map() },
+    { byArticle: new Map(), byBarcode: new Map(), packagingByArticle: new Map(), packagingByBarcode: new Map(), costByGiBarcode: new Map(), packagingByGiBarcode: new Map() },
     0,
   );
   assert.equal(metrics.ordersRub, 900);
@@ -35,7 +35,7 @@ test("weekly OPIU prefers stored order price before SPP when sync has it", () =>
     [],
     [{ date: "2026-07-02", totalPrice: 1_000, discountPercent: 10, finishedPrice: 700, priceWithDisc: 880, isCancel: false }],
     [],
-    { byArticle: new Map(), byBarcode: new Map() },
+    { byArticle: new Map(), byBarcode: new Map(), packagingByArticle: new Map(), packagingByBarcode: new Map(), costByGiBarcode: new Map(), packagingByGiBarcode: new Map() },
     0,
   );
 

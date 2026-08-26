@@ -10,17 +10,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type OpiuTab = "sale_date" | "report_date";
 
+interface OpiuMeta {
+  salesRows: number;
+  ordersCount: number;
+  costsCount: number;
+  adCampaigns: number;
+}
+
 interface OpiuResponse {
   month: string;
   report: OpiuReport;
   reportByReportDate?: OpiuReport;
   timestamp: string;
-  meta?: {
-    salesRows: number;
-    ordersCount: number;
-    costsCount: number;
-    adCampaigns: number;
-  };
+  meta?: OpiuMeta;
+  error?: string;
+}
+
+interface OpiuRangeResponse {
+  report: OpiuReport;
+  timestamp: string;
+  meta?: OpiuMeta;
   error?: string;
 }
 
@@ -46,6 +55,24 @@ function formatCell(value: number | null, row: Pick<OpiuTableRow, "kind" | "expe
   if (row.kind === "percent") return formatPct(value);
   const display = row.expense ? Math.abs(value) : value;
   return formatRub(display);
+}
+
+function toLocalISODate(d: Date): string {
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function defaultRangeFrom(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 6);
+  return toLocalISODate(d);
+}
+
+function defaultRangeTo(): string {
+  return toLocalISODate(new Date());
 }
 
 function OpiuTableSkeleton({ cols }: { cols: number }) {
@@ -78,6 +105,13 @@ export function OpiuPage() {
   const [savingWeeks, setSavingWeeks] = useState<Set<string>>(() => new Set());
   const [resyncingWeeks, setResyncingWeeks] = useState<Set<string>>(() => new Set());
   const [resyncError, setResyncError] = useState<string | null>(null);
+
+  const [rangeFrom, setRangeFrom] = useState(defaultRangeFrom);
+  const [rangeTo, setRangeTo] = useState(defaultRangeTo);
+  const [rangeData, setRangeData] = useState<OpiuRangeResponse | null>(null);
+  const [rangeLoading, setRangeLoading] = useState(true);
+  const [rangeRefreshing, setRangeRefreshing] = useState(false);
+  const [rangeError, setRangeError] = useState<string | null>(null);
 
   const fetchReport = useCallback(async (
     m: string,
@@ -134,12 +168,42 @@ export function OpiuPage() {
   const coordinator = coordinatorRef.current;
 
   useEffect(() => {
+    if (tab !== "report_date") return;
     coordinator.setMonth(month);
     setData(null);
     void coordinator.loadReport(month, false);
-  }, [coordinator, month]);
+  }, [coordinator, month, tab]);
 
   useEffect(() => () => coordinator.dispose(), [coordinator]);
+
+  const isValidRange = rangeFrom && rangeTo && rangeFrom <= rangeTo;
+
+  const fetchRange = useCallback(async (
+    from: string,
+    to: string,
+    signal?: AbortSignal,
+  ): Promise<OpiuRangeResponse> => {
+    const params = new URLSearchParams({ dateFrom: from, dateTo: to });
+    const res = await fetch(`/api/opiu?${params}`, { signal });
+    const json = (await res.json()) as OpiuRangeResponse & { error?: string };
+    if (!res.ok) throw new Error(json.error ?? "Ошибка загрузки");
+    return json;
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "sale_date" || !isValidRange) return;
+    const controller = new AbortController();
+    setRangeError(null);
+    setRangeLoading(true);
+    fetchRange(rangeFrom, rangeTo, controller.signal)
+      .then((json) => setRangeData(json))
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setRangeError(e instanceof Error ? e.message : "Ошибка загрузки");
+      })
+      .finally(() => setRangeLoading(false));
+    return () => controller.abort();
+  }, [tab, rangeFrom, rangeTo, isValidRange, fetchRange]);
 
   const handleMonthChange = (nextMonth: string) => {
     setError(null);
@@ -149,12 +213,16 @@ export function OpiuPage() {
   };
 
   const handleRefresh = () => {
+    if (tab === "sale_date") {
+      if (!isValidRange) return;
+      setRangeRefreshing(true);
+      fetchRange(rangeFrom, rangeTo)
+        .then((json) => setRangeData(json))
+        .catch((e) => setRangeError(e instanceof Error ? e.message : "Ошибка загрузки"))
+        .finally(() => setRangeRefreshing(false));
+      return;
+    }
     void coordinator.loadReport(month, true);
-  };
-
-  const handleWarehouseSave = (weekStart: string, raw: string) => {
-    const amount = Number(raw.replace(/\s/g, "").replace(",", ".")) || 0;
-    return coordinator.saveWarehouse({ month, weekStart, amount });
   };
 
   const handleResyncWeek = async (week: MonthWeek) => {
@@ -180,11 +248,15 @@ export function OpiuPage() {
     }
   };
 
-  const report = tab === "report_date"
-    ? data?.reportByReportDate
-    : data?.report;
+  const report = tab === "report_date" ? data?.reportByReportDate : rangeData?.report;
+  const isRangeTab = tab === "sale_date";
   const weekCount = report?.weeks.length ?? 4;
-  const colCount = weekCount + 2;
+  const colCount = isRangeTab ? 2 : weekCount + 2;
+  const activeLoading = isRangeTab ? rangeLoading : loading;
+  const activeRefreshing = isRangeTab ? rangeRefreshing : refreshing;
+  const activeError = isRangeTab ? rangeError : error;
+  const activeTimestamp = isRangeTab ? rangeData?.timestamp : data?.timestamp;
+  const activeMeta = isRangeTab ? rangeData?.meta : data?.meta;
 
   return (
     <div className="space-y-6">
@@ -197,19 +269,39 @@ export function OpiuPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => handleMonthChange(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-          />
+          {isRangeTab ? (
+            <>
+              <input
+                type="date"
+                value={rangeFrom}
+                max={rangeTo}
+                onChange={(e) => setRangeFrom(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+              />
+              <span className="text-slate-400">–</span>
+              <input
+                type="date"
+                value={rangeTo}
+                min={rangeFrom}
+                onChange={(e) => setRangeTo(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+              />
+            </>
+          ) : (
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => handleMonthChange(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            />
+          )}
           <button
             type="button"
             onClick={handleRefresh}
-            disabled={refreshing || loading}
+            disabled={activeRefreshing || activeLoading || (isRangeTab && !isValidRange)}
             className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
           >
-            {refreshing ? (
+            {activeRefreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
@@ -219,9 +311,9 @@ export function OpiuPage() {
         </div>
       </div>
 
-      {error && (
+      {isRangeTab && !isValidRange && (
         <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
+          Дата «по» не может быть раньше даты «с»
         </div>
       )}
 
@@ -231,18 +323,49 @@ export function OpiuPage() {
         </div>
       )}
 
-      {data?.timestamp && !loading && (
+      {activeError && (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {activeError}
+        </div>
+      )}
+
+      {activeTimestamp && !activeLoading && (
         <p className="text-xs text-slate-400">
-          Данные WB: {formatTime(data.timestamp)}
-          {data.meta && (
+          Данные WB: {formatTime(activeTimestamp)}
+          {activeMeta && (
             <>
               {" · "}
-              строк отчёта: {data.meta.salesRows.toLocaleString("ru-RU")}, заказов:{" "}
-              {data.meta.ordersCount.toLocaleString("ru-RU")}, себестоимостей:{" "}
-              {data.meta.costsCount}
+              строк отчёта: {activeMeta.salesRows.toLocaleString("ru-RU")}, заказов:{" "}
+              {activeMeta.ordersCount.toLocaleString("ru-RU")}, себестоимостей:{" "}
+              {activeMeta.costsCount}
             </>
           )}
         </p>
+      )}
+
+      {report && report.uncoveredCostSales.length > 0 && !activeLoading && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-medium">
+            Проданы товары без себестоимости — {report.uncoveredCostSales.length}{" "}
+            {report.uncoveredCostSales.length === 1 ? "позиция" : "позиций"}
+          </p>
+          <p className="mt-1 text-amber-700">
+            Не нашлись ни в таблице «Себестоимость поставок WB», ни в базовом справочнике —
+            себестоимость и подготовка для них сейчас считаются как 0. Внеси данные в таблицу
+            поставок, чтобы цифры не терялись.
+          </p>
+          <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
+            {report.uncoveredCostSales.slice(0, 8).map((s) => (
+              <li key={`${s.giId}|${s.barcode}`}>
+                {s.article || "—"} · баркод {s.barcode || "—"}
+                {s.giId ? ` · поставка ${s.giId}` : ""} · продано {s.qty} шт
+              </li>
+            ))}
+            {report.uncoveredCostSales.length > 8 && (
+              <li>и ещё {report.uncoveredCostSales.length - 8}…</li>
+            )}
+          </ul>
+        </div>
       )}
 
       <div className="flex gap-1 border-b border-slate-200">
@@ -267,7 +390,7 @@ export function OpiuPage() {
         ))}
       </div>
 
-      {loading ? (
+      {activeLoading ? (
         <OpiuTableSkeleton cols={colCount} />
       ) : tab === "report_date" && !report ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-800">
@@ -281,33 +404,41 @@ export function OpiuPage() {
                 <th className="sticky left-0 z-10 min-w-[200px] bg-slate-50 px-4 py-3 font-medium">
                   Показатель
                 </th>
-                {report.weeks.map((w) => (
-                  <th
-                    key={w.weekStart}
-                    className="w-[120px] px-3 py-3 text-right font-medium"
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      <span>{w.label}</span>
-                      <button
-                        type="button"
-                        onClick={() => void handleResyncWeek(w)}
-                        disabled={resyncingWeeks.has(w.weekStart)}
-                        title="Пересинкать финотчёт WB за эту неделю"
-                        aria-label="Пересинкать неделю"
-                        className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50"
-                      >
-                        {resyncingWeeks.has(w.weekStart) ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    </div>
+                {isRangeTab ? (
+                  <th className="w-[140px] px-4 py-3 text-right font-medium">
+                    {report.weeks[0]?.label ?? "Период"}
                   </th>
-                ))}
-                <th className="w-[120px] px-4 py-3 text-right font-bold text-slate-900">
-                  Итого
-                </th>
+                ) : (
+                  <>
+                    {report.weeks.map((w) => (
+                      <th
+                        key={w.weekStart}
+                        className="w-[120px] px-3 py-3 text-right font-medium"
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          <span>{w.label}</span>
+                          <button
+                            type="button"
+                            onClick={() => void handleResyncWeek(w)}
+                            disabled={resyncingWeeks.has(w.weekStart)}
+                            title="Пересинкать финотчёт WB за эту неделю"
+                            aria-label="Пересинкать неделю"
+                            className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50"
+                          >
+                            {resyncingWeeks.has(w.weekStart) ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </th>
+                    ))}
+                    <th className="w-[120px] px-4 py-3 text-right font-bold text-slate-900">
+                      Итого
+                    </th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -329,6 +460,33 @@ export function OpiuPage() {
                   const isTotal = row.id === "marginal" || row.id === "gross";
                   const rowBg = stripeIndex % 2 === 1 ? "bg-slate-50" : "bg-white";
                   stripeIndex += 1;
+
+                  if (isRangeTab) {
+                    const val = row.values[row.values.length - 1] ?? null;
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`border-b border-slate-100 transition-colors hover:bg-violet-50 ${rowBg} ${
+                          isTotal ? "border-t-2 border-t-slate-300" : ""
+                        }`}
+                      >
+                        <td
+                          className={`sticky left-0 z-10 px-4 py-2.5 ${rowBg} ${
+                            isPercent ? "text-xs text-slate-500" : "text-slate-700"
+                          } ${isTotal ? "font-medium text-slate-900" : ""}`}
+                        >
+                          {row.label}
+                        </td>
+                        <td
+                          className={`px-4 py-2.5 text-right tabular-nums ${
+                            isPercent ? "text-xs" : ""
+                          } ${valueClass(val, row)}`}
+                        >
+                          {formatCell(val, row)}
+                        </td>
+                      </tr>
+                    );
+                  }
 
                   return (
                     <tr
@@ -360,7 +518,11 @@ export function OpiuPage() {
                                   const next = e.target.value;
                                   const prev = val != null ? String(Math.round(val)) : "0";
                                   if (next !== prev) {
-                                    void handleWarehouseSave(week.weekStart, next);
+                                    void coordinator.saveWarehouse({
+                                      month,
+                                      weekStart: week.weekStart,
+                                      amount: Number(next.replace(/\s/g, "").replace(",", ".")) || 0,
+                                    });
                                   }
                                 }}
                                 onKeyDown={(e) => {
