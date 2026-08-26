@@ -519,7 +519,10 @@ export function WbRkJournalPage() {
 
         {data ? (
           <>
-            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+            {/* Видов размещения семь, а сетка была на шесть колонок — ЕРК уезжала на
+                вторую строку и таблица уходила ниже экрана. Держим все семь в один
+                ряд на широком экране; на узких переносим по-прежнему. */}
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
               {blockSummary.map((summary) => (
                 <button
                   key={summary.block}
