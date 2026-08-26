@@ -386,14 +386,22 @@ export function OpiuPage() {
         </div>
       ) : report ? (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full min-w-[720px] border-collapse text-[15px]">
+          <table
+            className={`w-full border-collapse text-[15px] ${
+              isRangeTab ? "table-fixed" : "min-w-[720px]"
+            }`}
+          >
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
-                <th className="sticky left-0 z-10 min-w-[220px] bg-slate-50 px-4 py-3.5 text-sm font-medium">
+                <th
+                  className={`sticky left-0 z-10 bg-slate-50 px-4 py-3.5 text-sm font-medium ${
+                    isRangeTab ? "w-1/2" : "min-w-[220px]"
+                  }`}
+                >
                   Показатель
                 </th>
                 {isRangeTab ? (
-                  <th className="w-[140px] px-4 py-3.5 text-center text-sm font-medium">
+                  <th className="w-1/2 px-4 py-3.5 text-center text-sm font-medium">
                     {report.weeks[0]?.label ?? "Период"}
                   </th>
                 ) : (
