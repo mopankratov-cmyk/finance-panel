@@ -708,10 +708,10 @@ export function WbRkJournalPage() {
                       <th className="bg-slate-50 px-2 pb-2" />
                       {dates.map((date) => (
                         <Fragment key={date}>
-                          <th className="border-l border-slate-200 bg-slate-50 px-2 pb-2 text-right font-normal">Ставка</th>
-                          <th className="bg-slate-50 px-2 pb-2 text-right font-normal">Корзин</th>
-                          <th className="bg-slate-50 px-2 pb-2 text-right font-normal">Заказов</th>
-                          <th className="bg-slate-50 px-2 pb-2 text-right font-normal">Затраты</th>
+                          <th className="min-w-[100px] border-l border-slate-200 bg-slate-50 px-2 pb-2 text-right font-normal">Ставка</th>
+                          <th className="min-w-[62px] bg-slate-50 px-2 pb-2 text-right font-normal">Корзин</th>
+                          <th className="min-w-[66px] bg-slate-50 px-2 pb-2 text-right font-normal">Заказов</th>
+                          <th className="min-w-[66px] bg-slate-50 px-2 pb-2 text-right font-normal">Затраты</th>
                           <th className="min-w-[72px] bg-slate-50 px-2 pb-2 text-right font-normal">CPO</th>
                           <th className="min-w-[72px] bg-slate-50 px-2 pb-2 text-right font-normal">CPL</th>
                           {showNotes ? <th className={`border-l border-violet-100 bg-violet-50 px-2 pb-2 text-center font-semibold text-violet-700 ${TASK_COL}`}>Задача</th> : null}
@@ -803,7 +803,7 @@ export function WbRkJournalPage() {
                                   {/* Ставка у артикула — диапазон по его кампаниям: одна цифра
                                       здесь была бы выдумкой, ставки у кампаний разные. Колонка
                                       пустовала, и это выглядело поломкой. */}
-                                  <td className="border-l border-slate-200 px-2 py-1.5 text-right tabular-nums text-slate-500">{bidRange(shown, date)}</td>
+                                  <td className="whitespace-nowrap border-l border-slate-200 px-2 py-1.5 text-right tabular-nums text-slate-500">{bidRange(shown, date)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.carts)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.orders)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{money(cell.spent)}</td>
