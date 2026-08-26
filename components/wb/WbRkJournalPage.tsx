@@ -14,7 +14,7 @@ import {
   WB_RK_BLOCK_UNKNOWN_LABEL,
   type WbRkBlock,
 } from "@/lib/wb/advertBlocks";
-import { costPerCart, costPerOrder, cplTone, cpoTone, WB_RK_TONE_CLASS } from "@/lib/wb/rkThresholds";
+import { costPerCart, costPerOrder, cplTone, cpoTone, WB_RK_SOFT_TONE, WB_RK_TONE_CLASS } from "@/lib/wb/rkThresholds";
 import { WbProductImage } from "./WbProductImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
@@ -102,7 +102,7 @@ function isEmpty(cell: DayCell | undefined) {
 function ToneCell({ value, tone, fraction }: { value: number | null; tone: string | null; fraction?: boolean }) {
   const text = value == null ? "—" : fraction ? money2(value) : money(value);
   return (
-    <td className={`min-w-[72px] whitespace-nowrap px-2 py-1 text-right tabular-nums ${tone ? WB_RK_TONE_CLASS[tone as "green"] : "text-slate-700"}`}>
+    <td className={`min-w-[70px] whitespace-nowrap px-2 py-1 text-right tabular-nums ${tone ? WB_RK_SOFT_TONE[tone as "green"] : "text-slate-700"}`}>
       {text}
     </td>
   );
@@ -122,7 +122,8 @@ function bidRange(campaigns: JournalCampaign[], date: string): string {
   if (!bids.length) return "—";
   const min = Math.min(...bids);
   const max = Math.max(...bids);
-  return min === max ? money2(min) : `${money2(min)}–${money2(max)}`;
+  const short = (bid: number) => (Number.isInteger(bid) ? money(bid) : money2(bid));
+  return min === max ? short(min) : `${short(min)}–${short(max)}`;
 }
 
 export function WbRkJournalPage() {
@@ -162,11 +163,11 @@ export function WbRkJournalPage() {
   // а про то, что человек с этим днём собирается делать. Заливка обязана быть
   // на КАЖДОЙ его ячейке — иначе полоса рвётся везде, где у дня есть цифры, то
   // есть почти везде, и столбец перестаёт читаться как столбец.
-  const TASK_CELL = "bg-violet-50/70 border-l border-violet-100";
+  const TASK_CELL = "bg-violet-50/40 border-l border-violet-100";
   // Ширина столбца задач задана жёстко. Иначе её определяла самая длинная
   // задача дня — «Работа с 17:00 - 24:00 + ЕРК» раздвигала колонку, «Откл»
   // сжимала, и сетка гуляла от дня ко дню, утаскивая за собой соседний CPL.
-  const TASK_COL = "w-[132px] min-w-[132px]";
+  const TASK_COL = "w-[92px] min-w-[92px]";
   // Правый край липкого столбца. Без него уезжающий под столбец текст
   // обрывается посреди слова и числа: «СТАВКА» превращается в «ВКА», «333,00»
   // в «3,00» — и это читается как поломка вёрстки, а не как слой поверх
@@ -177,10 +178,10 @@ export function WbRkJournalPage() {
   // Цвет задачи — её смысл, а не украшение: выключено, круглосуточно, вечерний
   // режим. Сделанная гасится, чтобы взгляд цеплялся за невыполненные.
   const NOTE_TONE: Record<string, string> = {
-    off: "border-rose-200 bg-rose-50 text-rose-700",
-    round: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    evening: "border-amber-200 bg-amber-50 text-amber-700",
-    custom: "border-violet-200 bg-violet-100 text-violet-700",
+    off: "bg-rose-100/80 text-rose-700",
+    round: "bg-emerald-100/80 text-emerald-700",
+    evening: "bg-amber-100/80 text-amber-800",
+    custom: "bg-violet-100 text-violet-700",
   };
 
   /**
@@ -198,10 +199,10 @@ export function WbRkJournalPage() {
       onClick={open}
       title={entry ? `${entry.done ? "Сделано: " : ""}${entry.note}` : emptyHint}
       aria-label={entry ? `Задача: ${entry.note}` : emptyHint}
-      className={`inline-flex items-center justify-center gap-1 rounded-md border py-0.5 text-[10px] font-semibold leading-4 transition-colors ${
+      className={`inline-flex items-center justify-center gap-1 rounded-full py-[3px] text-[10px] font-semibold leading-4 transition-colors ${
         entry
-          ? `w-[118px] px-1.5 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-60" : ""}`
-          : "border-dashed border-slate-200 px-1 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
+          ? `w-[80px] px-2 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-55" : ""}`
+          : "border border-dashed border-slate-200 px-1 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
       }`}
     >
       {entry ? (
@@ -708,12 +709,12 @@ export function WbRkJournalPage() {
                       <th className="bg-slate-50 px-2 pb-2" />
                       {dates.map((date) => (
                         <Fragment key={date}>
-                          <th className="min-w-[100px] border-l border-slate-200 bg-slate-50 px-2 pb-2 text-right font-normal">Ставка</th>
-                          <th className="min-w-[62px] bg-slate-50 px-2 pb-2 text-right font-normal">Корзин</th>
-                          <th className="min-w-[66px] bg-slate-50 px-2 pb-2 text-right font-normal">Заказов</th>
-                          <th className="min-w-[66px] bg-slate-50 px-2 pb-2 text-right font-normal">Затраты</th>
-                          <th className="min-w-[72px] bg-slate-50 px-2 pb-2 text-right font-normal">CPO</th>
-                          <th className="min-w-[72px] bg-slate-50 px-2 pb-2 text-right font-normal">CPL</th>
+                          <th className="min-w-[78px] border-l border-slate-200 bg-slate-50 px-2 pb-2 text-right font-normal">Ставка</th>
+                          <th className="min-w-[58px] bg-slate-50 px-2 pb-2 text-right font-normal">Корзин</th>
+                          <th className="min-w-[62px] bg-slate-50 px-2 pb-2 text-right font-normal">Заказов</th>
+                          <th className="min-w-[62px] bg-slate-50 px-2 pb-2 text-right font-normal">Затраты</th>
+                          <th className="min-w-[70px] bg-slate-50 px-2 pb-2 text-right font-normal">CPO</th>
+                          <th className="min-w-[70px] bg-slate-50 px-2 pb-2 text-right font-normal">CPL</th>
                           {showNotes ? <th className={`border-l border-violet-100 bg-violet-50 px-2 pb-2 text-center font-semibold text-violet-700 ${TASK_COL}`}>Задача</th> : null}
                         </Fragment>
                       ))}

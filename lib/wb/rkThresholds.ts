@@ -42,3 +42,16 @@ export const WB_RK_TONE_CLASS: Record<WbRkTone, string> = {
   amber: "bg-amber-100 text-amber-800",
   red: "bg-rose-100 text-rose-800",
 };
+
+/**
+ * Тот же смысл, но тише — для сплошных клеток таблицы.
+ *
+ * В карточках тон стоит на одном числе и густая заливка уместна. В таблице
+ * такие же клетки идут подряд и складываются в тяжёлые цветные прямоугольники,
+ * которые спорят со столбцом задач по соседству.
+ */
+export const WB_RK_SOFT_TONE: Record<WbRkTone, string> = {
+  green: "bg-emerald-50 text-emerald-800",
+  amber: "bg-amber-50 text-amber-800",
+  red: "bg-rose-50 text-rose-800",
+};
