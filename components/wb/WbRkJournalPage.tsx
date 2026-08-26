@@ -148,6 +148,10 @@ export function WbRkJournalPage() {
    */
   const dayCols = showNotes ? 7 : 6;
   /** Общий тон колонки задач: она служебная и не должна теряться среди цифр. */
+  // Столбец задач идёт сплошной полосой через всю таблицу: он не про цифры дня,
+  // а про то, что человек с этим днём собирается делать. Заливка обязана быть
+  // на КАЖДОЙ его ячейке — иначе полоса рвётся везде, где у дня есть цифры, то
+  // есть почти везде, и столбец перестаёт читаться как столбец.
   const TASK_CELL = "bg-violet-50/70 border-l border-violet-100";
   const [syncing, setSyncing] = useState<string | null>(null);
   const [openNms, setOpenNms] = useState<Set<number>>(new Set());
@@ -702,7 +706,7 @@ export function WbRkJournalPage() {
                                   <td className="px-2 py-1.5 text-right tabular-nums">{money(cell.spent)}</td>
                                   <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
                                   <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
-                                  <td className="px-1 py-1.5 text-center">{noteBadge}</td>
+                                  {showNotes ? <td className={`px-1 py-1.5 text-center ${TASK_CELL}`}>{noteBadge}</td> : null}
                                 </Fragment>
                               );
                             })}
@@ -765,7 +769,7 @@ export function WbRkJournalPage() {
                                     <td className="px-2 py-1 text-right tabular-nums">{money(cell.spent)}</td>
                                     <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
                                     <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
-                                    <td className="px-1 py-1 text-center">{cBadge}</td>
+                                    {showNotes ? <td className={`px-1 py-1 text-center ${TASK_CELL}`}>{cBadge}</td> : null}
                                   </Fragment>
                                 );
                               })}
