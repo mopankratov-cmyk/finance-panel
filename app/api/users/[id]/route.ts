@@ -71,7 +71,6 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
         if (organizationError || !organization) return NextResponse.json({ error: organizationError?.message ?? "Не удалось создать организацию" }, { status: 500 });
         patch.organization_id = organization.id;
       }
-      patch.cabinet_ids = [];
     } else if (currentUser.role === "seller" || !currentUser.organization_id) {
       const { data: organization, error: organizationError } = await resolveInternalOrganization(db, directorSession.organization_id);
       if (organizationError || !organization) return NextResponse.json({ error: organizationError?.message ?? "Не удалось найти внутреннюю организацию" }, { status: 500 });
@@ -81,7 +80,28 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   const effectiveRole = b.role && ["director", "finance", "manager", "seller"].includes(b.role)
     ? b.role
     : String(currentUser.role);
-  if (Array.isArray(b.cabinet_ids) && effectiveRole !== "seller") patch.cabinet_ids = b.cabinet_ids;
+  // Список кабинетов селлеру не обнуляем, а заполняем кабинетами его
+  // организации. Доступ селлера требует ОБОИХ условий — совпадения организации
+  // и наличия кабинета в списке (lib/auth/cabinetAccess.ts), поэтому пустой
+  // список означает «доступа нет». Прежнее обнуление отрезало человека от его
+  // кабинета ровно в тот момент, когда ему выдавали роль селлера: кабинет при
+  // этом оставался виден на экране подключений, а вся аналитика говорила
+  // «подключите хотя бы один кабинет». У новой организации кабинетов ещё нет —
+  // там список честно пуст, и селлер подключает свой кабинет сам.
+  const roleChanging = typeof b.role === "string";
+  if (effectiveRole === "seller" && (roleChanging || Array.isArray(b.cabinet_ids))) {
+    const organizationId = String(patch.organization_id ?? currentUser.organization_id ?? "");
+    const { data: organizationCabinets } = organizationId
+      ? await db.from("wb_cabinets").select("id").eq("organization_id", organizationId)
+      : { data: [] as { id: string }[] };
+    const own = (organizationCabinets ?? []).map((row) => String(row.id));
+    // Директор вправе сузить список, но не вывести его за пределы организации.
+    patch.cabinet_ids = Array.isArray(b.cabinet_ids)
+      ? b.cabinet_ids.map(String).filter((cabinetId) => own.includes(cabinetId))
+      : own;
+  } else if (Array.isArray(b.cabinet_ids) && effectiveRole !== "seller") {
+    patch.cabinet_ids = b.cabinet_ids;
+  }
   if (typeof b.is_active === "boolean") patch.is_active = b.is_active;
   if (b.password && b.password.length >= 10) patch.password_hash = await hashPassword(b.password);
   if (!Object.keys(patch).length) return NextResponse.json({ error: "Нечего обновлять" }, { status: 400 });

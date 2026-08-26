@@ -31,6 +31,23 @@ export default function UsersPage() {
   const [access, setAccess] = useState<Record<string, string>>({});
   const [openAccess, setOpenAccess] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(null);
+  /**
+   * Подтверждение рядом со строкой, а не только вверху страницы.
+   *
+   * Уровень и роль сохраняются сразу при выборе, кнопки «Сохранить» здесь нет.
+   * Экран при этом молчал и при успехе, и при отказе сервера — и отказ выглядел
+   * ровно как «настройки не сохраняются». Особенно коварно, когда в соседней
+   * вкладке вошли под другим пользователем: список остаётся на экране прежним,
+   * а каждая запись возвращает 403.
+   */
+  const [rowMsg, setRowMsg] = useState<Record<string, { ok: boolean; t: string }>>({});
+  const flash = (userId: string, ok: boolean, t: string) => {
+    setRowMsg((prev) => ({ ...prev, [userId]: { ok, t } }));
+    if (ok) setTimeout(() => setRowMsg((prev) => { const copy = { ...prev }; delete copy[userId]; return copy; }), 2500);
+  };
+  const denied = (status: number) => status === 401 || status === 403
+    ? "Сессия сменилась — обновите страницу и войдите директором"
+    : null;
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
 
@@ -41,7 +58,11 @@ export default function UsersPage() {
       body: JSON.stringify({ userId, cabinetId, level }),
     });
     const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.ok) { setMsg({ ok: false, t: body?.error || "Не удалось выдать уровень" }); return; }
+    if (!response.ok || !body?.ok) {
+      flash(userId, false, denied(response.status) ?? body?.error ?? "Не удалось выдать уровень");
+      return;
+    }
+    flash(userId, true, level === "lead" ? "админ кабинета сохранён" : level ? "уровень сохранён" : "уровень снят");
     setAccess((prev) => {
       const next = { ...prev };
       const key = `${userId}|${cabinetId}`;
@@ -79,7 +100,13 @@ export default function UsersPage() {
     else { setMsg({ ok: true, t: `${role === "seller" ? "Внешний селлер" : "Сотрудник"} ${email} сохранён` }); setEmail(""); setPassword(""); setSel([]); await load(); }
     setBusy(false);
   };
-  const patch = async (id: string, body: object) => { await fetch(`/api/users/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); await load(); };
+  const patch = async (id: string, body: object) => {
+    const response = await fetch(`/api/users/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const answer = await response.json().catch(() => null);
+    if (!response.ok) flash(id, false, denied(response.status) ?? answer?.error ?? "Не удалось сохранить");
+    else flash(id, true, "сохранено");
+    await load();
+  };
   const remove = async (id: string, em: string) => { if (confirm(`Удалить ${em}?`)) { await fetch(`/api/users/${id}`, { method: "DELETE" }); await load(); } };
 
   if (forbidden) return <div className="mx-auto max-w-2xl px-6 py-16 text-center text-gray-500">Раздел доступен только директору.</div>;
@@ -155,6 +182,9 @@ export default function UsersPage() {
                       onClick={() => setOpenAccess(openAccess === u.id ? null : u.id)}
                       className={`rounded-md px-2 py-1 text-xs ${openAccess === u.id ? "bg-violet-100 text-violet-700" : "text-gray-500 hover:bg-gray-100"}`}
                     >Доступ по кабинетам</button>
+                  ) : null}
+                  {rowMsg[u.id] ? (
+                    <span className={`text-xs ${rowMsg[u.id].ok ? "text-emerald-600" : "text-red-600"}`}>{rowMsg[u.id].t}</span>
                   ) : null}
                   <button onClick={() => remove(u.id, u.email)} className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
 

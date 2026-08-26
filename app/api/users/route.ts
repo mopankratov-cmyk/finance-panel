@@ -58,7 +58,13 @@ export async function GET() {
   const withAccess = (data ?? []).map((user) => {
     const own = Array.isArray(user.cabinet_ids) ? user.cabinet_ids.map(String) : [];
     let access: string[];
-    if (user.role === "seller") access = byOrganization.get(String(user.organization_id ?? "")) ?? [];
+    if (user.role === "seller") {
+      // Организация задаёт границу, список — фактический доступ. Показываем
+      // пересечение: уровень бессмысленно выдавать в кабинете, куда человек
+      // всё равно не войдёт.
+      const inOrganization = byOrganization.get(String(user.organization_id ?? "")) ?? [];
+      access = own.length ? inOrganization.filter((id) => own.includes(id)) : inOrganization;
+    }
     else if (user.role === "director") access = [];   // директор и так может всё — уровень ему не нужен
     else access = own.length ? own : allCabinetIds;   // пустой список у менеджера означает «все»
     return { ...user, access_cabinet_ids: access };
