@@ -260,17 +260,29 @@ export function OpiuPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">ОПиУ</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            ИП Панкратов · Wildberries · недели пн–вс
-          </p>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">ОПиУ</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          ИП Панкратов · Wildberries · недели пн–вс
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-slate-500">Бренд</label>
+          <select
+            disabled
+            defaultValue="all"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-500 shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <option value="all">Все бренды</option>
+          </select>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-slate-500">Период</label>
           {isRangeTab ? (
-            <>
+            <div className="flex items-center gap-2">
               <input
                 type="date"
                 value={rangeFrom}
@@ -286,7 +298,7 @@ export function OpiuPage() {
                 onChange={(e) => setRangeTo(e.target.value)}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
               />
-            </>
+            </div>
           ) : (
             <input
               type="month"
@@ -295,20 +307,21 @@ export function OpiuPage() {
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
             />
           )}
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={activeRefreshing || activeLoading || (isRangeTab && !isValidRange)}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
-          >
-            {activeRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Обновить
-          </button>
         </div>
+
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={activeRefreshing || activeLoading || (isRangeTab && !isValidRange)}
+          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+        >
+          {activeRefreshing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Обновить
+        </button>
       </div>
 
       {isRangeTab && !isValidRange && (
@@ -373,14 +386,14 @@ export function OpiuPage() {
         </div>
       ) : report ? (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
+          <table className="w-full min-w-[720px] border-collapse text-[15px]">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
-                <th className="sticky left-0 z-10 min-w-[200px] bg-slate-50 px-4 py-3 font-medium">
+                <th className="sticky left-0 z-10 min-w-[220px] bg-slate-50 px-4 py-3.5 text-sm font-medium">
                   Показатель
                 </th>
                 {isRangeTab ? (
-                  <th className="w-[140px] px-4 py-3 text-right font-medium">
+                  <th className="w-[140px] px-4 py-3.5 text-right text-sm font-medium">
                     {report.weeks[0]?.label ?? "Период"}
                   </th>
                 ) : (
@@ -388,7 +401,7 @@ export function OpiuPage() {
                     {report.weeks.map((w) => (
                       <th
                         key={w.weekStart}
-                        className="w-[120px] px-3 py-3 text-right font-medium"
+                        className="w-[120px] px-3 py-3.5 text-right text-sm font-medium"
                       >
                         <div className="flex items-center justify-end gap-1">
                           <span>{w.label}</span>
@@ -409,7 +422,7 @@ export function OpiuPage() {
                         </div>
                       </th>
                     ))}
-                    <th className="w-[120px] px-4 py-3 text-right font-bold text-slate-900">
+                    <th className="w-[120px] px-4 py-3.5 text-right text-sm font-semibold text-slate-900">
                       Итого
                     </th>
                   </>
@@ -433,8 +446,21 @@ export function OpiuPage() {
 
                   const isPercent = row.kind === "percent";
                   const isTotal = row.id === "marginal" || row.id === "gross";
-                  const rowBg = stripeIndex % 2 === 1 ? "bg-slate-50" : "bg-white";
+                  const rowBg = isTotal
+                    ? "bg-violet-50"
+                    : stripeIndex % 2 === 1 ? "bg-slate-50" : "bg-white";
                   stripeIndex += 1;
+                  const rowPad = isPercent ? "py-1.5" : "py-3";
+                  const labelClass = isPercent
+                    ? "text-xs text-slate-400"
+                    : isTotal
+                      ? "text-[15px] font-semibold text-slate-900"
+                      : "text-[15px] text-slate-700";
+                  const valueSizeClass = isPercent
+                    ? "text-xs"
+                    : isTotal
+                      ? "text-[15px] font-semibold"
+                      : "text-[15px] font-medium";
 
                   if (isRangeTab) {
                     const val = row.values[row.values.length - 1] ?? null;
@@ -442,20 +468,14 @@ export function OpiuPage() {
                       <tr
                         key={row.id}
                         className={`border-b border-slate-100 transition-colors hover:bg-violet-50 ${rowBg} ${
-                          isTotal ? "border-t-2 border-t-slate-300" : ""
+                          isTotal ? "border-t-2 border-t-violet-200" : ""
                         }`}
                       >
-                        <td
-                          className={`sticky left-0 z-10 px-4 py-2.5 ${rowBg} ${
-                            isPercent ? "text-xs text-slate-500" : "text-slate-700"
-                          } ${isTotal ? "font-medium text-slate-900" : ""}`}
-                        >
+                        <td className={`sticky left-0 z-10 px-4 ${rowPad} ${rowBg} ${labelClass}`}>
                           {row.label}
                         </td>
                         <td
-                          className={`px-4 py-2.5 text-right tabular-nums ${
-                            isPercent ? "text-xs" : ""
-                          } ${valueClass(val, row)}`}
+                          className={`px-4 ${rowPad} text-right tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
                         >
                           {formatCell(val, row)}
                         </td>
@@ -467,14 +487,10 @@ export function OpiuPage() {
                     <tr
                       key={row.id}
                       className={`border-b border-slate-100 transition-colors hover:bg-violet-50 ${rowBg} ${
-                        isTotal ? "border-t-2 border-t-slate-300" : ""
+                        isTotal ? "border-t-2 border-t-violet-200" : ""
                       }`}
                     >
-                      <td
-                        className={`sticky left-0 z-10 px-4 py-2.5 ${rowBg} ${
-                          isPercent ? "text-xs text-slate-500" : "text-slate-700"
-                        } ${isTotal ? "font-medium text-slate-900" : ""}`}
-                      >
+                      <td className={`sticky left-0 z-10 px-4 ${rowPad} ${rowBg} ${labelClass}`}>
                         {row.label}
                       </td>
                       {row.values.slice(0, -1).map((val, i) => {
@@ -514,17 +530,15 @@ export function OpiuPage() {
                         return (
                           <td
                             key={week?.weekStart ?? i}
-                            className={`px-3 py-2.5 text-right tabular-nums ${
-                              isPercent ? "text-xs" : ""
-                            } ${valueClass(val, row)}`}
+                            className={`px-3 ${rowPad} text-right tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
                           >
                             {formatCell(val, row)}
                           </td>
                         );
                       })}
                       <td
-                        className={`px-4 py-2.5 text-right font-bold tabular-nums ${
-                          isPercent ? "text-xs" : ""
+                        className={`px-4 ${rowPad} text-right tabular-nums ${
+                          isTotal ? "text-[15px] font-bold" : isPercent ? "text-xs font-medium" : "text-[15px] font-semibold"
                         } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
                       >
                         {formatCell(row.values[row.values.length - 1] ?? null, row)}
