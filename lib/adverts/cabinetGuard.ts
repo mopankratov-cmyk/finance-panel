@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import type { Session } from "@/lib/auth/session";
+import { cabinetRights } from "@/lib/auth/cabinetLevel";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet, resolveWbToken, type WbCabinet } from "@/lib/wb/cabinetTokens";
 
@@ -62,6 +63,13 @@ export async function resolveAdvertCabinetContext(input: {
   const cabinetId = typeof input.cabinetId === "string" ? input.cabinetId.trim() : "";
   if (!cabinetId || cabinetId === "all") return { response: error("Нужно выбрать один WB-кабинет", 400) };
   if (!sessionHasCabinetAccess(session, cabinetId)) return { response: error("Нет доступа к кабинету", 403) };
+  // Уровень В КАБИНЕТЕ сильнее глобальной роли: менеджер кабинета ведёт задачи
+  // и заметки, но ставки и статусы кампаний меняет руководитель. Проверка здесь,
+  // а не только в интерфейсе: спрятанная кнопка это не защита.
+  const rights = await cabinetRights(cabinetId);
+  if (!rights.canOperate) {
+    return { response: error("В этом кабинете у вас менеджерский доступ: ставки и статусы кампаний меняет руководитель", 403) };
+  }
   const cabinet = await getWbCabinet(cabinetId);
   if (!cabinet || !cabinet.is_active) return { response: error("WB-кабинет не найден", 404) };
   const token = resolveWbToken(cabinet, "advert") || process.env.WB_TOKEN_ADVERT || "";

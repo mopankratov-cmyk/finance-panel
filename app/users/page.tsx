@@ -17,10 +17,37 @@ export default function UsersPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("manager");
   const [sel, setSel] = useState<string[]>([]);
+  /**
+   * Уровни доступа по кабинетам: ключ «пользователь|кабинет».
+   * Глобальная роль отвечает, КУДА пускать; уровень — ЧТО там можно.
+   */
+  const [access, setAccess] = useState<Record<string, string>>({});
+  const [openAccess, setOpenAccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
 
+  const setLevel = async (userId: string, cabinetId: string, level: string) => {
+    const response = await fetch("/api/users/cabinet-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, cabinetId, level }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.ok) { setMsg({ ok: false, t: body?.error || "Не удалось выдать уровень" }); return; }
+    setAccess((prev) => {
+      const next = { ...prev };
+      const key = `${userId}|${cabinetId}`;
+      if (level) next[key] = level; else delete next[key];
+      return next;
+    });
+  };
+
   const load = async () => {
+    fetch("/api/users/cabinet-access", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : { access: [] })
+      .then((b) => setAccess(Object.fromEntries((b.access ?? []).map((a: { userId: string; cabinetId: string; level: string }) => [`${a.userId}|${a.cabinetId}`, a.level]))))
+      .catch(() => {});
+
     setLoading(true);
     const r = await fetch("/api/users", { cache: "no-store" });
     if (r.status === 403) { setForbidden(true); setLoading(false); return; }
@@ -98,7 +125,44 @@ export default function UsersPage() {
                     {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
                   <button onClick={() => patch(u.id, { is_active: !u.is_active })} className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100">{u.is_active ? "Выключить" : "Включить"}</button>
+                  {u.cabinet_ids?.length ? (
+                    <button
+                      onClick={() => setOpenAccess(openAccess === u.id ? null : u.id)}
+                      className={`rounded-md px-2 py-1 text-xs ${openAccess === u.id ? "bg-violet-100 text-violet-700" : "text-gray-500 hover:bg-gray-100"}`}
+                    >Доступ по кабинетам</button>
+                  ) : null}
                   <button onClick={() => remove(u.id, u.email)} className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+
+                  {openAccess === u.id ? (
+                    <div className="w-full rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      {/* Уровень задаётся на пару «сотрудник × кабинет». Пусто —
+                          действует глобальная роль, а не запрет: снятие уровня
+                          не должно отключать человека от работы. */}
+                      <div className="mb-2 text-xs text-gray-500">
+                        <b>Менеджер</b> ведёт задачи, заметки и ярлыки. <b>Руководитель</b> — плюс ставки,
+                        статусы кампаний и цены. Не задано — работает роль «{roleLabel(u.role)}».
+                      </div>
+                      <div className="space-y-1.5">
+                        {cabs.filter((c) => u.cabinet_ids.includes(c.id)).map((c) => {
+                          const level = access[`${u.id}|${c.id}`] ?? "";
+                          return (
+                            <div key={c.id} className="flex items-center gap-2 text-xs">
+                              <span className="min-w-0 flex-1 truncate text-gray-700">{c.name}</span>
+                              <select
+                                value={level}
+                                onChange={(e) => void setLevel(u.id, c.id, e.target.value)}
+                                className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs"
+                              >
+                                <option value="">не задано</option>
+                                <option value="manager">менеджер</option>
+                                <option value="lead">руководитель</option>
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>}

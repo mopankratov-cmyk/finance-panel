@@ -44,6 +44,10 @@ interface WbCabinetContextValue {
   canUseAll: boolean;
   hasExactCabinet: boolean;
   canWrite: boolean;
+  /** Право менять ставки, статусы кампаний и цены. */
+  canOperate: boolean;
+  /** Уровень в кабинете: manager, lead или null (действует глобальная роль). */
+  cabinetLevel: string | null;
   setCabinetId: (cabinetId: string) => void;
   refreshCabinets: () => void;
 }
@@ -200,6 +204,26 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
   );
   const hasExactCabinet = cabinetId !== "all" && Boolean(activeCabinet);
 
+  /**
+   * Уровень доступа В ЭТОМ кабинете. Глобальная роль отвечает на вопрос «куда
+   * пускать», уровень — «что там можно». Без него внешний селлер не мог
+   * поставить задачу в собственном кабинете, хотя это его работа.
+   *
+   * null — уровень не задан, работает прежнее правило по роли.
+   */
+  const [rights, setRights] = useState<{ canAnnotate: boolean; canOperate: boolean; level: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!hasExactCabinet || !cabinetId) { setRights(null); return; }
+    const controller = new AbortController();
+    fetch(`/api/wb/cabinet-rights?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((body) => { if (body && !controller.signal.aborted) setRights(body); })
+      // Не смогли спросить — оставляем решение прежнему правилу по роли.
+      .catch(() => {});
+    return () => controller.abort();
+  }, [cabinetId, hasExactCabinet]);
+
   const value = useMemo<WbCabinetContextValue>(
     () => ({
       cabinets,
@@ -208,10 +232,15 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
       user,
       ready,
       loading,
+      rights,
       error,
       canUseAll,
       hasExactCabinet,
-      canWrite: user?.role !== "seller" && hasExactCabinet,
+      // canWrite — право ОПИСЫВАТЬ: задачи, заметки, ярлыки, теги.
+      canWrite: hasExactCabinet && (rights ? rights.canAnnotate : user?.role !== "seller"),
+      // canOperate — право МЕНЯТЬ ДЕНЬГИ: ставки, статусы кампаний, цены.
+      canOperate: hasExactCabinet && (rights ? rights.canOperate : user?.role !== "seller"),
+      cabinetLevel: rights?.level ?? null,
       setCabinetId,
       refreshCabinets: () => setRefreshKey((key) => key + 1),
     }),

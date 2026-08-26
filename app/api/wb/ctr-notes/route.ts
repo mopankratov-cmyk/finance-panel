@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { cabinetRights } from "@/lib/auth/cabinetLevel";
 
 // Заметки к CTR за день: чтение окном и запись по одной клетке.
 //
@@ -68,6 +69,12 @@ export async function POST(request: NextRequest) {
   }
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  // Право писать проверяем на сервере. В интерфейсе кнопка скрыта, но скрытая
+  // кнопка это не защита: запрос можно отправить и мимо неё.
+  const rights = await cabinetRights(cabinetId);
+  if (!rights.canAnnotate) {
+    return NextResponse.json({ ok: false, error: "Нет прав оставить заметку в этом кабинете" }, { status: 403 });
   }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Нет доступа к базе" }, { status: 503 });
