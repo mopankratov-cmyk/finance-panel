@@ -145,6 +145,9 @@ export function WbRkJournalPage() {
   // Быстрый выбор задачи открывается у самой клетки, поэтому носит с собой
   // координаты клика: список повторяющихся задач должен появляться там, где
   // человек уже смотрит, а не в центре экрана.
+  // Липкий столбец артикула поднимается над таблицей только когда её увели
+  // вправо. Иначе тень висела бы на месте, где ничего не перекрывается.
+  const [scrolledAside, setScrolledAside] = useState(false);
   const [notePick, setNotePick] = useState<
     { nm: number; advertId: number | null; date: string; title: string; subtitle: string; x: number; y: number } | null
   >(null);
@@ -160,6 +163,13 @@ export function WbRkJournalPage() {
   // на КАЖДОЙ его ячейке — иначе полоса рвётся везде, где у дня есть цифры, то
   // есть почти везде, и столбец перестаёт читаться как столбец.
   const TASK_CELL = "bg-violet-50/70 border-l border-violet-100";
+  // Правый край липкого столбца. Без него уезжающий под столбец текст
+  // обрывается посреди слова и числа: «СТАВКА» превращается в «ВКА», «333,00»
+  // в «3,00» — и это читается как поломка вёрстки, а не как слой поверх
+  // таблицы. Тень объясняет обрыв: колонка лежит выше, содержимое уходит под неё.
+  const STICKY_EDGE = scrolledAside
+    ? "border-r border-slate-200 shadow-[8px_0_10px_-8px_rgba(15,23,42,0.22)]"
+    : "border-r border-transparent";
   // Цвет задачи — её смысл, а не украшение: выключено, круглосуточно, вечерний
   // режим. Сделанная гасится, чтобы взгляд цеплялся за невыполненные.
   const NOTE_TONE: Record<string, string> = {
@@ -665,14 +675,20 @@ export function WbRkJournalPage() {
             </div>
 
             {visibleItems.length ? (
-              <div className="max-h-[calc(100vh-320px)] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <div
+                onScroll={(event) => {
+                  const next = event.currentTarget.scrollLeft > 0;
+                  setScrolledAside((prev) => (prev === next ? prev : next));
+                }}
+                className="max-h-[calc(100vh-320px)] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+              >
                 <table className="min-w-full border-collapse text-xs">
                   {/* Шапка липнет к верху контейнера, первая колонка — к левому
                       краю: на 30 днях таблица уезжает в обе стороны, и без
                       этого не понять, какой день и чей артикул перед глазами. */}
                   <thead className="sticky top-0 z-30">
                     <tr className="bg-slate-50 text-slate-500 shadow-[0_1px_0_rgba(226,232,240,1)]">
-                      <th className="sticky left-0 z-40 bg-slate-50 px-3 py-2 text-left font-semibold">Артикул</th>
+                      <th className={`sticky left-0 z-40 bg-slate-50 px-3 py-2 text-left font-semibold ${STICKY_EDGE}`}>Артикул</th>
                       <th className="bg-slate-50 px-2 py-2 text-left font-medium">Кампании</th>
                       {dates.map((date) => (
                         <th key={date} colSpan={dayCols} className="border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-700">
@@ -684,7 +700,7 @@ export function WbRkJournalPage() {
                       ))}
                     </tr>
                     <tr className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400 shadow-[0_1px_0_rgba(226,232,240,1)]">
-                      <th className="sticky left-0 z-40 bg-slate-50 px-3 pb-2" />
+                      <th className={`sticky left-0 z-40 bg-slate-50 px-3 pb-2 ${STICKY_EDGE}`} />
                       <th className="bg-slate-50 px-2 pb-2" />
                       {dates.map((date) => (
                         <Fragment key={date}>
@@ -723,7 +739,7 @@ export function WbRkJournalPage() {
                             {/* Фон закреплённой колонки только сплошной: под ней проезжают колонки
                                 дней, и через полупрозрачный фон их цифры просвечивали прямо
                                 поверх артикула — выглядело как наложение строк. */}
-                            <td className={`sticky left-0 z-20 px-3 py-2 ${open ? "bg-violet-100" : "bg-white group-hover/row:bg-violet-50"}`}>
+                            <td className={`sticky left-0 z-20 px-3 py-2 ${STICKY_EDGE} ${open ? "bg-violet-100" : "bg-white group-hover/row:bg-violet-50"}`}>
                               <div className="flex items-center gap-2.5">
                                 <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
                                 {/* Картинка WB лежит на одном из нескольких «баскетов», и по
@@ -796,7 +812,7 @@ export function WbRkJournalPage() {
                           </tr>
                           {open ? shown.map((campaign) => (
                             <tr key={`${item.nm}-${campaign.advertId ?? campaign.block}`} className="bg-slate-50/60 text-slate-600 transition-colors hover:bg-violet-50/30">
-                              <td className="sticky left-0 z-20 bg-slate-50 py-1.5 pl-[68px] pr-3">
+                              <td className={`sticky left-0 z-20 bg-slate-50 py-1.5 pl-[68px] pr-3 ${STICKY_EDGE}`}>
                                 <div className={`max-w-[240px] truncate text-[11px] ${campaign.block === WB_RK_BLOCK_ATTRIBUTED ? "italic text-slate-400" : ""}`} title={campaign.name ?? undefined}>
                                   {campaign.block === WB_RK_BLOCK_ATTRIBUTED
                                     ? WB_RK_BLOCK_ATTRIBUTED_LABEL
@@ -853,7 +869,7 @@ export function WbRkJournalPage() {
                   </tbody>
                   <tfoot className="sticky bottom-0 z-30">
                     <tr className="bg-slate-100 font-semibold text-slate-800 shadow-[0_-1px_0_rgba(226,232,240,1)]">
-                      <td className="sticky left-0 z-40 bg-slate-100 px-3 py-2">Итого</td>
+                      <td className={`sticky left-0 z-40 bg-slate-100 px-3 py-2 ${STICKY_EDGE}`}>Итого</td>
                       <td className="bg-slate-100 px-2 py-2 font-normal text-slate-500">{visibleItems.length} артикулов</td>
                       {dates.map((date) => {
                         const total = dayTotals.get(date);
