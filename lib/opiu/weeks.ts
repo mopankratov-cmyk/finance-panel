@@ -59,3 +59,26 @@ export function currentMonthParam(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
+
+/** Один произвольный период (не привязан к неделям/месяцу) — для выбора диапазона дат в календаре. */
+export function periodFromRange(dateFrom: string, dateTo: string): MonthWeek {
+  const from = new Date(`${dateFrom}T00:00:00`);
+  const to = new Date(`${dateTo}T00:00:00`);
+  const currentYear = new Date().getFullYear();
+  const sameYear = from.getFullYear() === to.getFullYear();
+  const showYear = !sameYear || from.getFullYear() !== currentYear;
+  const fromLabel = formatShort(from);
+  const toLabel = showYear
+    ? `${formatShort(to)} ${to.getFullYear()}`
+    : formatShort(to);
+  return {
+    weekStart: dateFrom,
+    rangeFrom: dateFrom,
+    rangeTo: dateTo,
+    label: `${fromLabel} – ${toLabel}`,
+  };
+}
+
+export function isValidDateParam(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
+}

@@ -1,11 +1,13 @@
 import type { MonthWeek } from "./weeks";
 import {
   aggregateWeek,
+  buildCostLookup,
   sumWeeks,
   type OpiuOrder,
   type ProductCostRow,
   type WeekRawMetrics,
 } from "./metrics";
+import type { DeliveryCostRow } from "./fetchGoogleCosts";
 import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
 
 export type OpiuRowKind = "metric" | "separator" | "percent";
@@ -38,11 +40,9 @@ function buyoutPct(revenueWithoutSpp: number, ordersRub: number): number | null 
 
 /**
  * Маржинальный доход = Выручка без СПП минус операционные расходы:
- * комиссия, логистика, себестоимость, штрафы, хранение, прочие удержания,
- * Джем, транзитные поставки, платная приёмка, "Вывести сейчас" (реальная
- * плата WB за досрочный вывод денег). "Подготовка" (упаковка) сюда тоже
- * входит по методологии, но пока это строка-заглушка без метрики —
- * добавится сама, как только появится поле в WeekRawMetrics.
+ * комиссия, логистика, себестоимость, подготовка (упаковка), штрафы,
+ * хранение, прочие удержания, Джем, транзитные поставки, платная приёмка,
+ * "Вывести сейчас" (реальная плата WB за досрочный вывод денег).
  * "Перевод на баланс заёмщика" и "Пени" сознательно НЕ входят — это не
  * плата WB, а собственные финансовые обязательства продавца (займ/кредит).
  */
@@ -52,6 +52,7 @@ function derived(m: WeekRawMetrics) {
     m.commission -
     m.logistics -
     m.cogs -
+    m.packaging -
     m.penalties -
     m.warehousePackaging -
     m.otherDeductions -
@@ -86,13 +87,9 @@ export function buildOpiuReport(
   adStats: WbAdStat[],
   costs: ProductCostRow[],
   warehouseByWeek: Record<string, number>,
+  deliveryCosts: DeliveryCostRow[] = [],
 ): OpiuReport {
-  const costLookup = {
-    byArticle: new Map(costs.map((c) => [c.article.trim().toUpperCase(), c.cost_rub])),
-    byBarcode: new Map(
-      costs.filter((c) => c.wb_barcode).map((c) => [c.wb_barcode!, c.cost_rub]),
-    ),
-  };
+  const costLookup = buildCostLookup(costs, deliveryCosts);
 
   const weekMetrics = weeks.map((w) =>
     aggregateWeek(
@@ -128,9 +125,7 @@ export function buildOpiuReport(
     { id: "logistics_pct",  label: "% логистики",                                     kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.logistics, m.revenue)) },
     { id: "cogs",           label: "Себестоимость, руб",                              kind: "metric",  expense: true, values: cols((m) => m.cogs) },
     { id: "cogs_pct",       label: "% себестоимости",                                 kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.cogs, m.revenue)) },
-    // packaging: пока заглушка — требует поле packaging_rub в product_costs,
-    // которого нет в базе (см. заявку docs/codemap про packaging_rub).
-    { id: "packaging",      label: "Подготовка (упаковка, маркировка, отгрузка), руб", kind: "metric",  expense: true, values: zero },
+    { id: "packaging",      label: "Подготовка (упаковка, маркировка, отгрузка), руб", kind: "metric",  expense: true, values: cols((m) => m.packaging) },
     { id: "penalties",      label: "Штрафы и доплаты, руб",                           kind: "metric",  expense: true, values: cols((m) => m.penalties) },
     { id: "warehouse",      label: "Хранение, руб",                                   kind: "metric",  expense: true, values: cols((m) => m.warehousePackaging) },
     { id: "storage_pct",    label: "% хранения",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.warehousePackaging, m.revenue)) },

@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadOpiuMonth } from "@/lib/opiu/loadMonth";
-import { parseMonthParam } from "@/lib/opiu/weeks";
+import { loadOpiuMonth, loadOpiuSalePeriod } from "@/lib/opiu/loadMonth";
+import { isValidDateParam, parseMonthParam } from "@/lib/opiu/weeks";
 
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
+  const dateFrom = request.nextUrl.searchParams.get("dateFrom") ?? "";
+  const dateTo = request.nextUrl.searchParams.get("dateTo") ?? "";
+
+  if (dateFrom || dateTo) {
+    if (!isValidDateParam(dateFrom) || !isValidDateParam(dateTo) || dateFrom > dateTo) {
+      return NextResponse.json({ error: "Некорректный диапазон дат" }, { status: 400 });
+    }
+    try {
+      const result = await loadOpiuSalePeriod(dateFrom, dateTo);
+      return NextResponse.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Ошибка загрузки ОПиУ";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
   const month = request.nextUrl.searchParams.get("month") ?? "";
   const refresh = request.nextUrl.searchParams.get("refresh") === "1";
   const { year, monthIndex } = parseMonthParam(month);

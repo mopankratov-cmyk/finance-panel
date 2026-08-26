@@ -4,13 +4,14 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { OPIU_ENTITY, OPIU_WB_CABINET_ID } from "./constants";
 import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { loadReadyFunnelFacts } from "./loadFunnelOrders";
-import { weeksInMonth, type MonthWeek } from "./weeks";
+import { periodFromRange, weeksInMonth, type MonthWeek } from "./weeks";
 import {
   overlayFunnelOrders,
   type OpiuOrder,
   type ProductCostRow,
 } from "./metrics";
 import { fetchReportRows, rowsBySaleDate } from "./reportRows";
+import { fetchDeliveryCosts } from "./fetchGoogleCosts";
 
 function financeDb() {
   const db = getSupabaseAdmin();
@@ -95,7 +96,7 @@ async function fetchProductCosts(): Promise<ProductCostRow[]> {
   const client = financeDb();
   const { data, error } = await client
     .from("product_costs")
-    .select("article, wb_barcode, cost_rub")
+    .select("article, wb_barcode, cost_rub, warehouse_expenses")
     .eq("entity", OPIU_ENTITY);
 
   if (error) throw new Error(error.message);
@@ -170,6 +171,7 @@ export async function loadOpiuMonth(
     adStats,
     costs,
     warehouseByWeek,
+    deliveryCosts,
   ] = await Promise.all([
     fetchReportRows(dateFrom, dateTo, "sale"),
     fetchReportRows(dateFrom, dateTo, "report"),
@@ -177,6 +179,10 @@ export async function loadOpiuMonth(
     fetchAdStats(dateFrom, dateTo),
     fetchProductCosts(),
     fetchWarehouseCosts(month, weeks),
+    fetchDeliveryCosts().catch((e) => {
+      console.error("[opiu] delivery costs read:", e instanceof Error ? e.message : e);
+      return [];
+    }),
   ]);
 
   const report = buildOpiuReport(
@@ -186,6 +192,7 @@ export async function loadOpiuMonth(
     adStats,
     costs,
     warehouseByWeek,
+    deliveryCosts,
   );
   const reportByReportDate = buildOpiuReport(
     weeks,
@@ -194,6 +201,7 @@ export async function loadOpiuMonth(
     adStats,
     costs,
     warehouseByWeek,
+    deliveryCosts,
   );
   const reportRowIds = new Set(
     [...saleDateRows, ...reportDateRows]
@@ -208,6 +216,49 @@ export async function loadOpiuMonth(
     timestamp: new Date().toISOString(),
     meta: {
       salesRows: reportRowIds.size,
+      ordersCount: orders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
+      costsCount: costs.length,
+      adCampaigns: adStats.length,
+    },
+  };
+}
+
+/** ОПиУ по дате продажи за произвольный диапазон дат — один агрегат, без разбивки по неделям. */
+export async function loadOpiuSalePeriod(
+  dateFrom: string,
+  dateTo: string,
+): Promise<{
+  report: OpiuReport;
+  timestamp: string;
+  meta: OpiuLoadMeta;
+}> {
+  const period = periodFromRange(dateFrom, dateTo);
+  const [saleDateRows, orders, adStats, costs, deliveryCosts] = await Promise.all([
+    fetchReportRows(dateFrom, dateTo, "sale"),
+    fetchOrders(dateFrom, dateTo, false),
+    fetchAdStats(dateFrom, dateTo),
+    fetchProductCosts(),
+    fetchDeliveryCosts().catch((e) => {
+      console.error("[opiu] delivery costs read:", e instanceof Error ? e.message : e);
+      return [];
+    }),
+  ]);
+
+  const report = buildOpiuReport(
+    [period],
+    rowsBySaleDate(saleDateRows),
+    orders,
+    adStats,
+    costs,
+    {},
+    deliveryCosts,
+  );
+
+  return {
+    report,
+    timestamp: new Date().toISOString(),
+    meta: {
+      salesRows: saleDateRows.length,
       ordersCount: orders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
       costsCount: costs.length,
       adCampaigns: adStats.length,

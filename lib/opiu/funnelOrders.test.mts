@@ -17,6 +17,10 @@ const week = {
 const emptyCosts = {
   byArticle: new Map<string, number>(),
   byBarcode: new Map<string, number>(),
+  packagingByArticle: new Map<string, number>(),
+  packagingByBarcode: new Map<string, number>(),
+  costByGiBarcode: new Map<string, number>(),
+  packagingByGiBarcode: new Map<string, number>(),
 };
 const targetCabinetId = "cabinet-a";
 
