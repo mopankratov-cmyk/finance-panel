@@ -141,6 +141,14 @@ export function WbRkJournalPage() {
   const [notes, setNotes] = useState<Map<string, RkNote>>(new Map());
   const [showNotes, setShowNotes] = useState(true);
   const [noteEdit, setNoteEdit] = useState<{ nm: number; advertId: number | null; date: string; title: string; subtitle: string } | null>(null);
+  /**
+   * Выключенные задачи убирают КОЛОНКУ, а не только значки в ней. Пустой
+   * столбец без содержимого всё равно ест ширину и сбивает чтение таблицы,
+   * ради которого его и выключают.
+   */
+  const dayCols = showNotes ? 7 : 6;
+  /** Общий тон колонки задач: она служебная и не должна теряться среди цифр. */
+  const TASK_CELL = "bg-violet-50/70 border-l border-violet-100";
   const [syncing, setSyncing] = useState<string | null>(null);
   const [openNms, setOpenNms] = useState<Set<number>>(new Set());
   const elapsed = useElapsedSeconds(loading);
@@ -569,7 +577,7 @@ export function WbRkJournalPage() {
                       <th className="sticky left-0 z-40 bg-slate-50 px-3 py-2 text-left font-semibold">Артикул</th>
                       <th className="bg-slate-50 px-2 py-2 text-left font-medium">Кампании</th>
                       {dates.map((date) => (
-                        <th key={date} colSpan={7} className="border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-700">
+                        <th key={date} colSpan={dayCols} className="border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-700">
                           {dayLabel(date)}
                           {data.snapshotDates.includes(date)
                             ? <span className="ml-1 font-normal text-emerald-600" title="День снят в 06:00 МСК: ставка зафиксирована">снят</span>
@@ -588,7 +596,7 @@ export function WbRkJournalPage() {
                           <th className="bg-slate-50 px-2 pb-2 text-right font-normal">Затраты</th>
                           <th className="bg-slate-50 px-2 pb-2 text-right font-normal">CPO</th>
                           <th className="bg-slate-50 px-2 pb-2 text-right font-normal">CPL</th>
-                          <th className="bg-slate-50 px-2 pb-2 text-center font-normal">Задача</th>
+                          {showNotes ? <th className="border-l border-violet-100 bg-violet-50 px-2 pb-2 text-center font-semibold text-violet-700">Задача</th> : null}
                         </Fragment>
                       ))}
                     </tr>
@@ -677,7 +685,7 @@ export function WbRkJournalPage() {
                                     {/* Прочерк объединяет только колонки метрик: раньше он
                                         захватывал и «Задачу», и кнопка оказывалась посреди дня. */}
                                     <td colSpan={6} className="border-l border-slate-200 px-2 py-1.5 text-center font-normal text-slate-300">—</td>
-                                    <td className="px-1 py-1.5 text-center">{noteBadge}</td>
+                                    {showNotes ? <td className={`px-1 py-1.5 text-center ${TASK_CELL}`}>{noteBadge}</td> : null}
                                   </Fragment>
                                 );
                               }
@@ -741,7 +749,7 @@ export function WbRkJournalPage() {
                                   return (
                                     <Fragment key={date}>
                                       <td colSpan={6} className="border-l border-slate-200 px-2 py-1 text-center text-slate-300">—</td>
-                                      <td className="px-1 py-1 text-center">{cBadge}</td>
+                                      {showNotes ? <td className={`px-1 py-1 text-center ${TASK_CELL}`}>{cBadge}</td> : null}
                                     </Fragment>
                                   );
                                 }
@@ -774,7 +782,7 @@ export function WbRkJournalPage() {
                       {dates.map((date) => {
                         const total = dayTotals.get(date);
                         if (!total || (!total.spent && !total.carts && !total.orders)) {
-                          return <td key={date} colSpan={7} className="border-l border-slate-200 bg-slate-100 px-2 py-2 text-center font-normal text-slate-300">—</td>;
+                          return <td key={date} colSpan={dayCols} className="border-l border-slate-200 bg-slate-100 px-2 py-2 text-center font-normal text-slate-300">—</td>;
                         }
                         const cpo = costPerOrder(total.spent, total.orders);
                         const cpl = costPerCart(total.spent, total.carts);
@@ -786,6 +794,7 @@ export function WbRkJournalPage() {
                             <td className="bg-slate-100 px-2 py-2 text-right tabular-nums">{money(total.spent)}</td>
                             <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
                             <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                            {showNotes ? <td className={TASK_CELL} /> : null}
                           </Fragment>
                         );
                       })}
