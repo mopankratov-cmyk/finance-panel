@@ -39,7 +39,33 @@ export async function GET() {
   } else if (primary.error) {
     return NextResponse.json({ error: primary.error.message }, { status: 500 });
   }
-  return NextResponse.json({ users: data ?? [] });
+  // Кабинеты, в которых человеку вообще есть что делать, — по ним и выдаются
+  // уровни. Раньше экран брал для этого `cabinet_ids`, но у селлера этот список
+  // принудительно пустой (доступ у него идёт через организацию), и выдать ему
+  // «админа кабинета» было нечем: единственной видимой кнопкой «повысить»
+  // оставалась глобальная роль директора — то есть доступ ко всем кабинетам
+  // сразу. Директор одного кабинета и директор всей панели — разные вещи, и
+  // выдаваться они должны разными органами управления.
+  const { data: cabinets } = await db.from("wb_cabinets").select("id, organization_id");
+  const allCabinetIds = (cabinets ?? []).map((row) => String(row.id));
+  const byOrganization = new Map<string, string[]>();
+  for (const row of cabinets ?? []) {
+    const organization = String(row.organization_id ?? "");
+    if (!organization) continue;
+    byOrganization.set(organization, [...(byOrganization.get(organization) ?? []), String(row.id)]);
+  }
+
+  const withAccess = (data ?? []).map((user) => {
+    const own = Array.isArray(user.cabinet_ids) ? user.cabinet_ids.map(String) : [];
+    let access: string[];
+    if (user.role === "seller") access = byOrganization.get(String(user.organization_id ?? "")) ?? [];
+    else if (user.role === "director") access = [];   // директор и так может всё — уровень ему не нужен
+    else access = own.length ? own : allCabinetIds;   // пустой список у менеджера означает «все»
+    return { ...user, access_cabinet_ids: access };
+  });
+
+  const session = await getServerSession();
+  return NextResponse.json({ users: withAccess, me: session?.uid ?? null });
 }
 
 export async function POST(request: NextRequest) {

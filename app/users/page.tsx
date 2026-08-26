@@ -3,10 +3,17 @@
 import { useEffect, useState } from "react";
 import { Loader2, Users as UsersIcon, Plus, Trash2 } from "lucide-react";
 
-interface U { id: string; email: string; role: string; cabinet_ids: string[]; is_active: boolean }
+interface U { id: string; email: string; role: string; cabinet_ids: string[]; access_cabinet_ids?: string[]; is_active: boolean }
 interface Cab { id: string; name: string; marketplace: string }
-const ROLES = [["director", "Директор"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"], ["seller", "Внешний селлер WB"], ["warehouse", "Оператор склада"]] as const;
+const ROLES = [["director", "Директор всей панели"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"], ["seller", "Внешний селлер WB"], ["warehouse", "Оператор склада"]] as const;
 const roleLabel = (r: string) => ROLES.find(([k]) => k === r)?.[1] ?? r;
+/**
+ * Кабинеты, в которых человеку есть что делать. Сервер считает их по роли:
+ * у селлера доступ идёт через организацию, и собственный список кабинетов у
+ * него пуст. Старый экран смотрел именно в него — и кнопка выдачи уровня у
+ * селлера не появлялась вовсе.
+ */
+const accessCabs = (u: U) => (u.access_cabinet_ids ?? u.cabinet_ids ?? []);
 
 export default function UsersPage() {
   const [users, setUsers] = useState<U[]>([]);
@@ -23,6 +30,7 @@ export default function UsersPage() {
    */
   const [access, setAccess] = useState<Record<string, string>>({});
   const [openAccess, setOpenAccess] = useState<string | null>(null);
+  const [me, setMe] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
 
@@ -53,6 +61,7 @@ export default function UsersPage() {
     if (r.status === 403) { setForbidden(true); setLoading(false); return; }
     const j = await r.json();
     setUsers(j.users ?? []);
+    setMe(j.me ?? null);
     const c = await fetch("/api/cabinets", { cache: "no-store" }).then((x) => x.json()).catch(() => ({ cabinets: [] }));
     setCabs(c.cabinets ?? []);
     setLoading(false);
@@ -120,12 +129,28 @@ export default function UsersPage() {
               {users.map((u) => (
                 <div key={u.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
                   <span className={`h-2.5 w-2.5 rounded-full ${u.is_active ? "bg-emerald-500" : "bg-gray-300"}`} />
-                  <div className="min-w-0 flex-1"><div className="font-medium text-gray-900">{u.email}</div><div className="text-xs text-gray-400">{roleLabel(u.role)}{(u.role === "manager" || u.role === "seller") && u.cabinet_ids?.length ? ` · ${u.cabinet_ids.length} каб.` : ""}</div></div>
-                  <select value={u.role} onChange={(e) => patch(u.id, { role: e.target.value })} className="rounded-md border border-gray-200 px-2 py-1 text-xs">
+                  <div className="min-w-0 flex-1"><div className="font-medium text-gray-900">{u.email}</div><div className="text-xs text-gray-400">{roleLabel(u.role)}{(u.role === "manager" || u.role === "seller") && accessCabs(u).length ? ` · ${accessCabs(u).length} каб.` : ""}</div></div>
+                  <select
+                    value={u.role}
+                    disabled={u.id === me}
+                    title={u.id === me ? "Свою роль менять нельзя" : undefined}
+                    onChange={(e) => {
+                      // Директор всей панели видит все кабинеты и финансы всех
+                      // юрлиц. Это не «главный в своём кабинете» — для этого
+                      // ниже есть уровень «админ кабинета».
+                      if (e.target.value === "director" && !confirm(
+                        `${u.email} получит доступ ко ВСЕМ кабинетам и финансам всех юрлиц.\n\n` +
+                        "Если нужен хозяин одного кабинета — закройте это окно и выдайте " +
+                        "ему «админ кабинета» в «Доступ по кабинетам».",
+                      )) { e.target.value = u.role; return; }
+                      void patch(u.id, { role: e.target.value });
+                    }}
+                    className="rounded-md border border-gray-200 px-2 py-1 text-xs disabled:bg-gray-50 disabled:text-gray-400"
+                  >
                     {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
                   <button onClick={() => patch(u.id, { is_active: !u.is_active })} className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100">{u.is_active ? "Выключить" : "Включить"}</button>
-                  {u.cabinet_ids?.length ? (
+                  {accessCabs(u).length ? (
                     <button
                       onClick={() => setOpenAccess(openAccess === u.id ? null : u.id)}
                       className={`rounded-md px-2 py-1 text-xs ${openAccess === u.id ? "bg-violet-100 text-violet-700" : "text-gray-500 hover:bg-gray-100"}`}
@@ -139,11 +164,13 @@ export default function UsersPage() {
                           действует глобальная роль, а не запрет: снятие уровня
                           не должно отключать человека от работы. */}
                       <div className="mb-2 text-xs text-gray-500">
-                        <b>Менеджер</b> ведёт задачи, заметки и ярлыки. <b>Руководитель</b> — плюс ставки,
-                        статусы кампаний и цены. Не задано — работает роль «{roleLabel(u.role)}».
+                        <b>Менеджер кабинета</b> ведёт задачи, заметки и ярлыки. <b>Админ кабинета</b> — плюс ставки,
+                        статусы кампаний, цены и свои сотрудники. Власть только внутри этого кабинета:
+                        соседние кабинеты и чужие юрлица ему не видны. Не задано — работает роль
+                        «{roleLabel(u.role)}».
                       </div>
                       <div className="space-y-1.5">
-                        {cabs.filter((c) => u.cabinet_ids.includes(c.id)).map((c) => {
+                        {cabs.filter((c) => accessCabs(u).includes(c.id)).map((c) => {
                           const level = access[`${u.id}|${c.id}`] ?? "";
                           return (
                             <div key={c.id} className="flex items-center gap-2 text-xs">
@@ -154,8 +181,8 @@ export default function UsersPage() {
                                 className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs"
                               >
                                 <option value="">не задано</option>
-                                <option value="manager">менеджер</option>
-                                <option value="lead">руководитель</option>
+                                <option value="manager">менеджер кабинета</option>
+                                <option value="lead">админ кабинета</option>
                               </select>
                             </div>
                           );

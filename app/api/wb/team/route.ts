@@ -78,7 +78,7 @@ async function resolveCaller(): Promise<{ caller: Caller } | { error: NextRespon
     .in("cabinet_id", cabinetIds);
 
   if (!levels?.length) {
-    return { error: NextResponse.json({ error: "Заводить сотрудников может руководитель кабинета" }, { status: 403 }) };
+    return { error: NextResponse.json({ error: "Заводить сотрудников может админ кабинета" }, { status: 403 }) };
   }
 
   // Управлять можно только теми кабинетами, где он сам руководитель, и только
@@ -89,7 +89,7 @@ async function resolveCaller(): Promise<{ caller: Caller } | { error: NextRespon
     ? ledCabinets.filter((id) => session.cabinet_ids.includes(id))
     : ledCabinets;
   if (!allowed.length) {
-    return { error: NextResponse.json({ error: "Нет кабинетов, которыми вы руководите" }, { status: 403 }) };
+    return { error: NextResponse.json({ error: "Нет кабинетов, где вы админ" }, { status: 403 }) };
   }
 
   return {

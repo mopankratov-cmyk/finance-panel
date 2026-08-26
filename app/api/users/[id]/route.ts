@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isPanelOwner } from "@/lib/auth/owner";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
 
@@ -39,11 +40,33 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     .eq("id", id)
     .maybeSingle();
   if (currentUserError || !currentUser) return NextResponse.json({ error: currentUserError?.message ?? "Пользователь не найден" }, { status: 404 });
+  // Права нельзя отобрать ни у себя, ни у владельца панели.
+  //
+  // Роль у каждой строки списка меняется одинаковым выпадающим списком, и
+  // промах по своей строке стоил директору всех прав: вернуть их можно было
+  // только запросом в базу мимо приложения. Понижение — не та операция, где
+  // цена ошибки должна лежать на внимательности.
+  const touchesRights = typeof b.role === "string" || typeof b.is_active === "boolean";
+  if (touchesRights && directorSession.uid === id) {
+    return NextResponse.json({ error: "Свою роль и доступ менять нельзя" }, { status: 400 });
+  }
+  if (touchesRights && isPanelOwner(currentUser.email)) {
+    return NextResponse.json({ error: "Владелец панели не понижается" }, { status: 400 });
+  }
+
   const patch: Record<string, unknown> = {};
   if (b.role && ["director", "finance", "manager", "seller"].includes(b.role)) {
     patch.role = b.role;
     if (b.role === "seller") {
-      if (currentUser.role !== "seller" || !currentUser.organization_id) {
+      // Своя организация у селлера обязана быть — через неё он видит свой
+      // кабинет и никакие чужие. Но если она у него уже есть и она селлерская,
+      // новую заводить нельзя: человек тут же потеряет кабинет, к которому его
+      // привязали. Новая нужна только тому, кто приходит из внутренней
+      // организации, — иначе внешний селлер оказался бы внутри наших юрлиц.
+      const { data: organizationNow } = currentUser.organization_id
+        ? await db.from("organizations").select("kind").eq("id", currentUser.organization_id).maybeSingle()
+        : { data: null };
+      if (String(organizationNow?.kind ?? "") !== "seller") {
         const { data: organization, error: organizationError } = await createSellerOrganization(db, String(currentUser.email));
         if (organizationError || !organization) return NextResponse.json({ error: organizationError?.message ?? "Не удалось создать организацию" }, { status: 500 });
         patch.organization_id = organization.id;
@@ -74,6 +97,10 @@ export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id:
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   if (s.uid === id) return NextResponse.json({ error: "Нельзя удалить себя" }, { status: 400 });
+  const { data: victim } = await db.from("app_users").select("email").eq("id", id).maybeSingle();
+  if (victim && isPanelOwner(victim.email)) {
+    return NextResponse.json({ error: "Владельца панели удалить нельзя" }, { status: 400 });
+  }
   const { error } = await db.from("app_users").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
