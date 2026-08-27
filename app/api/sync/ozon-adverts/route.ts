@@ -128,6 +128,24 @@ export async function GET(request: NextRequest) {
       );
       if (!report) throw new Error("Performance report failed");
 
+      // Незавершённый отчёт всё равно несёт данные завершённых батчей, и они
+      // накапливаются: каждый заход отдаёт сумму по ВСЕМ готовым батчам, а не
+      // по одному. Раньше эти данные лежали мёртвым грузом, пока не доедет
+      // последний батч, — на кабинете с пятью батчами это часы ожидания при
+      // пустой колонке рекламы. Пишем то, что есть; следующий заход перезапишет
+      // теми же ключами, но большей суммой.
+      const partialDaily = Object.entries(report.byDay ?? {}).flatMap(([date, perSku]) =>
+        Object.entries(perSku).map(([sku, value]) => ({
+          client_id: cabinet.client_id,
+          sku,
+          date,
+          spent: Math.round(value.spent),
+          orders_money: Math.round(value.ordersMoney),
+          updated_at: new Date().toISOString(),
+        })));
+      if (!report.complete && partialDaily.length) {
+        await db.from("ozon_ad_daily").upsert(partialDaily, { onConflict: "client_id,sku,date" });
+      }
       if (!report.complete) {
         const message = `Performance report: ${report.errors.join("; ") || "нет готовых батчей"}`;
         await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
@@ -139,7 +157,7 @@ export async function GET(request: NextRequest) {
           lastError: message,
           state: { ...(saved?.state ?? {}), report: report.resumeState, lastRunAt: new Date().toISOString() },
         });
-        return { cabinet: cabinet.name, ok: false, rows: 0, partial: true, deferred: true, error: message };
+        return { cabinet: cabinet.name, ok: false, rows: partialDaily.length, partial: true, deferred: true, error: message };
       }
 
       const syncedAt = new Date().toISOString();
