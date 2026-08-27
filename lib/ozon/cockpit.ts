@@ -101,7 +101,16 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
     const range = period;
     const reports = await Promise.all(missing.map(async (cabinet) => ({
       cabinet,
-      report: await perfProductReport(cabinet.perf!, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
+      // Экран не должен ждать, пока Ozon приготовит отчёт: раньше запрос
+      // висел здесь до 20 секунд и всё равно чаще возвращался ни с чем —
+      // отчёт готовится минутами. Пробуем коротко, остальное принесёт крон.
+      report: await perfProductReport(
+        cabinet.perf!,
+        `${range.from}T00:00:00.000Z`,
+        `${range.to}T23:59:59.999Z`,
+        60,
+        { pollAttempts: 2, pollIntervalMs: 700, maxBatchesPerRun: 1 },
+      ),
     })));
     const freshRows: Array<{ client_id: string; sku: string; days: number; spent: number; orders_money: number; updated_at: string }> = [];
     for (const { cabinet, report } of reports) {

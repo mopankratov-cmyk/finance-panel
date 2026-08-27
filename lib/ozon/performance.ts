@@ -153,7 +153,7 @@ export async function perfProductReport(
         };
     const persistState = async () => options.onState?.(structuredClone(resumeState));
     const loadBatch = async (batchState: PerfProductReportBatchState) => {
-      if (batchState.done) return { ok: true as const, error: null };
+      if (batchState.done) return { ok: true as const, error: null, rateLimited: false };
       let uuid = batchState.uuid;
       if (!uuid) {
         const gen = await tfetch(`${BASE}/api/client/statistics/json`, {
@@ -161,9 +161,12 @@ export async function perfProductReport(
           body: JSON.stringify({ campaigns: batchState.campaigns, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
           cache: "no-store",
         });
-        if (!gen.ok) return { ok: false as const, error: `create HTTP ${gen.status}` };
+        // 429 на создании — Ozon разрешает готовить отчёты по одному. Это не
+        // ошибка батча, а «сейчас больше нельзя»: помечаем отдельно, чтобы
+        // не сжечь остальные батчи такими же отказами в этом же заходе.
+        if (!gen.ok) return { ok: false as const, error: `create HTTP ${gen.status}`, rateLimited: gen.status === 429 };
         uuid = ((await gen.json()) as { UUID?: string }).UUID;
-        if (!uuid) return { ok: false as const, error: "create: UUID отсутствует" };
+        if (!uuid) return { ok: false as const, error: "create: UUID отсутствует", rateLimited: false };
         batchState.uuid = uuid;
         await persistState();
       }
@@ -189,7 +192,7 @@ export async function perfProductReport(
           delete batchState.uuid;
           await persistState();
         }
-        return { ok: false as const, error: `status ${lastState}` };
+        return { ok: false as const, error: `status ${lastState}`, rateLimited: false };
       }
       // 4) скачать
       const rep = await tfetch(`${BASE}/api/client/statistics/report?UUID=${uuid}`, { headers: auth, cache: "no-store" });
@@ -198,7 +201,7 @@ export async function perfProductReport(
           delete batchState.uuid;
           await persistState();
         }
-        return { ok: false as const, error: `download HTTP ${rep.status}` };
+        return { ok: false as const, error: `download HTTP ${rep.status}`, rateLimited: rep.status === 429 };
       }
       const data = (await rep.json()) as Record<string, { report?: { rows?: { sku?: string; moneySpent?: string; ordersMoney?: string }[] } }>;
       const batchBySku: Record<string, { spent: number; ordersMoney: number }> = {};
@@ -215,7 +218,7 @@ export async function perfProductReport(
       batchState.bySku = batchBySku;
       batchState.done = true;
       await persistState();
-      return { ok: true as const, error: null };
+      return { ok: true as const, error: null, rateLimited: false };
     };
     // Создаём/поллим отчёты последовательно: параллельные create-запросы Ozon
     // регулярно отвечают 429. Состояние после каждого батча уже сохранено.
@@ -223,7 +226,14 @@ export async function perfProductReport(
     const maxBatchesPerRun = Math.max(1, Math.floor((options.maxBatchesPerRun ?? pendingBatches.length) || 1));
     const selectedBatches = pendingBatches.slice(0, maxBatchesPerRun);
     const results = [];
-    for (const batch of selectedBatches) results.push(await loadBatch(batch));
+    for (const batch of selectedBatches) {
+      const result = await loadBatch(batch);
+      results.push(result);
+      // Дальше в этом заходе создавать нечего: Ozon только что отказал по
+      // частоте. Раньше цикл шёл к следующему батчу и получал такой же 429 —
+      // за один заход сгорали все батчи, и отчёт не двигался с места ни разу.
+      if (!result.ok && result.rateLimited) break;
+    }
     for (const batch of resumeState.batches) {
       for (const [sku, value] of Object.entries(batch.bySku ?? {})) {
         const aggregate = bySku[sku] ?? { spent: 0, ordersMoney: 0 };
