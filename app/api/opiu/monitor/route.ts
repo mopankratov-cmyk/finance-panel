@@ -24,9 +24,12 @@ async function runFinancialMonitor(request: Request) {
     const reportPeriod = opiuReportRefreshPeriod(now);
     const forecastYear = Number(reportPeriod.dateTo.slice(0, 4));
     const forecastMonth = Number(reportPeriod.dateTo.slice(5, 7));
-    // Синкаем финотчёт WB по КАЖДОМУ бренду отдельно — один упавший кабинет
-    // не должен блокировать обновление остальных.
-    const reportSyncByBrand = await Promise.all(OPIU_BRANDS.map(async (b) => {
+    // Синкаем финотчёт WB по КАЖДОМУ уникальному кабинету — один упавший
+    // кабинет не должен блокировать обновление остальных. Дедуплицируем по
+    // cabinetId: суб-бренды (Norvia/Heaton) делят один кабинет с общим
+    // юрлицом (Retail Family), синкать его дважды подряд незачем.
+    const uniqueCabinetBrands = [...new Map(OPIU_BRANDS.map((b) => [b.cabinetId, b])).values()];
+    const reportSyncByBrand = await Promise.all(uniqueCabinetBrands.map(async (b) => {
       try {
         return { brand: b, result: await syncOpiuReportPeriod(reportPeriod, b.cabinetId), error: null as string | null };
       } catch (error) {

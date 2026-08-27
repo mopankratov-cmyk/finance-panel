@@ -5,11 +5,22 @@ export interface OpiuBrand {
   entity: string;
   /** WB-кабинет, к которому фактически относятся SKU этого юрлица. */
   cabinetId: string;
+  /**
+   * Суб-бренд внутри общего кабинета/юрлица — если задано, из потока
+   * заказов/отчёта/себестоимости кабинета берутся только строки, чей
+   * артикул начинается с одного из этих префиксов (регистронезависимо).
+   * Нужно, когда несколько брендов продаются с одного WB-аккаунта
+   * (Norvia/Heaton — оба на кабинете Retail Family, разделяются только
+   * по префиксу артикула NV-/HT-, юрлицо у product_costs общее).
+   */
+  articlePrefixes?: string[];
 }
 
 // Соответствие юрлицо → WB-кабинет сверено по факту: пересечение article между
 // product_costs (по entity) и supplier_article в wb_orders (по cabinet_id) —
 // см. историю чата/PR. Для ИП Кучеренко — CLERIN, для ИП Панкратова — COSMOS SHOP.
+// Norvia/Heaton — суб-бренды внутри Retail Family, различаются по префиксу
+// артикула (NV-/HT-), а не по кабинету — см. articlePrefixes выше.
 export const OPIU_BRANDS: OpiuBrand[] = [
   {
     id: "pankratov",
@@ -22,6 +33,20 @@ export const OPIU_BRANDS: OpiuBrand[] = [
     label: "ИП Кучеренко",
     entity: "ИП КУЧЕРЕНКО",
     cabinetId: "5a571d13-3c0d-4843-91ad-d68a605ba0de", // CLERIN
+  },
+  {
+    id: "norvia",
+    label: "Norvia",
+    entity: "Retail Family",
+    cabinetId: "1f173bb0-e687-4f06-9bb8-a1a44d5621bf", // Retail Family
+    articlePrefixes: ["NV-"],
+  },
+  {
+    id: "heaton",
+    label: "Heaton",
+    entity: "Retail Family",
+    cabinetId: "1f173bb0-e687-4f06-9bb8-a1a44d5621bf", // Retail Family
+    articlePrefixes: ["HT-"],
   },
 ];
 
