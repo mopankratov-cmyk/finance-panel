@@ -175,7 +175,10 @@ export async function GET(request: NextRequest) {
         return updated ? Date.now() - new Date(updated).getTime() : Number.POSITIVE_INFINITY;
       })();
       const mainPending = Boolean(saved?.state.report);
-      if (!mainPending && cacheAgeMs < 90 * 60_000) {
+      // Четыре часа: окно — сумма за 14 дней, пара часов дрейфа в ней ~1%.
+      // С порогом в 90 минут почасовой крон успевал состарить кэш и каждый
+      // второй заход пересобирал окно вместо истории — история почти стояла.
+      if (!mainPending && cacheAgeMs < 240 * 60_000) {
         if (!(await claimWbSyncJob(db, cabinet.id, "ozon-adverts", 6 * 60))) {
           return { cabinet: cabinet.name, ok: false, rows: 0, partial: false, deferred: true, error: "Синхронизация уже выполняется" };
         }
