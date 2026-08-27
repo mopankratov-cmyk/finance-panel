@@ -190,7 +190,10 @@ export async function perfProductReport(
       // экранов. Фоновый синк задаёт больше попыток и сохраняет UUID между ними.
       let ready = false;
       let lastState = "pending";
-      const pollAttempts = Math.max(1, options.pollAttempts ?? 10);
+      // Заказанный ранее отчёт либо уже готов, либо ещё нет — сидеть над ним
+      // все попытки бессмысленно: заход успеет забрать другие готовые.
+      const resumed = Boolean(batchState.uuid) && batchState.uuid === uuid;
+      const pollAttempts = resumed ? 3 : Math.max(1, options.pollAttempts ?? 10);
       const pollIntervalMs = Math.max(0, options.pollIntervalMs ?? 1_500);
       for (let t = 0; t < pollAttempts; t++) {
         await sleep(pollIntervalMs);
@@ -252,7 +255,14 @@ export async function perfProductReport(
     };
     // Создаём/поллим отчёты последовательно: параллельные create-запросы Ozon
     // регулярно отвечают 429. Состояние после каждого батча уже сохранено.
-    const pendingBatches = resumeState.batches.filter((batch) => !batch.done);
+    // Сначала батчи с уже заказанным отчётом: их можно только скачать, отказа
+    // по частоте они не вызывают. Новые заказы — в конце, и первый же отказ
+    // прекращает заход.
+    const allPending = resumeState.batches.filter((batch) => !batch.done);
+    const pendingBatches = [
+      ...allPending.filter((batch) => batch.uuid),
+      ...allPending.filter((batch) => !batch.uuid),
+    ];
     const maxBatchesPerRun = Math.max(1, Math.floor((options.maxBatchesPerRun ?? pendingBatches.length) || 1));
     const selectedBatches = pendingBatches.slice(0, maxBatchesPerRun);
     const results = [];
