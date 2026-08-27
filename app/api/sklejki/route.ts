@@ -121,8 +121,13 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
   const ratingAgg = new Map<number, { sum: number; count: number }>();
   if (cards.length) {
     const nmIds = [...new Set(cards.map((c) => c.nmID))];
-    for (let offset = 0; offset < nmIds.length; offset += 100) {
-      const chunk = nmIds.slice(offset, offset + 100);
+    // Куски по сто артикулов читаются одновременно. Раньше они шли один за
+    // другим, и на пяти сотнях товаров экран платил за пять-десять поездок к
+    // базе подряд — при том, что куски друг от друга не зависят.
+    const chunks: number[][] = [];
+    for (let offset = 0; offset < nmIds.length; offset += 100) chunks.push(nmIds.slice(offset, offset + 100));
+    const loadChunk = async (chunk: number[]) => {
+      const rows: Array<{ nm_id: number; rating: number | null }> = [];
       for (let page = 0; page < MAX_DB_PAGES; page++) {
         let feedbackQuery = db
           .from("wb_feedbacks")
@@ -133,17 +138,19 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
         if (cabinetId) feedbackQuery = feedbackQuery.eq("cabinet_id", cabinetId);
         const { data, error } = await feedbackQuery;
         if (error) throw new Error(`Отзывы WB: ${error.message}`);
-        const batch = data ?? [];
-        for (const r of batch) {
-          const nm = r.nm_id as number;
-          const e = ratingAgg.get(nm) ?? { sum: 0, count: 0 };
-          e.sum += Number(r.rating ?? 0); e.count += 1;
-          ratingAgg.set(nm, e);
-        }
-        if (batch.length < PAGE_SIZE) break;
-        if (page === MAX_DB_PAGES - 1) {
-          throw new Error(`Отзывы WB превысили безопасный лимит ${PAGE_SIZE * MAX_DB_PAGES} строк на пачку SKU`);
-        }
+        const batch = (data ?? []) as Array<{ nm_id: number; rating: number | null }>;
+        rows.push(...batch);
+        if (batch.length < PAGE_SIZE) return rows;
+      }
+      throw new Error(`Отзывы WB превысили безопасный лимит ${PAGE_SIZE * MAX_DB_PAGES} строк на партию`);
+    };
+    for (const rows of await Promise.all(chunks.map(loadChunk))) {
+      for (const r of rows) {
+        const nm = r.nm_id;
+        const e = ratingAgg.get(nm) ?? { sum: 0, count: 0 };
+        e.sum += Number(r.rating ?? 0);
+        e.count += 1;
+        ratingAgg.set(nm, e);
       }
     }
   }
