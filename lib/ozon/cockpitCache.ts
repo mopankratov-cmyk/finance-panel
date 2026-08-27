@@ -124,5 +124,14 @@ export async function loadCachedOzonCockpit(
     ],
     { revalidate: OZON_COCKPIT_CACHE_SECONDS, tags: [tag] },
   );
-  return decodeCompressedJson<OzonCockpitSnapshot>(await loadSnapshot());
+  const snapshot = decodeCompressedJson<OzonCockpitSnapshot>(await loadSnapshot());
+  // unstable_cache отдаёт лежалую копию сразу, а перестраивает в фоне —
+  // пользователь видел снимок шестичасовой давности как «текущий» (нулевую
+  // рекламу при уже собранных данных). Старше срока годности не отдаём:
+  // пересобираем синхронно.
+  const generatedAt = Date.parse(String((snapshot as { generatedAt?: string }).generatedAt ?? ""));
+  if (Number.isFinite(generatedAt) && Date.now() - generatedAt > OZON_COCKPIT_CACHE_SECONDS * 1000) {
+    return decodeCompressedJson<OzonCockpitSnapshot>(await build());
+  }
+  return snapshot;
 }
