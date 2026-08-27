@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { syncOpiuReportPeriod } from "@/lib/opiu/reportSync";
+import { resolveOpiuBrand } from "@/lib/opiu/constants";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -30,9 +31,10 @@ export async function POST(request: NextRequest) {
     if (gate) return gate;
   }
 
-  const body = (await request.json().catch(() => ({}))) as { dateFrom?: string; dateTo?: string };
+  const body = (await request.json().catch(() => ({}))) as { dateFrom?: string; dateTo?: string; brand?: string };
   const dateFrom = String(body.dateFrom ?? "").trim();
   const dateTo = String(body.dateTo ?? "").trim();
+  const brand = resolveOpiuBrand(body.brand);
   if (!ISO_RE.test(dateFrom) || !ISO_RE.test(dateTo)) {
     return NextResponse.json({ error: "Даты нужны в формате ГГГГ-ММ-ДД" }, { status: 400 });
   }
@@ -52,8 +54,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await syncOpiuReportPeriod({ dateFrom, dateTo });
-    return NextResponse.json({ ok: true, period: { dateFrom, dateTo, days }, ...result });
+    const result = await syncOpiuReportPeriod({ dateFrom, dateTo }, brand.cabinetId);
+    return NextResponse.json({ ok: true, period: { dateFrom, dateTo, days }, brand: brand.id, ...result });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Не удалось пересинкать отчёт WB" },
