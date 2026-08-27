@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { decodeCompressedJson, encodeCompressedJson } from "@/lib/cache/compressedJson";
 import {
   resolveOzonScopeDescriptor,
@@ -77,13 +78,42 @@ export async function loadCachedOzonCockpit(
   const revalidationProfile = ozonCockpitRevalidationProfile(options);
   if (revalidationProfile) revalidateTag(tag, revalidationProfile);
 
+  // Ключ общего снимка — тот же отпечаток, что и метка кэша Next.
+  const sharedKey = tag.slice("ozon-cockpit:".length);
+
+  const build = async () => {
+    const scope = await resolveOzonScopeDescriptor(normalized.scope);
+    if (!scope) throw new Error("Ozon-кабинеты для снимка больше недоступны");
+    const period = resolveOzonPeriod(normalized.from, normalized.to, normalized.days);
+    const data = await loadOzonCockpit(normalized.view, scope, period, normalized.taxPct);
+    const encoded = encodeCompressedJson(data);
+    // Кладём снимок в базу: кэш Next виден только своему экземпляру функции и
+    // пропадает при деплое, поэтому ночной прогрев не доставался пользователю.
+    const db = getSupabaseAdmin();
+    if (db) {
+      await db
+        .from("ozon_cockpit_cache")
+        .upsert({ cache_key: sharedKey, payload: encoded, generated_at: new Date().toISOString() }, { onConflict: "cache_key" });
+    }
+    return encoded;
+  };
+
   const loadSnapshot = unstable_cache(
     async () => {
-      const scope = await resolveOzonScopeDescriptor(normalized.scope);
-      if (!scope) throw new Error("Ozon-кабинеты для снимка больше недоступны");
-      const period = resolveOzonPeriod(normalized.from, normalized.to, normalized.days);
-      const data = await loadOzonCockpit(normalized.view, scope, period, normalized.taxPct);
-      return encodeCompressedJson(data);
+      // Свежий общий снимок избавляет от пересчёта: на кабинете с 88
+      // артикулами он стоил 21 секунду.
+      const db = getSupabaseAdmin();
+      if (db) {
+        const { data } = await db
+          .from("ozon_cockpit_cache")
+          .select("payload, generated_at")
+          .eq("cache_key", sharedKey)
+          .maybeSingle();
+        const generatedAt = data?.generated_at ? Date.parse(String(data.generated_at)) : 0;
+        const fresh = generatedAt > 0 && Date.now() - generatedAt < OZON_COCKPIT_CACHE_SECONDS * 1000;
+        if (fresh && typeof data?.payload === "string") return data.payload;
+      }
+      return build();
     },
     [
       `ozon-cockpit-snapshot-${OZON_COCKPIT_CACHE_VERSION}-compressed`,
