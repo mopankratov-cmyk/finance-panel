@@ -3,6 +3,7 @@
 import { formatPct, formatRub, formatTime } from "@/lib/analytics/format";
 import { currentMonthParam } from "@/lib/opiu/weeks";
 import type { MonthWeek } from "@/lib/opiu/weeks";
+import { DEFAULT_OPIU_BRAND_ID, OPIU_BRANDS } from "@/lib/opiu/constants";
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
 import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -96,6 +97,7 @@ function OpiuTableSkeleton({ cols }: { cols: number }) {
 }
 
 export function OpiuPage() {
+  const [brand, setBrand] = useState(DEFAULT_OPIU_BRAND_ID);
   const [month, setMonth] = useState(currentMonthParam);
   const [tab, setTab] = useState<OpiuTab>("sale_date");
   const [data, setData] = useState<OpiuResponse | null>(null);
@@ -118,20 +120,23 @@ export function OpiuPage() {
     refresh = false,
     signal?: AbortSignal,
   ) => {
-    const params = new URLSearchParams({ month: m });
+    const params = new URLSearchParams({ month: m, brand });
     if (refresh) params.set("refresh", "1");
     const res = await fetch(`/api/opiu?${params}`, { signal });
     const json = (await res.json()) as OpiuResponse & { error?: string };
     if (!res.ok) throw new Error(json.error ?? "Ошибка загрузки");
     return json;
-  }, []);
+  }, [brand]);
+
+  const fetchReportRef = useRef(fetchReport);
+  fetchReportRef.current = fetchReport;
 
   const coordinatorRef = useRef<ReturnType<
     typeof createOpiuRequestCoordinator<OpiuResponse>
   > | null>(null);
   if (!coordinatorRef.current) {
     coordinatorRef.current = createOpiuRequestCoordinator<OpiuResponse>({
-      fetchReport,
+      fetchReport: (m, refresh, signal) => fetchReportRef.current(m, refresh, signal),
       writeWarehouse: async (payload) => {
         const res = await fetch("/api/opiu/warehouse", {
           method: "POST",
@@ -172,7 +177,7 @@ export function OpiuPage() {
     coordinator.setMonth(month);
     setData(null);
     void coordinator.loadReport(month, false);
-  }, [coordinator, month, tab]);
+  }, [coordinator, month, tab, brand]);
 
   useEffect(() => () => coordinator.dispose(), [coordinator]);
 
@@ -183,12 +188,12 @@ export function OpiuPage() {
     to: string,
     signal?: AbortSignal,
   ): Promise<OpiuRangeResponse> => {
-    const params = new URLSearchParams({ dateFrom: from, dateTo: to });
+    const params = new URLSearchParams({ dateFrom: from, dateTo: to, brand });
     const res = await fetch(`/api/opiu?${params}`, { signal });
     const json = (await res.json()) as OpiuRangeResponse & { error?: string };
     if (!res.ok) throw new Error(json.error ?? "Ошибка загрузки");
     return json;
-  }, []);
+  }, [brand]);
 
   useEffect(() => {
     if (tab !== "sale_date" || !isValidRange) return;
@@ -210,6 +215,12 @@ export function OpiuPage() {
     setRefreshing(false);
     setLoading(true);
     setMonth(nextMonth);
+  };
+
+  const handleBrandChange = (nextBrand: string) => {
+    setError(null);
+    setRangeError(null);
+    setBrand(nextBrand);
   };
 
   const handleRefresh = () => {
@@ -248,6 +259,7 @@ export function OpiuPage() {
     }
   };
 
+  const currentBrandLabel = OPIU_BRANDS.find((b) => b.id === brand)?.label ?? brand;
   const report = tab === "report_date" ? data?.reportByReportDate : rangeData?.report;
   const isRangeTab = tab === "sale_date";
   const weekCount = report?.weeks.length ?? 4;
@@ -263,7 +275,7 @@ export function OpiuPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">ОПиУ</h1>
         <p className="mt-1 text-sm text-slate-500">
-          ИП Панкратов · Wildberries · недели пн–вс
+          {currentBrandLabel} · Wildberries · недели пн–вс
         </p>
       </div>
 
@@ -271,10 +283,13 @@ export function OpiuPage() {
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-slate-500">Бренд</label>
           <select
-            defaultValue="pankratov"
+            value={brand}
+            onChange={(e) => handleBrandChange(e.target.value)}
             className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           >
-            <option value="pankratov">ИП Панкратов</option>
+            {OPIU_BRANDS.map((b) => (
+              <option key={b.id} value={b.id}>{b.label}</option>
+            ))}
           </select>
         </div>
 

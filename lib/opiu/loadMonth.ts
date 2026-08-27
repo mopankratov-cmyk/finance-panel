@@ -1,7 +1,7 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import type { WbAdStat } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { OPIU_ENTITY, OPIU_WB_CABINET_ID } from "./constants";
+import { resolveOpiuBrand, type OpiuBrand } from "./constants";
 import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { loadReadyFunnelFacts } from "./loadFunnelOrders";
 import { periodFromRange, weeksInMonth, type MonthWeek } from "./weeks";
@@ -23,6 +23,7 @@ export async function fetchOrders(
   dateFrom: string,
   dateTo: string,
   _refresh = false,
+  brand: OpiuBrand = resolveOpiuBrand(undefined),
 ): Promise<OpiuOrder[]> {
   const client = financeDb();
   const rowsPromise = loadAllSupabasePages<{
@@ -31,7 +32,7 @@ export async function fetchOrders(
     }>((from, to) => client
       .from("wb_orders")
       .select("id, cabinet_id, nm_id, supplier_article, date, total_price, discount_percent, finished_price, price_with_disc, spp, is_cancel, warehouse, region")
-      .eq("cabinet_id", OPIU_WB_CABINET_ID)
+      .eq("cabinet_id", brand.cabinetId)
       .gte("date", dateFrom)
       .lte("date", `${dateTo}T23:59:59.999Z`)
       .order("date", { ascending: true })
@@ -41,7 +42,7 @@ export async function fetchOrders(
       .range(from, to), { maxPages: 300, label: "ОПиУ: заказы WB" });
   const funnelFacts = await loadReadyFunnelFacts(
     client,
-    OPIU_WB_CABINET_ID,
+    brand.cabinetId,
     dateFrom,
     dateTo,
   );
@@ -59,7 +60,7 @@ export async function fetchOrders(
     warehouseName: row.warehouse ?? undefined,
     regionName: row.region ?? undefined,
   }));
-  return overlayFunnelOrders(cachedOrders, funnelFacts, OPIU_WB_CABINET_ID);
+  return overlayFunnelOrders(cachedOrders, funnelFacts, brand.cabinetId);
 }
 
 // Расход на рекламу берём из синхронизированной таблицы wb_advert_nm_daily (cron),
@@ -67,12 +68,13 @@ export async function fetchOrders(
 async function fetchAdStats(
   dateFrom: string,
   dateTo: string,
+  brand: OpiuBrand,
 ): Promise<WbAdStat[]> {
   const client = financeDb();
   const { data, error } = await client
     .from("wb_advert_nm_daily")
     .select("date, spent")
-    .eq("cabinet_id", OPIU_WB_CABINET_ID)
+    .eq("cabinet_id", brand.cabinetId)
     .gte("date", dateFrom)
     .lte("date", dateTo);
 
@@ -92,12 +94,12 @@ async function fetchAdStats(
   return [{ days }];
 }
 
-async function fetchProductCosts(): Promise<ProductCostRow[]> {
+async function fetchProductCosts(brand: OpiuBrand): Promise<ProductCostRow[]> {
   const client = financeDb();
   const { data, error } = await client
     .from("product_costs")
     .select("article, wb_barcode, cost_rub, warehouse_expenses")
-    .eq("entity", OPIU_ENTITY);
+    .eq("entity", brand.entity);
 
   if (error) throw new Error(error.message);
   return (data ?? []) as ProductCostRow[];
@@ -106,13 +108,14 @@ async function fetchProductCosts(): Promise<ProductCostRow[]> {
 async function fetchWarehouseCosts(
   month: string,
   weeks: MonthWeek[],
+  brand: OpiuBrand,
 ): Promise<Record<string, number>> {
   const map: Record<string, number> = {};
   const client = financeDb();
   const { data, error } = await client
     .from("opiu_warehouse_costs")
     .select("week_start, amount")
-    .eq("entity", OPIU_ENTITY)
+    .eq("entity", brand.entity)
     .eq("month", month);
 
   if (error) {
@@ -143,6 +146,7 @@ export async function loadOpiuMonth(
   year: number,
   monthIndex: number,
   refresh = false,
+  brandId?: string,
 ): Promise<{
   month: string;
   report: OpiuReport;
@@ -150,6 +154,7 @@ export async function loadOpiuMonth(
   timestamp: string;
   meta: OpiuLoadMeta;
 }> {
+  const brand = resolveOpiuBrand(brandId);
   const month = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
   const weeks = weeksInMonth(year, monthIndex);
   if (weeks.length === 0) {
@@ -173,12 +178,12 @@ export async function loadOpiuMonth(
     warehouseByWeek,
     deliveryCosts,
   ] = await Promise.all([
-    fetchReportRows(dateFrom, dateTo, "sale"),
-    fetchReportRows(dateFrom, dateTo, "report"),
-    fetchOrders(dateFrom, dateTo, refresh),
-    fetchAdStats(dateFrom, dateTo),
-    fetchProductCosts(),
-    fetchWarehouseCosts(month, weeks),
+    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
+    fetchReportRows(dateFrom, dateTo, "report", brand.cabinetId),
+    fetchOrders(dateFrom, dateTo, refresh, brand),
+    fetchAdStats(dateFrom, dateTo, brand),
+    fetchProductCosts(brand),
+    fetchWarehouseCosts(month, weeks, brand),
     fetchDeliveryCosts().catch((e) => {
       console.error("[opiu] delivery costs read:", e instanceof Error ? e.message : e);
       return [];
@@ -227,17 +232,19 @@ export async function loadOpiuMonth(
 export async function loadOpiuSalePeriod(
   dateFrom: string,
   dateTo: string,
+  brandId?: string,
 ): Promise<{
   report: OpiuReport;
   timestamp: string;
   meta: OpiuLoadMeta;
 }> {
+  const brand = resolveOpiuBrand(brandId);
   const period = periodFromRange(dateFrom, dateTo);
   const [saleDateRows, orders, adStats, costs, deliveryCosts] = await Promise.all([
-    fetchReportRows(dateFrom, dateTo, "sale"),
-    fetchOrders(dateFrom, dateTo, false),
-    fetchAdStats(dateFrom, dateTo),
-    fetchProductCosts(),
+    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
+    fetchOrders(dateFrom, dateTo, false, brand),
+    fetchAdStats(dateFrom, dateTo, brand),
+    fetchProductCosts(brand),
     fetchDeliveryCosts().catch((e) => {
       console.error("[opiu] delivery costs read:", e instanceof Error ? e.message : e);
       return [];
@@ -274,7 +281,7 @@ export async function saveWarehouseCost(
   const client = financeDb();
   const { error } = await client.from("opiu_warehouse_costs").upsert(
     {
-      entity: OPIU_ENTITY,
+      entity: resolveOpiuBrand(undefined).entity,
       month,
       week_start: weekStart,
       amount,
