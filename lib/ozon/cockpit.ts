@@ -316,10 +316,24 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
       }
     }
 
+    // Кэш рекламы Ozon лежит по числовому SKU, а аналитика продаж у части
+    // кабинетов приходит с артикулом продавца в том же поле. Из-за этого
+    // экономика искала расход по «CLR00912» там, где он записан под
+    // «1871577470», и показывала 418 ₽ вместо 28 026 ₽ — при том, что экран
+    // «Реклама» читает тот же кэш и цифру видит.
+    const offerToSku = new Map<string, string>();
+    for (const [numericSku, offer] of Object.entries(base.images.skuToOffer)) {
+      if (offer) offerToSku.set(String(offer), String(numericSku));
+    }
     for (const [sku, metrics] of grouped) {
-      const offerId = base.images.skuToOffer[sku] ?? "";
+      const offerId = base.images.skuToOffer[sku] ?? (offerToSku.has(sku) ? sku : "");
       const stockValue = stockByOffer.get(offerId) ?? { free: 0, reserved: 0 };
-      const ad = adCache.get(`${base.clientId}:${sku}`) ?? { spent: 0, ordersMoney: 0 };
+      // Сначала по числовому SKU, потом по исходному ключу: так подхватываются
+      // и правильные записи, и старые, записанные под артикулом.
+      const numericSku = offerToSku.get(sku);
+      const ad = (numericSku ? adCache.get(`${base.clientId}:${numericSku}`) : undefined)
+        ?? adCache.get(`${base.clientId}:${sku}`)
+        ?? { spent: 0, ordersMoney: 0 };
       skuRows.push({
         key: `${base.cabinetId}:${sku}`,
         cabinetId: base.cabinetId,
