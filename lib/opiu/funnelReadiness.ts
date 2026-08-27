@@ -78,7 +78,17 @@ export function funnelTrustCutoff(
   if (!row || !Number.isFinite(now.getTime())) return notReady;
   if (row.cabinet_id !== expectedCabinetId || row.job !== FUNNEL_JOB) return notReady;
   if (row.attempts !== 0 || row.last_error !== null) return notReady;
-  if (row.status !== "caught_up" && row.status !== "pending") return notReady;
+  // "running" — джоб claimWbSyncJob() держит лок и активно выполняет текущий
+  // проход (lib/wb/syncState.ts). Это рутинное состояние на каждый запуск
+  // cron'а, а не сбой — state.lastPeriod (см. ниже) при переходе в "running"
+  // сохраняется из предыдущего прохода как есть, так что cutoff по нему
+  // остаётся корректным. Без этой строки ЛЮБОЙ запрос, попавший на момент
+  // активного синка, полностью терял доступ к Воронке и откатывался на
+  // wb_orders — отсюда и "гуляющие" числа Заказов между одинаковыми
+  // повторными открытиями отчёта.
+  if (row.status !== "caught_up" && row.status !== "pending" && row.status !== "running") {
+    return notReady;
+  }
   if (!row.state || typeof row.state !== "object" || Array.isArray(row.state)) {
     return notReady;
   }
