@@ -166,6 +166,54 @@ export async function GET(request: NextRequest) {
       if (!cabinet.client_id || !cabinet.perf_client_id || !cabinet.perf_secret) {
         throw new Error("Нет Ozon Performance API");
       }
+      // Свежее окно не пересобираем. Период отчёта сдвигается каждым заходом,
+      // поэтому «продолжить» его нельзя — только заказать заново все 5-7
+      // батчей. Час назад собранное окно этого не стоит, а заход целиком
+      // достаётся истории по дням — ради неё пользователь и ждёт.
+      const cacheAgeMs = (() => {
+        const updated = cacheUpdated.get(cabinet.client_id);
+        return updated ? Date.now() - new Date(updated).getTime() : Number.POSITIVE_INFINITY;
+      })();
+      const mainPending = Boolean(saved?.state.report);
+      if (!mainPending && cacheAgeMs < 90 * 60_000) {
+        if (!(await claimWbSyncJob(db, cabinet.id, "ozon-adverts", 6 * 60))) {
+          return { cabinet: cabinet.name, ok: false, rows: 0, partial: false, deferred: true, error: "Синхронизация уже выполняется" };
+        }
+        let backfillNote: string | null = null;
+        let backfillState = saved?.state.backfill ?? undefined;
+        let backfillRows = 0;
+        // До двух дней за заход — больше не влезает в лимит функции (300 с)
+        // с ожиданиями между заказами. Недоигранный день продолжается,
+        // готовый освобождает место следующему; состояние сохраняем после
+        // каждого дня, чтобы обрыв по времени не потерял заказанный отчёт.
+        for (let i = 0; i < 2; i++) {
+          const backfill = await backfillOneDay(db, cabinet, backfillState);
+          backfillNote = backfill.note ?? backfillNote;
+          backfillState = backfill.state ?? undefined;
+          backfillRows += backfill.rows;
+          await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
+            status: "caught_up",
+            attempts: 0,
+            lastError: null,
+            state: { ...(saved?.state ?? {}), lastRunAt: new Date().toISOString(), backfill: backfillState },
+          });
+          if (backfill.state || !backfill.note) break; // день не доигран или дни кончились
+        }
+        await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
+          status: "caught_up",
+          attempts: 0,
+          lastError: null,
+          state: { ...(saved?.state ?? {}), lastRunAt: new Date().toISOString(), backfill: backfillState },
+        });
+        return {
+          cabinet: cabinet.name,
+          ok: true,
+          rows: backfillRows,
+          partial: false,
+          deferred: false,
+          error: backfillNote ? `окно свежее; ${backfillNote}` : "окно свежее; история заполнена",
+        };
+      }
       if (!(await claimWbSyncJob(db, cabinet.id, "ozon-adverts", 6 * 60))) {
         return { cabinet: cabinet.name, ok: false, rows: 0, partial: false, deferred: true, error: "Синхронизация уже выполняется" };
       }
