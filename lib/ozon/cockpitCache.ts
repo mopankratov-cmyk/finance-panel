@@ -101,8 +101,10 @@ export async function loadCachedOzonCockpit(
   const loadSnapshot = unstable_cache(
     async () => {
       // Свежий общий снимок избавляет от пересчёта: на кабинете с 88
-      // артикулами он стоил 21 секунду.
-      const db = getSupabaseAdmin();
+      // артикулами он стоил 21 секунду. Но когда вызывающий просит обновиться
+      // (ночной прогрев, ручной пересчёт), читать снимок нельзя — иначе он
+      // вернёт сам себя, и обновить его станет нечем до истечения срока.
+      const db = revalidationProfile ? null : getSupabaseAdmin();
       if (db) {
         const { data } = await db
           .from("ozon_cockpit_cache")
