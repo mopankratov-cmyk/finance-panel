@@ -78,32 +78,37 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
   // Кэш расхода рекламы хранится по числу дней и означает «последние N дней».
   // Для периода, который кончился в прошлом, эта строка — не тот период, и брать
   // её значило бы показать расход не за то время. Такой период читаем живьём.
-  // Сначала посуточные строки: они складываются под ЛЮБОЙ период, в том числе
-  // закончившийся вчера. Скользящее окно этого не умеет — на периоде
-  // 01.08-26.08 оно молчало, и экран показывал нули вместо расхода.
-  const { data: dailyRows } = await db
-    .from("ozon_ad_daily")
-    .select("client_id, sku, spent, orders_money, updated_at")
-    .in("client_id", clientIds)
-    .gte("date", period.from)
-    .lte("date", period.to);
-  for (const row of (dailyRows ?? []) as AdCacheRow[]) {
-    const key = `${row.client_id}:${row.sku}`;
-    const entry = rows.get(key) ?? { spent: 0, ordersMoney: 0, updatedAt: null };
-    entry.spent += Number(row.spent ?? 0);
-    entry.ordersMoney += Number(row.orders_money ?? 0);
-    entry.updatedAt = row.updated_at ?? entry.updatedAt;
-    rows.set(key, entry);
-  }
-  if (rows.size) return rows;
-
-  const { data } = period.endsToday
-    ? await db
-      .from("ozon_ad_cache")
+  // Для «последних N дней» точный ответ — скользящее окно: история по дням
+  // ещё дозаполняется, и её неполнота занижала бы расход на главных экранах.
+  // Посуточные строки — для произвольных периодов, где окно молчит вовсе
+  // (01.08-26.08 показывал нули), и как запасной путь при пустом окне.
+  const readDaily = async () => {
+    const { data: dailyRows } = await db
+      .from("ozon_ad_daily")
       .select("client_id, sku, spent, orders_money, updated_at")
       .in("client_id", clientIds)
-      .eq("days", days)
-    : { data: [] };
+      .gte("date", period.from)
+      .lte("date", period.to);
+    for (const row of (dailyRows ?? []) as AdCacheRow[]) {
+      if (String(row.sku) === "-") continue; // маркер «день собран, расхода не было»
+      const key = `${row.client_id}:${row.sku}`;
+      const entry = rows.get(key) ?? { spent: 0, ordersMoney: 0, updatedAt: null };
+      entry.spent += Number(row.spent ?? 0);
+      entry.ordersMoney += Number(row.orders_money ?? 0);
+      entry.updatedAt = row.updated_at ?? entry.updatedAt;
+      rows.set(key, entry);
+    }
+  };
+  if (!period.endsToday) {
+    await readDaily();
+    return rows;
+  }
+
+  const { data } = await db
+    .from("ozon_ad_cache")
+    .select("client_id, sku, spent, orders_money, updated_at")
+    .in("client_id", clientIds)
+    .eq("days", days);
   for (const row of (data ?? []) as AdCacheRow[]) {
     rows.set(`${row.client_id}:${row.sku}`, {
       spent: Number(row.spent ?? 0),
@@ -111,6 +116,8 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
       updatedAt: row.updated_at,
     });
   }
+  // Окно пусто (новый кабинет, иное число дней) — пробуем историю по дням.
+  if (!rows.size) await readDaily();
 
   // Плановая синхронизация держит 14-дневный кэш. Для другого выбранного периода
   // или нового кабинета точечно догружаем Performance, чтобы отсутствие строки не

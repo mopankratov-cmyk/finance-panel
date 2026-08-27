@@ -30,8 +30,77 @@ type OzonAdSyncResult = {
 
 interface OzonAdvertSyncState extends Record<string, unknown> {
   report?: PerfProductReportResumeState;
+  /** Дозаполнение истории: один день за заход, недоигранный отчёт хранится тут. */
+  backfill?: { day: string; report: PerfProductReportResumeState | null };
   lastSyncedAt?: string;
   lastRunAt?: string;
+}
+
+const BACKFILL_WINDOW_DAYS = 28;
+
+/**
+ * Дозаполнение истории расхода: один день за заход.
+ *
+ * Отчёт Performance отдаёт артикулы только суммой за запрошенный период —
+ * разбивку по датам он присылает без sku (проверено на проде). Значит день
+ * добывается единственным способом: заказать обычный отчёт с периодом в один
+ * день. Ozon ограничивает частоту заказов, поэтому берём по одному дню, от
+ * свежих к старым, — свежие дни закрывают больше реальных периодов на экранах.
+ */
+async function backfillOneDay(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  cabinet: OzonCabinet,
+  saved: { day: string; report: PerfProductReportResumeState | null } | undefined,
+): Promise<{ state: { day: string; report: PerfProductReportResumeState | null } | null; rows: number; note: string | null }> {
+  if (!cabinet.perf_client_id || !cabinet.perf_secret) return { state: null, rows: 0, note: null };
+
+  // Какой день брать: продолжаем недоигранный, иначе — самый свежий из
+  // отсутствующих за окно (вчера и старше: сегодняшний день ещё идёт).
+  let day = saved?.day ?? null;
+  if (!day) {
+    const till = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const since = new Date(Date.now() - BACKFILL_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+    const { data: haveRows } = await db
+      .from("ozon_ad_daily")
+      .select("date")
+      .eq("client_id", cabinet.client_id)
+      .gte("date", since)
+      .lte("date", till);
+    const have = new Set((haveRows ?? []).map((row) => String(row.date)));
+    for (let offset = 1; offset <= BACKFILL_WINDOW_DAYS; offset++) {
+      const candidate = new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
+      if (!have.has(candidate)) { day = candidate; break; }
+    }
+  }
+  if (!day) return { state: null, rows: 0, note: null };
+
+  const report = await perfProductReport(
+    { clientId: cabinet.perf_client_id, secret: cabinet.perf_secret },
+    `${day}T00:00:00.000Z`,
+    `${day}T23:59:59.999Z`,
+    10_000,
+    { allowPending: true, resumeState: saved?.report ?? null, pollAttempts: 8, maxBatchesPerRun: 2 },
+  );
+  if (!report) return { state: saved ?? { day, report: null }, rows: 0, note: `история ${day}: отчёт не получен` };
+  if (!report.complete) {
+    return { state: { day, report: report.resumeState }, rows: 0, note: `история ${day}: ещё готовится` };
+  }
+  const updatedAt = new Date().toISOString();
+  const rows = Object.entries(report.bySku).map(([sku, value]) => ({
+    client_id: cabinet.client_id,
+    sku,
+    date: day,
+    spent: Math.round(value.spent),
+    orders_money: Math.round(value.ordersMoney),
+    updated_at: updatedAt,
+  }));
+  // День без расхода тоже записываем — маркером, чтобы не заказывать его снова.
+  const payload = rows.length ? rows : [{
+    client_id: cabinet.client_id, sku: "-", date: day, spent: 0, orders_money: 0, updated_at: updatedAt,
+  }];
+  const { error } = await db.from("ozon_ad_daily").upsert(payload, { onConflict: "client_id,sku,date" });
+  if (error) return { state: { day, report: null }, rows: 0, note: `история ${day}: ${error.message}` };
+  return { state: null, rows: rows.length, note: `история ${day}: ${rows.length} строк` };
 }
 
 // Ozon analytics/stocks читаются из почасовых снимков. Эта задача каждый час
@@ -193,20 +262,35 @@ export async function GET(request: NextRequest) {
           .upsert(rows, { onConflict: "client_id,sku,days" });
         if (upsertError) throw new Error(upsertError.message);
       }
+      // Основной отчёт готов — остатком захода добираем один день истории.
+      // Ошибка дозаполнения не валит заход: окно и так обновлено.
+      let backfillNote: string | null = null;
+      let backfillState = saved?.state.backfill ?? undefined;
+      try {
+        const backfill = await backfillOneDay(db, cabinet, backfillState);
+        backfillNote = backfill.note;
+        backfillState = backfill.state ?? undefined;
+      } catch (backfillError) {
+        backfillNote = `история: ${backfillError instanceof Error ? backfillError.message : String(backfillError)}`;
+      }
       const stateError = await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
         status: "caught_up",
         attempts: 0,
         lastError: null,
-        state: { lastSyncedAt: syncedAt, lastRunAt: syncedAt },
+        state: { lastSyncedAt: syncedAt, lastRunAt: syncedAt, backfill: backfillState },
       });
       if (stateError) throw new Error(`состояние ozon-adverts: ${stateError}`);
+      const noteParts = [
+        report.errors.length ? report.errors.join("; ") : null,
+        backfillNote,
+      ].filter(Boolean);
       return {
         cabinet: cabinet.name,
         ok: true,
         rows: rows.length,
         partial: report.partial,
         deferred: false,
-        error: report.errors.length ? report.errors.join("; ") : null,
+        error: noteParts.length ? noteParts.join("; ") : null,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
