@@ -40,7 +40,7 @@ export interface RkNotePreset {
 
 export const RK_NOTE_PRESETS: RkNotePreset[] = [
   { note: "Откл", short: "Откл", tone: "off" },
-  { note: "Откл до отгрузки", short: "Откл до отгр.", tone: "off" },
+  { note: "Откл до отгрузки", short: "До отгрузки", tone: "off" },
   { note: "Круглосуточно", short: "24 ч", tone: "round" },
   { note: "Круглосуточно (ЕРК запущена)", short: "24 ч · ЕРК", tone: "round" },
   { note: "Работа с 17:00 - 24:00", short: "17–24", tone: "evening" },

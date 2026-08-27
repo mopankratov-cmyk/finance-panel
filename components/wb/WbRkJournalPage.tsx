@@ -201,16 +201,13 @@ export function WbRkJournalPage() {
       aria-label={entry ? `Задача: ${entry.note}` : emptyHint}
       className={`inline-flex items-center justify-center gap-1 rounded-full py-[3px] text-[10px] font-semibold leading-4 transition-colors ${
         entry
-          ? `w-[80px] px-2 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-55" : ""}`
+          ? `w-[80px] px-2 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-60" : ""}`
           : "border border-dashed border-slate-200 px-1 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
       }`}
     >
-      {entry ? (
-        <>
-          {entry.done ? <Check className="h-3 w-3 shrink-0" /> : null}
-          <span className="truncate">{rkNoteShort(entry.note)}</span>
-        </>
-      ) : <Plus className="h-3 w-3" />}
+      {entry
+        ? <span className={`truncate ${entry.done ? "line-through" : ""}`}>{rkNoteShort(entry.note)}</span>
+        : <Plus className="h-3 w-3" />}
     </button>
   );
 
