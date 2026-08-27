@@ -846,7 +846,11 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
     for (const [key, ad] of cache) {
       if (!key.startsWith(`${cabinet.clientId}:`)) continue;
       const sku = key.slice(cabinet.clientId.length + 1);
-      const offerId = images.skuToOffer[sku] ?? "";
+      // Сопоставляем так же, как экран «Реклама»: по карточкам И по остаткам.
+      // По одним карточкам часть SKU не находилась, и строка молча
+      // выбрасывалась — в себестоимость не попадало 99% расхода: 1 652 ₽
+      // вместо 142 262 ₽ по кабинету, при том что «Реклама» читает тот же кэш.
+      const offerId = resolveOzonOfferId(sku, images.skuToOffer, stockOfferBySku);
       if (offerId) adsByOffer.set(offerId, (adsByOffer.get(offerId) ?? 0) + ad.spent);
     }
     if (prices.ok) for (const priceRow of prices.rows) {
