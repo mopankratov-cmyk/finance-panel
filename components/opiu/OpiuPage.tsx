@@ -272,7 +272,7 @@ export function OpiuPage() {
           <label className="text-sm font-medium text-slate-500">Бренд</label>
           <select
             defaultValue="pankratov"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           >
             <option value="pankratov">ИП Панкратов</option>
           </select>
@@ -287,7 +287,7 @@ export function OpiuPage() {
                 value={rangeFrom}
                 max={rangeTo}
                 onChange={(e) => setRangeFrom(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
               />
               <span className="text-slate-400">–</span>
               <input
@@ -295,7 +295,7 @@ export function OpiuPage() {
                 value={rangeTo}
                 min={rangeFrom}
                 onChange={(e) => setRangeTo(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
               />
             </div>
           ) : (
@@ -303,7 +303,7 @@ export function OpiuPage() {
               type="month"
               value={month}
               onChange={(e) => handleMonthChange(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+              className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
             />
           )}
         </div>
