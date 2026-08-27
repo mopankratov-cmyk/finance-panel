@@ -99,10 +99,10 @@ function isEmpty(cell: DayCell | undefined) {
   return !cell || (cell.spent === 0 && cell.views === 0 && cell.clicks === 0 && cell.carts === 0 && cell.orders === 0);
 }
 
-function ToneCell({ value, tone, fraction }: { value: number | null; tone: string | null; fraction?: boolean }) {
+function ToneCell({ value, tone, fraction, edge }: { value: number | null; tone: string | null; fraction?: boolean; edge?: boolean }) {
   const text = value == null ? "—" : fraction ? money2(value) : money(value);
   return (
-    <td className={`min-w-[70px] whitespace-nowrap px-2 py-1 text-right tabular-nums ${tone ? WB_RK_SOFT_TONE[tone as "green"] : "text-slate-700"}`}>
+    <td className={`min-w-[70px] whitespace-nowrap py-1 text-right tabular-nums ${edge ? "pl-2 pr-3" : "px-2"} ${tone ? WB_RK_SOFT_TONE[tone as "green"] : "text-slate-700"}`}>
       {text}
     </td>
   );
@@ -163,7 +163,7 @@ export function WbRkJournalPage() {
   // а про то, что человек с этим днём собирается делать. Заливка обязана быть
   // на КАЖДОЙ его ячейке — иначе полоса рвётся везде, где у дня есть цифры, то
   // есть почти везде, и столбец перестаёт читаться как столбец.
-  const TASK_CELL = "bg-violet-50/40 border-l border-violet-100";
+  const TASK_CELL = "bg-violet-50/40 border-l border-slate-200";
   // Ширина столбца задач задана жёстко. Иначе её определяла самая длинная
   // задача дня — «Работа с 17:00 - 24:00 + ЕРК» раздвигала колонку, «Откл»
   // сжимала, и сетка гуляла от дня ко дню, утаскивая за собой соседний CPL.
@@ -712,7 +712,7 @@ export function WbRkJournalPage() {
                           <th className="min-w-[62px] bg-slate-50 px-2 pb-2 text-right font-normal">Затраты</th>
                           <th className="min-w-[70px] bg-slate-50 px-2 pb-2 text-right font-normal">CPO</th>
                           <th className="min-w-[70px] bg-slate-50 px-2 pb-2 text-right font-normal">CPL</th>
-                          {showNotes ? <th className={`border-l border-violet-100 bg-violet-50 px-2 pb-2 text-center font-semibold text-violet-700 ${TASK_COL}`}>Задача</th> : null}
+                          {showNotes ? <th className={`border-l border-slate-200 bg-violet-50 px-2 pb-2 text-center font-semibold text-violet-700 ${TASK_COL}`}>Задача</th> : null}
                         </Fragment>
                       ))}
                     </tr>
@@ -806,7 +806,7 @@ export function WbRkJournalPage() {
                                   <td className="px-2 py-1.5 text-right tabular-nums">{count(cell.orders)}</td>
                                   <td className="px-2 py-1.5 text-right tabular-nums">{money(cell.spent)}</td>
                                   <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
-                                  <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                                  <ToneCell value={cpl} tone={cplTone(cpl)} fraction edge />
                                   {showNotes ? <td className={`px-1 py-1.5 text-center ${TASK_CELL} ${TASK_COL}`}>{noteBadge}</td> : null}
                                 </Fragment>
                               );
@@ -858,7 +858,7 @@ export function WbRkJournalPage() {
                                     <td className="px-2 py-1 text-right tabular-nums">{count(cell.orders)}</td>
                                     <td className="px-2 py-1 text-right tabular-nums">{money(cell.spent)}</td>
                                     <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
-                                    <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                                    <ToneCell value={cpl} tone={cplTone(cpl)} fraction edge />
                                     {showNotes ? <td className={`px-1 py-1 text-center ${TASK_CELL} ${TASK_COL}`}>{cBadge}</td> : null}
                                   </Fragment>
                                 );
@@ -887,7 +887,7 @@ export function WbRkJournalPage() {
                             <td className="bg-slate-100 px-2 py-2 text-right tabular-nums">{count(total.orders)}</td>
                             <td className="bg-slate-100 px-2 py-2 text-right tabular-nums">{money(total.spent)}</td>
                             <ToneCell value={cpo} tone={cpoTone(cpo)} fraction />
-                            <ToneCell value={cpl} tone={cplTone(cpl)} fraction />
+                            <ToneCell value={cpl} tone={cplTone(cpl)} fraction edge />
                             {showNotes ? <td className={`${TASK_CELL} ${TASK_COL}`} /> : null}
                           </Fragment>
                         );
