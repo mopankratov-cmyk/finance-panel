@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { ChevronRight, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
