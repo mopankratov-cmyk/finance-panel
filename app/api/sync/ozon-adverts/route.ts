@@ -79,7 +79,7 @@ async function backfillOneDay(
     `${day}T00:00:00.000Z`,
     `${day}T23:59:59.999Z`,
     10_000,
-    { allowPending: true, resumeState: saved?.report ?? null, pollAttempts: 8, maxBatchesPerRun: 2 },
+    { allowPending: true, resumeState: saved?.report ?? null, pollAttempts: 8, maxBatchesPerRun: 2, createRetries: 1, createRetryDelayMs: 20_000 },
   );
   if (!report) return { state: saved ?? { day, report: null }, rows: 0, note: `история ${day}: отчёт не получен` };
   if (!report.complete) {
@@ -184,6 +184,8 @@ export async function GET(request: NextRequest) {
           resumeState: saved?.state.report ?? null,
           pollAttempts: 30,
           maxBatchesPerRun: 4,
+          createRetries: 3,
+          createRetryDelayMs: 30_000,
           onState: async (reportState) => {
             const stateError = await writeWbSyncState(db, cabinet.id, "ozon-adverts", {
               status: "running",

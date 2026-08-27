@@ -84,6 +84,14 @@ interface PerfProductReportOptions {
   pollAttempts?: number;
   pollIntervalMs?: number;
   maxBatchesPerRun?: number;
+  /**
+   * Повторы заказа при 429. Ozon пропускает заказы по одному с паузой, и
+   * фоновый синк (лимит функции 300 с) может позволить себе подождать и
+   * попробовать снова — иначе окно из шести батчей добирается шесть часов.
+   * Интерактивным экранам не задаётся: им ждать нельзя.
+   */
+  createRetries?: number;
+  createRetryDelayMs?: number;
 }
 
 export function performanceReportQuality(
@@ -172,15 +180,22 @@ export async function perfProductReport(
       if (batchState.done) return { ok: true as const, error: null, rateLimited: false };
       let uuid = batchState.uuid;
       if (!uuid) {
-        const gen = await tfetch(`${BASE}/api/client/statistics/json`, {
-          method: "POST", headers: { ...auth, "Content-Type": "application/json" },
-          body: JSON.stringify({ campaigns: batchState.campaigns, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
-          cache: "no-store",
-        });
+        const createRetries = Math.max(0, options.createRetries ?? 0);
+        const createDelay = Math.max(1_000, options.createRetryDelayMs ?? 30_000);
+        let gen: Response | null = null;
+        for (let attempt = 0; attempt <= createRetries; attempt++) {
+          if (attempt > 0) await sleep(createDelay);
+          gen = await tfetch(`${BASE}/api/client/statistics/json`, {
+            method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+            body: JSON.stringify({ campaigns: batchState.campaigns, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
+            cache: "no-store",
+          });
+          if (gen.status !== 429) break;
+        }
         // 429 на создании — Ozon разрешает готовить отчёты по одному. Это не
         // ошибка батча, а «сейчас больше нельзя»: помечаем отдельно, чтобы
         // не сжечь остальные батчи такими же отказами в этом же заходе.
-        if (!gen.ok) return { ok: false as const, error: `create HTTP ${gen.status}`, rateLimited: gen.status === 429 };
+        if (!gen || !gen.ok) return { ok: false as const, error: `create HTTP ${gen?.status ?? "?"}`, rateLimited: gen?.status === 429 };
         uuid = ((await gen.json()) as { UUID?: string }).UUID;
         if (!uuid) return { ok: false as const, error: "create: UUID отсутствует", rateLimited: false };
         batchState.uuid = uuid;
