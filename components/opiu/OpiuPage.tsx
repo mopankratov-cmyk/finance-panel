@@ -269,18 +269,17 @@ export function OpiuPage() {
 
       <div className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-slate-500">Бренд</label>
+          <label className="text-sm font-medium text-slate-500">Бренд</label>
           <select
-            disabled
-            defaultValue="all"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-500 shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
+            defaultValue="pankratov"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           >
-            <option value="all">Все бренды</option>
+            <option value="pankratov">ИП Панкратов</option>
           </select>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-slate-500">Период</label>
+          <label className="text-sm font-medium text-slate-500">Период</label>
           {isRangeTab ? (
             <div className="flex items-center gap-2">
               <input
@@ -387,7 +386,7 @@ export function OpiuPage() {
       ) : report ? (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table
-            className={`w-full border-collapse text-[17px] ${
+            className={`w-full border-collapse text-[14px] ${
               isRangeTab ? "table-fixed" : "min-w-[720px]"
             }`}
           >
@@ -460,15 +459,15 @@ export function OpiuPage() {
                   stripeIndex += 1;
                   const rowPad = isPercent ? "py-1.5" : "py-3";
                   const labelClass = isPercent
-                    ? "text-sm text-slate-400"
+                    ? "text-xs text-slate-400"
                     : isTotal
-                      ? "text-[17px] font-semibold text-slate-900"
-                      : "text-[17px] text-slate-700";
+                      ? "text-[14px] font-semibold text-slate-900"
+                      : "text-[14px] text-slate-700";
                   const valueSizeClass = isPercent
-                    ? "text-sm"
+                    ? "text-xs"
                     : isTotal
-                      ? "text-[17px] font-semibold"
-                      : "text-[17px] font-medium";
+                      ? "text-[14px] font-semibold"
+                      : "text-[14px] font-medium";
 
                   if (isRangeTab) {
                     const val = row.values[row.values.length - 1] ?? null;
@@ -546,7 +545,7 @@ export function OpiuPage() {
                       })}
                       <td
                         className={`px-4 ${rowPad} text-center tabular-nums ${
-                          isTotal ? "text-[17px] font-bold" : isPercent ? "text-sm font-medium" : "text-[17px] font-semibold"
+                          isTotal ? "text-[14px] font-bold" : isPercent ? "text-xs font-medium" : "text-[14px] font-semibold"
                         } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
                       >
                         {formatCell(row.values[row.values.length - 1] ?? null, row)}
