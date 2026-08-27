@@ -386,7 +386,7 @@ export function OpiuPage() {
       ) : report ? (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table
-            className={`w-full border-collapse text-[17px] ${
+            className={`w-full border-collapse text-[14px] ${
               isRangeTab ? "table-fixed" : "min-w-[720px]"
             }`}
           >
@@ -459,15 +459,15 @@ export function OpiuPage() {
                   stripeIndex += 1;
                   const rowPad = isPercent ? "py-1.5" : "py-3";
                   const labelClass = isPercent
-                    ? "text-sm text-slate-400"
+                    ? "text-xs text-slate-400"
                     : isTotal
-                      ? "text-[17px] font-semibold text-slate-900"
-                      : "text-[17px] text-slate-700";
+                      ? "text-[14px] font-semibold text-slate-900"
+                      : "text-[14px] text-slate-700";
                   const valueSizeClass = isPercent
-                    ? "text-sm"
+                    ? "text-xs"
                     : isTotal
-                      ? "text-[17px] font-semibold"
-                      : "text-[17px] font-medium";
+                      ? "text-[14px] font-semibold"
+                      : "text-[14px] font-medium";
 
                   if (isRangeTab) {
                     const val = row.values[row.values.length - 1] ?? null;
@@ -545,7 +545,7 @@ export function OpiuPage() {
                       })}
                       <td
                         className={`px-4 ${rowPad} text-center tabular-nums ${
-                          isTotal ? "text-[17px] font-bold" : isPercent ? "text-sm font-medium" : "text-[17px] font-semibold"
+                          isTotal ? "text-[14px] font-bold" : isPercent ? "text-xs font-medium" : "text-[14px] font-semibold"
                         } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
                       >
                         {formatCell(row.values[row.values.length - 1] ?? null, row)}
