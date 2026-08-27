@@ -6,6 +6,7 @@ import {
   opiuReportRefreshPeriod,
   syncOpiuReportPeriod,
 } from "@/lib/opiu/reportSync";
+import { OPIU_BRANDS } from "@/lib/opiu/constants";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const maxDuration = 300;
@@ -23,15 +24,24 @@ async function runFinancialMonitor(request: Request) {
     const reportPeriod = opiuReportRefreshPeriod(now);
     const forecastYear = Number(reportPeriod.dateTo.slice(0, 4));
     const forecastMonth = Number(reportPeriod.dateTo.slice(5, 7));
-    let reportSync = null;
-    let reportSyncError: string | null = null;
-    try {
-      reportSync = await syncOpiuReportPeriod(reportPeriod);
-    } catch (error) {
-      reportSyncError = error instanceof Error
-        ? error.message
-        : "Не удалось обновить финансовый отчёт WB";
-    }
+    // Синкаем финотчёт WB по КАЖДОМУ бренду отдельно — один упавший кабинет
+    // не должен блокировать обновление остальных.
+    const reportSyncByBrand = await Promise.all(OPIU_BRANDS.map(async (b) => {
+      try {
+        return { brand: b, result: await syncOpiuReportPeriod(reportPeriod, b.cabinetId), error: null as string | null };
+      } catch (error) {
+        return {
+          brand: b,
+          result: null,
+          error: error instanceof Error ? error.message : "Не удалось обновить финансовый отчёт WB",
+        };
+      }
+    }));
+    const reportSync = reportSyncByBrand[0]?.result ?? null;
+    const failedBrandSyncs = reportSyncByBrand.filter((r) => r.error);
+    const reportSyncError = failedBrandSyncs.length > 0
+      ? failedBrandSyncs.map((r) => `${r.brand.label}: ${r.error}`).join("; ")
+      : null;
     const forecast = await buildMarketplacePayoutForecast(forecastYear, forecastMonth);
     const result = await runServerFinancialAnalysis({ notify: true });
     const db = getSupabaseAdmin();
@@ -81,6 +91,12 @@ async function runFinancialMonitor(request: Request) {
         ? { period: reportPeriod, ...reportSync }
         : null,
       reportSyncError,
+      reportSyncByBrand: reportSyncByBrand.map((r) => ({
+        brand: r.brand.id,
+        label: r.brand.label,
+        synced: r.result?.synced ?? null,
+        error: r.error,
+      })),
     });
   } catch (error) {
     return NextResponse.json(

@@ -68,8 +68,9 @@ export function opiuReportRefreshPeriod(now = new Date()): OpiuReportPeriod {
 
 export async function syncOpiuReportPeriod(
   period: OpiuReportPeriod,
+  cabinetId: string = OPIU_WB_CABINET_ID,
 ): Promise<SyncReportRowsResult> {
-  const cabinet = await getWbCabinet(OPIU_WB_CABINET_ID);
+  const cabinet = await getWbCabinet(cabinetId);
   if (!cabinet) throw new OpiuReportCabinetNotFoundError();
   const token = resolveWbToken(cabinet, "statistics");
   return syncReportRows(cabinet.id, token, period.dateFrom, period.dateTo);

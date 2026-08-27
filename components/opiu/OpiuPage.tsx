@@ -243,7 +243,7 @@ export function OpiuPage() {
       const res = await fetch("/api/opiu/report-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dateFrom: week.rangeFrom, dateTo: week.rangeTo }),
+        body: JSON.stringify({ dateFrom: week.rangeFrom, dateTo: week.rangeTo, brand }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Ошибка пересинка");
