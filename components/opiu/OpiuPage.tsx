@@ -267,7 +267,7 @@ export function OpiuPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-slate-500">Бренд</label>
           <select
@@ -312,7 +312,7 @@ export function OpiuPage() {
           type="button"
           onClick={handleRefresh}
           disabled={activeRefreshing || activeLoading || (isRangeTab && !isValidRange)}
-          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+          className="mt-[26px] inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
         >
           {activeRefreshing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
