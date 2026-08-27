@@ -56,6 +56,8 @@ export interface PerfProductReportBatchState {
   uuid?: string;
   done?: boolean;
   bySku?: Record<string, { spent: number; ordersMoney: number }>;
+  /** Расход по дням: дата → товар → расход. Нужен, чтобы складывать любой период. */
+  byDay?: Record<string, Record<string, { spent: number; ordersMoney: number }>>;
 }
 
 export interface PerfProductReportResumeState {
@@ -105,6 +107,7 @@ export async function perfProductReport(
   options: PerfProductReportOptions = {},
 ): Promise<{
   bySku: Record<string, { spent: number; ordersMoney: number }>;
+  byDay: Record<string, Record<string, { spent: number; ordersMoney: number }>>;
   partial: boolean;
   errors: string[];
   complete: boolean;
@@ -126,6 +129,7 @@ export async function perfProductReport(
     const ids = allIds.slice(0, maxCampaigns);
     if (!ids.length) return {
       bySku: {},
+      byDay: {},
       partial: false,
       errors: [],
       complete: true,
@@ -133,6 +137,7 @@ export async function perfProductReport(
     };
 
     const bySku: Record<string, { spent: number; ordersMoney: number }> = {};
+    const byDay: Record<string, Record<string, { spent: number; ordersMoney: number }>> = {};
     // Ozon готовит Performance-отчёты асинхронно. Сохраняем UUID и уже
     // скачанные батчи, чтобы serverless-запуск мог продолжить их через час,
     // а не создавать новые отчёты бесконечно.
@@ -158,7 +163,7 @@ export async function perfProductReport(
       if (!uuid) {
         const gen = await tfetch(`${BASE}/api/client/statistics/json`, {
           method: "POST", headers: { ...auth, "Content-Type": "application/json" },
-          body: JSON.stringify({ campaigns: batchState.campaigns, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
+          body: JSON.stringify({ campaigns: batchState.campaigns, from: fromIso, to: toIso, groupBy: "DATE" }),
           cache: "no-store",
         });
         // 429 на создании — Ozon разрешает готовить отчёты по одному. Это не
@@ -203,12 +208,25 @@ export async function perfProductReport(
         }
         return { ok: false as const, error: `download HTTP ${rep.status}`, rateLimited: rep.status === 429 };
       }
-      const data = (await rep.json()) as Record<string, { report?: { rows?: { sku?: string; moneySpent?: string; ordersMoney?: string }[] } }>;
+      const data = (await rep.json()) as Record<string, { report?: { rows?: { date?: string; sku?: string; moneySpent?: string; ordersMoney?: string }[] } }>;
       const batchBySku: Record<string, { spent: number; ordersMoney: number }> = {};
+      // Расход по дням на товар. Скользящее окно «последние N дней» отвечает
+      // только на один вопрос — за эти N дней; на экране с периодом
+      // 01.08-26.08 оно молчит, и колонка рекламы показывает нули. Посуточные
+      // строки складываются под любой период, как это сделано для WB.
+      const batchByDay: Record<string, Record<string, { spent: number; ordersMoney: number }>> = {};
       for (const camp of Object.values(data)) {
         for (const row of camp.report?.rows ?? []) {
           const sku = String(row.sku ?? "");
           if (!sku) continue;
+          const day = String(row.date ?? "").slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+            const perDay = batchByDay[day] ?? (batchByDay[day] = {});
+            const d = perDay[sku] ?? { spent: 0, ordersMoney: 0 };
+            d.spent += numRu(row.moneySpent);
+            d.ordersMoney += numRu(row.ordersMoney);
+            perDay[sku] = d;
+          }
           const e = batchBySku[sku] ?? { spent: 0, ordersMoney: 0 };
           e.spent += numRu(row.moneySpent);
           e.ordersMoney += numRu(row.ordersMoney);
@@ -216,6 +234,7 @@ export async function perfProductReport(
         }
       }
       batchState.bySku = batchBySku;
+      batchState.byDay = batchByDay;
       batchState.done = true;
       await persistState();
       return { ok: true as const, error: null, rateLimited: false };
@@ -235,6 +254,15 @@ export async function perfProductReport(
       if (!result.ok && result.rateLimited) break;
     }
     for (const batch of resumeState.batches) {
+      for (const [day, perSku] of Object.entries(batch.byDay ?? {})) {
+        const target = byDay[day] ?? (byDay[day] = {});
+        for (const [sku, value] of Object.entries(perSku)) {
+          const aggregate = target[sku] ?? { spent: 0, ordersMoney: 0 };
+          aggregate.spent += value.spent;
+          aggregate.ordersMoney += value.ordersMoney;
+          target[sku] = aggregate;
+        }
+      }
       for (const [sku, value] of Object.entries(batch.bySku ?? {})) {
         const aggregate = bySku[sku] ?? { spent: 0, ordersMoney: 0 };
         aggregate.spent += value.spent;
@@ -250,7 +278,7 @@ export async function perfProductReport(
     const quality = performanceReportQuality(allIds.length, ids.length, resumeState.batches.length, completedBatches);
     const complete = completedBatches === resumeState.batches.length;
     if (!quality.available && !options.allowPending) return fail(`Performance report: ${errors.join("; ") || "нет готовых батчей"}`);
-    return { bySku, partial: quality.partial, errors, complete, resumeState };
+    return { bySku, byDay, partial: quality.partial, errors, complete, resumeState };
   } catch (error) {
     if (options.throwOnError) throw error instanceof Error ? error : new Error(String(error));
     return null;

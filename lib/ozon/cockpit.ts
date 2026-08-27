@@ -78,6 +78,25 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
   // Кэш расхода рекламы хранится по числу дней и означает «последние N дней».
   // Для периода, который кончился в прошлом, эта строка — не тот период, и брать
   // её значило бы показать расход не за то время. Такой период читаем живьём.
+  // Сначала посуточные строки: они складываются под ЛЮБОЙ период, в том числе
+  // закончившийся вчера. Скользящее окно этого не умеет — на периоде
+  // 01.08-26.08 оно молчало, и экран показывал нули вместо расхода.
+  const { data: dailyRows } = await db
+    .from("ozon_ad_daily")
+    .select("client_id, sku, spent, orders_money, updated_at")
+    .in("client_id", clientIds)
+    .gte("date", period.from)
+    .lte("date", period.to);
+  for (const row of (dailyRows ?? []) as AdCacheRow[]) {
+    const key = `${row.client_id}:${row.sku}`;
+    const entry = rows.get(key) ?? { spent: 0, ordersMoney: 0, updatedAt: null };
+    entry.spent += Number(row.spent ?? 0);
+    entry.ordersMoney += Number(row.orders_money ?? 0);
+    entry.updatedAt = row.updated_at ?? entry.updatedAt;
+    rows.set(key, entry);
+  }
+  if (rows.size) return rows;
+
   const { data } = period.endsToday
     ? await db
       .from("ozon_ad_cache")

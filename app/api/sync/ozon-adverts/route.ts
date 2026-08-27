@@ -151,6 +151,24 @@ export async function GET(request: NextRequest) {
         orders_money: Math.round(value.ordersMoney),
         updated_at: syncedAt,
       }));
+      // Посуточные строки: скользящее окно отвечает только за свои N дней, а
+      // экраны спрашивают произвольные периоды. Пишем и то, и другое, пока
+      // дни копятся.
+      const dailyRows = Object.entries(report.byDay ?? {}).flatMap(([date, perSku]) =>
+        Object.entries(perSku).map(([sku, value]) => ({
+          client_id: cabinet.client_id,
+          sku,
+          date,
+          spent: Math.round(value.spent),
+          orders_money: Math.round(value.ordersMoney),
+          updated_at: syncedAt,
+        })));
+      if (dailyRows.length) {
+        const { error: dailyError } = await db
+          .from("ozon_ad_daily")
+          .upsert(dailyRows, { onConflict: "client_id,sku,date" });
+        if (dailyError) throw new Error(dailyError.message);
+      }
       if (rows.length) {
         const { error: upsertError } = await db
           .from("ozon_ad_cache")
