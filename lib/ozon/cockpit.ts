@@ -316,24 +316,29 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
       }
     }
 
-    // Кэш рекламы Ozon лежит по числовому SKU, а аналитика продаж у части
-    // кабинетов приходит с артикулом продавца в том же поле. Из-за этого
-    // экономика искала расход по «CLR00912» там, где он записан под
-    // «1871577470», и показывала 418 ₽ вместо 28 026 ₽ — при том, что экран
-    // «Реклама» читает тот же кэш и цифру видит.
-    const offerToSku = new Map<string, string>();
-    for (const [numericSku, offer] of Object.entries(base.images.skuToOffer)) {
-      if (offer) offerToSku.set(String(offer), String(numericSku));
+    // Расход по артикулу собираем так же, как это делает экран «Реклама»:
+    // перебираем кэш и сводим числовой SKU к артикулу продавца той же
+    // функцией сопоставления, которая смотрит и в карточки, и в остатки.
+    //
+    // Раньше экономика шла обратным путём — искала в кэше по своему ключу — и
+    // промахивалась: кэш лежит под «1871577470», а группировка продаж у части
+    // кабинетов приходит под «CLR00912». В себестоимость не попадало 99%
+    // рекламы: 1 652 ₽ вместо 142 262 ₽ по кабинету.
+    const stockOfferBySku = indexOzonOfferIdsBySku(base.stocks.ok ? base.stocks.rows : []);
+    const adByOffer = new Map<string, { spent: number; ordersMoney: number }>();
+    for (const [key, value] of adCache) {
+      if (!key.startsWith(`${base.clientId}:`)) continue;
+      const cachedSku = key.slice(base.clientId.length + 1);
+      const offer = resolveOzonOfferId(cachedSku, base.images.skuToOffer, stockOfferBySku) || cachedSku;
+      const entry = adByOffer.get(offer) ?? { spent: 0, ordersMoney: 0 };
+      entry.spent += value.spent;
+      entry.ordersMoney += value.ordersMoney;
+      adByOffer.set(offer, entry);
     }
     for (const [sku, metrics] of grouped) {
-      const offerId = base.images.skuToOffer[sku] ?? (offerToSku.has(sku) ? sku : "");
+      const offerId = resolveOzonOfferId(sku, base.images.skuToOffer, stockOfferBySku) || sku;
       const stockValue = stockByOffer.get(offerId) ?? { free: 0, reserved: 0 };
-      // Сначала по числовому SKU, потом по исходному ключу: так подхватываются
-      // и правильные записи, и старые, записанные под артикулом.
-      const numericSku = offerToSku.get(sku);
-      const ad = (numericSku ? adCache.get(`${base.clientId}:${numericSku}`) : undefined)
-        ?? adCache.get(`${base.clientId}:${sku}`)
-        ?? { spent: 0, ordersMoney: 0 };
+      const ad = adByOffer.get(offerId) ?? { spent: 0, ordersMoney: 0 };
       skuRows.push({
         key: `${base.cabinetId}:${sku}`,
         cabinetId: base.cabinetId,
