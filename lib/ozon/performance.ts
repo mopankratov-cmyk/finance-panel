@@ -66,7 +66,7 @@ export interface PerfProductReportBatchState {
  * старый отчёт вернёт данные прежней формы. Признак формата отменяет
  * возобновление, чтобы отчёт заказали заново.
  */
-export const PERF_REPORT_FORMAT = "date-v1";
+export const PERF_REPORT_FORMAT = "sku-v2";
 
 export interface PerfProductReportResumeState {
   format?: string;
@@ -174,7 +174,7 @@ export async function perfProductReport(
       if (!uuid) {
         const gen = await tfetch(`${BASE}/api/client/statistics/json`, {
           method: "POST", headers: { ...auth, "Content-Type": "application/json" },
-          body: JSON.stringify({ campaigns: batchState.campaigns, from: fromIso, to: toIso, groupBy: "DATE" }),
+          body: JSON.stringify({ campaigns: batchState.campaigns, from: fromIso, to: toIso, groupBy: "NO_GROUP_BY" }),
           cache: "no-store",
         });
         // 429 на создании — Ozon разрешает готовить отчёты по одному. Это не
