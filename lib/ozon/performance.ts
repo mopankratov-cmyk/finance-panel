@@ -60,7 +60,16 @@ export interface PerfProductReportBatchState {
   byDay?: Record<string, Record<string, { spent: number; ordersMoney: number }>>;
 }
 
+/**
+ * Формат отчёта. Незавершённый отчёт продолжается по сохранённому UUID, но
+ * когда меняется сам запрос — например, добавляется разбивка по датам —
+ * старый отчёт вернёт данные прежней формы. Признак формата отменяет
+ * возобновление, чтобы отчёт заказали заново.
+ */
+export const PERF_REPORT_FORMAT = "date-v1";
+
 export interface PerfProductReportResumeState {
+  format?: string;
   periodFrom: string;
   periodTo: string;
   campaignIds: string[];
@@ -142,12 +151,14 @@ export async function perfProductReport(
     // скачанные батчи, чтобы serverless-запуск мог продолжить их через час,
     // а не создавать новые отчёты бесконечно.
     const canResume = options.resumeState
+      && options.resumeState.format === PERF_REPORT_FORMAT
       && options.resumeState.periodFrom === fromIso
       && options.resumeState.periodTo === toIso
       && options.resumeState.campaignIds.join(",") === ids.join(",");
     const resumeState: PerfProductReportResumeState = canResume
       ? structuredClone(options.resumeState!)
       : {
+          format: PERF_REPORT_FORMAT,
           periodFrom: fromIso,
           periodTo: toIso,
           campaignIds: ids,
