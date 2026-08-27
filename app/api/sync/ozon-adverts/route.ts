@@ -31,7 +31,7 @@ type OzonAdSyncResult = {
 interface OzonAdvertSyncState extends Record<string, unknown> {
   report?: PerfProductReportResumeState;
   /** Дозаполнение истории: один день за заход, недоигранный отчёт хранится тут. */
-  backfill?: { day: string; report: PerfProductReportResumeState | null };
+  backfill?: { day: string; report: PerfProductReportResumeState | null; misses?: number };
   lastSyncedAt?: string;
   lastRunAt?: string;
 }
@@ -50,8 +50,8 @@ const BACKFILL_WINDOW_DAYS = 28;
 async function backfillOneDay(
   db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   cabinet: OzonCabinet,
-  saved: { day: string; report: PerfProductReportResumeState | null } | undefined,
-): Promise<{ state: { day: string; report: PerfProductReportResumeState | null } | null; rows: number; note: string | null }> {
+  saved: { day: string; report: PerfProductReportResumeState | null; misses?: number } | undefined,
+): Promise<{ state: { day: string; report: PerfProductReportResumeState | null; misses?: number } | null; rows: number; note: string | null }> {
   if (!cabinet.perf_client_id || !cabinet.perf_secret) return { state: null, rows: 0, note: null };
 
   // Какой день брать: продолжаем недоигранный, иначе — самый свежий из
@@ -74,16 +74,26 @@ async function backfillOneDay(
   }
   if (!day) return { state: null, rows: 0, note: null };
 
+  // Зависший заказ пересдаём: день 26.08 провисел в NOT_STARTED два часа,
+  // пока заказанные позже отчёты спокойно обгоняли его. Три захода без
+  // прогресса — заказываем день заново.
+  const misses = saved?.misses ?? 0;
+  const resumeReport = misses >= 3 ? null : saved?.report ?? null;
   const report = await perfProductReport(
     { clientId: cabinet.perf_client_id, secret: cabinet.perf_secret },
     `${day}T00:00:00.000Z`,
     `${day}T23:59:59.999Z`,
     10_000,
-    { allowPending: true, resumeState: saved?.report ?? null, pollAttempts: 8, maxBatchesPerRun: 2, createRetries: 1, createRetryDelayMs: 20_000 },
+    { allowPending: true, resumeState: resumeReport, pollAttempts: 8, maxBatchesPerRun: 2, createRetries: 1, createRetryDelayMs: 20_000 },
   );
-  if (!report) return { state: saved ?? { day, report: null }, rows: 0, note: `история ${day}: отчёт не получен` };
+  if (!report) return { state: { day, report: resumeReport, misses: misses + 1 }, rows: 0, note: `история ${day}: отчёт не получен` };
   if (!report.complete) {
-    return { state: { day, report: report.resumeState }, rows: 0, note: `история ${day}: ещё готовится` };
+    const reordered = misses >= 3;
+    return {
+      state: { day, report: report.resumeState, misses: reordered ? 0 : misses + 1 },
+      rows: 0,
+      note: `история ${day}: ${reordered ? "пересдан заказ" : "ещё готовится"}`,
+    };
   }
   const updatedAt = new Date().toISOString();
   const rows = Object.entries(report.bySku).map(([sku, value]) => ({
