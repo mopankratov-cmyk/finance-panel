@@ -143,21 +143,24 @@ export async function POST(request: NextRequest) {
           await sleep(PAUSE_MS);
         }
         requested = true;
-        let chunk: SalesDetailRow[] = [];
+        let page_: { rows: SalesDetailRow[]; rawCount: number; lastRrdId: number | null };
         try {
-          chunk = await fetchSalesDetailPage(token, from, to, cursor);
+          page_ = await fetchSalesDetailPage(token, from, to, cursor);
         } catch (error) {
           // Одна встреча с лимитом — не приговор: ждём окно и пробуем ещё раз.
           if (!(error instanceof SalesDetailRateLimitError) || Date.now() + PAUSE_MS > deadline) throw error;
           await sleep(PAUSE_MS);
-          chunk = await fetchSalesDetailPage(token, from, to, cursor);
+          page_ = await fetchSalesDetailPage(token, from, to, cursor);
         }
         stat.pages += 1;
-        if (chunk.length === 0) { walkDone = true; break; }
-        rows.push(...chunk);
-        const last = chunk[chunk.length - 1]?.rrdId;
-        if (!last || last === cursor) { walkDone = true; break; }
-        cursor = last;
+        rows.push(...page_.rows);
+        // Конец отчёта — пустая СЫРАЯ страница. Страница без единого КИЗ
+        // (немаркируемый товар) концом не является: курсор двигается дальше.
+        if (page_.rawCount === 0 || page_.lastRrdId === null || page_.lastRrdId === cursor) {
+          walkDone = true;
+          break;
+        }
+        cursor = page_.lastRrdId;
       }
       // Дошли до конца отчёта — следующий прогон начнёт свежий обход с
       // перекрытием в неделю: поздние строки реализации доезжают задним

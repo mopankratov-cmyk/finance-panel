@@ -41,6 +41,14 @@ interface RawRow {
 
 const URL_DETAIL = "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed";
 
+export interface SalesDetailPage {
+  rows: SalesDetailRow[];
+  /** Сколько строк вернул WB до фильтра по КИЗ: 0 — настоящий конец отчёта. */
+  rawCount: number;
+  /** Последний rrd_id СЫРОЙ страницы — только им можно двигать курсор. */
+  lastRrdId: number | null;
+}
+
 export class SalesDetailRateLimitError extends Error {
   constructor() {
     super("Wildberries ограничивает детализацию реализации: один запрос в минуту на продавца.");
@@ -55,7 +63,7 @@ export async function fetchSalesDetailPage(
   to: string,
   rrdid: number,
   options: { limit?: number; timeoutMs?: number } = {},
-): Promise<SalesDetailRow[]> {
+): Promise<SalesDetailPage> {
   let response: Response | null = null;
   // Сеть до WB рвётся регулярно, а страница стоит минуты ожидания лимита —
   // терять её из-за одного оборванного соединения расточительно.
@@ -73,7 +81,7 @@ export async function fetchSalesDetailPage(
       await new Promise((resolve) => setTimeout(resolve, 4000));
     }
   }
-  if (!response) return [];
+  if (!response) return { rows: [], rawCount: 0, lastRrdId: null };
   if (response.status === 429) throw new SalesDetailRateLimitError();
   if (!response.ok) {
     throw new Error(`Детализация реализации: WB ответил ${response.status} ${(await response.text()).slice(0, 200)}`);
@@ -81,10 +89,19 @@ export async function fetchSalesDetailPage(
 
   // Конец выборки WB обозначает пустым телом, а не пустым массивом.
   const text = await response.text();
-  if (!text.trim()) return [];
+  if (!text.trim()) return { rows: [], rawCount: 0, lastRrdId: null };
   const payload = JSON.parse(text) as RawRow[] | { data?: RawRow[] };
   const raw: RawRow[] = Array.isArray(payload) ? payload : payload?.data ?? [];
 
+  // Курсор обязан двигаться по ПОСЛЕДНЕЙ СЫРОЙ строке страницы, а не по
+  // последней распознанной. Строки без КИЗ (немаркируемый товар) парсер
+  // отбрасывает, и страница из одних таких строк выглядела как конец
+  // отчёта — обход останавливался, не дойдя до маркируемых товаров дальше.
+  let lastRrdId: number | null = null;
+  for (const item of raw) {
+    const rid = Number(item.rrdId);
+    if (Number.isFinite(rid)) lastRrdId = rid;
+  }
   const rows: SalesDetailRow[] = [];
   for (const item of raw) {
     const kiz = String(item.kiz ?? "").trim();
@@ -101,7 +118,7 @@ export async function fetchSalesDetailPage(
       rrdId: Number.isFinite(Number(item.rrdId)) ? Number(item.rrdId) : null,
     });
   }
-  return rows;
+  return { rows, rawCount: raw.length, lastRrdId };
 }
 
 export const SALE_OPERATION = "Продажа";
