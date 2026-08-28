@@ -48,26 +48,43 @@ export async function collectWithdrawalsFromSoldTasks(
       continue; // кабинет без marketplace-токена — заданий у него нам не видно
     }
 
-    const { data: taskRows, error: tasksError } = await db
-      .from("wb_fbs_orders")
-      .select("order_id, srid, nm_id, article")
-      .eq("cabinet_id", cabinetId)
-      .gte("created_at_wb", since)
-      .not("order_id", "is", null);
+    // Страницами и свежие вперёд. Первый боевой прогон упёрся в молчаливый
+    // потолок Supabase (1 000 строк) и взял самые СТАРЫЕ задания — собранные
+    // до начала сканирования кодов; свежие выкупы в выборку не попали вовсе.
+    type TaskRow = { order_id: unknown; srid: string | null; nm_id: number | null; article: string | null };
+    const tasks: TaskRow[] = [];
+    let tasksError: string | null = null;
+    for (let page = 0; page < 10; page++) {
+      const { data: taskRows, error } = await db
+        .from("wb_fbs_orders")
+        .select("order_id, srid, nm_id, article")
+        .eq("cabinet_id", cabinetId)
+        .gte("created_at_wb", since)
+        .not("order_id", "is", null)
+        .order("created_at_wb", { ascending: false })
+        .range(page * 1000, page * 1000 + 999);
+      if (error) { tasksError = error.message; break; }
+      const batch = (taskRows ?? []) as TaskRow[];
+      tasks.push(...batch);
+      if (batch.length < 1000) break;
+    }
     if (tasksError) {
-      result.notes.push(`${cabinet.name}: задания не прочитаны — ${tasksError.message}`);
+      result.notes.push(`${cabinet.name}: задания не прочитаны — ${tasksError}`);
       continue;
     }
-    const tasks = (taskRows ?? []).filter((row) => Number(row.order_id) > 0);
-    if (!tasks.length) continue;
+    const valid = tasks.filter((row) => Number(row.order_id) > 0);
+    if (!valid.length) continue;
 
-    const orderIds = tasks.map((row) => Number(row.order_id));
+    const orderIds = valid.map((row) => Number(row.order_id));
     const { statuses } = await fetchFbsOrderStatuses(token, orderIds);
     result.checked += statuses.size;
 
-    const soldTasks = tasks.filter((row) => statuses.get(Number(row.order_id))?.wbStatus === "sold");
+    const soldTasks = valid.filter((row) => statuses.get(Number(row.order_id))?.wbStatus === "sold");
     result.sold += soldTasks.length;
-    if (!soldTasks.length) continue;
+    if (!soldTasks.length) {
+      result.notes.push(`${cabinet.name}: заданий ${valid.length}, выкупленных нет`);
+      continue;
+    }
 
     // Коды: сперва то, что уже собрано, — мета опрашивается только по дырам.
     const soldIds = soldTasks.map((row) => Number(row.order_id));
@@ -101,7 +118,7 @@ export async function collectWithdrawalsFromSoldTasks(
       }
     }
     result.notes.push(
-      `${cabinet.name}: заданий ${tasks.length}, выкуплено ${soldTasks.length}, `
+      `${cabinet.name}: заданий ${valid.length}, выкуплено ${soldTasks.length}, `
       + `кодов из базы ${fromDb}, из меты ${codeByOrder.size - fromDb}`
       + (metaError ? `, мета: ${metaError.slice(0, 80)}` : ""),
     );
