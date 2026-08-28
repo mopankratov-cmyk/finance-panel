@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCabinetsForScope } from "@/lib/warehouse/kizScope";
+import { readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { cabinetProductScope, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { parseKizCode } from "@/lib/wb/kizCodes";
 import { attachKizEntities } from "@/lib/warehouse/kizEntity";
@@ -125,7 +126,17 @@ export async function POST(request: NextRequest) {
       // ждать минуту внутри пользовательского запроса нельзя: берём столько
       // страниц, сколько успеваем, остальное доберётся следующим прогоном.
       const rows: SalesDetailRow[] = [];
-      let cursor = 0;
+      // Курсор живёт в базе. Раньше он обнулялся каждым запуском: заход
+      // начинал с самого начала периода, успевал снять две-три страницы до
+      // лимита «один запрос в минуту» и добавлял ноль — до свежих продаж
+      // обход не доходил никогда. Теперь каждый прогон продолжает с места,
+      // где остановился прошлый, и история добирается прогон за прогоном.
+      const savedCursor = await readWbSyncState<{ from?: string; to?: string; cursor?: number }>(
+        db, link.cabinetId, "kiz-sales-cursor",
+      );
+      const sameWalk = savedCursor?.state.from === from;
+      let cursor = sameWalk ? Number(savedCursor?.state.cursor ?? 0) : 0;
+      let walkDone = false;
       for (let page = 0; page < 3; page += 1) {
         if (page > 0) {
           if (Date.now() + PAUSE_MS > deadline) break;
@@ -142,12 +153,21 @@ export async function POST(request: NextRequest) {
           chunk = await fetchSalesDetailPage(token, from, to, cursor);
         }
         stat.pages += 1;
-        if (chunk.length === 0) break;
+        if (chunk.length === 0) { walkDone = true; break; }
         rows.push(...chunk);
         const last = chunk[chunk.length - 1]?.rrdId;
-        if (!last || last === cursor) break;
+        if (!last || last === cursor) { walkDone = true; break; }
         cursor = last;
       }
+      // Дошли до конца отчёта — следующий прогон начнёт свежий обход с
+      // перекрытием в неделю: поздние строки реализации доезжают задним
+      // числом. Не дошли — сохраняем место, откуда продолжать.
+      await writeWbSyncState(db, link.cabinetId, "kiz-sales-cursor", {
+        status: walkDone ? "caught_up" : "pending",
+        attempts: 0,
+        lastError: null,
+        state: walkDone ? { from: null, to: null, cursor: 0 } : { from, to, cursor },
+      });
       stat.withCode = rows.length;
 
       const ours = rows.filter((row) => allowsProduct(scope, row.nmId));
