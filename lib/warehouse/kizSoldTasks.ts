@@ -83,14 +83,28 @@ export async function collectWithdrawalsFromSoldTasks(
         if (first) codeByOrder.set(Number(row.order_id), String(first));
       }
     }
+    const fromDb = codeByOrder.size;
     const missing = soldIds.filter((id) => !codeByOrder.has(id));
+    let metaError: string | null = null;
     if (missing.length) {
-      const meta = await fetchFbsOrdersMetaBatch(token, missing);
-      for (const id of missing) {
-        const first = (meta.codes.get(id) ?? [])[0];
-        if (first) codeByOrder.set(id, first);
+      try {
+        const meta = await fetchFbsOrdersMetaBatch(token, missing);
+        for (const id of missing) {
+          const first = (meta.codes.get(id) ?? [])[0];
+          if (first) codeByOrder.set(id, first);
+        }
+      } catch (error) {
+        // Ошибка меты не должна ронять весь прогон: коды из базы уже есть,
+        // а причина отказа обязана попасть в заметку — молчаливый ноль
+        // сегодня уже стоил ложного вывода «коды не сканируются».
+        metaError = error instanceof Error ? error.message : String(error);
       }
     }
+    result.notes.push(
+      `${cabinet.name}: заданий ${tasks.length}, выкуплено ${soldTasks.length}, `
+      + `кодов из базы ${fromDb}, из меты ${codeByOrder.size - fromDb}`
+      + (metaError ? `, мета: ${metaError.slice(0, 80)}` : ""),
+    );
 
     // Фактическая цена и дата продажи этого заказа — по srid из статистики.
     const priceBySrid = new Map<string, { price: number | null; date: string | null }>();
