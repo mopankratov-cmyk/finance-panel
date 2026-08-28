@@ -76,7 +76,17 @@ export async function collectWithdrawalsFromSoldTasks(
     if (!valid.length) continue;
 
     const orderIds = valid.map((row) => Number(row.order_id));
-    const { statuses } = await fetchFbsOrderStatuses(token, orderIds);
+    // Лимит WB на этот API общий у всех наших сборщиков (kiz-codes каждые
+    // 15 минут, почасовые синки). Отказ по одному кабинету — заметка, а не
+    // смерть прогона: остальные кабинеты и следующий запуск своё доберут.
+    let statuses: Awaited<ReturnType<typeof fetchFbsOrderStatuses>>["statuses"];
+    try {
+      ({ statuses } = await fetchFbsOrderStatuses(token, orderIds));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      result.notes.push(`${cabinet.name}: статусы не получены — ${message.slice(0, 80)}`);
+      continue;
+    }
     result.checked += statuses.size;
 
     const soldTasks = valid.filter((row) => statuses.get(Number(row.order_id))?.wbStatus === "sold");
