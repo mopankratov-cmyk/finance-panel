@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { checkCronAuth } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCabinetsForScope } from "@/lib/warehouse/kizScope";
 import { readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
@@ -83,8 +84,12 @@ const migrationHint = "Примените миграции 202608240023–202608
  * выводит сам маркетплейс, и попытка вывести повторно будет отказом.
  */
 export async function POST(request: NextRequest) {
+  // Обход реализации занимает минуты, а вкладка живёт своей жизнью: запрос
+  // из браузера обрывается перезагрузкой страницы. Машинный вызов с кроновым
+  // секретом даёт устойчивый путь — им пользуются ночной прогон и ручной
+  // добор из консоли.
   const gate = await requireApiSession();
-  if (gate) return gate;
+  if (gate && (await checkCronAuth(request))) return gate;
   const body = (await request.json().catch(() => null)) as
     { from?: string; to?: string; entityId?: string | null } | null;
   const scope = await wbCabinetsForScope(body?.entityId ?? null);
