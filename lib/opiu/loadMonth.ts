@@ -1,5 +1,5 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import type { WbAdStat } from "@/lib/wb/types";
+import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveOpiuBrand, type OpiuBrand } from "./constants";
 import { buildOpiuReport, type OpiuReport } from "./buildReport";
@@ -17,6 +17,33 @@ function financeDb() {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase service role не настроен");
   return db;
+}
+
+/** Совпадает ли артикул с хотя бы одним префиксом суб-бренда (регистронезависимо). Без префиксов — всегда true (фильтра нет). */
+function matchesArticlePrefix(article: string | null | undefined, prefixes: string[] | undefined): boolean {
+  if (!prefixes || prefixes.length === 0) return true;
+  const normalized = String(article ?? "").trim().toUpperCase();
+  if (!normalized) return false;
+  return prefixes.some((p) => normalized.startsWith(p.toUpperCase()));
+}
+
+/**
+ * nm_id этого суб-бренда — для фильтрации wb_advert_nm_daily (там нет артикула,
+ * только nm_id). undefined = фильтра не нужно (бренд без articlePrefixes).
+ */
+function brandNmIdWhitelist(
+  brand: OpiuBrand,
+  orders: OpiuOrder[],
+  saleDateRows: WbReportRow[],
+): Set<number> | undefined {
+  if (!brand.articlePrefixes?.length) return undefined;
+  const ids = new Set<number>();
+  for (const o of orders) if (o.nmId != null) ids.add(o.nmId);
+  for (const r of saleDateRows) {
+    const nmId = Number(r.nm_id);
+    if (Number.isFinite(nmId)) ids.add(nmId);
+  }
+  return ids;
 }
 
 export async function fetchOrders(
@@ -60,20 +87,35 @@ export async function fetchOrders(
     warehouseName: row.warehouse ?? undefined,
     regionName: row.region ?? undefined,
   }));
-  return overlayFunnelOrders(cachedOrders, funnelFacts, brand.cabinetId);
+  const overlaid = overlayFunnelOrders(cachedOrders, funnelFacts, brand.cabinetId);
+  if (!brand.articlePrefixes?.length) return overlaid;
+  // Суб-бренд внутри общего кабинета: Воронка не хранит артикул (только
+  // nm_id), поэтому whitelist nm_id считаем по сырым wb_orders (у них
+  // supplier_article есть), а фильтруем уже итоговый (после оверлея) список —
+  // так под фильтр подпадают и синтетические записи из Воронки.
+  const brandNmIds = new Set(
+    rows
+      .filter((r) => matchesArticlePrefix(r.supplier_article, brand.articlePrefixes))
+      .map((r) => r.nm_id),
+  );
+  return overlaid.filter((o) => o.nmId != null && brandNmIds.has(o.nmId));
 }
 
 // Расход на рекламу берём из синхронизированной таблицы wb_advert_nm_daily (cron),
 // а не из живого advert/v3/fullstats — у того лимит 1 запрос/мин → ОПиУ ловил 429/500.
+// nmIdWhitelist — для суб-брендов внутри общего кабинета (Norvia/Heaton): таблица
+// хранит расход по nm_id, а не по артикулу, поэтому фильтр по префиксу артикула
+// применяем через набор nm_id, уже вычисленный по заказам/отчёту этого суб-бренда.
 async function fetchAdStats(
   dateFrom: string,
   dateTo: string,
   brand: OpiuBrand,
+  nmIdWhitelist?: Set<number>,
 ): Promise<WbAdStat[]> {
   const client = financeDb();
   const { data, error } = await client
     .from("wb_advert_nm_daily")
-    .select("date, spent")
+    .select("date, spent, nm_id")
     .eq("cabinet_id", brand.cabinetId)
     .gte("date", dateFrom)
     .lte("date", dateTo);
@@ -86,6 +128,7 @@ async function fetchAdStats(
   // Агрегируем расход по дате → один WbAdStat с массивом days (как ждёт adsSpendInRange).
   const byDate = new Map<string, number>();
   for (const row of data ?? []) {
+    if (nmIdWhitelist && !nmIdWhitelist.has(Number(row.nm_id))) continue;
     const d = String(row.date).slice(0, 10);
     byDate.set(d, (byDate.get(d) ?? 0) + Number(row.spent ?? 0));
   }
@@ -102,7 +145,9 @@ async function fetchProductCosts(brand: OpiuBrand): Promise<ProductCostRow[]> {
     .eq("entity", brand.entity);
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as ProductCostRow[];
+  const rows = (data ?? []) as ProductCostRow[];
+  if (!brand.articlePrefixes?.length) return rows;
+  return rows.filter((r) => matchesArticlePrefix(r.article, brand.articlePrefixes));
 }
 
 async function fetchWarehouseCosts(
@@ -170,10 +215,9 @@ export async function loadOpiuMonth(
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
   const [
-    saleDateRows,
-    reportDateRows,
+    saleDateRowsRaw,
+    reportDateRowsRaw,
     orders,
-    adStats,
     costs,
     warehouseByWeek,
     deliveryCosts,
@@ -181,7 +225,6 @@ export async function loadOpiuMonth(
     fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
     fetchReportRows(dateFrom, dateTo, "report", brand.cabinetId),
     fetchOrders(dateFrom, dateTo, refresh, brand),
-    fetchAdStats(dateFrom, dateTo, brand),
     fetchProductCosts(brand),
     fetchWarehouseCosts(month, weeks, brand),
     fetchDeliveryCosts().catch((e) => {
@@ -189,6 +232,9 @@ export async function loadOpiuMonth(
       return [];
     }),
   ]);
+  const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
+  const reportDateRows = reportDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
+  const adStats = await fetchAdStats(dateFrom, dateTo, brand, brandNmIdWhitelist(brand, orders, saleDateRows));
 
   const report = buildOpiuReport(
     weeks,
@@ -240,16 +286,17 @@ export async function loadOpiuSalePeriod(
 }> {
   const brand = resolveOpiuBrand(brandId);
   const period = periodFromRange(dateFrom, dateTo);
-  const [saleDateRows, orders, adStats, costs, deliveryCosts] = await Promise.all([
+  const [saleDateRowsRaw, orders, costs, deliveryCosts] = await Promise.all([
     fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
     fetchOrders(dateFrom, dateTo, false, brand),
-    fetchAdStats(dateFrom, dateTo, brand),
     fetchProductCosts(brand),
     fetchDeliveryCosts().catch((e) => {
       console.error("[opiu] delivery costs read:", e instanceof Error ? e.message : e);
       return [];
     }),
   ]);
+  const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
+  const adStats = await fetchAdStats(dateFrom, dateTo, brand, brandNmIdWhitelist(brand, orders, saleDateRows));
 
   const report = buildOpiuReport(
     [period],
