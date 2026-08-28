@@ -59,6 +59,10 @@ export interface KizSalesCabinet {
    * образец сразу показывает, что реально пришло от WB.
    */
   sample?: Array<{ nmId: number | null; srid: string | null; brand: string | null }>;
+  /** Даты продаж, которые видел этот прогон, — по ним видно, где идёт обход. */
+  range?: { from: string | null; to: string | null };
+  /** Обход дошёл до конца отчёта: курсор сброшен, следующий прогон начнёт заново. */
+  walkComplete?: boolean;
   added: number;
   pages: number;
   error: string | null;
@@ -183,6 +187,11 @@ export async function POST(request: NextRequest) {
         state: walkDone ? { from: null, to: null, cursor: 0 } : { from, to, cursor },
       });
       stat.withCode = rows.length;
+      stat.walkComplete = walkDone;
+      {
+        const dates = rows.map((row) => row.saleAt).filter((d): d is string => Boolean(d)).sort();
+        stat.range = { from: dates[0] ?? null, to: dates[dates.length - 1] ?? null };
+      }
 
       // Бренд важнее исторического allowlist nmID: список «своих» номенклатур
       // отстаёт от новых карточек, и без бренда фильтр отсёк ВСЕ 6 207 строк
