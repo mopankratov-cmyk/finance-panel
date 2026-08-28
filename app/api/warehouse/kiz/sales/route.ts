@@ -19,8 +19,6 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-/** «Склад продавца» в отчёте заказов WB — это и есть FBS. */
-const FBS_WAREHOUSE_TYPE = "Склад продавца";
 /** Отчёт помнит продажи примерно с февраля 2025 — глубже кодов в нём нет. */
 const MAX_DAYS_BACK = 200;
 
@@ -227,13 +225,30 @@ export async function POST(request: NextRequest) {
       stat.returns = returns.length;
       if (sales.length === 0 && returns.length === 0) continue;
 
-      // Схема продажи — по заказу: srid находит строку в wb_orders.
+      // Схема продажи. Тип склада заказа схемой НЕ является — грабли,
+      // знакомые ещё по РНП: у живых ФБС-продаж NORVIA warehouse_type стоял
+      // «иным складом», и все 340 строк подряд ушли в ФБО, реестр вывода
+      // оставался пустым. Честный признак ФБС — сборочное задание: заказ,
+      // который собирал продавец, лежит в wb_fbs_orders по своему srid.
       const srids = [...new Set([...sales, ...returns].map((row) => row.srid).filter((value): value is string => !!value))];
       const schemeBySrid = new Map<string, string>();
       for (let offset = 0; offset < srids.length; offset += 200) {
-        const { data } = await db.from("wb_orders").select("srid, warehouse_type").in("srid", srids.slice(offset, offset + 200));
+        const { data } = await db
+          .from("wb_fbs_orders")
+          .select("srid")
+          .eq("cabinet_id", link.cabinetId)
+          .in("srid", srids.slice(offset, offset + 200));
         for (const row of data ?? []) {
-          schemeBySrid.set(String(row.srid), String(row.warehouse_type ?? "") === FBS_WAREHOUSE_TYPE ? "fbs" : "fbw");
+          if (row.srid) schemeBySrid.set(String(row.srid), "fbs");
+        }
+      }
+      // Остальные srid проверяем по статистике заказов: нашёлся и не задание —
+      // продажа со склада WB, её выводит сам маркетплейс.
+      const rest = srids.filter((srid) => !schemeBySrid.has(srid));
+      for (let offset = 0; offset < rest.length; offset += 200) {
+        const { data } = await db.from("wb_orders").select("srid").in("srid", rest.slice(offset, offset + 200));
+        for (const row of data ?? []) {
+          if (row.srid) schemeBySrid.set(String(row.srid), "fbw");
         }
       }
 
