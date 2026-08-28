@@ -58,6 +58,27 @@ export async function POST(request: NextRequest) {
       byCabinet.set(String(row.cabinet_id), list);
     }
     const taskInfo = new Map(tasks.map((row) => [Number(row.order_id), row]));
+    // Фактическая цена продажи — из статистики заказов по srid задания.
+    // Средняя по модели для файла вывода не годится: в Честный Знак идёт
+    // цена реализации именно этой продажи.
+    const priceBySrid = new Map<string, { finished: number | null; withDisc: number | null }>();
+    {
+      const srids = [...new Set(tasks.map((row) => row.srid).filter((v): v is string => Boolean(v)))];
+      for (let offset = 0; offset < srids.length; offset += 200) {
+        const { data: orderRows } = await db
+          .from("wb_orders")
+          .select("srid, total_price, discount_percent, finished_price")
+          .in("srid", srids.slice(offset, offset + 200));
+        for (const row of orderRows ?? []) {
+          const total = Number(row.total_price);
+          const disc = Number(row.discount_percent);
+          priceBySrid.set(String(row.srid), {
+            finished: row.finished_price != null ? Number(row.finished_price) : null,
+            withDisc: Number.isFinite(total) ? Math.round(total * (1 - (Number.isFinite(disc) ? disc : 0) / 100)) : null,
+          });
+        }
+      }
+    }
     const out: Array<Record<string, unknown>> = [];
     for (const [cabinetId, orderIds] of byCabinet) {
       const cabinet = await getWbCabinet(cabinetId);
@@ -78,6 +99,8 @@ export async function POST(request: NextRequest) {
           supplierStatus: status?.supplierStatus ?? null,
           wbStatus: status?.wbStatus ?? null,
           code: (result.codes.get(orderId) ?? [])[0] ?? null,
+          priceFinished: info?.srid ? priceBySrid.get(String(info.srid))?.finished ?? null : null,
+          priceWithDisc: info?.srid ? priceBySrid.get(String(info.srid))?.withDisc ?? null : null,
         });
       }
     }
