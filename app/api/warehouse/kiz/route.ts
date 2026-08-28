@@ -187,6 +187,21 @@ export async function GET(request: NextRequest) {
   if (!db) return fail("Supabase не настроен", 500);
 
   try {
+    // ?list=pending — состав корзины «к выводу», а не только её размер.
+    // Менеджеру нужно видеть, ЧТО именно лежит в реестре: артикул, цену,
+    // дату продажи и откуда строка пришла. Сводка отвечала лишь «сколько».
+    if (new URL(request.url).searchParams.get("list") === "pending") {
+      let query = db
+        .from("kiz_withdrawals")
+        .select("code, nm_id, price, sold_at, scheme, source, cabinet_id, legal_entity_id")
+        .eq("status", "sold")
+        .order("sold_at", { ascending: false })
+        .limit(500);
+      if (scope.ok) query = query.eq("legal_entity_id", scope.entity.id);
+      const { data: rows, error } = await query;
+      if (error) return fail(String(error.message), 500);
+      return NextResponse.json({ data: { rows: rows ?? [] }, error: null });
+    }
     return NextResponse.json({ data: await summarize(db, scope.ok ? scope.entity.id : null), error: null });
   } catch (error) {
     const code = (error as { code?: string })?.code;
