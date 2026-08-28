@@ -53,6 +53,12 @@ export interface KizSalesCabinet {
   /** Схему определить не удалось: заказ по srid не найден. */
   unknown: number;
   returns: number;
+  /**
+   * Первые строки отчёта, когда «наших» не нашлось вовсе. Молчаливый ноль
+   * не отличим от сломанного разбора полей или пустого справочника брендов —
+   * образец сразу показывает, что реально пришло от WB.
+   */
+  sample?: Array<{ nmId: number | null; srid: string | null; brand: string | null }>;
   added: number;
   pages: number;
   error: string | null;
@@ -197,6 +203,13 @@ export async function POST(request: NextRequest) {
         }
       }
       const ours = rows.filter((row) => allowsProduct(scope, row.nmId, row.nmId != null ? brandByNm.get(row.nmId) : undefined));
+      if (rows.length > 0 && ours.length === 0) {
+        stat.sample = rows.slice(0, 3).map((row) => ({
+          nmId: row.nmId,
+          srid: row.srid,
+          brand: row.nmId != null ? brandByNm.get(row.nmId) ?? null : null,
+        }));
+      }
       stat.ours = ours.length;
       const sales = ours.filter((row) => row.operation === SALE_OPERATION);
       const returns = ours.filter((row) => row.operation === RETURN_OPERATION);
