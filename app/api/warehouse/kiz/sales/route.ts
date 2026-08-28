@@ -63,6 +63,8 @@ export interface KizSalesCabinet {
   range?: { from: string | null; to: string | null };
   /** Обход дошёл до конца отчёта: курсор сброшен, следующий прогон начнёт заново. */
   walkComplete?: boolean;
+  /** Первые наши строки: способ доставки и склад — чтобы схема не гадалась вслепую. */
+  ourSample?: Array<{ nmId: number | null; saleAt: string | null; deliveryMethod: string; warehouseType: string | null }>;
   added: number;
   pages: number;
   error: string | null;
@@ -233,6 +235,15 @@ export async function POST(request: NextRequest) {
         for (const row of data ?? []) {
           schemeBySrid.set(String(row.srid), String(row.warehouse_type ?? "") === FBS_WAREHOUSE_TYPE ? "fbs" : "fbw");
         }
+      }
+
+      if (ours.length) {
+        stat.ourSample = ours.slice(0, 6).map((row) => ({
+          nmId: row.nmId,
+          saleAt: row.saleAt,
+          deliveryMethod: row.deliveryMethod,
+          warehouseType: row.srid ? (schemeBySrid.has(row.srid) ? (schemeBySrid.get(row.srid) === "fbs" ? "Склад продавца" : "иной склад") : "srid не найден") : "без srid",
+        }));
       }
 
       const returnedCodes = new Set(
