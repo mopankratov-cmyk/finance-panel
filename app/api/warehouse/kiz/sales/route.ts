@@ -173,7 +173,25 @@ export async function POST(request: NextRequest) {
       });
       stat.withCode = rows.length;
 
-      const ours = rows.filter((row) => allowsProduct(scope, row.nmId));
+      // Бренд важнее исторического allowlist nmID: список «своих» номенклатур
+      // отстаёт от новых карточек, и без бренда фильтр отсёк ВСЕ 6 207 строк
+      // с кодами, включая куртки NORVIA, ради которых сбор и затевался.
+      // Бренд берём из общего справочника карточек кабинета.
+      const brandByNm = new Map<number, string>();
+      {
+        const nmIds = [...new Set(rows.map((row) => row.nmId).filter((nm): nm is number => nm != null))];
+        for (let offset = 0; offset < nmIds.length; offset += 500) {
+          const { data: cardRows } = await db
+            .from("wb_cards")
+            .select("nm_id, brand")
+            .eq("cabinet_id", link.cabinetId)
+            .in("nm_id", nmIds.slice(offset, offset + 500));
+          for (const card of cardRows ?? []) {
+            if (card.brand) brandByNm.set(Number(card.nm_id), String(card.brand));
+          }
+        }
+      }
+      const ours = rows.filter((row) => allowsProduct(scope, row.nmId, row.nmId != null ? brandByNm.get(row.nmId) : undefined));
       stat.ours = ours.length;
       const sales = ours.filter((row) => row.operation === SALE_OPERATION);
       const returns = ours.filter((row) => row.operation === RETURN_OPERATION);
