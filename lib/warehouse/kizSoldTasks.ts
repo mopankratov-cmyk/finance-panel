@@ -192,6 +192,43 @@ export async function collectWithdrawalsFromSoldTasks(
     }
   }
 
+  // Самовыправление цен: строки, записанные до решения «цена — фактическая
+  // покупателя», лежат с ценой продавца. Пока строка не отправлена, цену
+  // можно и нужно поправить по статистике заказа.
+  {
+    const { data: pendingRows } = await db
+      .from("kiz_withdrawals")
+      .select("code, srid, price")
+      .eq("status", "sold")
+      .in("cabinet_id", cabinetIds)
+      .not("srid", "is", null)
+      .limit(1000);
+    const rows = pendingRows ?? [];
+    const srids = [...new Set(rows.map((row) => String(row.srid)))];
+    const factual = new Map<string, number>();
+    for (let offset = 0; offset < srids.length; offset += 200) {
+      const { data: orderRows } = await db
+        .from("wb_orders")
+        .select("srid, finished_price")
+        .in("srid", srids.slice(offset, offset + 200));
+      for (const row of orderRows ?? []) {
+        if (row.finished_price != null) factual.set(String(row.srid), Number(row.finished_price));
+      }
+    }
+    let repriced = 0;
+    for (const row of rows) {
+      const price = factual.get(String(row.srid));
+      if (price == null || Number(row.price) === price) continue;
+      const { error } = await db
+        .from("kiz_withdrawals")
+        .update({ price, updated_at: new Date().toISOString() })
+        .eq("code", row.code)
+        .eq("status", "sold");
+      if (!error) repriced += 1;
+    }
+    if (repriced) result.notes.push(`цены выправлены на фактические: ${repriced}`);
+  }
+
   if (result.soldWithoutCode > 0) {
     result.notes.push(`выкуплено без кода в мете: ${result.soldWithoutCode} — код смотреть в архиве заданий WB`);
   }

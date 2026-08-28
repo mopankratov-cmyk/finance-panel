@@ -111,14 +111,17 @@ export async function collectKizFromTasks(db: SupabaseClient, cabinetIds: string
   for (let offset = 0; offset < srids.length; offset += 100) {
     const { data } = await db
       .from("wb_sales")
-      .select("srid, sale_id, price_with_disc, for_pay, date, nm_id")
+      .select("srid, sale_id, finished_price, price_with_disc, for_pay, date, nm_id")
       .in("srid", srids.slice(offset, offset + 100));
     for (const row of data ?? []) {
       const id = String(row.sale_id ?? "");
       if (id.startsWith("R")) returned.add(String(row.srid));
       else if (id.startsWith("S")) {
         bought.set(String(row.srid), {
-          price: Number(row.price_with_disc ?? row.for_pay) || null,
+          // Фактическая цена покупателя (решение владельца 28.08): в ЧЗ при
+          // «розничной продаже» идёт то, что реально заплатили, а не цена
+          // продавца до СПП.
+          price: Number(row.finished_price ?? row.price_with_disc ?? row.for_pay) || null,
           soldAt: row.date ? String(row.date).slice(0, 10) : null,
           nmId: row.nm_id === null || row.nm_id === undefined ? null : Number(row.nm_id),
           article: null,
