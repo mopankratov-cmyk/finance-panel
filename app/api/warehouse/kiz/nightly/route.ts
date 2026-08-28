@@ -73,11 +73,20 @@ async function run(request: NextRequest) {
   }
 
   try {
-    const result = await collectKizFromTasks(db, cabinetIds);
-    // Реестр вывода наполняется из выкупленных заданий: статус sold живьём,
-    // код из меты, фактическая цена по srid. Менеджеру остаётся скачать файл
-    // на вкладке КИЗ и пометить отправленным.
+    // Реестр вывода — ПЕРВЫМ шагом: он легче (статусы пачками по 1000 и
+    // точечная мета) и не должен погибать из-за лимита, который выжег
+    // тяжёлый опрос всех заданий. Шаги независимы, каждый переживает отказ
+    // соседа.
     const withdrawals = await collectWithdrawalsFromSoldTasks(db, cabinetIds);
+    let result = { added: 0, enriched: 0 } as Awaited<ReturnType<typeof collectKizFromTasks>>;
+    let tasksError: string | null = null;
+    try {
+      result = await collectKizFromTasks(db, cabinetIds);
+    } catch (error) {
+      if (error instanceof KizTasksMigrationError) throw error;
+      tasksError = error instanceof Error ? error.message : String(error);
+    }
+    if (tasksError) withdrawals.notes.push(`опрос заданий: ${tasksError.slice(0, 100)}`);
     const attached = await attachKizEntities(db);
     // В журнал пишем то, ради чего прогон был: сколько кодов прибавилось.
     // Дописанные даты идут туда же — по ним видно, что старый долг убывает.
