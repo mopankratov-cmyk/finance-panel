@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { attachKizEntities } from "@/lib/warehouse/kizEntity";
 import { collectKizFromTasks, KIZ_NIGHTLY_JOB, KizTasksMigrationError } from "@/lib/warehouse/kizTasks";
+import { collectWithdrawalsFromSoldTasks } from "@/lib/warehouse/kizSoldTasks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -73,11 +74,19 @@ async function run(request: NextRequest) {
 
   try {
     const result = await collectKizFromTasks(db, cabinetIds);
+    // Реестр вывода наполняется из выкупленных заданий: статус sold живьём,
+    // код из меты, фактическая цена по srid. Менеджеру остаётся скачать файл
+    // на вкладке КИЗ и пометить отправленным.
+    const withdrawals = await collectWithdrawalsFromSoldTasks(db, cabinetIds);
     const attached = await attachKizEntities(db);
     // В журнал пишем то, ради чего прогон был: сколько кодов прибавилось.
     // Дописанные даты идут туда же — по ним видно, что старый долг убывает.
-    await writeSyncLog(KIZ_NIGHTLY_JOB, "ok", result.added + result.enriched, null, startedAt);
-    return NextResponse.json({ data: { ...result, attached }, error: null });
+    const note = [
+      withdrawals.added ? `к выводу добавлено: ${withdrawals.added}` : null,
+      ...withdrawals.notes,
+    ].filter(Boolean).join("; ") || null;
+    await writeSyncLog(KIZ_NIGHTLY_JOB, "ok", result.added + result.enriched + withdrawals.added, note, startedAt);
+    return NextResponse.json({ data: { ...result, withdrawals, attached }, error: null });
   } catch (error) {
     const message = error instanceof KizTasksMigrationError
       ? error.message
