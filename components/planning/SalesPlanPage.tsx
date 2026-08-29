@@ -280,9 +280,13 @@ export function SalesPlanPage({
     const controller = new AbortController();
     setCatalogLoading(true);
     setCatalogError(null);
+    // Для Ozon берём снимок «Остатки» кокпита, а не голый /api/ozon/stocks:
+    // тот отдаёт только остатки, и предложение плана считалось от нулевого
+    // спроса — «Предложить план» всегда давало 0 шт./день. В снимке рядом с
+    // остатком лежат заказы за период и скорость продаж, и он уже прогрет.
     const url = marketplace === "wb"
       ? `/api/planning/skus?cabinet=${encodeURIComponent(cabinetId)}&year=${year}&month=${activeMonth}`
-      : `/api/ozon/stocks?cabinet=${encodeURIComponent(cabinetId)}`;
+      : `/api/ozon/cockpit?view=stocks&days=30&cabinet=${encodeURIComponent(cabinetId)}`;
     fetch(url, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = await response.json() as {
@@ -307,7 +311,11 @@ export function SalesPlanPage({
             seasonality_note?: string;
             demand_factor?: number;
           }[];
-          rows?: { external_id?: string; art: string; name: string; free: number; img_url?: string | null }[];
+          rows?: {
+            external_id?: string; art?: string; name: string; free?: number; img_url?: string | null;
+            // Поля снимка «Остатки» Ozon-кокпита.
+            offerId?: string; image?: string | null; orders?: number; dailySales?: number;
+          }[];
         };
         if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
         return marketplace === "wb"
@@ -334,7 +342,24 @@ export function SalesPlanPage({
               stockAsOf: body.wb_stock_date ?? new Date().toISOString(),
             };
           })
-          : (body.rows ?? []).map((sku): SalesPlanCatalogSku => ({ externalId: sku.external_id || "", variant: sku.art, name: sku.name, stock: Number(sku.free ?? 0), image: sku.img_url ?? null }));
+          : (body.rows ?? []).map((sku): SalesPlanCatalogSku => {
+            const article = sku.offerId || sku.art || "";
+            const orders = Number(sku.orders ?? 0);
+            const daily = Number(sku.dailySales ?? (orders > 0 ? orders / 30 : 0));
+            return {
+              externalId: sku.external_id || article,
+              variant: article,
+              name: sku.name,
+              stock: Number(sku.free ?? 0),
+              image: sku.image ?? sku.img_url ?? null,
+              // Спрос из снимка за 30 дней: недельный темп выводим из дневного,
+              // сезонности у Ozon нет — множители остаются нейтральными.
+              ordersWeek: Math.round(daily * 7),
+              ordersMonth: Math.round(orders),
+              avgDaily7: daily,
+              stockAsOf: new Date().toISOString(),
+            };
+          });
       })
       .then((rows) => {
         if (!requestIsCurrent()) return;
@@ -513,10 +538,21 @@ export function SalesPlanPage({
       : `плановый остаток на начало: ${number(stockRisk.currentStock)} шт.`
     : "";
 
+  // Есть ли вообще на чём строить предложение: без фактического спроса расчёт
+  // выдаёт ноль по всем дням, и предлагать нечего — честнее сказать об этом
+  // до нажатия, чем показать окно с нулями.
+  const hasDemandBasis = Object.values(basisByRowId).some(
+    (basis) => Boolean(basis) && (Number(basis?.ordersWeek) > 0 || Number(basis?.ordersMonth) > 0),
+  );
+
   const openSuggestionPreview = () => {
     if (!plan) return;
     if (catalogLoading) {
       setActionError("Дождитесь загрузки основания плана");
+      return;
+    }
+    if (!hasDemandBasis) {
+      setActionError("Нет фактического спроса за период: предлагать план не от чего. Проверьте, что по этим артикулам были продажи.");
       return;
     }
     setActionError(null);
@@ -635,7 +671,7 @@ export function SalesPlanPage({
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                        {!readOnly ? <button type="button" onClick={openSuggestionPreview} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 sm:min-h-9 ${soft}`}><Wand2 className="h-4 w-4" /> Предложить план</button> : null}
+                        {!readOnly ? <button type="button" onClick={openSuggestionPreview} disabled={catalogLoading || !hasDemandBasis} title={catalogLoading ? "Загружается основание плана" : !hasDemandBasis ? "Нет фактического спроса за период — предлагать план не от чего" : undefined} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 ${soft}`}><Wand2 className="h-4 w-4" /> Предложить план</button> : null}
                         {stockRisk ? <button type="button" aria-pressed={stockRiskOnly} onClick={() => setStockRiskOnly((value) => !value)} className={`inline-flex min-h-11 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition sm:min-h-9 ${stockRiskOnly ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>Покажет дефицит <span className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-[10px]">{stockRisk.shortageRows}</span></button> : null}
                         <label className="relative block min-w-[220px]"><span className="sr-only">Поиск в плане</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Артикул, цвет или ID" className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:h-9" /></label>
                         {!readOnly ? <button type="button" onClick={() => setAddOpen(true)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 sm:min-h-9 ${soft}`}><PackagePlus className="h-4 w-4" /> Добавить SKU</button> : null}

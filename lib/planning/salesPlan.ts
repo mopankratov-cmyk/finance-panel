@@ -876,7 +876,15 @@ export function buildSalesPlanSuggestion(
     const basis = basisByRowId[row.id];
     const currentDays = Array.from({ length: days }, (_, index) => Math.max(0, finite(row.months[monthKey]?.[index])));
     const dailyOrders = calculateSalesPlanSuggestedDailyOrders(basis);
-    const proposedDays = currentDays.map((value) => replaceFilled || value <= 0 ? dailyOrders : value);
+    // Нулевое предложение НИКОГДА не затирает заполненную вручную ячейку —
+    // даже в режиме «заменить все». Отсутствие фактической базы означает
+    // «предложить нечего», а не «продаж не будет»: у Ozon без данных о спросе
+    // расчёт давал ноль и стирал вручную заполненный месяц, причём с
+    // автосохранением через 850 мс и без отката.
+    const proposedDays = currentDays.map((value) => {
+      if (value > 0 && dailyOrders <= 0) return value;
+      return replaceFilled || value <= 0 ? dailyOrders : value;
+    });
     const currentOrders = Math.round(currentDays.reduce((sum, value) => sum + value, 0));
     const proposedOrders = Math.round(proposedDays.reduce((sum, value) => sum + value, 0));
     const changedCells = proposedDays.reduce((count, value, index) => count + (value !== currentDays[index] ? 1 : 0), 0);
