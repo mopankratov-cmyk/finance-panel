@@ -16,6 +16,7 @@ import {
 } from "@/lib/ozon/api";
 import { getPerfToken, isOzonPerformanceReportDeferredMessage, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
 import { createOzonCostResolver } from "@/lib/ozon/costs";
+import { describeOzonPostingStatus, isOzonPostingDelayed } from "@/lib/ozon/postingStatus";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 import { cachedOzonImages, cachedOzonPrices, cachedOzonStocks } from "@/lib/ozon/staticCache";
 import { buyerDiscountForOffer, loadOzonBuyerDiscount, taxableOzonPrice } from "@/lib/ozon/buyerDiscount";
@@ -771,19 +772,19 @@ export async function loadOrders(scope: OzonCabinetScope, current: OzonPeriod) {
     if (finance.ok) addTotals(totals, finance.totals);
     else warnings.push(`${cabinet.name}: ${finance.error}`);
     for (const posting of postings.postings) {
-      const status = posting.status.toLowerCase();
-      const cancelled = status.includes("cancel");
-      const delivered = status.includes("deliver") || status.includes("completed");
-      const delayed = Boolean(posting.shipmentDate && !cancelled && !delivered && new Date(posting.shipmentDate).getTime() < Date.now());
+      const state = describeOzonPostingStatus(posting.status);
       rows.push({
         key: `${cabinet.id}:${posting.scheme}:${posting.postingNumber}`,
         cabinetId: cabinet.id,
         cabinet: cabinet.name,
         ...posting,
         amount: r0(posting.amount),
-        cancelled,
-        delivered,
-        delayed,
+        statusLabel: state.label,
+        stage: state.stage,
+        cancelled: state.cancelled,
+        delivered: state.delivered,
+        awaitingShipment: state.awaitingShipment,
+        delayed: isOzonPostingDelayed(state, posting.shipmentDate),
       });
     }
   }));
@@ -801,6 +802,9 @@ export async function loadOrders(scope: OzonCabinetScope, current: OzonPeriod) {
       delivered: rows.filter((row) => row.delivered).length,
       cancelled: rows.filter((row) => row.cancelled).length,
       delayed: rows.filter((row) => row.delayed).length,
+      // Отдельно от «в работе»: это то, что менеджер обязан собрать и отгрузить
+      // сам, и именно эти отправления горят по срокам.
+      awaitingShipment: rows.filter((row) => row.awaitingShipment).length,
       refunds: financial.refunds,
     },
     rows: rows.sort((left, right) => String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? ""))),
