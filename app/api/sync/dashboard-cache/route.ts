@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listOzonScopeDescriptors } from "@/lib/ozon/cabinet";
 import type { OzonCockpitView } from "@/lib/ozon/cockpit";
-import { loadCachedOzonCockpit } from "@/lib/ozon/cockpitCache";
+import { loadCachedOzonCockpit, pruneOzonSnapshotCache } from "@/lib/ozon/cockpitCache";
+import { ozonRangeFor, type OzonPeriodPreset } from "@/lib/ozon/period";
 import {
   currentMoscowMonth,
   listWbRnpScopes,
@@ -157,30 +158,52 @@ export async function GET(request: NextRequest) {
     );
   }
   if (!scopes.length) return NextResponse.json({ ok: true, view: rawView, snapshots: [], durationMs: Date.now() - startedAt });
-  const snapshots: Array<{ scope: string; mode: string; ok: boolean; generatedAt?: string; error?: string }> = [];
-  const warm = async (scope: (typeof scopes)[number]) => {
+  const snapshots: Array<{ scope: string; mode: string; preset: string; ok: boolean; generatedAt?: string; error?: string }> = [];
+
+  // Греем те периоды, которые люди открывают, а не абстрактные «14 дней».
+  // Ключ снимка держит конкретные даты, поэтому прогретый «days: 14» совпадал
+  // только с пресетом «2 недели» — «Неделя», «Месяц» и календарь всегда были
+  // холодными и ждали по двадцать-шестьдесят секунд.
+  // Раз в час (первый заход) добираем более широкие периоды: они тяжелее и
+  // меняются медленнее, чаще их пересобирать незачем.
+  const presets: OzonPeriodPreset[] = new Date().getUTCMinutes() < 15
+    ? ["two_weeks", "week", "month"]
+    : ["two_weeks"];
+
+  const warm = async (scope: (typeof scopes)[number], preset: OzonPeriodPreset) => {
+    const range = ozonRangeFor(preset);
     try {
       const data = await loadCachedOzonCockpit({
         view: rawView as OzonCockpitView,
         scope,
         days: 14,
+        from: range.from,
+        to: range.to,
         taxPct: 7,
       }, BLOCKING_SNAPSHOT_REFRESH);
-      snapshots.push({ scope: scope.label, mode: scope.mode, ok: true, generatedAt: data.generatedAt });
+      snapshots.push({ scope: scope.label, mode: scope.mode, preset, ok: true, generatedAt: data.generatedAt });
     } catch (error) {
-      snapshots.push({ scope: scope.label, mode: scope.mode, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      snapshots.push({ scope: scope.label, mode: scope.mode, preset, ok: false, error: error instanceof Error ? error.message : "Unknown error" });
     }
   };
 
   // Сначала общий снимок прогревает нижний fetch-кэш Seller API по всем кабинетам.
   // Затем отдельные кабинеты/группы собираются небольшими параллельными пачками.
-  await warm(scopes[0]);
-  for (let offset = 1; offset < scopes.length; offset += 3) {
-    await Promise.all(scopes.slice(offset, offset + 3).map(warm));
+  for (const preset of presets) {
+    await warm(scopes[0], preset);
+    for (let offset = 1; offset < scopes.length; offset += 3) {
+      await Promise.all(scopes.slice(offset, offset + 3).map((scope) => warm(scope, preset)));
+    }
+  }
+  // Раз в час убираем протухшие снимки: ключ содержит даты и версию логики,
+  // поэтому вчерашние периоды копятся в таблице навсегда.
+  let pruned: number | null = null;
+  if (presets.length > 1) {
+    try { pruned = await pruneOzonSnapshotCache(); } catch { pruned = null; }
   }
   const ok = snapshots.every((snapshot) => snapshot.ok);
   return NextResponse.json(
-    { ok, view: rawView, snapshots, durationMs: Date.now() - startedAt },
+    { ok, view: rawView, snapshots, pruned, durationMs: Date.now() - startedAt },
     { status: ok ? 200 : 502 },
   );
 }

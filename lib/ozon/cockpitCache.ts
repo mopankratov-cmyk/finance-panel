@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
+import { after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { decodeCompressedJson, encodeCompressedJson } from "@/lib/cache/compressedJson";
 import {
@@ -10,6 +11,24 @@ import { loadOzonCockpit, type OzonCockpitView } from "@/lib/ozon/cockpit";
 import { resolveOzonPeriod } from "@/lib/ozon/period";
 
 export const OZON_COCKPIT_CACHE_SECONDS = 60 * 60;
+
+/**
+ * Снимок считается свежим, пока не прошёл один шаг прогрева.
+ *
+ * Прогрев ходит каждые 15 минут, поэтому более старый снимок означает, что
+ * прогрев по этому ключу либо не дошёл, либо ключ прогревом не покрыт.
+ */
+export const OZON_COCKPIT_FRESH_SECONDS = 15 * 60;
+
+/**
+ * Сколько живёт снимок в кэше самого экземпляра функции.
+ *
+ * Час здесь означал, что 15-минутный прогрев до пользователя не доезжает:
+ * инстанс продолжал отдавать payload, прочитанный час назад. Минута —
+ * компромисс: чтение одной строки из базы стоит десятки миллисекунд, а
+ * свежий снимок доходит почти сразу.
+ */
+const OZON_COCKPIT_INSTANCE_SECONDS = 60;
 export const OZON_COCKPIT_CACHE_VERSION = "v7"; // v7: источник рекламы выбирается по каждому кабинету — снимки с нулевым расходом недействительны
 const OZON_COCKPIT_RELIABILITY_VERSION = "complete-sales-v1";
 
@@ -39,6 +58,62 @@ export function ozonCockpitRevalidationProfile(
   if (options.backgroundRefresh) return "max";
   if (options.forceRefresh) return { expire: 0 };
   return null;
+}
+
+/**
+ * Пересборки одного ключа, идущие прямо сейчас в этом экземпляре функции.
+ *
+ * Без этого набора десяток одновременных запросов холодного экрана запускал
+ * десяток одинаковых сборок и вместе пробивал лимит Ozon в 2 запроса в
+ * секунду. Разные экземпляры друг о друге по-прежнему не знают, но и они
+ * теперь чаще попадают в уже готовый снимок, а не в собственную сборку.
+ */
+const rebuilding = new Map<string, Promise<string>>();
+
+export function runOzonSnapshotOnce(key: string, build: () => Promise<string>): Promise<string> {
+  const running = rebuilding.get(key);
+  if (running) return running;
+  const started = build().finally(() => rebuilding.delete(key));
+  rebuilding.set(key, started);
+  return started;
+}
+
+/** Пересборка после ответа: пользователь уже получил данные, ждать нечего. */
+function scheduleBackgroundRebuild(key: string, build: () => Promise<string>) {
+  if (rebuilding.has(key)) return;
+  try {
+    after(async () => {
+      try {
+        await runOzonSnapshotOnce(key, build);
+      } catch (error) {
+        console.error("[ozon-cockpit] фоновая пересборка не удалась:", error instanceof Error ? error.message : error);
+      }
+    });
+  } catch {
+    // after() доступен только внутри запроса. Вне его (прогрев из крона,
+    // тесты) фоновая пересборка не нужна — там сборка и так синхронная.
+  }
+}
+
+/**
+ * Убрать из таблицы снимков то, что никому больше не понадобится.
+ *
+ * Ключ снимка содержит конкретные даты и версию логики, поэтому таблица растёт
+ * без остановки: вчерашние периоды и снимки прежних версий не читает уже никто,
+ * но они продолжают занимать место. Чистим по возрасту записи — переживший
+ * сутки снимок протух в любом случае, его срок годности час.
+ */
+export async function pruneOzonSnapshotCache(maxAgeHours = 24): Promise<number> {
+  const db = getSupabaseAdmin();
+  if (!db) return 0;
+  const cutoff = new Date(Date.now() - Math.max(1, maxAgeHours) * 3_600_000).toISOString();
+  const { data, error } = await db
+    .from("ozon_cockpit_cache")
+    .delete()
+    .lt("generated_at", cutoff)
+    .select("cache_key");
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
 }
 
 export function normalizeOzonCacheRequest(input: OzonCockpitCacheRequest): OzonCockpitCacheRequest {
@@ -85,7 +160,7 @@ export async function loadCachedOzonCockpit(
   // рекламу после фикса источника — ровно это и случилось).
   const sharedKey = `${OZON_COCKPIT_CACHE_VERSION}:${tag.slice("ozon-cockpit:".length)}`;
 
-  const build = async () => {
+  const build = async () => runOzonSnapshotOnce(sharedKey, async () => {
     const scope = await resolveOzonScopeDescriptor(normalized.scope);
     if (!scope) throw new Error("Ozon-кабинеты для снимка больше недоступны");
     const period = resolveOzonPeriod(normalized.from, normalized.to, normalized.days);
@@ -100,7 +175,7 @@ export async function loadCachedOzonCockpit(
         .upsert({ cache_key: sharedKey, payload: encoded, generated_at: new Date().toISOString() }, { onConflict: "cache_key" });
     }
     return encoded;
-  };
+  });
 
   const loadSnapshot = unstable_cache(
     async () => {
@@ -116,8 +191,15 @@ export async function loadCachedOzonCockpit(
           .eq("cache_key", sharedKey)
           .maybeSingle();
         const generatedAt = data?.generated_at ? Date.parse(String(data.generated_at)) : 0;
-        const fresh = generatedAt > 0 && Date.now() - generatedAt < OZON_COCKPIT_CACHE_SECONDS * 1000;
-        if (fresh && typeof data?.payload === "string") return data.payload;
+        const ageMs = generatedAt > 0 ? Date.now() - generatedAt : Infinity;
+        if (typeof data?.payload === "string" && ageMs < OZON_COCKPIT_CACHE_SECONDS * 1000) {
+          // Лежалый, но пригодный снимок отдаём сразу, а пересобираем после
+          // ответа: ждать двадцать-шестьдесят секунд перед немым скелетоном
+          // человеку незачем — он смотрит на данные, которым несколько минут,
+          // и видит их возраст в шапке.
+          if (ageMs > OZON_COCKPIT_FRESH_SECONDS * 1000) scheduleBackgroundRebuild(sharedKey, build);
+          return data.payload;
+        }
       }
       return build();
     },
@@ -126,7 +208,7 @@ export async function loadCachedOzonCockpit(
       OZON_COCKPIT_RELIABILITY_VERSION,
       identity,
     ],
-    { revalidate: OZON_COCKPIT_CACHE_SECONDS, tags: [tag] },
+    { revalidate: OZON_COCKPIT_INSTANCE_SECONDS, tags: [tag] },
   );
   // Повреждённая строка кэша не должна класть экран на весь срок годности:
   // раньше исключение из декодера уходило наружу как 502, а следующий запрос

@@ -2,6 +2,7 @@
 
 import { AlertCircle, AlertTriangle, CheckCircle2, Database, Info, PackageOpen } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 export const formatNumber = (value: number | null | undefined) => value == null ? "—" : Math.round(value).toLocaleString("ru-RU");
 export const formatMoney = (value: number | null | undefined) => value == null ? "—" : `${Math.round(value).toLocaleString("ru-RU")} ₽`;
@@ -161,7 +162,33 @@ export function StatusPill({ status }: { status: string }) {
   return <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold ${value.className}`}>{value.icon}{value.label}</span>;
 }
 
-export function Freshness({ generatedAt, label = "Данные собраны" }: { generatedAt?: string; label?: string }) {
+/**
+ * Возраст данных, а не только отметка времени.
+ *
+ * «Данные собраны: 30.08.2026, 01:24» человек читать не станет и уж точно не
+ * посчитает в уме, сколько это минут назад. Снимки обновляются каждые 15
+ * минут — значит, ответ на вопрос «свежее ли это» должен стоять прямо здесь.
+ */
+export function Freshness({ generatedAt, label = "Данные" }: { generatedAt?: string; label?: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
   if (!generatedAt) return null;
-  return <div className="text-[10px] text-slate-400">{label}: {formatDateTime(generatedAt)}</div>;
+  const stamped = Date.parse(generatedAt);
+  if (!Number.isFinite(stamped)) return null;
+  const minutes = Math.max(0, Math.round((now - stamped) / 60_000));
+  const age = minutes < 1
+    ? "только что"
+    : minutes < 60
+      ? `${minutes} мин назад`
+      : minutes < 60 * 24
+        ? `${Math.round(minutes / 60)} ч назад`
+        : formatDateTime(generatedAt);
+  return (
+    <div className={`text-[10px] ${minutes > 60 ? "text-amber-600" : "text-slate-400"}`} title={`${label}: ${formatDateTime(generatedAt)}`}>
+      {label}: {age}
+    </div>
+  );
 }
