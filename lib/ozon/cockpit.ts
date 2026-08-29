@@ -17,6 +17,7 @@ import {
 import { getPerfToken, isOzonPerformanceReportDeferredMessage, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
 import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
+import { cachedOzonImages, cachedOzonPrices, cachedOzonStocks } from "@/lib/ozon/staticCache";
 import { buyerDiscountForOffer, loadOzonBuyerDiscount, taxableOzonPrice } from "@/lib/ozon/buyerDiscount";
 import { loadCabinetUnitSettings, type CabinetUnitSettings } from "@/lib/unit/cabinetSettings";
 import {
@@ -99,10 +100,14 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
       rows.set(key, entry);
     }
   };
-  if (!period.endsToday) {
-    await readDaily();
-    return rows;
-  }
+  // Дни — первичный источник для ЛЮБОГО периода: они складываются под любые
+  // даты и наполняются дозаполнением. Раньше «последние N дней» ходили в
+  // скользящее окно, ради которого синк пересобирал 4-7 отчётов Performance
+  // каждые 4 часа и полностью съедал очередь Ozon — дозаполнение истории
+  // голодало, а колонка рекламы стояла нулевой.
+  await readDaily();
+  if (rows.size) return rows;
+  if (!period.endsToday) return rows;
 
   const { data } = await db
     .from("ozon_ad_cache")
@@ -116,8 +121,7 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
       updatedAt: row.updated_at,
     });
   }
-  // Окно пусто (новый кабинет, иное число дней) — пробуем историю по дням.
-  if (!rows.size) await readDaily();
+
 
   // Плановая синхронизация держит 14-дневный кэш. Для другого выбранного периода
   // или нового кабинета точечно догружаем Performance, чтобы отсутствие строки не
@@ -228,8 +232,8 @@ async function loadCabinetBase(
 ): Promise<CabinetBase> {
   const [analytics, stocks, images, currentTotals, previousTotals, performance] = await Promise.all([
     ozonAnalyticsDaily(cabinet.creds, from, to, includeFunnel),
-    ozonStocks(cabinet.creds),
-    ozonImages(cabinet.creds),
+    cachedOzonStocks(cabinet.creds),
+    cachedOzonImages(cabinet.creds),
     includeFinance
       ? ozonTransactionTotals(cabinet.creds, `${currentFrom}T00:00:00.000Z`, `${to}T23:59:59.999Z`)
       : Promise.resolve(null),
@@ -637,9 +641,9 @@ export async function loadAdverts(scope: OzonCabinetScope, current: OzonPeriod) 
   const cabinetData = await Promise.all(scope.cabinets.map(async (cabinet) => {
     const [analytics, images, prices, stocks] = await Promise.all([
       ozonAnalytics(cabinet.creds, range.from, range.to),
-      ozonImages(cabinet.creds),
-      ozonPrices(cabinet.creds),
-      ozonStocks(cabinet.creds),
+      cachedOzonImages(cabinet.creds),
+      cachedOzonPrices(cabinet.creds),
+      cachedOzonStocks(cabinet.creds),
     ]);
     return { cabinet, analytics, images, prices, stocks };
   }));
@@ -819,12 +823,12 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
   const warnings: string[] = [];
   await Promise.all(scope.cabinets.map(async (cabinet) => {
     const [prices, analytics, images, finance, services, stocks, buyerDiscount] = await Promise.all([
-      ozonPrices(cabinet.creds),
+      cachedOzonPrices(cabinet.creds),
       ozonAnalytics(cabinet.creds, range.from, range.to),
-      ozonImages(cabinet.creds),
+      cachedOzonImages(cabinet.creds),
       ozonTransactionTotals(cabinet.creds, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
       ozonServiceBreakdown(cabinet.creds, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
-      ozonStocks(cabinet.creds),
+      cachedOzonStocks(cabinet.creds),
       loadOzonBuyerDiscount(cabinet.creds),
     ]);
     if (!prices.ok) warnings.push(`${cabinet.name}: ${prices.error}`);

@@ -31,8 +31,17 @@ export function useOzonPeriod(defaultPreset: OzonPeriodPreset = "two_weeks") {
       if (!raw) return fallback;
       const parsed = JSON.parse(raw) as Partial<StoredPeriod>;
       if (!parsed.from || !parsed.to) return fallback;
+      // Скользящий пресет пересчитывается от СЕГОДНЯ. Раньше «последние две
+      // недели», выбранные неделю назад, замораживались теми датами: период
+      // не двигался с календарём, а каждый экран собирался холодным — даты
+      // никогда не совпадали с прогретым снимком «14 дней до сегодня».
+      const preset = parsed.preset ?? "custom";
+      if (preset !== "custom") {
+        const rolled = ozonRangeFor(preset as OzonPeriodPreset);
+        return { from: rolled.from, to: rolled.to, preset };
+      }
       const period = resolveOzonPeriod(parsed.from, parsed.to);
-      return { from: period.from, to: period.to, preset: parsed.preset ?? "custom" };
+      return { from: period.from, to: period.to, preset };
     } catch {
       return fallback;
     }
