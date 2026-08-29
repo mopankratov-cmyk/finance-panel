@@ -3,7 +3,7 @@
 import { BarChart3, Filter, Search, ShoppingCart } from "lucide-react";
 import { useMemo, useState } from "react";
 import { OzonModuleHeader } from "./OzonModuleHeader";
-import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
+import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonPeriod } from "./useOzonPeriod";
 
@@ -17,7 +17,7 @@ interface SalesRow {
 interface SalesData {
   generatedAt: string; scope: { label: string; count: number }; period: { days: number; from: string; to: string };
   summary: { views: number; carts: number; orders: number; revenue: number; avgPrice: number; crCart: number | null; crOrder: number | null };
-  funnelAvailable: boolean; funnelCabinets: string[]; rows: SalesRow[]; warnings: string[];
+  funnelAvailable: boolean; funnelCabinets: string[]; rows: SalesRow[]; adCoverage?: OzonAdCoverageItem[]; warnings: string[];
 }
 
 type SortKey = "revenue" | "orders" | "stock" | "adSpend" | "drr" | "views" | "carts" | "crCart" | "crOrder";
@@ -46,7 +46,7 @@ export function OzonSalesPage() {
       <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
         {loading && !data ? <OzonLoading rows={9} /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет данных о продажах" detail="Проверьте выбранный кабинет и Seller API." /> : <>
           <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div>
-          {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} />
+          {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
             {tab === "funnel" && <><MetricCard label="Показы" value={data.funnelAvailable ? formatNumber(data.summary.views) : "—"} /><MetricCard label="В корзину" value={data.funnelAvailable ? formatNumber(data.summary.carts) : "—"} /></>}
             <MetricCard label="Заказы" value={formatNumber(data.summary.orders)} detail={`${period.days} дней`} />

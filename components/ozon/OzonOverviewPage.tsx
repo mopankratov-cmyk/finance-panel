@@ -6,7 +6,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { withOzonCabinetScope } from "@/lib/ozon/navigation";
 import { useOzonCabinet } from "./OzonCabinetContext";
 import { OzonModuleHeader } from "./OzonModuleHeader";
-import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
+import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonPeriod } from "./useOzonPeriod";
 
@@ -23,7 +23,7 @@ interface OverviewData {
   trend: { day: string; orders: number; revenue: number; adSpend: number }[];
   attention: { severity: "critical" | "warning"; title: string; detail: string; href: string }[];
   topSku: { key: string; cabinet: string; sku: string; offerId: string; name: string; image: string | null; orders: number; revenue: number; stock: number | null; daysCover: number | null; adSpend: number; drr: number; deltaRevenue: number | null }[];
-  warnings: string[];
+  adCoverage?: OzonAdCoverageItem[]; warnings: string[];
 }
 
 export function OzonOverviewPage() {
@@ -40,7 +40,7 @@ export function OzonOverviewPage() {
               <div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div>
               <Freshness generatedAt={data.generatedAt} />
             </div>
-            {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} />
+            {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
               <MetricCard label="Выручка" value={formatMoney(data.summary.revenue)} delta={data.summary.delta.revenue} detail={`${formatNumber(data.summary.orders)} заказов`} />
               <MetricCard label="Заказы" value={formatNumber(data.summary.orders)} delta={data.summary.delta.orders} detail={`Средняя цена ${formatMoney(data.summary.avgPrice)}`} />

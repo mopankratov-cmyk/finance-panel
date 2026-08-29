@@ -48,6 +48,46 @@ export function OzonStaleNotice({ message, onRetry }: { message: string; onRetry
   );
 }
 
+export interface OzonAdCoverageItem {
+  cabinet: string;
+  periodDays: number;
+  historyDays: number;
+  coveredDays: number;
+  source: "daily" | "window" | "live" | "none";
+  complete: boolean;
+}
+
+/**
+ * Полнота рекламного расхода — рядом с цифрами, а не в примечании.
+ *
+ * Ноль и «данные ещё не собраны» на экране выглядели одинаково, и нулевой
+ * расход завышал прибыль в юнит-экономике. Полное покрытие ничего не рисует:
+ * говорить стоит только тогда, когда есть о чём предупредить.
+ */
+export function OzonAdCoverageNotice({ coverage }: { coverage?: OzonAdCoverageItem[] }) {
+  const incomplete = (coverage ?? []).filter((item) => !item.complete);
+  if (!incomplete.length) return null;
+  return (
+    <div role="status" className="flex flex-wrap items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-xs text-sky-900">
+      <Info className="mt-0.5 h-4 w-4 shrink-0" />
+      <div className="flex-1">
+        <div className="font-semibold">Рекламный расход собран не полностью</div>
+        <ul className="mt-1 space-y-0.5 text-[11px]">
+          {incomplete.map((item) => (
+            <li key={item.cabinet}>
+              {item.cabinet}: {item.source === "none"
+                ? item.historyDays === 0
+                  ? "расход за сегодня Ozon отдаёт завтра — сравнивать пока не с чем"
+                  : "за этот период данных ещё нет, показанные нули не факт"
+                : `собрано ${item.coveredDays} из ${item.historyDays} дн. — расход занижен на несобранные дни`}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export function OzonWarnings({ warnings }: { warnings?: string[] }) {
   if (!warnings?.length) return null;
   return (
