@@ -128,14 +128,26 @@ export async function loadCachedOzonCockpit(
     ],
     { revalidate: OZON_COCKPIT_CACHE_SECONDS, tags: [tag] },
   );
-  const snapshot = decodeCompressedJson<OzonCockpitSnapshot>(await loadSnapshot());
+  // Повреждённая строка кэша не должна класть экран на весь срок годности:
+  // раньше исключение из декодера уходило наружу как 502, а следующий запрос
+  // получал ту же битую строку из кэша инстанса — и так до часа. Битый снимок
+  // лечится единственным осмысленным способом: пересобрать заново.
+  const decodeOrRebuild = async (encoded: string) => {
+    try {
+      return decodeCompressedJson<OzonCockpitSnapshot>(encoded);
+    } catch (error) {
+      console.error("[ozon-cockpit] снимок не читается, пересобираем:", error instanceof Error ? error.message : error);
+      return decodeCompressedJson<OzonCockpitSnapshot>(await build());
+    }
+  };
+  const snapshot = await decodeOrRebuild(await loadSnapshot());
   // unstable_cache отдаёт лежалую копию сразу, а перестраивает в фоне —
   // пользователь видел снимок шестичасовой давности как «текущий» (нулевую
   // рекламу при уже собранных данных). Старше срока годности не отдаём:
   // пересобираем синхронно.
   const generatedAt = Date.parse(String((snapshot as { generatedAt?: string }).generatedAt ?? ""));
   if (Number.isFinite(generatedAt) && Date.now() - generatedAt > OZON_COCKPIT_CACHE_SECONDS * 1000) {
-    return decodeCompressedJson<OzonCockpitSnapshot>(await build());
+    return await decodeOrRebuild(await build());
   }
   return snapshot;
 }
