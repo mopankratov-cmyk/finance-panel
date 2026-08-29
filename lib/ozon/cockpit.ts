@@ -716,6 +716,9 @@ export async function loadAdverts(scope: OzonCabinetScope, current: OzonPeriod) 
         dailyUnits: units / days,
         attributionCompatible,
         dataAgeHours,
+        // Рекламное окно Ozon пересобирается раз в сутки — данные суточной
+        // давности здесь плановые, а не просроченные.
+        dataCadenceHours: 24,
       });
       rows.push({
         key: `${cabinet.id}:${sku}`,

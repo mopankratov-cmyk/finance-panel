@@ -41,10 +41,12 @@ test("Ozon economy summary excludes unknown-cost SKU from profit", () => {
   });
 });
 
-test("Ozon ad cache becomes warning after two hours and error after six", () => {
-  assert.equal(ozonAdCacheStatus(true, 1.9), "ok");
-  assert.equal(ozonAdCacheStatus(true, 2.1), "warning");
-  assert.equal(ozonAdCacheStatus(true, 6.1), "error");
+test("свежесть рекламного кэша считается от суточного ритма пересборки окна", () => {
+  // Окно пересобирается раз в сутки: данные вчерашней ночи — норма, а не сбой.
+  assert.equal(ozonAdCacheStatus(true, 17.5), "ok");
+  assert.equal(ozonAdCacheStatus(true, 25.9), "ok");
+  assert.equal(ozonAdCacheStatus(true, 26.1), "warning");
+  assert.equal(ozonAdCacheStatus(true, 48.1), "error");
   assert.equal(ozonAdCacheStatus(true, null), "warning");
 });
 

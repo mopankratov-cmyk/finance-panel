@@ -2,8 +2,14 @@ import { isOzonPerformanceReportDeferredMessage } from "@/lib/ozon/performance";
 
 export type OzonQualityStatus = "ok" | "warning" | "error";
 
-export const OZON_AD_CACHE_WARNING_HOURS = 2;
-export const OZON_AD_CACHE_ERROR_HOURS = 6;
+// Пороги свежести рекламного кэша считаются от РЕАЛЬНОГО ритма сбора.
+// Скользящее 14-дневное окно пересобирается раз в сутки (остальные заходы
+// крона уходят на дозаполнение истории по дням), поэтому прежние 2 и 6 часов
+// означали «ошибка» почти круглые сутки: экран горел красным при исправной
+// интеграции и приучал не верить сигналам. Сутки плюс запас на очередь Ozon —
+// это норма; двое суток — уже настоящий простой.
+export const OZON_AD_CACHE_WARNING_HOURS = 26;
+export const OZON_AD_CACHE_ERROR_HOURS = 48;
 
 export interface OzonEconomyUnitInput {
   price: number;

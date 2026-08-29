@@ -18,6 +18,14 @@ export interface AdvertProfitInput {
   dailyUnits?: number | null;
   attributionCompatible?: boolean;
   dataAgeHours?: number | null;
+  /**
+   * Плановый ритм сбора данных этой площадки, в часах: возраст в пределах
+   * ритма — норма, а не повод занижать уверенность. У WB статистика приезжает
+   * каждый час (значение по умолчанию), у Ozon рекламное окно пересобирается
+   * раз в сутки — с общим порогом «старше 6 часов» рекомендация «увеличить»
+   * там не появлялась никогда.
+   */
+  dataCadenceHours?: number;
 }
 
 export interface AdvertProfitGuardrail {
@@ -68,9 +76,13 @@ function confidenceFor(input: AdvertProfitInput) {
   if (input.stock == null || input.dailyUnits == null) value -= 20;
   if (input.feesComplete === false) value -= 35;
   if (input.attributionCompatible === false) value -= 25;
+  // Возраст данных штрафуется от планового ритма площадки, а не от «идеала»:
+  // просроченным считается то, что не пришло в срок, а не то, что старше
+  // нескольких часов.
+  const cadence = input.dataCadenceHours && input.dataCadenceHours > 0 ? input.dataCadenceHours : 2;
   if (input.dataAgeHours == null) value -= 10;
-  else if (input.dataAgeHours > 6) value -= 30;
-  else if (input.dataAgeHours > 2) value -= 15;
+  else if (input.dataAgeHours > cadence * 3) value -= 30;
+  else if (input.dataAgeHours > cadence) value -= 15;
   if (input.revenue <= 0) value -= 20;
   value = Math.max(0, value);
   return { value, label: value >= 80 ? "high" as const : value >= 55 ? "medium" as const : "low" as const };
