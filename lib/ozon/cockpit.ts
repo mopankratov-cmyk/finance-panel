@@ -905,8 +905,14 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
   const totals = emptyTotals();
   const serviceTotals: Record<string, number> = {};
   const warnings: string[] = [];
+  // Расход кабинета целиком берём тем же способом, что и «Обзор», — суточной
+  // сводкой Performance. Она живая и дешёвая, поэтому карточка «Реклама» на
+  // обоих экранах показывает одно число. Разнесение по товарам приходит из
+  // кэша отчётов и бывает неполным — эту разницу больше не теряем.
+  let adCabinetTotal = 0;
+  let adAllocated = 0;
   await Promise.all(scope.cabinets.map(async (cabinet) => {
-    const [prices, analytics, images, finance, services, stocks, buyerDiscount] = await Promise.all([
+    const [prices, analytics, images, finance, services, stocks, buyerDiscount, dailySpend] = await Promise.all([
       cachedOzonPrices(cabinet.creds),
       ozonAnalytics(cabinet.creds, range.from, range.to),
       cachedOzonImages(cabinet.creds),
@@ -914,7 +920,13 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
       ozonServiceBreakdown(cabinet.creds, `${range.from}T00:00:00.000Z`, `${range.to}T23:59:59.999Z`),
       cachedOzonStocks(cabinet.creds),
       loadOzonBuyerDiscount(cabinet.creds),
+      cabinet.perf ? perfDailySpend(cabinet.perf, range.from, range.to) : Promise.resolve(null),
     ]);
+    if (dailySpend) {
+      for (const [day, value] of Object.entries(dailySpend.byDate)) {
+        if (day >= range.from && day <= range.to) adCabinetTotal += value.spent;
+      }
+    }
     if (!prices.ok) warnings.push(`${cabinet.name}: ${prices.error}`);
     if (!analytics.ok) warnings.push(`${cabinet.name}: ${analytics.error}`);
     if (!stocks.ok) warnings.push(`${cabinet.name}: остатки — ${stocks.error}`);
@@ -959,7 +971,12 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
       const commission = salePrice * priceRow.commissionPct / 100;
       const logistics = priceRow.logistics;
       const acquiring = priceRow.acquiring;
-      const adPerUnit = sales.units > 0 ? (adsByOffer.get(offerId) ?? 0) / sales.units : 0;
+      // Расход на единицу считается только при продажах. Расход товара, который
+      // за период ничего не продал, в строку не помещается — но и пропасть не
+      // должен: он уходит в «нераспределённый» и виден в сводке.
+      const offerAdSpend = adsByOffer.get(offerId) ?? 0;
+      const adPerUnit = sales.units > 0 ? offerAdSpend / sales.units : 0;
+      if (sales.units > 0) adAllocated += offerAdSpend;
       // Налог — с цены покупателя: Ozon добивает часть цены за него, и с этой доли
       // налога нет. Комиссия и логистика остаются на цене продавца — их считает Ozon.
       const discountShare = buyerDiscountForOffer(buyerDiscount, offerId);
@@ -1037,6 +1054,12 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
     summary: {
       ...financial,
       ...quality,
+      // Расход кабинета целиком — то же число, что на «Обзоре».
+      adSpend: r0(adCabinetTotal),
+      // Из него разнесено по проданным товарам: остальное осталось на
+      // товарах без продаж за период или ещё не разложено по SKU.
+      adAllocated: r0(Math.min(adAllocated, adCabinetTotal || adAllocated)),
+      adUnallocated: r0(Math.max(0, (adCabinetTotal || adAllocated) - adAllocated)),
     },
     services: Object.entries(serviceTotals)
       .map(([name, value]) => ({ name, value: r0(Math.abs(value)) }))
