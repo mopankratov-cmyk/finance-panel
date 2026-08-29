@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CalendarDays,
   BadgeRussianRuble,
   BarChart3,
   Boxes,
@@ -35,6 +36,7 @@ const WORK_NAV: NavItem[] = [
   { label: "План продаж", href: "/ozon/planning", icon: CalendarRange, scoped: true },
   { label: "Продажи", href: "/ozon/sales", icon: BarChart3, scoped: true },
   { label: "Реклама", href: "/ozon/adverts", icon: Megaphone, scoped: true },
+  { label: "Журнал рекламы", href: "/ozon/journal", icon: CalendarDays, scoped: true },
   { label: "Остатки", href: "/ozon/stocks", icon: Boxes, scoped: true },
   { label: "Заказы", href: "/ozon/orders", icon: ShoppingCart, scoped: true },
   { label: "Экономика", href: "/ozon/economy", icon: BadgeRussianRuble, scoped: true },
