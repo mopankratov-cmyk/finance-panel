@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ozonRangeFor,
   resolveOzonPeriod,
@@ -15,17 +15,40 @@ interface StoredPeriod {
   preset: OzonPeriodPreset;
 }
 
+/** Прочитать период из адреса: `?preset=month` или `?from=…&to=…`. */
+function periodFromUrl(): StoredPeriod | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const preset = params.get("preset");
+  const from = params.get("from");
+  const to = params.get("to");
+  if (preset && preset !== "custom") {
+    const rolled = ozonRangeFor(preset as OzonPeriodPreset);
+    return { from: rolled.from, to: rolled.to, preset: preset as OzonPeriodPreset };
+  }
+  if (from && to) {
+    const period = resolveOzonPeriod(from, to);
+    return { from: period.from, to: period.to, preset: "custom" };
+  }
+  return null;
+}
+
 /**
  * Выбранный период кокпита — общий для всех его экранов.
  *
- * Хранится в localStorage: человек выбирает неделю распродажи в «Продажах», а
- * потом идёт в «Экономику» смотреть ту же неделю. Сбрасывать выбор на каждом
- * переходе значило бы заставлять его выбирать заново семь раз подряд.
+ * Живёт в адресе и в localStorage. Адрес — чтобы срез можно было передать
+ * ссылкой («посмотри вот это»), раньше он существовал только в памяти
+ * браузера и повторить его у коллеги было нечем. localStorage — чтобы человек
+ * не выбирал период заново на каждом из семи экранов.
  */
 export function useOzonPeriod(defaultPreset: OzonPeriodPreset = "two_weeks") {
   const [state, setState] = useState<StoredPeriod>(() => {
     const fallback = { ...ozonRangeFor(defaultPreset), preset: defaultPreset };
     if (typeof window === "undefined") return fallback;
+    // Адрес важнее памяти браузера: по ссылке человек ждёт именно тот срез,
+    // который ему прислали.
+    const fromUrl = periodFromUrl();
+    if (fromUrl) return fromUrl;
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return fallback;
@@ -46,6 +69,26 @@ export function useOzonPeriod(defaultPreset: OzonPeriodPreset = "two_weeks") {
       return fallback;
     }
   });
+
+  // Адрес держим в актуальном состоянии без перезагрузки страницы: это ссылка
+  // на срез, а не навигация.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (state.preset === "custom") {
+      params.delete("preset");
+      params.set("from", state.from);
+      params.set("to", state.to);
+    } else {
+      params.set("preset", state.preset);
+      params.delete("from");
+      params.delete("to");
+    }
+    const next = `${window.location.pathname}?${params.toString()}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState(null, "", next);
+    }
+  }, [state]);
 
   const remember = useCallback((next: StoredPeriod) => {
     setState(next);

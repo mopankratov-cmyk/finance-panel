@@ -3,7 +3,8 @@
 import { BarChart3, Filter, Search, ShoppingCart } from "lucide-react";
 import { useMemo, useState } from "react";
 import { OzonModuleHeader } from "./OzonModuleHeader";
-import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
+import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
+import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonPeriod } from "./useOzonPeriod";
 
@@ -39,6 +40,29 @@ export function OzonSalesPage() {
       .filter((row) => !needle || `${row.name} ${row.offerId} ${row.sku} ${row.cabinet}`.toLocaleLowerCase("ru-RU").includes(needle))
       .sort((left, right) => Number(right[sort] ?? -1) - Number(left[sort] ?? -1));
   }, [data?.rows, query, sort]);
+  const exportCsv = () => {
+    if (!data) return;
+    downloadCsv(
+      csvFileName(["ozon-продажи", data.scope.label, data.period.from, data.period.to]),
+      [
+        { header: "Товар", value: (row: SalesRow) => row.name },
+        { header: "Артикул", value: (row: SalesRow) => row.offerId },
+        { header: "SKU", value: (row: SalesRow) => row.sku },
+        { header: "Кабинет", value: (row: SalesRow) => row.cabinet },
+        { header: "Заказы, шт", value: (row: SalesRow) => row.orders },
+        { header: "Выручка, ₽", value: (row: SalesRow) => row.revenue },
+        { header: "Средняя цена, ₽", value: (row: SalesRow) => row.avgPrice },
+        { header: "Остаток, шт", value: (row: SalesRow) => row.stock },
+        { header: "Реклама, ₽", value: (row: SalesRow) => row.adSpend },
+        { header: "ДРР, %", value: (row: SalesRow) => row.drr },
+        { header: "Показы", value: (row: SalesRow) => row.funnelAvailable ? row.views : null },
+        { header: "В корзину", value: (row: SalesRow) => row.funnelAvailable ? row.carts : null },
+        { header: "CR корзины, %", value: (row: SalesRow) => row.funnelAvailable ? row.crCart : null },
+        { header: "CR заказа, %", value: (row: SalesRow) => row.funnelAvailable ? row.crOrder : null },
+      ],
+      rows,
+    );
+  };
 
   return (
     <div>
@@ -62,7 +86,8 @@ export function OzonSalesPage() {
                 <button type="button" onClick={() => setTab("rnp")} className={`min-h-11 rounded-md px-3 text-xs font-semibold sm:min-h-8 ${tab === "rnp" ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}><BarChart3 className="mr-1 inline h-3.5 w-3.5" />РНП</button>
                 <button type="button" onClick={() => setTab("funnel")} className={`min-h-11 rounded-md px-3 text-xs font-semibold sm:min-h-8 ${tab === "funnel" ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}><Filter className="mr-1 inline h-3.5 w-3.5" />Воронка</button>
               </div>
-              <label className="relative flex-1 lg:ml-auto lg:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Товар, артикул, SKU, кабинет" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label>
+              <div className="lg:ml-auto"><OzonCsvButton count={rows.length} onExport={exportCsv} /></div>
+              <label className="relative flex-1 lg:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Товар, артикул, SKU, кабинет" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label>
               <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label="Сортировка" className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 sm:h-8"><option value="revenue">По выручке</option><option value="orders">По заказам</option><option value="stock">По остатку</option><option value="adSpend">По рекламе</option><option value="drr">По ДРР</option>{tab === "funnel" && <><option value="views">По показам</option><option value="crOrder">По CR заказа</option></>}</select>
             </div>
             {rows.length === 0 ? <div className="p-4"><EmptyState title="Товары не найдены" detail="Измените строку поиска или период." /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-xs"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2 text-left">Товар</th>{tab === "funnel" && <><th className="px-3 py-2 text-right">Показы</th><th className="px-3 py-2 text-right">В корзину</th><th className="px-3 py-2 text-right">CR корзины</th></>}<th className="px-3 py-2 text-right">Заказы</th>{tab === "funnel" && <th className="px-3 py-2 text-right">CR заказа</th>}<th className="px-3 py-2 text-right">Выручка</th>{tab === "rnp" && <><th className="px-3 py-2 text-right">Ср. цена</th><th className="px-3 py-2 text-right">Остаток</th><th className="px-3 py-2 text-right">Реклама</th><th className="px-3 py-2 text-right">ДРР</th><th className="px-4 py-2 text-right">Динамика</th></>}</tr></thead><tbody>{rows.map((row) => <tr key={row.key} className="border-t border-slate-100 hover:bg-sky-50/40"><td className="px-4 py-2"><ProductCell image={row.image} name={row.name} code={row.offerId || `SKU ${row.sku}`} cabinet={data.scope.count > 1 ? row.cabinet : undefined} /></td>{tab === "funnel" && <><td className="px-3 py-2 text-right tabular-nums">{row.funnelAvailable ? formatNumber(row.views) : "—"}</td><td className="px-3 py-2 text-right tabular-nums">{row.funnelAvailable ? formatNumber(row.carts) : "—"}</td><td className="px-3 py-2 text-right tabular-nums">{row.funnelAvailable ? formatPercent(row.crCart) : "—"}</td></>}<td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.orders)}</td>{tab === "funnel" && <td className="px-3 py-2 text-right font-semibold tabular-nums">{row.funnelAvailable ? formatPercent(row.crOrder) : "—"}</td>}<td className="px-3 py-2 text-right font-semibold tabular-nums">{formatMoney(row.revenue)}</td>{tab === "rnp" && <><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.avgPrice)}</td><td className={`px-3 py-2 text-right tabular-nums ${row.stock <= 0 && row.orders > 0 ? "font-bold text-red-600" : ""}`}>{formatNumber(row.stock)}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.adSpend)}</td><td className={`px-3 py-2 text-right font-semibold tabular-nums ${row.drr >= 30 ? "text-red-600" : row.drr >= 20 ? "text-amber-600" : "text-emerald-700"}`}>{formatPercent(row.drr)}</td><td className="px-4 py-2"><MiniBars values={row.daily.map((day) => day.revenue)} /></td></>}</tr>)}</tbody></table></div>}

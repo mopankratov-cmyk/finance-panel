@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, CheckCircle2, Database, Info, PackageOpen } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Database, Download, Info, PackageOpen } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -129,6 +129,22 @@ export function MetricCard({ label, value, detail, delta, tone = "sky" }: { labe
       <div className="mt-2 text-[22px] font-bold tracking-tight text-slate-900 tabular-nums">{value}</div>
       {detail && <div className={`mt-2 inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${tones[tone]}`}>{detail}</div>}
     </div>
+  );
+}
+
+/** Кнопка выгрузки того, что человек видит на экране, — с учётом фильтров. */
+export function OzonCsvButton({ onExport, disabled, count }: { onExport: () => void; disabled?: boolean; count?: number }) {
+  return (
+    <button
+      type="button"
+      onClick={onExport}
+      disabled={disabled}
+      title={count ? `Выгрузить ${count} строк с учётом фильтров` : "Выгрузить таблицу"}
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-8"
+    >
+      <Download className="h-3.5 w-3.5" />
+      CSV
+    </button>
   );
 }
 

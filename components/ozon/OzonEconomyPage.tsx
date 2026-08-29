@@ -4,11 +4,13 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CabinetUnitSettings, type AppliedUnitSettings } from "@/components/unit/CabinetUnitSettings";
 import { sumOzonEconomyRows } from "@/lib/ozon/economyTotals";
+import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import {
   EmptyState,
   Freshness,
   MetricCard,
+  OzonCsvButton,
   OzonError,
   OzonLoading, OzonStaleNotice,
   OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings,
@@ -147,6 +149,34 @@ export function OzonEconomyPage() {
 
   const totals = useMemo(() => sumOzonEconomyRows(rows), [rows]);
 
+  const exportCsv = () => {
+    if (!data) return;
+    downloadCsv(
+      csvFileName(["ozon-эконом", data.scope.label, data.period.from, data.period.to]),
+      [
+        { header: "Товар", value: (row: EconomyRow) => row.name },
+        { header: "Артикул", value: (row: EconomyRow) => row.offerId },
+        { header: "Кабинет", value: (row: EconomyRow) => row.cabinet },
+        { header: "Продано, шт", value: (row: EconomyRow) => row.units },
+        { header: "Выручка, ₽", value: (row: EconomyRow) => row.revenue },
+        { header: "Цена продавца, ₽", value: (row: EconomyRow) => row.price },
+        { header: "Платит покупатель, ₽", value: (row: EconomyRow) => row.buyerPrice },
+        { header: "Скидка Ozon, %", value: (row: EconomyRow) => row.ozonDiscountPct },
+        { header: "Себестоимость, ₽", value: (row: EconomyRow) => row.cost },
+        { header: "Комиссия, ₽", value: (row: EconomyRow) => row.commission },
+        { header: "Логистика, ₽", value: (row: EconomyRow) => row.logistics },
+        { header: "Эквайринг, ₽", value: (row: EconomyRow) => row.acquiring },
+        { header: "Реклама на шт, ₽", value: (row: EconomyRow) => row.ad },
+        { header: "Налог, ₽", value: (row: EconomyRow) => row.tax },
+        { header: "Прибыль на шт, ₽", value: (row: EconomyRow) => row.profit },
+        { header: "Маржа, %", value: (row: EconomyRow) => row.margin },
+        { header: "Данные", value: (row: EconomyRow) => row.reliability === "missing_cost" ? "нет себестоимости" : "расчёт" },
+      ],
+      rows,
+    );
+  };
+
+
   // Скидку Ozon видно не по всем товарам: отчёт о реализации закрывается по итогам
   // месяца. Показываем покрытие, чтобы «налог с цены продавца» не выглядел ошибкой.
   const discountCoverage = useMemo(() => {
@@ -257,7 +287,8 @@ export function OzonEconomyPage() {
                     />
                     Только с продажами
                   </label>
-                  <span className="text-[10px] text-slate-400 lg:ml-auto">
+                  <div className="lg:ml-auto"><OzonCsvButton count={rows.length} onExport={() => exportCsv()} /></div>
+                  <span className="text-[10px] text-slate-400">
                     {rows.length === data.rows.length ? `${formatNumber(rows.length)} SKU` : `${formatNumber(rows.length)} из ${formatNumber(data.rows.length)} SKU`}
                   </span>
                 </div>

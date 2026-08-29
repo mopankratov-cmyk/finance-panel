@@ -4,7 +4,8 @@ import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AdvertProfitGuardrail } from "@/lib/adverts/profitGuardrails";
 import { OzonModuleHeader } from "./OzonModuleHeader";
-import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatDateTime, formatMoney, formatNumber, formatPercent } from "./OzonUi";
+import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatDateTime, formatMoney, formatNumber, formatPercent } from "./OzonUi";
+import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonPeriod } from "./useOzonPeriod";
 
@@ -35,6 +36,32 @@ export function OzonAdvertsPage() {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
     return [...(data?.rows ?? [])].filter((row) => !needle || `${row.name} ${row.offerId} ${row.sku} ${row.cabinet}`.toLocaleLowerCase("ru-RU").includes(needle)).sort((a, b) => Number(b[sort] ?? -Infinity) - Number(a[sort] ?? -Infinity));
   }, [data?.rows, query, sort]);
+  const exportCsv = () => {
+    if (!data) return;
+    downloadCsv(
+      csvFileName(["ozon-реклама", data.scope.label, data.period.from, data.period.to]),
+      [
+        { header: "Товар", value: (row: AdvertRow) => row.name },
+        { header: "Артикул", value: (row: AdvertRow) => row.offerId },
+        { header: "SKU", value: (row: AdvertRow) => row.sku },
+        { header: "Кабинет", value: (row: AdvertRow) => row.cabinet },
+        { header: "Расход, ₽", value: (row: AdvertRow) => row.spent },
+        { header: "Продажи с рекламы, ₽", value: (row: AdvertRow) => row.adRevenue },
+        { header: "Общая выручка, ₽", value: (row: AdvertRow) => row.revenue },
+        { header: "Заказы, шт", value: (row: AdvertRow) => row.orders },
+        { header: "ДРР общий, %", value: (row: AdvertRow) => row.drr },
+        { header: "ДРР рекламный, %", value: (row: AdvertRow) => row.adDrr },
+        { header: "Break-even ДРР, %", value: (row: AdvertRow) => row.economics.breakEvenDrr },
+        { header: "ROAS", value: (row: AdvertRow) => row.roas },
+        { header: "Прибыль после рекламы, ₽", value: (row: AdvertRow) => row.economics.profitAfterAds },
+        { header: "Дней запаса", value: (row: AdvertRow) => row.economics.daysCover },
+        { header: "Рекомендация", value: (row: AdvertRow) => recommendationLabel(row) },
+        { header: "Обоснование", value: (row: AdvertRow) => row.economics.reason },
+        { header: "Уверенность, %", value: (row: AdvertRow) => row.economics.confidencePct },
+      ],
+      rows,
+    );
+  };
   return <div>
     <OzonModuleHeader eyebrow="Ozon · Performance" title="Реклама" subtitle="Расходы и атрибутированные продажи по SKU: общий ДРР, рекламный ДРР и ROAS." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
     <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
@@ -43,7 +70,7 @@ export function OzonAdvertsPage() {
         {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9"><MetricCard label="Расход" value={formatMoney(data.summary.spent)} tone="amber" /><MetricCard label="Прибыль после рекламы" value={formatMoney(data.summary.calculatedProfit)} detail={`покрытие ${formatPercent(data.summary.profitCoveragePct)}`} tone={data.summary.profitCoveragePct < 90 || data.summary.calculatedProfit == null ? "amber" : data.summary.calculatedProfit < 0 ? "red" : "emerald"} /><MetricCard label="Рекомендации" value={formatNumber(data.summary.recommendations)} detail="увеличить / снизить / пауза" tone={data.summary.recommendations ? "amber" : "emerald"} /><MetricCard label="Продажи с рекламы" value={formatMoney(data.summary.adRevenue)} /><MetricCard label="Общая выручка" value={formatMoney(data.summary.revenue)} /><MetricCard label="ДРР общий" value={formatPercent(data.summary.drr)} tone={data.summary.drr >= 30 ? "red" : data.summary.drr >= 20 ? "amber" : "emerald"} /><MetricCard label="ДРР рекламный" value={formatPercent(data.summary.adDrr)} /><MetricCard label="ROAS рекламный" value={data.summary.roas == null ? "—" : `${data.summary.roas.toLocaleString("ru-RU")}×`} /><MetricCard label="SKU в рекламе" value={formatNumber(data.summary.sku)} tone="slate" /></div>
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row sm:items-center"><label className="relative flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск товара или кабинета" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 sm:ml-auto sm:h-8" aria-label="Сортировка рекламы"><option value="spent">Расход</option><option value="adRevenue">Продажи с рекламы</option><option value="revenue">Общая выручка</option><option value="drr">ДРР</option><option value="roas">ROAS</option></select></div>
+          <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row sm:items-center"><OzonCsvButton count={rows.length} onExport={exportCsv} /><label className="relative flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск товара или кабинета" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 sm:ml-auto sm:h-8" aria-label="Сортировка рекламы"><option value="spent">Расход</option><option value="adRevenue">Продажи с рекламы</option><option value="revenue">Общая выручка</option><option value="drr">ДРР</option><option value="roas">ROAS</option></select></div>
           {rows.length === 0 ? <div className="p-4"><EmptyState title="Рекламные SKU не найдены" detail="Проверьте Performance API, синхронизацию и поиск." href="/sync" /></div> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1580px] text-xs">
