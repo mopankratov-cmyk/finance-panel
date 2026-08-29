@@ -7,6 +7,11 @@
 //
 // Тот же словарь пресетов, что в РНП Wildberries: человек ходит между модулями,
 // и «Месяц» обязан значить одно и то же в обоих.
+//
+// ВСЁ считается по Москве — и на сервере, и в браузере. Раньше «сегодня» на
+// сервере было днём по UTC, а в браузере — днём по часам пользователя: с 00:00
+// до 03:00 МСК сервер отрезал у периода сегодняшний день, «Сегодня» показывало
+// вчера, а прогретые снимки переставали совпадать с тем, что просит интерфейс.
 
 export type OzonPeriodPreset =
   | "today" | "yesterday" | "week" | "two_weeks" | "month" | "quarter" | "previous" | "custom";
@@ -35,30 +40,46 @@ export const OZON_PERIOD_PRESETS = [
 export const OZON_MAX_PERIOD_DAYS = 92;
 
 const DAY = 86_400_000;
-export const ozonIso = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+/** Часовой пояс кабинетов и отчётов Ozon. */
+export const OZON_TIMEZONE = "Europe/Moscow";
+const moscowFormat = new Intl.DateTimeFormat("en-CA", { timeZone: OZON_TIMEZONE });
+
+/** Сегодняшняя дата по Москве — одинаково на сервере и в браузере. */
+export function ozonToday(now: Date | number = new Date()): string {
+  return moscowFormat.format(typeof now === "number" ? new Date(now) : now);
+}
+
+export const ozonIso = (date: Date) => ozonToday(date);
+
+/** Календарная арифметика над «голой» датой, без часовых поясов. */
+const dayMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+const isoOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const shiftDays = (iso: string, days: number) => isoOf(dayMs(iso) + days * DAY);
 
 /** Границы пресета — те же правила, что в РНП WB. */
 export function ozonRangeFor(preset: OzonPeriodPreset, now = new Date()): { from: string; to: string } {
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const end = new Date(start);
+  const today = ozonToday(now);
+  let from = today;
+  let to = today;
 
   if (preset === "yesterday") {
-    start.setDate(start.getDate() - 1);
-    end.setDate(end.getDate() - 1);
+    from = shiftDays(today, -1);
+    to = from;
   } else if (preset === "week") {
-    start.setDate(start.getDate() - 6);
+    from = shiftDays(today, -6);
   } else if (preset === "two_weeks") {
-    start.setDate(start.getDate() - 13);
+    from = shiftDays(today, -13);
   } else if (preset === "month") {
-    start.setDate(1);
+    from = `${today.slice(0, 7)}-01`;
   } else if (preset === "quarter") {
-    start.setDate(start.getDate() - 89);
+    from = shiftDays(today, -89);
   } else if (preset === "previous") {
-    start.setMonth(start.getMonth() - 1, 1);
-    end.setDate(0);
+    const firstOfThisMonth = `${today.slice(0, 7)}-01`;
+    to = shiftDays(firstOfThisMonth, -1);
+    from = `${to.slice(0, 7)}-01`;
   }
-  return { from: ozonIso(start), to: ozonIso(end) };
+  return { from, to };
 }
 
 const isIso = (value: unknown): value is string =>
@@ -75,32 +96,28 @@ export function resolveOzonPeriod(
   fallbackDays = 14,
   now = new Date(),
 ): OzonPeriod {
-  const today = ozonIso(now);
+  const today = ozonToday(now);
   let from = isIso(rawFrom) ? rawFrom : null;
   let to = isIso(rawTo) ? rawTo : null;
 
   if (!from || !to) {
     const days = Math.min(OZON_MAX_PERIOD_DAYS, Math.max(1, Math.round(Number(fallbackDays) || 14)));
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
-    from = ozonIso(start);
+    from = shiftDays(today, -(days - 1));
     to = today;
   }
   if (from > to) [from, to] = [to, from];
   if (to > today) to = today;
   if (from > to) from = to;
 
-  const span = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY) + 1;
-  if (span > OZON_MAX_PERIOD_DAYS) {
-    from = new Date(Date.parse(`${to}T00:00:00Z`) - (OZON_MAX_PERIOD_DAYS - 1) * DAY).toISOString().slice(0, 10);
-  }
+  const span = Math.round((dayMs(to) - dayMs(from)) / DAY) + 1;
+  if (span > OZON_MAX_PERIOD_DAYS) from = shiftDays(to, -(OZON_MAX_PERIOD_DAYS - 1));
 
-  const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY) + 1;
+  const days = Math.round((dayMs(to) - dayMs(from)) / DAY) + 1;
   return { from, to, days, endsToday: to === today };
 }
 
 /** Равный по длине период, стоящий вплотную перед этим — база для дельт. */
 export function previousOzonPeriod(period: OzonPeriod): { from: string; to: string } {
-  const to = new Date(Date.parse(`${period.from}T00:00:00Z`) - DAY);
-  const from = new Date(to.getTime() - (period.days - 1) * DAY);
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+  const to = shiftDays(period.from, -1);
+  return { from: shiftDays(to, -(period.days - 1)), to };
 }
