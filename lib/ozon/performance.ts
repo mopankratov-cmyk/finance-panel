@@ -31,6 +31,92 @@ export async function validatePerf(c: PerfCreds): Promise<boolean> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+export interface PerfCampaign {
+  id: string;
+  title: string;
+  /** Состояние кампании как его отдаёт Ozon (CAMPAIGN_STATE_RUNNING и т.п.). */
+  state: string;
+  /** Человеческая подпись состояния. */
+  stateLabel: string;
+  running: boolean;
+  advObjectType: string;
+  dailyBudget: number | null;
+  budget: number | null;
+  fromDate: string | null;
+  toDate: string | null;
+}
+
+const CAMPAIGN_STATES: Record<string, { label: string; running: boolean }> = {
+  CAMPAIGN_STATE_RUNNING: { label: "Идёт", running: true },
+  CAMPAIGN_STATE_PLANNED: { label: "Запланирована", running: false },
+  CAMPAIGN_STATE_STOPPED: { label: "Остановлена", running: false },
+  CAMPAIGN_STATE_INACTIVE: { label: "Неактивна", running: false },
+  CAMPAIGN_STATE_ARCHIVED: { label: "В архиве", running: false },
+  CAMPAIGN_STATE_MODERATION_DRAFT: { label: "Черновик", running: false },
+  CAMPAIGN_STATE_MODERATION_IN_PROGRESS: { label: "На модерации", running: false },
+  CAMPAIGN_STATE_MODERATION_FAILED: { label: "Модерация не пройдена", running: false },
+  CAMPAIGN_STATE_FINISHED: { label: "Завершена", running: false },
+};
+
+/**
+ * Список рекламных кампаний кабинета.
+ *
+ * До сих пор ответ этого эндпоинта использовался только как источник
+ * идентификаторов для отчётов, а состояния и бюджеты выбрасывались. Из-за
+ * этого рекомендацию «снизить ставку на 30%» некуда было применить: менеджер
+ * не видел даже, какие кампании сейчас работают.
+ *
+ * Бюджеты Ozon отдаёт в микрорублях — приводим к рублям.
+ */
+export async function perfCampaigns(
+  c: PerfCreds,
+): Promise<{ ok: true; campaigns: PerfCampaign[] } | { ok: false; error: string }> {
+  const token = await getPerfToken(c);
+  if (!token) return { ok: false, error: "Performance API не отвечает" };
+  try {
+    const res = await tfetch(`${BASE}/api/client/campaign`, {
+      headers: { Authorization: `Bearer ${token}` },
+      next: { revalidate: 600 },
+    });
+    if (!res.ok) return { ok: false, error: `Performance campaigns: HTTP ${res.status}` };
+    const json = (await res.json()) as {
+      list?: {
+        id?: string | number;
+        title?: string;
+        state?: string;
+        advObjectType?: string;
+        dailyBudget?: string | number;
+        budget?: string | number;
+        fromDate?: string;
+        toDate?: string;
+      }[];
+    };
+    const money = (value: unknown) => {
+      const raw = numRu(value);
+      return raw > 0 ? Math.round(raw / 1_000_000) : null;
+    };
+    const campaigns = (json.list ?? []).map((item): PerfCampaign => {
+      const state = String(item.state ?? "");
+      const meta = CAMPAIGN_STATES[state];
+      return {
+        id: String(item.id ?? ""),
+        title: String(item.title ?? "").trim() || `Кампания ${item.id ?? ""}`,
+        state,
+        stateLabel: meta?.label ?? (state ? state.replace("CAMPAIGN_STATE_", "") : "—"),
+        running: meta?.running ?? false,
+        advObjectType: String(item.advObjectType ?? ""),
+        dailyBudget: money(item.dailyBudget),
+        budget: money(item.budget),
+        fromDate: item.fromDate ? String(item.fromDate).slice(0, 10) : null,
+        toDate: item.toDate ? String(item.toDate).slice(0, 10) : null,
+      };
+    });
+    return { ok: true, campaigns };
+  } catch (error) {
+    return { ok: false, error: String(error).slice(0, 120) };
+  }
+}
+
 export async function runWithConcurrency<T, R>(
   values: readonly T[],
   concurrency: number,
