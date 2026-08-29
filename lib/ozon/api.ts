@@ -710,9 +710,18 @@ export async function ozonStocks(
 
 // Карта фото товаров: offer_id→url и каждый sku→url (sku берём из sources + top-level).
 // Плюс skuToOffer: каждый sku → offer_id (для джойна остатков/себеса).
+/**
+ * Справочник карточек: фото и связка sku → offer_id.
+ *
+ * Флаг `ok` здесь не про красоту: `skuToOffer` — единственный мост между
+ * рекламой (она приходит по sku) и себестоимостью с ценами (они по offer_id).
+ * Пустой справочник после сбоя Ozon выглядел как «сопоставить не с чем»: и
+ * реклама, и себестоимость молча обнулялись — а результат ложился в кэш
+ * статики на десять минут и запекался в часовой снимок кокпита.
+ */
 export async function ozonImages(
   c: OzonCreds,
-): Promise<{ byOffer: Record<string, string>; bySku: Record<string, string>; skuToOffer: Record<string, string> }> {
+): Promise<{ ok: boolean; error?: string; byOffer: Record<string, string>; bySku: Record<string, string>; skuToOffer: Record<string, string> }> {
   const byOffer: Record<string, string> = {};
   const bySku: Record<string, string> = {};
   const skuToOffer: Record<string, string> = {};
@@ -755,10 +764,12 @@ export async function ozonImages(
         for (const s of it.sources ?? []) if (s.sku) bySku[String(s.sku)] = img;
       }
     }
-  } catch {
-    /* фото не критичны */
+    return { ok: true, byOffer, bySku, skuToOffer };
+  } catch (error) {
+    // Частично собранный справочник лучше пустого, но выдавать его за полный
+    // нельзя: без пометки пустая карта обнуляла рекламу и себестоимость.
+    return { ok: false, error: String(error).slice(0, 120), byOffer, bySku, skuToOffer };
   }
-  return { byOffer, bySku, skuToOffer };
 }
 
 // Детализация услуг (реклама/хранение/...) из transaction/list по operation_type.

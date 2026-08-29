@@ -135,7 +135,9 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod): Promise
     const entry = bucket.get(String(row.sku)) ?? { spent: 0, ordersMoney: 0, updatedAt: null };
     entry.spent += Number(row.spent ?? 0);
     entry.ordersMoney += Number(row.orders_money ?? 0);
-    entry.updatedAt = row.updated_at ?? entry.updatedAt;
+    // Свежесть строки — САМАЯ ПОЗДНЯЯ из дней, а не та, что случайно пришла
+    // последней: по ней считается возраст данных в рекомендациях.
+    if (row.updated_at && (!entry.updatedAt || row.updated_at > entry.updatedAt)) entry.updatedAt = row.updated_at;
     bucket.set(String(row.sku), entry);
     dailyByClient.set(clientId, bucket);
   }
@@ -306,6 +308,10 @@ async function loadCabinetBase(
 
   const warnings: string[] = [];
   if (!analytics.ok) warnings.push(`${cabinet.name}: аналитика — ${analytics.error}`);
+  // Справочник карточек связывает рекламу (по sku) с ценами и себестоимостью
+  // (по offer_id). Неполный справочник = часть рекламы и себестоимости
+  // не сопоставится, и молчать об этом нельзя.
+  if (!images.ok) warnings.push(`${cabinet.name}: справочник карточек неполный — ${images.error ?? "Ozon не ответил"}`);
   if (!stocks.ok) warnings.push(`${cabinet.name}: остатки — ${stocks.error}`);
   // Склады Ozon ответили, а собственный склад продавца — нет: остатки на
   // экране неполные, и молчать об этом нельзя.
@@ -450,7 +456,11 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
     previousRevenue,
   } = summarizeOzonSales(skuRows);
 
-  if (currentAdSpend === 0 && days === 14) currentAdSpend = sum([...adCache.values()].map((row) => row.spent));
+  // Суточная сводка Performance — основной источник расхода за период. Если
+  // она промолчала (кабинет без Performance, отказ API), берём собранное по
+  // товарам. Прежнее условие срабатывало только на «14 дней», и на любом
+  // другом периоде карточка «Реклама» показывала ноль при ненулевых строках.
+  if (currentAdSpend === 0) currentAdSpend = sum([...adCache.values()].map((row) => row.spent));
   const financial = financeSummary(currentTotals);
   const attention = skuRows.flatMap((row) => {
     const dailySales = row.orders / days;

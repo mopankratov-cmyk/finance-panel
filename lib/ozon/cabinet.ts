@@ -205,8 +205,16 @@ export async function getActiveOzonCreds(cabinetId?: string | null): Promise<
     return { ok: false, error: "Нет доступа к Ozon-кабинету" };
   }
   let q = db.from("wb_cabinets").select("id, name, client_id, token, perf_client_id, perf_secret").eq("marketplace", "ozon").eq("is_active", true);
-  if (cabinetId) q = q.eq("id", cabinetId);
-  const { data } = await q.limit(1);
+  // Агрегат «все кабинеты» конкретным кабинетом не является: без этой проверки
+  // сюда уходил фильтр `id = "all"`, строк не находилось, и пользователь видел
+  // «Нет подключённого Ozon-кабинета» при живых кабинетах.
+  if (cabinetId && cabinetId !== "all") q = q.eq("id", cabinetId);
+  // Порядок задаём явно: без него «первый» кабинет зависел от плана запроса и
+  // мог меняться между запросами.
+  const { data, error } = await q.order("created_at", { ascending: true }).limit(1);
+  // Ошибку базы нельзя выдавать за «кабинета нет»: это разные причины, и
+  // человеку по ним нужно разное действие.
+  if (error) return { ok: false, error: `Кабинеты не прочитаны: ${error.message}` };
   const cab = data?.[0];
   if (!cab?.client_id || !cab?.token) return { ok: false, error: "Нет подключённого Ozon-кабинета" };
   const perf = cab.perf_client_id && cab.perf_secret ? { clientId: cab.perf_client_id as string, secret: cab.perf_secret as string } : null;

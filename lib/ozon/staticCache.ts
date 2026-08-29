@@ -52,7 +52,9 @@ export function cachedOzonPrices(creds: OzonCreds): ReturnType<typeof ozonPrices
 }
 
 export function cachedOzonImages(creds: OzonCreds): ReturnType<typeof ozonImages> {
-  return cached("images", creds.clientId, () => ozonImages(creds));
+  // Ключ поднят до v2: прежние снимки могли содержать пустой справочник,
+  // сохранённый после сбоя Ozon, — на нём обнулялись реклама и себестоимость.
+  return cached("images-v2", creds.clientId, () => ozonImages(creds));
 }
 
 /**
