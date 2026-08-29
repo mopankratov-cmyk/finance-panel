@@ -10,7 +10,7 @@ import { loadOzonCockpit, type OzonCockpitView } from "@/lib/ozon/cockpit";
 import { resolveOzonPeriod } from "@/lib/ozon/period";
 
 export const OZON_COCKPIT_CACHE_SECONDS = 60 * 60;
-export const OZON_COCKPIT_CACHE_VERSION = "v6"; // v6: реклама по зонам покрытия дней — снимки с нулями до фикса недействительны
+export const OZON_COCKPIT_CACHE_VERSION = "v7"; // v7: источник рекламы выбирается по каждому кабинету — снимки с нулевым расходом недействительны
 const OZON_COCKPIT_RELIABILITY_VERSION = "complete-sales-v1";
 
 export interface OzonCockpitCacheRequest {

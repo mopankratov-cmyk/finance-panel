@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   normalizeOzonCacheRequest,
@@ -35,8 +36,14 @@ test("Ozon snapshot identity isolates screens and cabinet sets", () => {
   assert.notEqual(overview, single);
 });
 
-test("Ozon snapshot schema version invalidates incompatible cached payloads", () => {
-  assert.equal(OZON_COCKPIT_CACHE_VERSION, "v5");
+test("версия снимка обесценивает и кэш инстанса, и общий снимок в базе", () => {
+  assert.match(OZON_COCKPIT_CACHE_VERSION, /^v\d+$/);
+  // Пин на конкретную версию быстро устаревает и ловит не тот дефект. Важно
+  // другое: версия обязана входить в КЛЮЧ СНИМКА В БАЗЕ. Когда её там не было,
+  // смена логики данных обесценивала только кэш процесса, и пользователь до
+  // часа смотрел на нулевую рекламу уже после починки источника.
+  const source = readFileSync(new URL("../lib/ozon/cockpitCache.ts", import.meta.url), "utf8");
+  assert.match(source, /const sharedKey = `\$\{OZON_COCKPIT_CACHE_VERSION\}:/);
 });
 
 test("Ozon snapshot tag is short and contains no cabinet labels", () => {

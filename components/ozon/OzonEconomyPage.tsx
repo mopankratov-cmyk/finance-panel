@@ -11,7 +11,7 @@ import {
   MetricCard,
   OzonError,
   OzonLoading, OzonStaleNotice,
-  OzonWarnings,
+  OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings,
   ProductCell,
   StatusPill,
   formatMoney,
@@ -68,7 +68,7 @@ interface EconomyData {
   };
   services: { name: string; value: number }[];
   rows: EconomyRow[];
-  warnings: string[];
+  adCoverage?: OzonAdCoverageItem[]; warnings: string[];
   note: string;
 }
 
@@ -187,7 +187,7 @@ export function OzonEconomyPage() {
               </div>
               <Freshness generatedAt={data.generatedAt} />
             </div>
-            {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} />
+            {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <MetricCard
