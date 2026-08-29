@@ -86,11 +86,13 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
   const readDaily = async () => {
     const { data: dailyRows } = await db
       .from("ozon_ad_daily")
-      .select("client_id, sku, spent, orders_money, updated_at")
+      .select("client_id, sku, spent, orders_money, updated_at, date")
       .in("client_id", clientIds)
       .gte("date", period.from)
       .lte("date", period.to);
-    for (const row of (dailyRows ?? []) as AdCacheRow[]) {
+    const coveredDates = new Set<string>();
+    for (const row of (dailyRows ?? []) as Array<AdCacheRow & { date?: string }>) {
+      if (row.date) coveredDates.add(String(row.date).slice(0, 10));
       if (String(row.sku) === "-") continue; // маркер «день собран, расхода не было»
       const key = `${row.client_id}:${row.sku}`;
       const entry = rows.get(key) ?? { spent: 0, ordersMoney: 0, updatedAt: null };
@@ -99,15 +101,22 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod) {
       entry.updatedAt = row.updated_at ?? entry.updatedAt;
       rows.set(key, entry);
     }
+    return coveredDates.size;
   };
-  // Дни — первичный источник для ЛЮБОГО периода: они складываются под любые
-  // даты и наполняются дозаполнением. Раньше «последние N дней» ходили в
-  // скользящее окно, ради которого синк пересобирал 4-7 отчётов Performance
-  // каждые 4 часа и полностью съедал очередь Ozon — дозаполнение истории
-  // голодало, а колонка рекламы стояла нулевой.
-  await readDaily();
-  if (rows.size) return rows;
+  // Дни — первичный источник, но только когда они ПОКРЫВАЮТ период.
+  // «Дни первичны всегда» сутки прожило и показало нули там, где полное
+  // окно держало данные: истории пока 1-3 дня, и стандартные «последние
+  // две недели» читали тонкие дни вместо полного окна. Пока дозаполнение
+  // не догнало, у каждого источника своя зона: покрытые дни → дни,
+  // непокрытый период до сегодня → окно, произвольные даты → дни как есть.
+  const periodDays = Math.max(1, Math.round(
+    (Date.parse(`${period.to}T00:00:00Z`) - Date.parse(`${period.from}T00:00:00Z`)) / 86_400_000,
+  ) + 1);
+  const covered = await readDaily();
+  // Сегодняшний день ещё идёт и в истории отсутствует всегда — не в счёт.
+  if (covered >= periodDays - 1) return rows;
   if (!period.endsToday) return rows;
+  rows.clear();
 
   const { data } = await db
     .from("ozon_ad_cache")
