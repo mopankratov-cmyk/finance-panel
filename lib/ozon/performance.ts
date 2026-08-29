@@ -58,7 +58,18 @@ export interface PerfProductReportBatchState {
   bySku?: Record<string, { spent: number; ordersMoney: number }>;
   /** Расход по дням: дата → товар → расход. Нужен, чтобы складывать любой период. */
   byDay?: Record<string, Record<string, { spent: number; ordersMoney: number }>>;
+  /** Сколько заходов подряд отчёт так и не стал готовым. */
+  waited?: number;
 }
+
+/**
+ * После скольких заходов зависший отчёт заказывается заново.
+ *
+ * Ozon иногда оставляет отчёт в NOT_STARTED навсегда. UUID при этом валидный,
+ * ошибок нет, и кабинет молча стоял без данных до тех пор, пока кто-нибудь не
+ * заметит: у бэкфилла счётчик пересдачи был, у основного отчёта — нет.
+ */
+const PERF_REPORT_MAX_WAITS = 5;
 
 /**
  * Формат отчёта. Незавершённый отчёт продолжается по сохранённому UUID, но
@@ -178,6 +189,11 @@ export async function perfProductReport(
     const persistState = async () => options.onState?.(structuredClone(resumeState));
     const loadBatch = async (batchState: PerfProductReportBatchState) => {
       if (batchState.done) return { ok: true as const, error: null, rateLimited: false };
+      // ВАЖНО: «отчёт достался от прошлого захода» определяется ДО создания.
+      // Раньше флаг считался после того, как свежий UUID уже лёг в состояние,
+      // поэтому он всегда был истиной: любой батч опрашивался тремя попытками
+      // вместо заказанных, и каждый доезжал только со следующего часа.
+      const resumed = Boolean(batchState.uuid);
       let uuid = batchState.uuid;
       if (!uuid) {
         const createRetries = Math.max(0, options.createRetries ?? 0);
@@ -207,7 +223,6 @@ export async function perfProductReport(
       let lastState = "pending";
       // Заказанный ранее отчёт либо уже готов, либо ещё нет — сидеть над ним
       // все попытки бессмысленно: заход успеет забрать другие готовые.
-      const resumed = Boolean(batchState.uuid) && batchState.uuid === uuid;
       const pollAttempts = resumed ? 3 : Math.max(1, options.pollAttempts ?? 10);
       const pollIntervalMs = Math.max(0, options.pollIntervalMs ?? 1_500);
       for (let t = 0; t < pollAttempts; t++) {
@@ -224,10 +239,22 @@ export async function perfProductReport(
       if (!ready) {
         if (/^(?:ERROR|FAILED|HTTP 404)$/i.test(lastState)) {
           delete batchState.uuid;
+          batchState.waited = 0;
+          await persistState();
+        } else {
+          // Отчёт всё ещё готовится — это норма. Ненормально, когда он не
+          // готовится никогда: после нескольких заходов заказываем заново,
+          // иначе кабинет остаётся без данных бессрочно.
+          batchState.waited = (batchState.waited ?? 0) + 1;
+          if (batchState.waited >= PERF_REPORT_MAX_WAITS) {
+            delete batchState.uuid;
+            batchState.waited = 0;
+          }
           await persistState();
         }
         return { ok: false as const, error: `status ${lastState}`, rateLimited: false };
       }
+      batchState.waited = 0;
       // 4) скачать
       const rep = await tfetch(`${BASE}/api/client/statistics/report?UUID=${uuid}`, { headers: auth, cache: "no-store" });
       if (!rep.ok) {

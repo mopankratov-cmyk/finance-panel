@@ -169,9 +169,20 @@ export async function GET(request: NextRequest) {
   const skipped = eligibleCabinets.filter((cabinet) => !plannedIds.has(cabinet.id)).map((cabinet) => cabinet.name);
 
   const to = new Date().toISOString();
+  // Сегодняшний день в историю не пишем НИКОГДА: он ещё идёт, и его расход в
+  // отчёте окна заведомо частичный. Записанный один раз, он выглядел бы для
+  // дозаполнения «уже собранным» — и частичная цифра осталась бы в истории
+  // навсегда.
+  const todayIso = to.slice(0, 10);
+  const historyOnly = <T extends { date: string }>(rows: T[]) => rows.filter((row) => row.date < todayIso);
   const from = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const results: OzonAdSyncResult[] = await Promise.all(cabinets.map(async (cabinet) => {
     const saved = await readWbSyncState<OzonAdvertSyncState>(db, cabinet.id, "ozon-adverts");
+    // Снимок состояния читается ОДИН раз, а во время захода состояние меняется:
+    // сохранённые UUID заказанных отчётов лежат именно в нём. Записывать поверх
+    // прочитанный до старта снимок значило терять свежие заказы — следующий
+    // заход создавал их заново и жёг лимит «один отчёт в минуту».
+    let liveState: OzonAdvertSyncState = { ...(saved?.state ?? {}) } as OzonAdvertSyncState;
     try {
       if (!cabinet.client_id || !cabinet.perf_client_id || !cabinet.perf_secret) {
         throw new Error("Нет Ozon Performance API");
@@ -210,7 +221,7 @@ export async function GET(request: NextRequest) {
             status: "caught_up",
             attempts: 0,
             lastError: null,
-            state: { ...(saved?.state ?? {}), lastRunAt: new Date().toISOString(), backfill: backfillState },
+            state: (liveState = { ...liveState, lastRunAt: new Date().toISOString(), backfill: backfillState }),
           });
           if (backfill.state || !backfill.note) break; // день не доигран или дни кончились
         }
@@ -218,7 +229,7 @@ export async function GET(request: NextRequest) {
           status: "caught_up",
           attempts: 0,
           lastError: null,
-          state: { ...(saved?.state ?? {}), lastRunAt: new Date().toISOString(), backfill: backfillState },
+          state: (liveState = { ...liveState, lastRunAt: new Date().toISOString(), backfill: backfillState }),
         });
         return {
           cabinet: cabinet.name,
@@ -254,7 +265,7 @@ export async function GET(request: NextRequest) {
               status: "running",
               attempts: 0,
               lastError: null,
-              state: { ...(saved?.state ?? {}), report: reportState, lastRunAt: new Date().toISOString() },
+              state: (liveState = { ...liveState, report: reportState, lastRunAt: new Date().toISOString() }),
             });
             if (stateError) throw new Error(`состояние ozon-adverts: ${stateError}`);
           },
@@ -277,8 +288,9 @@ export async function GET(request: NextRequest) {
           orders_money: Math.round(value.ordersMoney),
           updated_at: new Date().toISOString(),
         })));
-      if (!report.complete && partialDaily.length) {
-        await db.from("ozon_ad_daily").upsert(partialDaily, { onConflict: "client_id,sku,date" });
+      const partialHistory = historyOnly(partialDaily);
+      if (!report.complete && partialHistory.length) {
+        await db.from("ozon_ad_daily").upsert(partialHistory, { onConflict: "client_id,sku,date" });
       }
       if (!report.complete) {
         const message = `Performance report: ${report.errors.join("; ") || "нет готовых батчей"}`;
@@ -289,7 +301,7 @@ export async function GET(request: NextRequest) {
           status: "pending",
           attempts: 0,
           lastError: message,
-          state: { ...(saved?.state ?? {}), report: report.resumeState, lastRunAt: new Date().toISOString() },
+          state: (liveState = { ...liveState, report: report.resumeState, lastRunAt: new Date().toISOString() }),
         });
         return { cabinet: cabinet.name, ok: false, rows: partialDaily.length, partial: true, deferred: true, error: message };
       }
@@ -315,10 +327,11 @@ export async function GET(request: NextRequest) {
           orders_money: Math.round(value.ordersMoney),
           updated_at: syncedAt,
         })));
-      if (dailyRows.length) {
+      const dailyHistory = historyOnly(dailyRows);
+      if (dailyHistory.length) {
         const { error: dailyError } = await db
           .from("ozon_ad_daily")
-          .upsert(dailyRows, { onConflict: "client_id,sku,date" });
+          .upsert(dailyHistory, { onConflict: "client_id,sku,date" });
         if (dailyError) throw new Error(dailyError.message);
       }
       if (rows.length) {
@@ -363,7 +376,7 @@ export async function GET(request: NextRequest) {
         status: isOzonPerformanceReportDeferredMessage(message) ? "pending" : "error",
         attempts: isOzonPerformanceReportDeferredMessage(message) ? 0 : (saved?.attempts ?? 0) + 1,
         lastError: message,
-        state: { ...(saved?.state ?? {}), lastRunAt: new Date().toISOString() },
+        state: (liveState = { ...liveState, lastRunAt: new Date().toISOString() }),
       });
       return {
         cabinet: cabinet.name,
