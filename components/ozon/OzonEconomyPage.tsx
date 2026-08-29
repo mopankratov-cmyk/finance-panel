@@ -65,6 +65,11 @@ interface EconomyData {
     knownCostRevenue: number;
     revenueCoveragePct: number;
     sku: number;
+    /** Расход кабинета целиком — то же число, что на «Обзоре». */
+    adSpend: number;
+    /** Из него разнесено по проданным товарам. */
+    adAllocated: number;
+    adUnallocated: number;
   };
   services: { name: string; value: number }[];
   rows: EconomyRow[];
@@ -189,7 +194,7 @@ export function OzonEconomyPage() {
             </div>
             {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <MetricCard
                 label="Расчётная прибыль"
                 value={formatMoney(data.summary.calculatedProfit)}
@@ -197,6 +202,16 @@ export function OzonEconomyPage() {
                 tone={data.summary.calculatedProfit < 0 ? "red" : "emerald"}
               />
               <MetricCard label="К выплате" value={formatMoney(data.summary.payout)} detail="факт транзакций" />
+              <MetricCard
+                label="Реклама"
+                value={formatMoney(data.summary.adSpend)}
+                detail={data.summary.adSpend > 0
+                  ? data.summary.adUnallocated > 0
+                    ? `${formatMoney(data.summary.adUnallocated)} не разнесено по товарам`
+                    : "разнесена по товарам полностью"
+                  : "расход за период"}
+                tone={data.summary.adUnallocated > 0 ? "amber" : "sky"}
+              />
               <MetricCard label="Удержания" value={formatMoney(data.summary.deductions)} tone="amber" />
               <MetricCard label="Возвраты" value={formatMoney(data.summary.refunds)} tone="amber" />
               <MetricCard
