@@ -3,7 +3,7 @@
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { OzonModuleHeader } from "./OzonModuleHeader";
-import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonWarnings, ProductCell, StatusPill, formatNumber } from "./OzonUi";
+import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonWarnings, ProductCell, StatusPill, formatNumber } from "./OzonUi";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonPeriod } from "./useOzonPeriod";
 
@@ -15,13 +15,13 @@ export function OzonStocksPage() {
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StockStatus>("all");
-  const { data, loading, error, refresh } = useOzonCockpit<StocksData>("stocks", period);
+  const { data, loading, error, updating, refresh, reload } = useOzonCockpit<StocksData>("stocks", period);
   const rows = useMemo(() => { const needle = query.trim().toLocaleLowerCase("ru-RU"); return (data?.rows ?? []).filter((row) => (status === "all" || row.status === status) && (!needle || `${row.name} ${row.offerId} ${row.cabinet}`.toLocaleLowerCase("ru-RU").includes(needle))); }, [data?.rows, query, status]);
   return <div>
     <OzonModuleHeader eyebrow="Ozon · Запасы" title="Остатки и пополнение" subtitle="Дни запаса, критические SKU, излишки и ориентир пополнения на 30 дней по скорости продаж." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
-    <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 sm:px-5">
-      {loading && !data ? <OzonLoading rows={10} /> : error ? <OzonError message={error} onRetry={refresh} /> : !data ? <EmptyState title="Нет остатков" detail="Проверьте Seller API и выбранный кабинет." /> : <>
-        <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · спрос за {period.days} дней</div><Freshness generatedAt={data.generatedAt} /></div><OzonWarnings warnings={data.warnings} />
+    <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
+      {loading && !data ? <OzonLoading rows={10} /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет остатков" detail="Проверьте Seller API и выбранный кабинет." /> : <>
+        <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · спрос за {period.days} дней</div><Freshness generatedAt={data.generatedAt} /></div>{error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"><MetricCard label="Доступно" value={formatNumber(data.summary.free)} /><MetricCard label="В резерве" value={formatNumber(data.summary.reserved)} tone="slate" /><MetricCard label="SKU" value={formatNumber(data.summary.sku)} /><MetricCard label="Критичные" value={formatNumber(data.summary.critical)} tone={data.summary.critical ? "red" : "emerald"} /><MetricCard label="Излишки" value={formatNumber(data.summary.overstock)} tone="amber" /><MetricCard label="К пополнению" value={`${formatNumber(data.summary.reorderQty)} шт.`} detail="цель 30 дней" /></div>
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="flex flex-col gap-2 border-b border-slate-100 p-3 lg:flex-row lg:items-center"><div className="flex flex-wrap gap-1">{(["all", "out", "critical", "warning", "ok", "overstock"] as StockStatus[]).map((value) => <button key={value} type="button" onClick={() => setStatus(value)} className={`min-h-11 rounded-lg px-2.5 text-[11px] font-semibold sm:min-h-8 ${status === value ? "bg-sky-700 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}>{({ all: "Все", out: "Нет остатка", critical: "≤ 7 дней", warning: "≤ 14 дней", ok: "Норма", overstock: "Излишек" } as Record<StockStatus, string>)[value]}</button>)}</div><label className="relative flex-1 lg:ml-auto lg:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Товар, артикул, кабинет" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label></div>

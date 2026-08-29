@@ -33,6 +33,21 @@ export function OzonError({ message, onRetry }: { message: string; onRetry: () =
   );
 }
 
+/**
+ * Ошибка при обновлении уже открытого экрана — полоса над данными, а не вместо
+ * них: транзиентный отказ стирал целый рабочий экран и заставлял собирать его
+ * заново. Показанные цифры остаются, но помечены как несвежие.
+ */
+export function OzonStaleNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">
+      <AlertTriangle className="h-4 w-4 shrink-0" />
+      <span className="flex-1">Обновить не удалось, показаны прежние данные. {message}</span>
+      <button type="button" onClick={onRetry} className="min-h-11 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold hover:bg-amber-100 sm:min-h-8">Ещё раз</button>
+    </div>
+  );
+}
+
 export function OzonWarnings({ warnings }: { warnings?: string[] }) {
   if (!warnings?.length) return null;
   return (

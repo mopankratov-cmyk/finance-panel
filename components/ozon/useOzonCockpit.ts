@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchOzonCockpitJson } from "@/lib/ozon/clientFetch";
 import { useOzonCabinet } from "./OzonCabinetContext";
 
@@ -15,12 +15,20 @@ export function useOzonCockpit<T>(
   const to = typeof period === "number" ? null : period.to;
   const days = typeof period === "number" ? period : null;
   const { cabinetId, ready } = useOzonCabinet();
-  const [data, setData] = useState<T | null>(null);
+  // Снимок помнит, КАКОМУ срезу он принадлежит. Раньше данные жили сами по
+  // себе, и при переключении кабинета экран пятнадцать секунд показывал цифры
+  // прежнего кабинета под новой шапкой — прочитать их как ответ на новый
+  // вопрос было проще простого.
+  const [snapshot, setSnapshot] = useState<{ key: string; data: T } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const forceRefreshRef = useRef(false);
   const extraKey = JSON.stringify(extra);
+  const requestKey = useMemo(
+    () => [view, cabinetId ?? "", from ?? "", to ?? "", days ?? "", extraKey].join("|"),
+    [cabinetId, days, extraKey, from, to, view],
+  );
 
   useEffect(() => {
     if (!ready || !cabinetId) return;
@@ -39,7 +47,7 @@ export function useOzonCockpit<T>(
     const stableExtra = JSON.parse(extraKey) as Record<string, string | number>;
     for (const [key, value] of Object.entries(stableExtra)) params.set(key, String(value));
     fetchOzonCockpitJson<T>(`/api/ozon/cockpit?${params.toString()}`, controller.signal)
-      .then(setData)
+      .then((data) => setSnapshot({ key: requestKey, data }))
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Не удалось загрузить Ozon");
       })
@@ -47,11 +55,25 @@ export function useOzonCockpit<T>(
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [cabinetId, days, extraKey, from, to, ready, reloadKey, view]);
+  }, [cabinetId, days, extraKey, from, to, ready, reloadKey, requestKey, view]);
+
+  /** Перечитать тот же срез. Снимок в базе не пересобирается — при лимите
+   *  Ozon повторная попытка не должна усугублять сам лимит. */
+  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
   const refresh = useCallback(() => {
     forceRefreshRef.current = true;
     setReloadKey((key) => key + 1);
   }, []);
-  return { data, loading, error, refresh };
+
+  const data = snapshot?.key === requestKey ? snapshot.data : null;
+  return {
+    data,
+    loading,
+    error,
+    /** Данные на экране есть, но идёт обновление того же среза. */
+    updating: loading && data !== null,
+    refresh,
+    reload,
+  };
 }

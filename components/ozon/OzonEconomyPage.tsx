@@ -9,7 +9,7 @@ import {
   Freshness,
   MetricCard,
   OzonError,
-  OzonLoading,
+  OzonLoading, OzonStaleNotice,
   OzonWarnings,
   ProductCell,
   StatusPill,
@@ -78,7 +78,7 @@ export function OzonEconomyPage() {
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [query, setQuery] = useState("");
   const [onlyProblem, setOnlyProblem] = useState(false);
-  const { data, loading, error, refresh } = useOzonCockpit<EconomyData>("economy", period);
+  const { data, loading, error, updating, refresh, reload } = useOzonCockpit<EconomyData>("economy", period);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
@@ -111,7 +111,7 @@ export function OzonEconomyPage() {
         refreshing={loading}
       />
 
-      <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 sm:px-5">
+      <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
         <CabinetUnitSettings
           cabinetId={cabinetId || null}
           cabinetName={activeCabinet?.name}
@@ -123,8 +123,8 @@ export function OzonEconomyPage() {
 
         {loading && !data ? (
           <OzonLoading rows={9} />
-        ) : error ? (
-          <OzonError message={error} onRetry={refresh} />
+        ) : error && !data ? (
+          <OzonError message={error} onRetry={reload} />
         ) : !data ? (
           <EmptyState title="Нет данных экономики" detail="Проверьте цены, аналитику и себестоимость товаров." />
         ) : (
@@ -135,7 +135,7 @@ export function OzonEconomyPage() {
               </div>
               <Freshness generatedAt={data.generatedAt} />
             </div>
-            <OzonWarnings warnings={data.warnings} />
+            {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} />
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <MetricCard
