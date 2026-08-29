@@ -1,8 +1,9 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CabinetUnitSettings, type AppliedUnitSettings } from "@/components/unit/CabinetUnitSettings";
+import { sumOzonEconomyRows } from "@/lib/ozon/economyTotals";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import {
   EmptyState,
@@ -73,22 +74,73 @@ interface EconomyData {
 
 const money = (value: number | null) => (value == null ? "—" : formatMoney(value));
 
+type SortKey =
+  | "name" | "units" | "price" | "buyerPrice" | "ozonDiscountPct" | "cost" | "commission"
+  | "logistics" | "acquiring" | "extraCommission" | "ad" | "tax" | "profit" | "margin";
+
+function sortValue(row: EconomyRow, key: SortKey): number | string | null {
+  if (key === "name") return `${row.name} ${row.offerId}`;
+  const value = row[key];
+  return value == null ? null : Number(value);
+}
+
+/** Колонки таблицы: заголовок, ключ сортировки и выравнивание — одним списком,
+ *  чтобы шапка и порядок ячеек не разъезжались при правках. */
+const COLUMNS: Array<{ key: SortKey; label: string; hint?: string }> = [
+  { key: "name", label: "Товар" },
+  { key: "units", label: "Продано" },
+  { key: "price", label: "Цена продавца" },
+  { key: "buyerPrice", label: "Платит покупатель" },
+  { key: "ozonDiscountPct", label: "Скидка Ozon" },
+  { key: "cost", label: "Себес" },
+  { key: "commission", label: "Комиссия" },
+  { key: "logistics", label: "Логистика" },
+  { key: "acquiring", label: "Эквайринг" },
+  { key: "extraCommission", label: "Комиссия кабинета" },
+  { key: "ad", label: "Реклама/шт.", hint: "Расход Performance за период, делённый на проданные единицы этого товара" },
+  { key: "tax", label: "Налог" },
+  { key: "profit", label: "Прибыль/шт." },
+  { key: "margin", label: "Маржа" },
+];
+
 export function OzonEconomyPage() {
   const { activeCabinet, cabinetId, canWrite } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [query, setQuery] = useState("");
   const [onlyProblem, setOnlyProblem] = useState(false);
+  const [onlySold, setOnlySold] = useState(false);
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
   const { data, loading, error, updating, refresh, reload } = useOzonCockpit<EconomyData>("economy", period);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
-    return (data?.rows ?? []).filter((row) => {
+    const filtered = (data?.rows ?? []).filter((row) => {
       const problem = row.reliability === "missing_cost" || Number(row.margin) < 0;
       if (onlyProblem && !problem) return false;
+      // За период продан не весь каталог: непроданные товары показывают
+      // «прибыль» по каталожной цене и мешают искать реальные проблемы.
+      if (onlySold && !(row.units > 0)) return false;
       if (!needle) return true;
       return `${row.name} ${row.offerId} ${row.cabinet}`.toLocaleLowerCase("ru-RU").includes(needle);
     });
-  }, [data?.rows, onlyProblem, query]);
+    if (!sort) return filtered;
+    const factor = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((left, right) => {
+      const a = sortValue(left, sort.key);
+      const b = sortValue(right, sort.key);
+      if (typeof a === "string" || typeof b === "string") {
+        return String(a).localeCompare(String(b), "ru-RU") * factor;
+      }
+      // Неизвестное значение всегда внизу, в какую бы сторону ни сортировали:
+      // «нет себеса» — это не «маржа минус бесконечность».
+      if (a == null && b == null) return 0;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return (a - b) * factor;
+    });
+  }, [data?.rows, onlyProblem, onlySold, query, sort]);
+
+  const totals = useMemo(() => sumOzonEconomyRows(rows), [rows]);
 
   // Скидку Ozon видно не по всем товарам: отчёт о реализации закрывается по итогам
   // месяца. Показываем покрытие, чтобы «налог с цены продавца» не выглядел ошибкой.
@@ -181,6 +233,15 @@ export function OzonEconomyPage() {
                     />
                     Только проблемные
                   </label>
+                  <label className="flex min-h-11 items-center gap-2 text-xs text-slate-600 sm:min-h-8">
+                    <input
+                      type="checkbox"
+                      checked={onlySold}
+                      onChange={(event) => setOnlySold(event.target.checked)}
+                      className="h-4 w-4 accent-sky-700"
+                    />
+                    Только с продажами
+                  </label>
                   <span className="text-[10px] text-slate-400 lg:ml-auto">
                     {rows.length === data.rows.length ? `${formatNumber(rows.length)} SKU` : `${formatNumber(rows.length)} из ${formatNumber(data.rows.length)} SKU`}
                   </span>
@@ -191,24 +252,35 @@ export function OzonEconomyPage() {
                     <EmptyState title="Товары не найдены" detail="Измените поиск или фильтр проблемных SKU." />
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  // Вертикальная прокрутка живёт здесь же — иначе sticky-шапка
+                  // прилипает к контейнеру, который никуда не едет, и при
+                  // длинной таблице заголовки колонок просто уезжают вверх.
+                  <div className="max-h-[68vh] overflow-auto">
                     <table className="w-full min-w-[1480px] text-xs">
                       <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="px-4 py-2 text-left">Товар</th>
-                          <th className="px-3 py-2 text-right">Продано</th>
-                          <th className="px-3 py-2 text-right">Цена продавца</th>
-                          <th className="px-3 py-2 text-right">Платит покупатель</th>
-                          <th className="px-3 py-2 text-right">Скидка Ozon</th>
-                          <th className="px-3 py-2 text-right">Себес</th>
-                          <th className="px-3 py-2 text-right">Комиссия</th>
-                          <th className="px-3 py-2 text-right">Логистика</th>
-                          <th className="px-3 py-2 text-right">Эквайринг</th>
-                          <th className="px-3 py-2 text-right">Комиссия кабинета</th>
-                          <th className="px-3 py-2 text-right">Реклама/шт.</th>
-                          <th className="px-3 py-2 text-right">Налог</th>
-                          <th className="px-3 py-2 text-right">Прибыль/шт.</th>
-                          <th className="px-3 py-2 text-right">Маржа</th>
+                          {COLUMNS.map((column, index) => {
+                            const active = sort?.key === column.key;
+                            return (
+                              <th
+                                key={column.key}
+                                className={`${index === 0 ? "px-4 text-left" : "px-3 text-right"} py-2`}
+                                aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
+                              >
+                                <button
+                                  type="button"
+                                  title={column.hint}
+                                  onClick={() => setSort((current) => current?.key === column.key
+                                    ? (current.dir === "desc" ? { key: column.key, dir: "asc" } : null)
+                                    : { key: column.key, dir: "desc" })}
+                                  className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${index === 0 ? "" : "flex-row-reverse"}`}
+                                >
+                                  {active ? (sort!.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-slate-300" />}
+                                  {column.label}
+                                </button>
+                              </th>
+                            );
+                          })}
                           <th className="px-4 py-2 text-right">Данные</th>
                         </tr>
                       </thead>
@@ -253,6 +325,30 @@ export function OzonEconomyPage() {
                           </tr>
                         ))}
                       </tbody>
+                      {/* Итог — по обороту, а не по колонкам «на штуку»: расход
+                          и прибыль умножены на проданные единицы. Прибыль и
+                          маржа считаются только по строкам с себестоимостью. */}
+                      <tfoot className="sticky bottom-0 z-10 border-t-2 border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-700">
+                        <tr>
+                          <td className="px-4 py-2.5">
+                            Итого · {formatNumber(totals.rows)} SKU
+                            <span className="ml-2 font-normal text-slate-400">
+                              выручка {formatMoney(totals.revenue)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(totals.units)}</td>
+                          <td colSpan={8} className="px-3 py-2.5 text-right font-normal text-[10px] text-slate-400">
+                            {totals.revenueCoverage == null
+                              ? "Себестоимость не известна ни по одной строке"
+                              : `Себестоимость известна по ${formatPercent(totals.revenueCoverage)} оборота`}
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(totals.ad)}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(totals.tax)}</td>
+                          <td className={`px-3 py-2.5 text-right tabular-nums ${totals.profit < 0 ? "text-red-600" : "text-emerald-700"}`}>{formatMoney(totals.profit)}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{totals.margin == null ? "—" : formatPercent(totals.margin)}</td>
+                          <td className="px-4 py-2.5" />
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 )}
