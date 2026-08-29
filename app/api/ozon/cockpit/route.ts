@@ -17,7 +17,11 @@ export async function GET(request: NextRequest) {
   }
   // Период приходит либо календарём (from/to), либо по старому — числом дней.
   const period = resolveOzonPeriod(params.get("from"), params.get("to"), Number(params.get("days")) || 14);
-  const taxPct = Math.min(30, Math.max(0, Number(params.get("tax")) || 7));
+  // Ноль — законная ставка (например, НПД или льгота), а `|| 7` её глотал и
+  // молча считал налог семипроцентным.
+  const rawTax = params.get("tax");
+  const parsedTax = rawTax === null || rawTax.trim() === "" ? Number.NaN : Number(rawTax);
+  const taxPct = Math.min(30, Math.max(0, Number.isFinite(parsedTax) ? parsedTax : 7));
   const resolved = await getOzonCabinetScope(params.get("cabinet"));
   if (!resolved.ok) {
     return NextResponse.json({ error: resolved.error, noCabinet: true }, { status: 404 });

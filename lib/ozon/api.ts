@@ -550,6 +550,9 @@ export async function ozonPostings(
 export interface OzonPriceRow {
   offer_id: string; product_id: number; price: number; commissionPct: number;
   logistics: number; returnLogistics: number; acquiring: number;
+  /** Комиссия и логистика по схеме FBS — для товаров со своего склада. */
+  commissionPctFbs: number;
+  logisticsFbs: number;
   /**
    * Цена для покупателя с учётом акций Ozon (аналог цены после СПП на WB).
    * 0 — Ozon поле не отдал. Нужна как база налога: платим с того, что заплатил покупатель.
@@ -597,8 +600,14 @@ export async function ozonPrices(
           marketingPrice: Number(it.price?.marketing_price ?? 0),
           marketingSellerPrice: Number(it.price?.marketing_seller_price ?? 0),
           rawPrice: rows.length < 3 ? (it.price as Record<string, unknown> | undefined) : undefined,
+          // Тарифы обеих схем: товар, который возят со своего склада, считался
+          // по FBO-ставкам — комиссия и логистика чужие, и прибыль по нему
+          // выходила завышенной. Какую пару применить, решает уже экономика,
+          // зная схему товара.
           commissionPct: Number(cm.sales_percent_fbo ?? cm.sales_percent_fbs ?? 0),
+          commissionPctFbs: Number(cm.sales_percent_fbs ?? cm.sales_percent_fbo ?? 0),
           logistics: Number(cm.fbo_deliv_to_customer_amount ?? 0) + Number(cm.fbo_direct_flow_trans_min_amount ?? 0),
+          logisticsFbs: Number(cm.fbs_deliv_to_customer_amount ?? 0) + Number(cm.fbs_direct_flow_trans_min_amount ?? 0),
           returnLogistics: Number(cm.fbo_return_flow_amount ?? 0),
           acquiring: Number(it.acquiring ?? 0),
         });

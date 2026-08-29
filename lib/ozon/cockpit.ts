@@ -11,6 +11,7 @@ import {
   ozonServiceBreakdown,
   ozonStocks,
   ozonTransactionTotals,
+  OZON_FBS_WAREHOUSE,
   type OzonAnalyticsDailyRow,
   type OzonTotals,
 } from "@/lib/ozon/api";
@@ -868,6 +869,7 @@ export async function loadOrders(scope: OzonCabinetScope, current: OzonPeriod) {
         delayed: isOzonPostingDelayed(state, posting.shipmentDate),
       });
     }
+
   }));
   const financial = financeSummary(totals);
   return {
@@ -921,6 +923,7 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
   // кэша отчётов и бывает неполным — эту разницу больше не теряем.
   let adCabinetTotal = 0;
   let adAllocated = 0;
+  const analyticsStates: Array<{ cabinet: string; available: boolean; error: string | null }> = [];
   await Promise.all(scope.cabinets.map(async (cabinet) => {
     const [prices, analytics, images, finance, services, stocks, buyerDiscount, dailySpend] = await Promise.all([
       cachedOzonPrices(cabinet.creds),
@@ -937,6 +940,10 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
         if (day >= range.from && day <= range.to) adCabinetTotal += value.spent;
       }
     }
+    // Отказ аналитики кабинета означает «продаж не видно», а не «продаж не
+    // было»: раньше такой снимок с units=0 по всем товарам ложился в общий
+    // кэш на час и показывал нулевую экономику как факт.
+    analyticsStates.push({ cabinet: cabinet.name, available: analytics.ok, error: analytics.ok ? null : analytics.error });
     if (!prices.ok) warnings.push(`${cabinet.name}: ${prices.error}`);
     if (!analytics.ok) warnings.push(`${cabinet.name}: ${analytics.error}`);
     if (!stocks.ok) warnings.push(`${cabinet.name}: остатки — ${stocks.error}`);
@@ -945,8 +952,12 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
     for (const [name, value] of Object.entries(services)) serviceTotals[name] = (serviceTotals[name] ?? 0) + value;
 
     const stockNameByOffer = new Map<string, string>();
+    // Товар со своего склада считается по тарифам FBS: комиссия и логистика
+    // у схем разные, и считать всё по FBO значило завышать прибыль по FBS.
+    const fbsOffers = new Set<string>();
     if (stocks.ok) for (const stock of stocks.rows) {
       if (stock.article && stock.name && !stockNameByOffer.has(stock.article)) stockNameByOffer.set(stock.article, stock.name);
+      if (stock.article && stock.warehouse === OZON_FBS_WAREHOUSE && stock.free > 0) fbsOffers.add(stock.article);
     }
     const stockOfferBySku = indexOzonOfferIdsBySku(stocks.ok ? stocks.rows : []);
 
@@ -978,8 +989,10 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
       const salePrice = sales.units > 0 ? sales.revenue / sales.units : priceRow.price;
       const costMatch = costs.resolve({ offerId, names: [sales.name, stockName] });
       const cost = costMatch?.cost ?? 0;
-      const commission = salePrice * priceRow.commissionPct / 100;
-      const logistics = priceRow.logistics;
+      const bySeller = fbsOffers.has(offerId);
+      const commissionPct = bySeller && priceRow.commissionPctFbs > 0 ? priceRow.commissionPctFbs : priceRow.commissionPct;
+      const commission = salePrice * commissionPct / 100;
+      const logistics = bySeller && priceRow.logisticsFbs > 0 ? priceRow.logisticsFbs : priceRow.logistics;
       const acquiring = priceRow.acquiring;
       // Расход на единицу считается только при продажах. Расход товара, который
       // за период ничего не продал, в строку не помещается — но и пропасть не
@@ -1016,7 +1029,8 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
         revenue: r0(sales.revenue),
         price: r0(salePrice),
         cost: r0(cost),
-        commissionPct: r1(priceRow.commissionPct),
+        commissionPct: r1(commissionPct),
+        scheme: bySeller ? "FBS" : "FBO",
         commission: r0(commission),
         logistics: r0(logistics),
         acquiring: r0(acquiring),
@@ -1034,7 +1048,52 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
         reliability: economy.reliability,
       });
     }
+
+    // Проданное, чего нет в прайсе кабинета (архив, скрытая карточка, SKU без
+    // сопоставления), молча выпадало из таблицы ВМЕСТЕ С ВЫРУЧКОЙ: итоги
+    // экономики не сходились с продажами, и объяснить разницу было нечем.
+    // Показываем такие товары строкой без тарифов — с продажами и выручкой.
+    const pricedOffers = new Set((prices.ok ? prices.rows : []).map((row) => row.offer_id));
+    for (const [offerId, sales] of salesByOffer) {
+      if (pricedOffers.has(offerId) || sales.units <= 0) continue;
+      const stockName = stockNameByOffer.get(offerId) ?? "";
+      const salePrice = sales.revenue / sales.units;
+      const offerAdSpend = adsByOffer.get(offerId) ?? 0;
+      const adPerUnit = offerAdSpend / sales.units;
+      adAllocated += offerAdSpend;
+      rows.push({
+        key: `${cabinet.id}:${offerId}`,
+        cabinetId: cabinet.id,
+        cabinet: cabinet.name,
+        offerId,
+        name: sales.name || stockName || offerId,
+        image: images.byOffer[offerId] ?? null,
+        units: r0(sales.units),
+        revenue: r0(sales.revenue),
+        price: r0(salePrice),
+        cost: r0(costs.resolve({ offerId, names: [sales.name, stockName] })?.cost ?? 0),
+        // Тарифов у такого товара нет — показываем нули с пометкой, а прибыль
+        // не считаем вовсе: без комиссии и логистики она была бы выдумкой.
+        commissionPct: 0,
+        commission: 0,
+        scheme: "—",
+        logistics: 0,
+        acquiring: 0,
+        extraCommission: null,
+        buyerPrice: null,
+        ozonDiscountPct: null,
+        taxPct: r1(unitSettings.get(cabinet.id)?.taxPct ?? taxPct),
+        ad: r0(adPerUnit),
+        drr: pct(adPerUnit, salePrice),
+        tax: 0,
+        profit: null,
+        margin: null,
+        reliability: "missing_cost" as const,
+        outOfCatalog: true,
+      });
+    }
   }));
+  requireCompleteOzonSalesSnapshot(analyticsStates);
   const financial = financeSummary(totals);
   const quality = summarizeOzonEconomy(rows);
   if (quality.missingCost > 0) {

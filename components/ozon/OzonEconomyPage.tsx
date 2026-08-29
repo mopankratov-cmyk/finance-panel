@@ -50,6 +50,10 @@ interface EconomyRow {
   profit: number | null;
   margin: number | null;
   reliability: "estimated" | "missing_cost";
+  /** Схема, по тарифам которой посчитан товар. */
+  scheme?: string;
+  /** Продан, но в прайсе кабинета его нет — тарифов и прибыли не будет. */
+  outOfCatalog?: boolean;
 }
 
 interface EconomyData {
@@ -353,7 +357,7 @@ export function OzonEconomyPage() {
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">{row.cost ? formatMoney(row.cost) : "—"}</td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {formatMoney(row.commission)} <span className="text-[9px] text-slate-400">({formatPercent(row.commissionPct)})</span>
+                              {row.outOfCatalog ? "—" : <>{formatMoney(row.commission)} <span className="text-[9px] text-slate-400">({formatPercent(row.commissionPct)}{row.scheme && row.scheme !== "—" ? ` · ${row.scheme}` : ""})</span></>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.logistics)}</td>
                             <td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.acquiring)}</td>
