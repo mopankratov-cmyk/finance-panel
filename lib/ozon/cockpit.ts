@@ -458,15 +458,20 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
     const daysCover = row.stock != null && dailySales > 0 ? row.stock / dailySales : null;
     const drr = pct(row.adSpend, row.revenue);
     const messages: Array<{ severity: "critical" | "warning"; title: string; detail: string; href: string }> = [];
-    if (row.orders > 0 && row.stock != null && row.stock <= 0) messages.push({ severity: "critical", title: `${row.offerId || row.sku}: нет остатка`, detail: `${r0(row.orders)} заказов за период`, href: "/ozon/stocks" });
-    else if (daysCover !== null && daysCover <= 7) messages.push({ severity: "critical", title: `${row.offerId || row.sku}: запас на ${r1(daysCover)} дн.`, detail: `${r0(row.stock ?? 0)} шт. доступно`, href: "/ozon/stocks" });
-    else if (daysCover !== null && daysCover <= 14) messages.push({ severity: "warning", title: `${row.offerId || row.sku}: пора пополнять`, detail: `Запас на ${r1(daysCover)} дн.`, href: "/ozon/stocks" });
-    if (row.adSpend > 0 && drr >= 30) messages.push({ severity: "warning", title: `${row.offerId || row.sku}: ДРР ${drr}%`, detail: `${r0(row.adSpend).toLocaleString("ru-RU")} ₽ расход`, href: "/ozon/adverts" });
+    // Сигнал ведёт СРАЗУ в нужную строку нужного экрана: поиском по артикулу
+    // и фильтром по статусу. Раньше он открывал общий список, и менеджер искал
+    // тот же товар руками — второй раз за минуту.
+    const code = row.offerId || row.sku;
+    const find = (href: string, extra = "") => `${href}?q=${encodeURIComponent(code)}${extra}`;
+    if (row.orders > 0 && row.stock != null && row.stock <= 0) messages.push({ severity: "critical", title: `${code}: нет остатка`, detail: `${r0(row.orders)} заказов за период`, href: find("/ozon/stocks", "&status=out") });
+    else if (daysCover !== null && daysCover <= 7) messages.push({ severity: "critical", title: `${code}: запас на ${r1(daysCover)} дн.`, detail: `${r0(row.stock ?? 0)} шт. доступно`, href: find("/ozon/stocks", "&status=critical") });
+    else if (daysCover !== null && daysCover <= 14) messages.push({ severity: "warning", title: `${code}: пора пополнять`, detail: `Запас на ${r1(daysCover)} дн.`, href: find("/ozon/stocks", "&status=warning") });
+    if (row.adSpend > 0 && drr >= 30) messages.push({ severity: "warning", title: `${code}: ДРР ${drr}%`, detail: `${r0(row.adSpend).toLocaleString("ru-RU")} ₽ расход`, href: find("/ozon/adverts") });
     return messages;
   }).sort((left, right) => left.severity === right.severity ? 0 : left.severity === "critical" ? -1 : 1).slice(0, 12);
 
   if (financial.refunds > 0 && pct(financial.refunds, currentRevenue) >= 10) {
-    attention.unshift({ severity: "warning", title: "Высокая сумма возвратов", detail: `${pct(financial.refunds, currentRevenue)}% от выручки`, href: "/ozon/orders" });
+    attention.unshift({ severity: "warning", title: "Высокая сумма возвратов", detail: `${pct(financial.refunds, currentRevenue)}% от выручки`, href: "/ozon/orders?state=cancelled" });
   }
 
   return {

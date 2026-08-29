@@ -6,6 +6,7 @@ import { OzonModuleHeader } from "./OzonModuleHeader";
 import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
 
 interface SalesRow {
@@ -31,7 +32,7 @@ function MiniBars({ values }: { values: number[] }) {
 export function OzonSalesPage() {
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [tab, setTab] = useState<"rnp" | "funnel">("rnp");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [sort, setSort] = useState<SortKey>("revenue");
   const { data, loading, error, updating, refresh, reload } = useOzonCockpit<SalesData>("sales", period);
   const rows = useMemo(() => {

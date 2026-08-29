@@ -6,6 +6,7 @@ import { OzonModuleHeader } from "./OzonModuleHeader";
 import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonWarnings, ProductCell, StatusPill, formatNumber } from "./OzonUi";
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
 
 type StockStatus = "all" | "out" | "critical" | "warning" | "ok" | "overstock";
@@ -14,8 +15,8 @@ interface StocksData { generatedAt: string; scope: { label: string; count: numbe
 
 export function OzonStocksPage() {
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StockStatus>("all");
+  const [query, setQuery] = useOzonUrlFilter<string>("q", "");
+  const [status, setStatus] = useOzonUrlFilter<StockStatus>("status", "all", ["all", "out", "critical", "warning", "ok", "overstock"]);
   const { data, loading, error, updating, refresh, reload } = useOzonCockpit<StocksData>("stocks", period);
   const rows = useMemo(() => { const needle = query.trim().toLocaleLowerCase("ru-RU"); return (data?.rows ?? []).filter((row) => (status === "all" || row.status === status) && (!needle || `${row.name} ${row.offerId} ${row.cabinet}`.toLocaleLowerCase("ru-RU").includes(needle))); }, [data?.rows, query, status]);
   const exportCsv = () => {

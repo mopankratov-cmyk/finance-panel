@@ -6,6 +6,7 @@ import { OzonModuleHeader } from "./OzonModuleHeader";
 import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonWarnings, formatDateTime, formatMoney, formatNumber } from "./OzonUi";
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
 
 interface OrderProduct { offerId: string; name: string; quantity: number; price: number }
@@ -30,9 +31,9 @@ const statusTone = (row: OrderRow) => row.delayed
 
 export function OzonOrdersPage() {
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [scheme, setScheme] = useState<"all" | "FBO" | "FBS">("all");
-  const [state, setState] = useState<"all" | "active" | "awaiting" | "delayed" | "delivered" | "cancelled">("all");
+  const [state, setState] = useOzonUrlFilter<"all" | "active" | "awaiting" | "delayed" | "delivered" | "cancelled">("state", "all", ["all", "active", "awaiting", "delayed", "delivered", "cancelled"]);
   const { data, loading, error, updating, refresh, reload } = useOzonCockpit<OrdersData>("orders", period);
   const rows = useMemo(() => { const needle = query.trim().toLocaleLowerCase("ru-RU"); return (data?.rows ?? []).filter((row) => (scheme === "all" || row.scheme === scheme) && (state === "all" || (state === "active" && !row.cancelled && !row.delivered) || (state === "awaiting" && row.awaitingShipment) || (state === "delayed" && row.delayed) || (state === "delivered" && row.delivered) || (state === "cancelled" && row.cancelled)) && (!needle || `${row.postingNumber} ${row.status} ${row.statusLabel} ${row.cabinet} ${row.products.map((product) => `${product.name} ${product.offerId}`).join(" ")}`.toLocaleLowerCase("ru-RU").includes(needle))); }, [data?.rows, query, scheme, state]);
   const exportCsv = () => {

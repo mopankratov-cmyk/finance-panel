@@ -8,6 +8,7 @@ import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoadin
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { OzonCampaignsPanel } from "./OzonCampaignsPanel";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
 
 interface AdvertRow { key: string; cabinet: string; sku: string; offerId: string; name: string; image: string | null; spent: number; adRevenue: number; revenue: number; orders: number; drr: number; adDrr: number; roas: number | null; attributionCompatible: boolean; economics: AdvertProfitGuardrail; updatedAt: string | null }
@@ -29,7 +30,7 @@ function recommendationTone(action: AdvertProfitGuardrail["action"]) {
 }
 
 export function OzonAdvertsPage() {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [sort, setSort] = useState<"spent" | "revenue" | "adRevenue" | "drr" | "roas">("spent");
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const { data, loading, error, updating, refresh, reload } = useOzonCockpit<AdvertsData>("adverts", period);

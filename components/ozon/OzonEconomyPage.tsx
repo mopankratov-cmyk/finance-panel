@@ -22,6 +22,7 @@ import {
 } from "./OzonUi";
 import { useOzonCabinet } from "./OzonCabinetContext";
 import { useOzonCockpit } from "./useOzonCockpit";
+import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
 
 interface EconomyRow {
@@ -113,7 +114,7 @@ const COLUMNS: Array<{ key: SortKey; label: string; hint?: string }> = [
 export function OzonEconomyPage() {
   const { activeCabinet, cabinetId, canWrite } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [onlyProblem, setOnlyProblem] = useState(false);
   const [onlySold, setOnlySold] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
