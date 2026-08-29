@@ -116,7 +116,7 @@ const COLUMNS: Array<{ key: SortKey; label: string; hint?: string }> = [
 ];
 
 export function OzonEconomyPage() {
-  const { activeCabinet, cabinetId, canWrite } = useOzonCabinet();
+  const { activeCabinet, cabinetId, canWrite, noCabinets } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [onlyProblem, setOnlyProblem] = useState(false);
@@ -215,6 +215,8 @@ export function OzonEconomyPage() {
 
         {loading && !data ? (
           <OzonLoading rows={9} />
+        ) : noCabinets ? (
+          <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" />
         ) : error && !data ? (
           <OzonError message={error} onRetry={reload} />
         ) : !data ? (

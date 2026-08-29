@@ -70,6 +70,26 @@ export function useOzonPeriod(defaultPreset: OzonPeriodPreset = "two_weeks") {
     }
   });
 
+  // Вкладка может жить сутками. Скользящий пресет считался один раз при
+  // открытии, поэтому после полуночи «2 недели» продолжали кончаться вчера:
+  // экран показывал вчерашний срез и промахивался мимо прогретого снимка.
+  useEffect(() => {
+    if (state.preset === "custom") return;
+    const check = () => {
+      const rolled = ozonRangeFor(state.preset);
+      if (rolled.from !== state.from || rolled.to !== state.to) {
+        setState({ from: rolled.from, to: rolled.to, preset: state.preset });
+      }
+    };
+    const timer = setInterval(check, 60_000);
+    // Возврат к вкладке — самый частый момент, когда дата уже сменилась.
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [state.from, state.preset, state.to]);
+
   // Адрес держим в актуальном состоянии без перезагрузки страницы: это ссылка
   // на срез, а не навигация.
   useEffect(() => {

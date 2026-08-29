@@ -23,6 +23,8 @@ export interface OzonPeriod {
   days: number;
   /** Период кончается сегодня — только для такого годится кэш, привязанный к «последним N дням». */
   endsToday: boolean;
+  /** Запрошенный период был длиннее максимума и укорочен — человеку об этом говорят. */
+  clamped: boolean;
 }
 
 export const OZON_PERIOD_PRESETS = [
@@ -110,10 +112,11 @@ export function resolveOzonPeriod(
   if (from > to) from = to;
 
   const span = Math.round((dayMs(to) - dayMs(from)) / DAY) + 1;
-  if (span > OZON_MAX_PERIOD_DAYS) from = shiftDays(to, -(OZON_MAX_PERIOD_DAYS - 1));
+  const clamped = span > OZON_MAX_PERIOD_DAYS;
+  if (clamped) from = shiftDays(to, -(OZON_MAX_PERIOD_DAYS - 1));
 
   const days = Math.round((dayMs(to) - dayMs(from)) / DAY) + 1;
-  return { from, to, days, endsToday: to === today };
+  return { from, to, days, endsToday: to === today, clamped };
 }
 
 /** Равный по длине период, стоящий вплотную перед этим — база для дельт. */

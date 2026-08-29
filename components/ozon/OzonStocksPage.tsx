@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonWarnings, ProductCell, StatusPill, formatNumber } from "./OzonUi";
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
+import { useOzonCabinet } from "./OzonCabinetContext";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
@@ -14,6 +15,7 @@ interface StockRow { key: string; cabinet: string; offerId: string; name: string
 interface StocksData { generatedAt: string; scope: { label: string; count: number }; period: { days: number; from: string; to: string }; summary: { free: number; reserved: number; sku: number; critical: number; overstock: number; reorderQty: number; cabinetsWithStocks: number; cabinets: number }; rows: StockRow[]; warnings: string[] }
 
 export function OzonStocksPage() {
+  const { noCabinets } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [status, setStatus] = useOzonUrlFilter<StockStatus>("status", "all", ["all", "out", "critical", "warning", "ok", "overstock"]);
@@ -42,7 +44,7 @@ export function OzonStocksPage() {
   return <div>
     <OzonModuleHeader eyebrow="Ozon · Запасы" title="Остатки и пополнение" subtitle="Дни запаса, критические SKU, излишки и ориентир пополнения на 30 дней по скорости продаж." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
     <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
-      {loading && !data ? <OzonLoading rows={10} /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет остатков" detail="Проверьте Seller API и выбранный кабинет." /> : <>
+      {loading && !data ? <OzonLoading rows={10} /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет остатков" detail="Проверьте Seller API и выбранный кабинет." /> : <>
         <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · спрос за {period.days} дней</div><Freshness generatedAt={data.generatedAt} /></div>{error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"><MetricCard label="Доступно" value={formatNumber(data.summary.free)} /><MetricCard label="В резерве" value={formatNumber(data.summary.reserved)} tone="slate" /><MetricCard label="SKU" value={formatNumber(data.summary.sku)} /><MetricCard label="Критичные" value={formatNumber(data.summary.critical)} tone={data.summary.critical ? "red" : "emerald"} /><MetricCard label="Излишки" value={formatNumber(data.summary.overstock)} tone="amber" /><MetricCard label="К пополнению" value={`${formatNumber(data.summary.reorderQty)} шт.`} detail="цель 30 дней" /></div>
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">

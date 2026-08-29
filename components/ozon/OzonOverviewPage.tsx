@@ -28,13 +28,13 @@ interface OverviewData {
 
 export function OzonOverviewPage() {
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
-  const { cabinetId } = useOzonCabinet();
+  const { cabinetId, noCabinets } = useOzonCabinet();
   const { data, loading, error, updating, refresh, reload } = useOzonCockpit<OverviewData>("overview", period);
   return (
     <div>
       <OzonModuleHeader eyebrow="Ozon Cockpit" title="Обзор" subtitle="Главная картина по продажам, рекламе, остаткам и удержаниям — с честными статусами полноты данных." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
       <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
-        {loading && !data ? <OzonLoading /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет данных Ozon" detail="Подключите Seller API и выберите кабинет." href="/cabinets" /> : (
+        {loading && !data ? <OzonLoading /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет данных Ozon" detail="Подключите Seller API и выберите кабинет." href="/cabinets" /> : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div>

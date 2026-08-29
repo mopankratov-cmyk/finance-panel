@@ -7,6 +7,7 @@ import { OzonModuleHeader } from "./OzonModuleHeader";
 import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatDateTime, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { OzonCampaignsPanel } from "./OzonCampaignsPanel";
+import { useOzonCabinet } from "./OzonCabinetContext";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
@@ -32,6 +33,7 @@ function recommendationTone(action: AdvertProfitGuardrail["action"]) {
 export function OzonAdvertsPage() {
   const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [sort, setSort] = useState<"spent" | "revenue" | "adRevenue" | "drr" | "roas">("spent");
+  const { noCabinets } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const { data, loading, error, updating, refresh, reload } = useOzonCockpit<AdvertsData>("adverts", period);
   const rows = useMemo(() => {
@@ -67,7 +69,7 @@ export function OzonAdvertsPage() {
   return <div>
     <OzonModuleHeader eyebrow="Ozon · Performance" title="Реклама" subtitle="Расходы и атрибутированные продажи по SKU: общий ДРР, рекламный ДРР и ROAS." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
     <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
-      {loading && !data ? <OzonLoading rows={9} /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет рекламных данных" detail="Подключите Performance API и запустите синхронизацию." href="/cabinets" /> : <>
+      {loading && !data ? <OzonLoading rows={9} /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет рекламных данных" detail="Подключите Performance API и запустите синхронизацию." href="/cabinets" /> : <>
         <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div>
         {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9"><MetricCard label="Расход" value={formatMoney(data.summary.spent)} tone="amber" /><MetricCard label="Прибыль после рекламы" value={formatMoney(data.summary.calculatedProfit)} detail={`покрытие ${formatPercent(data.summary.profitCoveragePct)}`} tone={data.summary.profitCoveragePct < 90 || data.summary.calculatedProfit == null ? "amber" : data.summary.calculatedProfit < 0 ? "red" : "emerald"} /><MetricCard label="Рекомендации" value={formatNumber(data.summary.recommendations)} detail="увеличить / снизить / пауза" tone={data.summary.recommendations ? "amber" : "emerald"} /><MetricCard label="Продажи с рекламы" value={formatMoney(data.summary.adRevenue)} /><MetricCard label="Общая выручка" value={formatMoney(data.summary.revenue)} /><MetricCard label="ДРР общий" value={formatPercent(data.summary.drr)} tone={data.summary.drr >= 30 ? "red" : data.summary.drr >= 20 ? "amber" : "emerald"} /><MetricCard label="ДРР рекламный" value={formatPercent(data.summary.adDrr)} /><MetricCard label="ROAS рекламный" value={data.summary.roas == null ? "—" : `${data.summary.roas.toLocaleString("ru-RU")}×`} /><MetricCard label="SKU в рекламе" value={formatNumber(data.summary.sku)} tone="slate" /></div>

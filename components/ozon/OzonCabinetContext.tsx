@@ -34,6 +34,8 @@ interface OzonCabinetContextValue {
   activeGroup: OzonCabinetGroup | null;
   user: SessionUser | null;
   ready: boolean;
+  /** Кабинетов нет вовсе: экрану нечего показывать, и это не ошибка. */
+  noCabinets: boolean;
   loading: boolean;
   error: string | null;
   canUseAll: boolean;
@@ -155,6 +157,7 @@ export function OzonCabinetProvider({ children }: { children: React.ReactNode })
     activeGroup,
     user,
     ready,
+    noCabinets: !loading && cabinets.length === 0 && groups.length === 0,
     loading,
     error,
     canUseAll,

@@ -19,7 +19,7 @@ export function OzonModuleHeader({
   title: string;
   subtitle: string;
   /** Период показывается календарём — как в РНП Wildberries: пресеты слева, два месяца справа. */
-  period?: { from: string; to: string };
+  period?: { from: string; to: string; days?: number; clamped?: boolean };
   preset?: string;
   onApplyPreset?: (value: string) => void;
   onApplyRange?: (from: string, to: string) => void;
@@ -33,6 +33,14 @@ export function OzonModuleHeader({
           <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-sky-600">{eyebrow}</div>
           <h1 className="mt-0.5 text-xl font-bold tracking-tight text-slate-900">{title}</h1>
           <p className="mt-0.5 max-w-3xl text-xs text-slate-500">{subtitle}</p>
+          {/* Период молча укорачивался с начала — человек выбирал полгода и
+              получал квартал без единого слова. Говорим об этом там же, где
+              он выбирал. */}
+          {period?.clamped && (
+            <p className="mt-1 text-[11px] font-semibold text-amber-700">
+              Показан максимум {period.days} дн. до {period.to}: аналитика Ozon отдаётся построчно «товар × день», и более длинный период не успевает доехать.
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {period && onApplyPreset && onApplyRange && (

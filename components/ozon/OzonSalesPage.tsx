@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
+import { useOzonCabinet } from "./OzonCabinetContext";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
@@ -24,12 +25,22 @@ interface SalesData {
 
 type SortKey = "revenue" | "orders" | "stock" | "adSpend" | "drr" | "views" | "carts" | "crCart" | "crOrder";
 
+/**
+ * Ключи сортировки, которые существуют только на вкладке «Воронка».
+ *
+ * Возврат на РНП с сортировкой «по показам» оставлял таблицу отсортированной
+ * по колонке, которой на экране нет, а список сортировки показывался пустым:
+ * человек видел непонятный порядок и не мог его объяснить.
+ */
+const FUNNEL_ONLY_SORTS: SortKey[] = ["views", "carts", "crCart", "crOrder"];
+
 function MiniBars({ values }: { values: number[] }) {
   const max = Math.max(1, ...values);
   return <div className="flex h-7 items-end justify-end gap-px" aria-label={`Динамика: ${values.join(", ")}`}>{values.map((value, index) => <span key={index} className="w-1.5 rounded-t bg-sky-400" style={{ height: `${Math.max(2, value / max * 100)}%` }} />)}</div>;
 }
 
 export function OzonSalesPage() {
+  const { noCabinets } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [tab, setTab] = useState<"rnp" | "funnel">("rnp");
   const [query, setQuery] = useOzonUrlFilter<string>("q", "");
@@ -69,7 +80,7 @@ export function OzonSalesPage() {
     <div>
       <OzonModuleHeader eyebrow="Ozon · Продажи" title="Продажи и воронка" subtitle="РНП по SKU, дневная динамика, реклама и доступные Ozon-метрики воронки без подмены отсутствующих данных." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
       <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
-        {loading && !data ? <OzonLoading rows={9} /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет данных о продажах" detail="Проверьте выбранный кабинет и Seller API." /> : <>
+        {loading && !data ? <OzonLoading rows={9} /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет данных о продажах" detail="Проверьте выбранный кабинет и Seller API." /> : <>
           <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div>
           {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
@@ -84,7 +95,7 @@ export function OzonSalesPage() {
           <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="flex flex-col gap-3 border-b border-slate-100 p-3 lg:flex-row lg:items-center">
               <div className="flex rounded-lg bg-slate-100 p-1">
-                <button type="button" onClick={() => setTab("rnp")} className={`min-h-11 rounded-md px-3 text-xs font-semibold sm:min-h-8 ${tab === "rnp" ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}><BarChart3 className="mr-1 inline h-3.5 w-3.5" />РНП</button>
+                <button type="button" onClick={() => { setTab("rnp"); if (FUNNEL_ONLY_SORTS.includes(sort)) setSort("revenue"); }} className={`min-h-11 rounded-md px-3 text-xs font-semibold sm:min-h-8 ${tab === "rnp" ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}><BarChart3 className="mr-1 inline h-3.5 w-3.5" />РНП</button>
                 <button type="button" onClick={() => setTab("funnel")} className={`min-h-11 rounded-md px-3 text-xs font-semibold sm:min-h-8 ${tab === "funnel" ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}><Filter className="mr-1 inline h-3.5 w-3.5" />Воронка</button>
               </div>
               <div className="lg:ml-auto"><OzonCsvButton count={rows.length} onExport={exportCsv} /></div>
