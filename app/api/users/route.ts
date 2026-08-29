@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const b = (await request.json().catch(() => ({}))) as { email?: string; password?: string; role?: string; cabinet_ids?: string[] };
   const email = (b.email || "").trim().toLowerCase();
-  const role = ["director", "finance", "manager", "seller", "warehouse"].includes(b.role || "") ? b.role : "manager";
+  const role = ["director", "finance", "manager", "ozon_manager", "seller", "warehouse"].includes(b.role || "") ? b.role : "manager";
   if (!email || !b.password || b.password.length < 10) return NextResponse.json({ error: "Email и пароль (≥10 символов)" }, { status: 400 });
   const password_hash = await hashPassword(b.password);
   const { data: existing } = await db.from("app_users").select("id,role,organization_id").eq("email", email).maybeSingle();

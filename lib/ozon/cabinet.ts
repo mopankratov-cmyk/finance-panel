@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerSession } from "@/lib/auth/server";
 import type { OzonCreds } from "@/lib/ozon/api";
+import { isCabinetScopedRole } from "@/lib/auth/roles";
 
 export interface OzonCabinetAccess {
   id: string;
@@ -99,7 +100,7 @@ export async function getOzonCabinetScope(
   if (error) return { ok: false, error: error.message };
 
   const session = await getServerSession();
-  const allowedIds = session?.role === "manager" && session.cabinet_ids.length
+  const allowedIds = session && isCabinetScopedRole(session.role) && session.cabinet_ids.length
     ? new Set(session.cabinet_ids)
     : null;
   const cabinets = ((data ?? []) as OzonCabinetRow[])
@@ -201,7 +202,7 @@ export async function getActiveOzonCreds(cabinetId?: string | null): Promise<
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "Supabase не настроен" };
   const session = await getServerSession();
-  if (session?.role === "manager" && session.cabinet_ids.length > 0 && (!cabinetId || !session.cabinet_ids.includes(cabinetId))) {
+  if (session && isCabinetScopedRole(session.role) && session.cabinet_ids.length > 0 && (!cabinetId || !session.cabinet_ids.includes(cabinetId))) {
     return { ok: false, error: "Нет доступа к Ozon-кабинету" };
   }
   let q = db.from("wb_cabinets").select("id, name, client_id, token, perf_client_id, perf_secret").eq("marketplace", "ozon").eq("is_active", true);

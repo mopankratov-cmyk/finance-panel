@@ -1,4 +1,5 @@
 import type { Session } from "@/lib/auth/session";
+import { isCabinetScopedRole } from "@/lib/auth/roles";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -33,7 +34,7 @@ export function filterCabinetGroups(
     if (validMembers.length !== row.member_ids.length) continue;
     const members = [...new Set(validMembers.map((id) => id.toLowerCase()))].sort();
     if (members.length === 0) continue;
-    if (session.role === "manager" && members.some((id) => !allowed.has(id))) continue;
+    if (isCabinetScopedRole(session.role) && members.some((id) => !allowed.has(id))) continue;
     result.push({ id: row.id, name: row.name, marketplace: row.marketplace, memberIds: members });
   }
   return result;

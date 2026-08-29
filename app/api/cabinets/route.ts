@@ -7,6 +7,7 @@ import { cabinetBrandFilters } from "@/lib/wb/productScope";
 import { getServerSession } from "@/lib/auth/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { claimMarketplaceSeller } from "@/lib/auth/tenantClaim";
+import { isCabinetScopedRole } from "@/lib/auth/roles";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
       && cabinet.organization_id === session.organization_id
       && session.cabinet_ids.includes(String(cabinet.id))
     ))
-    : accessibleOnly && session.role === "manager" && session.cabinet_ids.length > 0
+    : accessibleOnly && isCabinetScopedRole(session.role) && session.cabinet_ids.length > 0
       ? allCabinets.filter((cabinet) => session.cabinet_ids.includes(String(cabinet.id)))
       : allCabinets;
   return NextResponse.json({ cabinets, count: cabinets.length });

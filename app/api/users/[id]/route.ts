@@ -55,7 +55,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   }
 
   const patch: Record<string, unknown> = {};
-  if (b.role && ["director", "finance", "manager", "seller"].includes(b.role)) {
+  if (b.role && ["director", "finance", "manager", "ozon_manager", "seller", "warehouse"].includes(b.role)) {
     patch.role = b.role;
     if (b.role === "seller") {
       // Своя организация у селлера обязана быть — через неё он видит свой
@@ -77,7 +77,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       patch.organization_id = organization.id;
     }
   }
-  const effectiveRole = b.role && ["director", "finance", "manager", "seller"].includes(b.role)
+  const effectiveRole = b.role && ["director", "finance", "manager", "ozon_manager", "seller", "warehouse"].includes(b.role)
     ? b.role
     : String(currentUser.role);
   // Список кабинетов селлеру не обнуляем, а заполняем кабинетами его

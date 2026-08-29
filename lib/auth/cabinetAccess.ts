@@ -1,6 +1,7 @@
 import { getServerSession } from "./server";
 import type { Session } from "./session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isCabinetScopedRole } from "@/lib/auth/roles";
 
 // Пустой cabinet_ids у менеджера исторически означает «все кабинеты».
 // Непустой список — жёсткое ограничение. В таком режиме агрегат "all" запрещён,
@@ -18,7 +19,7 @@ export function sessionHasCabinetAccess(
       && !cabinetId.startsWith("group:")
       && session.cabinet_ids.includes(cabinetId);
   }
-  if (session.role !== "manager" || session.cabinet_ids.length === 0) return true;
+  if (!isCabinetScopedRole(session.role) || session.cabinet_ids.length === 0) return true;
   return cabinetId !== null && session.cabinet_ids.includes(cabinetId);
 }
 

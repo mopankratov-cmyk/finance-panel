@@ -132,6 +132,32 @@ function isSellerApiAllowed(pathname: string, method: string): boolean {
     || SELLER_READ_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+// Менеджер Ozon — сотрудник, который ведёт кабинеты Ozon и товародвижение по
+// ним. Ему открыты ровно два модуля, и список составлен по тому, что эти
+// модули действительно запрашивают: deny-by-default, как у селлера и оператора
+// склада. Границу конкретного кабинета всё равно держит hasCabinetAccess рядом
+// с данными — здесь отсекается сам контур.
+const OZON_MANAGER_READ_API_EXACT = [
+  "/api/cabinets",
+  "/api/cabinet-groups",
+  // Ставка налога и комиссия посредника нужны экрану юнит-экономики на чтение;
+  // менять их может только director/finance — это проверяет сам роут.
+  "/api/cabinet-settings/unit",
+  "/api/operational-health",
+] as const;
+
+function isOzonManagerApiAllowed(pathname: string, method: string): boolean {
+  // Модуль «Склад» целиком — тот же набор, что у оператора фулфилмента.
+  if (isWarehouseApiAllowed(pathname, method)) return true;
+  // Кокпит Ozon и его экраны: только чтение, записи в этом контуре нет.
+  if (pathname.startsWith("/api/ozon/")) return method === "GET";
+  // План продаж Ozon менеджер ведёт сам — иначе экран открывается, но не
+  // сохраняет.
+  if (pathname === "/api/sales-plan") return method === "GET" || method === "POST";
+  if (method !== "GET") return false;
+  return OZON_MANAGER_READ_API_EXACT.includes(pathname as (typeof OZON_MANAGER_READ_API_EXACT)[number]);
+}
+
 // Менеджер маркетплейсов ведёт кабинеты, а не финансы компании. Страницы
 // «ОПиУ», «P&L» и «Репрайсер» ему закрыты ролью, но /api/* до этого пропускал
 // любую живую сессию: из консоли браузера открывался /api/opiu — прибыль по
@@ -167,6 +193,9 @@ export async function proxy(req: NextRequest) {
       }
       if (session.role === "warehouse" && !isWarehouseApiAllowed(pathname, req.method)) {
         return NextResponse.json({ error: "Оператору склада доступен только модуль склада" }, { status: 403 });
+      }
+      if (session.role === "ozon_manager" && !isOzonManagerApiAllowed(pathname, req.method)) {
+        return NextResponse.json({ error: "Менеджеру Ozon доступны модули Ozon и Склад" }, { status: 403 });
       }
       if (session.role === "manager" && !isManagerApiAllowed(pathname)) {
         return NextResponse.json({ error: "Финансовый контур компании доступен директору и финотделу" }, { status: 403 });

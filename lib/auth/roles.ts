@@ -5,6 +5,7 @@ export const ROLE_HOME: Record<Role, string> = {
   director: "/",
   finance: "/pnl",
   manager: "/ozon",
+  ozon_manager: "/ozon",
   seller: "/wb/connect",
   warehouse: "/warehouse",
 };
@@ -13,6 +14,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   director: "Директор",
   finance: "Финотдел / аналитик",
   manager: "Менеджер МП",
+  ozon_manager: "Менеджер Ozon",
   seller: "Внешний селлер WB",
   warehouse: "Оператор склада",
 };
@@ -22,6 +24,10 @@ const ACCESS: Record<Role, string[]> = {
   director: ["*"],
   finance: ["/", "/calendar", "/payments", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
   manager: ["/", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/costs", "/warehouse", "/agent", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
+  // Менеджер Ozon ведёт кабинеты Ozon и товародвижение по ним. Финансовый
+  // контур компании, WB-контур и системные настройки ему не нужны и потому
+  // закрыты: роль описывает работу человека, а не «всё, что не жалко».
+  ozon_manager: ["/", "/ozon", "/warehouse"],
   // Внешний селлер работает только в собственном WB-контуре. Управляющие
   // инструменты (публикация контента, цены, системные настройки) не открываем.
   seller: ["/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
@@ -29,6 +35,18 @@ const ACCESS: Record<Role, string[]> = {
   // Решение владельца: внутри модуля видит всё, включая себестоимость.
   warehouse: ["/warehouse"],
 };
+
+/**
+ * Роли, работающие в выданном им списке кабинетов.
+ *
+ * Такому сотруднику видны только его кабинеты, а агрегаты «все» и группы —
+ * лишь в пределах выданного. Признак вынесен отдельно, чтобы новая роль не
+ * требовала правки десятка мест, каждое из которых сравнивало роль со
+ * строкой «manager» и молча пропускало всё остальное.
+ */
+export function isCabinetScopedRole(role: Role | string | null | undefined): boolean {
+  return role === "manager" || role === "ozon_manager";
+}
 
 export function canAccess(role: Role, path: string): boolean {
   const rules = ACCESS[role] ?? [];

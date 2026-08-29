@@ -43,7 +43,7 @@ export const getServerSession = cache(async function getServerSession(): Promise
   // возвращал null. Страницу оператор открывал (гейт проверяет подписанную
   // куку), а любой запрос к данным отвечал «Требуется вход»: модуль склада был
   // для этой роли мёртв целиком.
-  if (!["director", "finance", "manager", "seller", "warehouse"].includes(String(data.role))) return null;
+  if (!["director", "finance", "manager", "ozon_manager", "seller", "warehouse"].includes(String(data.role))) return null;
   return {
     uid: String(data.id),
     email: String(data.email),

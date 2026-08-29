@@ -5,7 +5,7 @@ import { Loader2, Users as UsersIcon, Plus, Trash2 } from "lucide-react";
 
 interface U { id: string; email: string; role: string; cabinet_ids: string[]; access_cabinet_ids?: string[]; is_active: boolean }
 interface Cab { id: string; name: string; marketplace: string }
-const ROLES = [["director", "Директор всей панели"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"], ["seller", "Внешний селлер WB"], ["warehouse", "Оператор склада"]] as const;
+const ROLES = [["director", "Директор всей панели"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"], ["ozon_manager", "Менеджер Ozon"], ["seller", "Внешний селлер WB"], ["warehouse", "Оператор склада"]] as const;
 const roleLabel = (r: string) => ROLES.find(([k]) => k === r)?.[1] ?? r;
 /**
  * Кабинеты, в которых человеку есть что делать. Сервер считает их по роли:
@@ -93,7 +93,7 @@ export default function UsersPage() {
     setBusy(true); setMsg(null);
     const r = await fetch("/api/users", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, role, cabinet_ids: role === "manager" ? sel : [] }),
+      body: JSON.stringify({ email, password, role, cabinet_ids: role === "manager" || role === "ozon_manager" ? sel : [] }),
     });
     const j = await r.json();
     if (!r.ok || j.error) setMsg({ ok: false, t: j.error || `Ошибка ${r.status}` });
@@ -128,7 +128,7 @@ export default function UsersPage() {
           </select>
         </div>
         {role === "seller" ? <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">После первого входа селлер сам подключит свой WB-кабинет проверенным API-токеном.</div> : null}
-        {role === "manager" && cabs.length > 0 && (
+        {(role === "manager" || role === "ozon_manager") && cabs.length > 0 && (
           <div className="mt-2">
             <div className="mb-1 text-xs text-gray-500">Кабинеты менеджера (пусто = все):</div>
             <div className="flex flex-wrap gap-1.5">

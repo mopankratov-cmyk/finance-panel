@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 
-export type Role = "director" | "finance" | "manager" | "seller" | "warehouse";
+export type Role = "director" | "finance" | "manager" | "ozon_manager" | "seller" | "warehouse";
 export interface Session {
   uid: string;
   email: string;
@@ -49,7 +49,8 @@ export async function verifySession(token: string | undefined | null): Promise<S
 }
 
 export function isRole(value: unknown): value is Role {
-  return value === "director" || value === "finance" || value === "manager" || value === "seller" || value === "warehouse";
+  return value === "director" || value === "finance" || value === "manager"
+    || value === "ozon_manager" || value === "seller" || value === "warehouse";
 }
 
 export const sessionCookieOptions = {
