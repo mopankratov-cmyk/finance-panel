@@ -132,6 +132,23 @@ function isSellerApiAllowed(pathname: string, method: string): boolean {
     || SELLER_READ_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+// Менеджер маркетплейсов ведёт кабинеты, а не финансы компании. Страницы
+// «ОПиУ», «P&L» и «Репрайсер» ему закрыты ролью, но /api/* до этого пропускал
+// любую живую сессию: из консоли браузера открывался /api/opiu — прибыль по
+// всем юрлицам, — который вдобавок не проверяет роль у себя.
+//
+// Список узкий намеренно. Финансы (/api/finance), закупки и «Мой склад»
+// сюда не входят: первые гейтятся ролью в самом роуте, вторые — рабочие
+// вкладки поставок, которые менеджер открывает законно.
+const MANAGER_DENIED_API = [
+  "/api/opiu",
+  "/api/repricer",
+] as const;
+
+function isManagerApiAllowed(pathname: string): boolean {
+  return !MANAGER_DENIED_API.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -150,6 +167,9 @@ export async function proxy(req: NextRequest) {
       }
       if (session.role === "warehouse" && !isWarehouseApiAllowed(pathname, req.method)) {
         return NextResponse.json({ error: "Оператору склада доступен только модуль склада" }, { status: 403 });
+      }
+      if (session.role === "manager" && !isManagerApiAllowed(pathname)) {
+        return NextResponse.json({ error: "Финансовый контур компании доступен директору и финотделу" }, { status: 403 });
       }
       return NextResponse.next();
     }
