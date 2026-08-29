@@ -306,6 +306,11 @@ async function loadCabinetBase(
   const warnings: string[] = [];
   if (!analytics.ok) warnings.push(`${cabinet.name}: аналитика — ${analytics.error}`);
   if (!stocks.ok) warnings.push(`${cabinet.name}: остатки — ${stocks.error}`);
+  // Склады Ozon ответили, а собственный склад продавца — нет: остатки на
+  // экране неполные, и молчать об этом нельзя.
+  else if ((stocks as { sellerStocksError?: string }).sellerStocksError) {
+    warnings.push(`${cabinet.name}: свой склад (FBS) — ${(stocks as { sellerStocksError?: string }).sellerStocksError}`);
+  }
   if (currentTotals && !currentTotals.ok) warnings.push(`${cabinet.name}: финансы — ${currentTotals.error}`);
   if (cabinet.perf && !performance) warnings.push(`${cabinet.name}: Performance API недоступен`);
 

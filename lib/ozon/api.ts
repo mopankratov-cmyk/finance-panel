@@ -617,6 +617,62 @@ export async function ozonPrices(
 
 // Остатки по складам.
 export interface OzonStockRow { sku: number; article: string; name: string; warehouse: string; free: number; reserved: number }
+
+/** Подпись собственного склада продавца в разрезе складов. */
+export const OZON_FBS_WAREHOUSE = "Свой склад (FBS)";
+
+/**
+ * Остатки на СОБСТВЕННЫХ складах продавца (схема FBS).
+ *
+ * Отчёт `stock_on_warehouses` знает только склады Ozon. Продавец, который
+ * возит со своего склада, видел на экране пустоту: товар «пропадал» из
+ * остатков, а обзор писал «нет остатка» по вещам, которых на складах Ozon
+ * действительно нет — при полном своём складе.
+ */
+export async function ozonSellerStocks(
+  c: OzonCreds,
+): Promise<{ ok: true; rows: OzonStockRow[] } | { ok: false; error: string }> {
+  const rows: OzonStockRow[] = [];
+  try {
+    let cursor = "";
+    for (let page = 0; page < 20; page++) {
+      const res = await tfetch(c, `${BASE}/v4/product/info/stocks`, {
+        method: "POST", headers: headers(c),
+        body: JSON.stringify({ cursor, limit: 1000, filter: { visibility: "ALL" } }),
+        next: { revalidate: 1800 },
+      });
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
+      const json = (await res.json()) as {
+        cursor?: string;
+        items?: { offer_id?: string; product_id?: number; stocks?: { present?: number; reserved?: number; type?: string; sku?: number }[] }[];
+      };
+      const items = json.items ?? [];
+      for (const item of items) {
+        for (const stock of item.stocks ?? []) {
+          // Склады Ozon уже пришли из отчёта по складам — берём только своё,
+          // иначе один и тот же остаток сложится дважды.
+          if (String(stock.type ?? "").toLowerCase() !== "fbs") continue;
+          const present = Number(stock.present ?? 0);
+          const reserved = Number(stock.reserved ?? 0);
+          if (present <= 0 && reserved <= 0) continue;
+          rows.push({
+            sku: Number(stock.sku ?? item.product_id ?? 0),
+            article: String(item.offer_id ?? ""),
+            name: "",
+            warehouse: OZON_FBS_WAREHOUSE,
+            free: Math.max(0, present - reserved),
+            reserved,
+          });
+        }
+      }
+      cursor = String(json.cursor ?? "");
+      if (!cursor || items.length < 1000) break;
+    }
+    return { ok: true, rows };
+  } catch (e) {
+    return { ok: false, error: String(e).slice(0, 120) };
+  }
+}
 export async function ozonStocks(
   c: OzonCreds,
 ): Promise<{ ok: true; rows: OzonStockRow[] } | { ok: false; error: string }> {
