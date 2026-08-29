@@ -15,14 +15,14 @@ interface OverviewData {
   scope: { label: string; count: number };
   period: { days: number; from: string; to: string };
   summary: {
-    orders: number; revenue: number; avgPrice: number; stock: number; reserved: number;
+    orders: number; revenue: number; avgPrice: number; stock: number | null; reserved: number | null; stocksIncomplete: boolean;
     adSpend: number; adRevenue: number; drr: number; refunds: number; deductions: number; payout: number;
     delta: { orders: number | null; revenue: number | null; adSpend: number | null };
   };
   finance: { commission: number; logistics: number; services: number; refunds: number; other: number; deductions: number };
   trend: { day: string; orders: number; revenue: number; adSpend: number }[];
   attention: { severity: "critical" | "warning"; title: string; detail: string; href: string }[];
-  topSku: { key: string; cabinet: string; sku: string; offerId: string; name: string; image: string | null; orders: number; revenue: number; stock: number; daysCover: number | null; adSpend: number; drr: number; deltaRevenue: number | null }[];
+  topSku: { key: string; cabinet: string; sku: string; offerId: string; name: string; image: string | null; orders: number; revenue: number; stock: number | null; daysCover: number | null; adSpend: number; drr: number; deltaRevenue: number | null }[];
   warnings: string[];
 }
 
@@ -45,7 +45,7 @@ export function OzonOverviewPage() {
               <MetricCard label="Выручка" value={formatMoney(data.summary.revenue)} delta={data.summary.delta.revenue} detail={`${formatNumber(data.summary.orders)} заказов`} />
               <MetricCard label="Заказы" value={formatNumber(data.summary.orders)} delta={data.summary.delta.orders} detail={`Средняя цена ${formatMoney(data.summary.avgPrice)}`} />
               <MetricCard label="Реклама" value={formatMoney(data.summary.adSpend)} delta={data.summary.delta.adSpend} detail={`ДРР ${formatPercent(data.summary.drr)}`} tone={data.summary.drr >= 30 ? "red" : data.summary.drr >= 20 ? "amber" : "sky"} />
-              <MetricCard label="Остаток" value={formatNumber(data.summary.stock)} detail={`${formatNumber(data.summary.reserved)} в резерве`} tone="slate" />
+              <MetricCard label="Остаток" value={formatNumber(data.summary.stock)} detail={data.summary.stock == null ? "Ozon не отдал остатки" : data.summary.stocksIncomplete ? `${formatNumber(data.summary.reserved)} в резерве · часть кабинетов молчит` : `${formatNumber(data.summary.reserved)} в резерве`} tone={data.summary.stock == null || data.summary.stocksIncomplete ? "amber" : "slate"} />
               <MetricCard label="Возвраты" value={formatMoney(data.summary.refunds)} detail={data.summary.revenue > 0 ? `${formatPercent(data.summary.refunds / data.summary.revenue * 100)} выручки` : "Факт Ozon"} tone={data.summary.refunds > 0 ? "amber" : "emerald"} />
               <MetricCard label="Удержания" value={formatMoney(data.summary.deductions)} detail="Факт Ozon" tone="amber" />
               <MetricCard label="К выплате" value={formatMoney(data.summary.payout)} detail="Расчёт по транзакциям" tone="emerald" />
@@ -96,7 +96,7 @@ export function OzonOverviewPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[840px] text-xs">
                     <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2 text-left">Товар</th><th className="px-3 py-2 text-right">Заказы</th><th className="px-3 py-2 text-right">Выручка</th><th className="px-3 py-2 text-right">Остаток</th><th className="px-3 py-2 text-right">Запас</th><th className="px-3 py-2 text-right">Реклама</th><th className="px-4 py-2 text-right">ДРР</th></tr></thead>
-                    <tbody>{data.topSku.slice(0, 12).map((row) => <tr key={row.key} className="border-t border-slate-100 hover:bg-sky-50/40"><td className="px-4 py-2"><ProductCell image={row.image} name={row.name} code={row.offerId || `SKU ${row.sku}`} cabinet={data.scope.count > 1 ? row.cabinet : undefined} /></td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.orders)}</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatMoney(row.revenue)}</td><td className={`px-3 py-2 text-right tabular-nums ${row.stock <= 0 && row.orders > 0 ? "font-bold text-red-600" : ""}`}>{formatNumber(row.stock)}</td><td className="px-3 py-2 text-right tabular-nums">{row.daysCover == null ? "—" : `${row.daysCover} дн.`}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.adSpend)}</td><td className={`px-4 py-2 text-right font-semibold tabular-nums ${row.drr >= 30 ? "text-red-600" : row.drr >= 20 ? "text-amber-600" : "text-emerald-700"}`}>{formatPercent(row.drr)}</td></tr>)}</tbody>
+                    <tbody>{data.topSku.slice(0, 12).map((row) => <tr key={row.key} className="border-t border-slate-100 hover:bg-sky-50/40"><td className="px-4 py-2"><ProductCell image={row.image} name={row.name} code={row.offerId || `SKU ${row.sku}`} cabinet={data.scope.count > 1 ? row.cabinet : undefined} /></td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.orders)}</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatMoney(row.revenue)}</td><td className={`px-3 py-2 text-right tabular-nums ${row.stock != null && row.stock <= 0 && row.orders > 0 ? "font-bold text-red-600" : ""}`}>{formatNumber(row.stock)}</td><td className="px-3 py-2 text-right tabular-nums">{row.daysCover == null ? "—" : `${row.daysCover} дн.`}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.adSpend)}</td><td className={`px-4 py-2 text-right font-semibold tabular-nums ${row.drr >= 30 ? "text-red-600" : row.drr >= 20 ? "text-amber-600" : "text-emerald-700"}`}>{formatPercent(row.drr)}</td></tr>)}</tbody>
                   </table>
                 </div>
               </section>

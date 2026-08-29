@@ -306,10 +306,13 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
   const skuRows: Array<{
     key: string; cabinetId: string; cabinet: string; clientId: string; sku: string; offerId: string;
     name: string; image: string | null; orders: number; previousOrders: number; revenue: number;
-    previousRevenue: number; stock: number; reserved: number; adSpend: number; adRevenue: number;
+    // null — остатки этого кабинета Ozon не отдал. Ноль здесь означал бы
+    // «товар кончился», и обзор заливало ложными критикалами «нет остатка».
+    previousRevenue: number; stock: number | null; reserved: number | null; adSpend: number; adRevenue: number;
   }> = [];
   let stock = 0;
   let reserved = 0;
+  let stocksAvailable = 0;
   let currentAdSpend = 0;
   let previousAdSpend = 0;
 
@@ -336,6 +339,7 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
 
     const stockByOffer = new Map<string, { free: number; reserved: number }>();
     if (base.stocks.ok) {
+      stocksAvailable += 1;
       for (const row of base.stocks.rows) {
         const entry = stockByOffer.get(row.article) ?? { free: 0, reserved: 0 };
         entry.free += row.free;
@@ -358,7 +362,9 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
 
     for (const [sku, metrics] of grouped) {
       const offerId = base.images.skuToOffer[sku] ?? "";
-      const stockValue = stockByOffer.get(offerId) ?? { free: 0, reserved: 0 };
+      const stockValue = base.stocks.ok
+        ? stockByOffer.get(offerId) ?? { free: 0, reserved: 0 }
+        : { free: null, reserved: null };
       const ad = adCache.get(`${base.clientId}:${sku}`) ?? { spent: 0, ordersMoney: 0 };
       skuRows.push({
         key: `${base.cabinetId}:${sku}`,
@@ -392,11 +398,13 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
   const financial = financeSummary(currentTotals);
   const attention = skuRows.flatMap((row) => {
     const dailySales = row.orders / days;
-    const daysCover = dailySales > 0 ? row.stock / dailySales : null;
+    // Пока остатков нет, про запас сказать нечего: отказ Ozon однажды
+    // превратился в лавину «нет остатка» по всем проданным товарам.
+    const daysCover = row.stock != null && dailySales > 0 ? row.stock / dailySales : null;
     const drr = pct(row.adSpend, row.revenue);
     const messages: Array<{ severity: "critical" | "warning"; title: string; detail: string; href: string }> = [];
-    if (row.orders > 0 && row.stock <= 0) messages.push({ severity: "critical", title: `${row.offerId || row.sku}: нет остатка`, detail: `${r0(row.orders)} заказов за период`, href: "/ozon/stocks" });
-    else if (daysCover !== null && daysCover <= 7) messages.push({ severity: "critical", title: `${row.offerId || row.sku}: запас на ${r1(daysCover)} дн.`, detail: `${r0(row.stock)} шт. доступно`, href: "/ozon/stocks" });
+    if (row.orders > 0 && row.stock != null && row.stock <= 0) messages.push({ severity: "critical", title: `${row.offerId || row.sku}: нет остатка`, detail: `${r0(row.orders)} заказов за период`, href: "/ozon/stocks" });
+    else if (daysCover !== null && daysCover <= 7) messages.push({ severity: "critical", title: `${row.offerId || row.sku}: запас на ${r1(daysCover)} дн.`, detail: `${r0(row.stock ?? 0)} шт. доступно`, href: "/ozon/stocks" });
     else if (daysCover !== null && daysCover <= 14) messages.push({ severity: "warning", title: `${row.offerId || row.sku}: пора пополнять`, detail: `Запас на ${r1(daysCover)} дн.`, href: "/ozon/stocks" });
     if (row.adSpend > 0 && drr >= 30) messages.push({ severity: "warning", title: `${row.offerId || row.sku}: ДРР ${drr}%`, detail: `${r0(row.adSpend).toLocaleString("ru-RU")} ₽ расход`, href: "/ozon/adverts" });
     return messages;
@@ -415,8 +423,10 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
       orders: r0(currentOrders),
       revenue: r0(currentRevenue),
       avgPrice: currentOrders > 0 ? r0(currentRevenue / currentOrders) : 0,
-      stock: r0(stock),
-      reserved: r0(reserved),
+      // Ни один кабинет не отдал остатки — карточка честно пустая, а не «0».
+      stock: stocksAvailable ? r0(stock) : null,
+      reserved: stocksAvailable ? r0(reserved) : null,
+      stocksIncomplete: stocksAvailable < bases.length,
       adSpend: r0(currentAdSpend),
       adRevenue: r0(sum([...adCache.values()].map((row) => row.ordersMoney))),
       drr: pct(currentAdSpend, currentRevenue),
@@ -439,8 +449,8 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
           ...row,
           orders: r0(row.orders),
           revenue: r0(row.revenue),
-          stock: r0(row.stock),
-          daysCover: dailySales > 0 ? r1(row.stock / dailySales) : null,
+          stock: row.stock == null ? null : r0(row.stock),
+          daysCover: row.stock != null && dailySales > 0 ? r1(row.stock / dailySales) : null,
           drr: pct(row.adSpend, row.revenue),
           deltaRevenue: deltaPct(row.revenue, row.previousRevenue),
         };
@@ -632,6 +642,11 @@ export async function loadStocks(scope: OzonCabinetScope, current: OzonPeriod) {
       critical: rows.filter((row) => row.status === "critical" || row.status === "out").length,
       overstock: rows.filter((row) => row.status === "overstock").length,
       reorderQty: sum(rows.map((row) => Number(row.reorderQty ?? 0))),
+      // Пустая таблица имеет две разные причины: «товаров нет» и «Ozon не
+      // ответил». Без этой пары экран советовал менять фильтр там, где менять
+      // нечего.
+      cabinetsWithStocks: bases.filter((base) => base.stocks.ok).length,
+      cabinets: bases.length,
     },
     rows: rows.sort((left, right) => {
       const statusScores: Record<string, number> = { out: 0, critical: 1, warning: 2, ok: 3, overstock: 4 };
