@@ -10,7 +10,7 @@ import { loadOzonCockpit, type OzonCockpitView } from "@/lib/ozon/cockpit";
 import { resolveOzonPeriod } from "@/lib/ozon/period";
 
 export const OZON_COCKPIT_CACHE_SECONDS = 60 * 60;
-export const OZON_COCKPIT_CACHE_VERSION = "v5";
+export const OZON_COCKPIT_CACHE_VERSION = "v6"; // v6: реклама по зонам покрытия дней — снимки с нулями до фикса недействительны
 const OZON_COCKPIT_RELIABILITY_VERSION = "complete-sales-v1";
 
 export interface OzonCockpitCacheRequest {
@@ -79,7 +79,11 @@ export async function loadCachedOzonCockpit(
   if (revalidationProfile) revalidateTag(tag, revalidationProfile);
 
   // Ключ общего снимка — тот же отпечаток, что и метка кэша Next.
-  const sharedKey = tag.slice("ozon-cockpit:".length);
+  // Версия — часть ключа и в базе: смена логики данных обязана
+  // обесценивать НЕ только кэш инстанса, но и общий снимок, иначе
+  // пользователь до часа смотрит на данные прежней логики (нулевую
+  // рекламу после фикса источника — ровно это и случилось).
+  const sharedKey = `${OZON_COCKPIT_CACHE_VERSION}:${tag.slice("ozon-cockpit:".length)}`;
 
   const build = async () => {
     const scope = await resolveOzonScopeDescriptor(normalized.scope);
