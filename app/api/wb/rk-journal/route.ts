@@ -4,7 +4,8 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moscowToday } from "@/lib/wb/rkJournalDates";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import { buildRkJournalItems } from "@/lib/wb/rkJournalRows";
+import { buildRkJournalItems, chooseRkDaySources, rkAdvertBlock } from "@/lib/wb/rkJournalRows";
+import type { WbRkBlock } from "@/lib/wb/advertBlocks";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
@@ -168,28 +169,40 @@ export async function GET(request: NextRequest) {
       : Promise.reject(err))
     .catch(noteOn("снимки")) as JournalRow[];
 
-  const snapshotDates = new Set(snapshots.map((row) => row.date));
-  const liveDates = dates.filter((date) => !snapshotDates.has(date));
-
-  // Дни без снимка — из слоя кампаний.
+  // Слой кампаний читаем за ВЕСЬ период, а не только за дни без снимка.
+  // «Есть строка снимка» не значит «день закрыт»: снимок делается в 06:00, а
+  // синк статистики обходит кампании срезами и к этому часу успевает пройти
+  // лишь первые несколько сотен. Кто из двух источников за какой день правдивее,
+  // решает chooseRkDaySources по фактическому покрытию — здесь мы обязаны лишь
+  // дать ему обе стороны.
   let live: CampaignDayRow[] = [];
-  if (liveDates.length) {
+  let liveKnown = false;
+  if (dates.length) {
     const liveColumns = "cabinet_id, advert_id, nm_id, date, views, clicks, spent, carts, orders, orders_sum";
     const loadLive = (columns: string) => loadAllSupabasePages<CampaignDayRow>(
       (start, end) => {
         const q = db
           .from("wb_advert_nm_campaign_daily")
           .select(columns)
-          .in("date", liveDates);
+          .in("date", dates);
         return (cabinetId ? q.eq("cabinet_id", cabinetId) : q)
           .order("date", { ascending: true })
+          .order("advert_id", { ascending: true })
+          .order("nm_id", { ascending: true })
           .range(start, end) as unknown as PromiseLike<{ data: CampaignDayRow[] | null; error: { message: string } | null }>;
       },
-      { maxPages: 120, label: "Журнал РК: дни без снимка", concurrency: 4 },
+      { maxPages: 240, label: "Журнал РК: слой кампаний", concurrency: 4 },
     );
     live = await loadLive(`${liveColumns}, spent_allocated`)
       .catch((err) => missingAllocatedColumn(err) ? loadLive(liveColumns) : Promise.reject(err))
+      .then((rows) => { liveKnown = true; return rows; })
       .catch(noteOn("статистика кампаний")) as CampaignDayRow[];
+  }
+  // Слой не прочитался — значит проверить полноту снимков нечем. Тогда журнал
+  // ведёт себя по-старому (снимок = источник), но молчать об этом нельзя:
+  // именно так и выглядит занижение расхода, ради которого всё затевалось.
+  if (!liveKnown) {
+    notes.push("Слой кампаний не прочитался: полноту снятых дней проверить нечем, цифры могут быть занижены. Сузьте период и повторите.");
   }
 
   // Товарный контур кабинета. Все остальные экраны WB сужают факты до своих
@@ -199,14 +212,27 @@ export async function GET(request: NextRequest) {
   const inScope = <T extends { nm_id: number }>(rows: T[]) =>
     rows.filter((row) => requestAllowsNm(allowedNmIds, Number(row.nm_id)));
 
-  const items = buildRkJournalItems(inScope(snapshots), inScope(live), adverts);
+  const scopedSnapshots = inScope(snapshots);
+  const scopedLive = inScope(live);
+  const items = buildRkJournalItems(scopedSnapshots, scopedLive, adverts);
+  // «Снят» — день, который снимок покрыл ЦЕЛИКОМ, а не день, за который снимок
+  // хоть что-то записал. Решение то же самое, что внутри сборщика: функция одна.
+  const { snapshotDates } = chooseRkDaySources(scopedSnapshots, scopedLive);
+
+  // Какие виды размещения у кабинета есть в принципе. Без этого пустая карточка
+  // не отличает «таких кампаний тут нет вовсе» от «есть, но за период не
+  // тратили» — и одинаково пишет «нет кампаний» в обоих случаях.
+  const blocksInCabinet = [...new Set(
+    adverts.map((advert) => rkAdvertBlock(advert)).filter((block): block is WbRkBlock => block != null),
+  )];
 
   return NextResponse.json({
     from,
     to,
     dates,
     items,
-    snapshotDates: [...snapshotDates].sort(),
+    snapshotDates,
+    blocksInCabinet,
     notes,
   });
 }

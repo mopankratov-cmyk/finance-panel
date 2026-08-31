@@ -247,3 +247,102 @@ test("вид размещения из справочника сильнее з�
   );
   assert.equal(items[0].campaigns[0].block, "cpc_shelf");
 });
+
+// ── Неполный снимок 06:00 ────────────────────────────────────────────────────
+
+test("снимок, знающий меньше слоя, уступает ему метрики дня", () => {
+  // Синк статистики обходит кампании срезами: к 06:00 в слой доехала только
+  // часть кабинета, и снимок заморозил утренний огрызок. Раньше одной строки
+  // снимка хватало, чтобы день считался закрытым навсегда, и экран показывал
+  // пятую часть расхода.
+  const items = buildRkJournalItems(
+    [{ cabinet_id: "cab", date: "2026-08-27", nm_id: 7, advert_id: 101, block: "cpc_search", bid: 4.5, spent: 100, views: 10, clicks: 1 }],
+    [
+      { cabinet_id: "cab", advert_id: 101, nm_id: 7, date: "2026-08-27", spent: 100, views: 10, clicks: 1 },
+      { cabinet_id: "cab", advert_id: 909, nm_id: 7, date: "2026-08-27", spent: 400, views: 40, clicks: 4 },
+    ],
+    [advert],
+  );
+  const day = items[0].days["2026-08-27"];
+  assert.equal(day.spent, 500, "поздняя кампания обязана попасть в день");
+  assert.equal(day.snapshot, false, "день, дособранный из слоя, снятым не считается");
+});
+
+test("полный снимок остаётся источником и не задваивается слоем", () => {
+  const items = buildRkJournalItems(
+    [{ cabinet_id: "cab", date: "2026-08-27", nm_id: 7, advert_id: 101, block: "cpc_search", bid: 4.5, spent: 100, views: 10, clicks: 1 }],
+    [{ cabinet_id: "cab", advert_id: 101, nm_id: 7, date: "2026-08-27", spent: 100, views: 10, clicks: 1 }],
+    [advert],
+  );
+  const day = items[0].days["2026-08-27"];
+  assert.equal(day.spent, 100);
+  assert.equal(day.snapshot, true);
+  assert.equal(items[0].campaigns[0].days["2026-08-27"].bid, 4.5, "ставка того дня живёт только в снимке");
+});
+
+test("строку, потерянную слоем, снимок доносит сам", () => {
+  const items = buildRkJournalItems(
+    [
+      { cabinet_id: "cab", date: "2026-08-27", nm_id: 7, advert_id: 101, block: "cpc_search", bid: 4.5, spent: 100 },
+      { cabinet_id: "cab", date: "2026-08-27", nm_id: 7, advert_id: 777, block: "cpc_search", bid: 3, spent: 70 },
+    ],
+    [
+      { cabinet_id: "cab", advert_id: 101, nm_id: 7, date: "2026-08-27", spent: 100 },
+      { cabinet_id: "cab", advert_id: 909, nm_id: 7, date: "2026-08-27", spent: 400 },
+    ],
+    [advert],
+  );
+  assert.equal(items[0].days["2026-08-27"].spent, 570, "100 из слоя + 400 из слоя + 70 только из снимка");
+});
+
+// ── Вид размещения по дням ───────────────────────────────────────────────────
+
+test("снятый вид размещения сильнее нынешних настроек кампании", () => {
+  // WB меняет площадки на живую. 29-го кампания крутилась только на полках,
+  // 30-го к ним добавился поиск. Красить оба дня сегодняшними настройками
+  // значит стирать полочный день из карточки «CPC полки».
+  const shelfThenBoth = { ...advert, advert_id: 55, placement_search: true, placement_shelf: true, bid_shelf_rub: 4.45 };
+  const items = buildRkJournalItems(
+    [
+      { cabinet_id: "cab-1", date: "2026-08-29", nm_id: 7, advert_id: 55, block: "cpc_shelf", bid: 4.45, spent: 2781, views: 13601, clicks: 631 },
+      { cabinet_id: "cab-1", date: "2026-08-30", nm_id: 7, advert_id: 55, block: "cpc_both", bid: 4.35, spent: 900, views: 4000, clicks: 200 },
+    ],
+    [],
+    [shelfThenBoth],
+  );
+  const campaign = items[0].campaigns[0];
+  assert.equal(campaign.blocks?.["2026-08-29"], "cpc_shelf");
+  assert.equal(campaign.blocks?.["2026-08-30"], "cpc_both");
+  assert.equal(campaign.block, "cpc_shelf", "подпись строки — вид, сжёгший больше денег (2781 ₽ против 900 ₽)");
+});
+
+test("вид размещения по дням не заводится, пока он не менялся", () => {
+  const items = buildRkJournalItems(
+    [{ cabinet_id: "cab-1", date: "2026-08-29", nm_id: 7, advert_id: 101, block: "cpc_search", bid: 4.5, spent: 100 }],
+    [],
+    [advert],
+  );
+  assert.equal(items[0].campaigns[0].blocks, undefined, "лишний словарь по дням в ответ не едет");
+});
+
+test("вторая ставка «поиск + полки» не теряется", () => {
+  const both = { ...advert, advert_id: 60, placement_shelf: true, bid_search_rub: 5, bid_shelf_rub: 5.5 };
+  const items = buildRkJournalItems(
+    [],
+    [{ cabinet_id: "cab-1", advert_id: 60, nm_id: 7, date: "2026-08-31", spent: 300, views: 100, clicks: 10 }],
+    [both],
+  );
+  const cell = items[0].campaigns[0].days["2026-08-31"];
+  assert.equal(cell.bid, 5, "основная ставка — поисковая");
+  assert.equal(cell.bidAlt, 5.5, "полочная ставка обязана быть видна рядом");
+});
+
+test("равные ставки второй строкой не дублируются", () => {
+  const erk = { ...advert, advert_id: 61, bid_type: "unified", payment_type: "cpm", placement_shelf: true, bid_search_rub: 148, bid_shelf_rub: 148 };
+  const items = buildRkJournalItems(
+    [],
+    [{ cabinet_id: "cab-1", advert_id: 61, nm_id: 7, date: "2026-08-31", spent: 300, views: 100, clicks: 10 }],
+    [erk],
+  );
+  assert.equal(items[0].campaigns[0].days["2026-08-31"].bidAlt, null);
+});

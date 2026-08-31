@@ -28,6 +28,8 @@ import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 
 interface DayCell {
   bid: number | null;
+  /** Ставка полок у видов «поиск + полки»: WB держит две, колонка одна. */
+  bidAlt?: number | null;
   views: number;
   clicks: number;
   spent: number;
@@ -41,11 +43,22 @@ interface DayCell {
 interface JournalCampaign {
   advertId: number | null;
   name: string | null;
+  /** Вид, на котором кампания сожгла больше всего денег в окне. */
   block: string;
+  /** Вид по дням — приходит, только если внутри окна он менялся. */
+  blocks?: Record<string, string>;
   /** Сколько артикулов ведёт кампания: её имя бывает от соседнего товара. */
   nmCount: number | null;
   days: Record<string, DayCell>;
 }
+
+/**
+ * Вид размещения кампании в конкретный день. WB разрешает включать и выключать
+ * площадки на живую, поэтому один ярлык на всё окно врёт: кампания, стоявшая в
+ * понедельник на полках, а во вторник ещё и в поиске, обязана попасть в обе
+ * карточки.
+ */
+const campaignBlockAt = (campaign: JournalCampaign, date: string) => campaign.blocks?.[date] ?? campaign.block;
 
 interface JournalItem {
   nm: number;
@@ -61,6 +74,8 @@ interface JournalData {
   dates: string[];
   items: JournalItem[];
   snapshotDates: string[];
+  /** Виды размещения, которые есть у кабинета в справочнике WB. */
+  blocksInCabinet?: string[];
 }
 
 // Пресеты как в РНП плюс «5 дней» — окно, в котором владелец читает поведение
@@ -313,22 +328,39 @@ export function WbRkJournalPage() {
 
   const dates = data?.dates ?? [];
 
+  // Строки после ярлыков, но ДО фильтра по виду размещения. Сводка карточек
+  // считается именно по ним: раньше она стояла на уже отфильтрованных данных,
+  // и клик по одной карточке заставлял остальные шесть написать «нет кампаний»,
+  // хотя кампании этих видов живы и жгут деньги.
+  const taggedItems = useMemo(
+    () => (data?.items ?? []).filter((item) => nmMatchesTags(tagIdsByNm, item.nm, activeTagIds)),
+    [activeTagIds, data?.items, tagIdsByNm],
+  );
+
   const visibleItems = useMemo(() => {
-    const items = (data?.items ?? []).filter((item) => nmMatchesTags(tagIdsByNm, item.nm, activeTagIds));
     // Выбранный вид размещения — это ПУЛ, а не подсветка: внутри артикула
     // остаются только его кампании, и итог по дню пересчитывается по ним.
     // Раньше фильтр оставлял артикул целиком, и при выборе «CPC поиск» строка
     // всё равно показывала сумму вместе с CPM — цифра не отвечала фильтру.
     const byBlock = blockFilter === "all"
-      ? items
-      : items
+      ? taggedItems
+      : taggedItems
         .map((item) => {
-          const campaigns = item.campaigns.filter((campaign) => campaign.block === blockFilter);
+          // Вид сверяем ПО ДНЯМ: кампания, сменившая площадку внутри окна,
+          // попадает в фильтр только теми днями, когда она там и крутилась.
+          const campaigns = item.campaigns
+            .map((campaign) => {
+              const days = Object.fromEntries(
+                Object.entries(campaign.days).filter(([date]) => campaignBlockAt(campaign, date) === blockFilter),
+              );
+              return Object.keys(days).length ? { ...campaign, days } : null;
+            })
+            .filter((campaign): campaign is JournalCampaign => campaign !== null);
           if (!campaigns.length) return null;
           const days: Record<string, DayCell> = {};
           for (const campaign of campaigns) {
             for (const [date, cell] of Object.entries(campaign.days)) {
-              const acc = days[date] ?? { views: 0, clicks: 0, spent: 0, spentAllocated: 0, carts: 0, orders: 0, ordersSum: 0, snapshot: false };
+              const acc = days[date] ?? { bid: null, views: 0, clicks: 0, spent: 0, spentAllocated: 0, carts: 0, orders: 0, ordersSum: 0, snapshot: false };
               acc.views += cell.views;
               acc.clicks += cell.clicks;
               acc.spent += cell.spent;
@@ -345,29 +377,32 @@ export function WbRkJournalPage() {
         })
         .filter((item): item is JournalItem => item !== null);
     return sortByCustomSkuOrder(byBlock, (item) => item.nm, orderIndex);
-  }, [activeTagIds, blockFilter, data?.items, orderIndex, tagIdsByNm]);
+  }, [blockFilter, orderIndex, taggedItems]);
 
   // Сводка по видам размещения: числитель и знаменатель складываются отдельно,
   // среднее из процентов по строкам дало бы неверный CPO/CPL.
   const blockSummary = useMemo(() => {
     const acc = new Map<string, { spent: number; allocated: number; carts: number; orders: number; clicks: number; views: number; ordersSum: number; skus: Set<number> }>();
-    for (const item of visibleItems) {
+    for (const item of taggedItems) {
       for (const campaign of item.campaigns) {
-      // Конверсии из чужих кампаний вида размещения не имеют: попав в блок,
-      // они бы улучшили его CPO заказами, которых он не покупал.
-      if (campaign.block === WB_RK_BLOCK_ATTRIBUTED) continue;
-      const agg = acc.get(campaign.block) ?? { spent: 0, allocated: 0, carts: 0, orders: 0, clicks: 0, views: 0, ordersSum: 0, skus: new Set<number>() };
-      for (const cell of Object.values(campaign.days)) {
-        agg.spent += cell.spent;
-        agg.allocated += cell.spentAllocated ?? 0;
-        agg.carts += cell.carts;
-        agg.orders += cell.orders;
-        agg.clicks += cell.clicks;
-        agg.views += cell.views;
-        agg.ordersSum += cell.ordersSum;
-      }
-      agg.skus.add(item.nm);
-      acc.set(campaign.block, agg);
+        // Конверсии из чужих кампаний вида размещения не имеют: попав в блок,
+        // они бы улучшили его CPO заказами, которых он не покупал. Сколько их —
+        // считаем отдельно и говорим вслух: молча делить расход на урезанные
+        // заказы значит завышать CPO вчетверо.
+        if (campaign.block === WB_RK_BLOCK_ATTRIBUTED) continue;
+        for (const [date, cell] of Object.entries(campaign.days)) {
+          const block = campaignBlockAt(campaign, date);
+          const agg = acc.get(block) ?? { spent: 0, allocated: 0, carts: 0, orders: 0, clicks: 0, views: 0, ordersSum: 0, skus: new Set<number>() };
+          agg.spent += cell.spent;
+          agg.allocated += cell.spentAllocated ?? 0;
+          agg.carts += cell.carts;
+          agg.orders += cell.orders;
+          agg.clicks += cell.clicks;
+          agg.views += cell.views;
+          agg.ordersSum += cell.ordersSum;
+          agg.skus.add(item.nm);
+          acc.set(block, agg);
+        }
       }
     }
     // Показываем ВСЕ виды размещения, даже пустые. Раньше карточка появлялась
@@ -386,6 +421,10 @@ export function WbRkJournalPage() {
         return {
           block,
           empty: !acc.has(block),
+          // Пусто пусто́му рознь: «таких кампаний у кабинета нет вовсе» и «есть,
+          // но за период не тратили» — разные факты, а надпись была одна.
+          // Список видов кабинета приходит из справочника WB вместе с журналом.
+          existsInCabinet: (data?.blocksInCabinet ?? []).includes(block),
           label: block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[block as WbRkBlock],
           spent: agg.spent,
           allocated: agg.allocated,
@@ -399,7 +438,29 @@ export function WbRkJournalPage() {
           drr: agg.ordersSum ? (agg.spent / agg.ordersSum) * 100 : null,
         };
       });
-  }, [visibleItems]);
+  }, [data?.blocksInCabinet, taggedItems]);
+
+  // Сколько конверсий осталось вне карточек. WB приписывает кампании заказы по
+  // товарам, которых она не показывала: вида размещения у таких строк нет, и в
+  // блок они не идут — иначе улучшили бы его CPO заказами, которых он не
+  // покупал. Но и молчать про них нельзя: расход в карточках полный, а заказы
+  // урезаны, и CPO выходит завышенным в разы.
+  const outsideCards = useMemo(() => {
+    let carts = 0;
+    let orders = 0;
+    let allOrders = 0;
+    for (const item of taggedItems) {
+      for (const campaign of item.campaigns) {
+        for (const cell of Object.values(campaign.days)) {
+          allOrders += cell.orders;
+          if (campaign.block !== WB_RK_BLOCK_ATTRIBUTED) continue;
+          carts += cell.carts;
+          orders += cell.orders;
+        }
+      }
+    }
+    return { carts, orders, share: allOrders > 0 ? orders / allOrders : 0 };
+  }, [taggedItems]);
 
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -480,9 +541,14 @@ export function WbRkJournalPage() {
   // Сколько товаров осталось без вида размещения: если такие есть, «нет
   // кампаний» в соседней карточке почти наверняка про них, и молчать нельзя.
   const unknownBlock = blockSummary.find((summary) => summary.block === WB_RK_BLOCK_UNKNOWN);
-  const emptyBlockHint = [
-    "За выбранный период кампаний этого вида не нашлось.",
-    "Единая реклама считается отдельным видом (ЕРК), а кампания сразу на поиске и полках — видом «поиск + полки».",
+  // Одна надпись «нет кампаний» покрывала четыре разных факта, и человек шёл
+  // искать свои полки в пустой карточке. Теперь причина называется прямо, а в
+  // подсказке лежит остальное.
+  const emptyBlockHint = (existsInCabinet: boolean) => [
+    existsInCabinet
+      ? "Кампании этого вида у кабинета есть, но за выбранный период они не тратили."
+      : "У кабинета нет ни одной кампании этого вида — WB не отдал ни одной такой настройки.",
+    "Единая реклама считается отдельным видом (ЕРК), а кампания сразу на поиске и полках — видом «поиск + полки»: WB не делит её расход между площадками, поэтому в «полки» она не попадает.",
     unknownBlock ? `У ${unknownBlock.skus} товаров WB не отдал вид размещения — они в карточке «${WB_RK_BLOCK_UNKNOWN_LABEL}».` : "",
   ].filter(Boolean).join(" ");
 
@@ -624,7 +690,7 @@ export function WbRkJournalPage() {
                   type="button"
                   onClick={() => { if (!summary.empty) setBlockFilter(blockFilter === summary.block ? "all" : summary.block); }}
                   disabled={summary.empty}
-                  title={summary.empty ? emptyBlockHint : undefined}
+                  title={summary.empty ? emptyBlockHint(summary.existsInCabinet) : undefined}
                   className={
                     summary.empty
                       // Пустой вид показываем, но приглушённо и без наведения: это
@@ -637,7 +703,11 @@ export function WbRkJournalPage() {
                       сообщает, что она не просто сводка. */}
                   {summary.empty ? null : <Filter className={`absolute right-2 top-2 h-3 w-3 transition-opacity ${blockFilter === summary.block ? "text-violet-600 opacity-100" : "text-violet-400 opacity-0 group-hover/card:opacity-100"}`} aria-hidden="true" />}
                   <div className={`truncate pr-4 text-[11px] font-semibold uppercase tracking-wide ${summary.empty ? "text-slate-400" : blockFilter === summary.block ? "text-violet-700" : "text-slate-500"}`}>{summary.label}</div>
-                  <div className={`mt-1 text-lg font-bold tabular-nums ${summary.empty ? "text-slate-300" : "text-slate-900"}`}>{summary.empty ? "нет кампаний" : `${money(summary.spent)} ₽`}</div>
+                  <div className={`mt-1 font-bold tabular-nums ${summary.empty ? "text-[13px] leading-tight text-slate-400" : "text-lg text-slate-900"}`}>
+                    {summary.empty
+                      ? (summary.existsInCabinet ? "за период не тратили" : "нет таких кампаний")
+                      : `${money(summary.spent)} ₽`}
+                  </div>
                   {summary.empty ? null : <dl className="mt-1 space-y-0.5 text-[11px] text-slate-500">
                     <div className="flex justify-between gap-2">
                       <dt>CPO</dt>
@@ -664,6 +734,19 @@ export function WbRkJournalPage() {
                 </button>
               ))}
             </div>
+
+            {/* Расход в карточках полный, а заказы — только те, что WB привязал
+                к показу этого артикула. Пока доля привязанных мала, CPO и ДРР
+                карточек завышены, и молчать об этом нельзя: красный CPO читается
+                как «реклама дорогая», а не как «знаменатель неполный». */}
+            {outsideCards.orders > 0 ? (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                Вне карточек осталось {count(outsideCards.orders)} заказов и {count(outsideCards.carts)} корзин
+                {outsideCards.share > 0 ? ` — ${Math.round(outsideCards.share * 100)}% заказов периода` : ""}: WB приписал их
+                кампаниям, которые этот артикул не показывали. Вида размещения у таких строк нет, поэтому CPO и ДРР
+                в карточках выше настоящих. Полные цифры — в строке артикула и в «Итого».
+              </div>
+            ) : null}
 
             {/* Ярлыки показываем даже пустыми: их вешают тут же, в строке
                 артикула, и панель, которая появляется только после первого
@@ -734,9 +817,11 @@ export function WbRkJournalPage() {
                       // номер — по нему товар не опознать без кабинета WB.
                       const article = displaySkuArticle(null, skuNames, item.nm);
                       const open = openNms.has(item.nm);
-                      const shown = blockFilter === "all"
-                        ? item.campaigns
-                        : item.campaigns.filter((campaign) => campaign.block === blockFilter || campaign.block === WB_RK_BLOCK_ATTRIBUTED);
+                      // Фильтр по виду уже применён в visibleItems, причём по
+                      // дням: фильтровать здесь второй раз по ярлыку строки
+                      // значило бы выбросить кампанию, которая сменила площадку
+                      // внутри окна и подходит фильтру частью своих дней.
+                      const shown = item.campaigns;
                       return (
                         <Fragment key={item.nm}>
                           <tr
@@ -860,8 +945,15 @@ export function WbRkJournalPage() {
                                 const cpl = costPerCart(cell.spent, cell.carts);
                                 return (
                                   <Fragment key={date}>
-                                    <td className="border-l border-slate-200 px-2 py-1 text-right tabular-nums">
+                                    <td
+                                      className="border-l border-slate-200 px-2 py-1 text-right tabular-nums"
+                                      // У «поиск + полки» ставок две, и они почти
+                                      // всегда разные. Одна колонка показывала
+                                      // поисковую и молча прятала полочную.
+                                      title={cell.bidAlt == null ? undefined : `Поиск ${money2(cell.bid)} · полки ${money2(cell.bidAlt)}`}
+                                    >
                                       {cell.bid == null ? "—" : money2(cell.bid)}
+                                      {cell.bidAlt == null ? null : <span className="text-slate-400"> / {money2(cell.bidAlt)}</span>}
                                     </td>
                                     <td className="px-2 py-1 text-right tabular-nums">{count(cell.carts)}</td>
                                     <td className="px-2 py-1 text-right tabular-nums">{count(cell.orders)}</td>

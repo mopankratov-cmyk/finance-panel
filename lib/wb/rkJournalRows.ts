@@ -8,10 +8,17 @@
 // Дни без снимка считаются на лету из слоя кампаний: метрики честные, ставка
 // текущая, и ячейка помечена snapshot: false, чтобы экран не выдавал её за
 // снятую.
+//
+// Снимок при этом НЕ считается доказательством того, что день собран целиком:
+// синк статистики обходит кампании срезами, и к 06:00 половина кабинета в слой
+// ещё не доехала. Поэтому источник выбирается по покрытию (chooseRkDaySources),
+// а снимок за неполный день остаётся памятью о ставке и виде размещения — той
+// правде, которой в слое нет вовсе.
 
-import { wbAdvertBlock, wbAdvertBlockBid, WB_RK_BLOCK_ATTRIBUTED, WB_RK_BLOCK_UNKNOWN, type WbRkBlock } from "./advertBlocks";
+import { wbAdvertBlock, wbAdvertBlockBid, WB_RK_BLOCKS, WB_RK_BLOCK_ATTRIBUTED, WB_RK_BLOCK_UNKNOWN, type WbRkBlock } from "./advertBlocks";
 
 export interface RkSnapshotRow {
+  cabinet_id?: string | null;
   date: string;
   nm_id: number;
   advert_id?: number | null;
@@ -59,6 +66,13 @@ export interface RkAdvertRow {
 
 export interface RkCell {
   bid: number | null;
+  /**
+   * Ставка второй площадки у видов «поиск + полки». WB держит две разные
+   * ставки, а колонка на экране одна: показывать только поисковую значит
+   * молча прятать вторую (у 77 из 78 таких кампаний они не совпадают).
+   * null — либо вид не двойной, либо ставки равны и вторая ничего не добавит.
+   */
+  bidAlt: number | null;
   views: number;
   clicks: number;
   /** Полный расход, отнесённый на артикул: измеренное WB плюс разложенное. */
@@ -73,8 +87,16 @@ export interface RkCell {
 
 export interface RkCampaign {
   advertId: number | null;
-  name: string | null;
+  /** Вид размещения, на котором кампания сожгла больше всего денег в окне. */
   block: string;
+  name: string | null;
+  /**
+   * Вид размещения по дням. Заполнен, ТОЛЬКО если он менялся внутри окна —
+   * WB разрешает включать и выключать площадки на живую, и кампания,
+   * крутившаяся в понедельник в поиске, а во вторник на полках, обязана
+   * попасть в обе карточки, а не в ту, что настроена сегодня.
+   */
+  blocks?: Record<string, string>;
   /** Сколько артикулов ведёт кампания: её имя может быть от соседнего. */
   nmCount: number | null;
   days: Record<string, RkCell>;
@@ -111,7 +133,63 @@ export function rkAdvertBlock(advert: RkAdvertRow | undefined): WbRkBlock | null
 }
 
 function emptyCell(snapshot: boolean): RkCell {
-  return { bid: null, views: 0, clicks: 0, spent: 0, spentAllocated: 0, carts: 0, orders: 0, ordersSum: 0, snapshot };
+  return { bid: null, bidAlt: null, views: 0, clicks: 0, spent: 0, spentAllocated: 0, carts: 0, orders: 0, ordersSum: 0, snapshot };
+}
+
+const isRealBlock = (value: string | null | undefined): value is WbRkBlock =>
+  WB_RK_BLOCKS.includes(value as WbRkBlock);
+
+/** Пара «кампания × артикул» за день — общий ключ обоих источников. */
+const sourceKey = (cabinetId: string | null | undefined, date: string, advertId: number | null | undefined, nm: number) =>
+  `${cabinetId ?? ""}|${date}|${advertId ?? "-"}|${nm}`;
+
+export interface RkDaySources {
+  /** Дни, где снимок покрывает не меньше слоя и остаётся источником метрик. */
+  snapshotDates: string[];
+  /** Дни, где слой знает больше снимка: метрики берём из него. */
+  liveDates: string[];
+}
+
+/**
+ * Какой источник за какой день считать правдой.
+ *
+ * Раньше правило было «есть хоть одна строка снимка — день закрыт», и этого
+ * хватало, чтобы заморозить утренний огрызок дня навсегда: синк статистики
+ * обходит кампании срезами по 50 и за прогон берёт четыре среза, поэтому к
+ * 06:00 в слое лежат первые несколько сотен кампаний, а остальные доезжают
+ * через десять часов — в снимок этого дня уже никогда. По кабинету на 1174
+ * кампании снимок удерживал 15–25% дневного расхода, и экран расходился с РНП
+ * вчетверо.
+ *
+ * Сравниваем покрытие в парах «кампания × артикул»: снимок остаётся источником,
+ * только если он знает ВСЁ, что знает слой. Считать пары числом мало — у
+ * снимка и слоя может совпасть размер при разном составе, и день с чужой
+ * кампанией снова замёрзнет неполным. Иначе метрики берём из слоя, а снимок
+ * продолжает работать памятью о ставке и виде размещения того дня.
+ */
+export function chooseRkDaySources(snapshots: RkSnapshotRow[], live: RkCampaignDayRow[]): RkDaySources {
+  const pairs = (rows: { cabinet_id?: string | null; date: string; advert_id?: number | null; nm_id: number }[]) => {
+    const byDate = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const set = byDate.get(row.date) ?? new Set<string>();
+      set.add(`${row.cabinet_id ?? ""}|${row.advert_id ?? "-"}|${row.nm_id}`);
+      byDate.set(row.date, set);
+    }
+    return byDate;
+  };
+  const snapped = pairs(snapshots);
+  const raw = pairs(live);
+  const snapshotDates: string[] = [];
+  const liveDates: string[] = [];
+  for (const date of [...new Set([...snapped.keys(), ...raw.keys()])].sort()) {
+    const snappedSet = snapped.get(date);
+    const rawSet = raw.get(date);
+    const covered = (snappedSet?.size ?? 0) > 0
+      && [...(rawSet ?? [])].every((pair) => snappedSet!.has(pair));
+    if (covered) snapshotDates.push(date);
+    else liveDates.push(date);
+  }
+  return { snapshotDates, liveDates };
 }
 
 interface MetricSource {
@@ -172,13 +250,21 @@ export function buildRkJournalItems(
     advertById.set(advert.advert_id, advert);
   }
 
-  interface Row { nm: number; advertId: number | null; name: string | null; block: string; cells: Map<string, RkCell> }
+  interface Row {
+    nm: number;
+    advertId: number | null;
+    name: string | null;
+    block: string;
+    /** Вид размещения по дням: WB меняет площадки кампании на живую. */
+    blockByDate: Map<string, string>;
+    cells: Map<string, RkCell>;
+  }
   const rows = new Map<string, Row>();
-  const cellOf = (seed: Omit<Row, "cells">, date: string, snapshot: boolean) => {
+  const cellOf = (seed: Omit<Row, "cells" | "blockByDate">, date: string, snapshot: boolean) => {
     // Строки снимка до перехода на кампании остались без advert_id — они
     // группируются по виду размещения, как и раньше.
     const key = `${seed.nm}|${seed.advertId ?? seed.block}`;
-    const row = rows.get(key) ?? { ...seed, cells: new Map<string, RkCell>() };
+    const row = rows.get(key) ?? { ...seed, blockByDate: new Map<string, string>(), cells: new Map<string, RkCell>() };
     if (seed.name && !row.name) row.name = seed.name;
     // Вид размещения раньше брался из ПЕРВОГО попавшегося источника, а снимки
     // читаются раньше живого слоя. Кампания, попавшая в старый снимок до того,
@@ -186,48 +272,84 @@ export function buildRkJournalItems(
     // карточка её вида честно писала «нет кампаний», хотя кампания есть.
     // Известный вид всегда сильнее неизвестного.
     if (row.block === WB_RK_BLOCK_UNKNOWN && seed.block !== WB_RK_BLOCK_UNKNOWN) row.block = seed.block;
+    const knownForDay = row.blockByDate.get(date);
+    if (!knownForDay || knownForDay === WB_RK_BLOCK_UNKNOWN) row.blockByDate.set(date, seed.block);
     rows.set(key, row);
     const cell = row.cells.get(date) ?? emptyCell(snapshot);
     row.cells.set(date, cell);
     return cell;
   };
 
+  const { liveDates } = chooseRkDaySources(snapshots, live);
+  const liveDateSet = new Set(liveDates);
+
+  // Память снимка: ставка и вид размещения того дня. Нужна и за дни, метрики
+  // которых мы берём из слоя, — ни ставки, ни площадок в слое нет вовсе.
+  const memory = new Map<string, RkSnapshotRow>();
+  for (const row of snapshots) memory.set(sourceKey(row.cabinet_id, row.date, row.advert_id, row.nm_id), row);
+  const liveKeys = new Set<string>();
+  for (const row of live) liveKeys.add(sourceKey(row.cabinet_id, row.date, row.advert_id, row.nm_id));
+
+  /**
+   * Вид размещения на КОНКРЕТНЫЙ день. Снятый вид — факт того дня; нынешние
+   * настройки кампании о вчерашнем размещении не свидетельствуют. Справочник
+   * подставляется только там, где снимок вида не знал.
+   */
+  const blockOfDay = (frozen: string | null | undefined, advert: RkAdvertRow | undefined): string =>
+    isRealBlock(frozen) ? frozen : rkAdvertBlock(advert) ?? frozen ?? WB_RK_BLOCK_UNKNOWN;
+
+  /** Ставки блока: основная и вторая площадка у видов «поиск + полки». */
+  const applyBids = (cell: RkCell, advert: RkAdvertRow, block: string) => {
+    const search = advert.bid_search_rub == null ? null : rkNum(advert.bid_search_rub);
+    const shelf = advert.bid_shelf_rub == null ? null : rkNum(advert.bid_shelf_rub);
+    const cpm = advert.bid_cpm_rub == null ? null : rkNum(advert.bid_cpm_rub);
+    if (cell.bid == null) {
+      const bid = wbAdvertBlockBid(
+        { bid_search_rub: search, bid_shelf_rub: shelf, bid_cpm_rub: cpm },
+        isRealBlock(block) ? block : null,
+      );
+      if (bid != null && bid > 0) cell.bid = bid;
+    }
+    if (block !== "cpc_both" && block !== "cpm_both" && block !== "erk") return;
+    const primary = search ?? cpm;
+    if (primary != null && shelf != null && primary > 0 && shelf > 0 && primary !== shelf) cell.bidAlt = shelf;
+  };
+
   for (const snapshot of snapshots) {
+    // За дни, где слой знает больше снимка, метрики уступаются слою — но только
+    // по тем парам, которые в слое действительно есть: строку, которую слой
+    // потерял, снимок обязан донести сам.
+    const key = sourceKey(snapshot.cabinet_id, snapshot.date, snapshot.advert_id, snapshot.nm_id);
+    if (liveDateSet.has(snapshot.date) && liveKeys.has(key)) continue;
     // Название кампании снимок не хранит — берём из справочника, если она
     // ещё жива у WB.
     const advert = snapshot.advert_id == null ? undefined : advertById.get(snapshot.advert_id);
-    // Справочник кампаний — текущая правда о виде размещения, снимок помнит
-    // лишь то, что было известно в 06:00 того дня. Если кампания ещё жива у
-    // WB, вид берём из справочника.
-    const knownBlock = advert ? rkAdvertBlock(advert) : null;
     const cell = cellOf({
       nm: snapshot.nm_id,
       advertId: snapshot.advert_id ?? null,
       name: advert?.name ?? null,
-      block: knownBlock ?? snapshot.block,
+      block: blockOfDay(snapshot.block, advert),
     }, snapshot.date, true);
     cell.bid = snapshot.bid == null ? cell.bid : rkNum(snapshot.bid);
     addTo(cell, snapshot, true);
   }
 
   for (const row of live) {
+    if (!liveDateSet.has(row.date)) continue;
     const advert = advertByKey.get(advertKey(row.cabinet_id, row.advert_id));
-    const block = rkAdvertBlock(advert);
+    const frozen = memory.get(sourceKey(row.cabinet_id, row.date, row.advert_id, row.nm_id));
+    const block = blockOfDay(frozen?.block, advert);
     const cell = cellOf({
       nm: row.nm_id,
       advertId: row.advert_id,
       name: advert?.name ?? null,
-      block: block ?? WB_RK_BLOCK_UNKNOWN,
+      block,
     }, row.date, false);
     addTo(cell, row, false);
-    const bid = advert
-      ? wbAdvertBlockBid({
-        bid_search_rub: advert.bid_search_rub == null ? null : rkNum(advert.bid_search_rub),
-        bid_shelf_rub: advert.bid_shelf_rub == null ? null : rkNum(advert.bid_shelf_rub),
-        bid_cpm_rub: advert.bid_cpm_rub == null ? null : rkNum(advert.bid_cpm_rub),
-      }, block)
-      : null;
-    if (bid != null && bid > 0 && cell.bid == null) cell.bid = bid;
+    // Ставка того дня — из снимка, если он её запомнил: нынешняя ставка из
+    // справочника к прошедшему дню отношения не имеет.
+    if (cell.bid == null && frozen?.bid != null) cell.bid = rkNum(frozen.bid);
+    if (advert) applyBids(cell, advert, block);
   }
 
   // Кампании собираются под артикулом, там же складывается его итог за день.
@@ -250,10 +372,23 @@ export function buildRkJournalItems(
       cell.views === 0 && cell.clicks === 0 && cell.spent === 0 && cell.carts === 0 && cell.orders === 0);
     if (idle) continue;
     if (worked) {
+      // Подпись строки — вид, на котором кампания сожгла больше всего денег;
+      // поденная раскладка едет рядом, чтобы карточки считались по дням, а не
+      // по одному ярлыку на всё окно.
+      const spentByBlock = new Map<string, number>();
+      for (const [date, cell] of row.cells) {
+        const dayBlock = row.blockByDate.get(date) ?? row.block;
+        spentByBlock.set(dayBlock, (spentByBlock.get(dayBlock) ?? 0) + cell.spent);
+      }
+      const seen = [...new Set(row.blockByDate.values())];
+      const dominant = seen.length <= 1
+        ? seen[0] ?? row.block
+        : [...spentByBlock.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? row.block;
       item.campaigns.push({
         advertId: row.advertId,
+        block: dominant,
         name: row.name,
-        block: row.block,
+        ...(seen.length > 1 ? { blocks: Object.fromEntries(row.blockByDate) } : {}),
         nmCount: row.advertId == null ? null : (advertById.get(row.advertId)?.nm_ids?.length ?? null),
         days: finishCells(row.cells),
       });
