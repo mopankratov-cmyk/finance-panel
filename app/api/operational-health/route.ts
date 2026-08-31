@@ -14,6 +14,7 @@ import {
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet } from "@/lib/wb/cabinetTokens";
+import { syncFactVerdict } from "@/lib/health/syncFacts";
 
 export const dynamic = "force-dynamic";
 
@@ -73,10 +74,16 @@ async function latestScoped(
   return { value: error ? null : nullableString((data as Row | null)?.[column]), error: error?.message ?? null };
 }
 
-function syncCheck(job: string, name: string, stateRow: Row | undefined, now: Date): HealthCheck {
+function syncCheck(
+  job: string,
+  name: string,
+  stateRow: Row | undefined,
+  now: Date,
+  facts?: { own: string | null; peer: string | null; peerName: string },
+): HealthCheck {
   const updatedAt = nullableString(stateRow?.updated_at);
   const state = string(stateRow?.status);
-  return {
+  const base: HealthCheck = {
     key: job,
     name,
     state: state === "failed" ? "error" : freshnessState(updatedAt, now),
@@ -84,6 +91,10 @@ function syncCheck(job: string, name: string, stateRow: Row | undefined, now: Da
     updatedAt,
     href: "/sync",
   };
+  // Заявленное сверяем с фактическим: «сходил» и «принёс» — разные события.
+  if (!facts || base.state === "error") return base;
+  const verdict = syncFactVerdict({ ...facts, today: new Date(now).toISOString().slice(0, 10) });
+  return verdict ? { ...base, ...verdict } : base;
 }
 
 export async function GET(request: NextRequest) {
@@ -107,7 +118,7 @@ export async function GET(request: NextRequest) {
   const receiptPromise = allowedNmIds !== null && allowedNmIds.size === 0
     ? Promise.resolve({ data: [] as Row[], error: null })
     : receiptQuery;
-  const [orderResult, receiptResult, syncResult, connectionResult, taraResult, distributionResult, runResult, stockFreshness, funnelFreshness] = await Promise.all([
+  const [orderResult, receiptResult, syncResult, connectionResult, taraResult, distributionResult, runResult, stockFreshness, funnelFreshness, ordersFactFreshness, salesFactFreshness] = await Promise.all([
     db.from("purchase_orders").select(orderSelect).eq("cabinet_id", cabinetId).neq("status", "draft").neq("status", "cancelled").order("updated_at", { ascending: false }).limit(40),
     receiptPromise,
     db.from("wb_sync_state").select("job, status, updated_at").eq("cabinet_id", cabinetId).in("job", ["orders", "sales", "history-365"]),
@@ -117,6 +128,10 @@ export async function GET(request: NextRequest) {
     db.from("wms_order_runs").select("status, updated_at").eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     latestScoped(db, "wb_stocks", "synced_at", cabinetId, allowedNmIds),
     latestScoped(db, "wb_funnel_daily", "date", cabinetId, allowedNmIds),
+    // Свежесть самих фактов, а не отметки о запуске: заявленное сверяется с тем,
+    // что реально лежит в базе.
+    latestScoped(db, "wb_orders", "date", cabinetId, allowedNmIds),
+    latestScoped(db, "wb_sales", "date", cabinetId, allowedNmIds),
   ]);
 
   if (orderResult.error) return fail(missingOptionalTable(orderResult.error.code) ? "Контур заказов не развёрнут: примените миграцию purchase_orders" : orderResult.error.message, missingOptionalTable(orderResult.error.code) ? 503 : 500);
@@ -144,8 +159,16 @@ export async function GET(request: NextRequest) {
       updatedAt: null,
       href: "/cabinets",
     },
-    syncCheck("orders", "Заказы WB", byJob.get("orders"), now),
-    syncCheck("sales", "Продажи WB", byJob.get("sales"), now),
+    syncCheck("orders", "Заказы WB", byJob.get("orders"), now, {
+      own: ordersFactFreshness.value,
+      peer: salesFactFreshness.value,
+      peerName: "Продажи WB",
+    }),
+    syncCheck("sales", "Продажи WB", byJob.get("sales"), now, {
+      own: salesFactFreshness.value,
+      peer: ordersFactFreshness.value,
+      peerName: "Заказы WB",
+    }),
     {
       key: "stocks",
       name: "Остатки WB",
