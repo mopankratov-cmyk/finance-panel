@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { saveCardMediaOrder } from "@/lib/wb/media";
-import { checkCardHasVideo } from "@/lib/wb/cards";
+import { fetchCardForWrite } from "@/lib/wb/cards";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
@@ -66,20 +66,33 @@ export async function GET(request: NextRequest) {
 }
 
 // POST — реальная запись на WB (переупорядочивает уже загруженные фото карточки).
-// Публичный контент, видимый покупателям — владелец подтверждает это явно в UI
-// (модалка с предупреждением) перед вызовом; сам эндпоинт ничего не делает по расписанию.
+//
+// Публичный контент, видимый покупателям, и запись НЕОБРАТИМА: media/save
+// заменяет набор медиафайлов карточки целиком, а оригиналы из WB потом не
+// достать. Поэтому здесь три границы, и ни одна не держится на клиенте.
+//
+// 1. Роль. Раньше хватало любой живой сессии — то есть обложку мог переписать
+//    финансист или менеджер. Соседний write того же эндпоинта (ugc/publish)
+//    требует директора, и здесь причин быть мягче нет.
+// 2. Что писать решает СЕРВЕР. Клиент присылает только номер фотографии,
+//    которую надо поднять главной. Набор URL берётся свежим запросом к WB —
+//    в максимальном размере, который WB отдаёт. Раньше писался массив,
+//    пришедший с экрана, а он собран из витринных миниатюр 246×328: такая
+//    запись подменила бы всю галерею почтовыми марками.
+// 3. Видео. Не проверено, переживает ли видео замену набора, — карточки с
+//    видео к записи не допускаются вовсе.
 export async function POST(req: NextRequest) {
-  const gate = await requireApiSession();
+  const gate = await requireApiSession(["director"]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
 
   const body = (await req.json().catch(() => ({}))) as {
-    cabinetId?: string; nmId?: number; article?: string; photosBefore?: string[]; photosAfter?: string[];
+    cabinetId?: string; nmId?: number; article?: string; photoIndex?: number;
   };
-  const { cabinetId, nmId, article, photosBefore, photosAfter } = body;
-  if (!cabinetId || !nmId || !photosAfter?.length) {
-    return NextResponse.json({ ok: false, error: "Не хватает данных: cabinetId, nmId, photosAfter" }, { status: 400 });
+  const { cabinetId, nmId, article, photoIndex } = body;
+  if (!cabinetId || !nmId || !Number.isInteger(photoIndex) || (photoIndex as number) < 0) {
+    return NextResponse.json({ ok: false, error: "Не хватает данных: cabinetId, nmId, photoIndex" }, { status: 400 });
   }
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
@@ -93,13 +106,26 @@ export async function POST(req: NextRequest) {
   if (!cab) return NextResponse.json({ ok: false, error: "Кабинет не найден" }, { status: 404 });
   const token = resolveWbToken(cab, "content");
 
-  // WB документирует, что media/save полностью заменяет прежний набор медиафайлов
-  // карточки; неясно, живёт ли видео в том же наборе — не проверено эмпирически,
-  // поэтому не рискуем и блокируем запись для карточек с видео (см. lib/wb/cards.ts).
-  const hasVideo = await checkCardHasVideo(token, nmId);
-  if (hasVideo) {
+  const card = await fetchCardForWrite(token, nmId);
+  if (!card.found) {
+    return NextResponse.json({ ok: false, error: "WB не подтвердил карточку — запись отменена. Повторите позже." }, { status: 409 });
+  }
+  if (card.hasVideo) {
     return NextResponse.json({ ok: false, error: "У карточки есть видео — автосмена обложки временно отключена для таких карточек: не проверено, сохраняет ли WB видео после этого запроса. Смените фото вручную через личный кабинет WB." }, { status: 409 });
   }
+  if (card.photos.length < 2) {
+    return NextResponse.json({ ok: false, error: "У карточки меньше двух фотографий — менять местами нечего." }, { status: 409 });
+  }
+  const index = photoIndex as number;
+  if (index >= card.photos.length) {
+    return NextResponse.json({ ok: false, error: `У карточки ${card.photos.length} фото, а выбрано ${index + 1}-е. Обновите страницу — набор изменился.` }, { status: 409 });
+  }
+  if (index === 0) {
+    return NextResponse.json({ ok: false, error: "Это фото и так главное." }, { status: 409 });
+  }
+
+  const photosBefore = card.photos;
+  const photosAfter = [photosBefore[index], ...photosBefore.filter((_, i) => i !== index)];
 
   const write = await saveCardMediaOrder(token, nmId, photosAfter);
   if (!write.ok) return NextResponse.json({ ok: false, error: write.error }, { status: 502 });
@@ -107,7 +133,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession();
   const { error } = await db.from("cover_tests").insert({
     cabinet_id: cabinetId, nm_id: nmId, article: article || String(nmId),
-    photos_before: photosBefore ?? [], photos_after: photosAfter,
+    photos_before: photosBefore, photos_after: photosAfter,
     created_by: session?.email ?? null,
   });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

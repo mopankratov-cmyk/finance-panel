@@ -13,11 +13,14 @@ export function CoverTestModal({ row, onClose, onDone }: { row: PimRow; onClose:
   const submit = async () => {
     if (picked === 0) { onClose(); return; } // уже главное — менять нечего
     setBusy(true); setError(null);
-    const photosAfter = [row.photos[picked], ...row.photos.filter((_, i) => i !== picked)];
     try {
+      // Отправляем НОМЕР фотографии, а не набор URL. Здесь, в сетке превью,
+      // лежат витринные миниатюры 246×328 — если отправить их на запись, WB
+      // подменит ими всю галерею, а оригиналы оттуда уже не достать. Какие
+      // именно URL писать, решает сервер по свежей карточке.
       const res = await fetch("/api/cover-test", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cabinetId: row.cabinetId, nmId: row.nmId, article: row.article, photosBefore: row.photos, photosAfter }),
+        body: JSON.stringify({ cabinetId: row.cabinetId, nmId: row.nmId, article: row.article, photoIndex: picked }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) setError(json.error || `HTTP ${res.status}`);

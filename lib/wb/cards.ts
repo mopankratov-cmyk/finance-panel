@@ -31,7 +31,12 @@ export interface PimRow {
   nmId: number; imtId: number; article: string; name: string; brand: string; subject: string; shop: string;
   cabinetId: string | null;
   length: number | null; width: number | null; height: number | null; weightBrutto: number | null;
-  materials: string; photosCount: number; photos: string[]; hasVideo: boolean; wbUrl: string;
+  materials: string; photosCount: number;
+  /** Миниатюры 246×328 — ТОЛЬКО для сетки превью, никогда для записи и генерации. */
+  photos: string[];
+  /** Те же фото в максимальном размере, который отдаёт WB. */
+  photosBig: string[];
+  hasVideo: boolean; wbUrl: string;
   readinessStatus?: ProductReadinessStatus;
   comment?: string;
   driveUrl?: string | null;
@@ -91,7 +96,10 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
       const catalog = await fetchSourceCatalog(src);
       for (const c of catalog) {
         if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
+        // Два массива, а не один: миниатюры для сетки превью и большие версии
+        // для всего, что уходит наружу — генерации и записи на карточку.
         const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
+        const photosBig = (c.photos || []).map((p) => p.big || p.c246x328 || "").filter(Boolean);
         rows.push({
           nmId: c.nmID,
           imtId: Number.isFinite(c.imtID) ? Number(c.imtID) : c.nmID,
@@ -108,6 +116,7 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
           materials: characteristicOf(c, /материал|состав/i),
           photosCount: photos.length,
           photos,
+          photosBig,
           hasVideo: hasVideoOn(c),
           wbUrl: `https://www.wildberries.ru/catalog/${c.nmID}/detail.aspx`,
         });
@@ -242,6 +251,31 @@ export function loadCabinetPimRowsHourly(
 // наборе, что перетирает media/save. Пока не проверено эмпирически —
 // не рискуем и блокируем запись, если видео обнаружено (см. app/api/cover-test).
 export async function checkCardHasVideo(token: string, nmId: number): Promise<boolean> {
+  const card = await fetchCardForWrite(token, nmId);
+  return card.hasVideo;
+}
+
+export interface CardForWrite {
+  /** WB подтвердил карточку. false — писать нельзя ни при каких условиях. */
+  found: boolean;
+  hasVideo: boolean;
+  /**
+   * Фотографии карточки в САМОМ БОЛЬШОМ размере, который отдаёт WB, и в том
+   * порядке, в каком они сейчас стоят.
+   *
+   * Это не то же, что PimRow.photos: там лежат витринные миниатюры 246×328 —
+   * они годятся для сетки превью и катастрофичны для записи. media/save
+   * заменяет набор медиафайлов ЦЕЛИКОМ, поэтому отправить туда миниатюры
+   * значит подменить всю галерею почтовыми марками, а оригиналы у WB не
+   * восстановить. Массив для показа и массив для записи обязаны быть разными
+   * объектами, и второй берётся только здесь, свежим запросом к WB.
+   */
+  photos: string[];
+}
+
+/** Свежая карточка WB для записи: сама решает, можно ли писать и что писать. */
+export async function fetchCardForWrite(token: string, nmId: number): Promise<CardForWrite> {
+  const blocked: CardForWrite = { found: false, hasVideo: true, photos: [] };
   let cursor: { updatedAt?: string; nmID?: number } = {};
   for (let page = 0; page < 1_000; page++) {
     const res = await fetch(CARDS_URL, {
@@ -250,13 +284,20 @@ export async function checkCardHasVideo(token: string, nmId: number): Promise<bo
       body: JSON.stringify({ settings: { cursor: { limit: 100, ...cursor }, filter: { withPhoto: -1 } } }),
       cache: "no-store",
     });
-    if (!res.ok) return true; // не смогли проверить — считаем небезопасным по умолчанию
+    if (!res.ok) return blocked; // не смогли проверить — считаем небезопасным
     const json = (await res.json()) as { cards?: RawCard[]; cursor?: { updatedAt?: string; nmID?: number } };
     const batch = json.cards ?? [];
     const found = batch.find((c) => c.nmID === nmId);
-    if (found) return hasVideoOn(found);
-    if (batch.length < 100) return true; // карточку не нашли — тоже не рискуем
+    if (found) {
+      return {
+        found: true,
+        hasVideo: hasVideoOn(found),
+        photos: (found.photos ?? []).map((p) => p.big || "").filter(Boolean),
+      };
+    }
+    if (batch.length < 100) return blocked; // карточку не нашли — не рискуем
     cursor = { updatedAt: json.cursor?.updatedAt, nmID: json.cursor?.nmID };
   }
-  return true;
+  return blocked;
 }
+

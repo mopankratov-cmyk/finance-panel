@@ -21,7 +21,9 @@ export async function POST(request: NextRequest) {
   if (!normalized.ok) return NextResponse.json({ ok: false, error: normalized.error }, { status: 422 });
   try {
     const product = await loadUgcProduct(cabinetId, nmId);
-    const imageUrl = product.photos[0];
+    // Источник генерации — большая версия. С миниатюры 246×328 просить кадр
+    // 1536×2048 значит просить модель дорисовать то, чего в исходнике нет.
+    const imageUrl = product.photosBig[0] ?? product.photos[0];
     if (!imageUrl) return NextResponse.json({ ok: false, error: "У SKU нет исходного фото — генерация заблокирована" }, { status: 422 });
     const jobId = await submitUgcTask({ kind: normalized.value.kind, imageUrl, imagePrompt: normalized.value.imagePrompt, videoMotion: normalized.value.videoMotion });
     const taskToken = await signUgcTask({ provider: "higgsfield", jobId, kind: normalized.value.kind, cabinetId, nmId, article: product.article, avatarId: normalized.value.avatarId });
