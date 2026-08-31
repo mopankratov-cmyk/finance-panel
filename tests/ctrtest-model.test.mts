@@ -53,11 +53,17 @@ test("порог знаменателя стоит там, где выбирае
   assert.match(helpers, /public\.ctr_denominator\(p_type, p_impressions, p_opens\) < 50 then null/);
   assert.equal(CTR_MIN_VIEWS, 50, "порог в SQL и в TypeScript обязан быть один");
 
-  const winner = readFileSync(new URL("../supabase/migrations/202608310002_ctr_winner_threshold.sql", import.meta.url), "utf8");
+  const winner = readFileSync(new URL("../supabase/migrations/202609010001_ctr_winner_participants.sql", import.meta.url), "utf8");
   // Победитель — только среди добравших порог.
   assert.match(winner, /and public\.ctr_score\(v_test\.test_type, impressions, clicks, opens, carts, orders\) is not null/);
   // Равные показы: норму добрали не все — закрыть можно только осознанно.
-  assert.match(winner, /unequal exposure: the weakest variant has % of % target impressions/);
+  assert.match(winner, /unequal exposure: the weakest shown variant has % of % target impressions/);
+  // Порог считается по тем, кто крутился: иначе неоткрученный вариант
+  // делал тест незакрываемым навсегда — даже с force.
+  assert.match(winner, /from public\.ctr_variants where test_id = v_test\.id and rounds_count > 0;/);
+  assert.match(winner, /only one variant has been shown/);
+  // Конверсию меряем одной воронкой, а не заказами карточки на клики рекламы.
+  assert.match(winner, /v_winner_conv := v_winner\.orders::numeric \/ v_winner\.opens;/);
   // Клик не равно покупка: победителя по CTR сверяем с базой по конверсии.
   assert.match(winner, /клик не равно покупка/);
   // Потолок расхода даёт ответ, если данных хватило, а не молчаливую паузу.
@@ -68,4 +74,18 @@ test("мёртвых близнецов правила в TypeScript не ост
   const model = readFileSync(new URL("../lib/ctrtest/model.ts", import.meta.url), "utf8");
   assert.equal(/export function chooseCtrWinner/.test(model), false);
   assert.equal(/export function ctrWinnerExplanation/.test(model), false);
+});
+
+test("страж равных показов не запирает кнопку снаружи", () => {
+  // SQL требует force для досрочного закрытия. Пока отправить его было нечем,
+  // «Стоп с победителем» просто не работал в штатном случае.
+  const route = readFileSync(new URL("../app/api/ctrtest/[id]/action/route.ts", import.meta.url), "utf8");
+  assert.match(route, /CTR_FORCE_HINT/);
+  assert.match(route, /force: body\?\.force === true/);
+  const page = readFileSync(new URL("../components/wb/WbCtrPage.tsx", import.meta.url), "utf8");
+  assert.match(page, /if \(!force && message\.startsWith\(CTR_FORCE_HINT\)\)/);
+  // Метка живёт в общем модуле, а не двумя копиями строки: разъехались бы —
+  // и экран перестал бы узнавать отказ, снова заперев кнопку.
+  assert.match(readFileSync(new URL("../lib/ctrtest/model.ts", import.meta.url), "utf8"), /export const CTR_FORCE_HINT/);
+  assert.match(page, /await action\(actionName, variantId, explanation, true\);/);
 });

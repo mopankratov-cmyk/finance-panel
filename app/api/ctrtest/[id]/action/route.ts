@@ -3,7 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import { getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
-import { ctrSnapshotDelta, type CtrMetricSnapshot } from "@/lib/ctrtest/model";
+import { CTR_FORCE_HINT, ctrSnapshotDelta, type CtrMetricSnapshot } from "@/lib/ctrtest/model";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 
@@ -21,10 +21,18 @@ function humanTransitionError(message: string): string {
   const weakest = message.match(/the weakest (?:variant )?has (\d+)/)?.[1];
   const target = message.match(/of (\d+) target impressions/)?.[1];
   if (/not enough data/.test(message)) {
-    return `Данных мало: каждому варианту нужно минимум 50 показов (или открытий карточки), у слабейшего ${weakest ?? "меньше"}. На таком объёме доля — шум, а не измерение.`;
+    return `Данных мало: каждому откручённому варианту нужно минимум 50 показов (или открытий карточки), у слабейшего ${weakest ?? "меньше"}. На таком объёме доля — шум, а не измерение.`;
   }
   if (/unequal exposure/.test(message)) {
-    return `Варианты открутились неодинаково: у слабейшего ${weakest ?? "?"} показов из ${target ?? "?"} по норме. Сравнивать их между собой пока нечестно — дайте тесту добрать норму или закройте принудительно.`;
+    const idle = message.match(/and (\d+) variant\(s\) were never shown/)?.[1];
+    const idleText = idle && idle !== "0" ? ` Ни разу не откручено вариантов: ${idle}.` : "";
+    return `${CTR_FORCE_HINT} У слабейшего откручённого варианта ${weakest ?? "?"} показов из ${target ?? "?"} по норме.${idleText}`;
+  }
+  if (/no variant has been shown yet/.test(message)) {
+    return "Ни один вариант ещё не крутился — сравнивать нечего.";
+  }
+  if (/only one variant has been shown/.test(message)) {
+    return "Крутился только один вариант: тест из одного — это не сравнение. Дайте открутиться хотя бы второму.";
   }
   if (/no variant reached the minimum denominator/.test(message)) {
     return "Ни один вариант не добрал минимального знаменателя — победителя объявить не из чего.";
@@ -94,7 +102,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   });
   if (transitionError) {
     if (missingMigration(transitionError.code)) {
-      return fail("Примените миграции 202608310001_ctr_score_helpers.sql и 202608310002_ctr_winner_threshold.sql", 503, { result });
+      return fail("Примените миграции CTR-тестов из supabase/migrations (202608310001, 202608310002, 202609010001)", 503, { result });
     }
     return fail(humanTransitionError(transitionError.message), 409, { result });
   }

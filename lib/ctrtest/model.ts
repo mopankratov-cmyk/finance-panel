@@ -162,3 +162,12 @@ export function ctrVariantScore(type: CtrTestType, variant: Pick<CtrVariantTotal
   const denominator = type === "ctr" ? variant.impressions : variant.opens;
   return denominator >= CTR_MIN_VIEWS ? numerator / denominator * 100 : null;
 }
+
+/**
+ * Метка отказа, который человек может снять сам, подтвердив досрочное
+ * закрытие теста. Роут ставит её в начало сообщения, экран по ней узнаёт
+ * отказ и предлагает повтор с force. Без этой связки страж «равных показов»
+ * запирал кнопку «Стоп с победителем» снаружи: SQL требовал force, а
+ * отправить его было нечем.
+ */
+export const CTR_FORCE_HINT = "Варианты открутились неодинаково — сравнивать их пока нечестно.";

@@ -13,7 +13,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
-import type { CtrTestType } from "@/lib/ctrtest/model";
+import { CTR_FORCE_HINT, type CtrTestType } from "@/lib/ctrtest/model";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { CtrTestDetail } from "./ctr/CtrTestDetail";
 import { CtrTestWizard } from "./ctr/CtrTestWizard";
@@ -140,7 +140,7 @@ export function WbCtrPage() {
     setRetryKey((value) => value + 1);
   };
 
-  const action = async (actionName: string, variantId?: number, explanation?: string) => {
+  const action = async (actionName: string, variantId?: number, explanation?: string, force?: boolean) => {
     if (!selectedTest || busy) return;
     const confirmation = actionName === "start" || actionName === "advance"
       ? "CONTENT_IS_SET"
@@ -156,7 +156,7 @@ export function WbCtrPage() {
       const response = await responseJson(await fetch(`/api/ctrtest/${selectedTest.id}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: actionName, variantId, explanation, confirm: confirmation }),
+        body: JSON.stringify({ action: actionName, variantId, explanation, confirm: confirmation, force }),
       })) as { outcome?: string } | null;
       // Упор в потолок расхода возвращал ровно тот же нейтральный успех, что
       // обычный переход, — и человек не узнавал, что тест встал, а кампания в
@@ -169,7 +169,19 @@ export function WbCtrPage() {
       } else {
         reload("Действие сохранено в журнале теста");
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось выполнить действие"); }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Не удалось выполнить действие";
+      // Отказ, который человек может снять сам: спрашиваем прямо и повторяем
+      // с force. Отказаться — значит дать тесту добрать норму, и это тоже ответ.
+      if (!force && message.startsWith(CTR_FORCE_HINT)) {
+        setBusy(false);
+        if (window.confirm(`${message}\n\nЗакрыть тест всё равно? В объяснении победителя останется пометка, что норма добрана не всеми.`)) {
+          await action(actionName, variantId, explanation, true);
+        }
+        return;
+      }
+      setError(message);
+    }
     finally { setBusy(false); }
   };
 
