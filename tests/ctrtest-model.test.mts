@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chooseCtrWinner, ctrSnapshotDelta, ctrVariantScore, ctrWinnerExplanation, normalizeCtrCreatePayload } from "../lib/ctrtest/model";
+import { readFileSync } from "node:fs";
+import { ctrSnapshotDelta, ctrVariantScore, normalizeCtrCreatePayload } from "../lib/ctrtest/model";
+import { CTR_MIN_VIEWS } from "../lib/wb/ctrQuality";
 
 test("CTR test creation requires one cabinet and unique HTTPS variants", () => {
   const valid = normalizeCtrCreatePayload({
@@ -33,13 +35,37 @@ test("metric deltas fail closed when provider counters are corrected backwards",
   assert.equal(delta.corrected, true);
 });
 
-test("winner uses the metric of the selected test type and explains the result", () => {
+test("доля варианта не рисуется, пока знаменателя мало", () => {
   const variants = [
     { id: 1, position: 0, label: "A", isBaseline: true, impressions: 1000, clicks: 30, spend: 300, opens: 500, carts: 50, orders: 10, roundsCount: 1, roundsWon: 0 },
     { id: 2, position: 1, label: "B", isBaseline: false, impressions: 900, clicks: 45, spend: 350, opens: 400, carts: 32, orders: 16, roundsCount: 1, roundsWon: 1 },
   ];
   assert.equal(ctrVariantScore("ctr", variants[1]), 5);
-  assert.equal(chooseCtrWinner("ctr", variants)?.id, 2);
-  assert.equal(chooseCtrWinner("cr", variants)?.id, 1);
-  assert.match(ctrWinnerExplanation("video", variants[1], variants[0]), /WB API не отдаёт просмотры видео/);
+  // Два показа и один клик — это не «CTR 50%», это отсутствие измерения.
+  assert.equal(ctrVariantScore("ctr", { ...variants[1], impressions: 2, clicks: 1 }), null);
+});
+
+test("порог знаменателя стоит там, где выбирается победитель — в SQL", () => {
+  // Победителя в проде выбирает transition_ctr_test, а не TypeScript. Пока
+  // порог жил только здесь, он не влиял ни на что: chooseCtrWinner с ним не
+  // вызывалась ниоткуда, и вариант с двумя показами выигрывал с CTR 50%.
+  const helpers = readFileSync(new URL("../supabase/migrations/202608310001_ctr_score_helpers.sql", import.meta.url), "utf8");
+  assert.match(helpers, /public\.ctr_denominator\(p_type, p_impressions, p_opens\) < 50 then null/);
+  assert.equal(CTR_MIN_VIEWS, 50, "порог в SQL и в TypeScript обязан быть один");
+
+  const winner = readFileSync(new URL("../supabase/migrations/202608310002_ctr_winner_threshold.sql", import.meta.url), "utf8");
+  // Победитель — только среди добравших порог.
+  assert.match(winner, /and public\.ctr_score\(v_test\.test_type, impressions, clicks, opens, carts, orders\) is not null/);
+  // Равные показы: норму добрали не все — закрыть можно только осознанно.
+  assert.match(winner, /unequal exposure: the weakest variant has % of % target impressions/);
+  // Клик не равно покупка: победителя по CTR сверяем с базой по конверсии.
+  assert.match(winner, /клик не равно покупка/);
+  // Потолок расхода даёт ответ, если данных хватило, а не молчаливую паузу.
+  assert.match(winner, /v_action := 'cap_finished';/);
+});
+
+test("мёртвых близнецов правила в TypeScript не осталось", () => {
+  const model = readFileSync(new URL("../lib/ctrtest/model.ts", import.meta.url), "utf8");
+  assert.equal(/export function chooseCtrWinner/.test(model), false);
+  assert.equal(/export function ctrWinnerExplanation/.test(model), false);
 });

@@ -144,33 +144,21 @@ export function ctrSnapshotDelta(baselineRaw: Partial<CtrMetricSnapshot>, curren
 }
 
 /**
- * Доля варианта. `null` — знаменателя не хватает, мерить нечем.
+ * Доля варианта для ПОКАЗА на экране. `null` — знаменателя не хватает.
  *
- * Проект уже установил минимальный знаменатель для доли клика (CTR_MIN_VIEWS),
- * потому что на десятке показов доля скачет на десятки процентов. Здесь порог
- * игнорировался: победитель теста и «изменение к базе» считались при любом
- * знаменателе, и вариант с двумя показами и одним кликом объявлялся лучшим с
- * CTR 50%. Решение по такому «победителю» принимают всерьёз.
+ * На десятке показов доля скачет на десятки процентов, поэтому ниже
+ * CTR_MIN_VIEWS процент не рисуется вовсе — иначе «CTR 50%» с двух показов
+ * читается как результат.
+ *
+ * Победителя эта функция НЕ выбирает и никогда не выбирала: решение принимает
+ * SQL-функция transition_ctr_test, и порог теперь стоит там же
+ * (supabase/migrations/202608310002_ctr_winner_threshold.sql). Здесь жили ещё
+ * chooseCtrWinner и ctrWinnerExplanation — их не вызывал никто, а комментарий
+ * рядом уверял, что порог применяется к победителю теста. Дублировать правило
+ * в двух местах, где работает только одно, хуже, чем не иметь второго.
  */
 export function ctrVariantScore(type: CtrTestType, variant: Pick<CtrVariantTotals, "impressions" | "clicks" | "opens" | "carts" | "orders">): number | null {
   const numerator = type === "ctr" ? variant.clicks : type === "cr" ? variant.carts : variant.orders;
   const denominator = type === "ctr" ? variant.impressions : variant.opens;
   return denominator >= CTR_MIN_VIEWS ? numerator / denominator * 100 : null;
-}
-
-export function chooseCtrWinner(type: CtrTestType, variants: CtrVariantTotals[]): CtrVariantTotals | null {
-  return variants
-    .map((variant) => ({ variant, score: ctrVariantScore(type, variant) }))
-    .filter((row): row is { variant: CtrVariantTotals; score: number } => row.score !== null)
-    .sort((a, b) => b.score - a.score || b.variant.roundsWon - a.variant.roundsWon || a.variant.position - b.variant.position)[0]?.variant ?? null;
-}
-
-export function ctrWinnerExplanation(type: CtrTestType, winner: CtrVariantTotals, baseline?: CtrVariantTotals | null): string {
-  const score = ctrVariantScore(type, winner) ?? 0;
-  const baselineScore = baseline ? ctrVariantScore(type, baseline) : null;
-  const delta = baselineScore && baselineScore > 0 ? Math.round((score - baselineScore) / baselineScore * 100) : null;
-  const comparison = delta === null ? "" : `; ${delta >= 0 ? "+" : ""}${delta}% к базовому варианту`;
-  if (type === "ctr") return `Лучший CTR ${score.toFixed(2)}%: ${winner.clicks} кликов из ${winner.impressions} показов${comparison}.`;
-  if (type === "cr") return `Лучшая конверсия в корзину ${score.toFixed(2)}%: ${winner.carts} корзин из ${winner.opens} открытий карточки${comparison}.`;
-  return `Победитель по proxy-конверсии в заказ ${score.toFixed(2)}%: ${winner.orders} заказов из ${winner.opens} открытий${comparison}. WB API не отдаёт просмотры видео по вариантам.`;
 }

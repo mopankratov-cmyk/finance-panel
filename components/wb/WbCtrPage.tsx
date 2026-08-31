@@ -153,12 +153,22 @@ export function WbCtrPage() {
             : undefined;
     setBusy(true); setError(null);
     try {
-      await responseJson(await fetch(`/api/ctrtest/${selectedTest.id}/action`, {
+      const response = await responseJson(await fetch(`/api/ctrtest/${selectedTest.id}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: actionName, variantId, explanation, confirm: confirmation }),
-      }));
-      reload("Действие сохранено в журнале теста");
+      })) as { outcome?: string } | null;
+      // Упор в потолок расхода возвращал ровно тот же нейтральный успех, что
+      // обычный переход, — и человек не узнавал, что тест встал, а кампания в
+      // кабинете WB продолжает жечь бюджет. Панель в WB не пишет и остановить
+      // её не может, поэтому обязана сказать это прямо.
+      if (response?.outcome === "cap_paused") {
+        reload("Лимит расходов выбран — тест на паузе. Остановите кампанию в кабинете WB: панель этого не делает.");
+      } else if (response?.outcome === "cap_finished") {
+        reload("Лимит расходов выбран, но данных хватило — тест закрыт с победителем. Остановите кампанию в кабинете WB.");
+      } else {
+        reload("Действие сохранено в журнале теста");
+      }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось выполнить действие"); }
     finally { setBusy(false); }
   };

@@ -12,6 +12,29 @@ export const maxDuration = 60;
 
 const fail = (error: string, status: number, details?: unknown) => NextResponse.json({ data: details ? { details } : null, error }, { status });
 const missingMigration = (code?: string) => ["42P01", "42703", "42883", "PGRST202", "PGRST204", "PGRST205"].includes(code ?? "");
+
+/**
+ * Правила финала живут в SQL, а человек читал их английский текст исключения.
+ * Переводим ровно те случаи, которые он может исправить сам.
+ */
+function humanTransitionError(message: string): string {
+  const weakest = message.match(/the weakest (?:variant )?has (\d+)/)?.[1];
+  const target = message.match(/of (\d+) target impressions/)?.[1];
+  if (/not enough data/.test(message)) {
+    return `Данных мало: каждому варианту нужно минимум 50 показов (или открытий карточки), у слабейшего ${weakest ?? "меньше"}. На таком объёме доля — шум, а не измерение.`;
+  }
+  if (/unequal exposure/.test(message)) {
+    return `Варианты открутились неодинаково: у слабейшего ${weakest ?? "?"} показов из ${target ?? "?"} по норме. Сравнивать их между собой пока нечестно — дайте тесту добрать норму или закройте принудительно.`;
+  }
+  if (/no variant reached the minimum denominator/.test(message)) {
+    return "Ни один вариант не добрал минимального знаменателя — победителя объявить не из чего.";
+  }
+  if (/test is already closed/.test(message)) return "Тест уже закрыт.";
+  if (/spend cap reached/.test(message)) return "Лимит расходов выбран — запускать тест дальше нельзя.";
+  if (/test is not running/.test(message)) return "Тест не запущен.";
+  if (/active round not found/.test(message)) return "У работающего теста нет активного раунда.";
+  return message;
+}
 const confirmations: Record<string, string> = {
   start: "CONTENT_IS_SET",
   advance: "CONTENT_IS_SET",
@@ -25,7 +48,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (gate) return gate;
   const id = Number((await context.params).id);
   if (!Number.isInteger(id) || id <= 0) return fail("Некорректный id теста", 400);
-  const body = await request.json().catch(() => null) as { action?: string; variantId?: number; confirm?: string; explanation?: string } | null;
+  const body = await request.json().catch(() => null) as { action?: string; variantId?: number; confirm?: string; explanation?: string; force?: boolean } | null;
   const action = String(body?.action ?? "");
   if (!["start", "advance", "pause", "finish", "cancel", "winner"].includes(action)) return fail("Неизвестное действие", 400);
   if (confirmations[action] && body?.confirm !== confirmations[action]) return fail("Нужно явное подтверждение действия", 400);
@@ -62,9 +85,25 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       snapshot,
       result,
       explanation: String(body?.explanation ?? "").slice(0, 2_000),
+      // Закрыть тест, когда варианты открутились неодинаково, можно только
+      // осознанно: SQL иначе откажет, и в объяснении победителя останется
+      // пометка, что норма добрана не всеми.
+      force: body?.force === true,
     },
     p_actor: session?.email ?? null,
   });
-  if (transitionError) return fail(missingMigration(transitionError.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : transitionError.message, missingMigration(transitionError.code) ? 503 : 409, { result });
-  return NextResponse.json({ data: { test: data, result }, error: null });
+  if (transitionError) {
+    if (missingMigration(transitionError.code)) {
+      return fail("Примените миграции 202608310001_ctr_score_helpers.sql и 202608310002_ctr_winner_threshold.sql", 503, { result });
+    }
+    return fail(humanTransitionError(transitionError.message), 409, { result });
+  }
+  // Что произошло на самом деле. Раньше упор в потолок расхода возвращал
+  // ровно тот же успех, что обычный переход, и человек не узнавал, что тест
+  // встал: HTTP 200 и нейтральный тост.
+  const status = (data as { status?: string } | null)?.status ?? null;
+  const outcome = action === "advance" && status === "paused" ? "cap_paused"
+    : action === "advance" && status === "done" ? "cap_finished"
+    : action;
+  return NextResponse.json({ data: { test: data, result, outcome }, error: null });
 }
