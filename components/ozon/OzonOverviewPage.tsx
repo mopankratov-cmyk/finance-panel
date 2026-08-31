@@ -7,6 +7,7 @@ import { withOzonCabinetScope } from "@/lib/ozon/navigation";
 import { useOzonCabinet } from "./OzonCabinetContext";
 import { OzonModuleHeader } from "./OzonModuleHeader";
 import { EmptyState, Freshness, MetricCard, OzonError, OzonLoading, OzonStaleNotice, OzonAdCoverageNotice, type OzonAdCoverageItem, OzonWarnings, ProductCell, formatMoney, formatNumber, formatPercent } from "./OzonUi";
+import { days } from "@/lib/ozon/plural";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonPeriod } from "./useOzonPeriod";
 
@@ -58,7 +59,7 @@ export function OzonOverviewPage() {
                   <div><h2 id="ozon-trend-title" className="text-sm font-bold text-slate-900">Динамика продаж и рекламы</h2><p className="mt-0.5 text-[11px] text-slate-500">Выручка и расход по дням; точные значения доступны в подсказке.</p></div>
                   <BadgeRussianRuble className="h-4 w-4 text-sky-600" />
                 </div>
-                <div className="min-h-[280px] min-w-0 w-full" role="img" aria-label={`График выручки и рекламы за ${period.days} дней`}>
+                <div className="min-h-[280px] min-w-0 w-full" role="img" aria-label={`График выручки и рекламы за ${days(period.days)}`}>
                   <ResponsiveContainer width="100%" height={280} minWidth={0}>
                     <LineChart data={data.trend} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />

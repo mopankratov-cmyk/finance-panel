@@ -15,9 +15,11 @@ import {
   type OzonAnalyticsDailyRow,
   type OzonTotals,
 } from "@/lib/ozon/api";
-import { getPerfToken, isOzonPerformanceReportDeferredMessage, perfDailySpend, perfProductReport } from "@/lib/ozon/performance";
+import { getPerfToken, isOzonPerformanceReportDeferredMessage, perfDailySpend } from "@/lib/ozon/performance";
 import { createOzonCostResolver } from "@/lib/ozon/costs";
 import { chooseOzonAdSource, ozonAdHistoryDays, type OzonAdCoverage } from "@/lib/ozon/adCoverage";
+import { isOzonAdCabinetTotalSku, isOzonAdServiceSku } from "@/lib/ozon/adDailyMarkers";
+import { readOzonAdDaily } from "@/lib/ozon/adDailyRead";
 import { describeOzonPostingStatus, isOzonPostingDelayed } from "@/lib/ozon/postingStatus";
 import { indexOzonOfferIdsBySku, resolveOzonOfferId } from "@/lib/ozon/productIdentity";
 import { cachedOzonImages, cachedOzonPrices, cachedOzonStocks } from "@/lib/ozon/staticCache";
@@ -107,12 +109,9 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod): Promise
   const dailyDates = new Map<string, Set<string>>();
   const windowByClient = new Map<string, Bucket>();
 
-  const [{ data: dailyRows }, { data: windowRows }] = await Promise.all([
-    db.from("ozon_ad_daily")
-      .select("client_id, sku, spent, orders_money, updated_at, date")
-      .in("client_id", clientIds)
-      .gte("date", period.from)
-      .lte("date", period.to),
+  const [{ rows: dailyRows }, { data: windowRows }] = await Promise.all([
+    // Постранично: обрезка на тысяче строк занижала бы расход незаметно.
+    readOzonAdDaily(db, clientIds, period.from, period.to),
     // Окно означает «последние N дней» и годится только для периода,
     // кончающегося сегодня. Для прошлого периода это просто другой отрезок.
     period.endsToday
@@ -123,14 +122,27 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod): Promise
       : Promise.resolve({ data: [] as AdCacheRow[] }),
   ]);
 
-  for (const row of (dailyRows ?? []) as Array<AdCacheRow & { date?: string }>) {
+  // Итог по кабинету за день приходит от Ozon сразу за весь период, а
+  // разнесение по товарам — асинхронными отчётами, днями. Держим их отдельно:
+  // сумма расхода на экранах верна уже сегодня, даже если разнесение ещё едет.
+  const cabinetTotals = new Map<string, { spent: number; ordersMoney: number; days: Set<string> }>();
+  for (const row of dailyRows as Array<AdCacheRow & { date?: string }>) {
     const clientId = String(row.client_id);
-    if (row.date) {
+    const day = row.date ? String(row.date).slice(0, 10) : null;
+    if (isOzonAdCabinetTotalSku(row.sku)) {
+      const entry = cabinetTotals.get(clientId) ?? { spent: 0, ordersMoney: 0, days: new Set<string>() };
+      entry.spent += Number(row.spent ?? 0);
+      entry.ordersMoney += Number(row.orders_money ?? 0);
+      if (day) entry.days.add(day);
+      cabinetTotals.set(clientId, entry);
+      continue;
+    }
+    if (day) {
       const dates = dailyDates.get(clientId) ?? new Set<string>();
-      dates.add(String(row.date).slice(0, 10));
+      dates.add(day);
       dailyDates.set(clientId, dates);
     }
-    if (String(row.sku) === "-") continue; // маркер «день собран, расхода не было»
+    if (isOzonAdServiceSku(row.sku)) continue; // «день собран, расхода не было»
     const bucket = dailyByClient.get(clientId) ?? new Map();
     const entry = bucket.get(String(row.sku)) ?? { spent: 0, ordersMoney: 0, updatedAt: null };
     entry.spent += Number(row.spent ?? 0);
@@ -171,6 +183,7 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod): Promise
     });
     const chosen = decision.source === "window" ? window : decision.source === "daily" ? daily : undefined;
     for (const [sku, value] of chosen ?? []) rows.set(`${clientId}:${sku}`, value);
+    const totals = cabinetTotals.get(clientId);
     coverage.push({
       clientId,
       cabinet: cabinet.name,
@@ -179,47 +192,30 @@ async function loadAdCache(scope: OzonCabinetScope, period: OzonPeriod): Promise
       coveredDays,
       source: decision.source,
       complete: decision.complete,
+      // Сумма по кабинету известна отдельно от разнесения: её Ozon отдаёт
+      // сразу. Это разные вопросы — «сколько потрачено» и «на какие товары».
+      cabinetSpent: totals ? Math.round(totals.spent) : null,
+      cabinetAdRevenue: totals ? Math.round(totals.ordersMoney) : null,
+      cabinetDays: totals ? totals.days.size : 0,
     });
   }
 
   // Плановая синхронизация держит 14-дневный кэш. Для другого выбранного периода
   // или нового кабинета точечно догружаем Performance, чтобы отсутствие строки не
   // выглядело как нулевой расход. Кабинеты обновляются параллельно, ключ включает client_id.
-  const noData = new Set(coverage.filter((item) => item.source === "none").map((item) => item.clientId));
-  const missing = scope.cabinets.filter((cabinet) => cabinet.perf && noData.has(cabinet.clientId));
-  if (missing.length) {
-    const range = period;
-    const reports = await Promise.all(missing.map(async (cabinet) => ({
-      cabinet,
-      // Экран не должен ждать, пока Ozon приготовит отчёт: раньше запрос
-      // висел здесь до 20 секунд и всё равно чаще возвращался ни с чем —
-      // отчёт готовится минутами. Пробуем коротко, остальное принесёт крон.
-      report: await perfProductReport(
-        cabinet.perf!,
-        `${range.from}T00:00:00.000Z`,
-        `${range.to}T23:59:59.999Z`,
-        60,
-        { pollAttempts: 2, pollIntervalMs: 700, maxBatchesPerRun: 1 },
-      ),
-    })));
-    const freshRows: Array<{ client_id: string; sku: string; days: number; spent: number; orders_money: number; updated_at: string }> = [];
-    for (const { cabinet, report } of reports) {
-      if (!report) continue;
-      const updatedAt = new Date().toISOString();
-      for (const [sku, value] of Object.entries(report.bySku)) {
-        rows.set(`${cabinet.clientId}:${sku}`, { spent: value.spent, ordersMoney: value.ordersMoney, updatedAt });
-        freshRows.push({ client_id: cabinet.clientId, sku, days, spent: r0(value.spent), orders_money: r0(value.ordersMoney), updated_at: updatedAt });
-      }
-      // Живой отчёт закрывает период целиком — кабинет больше не «не собран».
-      const entry = coverage.find((item) => item.clientId === cabinet.clientId);
-      if (entry) { entry.source = "live"; entry.complete = true; }
-    }
-    // Пишем в кэш только «последние N дней»: иначе строка соврёт следующему,
-    // кто спросит тот же N.
-    if (freshRows.length && period.endsToday) {
-      await db.from("ozon_ad_cache").upsert(freshRows, { onConflict: "client_id,sku,days" });
-    }
-  }
+  // Живой заказ отчётов Performance с экрана убран намеренно.
+  //
+  // Он существовал, чтобы «дозагрузить» кабинет без строк кэша, но приносил
+  // больше вреда, чем пользы: отчёт готовится минутами, экран его всё равно не
+  // дожидался, а заказ уходил в очередь Ozon и сжигал лимит «один отчёт в
+  // минуту» — тот самый, которым живёт ночная синхронизация. При семи экранах
+  // и прогреве каждые 15 минут таких осиротевших заказов набиралось больше,
+  // чем полезных.
+  //
+  // Сумму расхода экраны теперь берут из суточных итогов, которые собираются
+  // синхронизацией сразу за весь период, а разнесение по товарам доезжает
+  // отчётами в свой срок.
+
   return { rows, coverage };
 }
 
@@ -457,9 +453,13 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
   } = summarizeOzonSales(skuRows);
 
   // Суточная сводка Performance — основной источник расхода за период. Если
-  // она промолчала (кабинет без Performance, отказ API), берём собранное по
-  // товарам. Прежнее условие срабатывало только на «14 дней», и на любом
-  // другом периоде карточка «Реклама» показывала ноль при ненулевых строках.
+  // она промолчала (кабинет без Performance, отказ API), берём сохранённые
+  // суточные итоги, и только потом — сумму разнесения по товарам, которая
+  // может быть неполной. Прежнее условие срабатывало только на «14 дней», и на
+  // любом другом периоде карточка «Реклама» показывала ноль при ненулевых строках.
+  if (currentAdSpend === 0) {
+    currentAdSpend = sum(adCoverage.map((item) => Number(item.cabinetSpent ?? 0)));
+  }
   if (currentAdSpend === 0) currentAdSpend = sum([...adCache.values()].map((row) => row.spent));
   const financial = financeSummary(currentTotals);
   const attention = skuRows.flatMap((row) => {
@@ -734,6 +734,13 @@ export async function loadAdverts(scope: OzonCabinetScope, current: OzonPeriod) 
   const days = current.days;
   const range = current;
   const [{ rows: cache, coverage: adCoverage }, costs] = await Promise.all([loadAdCache(scope, current), loadCosts()]);
+  // Ставка налога и комиссия посредника — те же, что в юнит-экономике.
+  // Захардкоженные 7% и ноль давали другой break-even, и рекомендация
+  // «снизить ставку» противоречила прибыли на соседнем экране.
+  const settingsDb = getSupabaseAdmin();
+  const unitSettings = settingsDb
+    ? await loadCabinetUnitSettings(settingsDb, scope.cabinets.map((cabinet) => cabinet.id)).catch(() => new Map<string, CabinetUnitSettings>())
+    : new Map<string, CabinetUnitSettings>();
   const rows: Record<string, unknown>[] = [];
   const warnings: string[] = [];
   const cabinetData = await Promise.all(scope.cabinets.map(async (cabinet) => {
@@ -781,8 +788,8 @@ export async function loadAdverts(scope: OzonCabinetScope, current: OzonPeriod) 
         units,
         commissionPct: Number(priceRow?.commissionPct ?? 0),
         acquiringPct: actualPrice > 0 ? Number(priceRow?.acquiring ?? 0) / actualPrice * 100 : 0,
-        extraPct: 0,
-        taxPct: 7,
+        extraPct: unitSettings.get(cabinet.id)?.extraCommissionPct ?? 0,
+        taxPct: unitSettings.get(cabinet.id)?.taxPct ?? 7,
         logisticsPerUnit: Number(priceRow?.logistics ?? 0),
         feesComplete: Boolean(prices.ok && priceRow),
         stock,
@@ -814,7 +821,12 @@ export async function loadAdverts(scope: OzonCabinetScope, current: OzonPeriod) 
       });
     }
   }
-  const spent = sum(rows.map((row) => Number(row.spent ?? 0)));
+  const allocatedSpent = sum(rows.map((row) => Number(row.spent ?? 0)));
+  // Расход кабинета известен отдельно от разнесения по товарам. Показывать
+  // сумму строк, когда разнесения ещё нет, значило показать ноль при живых
+  // тратах — и разойтись с «Обзором» и «Экономикой», где сумма верная.
+  const cabinetSpent = sum(adCoverage.map((item) => Number(item.cabinetSpent ?? 0)));
+  const spent = Math.max(allocatedSpent, cabinetSpent);
   const adRevenue = sum(rows.map((row) => Number(row.adRevenue ?? 0)));
   const revenue = sum(rows.map((row) => Number(row.revenue ?? 0)));
   const knownProfitRows = rows.filter((row) => (row.economics as { profitAfterAds?: number | null } | undefined)?.profitAfterAds != null);
@@ -829,6 +841,9 @@ export async function loadAdverts(scope: OzonCabinetScope, current: OzonPeriod) 
     generatedAt: new Date().toISOString(),
     summary: {
       spent: r0(spent),
+      // Сколько из расхода разложено по товарам: разница объясняет, почему
+      // сумма строк меньше итога.
+      allocatedSpent: r0(allocatedSpent),
       adRevenue: r0(adRevenue),
       revenue: r0(revenue),
       drr: pct(spent, revenue),
@@ -945,7 +960,19 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
       loadOzonBuyerDiscount(cabinet.creds),
       cabinet.perf ? perfDailySpend(cabinet.perf, range.from, range.to) : Promise.resolve(null),
     ]);
-    if (dailySpend) {
+    // Итог по кабинету берём из сохранённой суточной истории, если она
+    // покрывает период: она уже в базе и не тратит лимит Ozon. Живой запрос
+    // остаётся страховкой на случай, если история ещё не собрана.
+    const storedTotal = adCoverage.find((item) => item.clientId === cabinet.clientId);
+    const storedCoversPeriod = (storedTotal?.cabinetDays ?? 0) >= ozonAdHistoryDays(range.days, range.endsToday)
+      && (storedTotal?.cabinetSpent ?? 0) > 0
+      // Периода, кончающегося сегодня, история не покрывает по определению:
+      // сегодняшний расход в неё не пишется. Брать её здесь значило потерять
+      // текущий день и разойтись с «Обзором», который считает живьём.
+      && !range.endsToday;
+    if (storedCoversPeriod) {
+      adCabinetTotal += Number(storedTotal?.cabinetSpent ?? 0);
+    } else if (dailySpend) {
       for (const [day, value] of Object.entries(dailySpend.byDate)) {
         if (day >= range.from && day <= range.to) adCabinetTotal += value.spent;
       }

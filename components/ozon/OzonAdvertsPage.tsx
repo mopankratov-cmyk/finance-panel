@@ -1,6 +1,6 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { ArrowDown, ArrowUp, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AdvertProfitGuardrail } from "@/lib/adverts/profitGuardrails";
 import { OzonModuleHeader } from "./OzonModuleHeader";
@@ -8,12 +8,13 @@ import { OzonCsvButton, EmptyState, Freshness, MetricCard, OzonError, OzonLoadin
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
 import { OzonCampaignsPanel } from "./OzonCampaignsPanel";
 import { useOzonCabinet } from "./OzonCabinetContext";
+import { sortRows } from "@/lib/ozon/tableSort";
 import { useOzonCockpit } from "./useOzonCockpit";
 import { useOzonUrlFilter } from "./useOzonUrlFilter";
 import { useOzonPeriod } from "./useOzonPeriod";
 
 interface AdvertRow { key: string; cabinet: string; sku: string; offerId: string; name: string; image: string | null; spent: number; adRevenue: number; revenue: number; orders: number; drr: number; adDrr: number; roas: number | null; attributionCompatible: boolean; economics: AdvertProfitGuardrail; updatedAt: string | null }
-interface AdvertsData { generatedAt: string; scope: { label: string; count: number }; period: { from: string; to: string; days: number }; summary: { spent: number; adRevenue: number; revenue: number; drr: number; adDrr: number; roas: number | null; calculatedProfit: number | null; profitCoveragePct: number; recommendations: number; sku: number }; rows: AdvertRow[]; adCoverage?: OzonAdCoverageItem[]; warnings: string[] }
+interface AdvertsData { generatedAt: string; scope: { label: string; count: number }; period: { from: string; to: string; days: number }; summary: { spent: number; allocatedSpent?: number; adRevenue: number; revenue: number; drr: number; adDrr: number; roas: number | null; calculatedProfit: number | null; profitCoveragePct: number; recommendations: number; sku: number }; rows: AdvertRow[]; adCoverage?: OzonAdCoverageItem[]; warnings: string[] }
 
 function recommendationLabel(row: AdvertRow) {
   if (row.economics.action === "increase") return `Увеличить ${row.economics.budgetChangePct}%`;
@@ -33,13 +34,17 @@ function recommendationTone(action: AdvertProfitGuardrail["action"]) {
 export function OzonAdvertsPage() {
   const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [sort, setSort] = useState<"spent" | "revenue" | "adRevenue" | "drr" | "roas">("spent");
+  // Список умел только «по убыванию»: найти самый слабый товар было нечем.
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const { noCabinets } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const { data, loading, error, updating, refresh, reload } = useOzonCockpit<AdvertsData>("adverts", period);
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
-    return [...(data?.rows ?? [])].filter((row) => !needle || `${row.name} ${row.offerId} ${row.sku} ${row.cabinet}`.toLocaleLowerCase("ru-RU").includes(needle)).sort((a, b) => Number(b[sort] ?? -Infinity) - Number(a[sort] ?? -Infinity));
-  }, [data?.rows, query, sort]);
+    const base = (data?.rows ?? []).filter((row) => !needle || `${row.name} ${row.offerId} ${row.sku} ${row.cabinet}`.toLocaleLowerCase("ru-RU").includes(needle));
+    // Общее правило сортировки: «нет данных» всегда внизу, в обе стороны.
+    return sortRows(base, { key: sort, dir: sortDir }, (row, key) => row[key] as number | null);
+  }, [data?.rows, query, sort, sortDir]);
   const exportCsv = () => {
     if (!data) return;
     downloadCsv(
@@ -72,10 +77,10 @@ export function OzonAdvertsPage() {
       {loading && !data ? <OzonLoading rows={9} /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет рекламных данных" detail="Подключите Performance API и запустите синхронизацию." href="/cabinets" /> : <>
         <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div>
         {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9"><MetricCard label="Расход" value={formatMoney(data.summary.spent)} tone="amber" /><MetricCard label="Прибыль после рекламы" value={formatMoney(data.summary.calculatedProfit)} detail={`покрытие ${formatPercent(data.summary.profitCoveragePct)}`} tone={data.summary.profitCoveragePct < 90 || data.summary.calculatedProfit == null ? "amber" : data.summary.calculatedProfit < 0 ? "red" : "emerald"} /><MetricCard label="Рекомендации" value={formatNumber(data.summary.recommendations)} detail="увеличить / снизить / пауза" tone={data.summary.recommendations ? "amber" : "emerald"} /><MetricCard label="Продажи с рекламы" value={formatMoney(data.summary.adRevenue)} /><MetricCard label="Общая выручка" value={formatMoney(data.summary.revenue)} /><MetricCard label="ДРР общий" value={formatPercent(data.summary.drr)} tone={data.summary.drr >= 30 ? "red" : data.summary.drr >= 20 ? "amber" : "emerald"} /><MetricCard label="ДРР рекламный" value={formatPercent(data.summary.adDrr)} /><MetricCard label="ROAS рекламный" value={data.summary.roas == null ? "—" : `${data.summary.roas.toLocaleString("ru-RU")}×`} /><MetricCard label="SKU в рекламе" value={formatNumber(data.summary.sku)} tone="slate" /></div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9"><MetricCard label="Расход" value={formatMoney(data.summary.spent)} detail={data.summary.allocatedSpent != null && data.summary.allocatedSpent < data.summary.spent ? `по товарам разложено ${formatMoney(data.summary.allocatedSpent)}` : undefined} tone="amber" /><MetricCard label="Прибыль после рекламы" value={formatMoney(data.summary.calculatedProfit)} detail={`покрытие ${formatPercent(data.summary.profitCoveragePct)}`} tone={data.summary.profitCoveragePct < 90 || data.summary.calculatedProfit == null ? "amber" : data.summary.calculatedProfit < 0 ? "red" : "emerald"} /><MetricCard label="Рекомендации" value={formatNumber(data.summary.recommendations)} detail="увеличить / снизить / пауза" tone={data.summary.recommendations ? "amber" : "emerald"} /><MetricCard label="Продажи с рекламы" value={formatMoney(data.summary.adRevenue)} /><MetricCard label="Общая выручка" value={formatMoney(data.summary.revenue)} /><MetricCard label="ДРР общий" value={formatPercent(data.summary.drr)} tone={data.summary.drr >= 30 ? "red" : data.summary.drr >= 20 ? "amber" : "emerald"} /><MetricCard label="ДРР рекламный" value={formatPercent(data.summary.adDrr)} /><MetricCard label="ROAS рекламный" value={data.summary.roas == null ? "—" : `${data.summary.roas.toLocaleString("ru-RU")}×`} /><MetricCard label="SKU в рекламе" value={formatNumber(data.summary.sku)} tone="slate" /></div>
         <OzonCampaignsPanel />
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row sm:items-center"><OzonCsvButton count={rows.length} onExport={exportCsv} /><label className="relative flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск товара или кабинета" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 sm:ml-auto sm:h-8" aria-label="Сортировка рекламы"><option value="spent">Расход</option><option value="adRevenue">Продажи с рекламы</option><option value="revenue">Общая выручка</option><option value="drr">ДРР</option><option value="roas">ROAS</option></select></div>
+          <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row sm:items-center"><OzonCsvButton count={rows.length} onExport={exportCsv} /><label className="relative flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск товара или кабинета" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 sm:ml-auto sm:h-8" aria-label="Сортировка рекламы"><option value="spent">Расход</option><option value="adRevenue">Продажи с рекламы</option><option value="revenue">Общая выручка</option><option value="drr">ДРР</option><option value="roas">ROAS</option></select><button type="button" onClick={() => setSortDir((d) => d === "desc" ? "asc" : "desc")} title={sortDir === "desc" ? "Сейчас по убыванию — нажмите для возрастания" : "Сейчас по возрастанию — нажмите для убывания"} aria-label="Направление сортировки" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-sky-700 sm:h-8 sm:w-8">{sortDir === "desc" ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}</button></div>
           {rows.length === 0 ? <div className="p-4"><EmptyState title="Рекламные SKU не найдены" detail="Проверьте Performance API, синхронизацию и поиск." href="/sync" /></div> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1580px] text-xs">

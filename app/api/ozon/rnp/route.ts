@@ -3,6 +3,8 @@ import { getActiveOzonCreds } from "@/lib/ozon/cabinet";
 import { ozonImages, ozonStocks, type OzonCreds } from "@/lib/ozon/api";
 import { ozonSellerFetch, OzonRateLimitError } from "@/lib/ozon/sellerGate";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isOzonAdCabinetTotalSku, isOzonAdServiceSku } from "@/lib/ozon/adDailyMarkers";
+import { readOzonAdDaily } from "@/lib/ozon/adDailyRead";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -115,18 +117,42 @@ export async function GET(request: NextRequest) {
   if (stk.ok) for (const s of stk.rows) freeByOffer[s.article] = (freeByOffer[s.article] ?? 0) + s.free;
   const stockOfSku = (sku: string) => freeByOffer[skuToOffer[sku] ?? ""] ?? 0;
 
-  // per-SKU расход рекламы из кэша (заполняется /api/ozon/ad-sku)
-  const adBySku = new Map<string, number>();
+  // Расход рекламы по дням из истории (`ozon_ad_daily`).
+  //
+  // Раньше читался скользящий кэш «последние N дней» с фильтром
+  // `days = длина месяца`, а этот кэш существует только для 14 дней — колонка
+  // рекламы в плане-факте была пустой ВСЕГДА. История хранит конкретные даты,
+  // поэтому подходит любому периоду и даёт расход по каждому дню, а не одним
+  // числом за месяц.
+  const adBySku = new Map<string, Map<string, number>>();
+  const adCabinetByDay = new Map<string, number>();
   {
     const db = getSupabaseAdmin();
     if (db) {
-      // per-кабинет: фильтр по client_id (без миграции client_id .eq упадёт → adRows null → реклама per-SKU скрыта, сводная остаётся)
-      const { data: adRows } = await db.from("ozon_ad_cache").select("sku, spent").eq("days", days).eq("client_id", cab.creds.clientId);
-      for (const r of adRows ?? []) adBySku.set(r.sku as string, Number(r.spent));
+      const { rows: adRows } = await readOzonAdDaily(
+        db,
+        [cab.creds.clientId],
+        dates[0],
+        dates[dates.length - 1],
+        "client_id, sku, date, spent, orders_money",
+      );
+      for (const row of adRows) {
+        const day = String(row.date).slice(0, 10);
+        const spent = Number(row.spent ?? 0);
+        if (isOzonAdCabinetTotalSku(row.sku)) {
+          adCabinetByDay.set(day, (adCabinetByDay.get(day) ?? 0) + spent);
+          continue;
+        }
+        if (isOzonAdServiceSku(row.sku)) continue;
+        const sku = String(row.sku);
+        const byDay = adBySku.get(sku) ?? new Map<string, number>();
+        byDay.set(day, (byDay.get(day) ?? 0) + spent);
+        adBySku.set(sku, byDay);
+      }
     }
   }
 
-  const buildMetrics = (byDay: Map<string, Day>, stock: number, adSpent?: number) => {
+  const buildMetrics = (byDay: Map<string, Day>, stock: number, adByDay?: Map<string, number>) => {
     const pick = (k: keyof Day) => dates.map((d) => Math.round(byDay.get(d)?.[k] ?? 0));
     const sum = (a: number[]) => a.reduce((x, v) => x + v, 0);
     const orders = pick("orders"), revenue = pick("revenue");
@@ -140,9 +166,14 @@ export async function GET(request: NextRequest) {
       { field: "avg_check", label: "Ср. цена, ₽", kind: "money", daily: avg, total: oV > 0 ? Math.round(revTotal / oV) : 0 },
       { field: "stock", label: "Остаток, шт", kind: "int", daily: dates.map(() => 0), total: stock, group_start: true },
     ];
-    if (adSpent != null) {
-      m.push({ field: "ad", label: "Реклама, ₽", kind: "money", daily: dates.map(() => 0), total: Math.round(adSpent), group_start: true });
-      m.push({ field: "drr", label: "ДРР, %", kind: "pct", daily: dates.map(() => 0), total: revTotal > 0 ? Math.round((adSpent / revTotal) * 1000) / 10 : 0 });
+    if (adByDay) {
+      const adDaily = dates.map((d) => Math.round(adByDay.get(d) ?? 0));
+      const adTotal = sum(adDaily);
+      // Расход без выручки — не «ДРР 0%». Помечаем предельным значением,
+      // чтобы такой день не выглядел лучшим в строке.
+      const drrDaily = dates.map((_day, index) => (revenue[index] > 0 ? Math.round((adDaily[index] / revenue[index]) * 1000) / 10 : adDaily[index] > 0 ? 999 : 0));
+      m.push({ field: "ad", label: "Реклама, ₽", kind: "money", daily: adDaily, total: adTotal, group_start: true });
+      m.push({ field: "drr", label: "ДРР, %", kind: "pct", daily: drrDaily, total: revTotal > 0 ? Math.round((adTotal / revTotal) * 1000) / 10 : 0 });
     }
     return m;
   };
@@ -151,7 +182,7 @@ export async function GET(request: NextRequest) {
     // art — артикул продавца (offer_id). Без него план продаж не находил факт:
     // план ведётся по артикулам, а аналитика Ozon отдаёт только числовой sku.
     // Карта sku→offer уже загружена выше для остатков, просто не попадала в ответ.
-    .map(([sku, v]) => ({ sku, art: skuToOffer[sku] ?? null, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay, stockOfSku(sku), adBySku.has(sku) ? adBySku.get(sku) : undefined), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
+    .map(([sku, v]) => ({ sku, art: skuToOffer[sku] ?? null, name: v.name, img_url: imgBySku[sku] ?? null, metrics: buildMetrics(v.byDay, stockOfSku(sku), adBySku.get(sku)), _o: [...v.byDay.values()].reduce((s, x) => s + x.revenue, 0) }))
     .sort((a, b) => b._o - a._o)
     .map(({ _o, ...rest }) => { void _o; return rest; });
 
@@ -168,7 +199,25 @@ export async function GET(request: NextRequest) {
 
   // Реклама ₽ + ДРР по дням (Performance API, уровень кабинета) — добавляем в сводку
   let perfAvailable = false;
-  if (cab.perf) {
+  // Сегодняшнего дня в истории нет никогда — он ещё идёт.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const historyDates = dates.filter((d) => d < todayIso);
+  const storedCoversPeriod = historyDates.length > 0 && historyDates.every((d) => adCabinetByDay.has(d));
+  if (storedCoversPeriod) {
+    // История покрывает период целиком — живой запрос не нужен. Частичную
+    // историю за полный факт выдавать нельзя: непокрытые дни превратились бы
+    // в нули, а месяц — в заниженный расход.
+    perfAvailable = true;
+    const revDaily = summary.find((m) => m.field === "revenue")?.daily ?? dates.map(() => 0);
+    const adDaily = dates.map((d) => Math.round(adCabinetByDay.get(d) ?? 0));
+    // День с расходом и без выручки — это не «ДРР 0%», а «отдачи нет».
+    // Ноль в такой клетке делал худший день похожим на лучший.
+    const drrDaily = dates.map((_, i) => (revDaily[i] > 0 ? Math.round((adDaily[i] / revDaily[i]) * 1000) / 10 : adDaily[i] > 0 ? 999 : 0));
+    const adTotal = adDaily.reduce((s, v) => s + v, 0);
+    const revTotal = revDaily.reduce((s, v) => s + v, 0);
+    summary.push({ field: "ad", label: "Реклама, ₽", kind: "money", daily: adDaily, total: adTotal, group_start: true });
+    summary.push({ field: "drr", label: "ДРР, %", kind: "pct", daily: drrDaily, total: revTotal > 0 ? Math.round((adTotal / revTotal) * 1000) / 10 : 0 });
+  } else if (cab.perf) {
     const { perfDailySpend } = await import("@/lib/ozon/performance");
     const ps = await perfDailySpend(cab.perf, from, to);
     if (ps) {

@@ -4,6 +4,8 @@ import { resolveOzonPeriod } from "@/lib/ozon/period";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cachedOzonImages } from "@/lib/ozon/staticCache";
 import { ozonAdHistoryDays } from "@/lib/ozon/adCoverage";
+import { isOzonAdCabinetTotalSku, isOzonAdServiceSku } from "@/lib/ozon/adDailyMarkers";
+import { readOzonAdDaily } from "@/lib/ozon/adDailyRead";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -30,13 +32,12 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "База недоступна" }, { status: 503 });
 
   const clientIds = scope.cabinets.map((cabinet) => cabinet.clientId);
-  const { data, error } = await db
-    .from("ozon_ad_daily")
-    .select("client_id, sku, date, spent, orders_money")
-    .in("client_id", clientIds)
-    .gte("date", period.from)
-    .lte("date", period.to);
-  if (error) return NextResponse.json({ error: error.message }, { status: 502 });
+  let data: Awaited<ReturnType<typeof readOzonAdDaily>>["rows"];
+  try {
+    ({ rows: data } = await readOzonAdDaily(db, clientIds, period.from, period.to, "client_id, sku, date, spent, orders_money"));
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "История не прочитана" }, { status: 502 });
+  }
 
   // Справочник карточек берём по кабинету и только ради названий и картинок:
   // сам журнал целиком собирается из базы.
@@ -67,18 +68,35 @@ export async function GET(request: NextRequest) {
   }
   const rows = new Map<string, JournalRow>();
   const totalsByDay: Record<string, number> = Object.fromEntries(days.map((day) => [day, 0]));
+  // Итоги держим отдельно по кабинетам: складывать их можно только после
+  // того, как для каждого выбран свой источник.
+  const cabinetTotals = new Map<string, Record<string, number>>();
+  const skuTotals = new Map<string, Record<string, number>>();
   const collectedDays = new Map<string, Set<string>>();
   const cabinetName = new Map(scope.cabinets.map((cabinet) => [cabinet.clientId, cabinet.name]));
 
+  // Итог по кабинету за день Ozon отдаёт сразу; разнесение по товарам едет
+  // отчётами. Раньше журнал показывал пустоту, пока не доедет разнесение, —
+  // хотя сумма расхода по дням была известна с самого начала.
+  const cabinetDays = new Map<string, Set<string>>();
   for (const row of data ?? []) {
     const clientId = String(row.client_id);
     const day = String(row.date).slice(0, 10);
+    if (isOzonAdCabinetTotalSku(row.sku)) {
+      const known = cabinetDays.get(clientId) ?? new Set<string>();
+      known.add(day);
+      cabinetDays.set(clientId, known);
+      const perCabinet = cabinetTotals.get(clientId) ?? {};
+      perCabinet[day] = (perCabinet[day] ?? 0) + Number(row.spent ?? 0);
+      cabinetTotals.set(clientId, perCabinet);
+      continue;
+    }
     const dates = collectedDays.get(clientId) ?? new Set<string>();
     dates.add(day);
     collectedDays.set(clientId, dates);
     // Маркер «день собран, расхода не было» — в таблицу строк не попадает,
     // но покрытие подтверждает.
-    if (String(row.sku) === "-") continue;
+    if (isOzonAdServiceSku(row.sku)) continue;
 
     const sku = String(row.sku);
     const key = `${clientId}:${sku}`;
@@ -100,7 +118,21 @@ export async function GET(request: NextRequest) {
     entry.total += spent;
     entry.adRevenue += Number(row.orders_money ?? 0);
     rows.set(key, entry);
-    totalsByDay[day] = (totalsByDay[day] ?? 0) + spent;
+    const perCabinetSku = skuTotals.get(clientId) ?? {};
+    perCabinetSku[day] = (perCabinetSku[day] ?? 0) + spent;
+    skuTotals.set(clientId, perCabinetSku);
+  }
+
+  // Итог дня собирается ПО КАЖДОМУ кабинету и только потом складывается.
+  // Общая куча теряла расход: если у одного кабинета есть суточный итог, а у
+  // другого только разнесение по товарам, вклад второго пропадал целиком.
+  for (const day of days) {
+    let total = 0;
+    for (const clientId of clientIds) {
+      const known = cabinetTotals.get(clientId)?.[day];
+      total += known != null ? known : (skuTotals.get(clientId)?.[day] ?? 0);
+    }
+    totalsByDay[day] = total;
   }
 
   const historyDays = ozonAdHistoryDays(period.days, period.endsToday);
@@ -121,6 +153,7 @@ export async function GET(request: NextRequest) {
       coveredDays: collectedDays.get(cabinet.clientId)?.size ?? 0,
       source: "daily" as const,
       complete: (collectedDays.get(cabinet.clientId)?.size ?? 0) >= historyDays && historyDays > 0,
+      cabinetDays: cabinetDays.get(cabinet.clientId)?.size ?? 0,
     })),
   });
 }

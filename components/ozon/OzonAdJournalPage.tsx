@@ -162,10 +162,39 @@ export function OzonAdJournalPage() {
 
                     {rows.length === 0 ? (
                       <div className="p-4">
-                        <EmptyState
-                          title="Расхода за период нет"
-                          detail="Либо реклама не крутилась, либо история по этим дням ещё собирается — смотрите подпись о полноте выше."
-                        />
+                        {data.total > 0 ? (
+                          // Сумма по дням известна, а разнесения по товарам ещё
+                          // нет: показать «расхода нет» здесь было бы прямой
+                          // неправдой — деньги потрачены и видны ниже по дням.
+                          <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-xs text-sky-900">
+                            <div className="font-semibold">Расход по дням известен, разнесение по товарам ещё собирается</div>
+                            <p className="mt-1">
+                              Ozon отдаёт сумму за день сразу, а разбивку по товарам — отчётами, по очереди.
+                              Итоги по дням ниже верные; строки товаров появятся по мере сбора.
+                            </p>
+                            <div className="mt-3 overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead className="text-[10px] uppercase tracking-wide text-sky-700">
+                                  <tr>{data.days.map((day) => <th key={day} className="px-2 py-1 text-right">{dayLabel(day)}</th>)}</tr>
+                                </thead>
+                                <tbody>
+                                  <tr>
+                                    {data.days.map((day) => (
+                                      <td key={day} className="px-2 py-1 text-right font-semibold tabular-nums">
+                                        {Math.round(data.totalsByDay[day] ?? 0).toLocaleString("ru-RU")}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ) : (
+                          <EmptyState
+                            title="Расхода за период нет"
+                            detail="Либо реклама не крутилась, либо история по этим дням ещё собирается — смотрите подпись о полноте выше."
+                          />
+                        )}
                       </div>
                     ) : (
                       <div className="max-h-[68vh] overflow-auto">

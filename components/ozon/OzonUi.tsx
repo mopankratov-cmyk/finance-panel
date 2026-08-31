@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, CheckCircle2, Database, Download, Info, PackageOpen } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Database, Download, Info, PackageOpen } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -56,6 +56,9 @@ export interface OzonAdCoverageItem {
   coveredDays: number;
   source: "daily" | "window" | "live" | "none";
   complete: boolean;
+  /** Дней, за которые известна сумма по кабинету (её Ozon отдаёт сразу). */
+  cabinetDays?: number;
+  cabinetSpent?: number | null;
 }
 
 /**
@@ -76,11 +79,15 @@ export function OzonAdCoverageNotice({ coverage }: { coverage?: OzonAdCoverageIt
         <ul className="mt-1 space-y-0.5 text-[11px]">
           {incomplete.map((item) => (
             <li key={item.cabinet}>
-              {item.cabinet}: {item.source === "none"
-                ? item.historyDays === 0
-                  ? "расход за сегодня Ozon отдаёт завтра — сравнивать пока не с чем"
-                  : "за этот период данных ещё нет, показанные нули не факт"
-                : `собрано ${item.coveredDays} из ${item.historyDays} дн. — расход занижен на несобранные дни`}
+              {item.cabinet}: {(item.cabinetDays ?? 0) >= item.historyDays && item.historyDays > 0 && (item.cabinetSpent ?? 0) > 0
+                // Сумма расхода известна целиком, не хватает только разбивки
+                // по товарам: это совсем другой разговор, чем «данных нет».
+                ? "сумма расхода известна полностью, разнесение по товарам ещё собирается"
+                : item.source === "none"
+                  ? item.historyDays === 0
+                    ? "расход за сегодня Ozon отдаёт завтра — сравнивать пока не с чем"
+                    : "за этот период данных ещё нет, показанные нули не факт"
+                  : `собрано ${item.coveredDays} из ${item.historyDays} дн. — расход занижен на несобранные дни`}
             </li>
           ))}
         </ul>
@@ -129,6 +136,41 @@ export function MetricCard({ label, value, detail, delta, tone = "sky" }: { labe
       <div className="mt-2 text-[22px] font-bold tracking-tight text-slate-900 tabular-nums">{value}</div>
       {detail && <div className={`mt-2 inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${tones[tone]}`}>{detail}</div>}
     </div>
+  );
+}
+
+/**
+ * Заголовок колонки, по которому можно сортировать.
+ *
+ * Три состояния по кругу: по убыванию, по возрастанию, порядок сервера.
+ * Возврат к серверному порядку нужен там, где он осмысленный сам по себе —
+ * например, критичные запасы сверху.
+ */
+export function SortableTh({ label, active, dir, onToggle, align = "right", hint }: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onToggle: () => void;
+  align?: "left" | "right";
+  hint?: string;
+}) {
+  return (
+    <th
+      className={`${align === "left" ? "px-4 text-left" : "px-3 text-right"} py-2`}
+      aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        title={hint}
+        className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${align === "left" ? "" : "flex-row-reverse"}`}
+      >
+        {active
+          ? dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+          : <ArrowUpDown className="h-3 w-3 text-slate-300" />}
+        {label}
+      </button>
+    </th>
   );
 }
 

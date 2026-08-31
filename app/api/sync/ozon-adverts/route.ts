@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   isOzonPerformanceReportDeferredMessage,
+  perfDailySpend,
   perfProductReport,
   type PerfProductReportResumeState,
 } from "@/lib/ozon/performance";
+import { OZON_AD_CABINET_TOTAL_SKU, OZON_AD_EMPTY_DAY_SKU } from "@/lib/ozon/adDailyMarkers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildOzonAdSyncWarningNotes, selectOzonAdSyncCabinets } from "@/lib/ozon/adSyncPlan";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
@@ -36,6 +39,8 @@ interface OzonAdvertSyncState extends Record<string, unknown> {
   lastRunAt?: string;
 }
 
+/** Глубина суточных итогов: столько же, сколько максимальный период экранов. */
+const DAILY_TOTALS_DAYS = 92;
 const BACKFILL_WINDOW_DAYS = 28;
 
 /**
@@ -60,10 +65,15 @@ async function backfillOneDay(
   if (!day) {
     const till = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
     const since = new Date(Date.now() - BACKFILL_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+    // Собранным день считается по строкам ТОВАРОВ. Итог кабинета (`*`)
+    // приходит сразу за весь квартал, и если считать его признаком сбора,
+    // дозаполнение решит, что собирать больше нечего, — разнесение по товарам
+    // не наполнится уже никогда.
     const { data: haveRows } = await db
       .from("ozon_ad_daily")
       .select("date")
       .eq("client_id", cabinet.client_id)
+      .neq("sku", OZON_AD_CABINET_TOTAL_SKU)
       .gte("date", since)
       .lte("date", till);
     const have = new Set((haveRows ?? []).map((row) => String(row.date)));
@@ -104,10 +114,26 @@ async function backfillOneDay(
     orders_money: Math.round(value.ordersMoney),
     updated_at: updatedAt,
   }));
-  // День без расхода тоже записываем — маркером, чтобы не заказывать его снова.
-  const payload = rows.length ? rows : [{
-    client_id: cabinet.client_id, sku: "-", date: day, spent: 0, orders_money: 0, updated_at: updatedAt,
-  }];
+  // День без расхода записываем маркером, чтобы не заказывать его снова. Но
+  // если суточный итог кабинета за этот день ненулевой, «пусто» будет ложью:
+  // расход был, просто разнесение по товарам не пришло. Такой день оставляем
+  // несобранным — его переспросят.
+  let payload = rows;
+  if (!rows.length) {
+    const { data: totalRow } = await db
+      .from("ozon_ad_daily")
+      .select("spent")
+      .eq("client_id", cabinet.client_id)
+      .eq("sku", OZON_AD_CABINET_TOTAL_SKU)
+      .eq("date", day)
+      .maybeSingle();
+    if (Number(totalRow?.spent ?? 0) > 0) {
+      return { state: null, rows: 0, note: `история ${day}: расход есть, разнесение Ozon не отдал` };
+    }
+    payload = [{
+      client_id: cabinet.client_id, sku: OZON_AD_EMPTY_DAY_SKU, date: day, spent: 0, orders_money: 0, updated_at: updatedAt,
+    }];
+  }
   const { error } = await db.from("ozon_ad_daily").upsert(payload, { onConflict: "client_id,sku,date" });
   if (error) return { state: { day, report: null }, rows: 0, note: `история ${day}: ${error.message}` };
   return { state: null, rows: rows.length, note: `история ${day}: ${rows.length} строк` };
@@ -117,6 +143,60 @@ async function backfillOneDay(
 // обновляет Performance-рекламу. Один async-отчёт Ozon может занимать до 45с,
 // поэтому почасовой cron берёт самый старый/отсутствующий кеш; ручной ?all=1
 // оставлен для окружений с увеличенным лимитом функции.
+/**
+ * Посуточные итоги кабинета — за весь квартал, одним дешёвым запросом.
+ *
+ * Разнесение расхода по товарам Ozon отдаёт асинхронными отчётами: один
+ * отчёт в минуту, батчами по десять кампаний, днями. А сумму по кабинету за
+ * каждый день он отдаёт сразу — обычным GET без очереди. Пока мы ждали
+ * разнесения, экраны стояли с нулями при полностью доступных данных.
+ *
+ * Пишем эти суммы служебной строкой `*`: она не участвует в разрезе по
+ * товарам, но закрывает вопрос «сколько потрачено» на любом периоде.
+ */
+async function syncCabinetDailyTotals(
+  db: SupabaseClient,
+  cabinet: { client_id: string; perf_client_id: string; perf_secret: string },
+  todayIso: string,
+): Promise<{ days: number; note: string | null }> {
+  const creds = { clientId: cabinet.perf_client_id, secret: cabinet.perf_secret };
+  const rows: Array<{ client_id: string; sku: string; date: string; spent: number; orders_money: number; updated_at: string }> = [];
+  const updatedAt = new Date().toISOString();
+  let failedChunks = 0;
+  // Просим кусками по 30 дней: длинные диапазоны Ozon иногда обрезает молча.
+  for (let offset = 0; offset < DAILY_TOTALS_DAYS; offset += 30) {
+    const to = new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
+    const from = new Date(Date.now() - Math.min(DAILY_TOTALS_DAYS, offset + 30) * 86_400_000).toISOString().slice(0, 10);
+    const daily = await perfDailySpend(creds, from, to);
+    if (!daily) {
+      // Уже полученные куски не выбрасываем: половина истории лучше, чем
+      // ничего, а недостающее доберёт следующий заход.
+      failedChunks += 1;
+      continue;
+    }
+    for (const [day, value] of Object.entries(daily.byDate)) {
+      // Сегодняшний день ещё идёт — в историю он не попадает никогда.
+      if (day >= todayIso) continue;
+      rows.push({
+        client_id: cabinet.client_id,
+        sku: OZON_AD_CABINET_TOTAL_SKU,
+        date: day,
+        spent: Math.round(value.spent),
+        orders_money: Math.round(value.ordersMoney),
+        updated_at: updatedAt,
+      });
+    }
+  }
+  if (!rows.length) return { days: 0, note: failedChunks ? "суточные итоги: Performance не ответил" : null };
+  const unique = [...new Map(rows.map((row) => [row.date, row])).values()];
+  const { error } = await db.from("ozon_ad_daily").upsert(unique, { onConflict: "client_id,sku,date" });
+  if (error) return { days: 0, note: `суточные итоги: ${error.message}` };
+  return {
+    days: unique.length,
+    note: failedChunks ? `суточные итоги: ${unique.length} дн., ${failedChunks} кусков не пришло` : null,
+  };
+}
+
 export async function GET(request: NextRequest) {
   const authError = await checkCronAuth(request);
   if (authError) return authError;
@@ -183,10 +263,20 @@ export async function GET(request: NextRequest) {
     // прочитанный до старта снимок значило терять свежие заказы — следующий
     // заход создавал их заново и жёг лимит «один отчёт в минуту».
     let liveState: OzonAdvertSyncState = { ...(saved?.state ?? {}) } as OzonAdvertSyncState;
+    let totalsNote: string | null = null;
     try {
       if (!cabinet.client_id || !cabinet.perf_client_id || !cabinet.perf_secret) {
         throw new Error("Нет Ozon Performance API");
       }
+      // Суточные итоги — ПЕРВЫМ делом и всегда: они дешёвые, приходят сразу за
+      // весь квартал и не зависят от очереди отчётов. Даже если разнесение по
+      // товарам сегодня не доедет, сумма расхода на экранах будет верной.
+      const totals = await syncCabinetDailyTotals(db, {
+        client_id: cabinet.client_id,
+        perf_client_id: cabinet.perf_client_id,
+        perf_secret: cabinet.perf_secret,
+      }, todayIso);
+      totalsNote = totals.note ?? (totals.days ? `суточных итогов: ${totals.days}` : null);
       // Свежее окно не пересобираем. Период отчёта сдвигается каждым заходом,
       // поэтому «продолжить» его нельзя — только заказать заново все 5-7
       // батчей. Час назад собранное окно этого не стоит, а заход целиком
@@ -237,7 +327,7 @@ export async function GET(request: NextRequest) {
           rows: backfillRows,
           partial: false,
           deferred: false,
-          error: backfillNote ? `окно свежее; ${backfillNote}` : "окно свежее; история заполнена",
+          error: [totalsNote, backfillNote ? backfillNote : "окно свежее; история заполнена"].filter(Boolean).join("; "),
         };
       }
       if (!(await claimWbSyncJob(db, cabinet.id, "ozon-adverts", 6 * 60))) {
@@ -359,6 +449,7 @@ export async function GET(request: NextRequest) {
       });
       if (stateError) throw new Error(`состояние ozon-adverts: ${stateError}`);
       const noteParts = [
+        totalsNote,
         report.errors.length ? report.errors.join("; ") : null,
         backfillNote,
       ].filter(Boolean);

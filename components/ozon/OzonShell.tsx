@@ -54,7 +54,14 @@ function isActive(pathname: string, item: NavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function RailLink({ item, active, cabinetId }: { item: NavItem; active: boolean; cabinetId: string }) {
+/**
+ * Пункт навигации.
+ *
+ * На узком экране подпись показывается текстом: всплывающая подсказка живёт на
+ * наведении мыши, которого на телефоне нет, и половина разделов превращалась в
+ * ряд неподписанных иконок.
+ */
+function RailLink({ item, active, cabinetId, wide = false }: { item: NavItem; active: boolean; cabinetId: string; wide?: boolean }) {
   const Icon = item.icon;
   const href = item.scoped ? withOzonCabinetScope(item.href, cabinetId) : item.href;
   return (
@@ -62,13 +69,16 @@ function RailLink({ item, active, cabinetId }: { item: NavItem; active: boolean;
       href={href}
       aria-label={item.label}
       title={item.label}
-      className={`group relative mx-2 flex h-11 items-center justify-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 md:h-9 ${active ? "bg-sky-50 text-sky-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
+      className={`group relative mx-2 flex h-11 items-center rounded-[9px] ${wide ? "gap-3 px-3" : "justify-center"} transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 md:h-9 ${active ? "bg-sky-50 text-sky-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
     >
       {active && <span className="absolute -left-2 h-6 w-[3px] rounded-r bg-sky-600" />}
-      <Icon className="h-[17px] w-[17px]" />
-      <span className="pointer-events-none absolute left-[43px] z-[90] hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+      <Icon className="h-[17px] w-[17px] shrink-0" />
+      {wide && <span className="truncate text-[13px] font-semibold">{item.label}</span>}
+      {!wide && (
+        <span className="pointer-events-none absolute left-[43px] z-[90] hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
         {item.label}
       </span>
+      )}
     </Link>
   );
 }
@@ -87,23 +97,26 @@ export function OzonShell({ children }: { children: React.ReactNode }) {
   };
   const scopedCabinet = cabinetId || "all";
 
-  const nav = (
+  const renderNav = (wide: boolean) => (
     <>
       <div className="flex h-[54px] shrink-0 items-center justify-center border-b border-slate-200">
         <Link href="/" aria-label="Управление Ozon" className="grid h-7 w-7 place-items-center rounded-[9px] bg-gradient-to-br from-sky-500 to-blue-800 text-[9px] font-black text-white shadow-sm">OZ</Link>
       </div>
-      <div className="flex h-[58px] shrink-0 items-center justify-center border-b border-slate-200">
-        <button type="button" onClick={() => setMenuOpen(false)} aria-label="Свернуть навигацию" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700">
+      <div className="flex h-[58px] shrink-0 items-center justify-center border-b border-slate-200 md:hidden">
+        {/* Кнопка закрывает ВЫЕЗЖАЮЩЕЕ меню и потому нужна только на узком
+            экране: на десктопе рейка показана всегда и от menuOpen не зависит —
+            там эта кнопка была мёртвой. */}
+        <button type="button" onClick={() => setMenuOpen(false)} aria-label="Закрыть меню" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700 md:hidden">
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
       <nav aria-label="Инструменты Ozon" className="flex-1 overflow-y-auto py-2">
         <div className="space-y-0.5">
-          {WORK_NAV.map((item) => <RailLink key={item.href} item={item} cabinetId={scopedCabinet} active={isActive(pathname, item)} />)}
+          {WORK_NAV.map((item) => <RailLink key={item.href} item={item} cabinetId={scopedCabinet} active={isActive(pathname, item)} wide={wide} />)}
         </div>
         <div className="mx-3 my-2 border-t border-slate-200" />
         <div className="space-y-0.5">
-          {SYSTEM_NAV.map((item) => <RailLink key={item.href} item={item} cabinetId={scopedCabinet} active={pathname === item.href} />)}
+          {SYSTEM_NAV.map((item) => <RailLink key={item.href} item={item} cabinetId={scopedCabinet} active={pathname === item.href} wide={wide} />)}
         </div>
       </nav>
       <div className="flex h-8 shrink-0 items-center justify-center border-t border-slate-200">
@@ -115,11 +128,11 @@ export function OzonShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#f6f7f9] text-slate-800">
       <a href="#ozon-main" className="fixed left-16 top-2 z-[100] -translate-y-16 rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white focus:translate-y-0">К содержимому</a>
-      <aside className="fixed inset-y-0 left-0 z-[70] hidden w-[55px] flex-col border-r border-slate-200 bg-white md:flex">{nav}</aside>
+      <aside className="fixed inset-y-0 left-0 z-[70] hidden w-[55px] flex-col border-r border-slate-200 bg-white md:flex">{renderNav(false)}</aside>
       {menuOpen && (
         <>
           <button type="button" aria-label="Закрыть меню" className="fixed inset-0 z-[69] bg-slate-950/25 md:hidden" onClick={() => setMenuOpen(false)} />
-          <aside className="fixed inset-y-0 left-0 z-[70] flex w-[55px] flex-col border-r border-slate-200 bg-white md:hidden">{nav}</aside>
+          <aside className="fixed inset-y-0 left-0 z-[70] flex w-[240px] flex-col border-r border-slate-200 bg-white md:hidden">{renderNav(true)}</aside>
         </>
       )}
       <header className="fixed left-0 right-0 top-0 z-[60] flex h-[54px] items-center border-b border-slate-200 bg-white px-3 md:left-[55px] md:px-5">

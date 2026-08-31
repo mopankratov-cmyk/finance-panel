@@ -29,6 +29,18 @@ export interface OzonAdCoverage {
   source: OzonAdSource;
   /** Данные описывают период целиком. */
   complete: boolean;
+  /**
+   * Расход кабинета за период из суточной сводки Performance.
+   *
+   * Известен независимо от разнесения по товарам: сумму Ozon отдаёт сразу за
+   * любой период, а разнесение собирается отчётами днями. «Сколько потрачено»
+   * и «на какие товары» — разные вопросы, и смешивать их значит показывать
+   * ноль там, где ответ давно есть.
+   */
+  cabinetSpent?: number | null;
+  cabinetAdRevenue?: number | null;
+  /** Дней, за которые известна сумма по кабинету. */
+  cabinetDays?: number;
 }
 
 export interface OzonAdSourceInput {

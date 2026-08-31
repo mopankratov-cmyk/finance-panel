@@ -41,8 +41,12 @@ export async function GET(request: NextRequest) {
   const rep = await perfProductReport(cab.perf, from, to);
   if (!rep) return NextResponse.json({ bySku: {}, error: "Performance report failed" });
 
-  // upsert в кэш (тег client_id). Без миграции upsert по новому ключу не пройдёт — данные всё равно вернём свежими.
-  const rows = Object.entries(rep.bySku).map(([sku, v]) => ({ client_id: clientId, sku, days, spent: Math.round(v.spent), orders_money: Math.round(v.ordersMoney), updated_at: new Date().toISOString() }));
+  // Частичный отчёт в кэш не кладём. Со свежей отметкой времени он выглядел
+  // полным, и следующие шесть часов кабинет отдавал заниженный расход как
+  // факт — незаметно, потому что цифра правдоподобная.
+  const rows = rep.partial
+    ? []
+    : Object.entries(rep.bySku).map(([sku, v]) => ({ client_id: clientId, sku, days, spent: Math.round(v.spent), orders_money: Math.round(v.ordersMoney), updated_at: new Date().toISOString() }));
   if (rows.length) await db.from("ozon_ad_cache").upsert(rows, { onConflict: "client_id,sku,days" });
 
   return NextResponse.json({ bySku: rep.bySku, partial: rep.partial, refreshed: true });
