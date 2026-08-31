@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { summarizeUnitRows } from "@/lib/unit/summary";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
@@ -54,6 +55,9 @@ interface PriceItem {
 interface PriceSolverData {
   margins: number[];
   items: PriceItem[];
+  /** Сколько SKU всего подходит под расчёт — шторка показывает первые 500. */
+  total?: number;
+  truncated?: boolean;
   error?: string;
 }
 
@@ -116,7 +120,12 @@ function valueTone(header: string, value: string | number) {
 }
 
 export function WbUnitPage() {
-  const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, canWrite } = useWbCabinet();
+  const { activeCabinet, cabinetId, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, canWrite, canOperate, user } = useWbCabinet();
+  // Кнопки синхронизации — операция, а не пометка. Раньше они показывались по
+  // праву «описывать», и админ-селлер видел три кнопки, каждая из которых
+  // гарантированно отвечала 403: путь /api/unit/refresh-* селлеру закрыт
+  // гейтом целиком, независимо от уровня в кабинете.
+  const canRunSync = canOperate && user?.role !== "seller";
   const [data, setData] = useState<UnitData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -200,18 +209,34 @@ export function WbUnitPage() {
   const columns = useMemo(() => {
     const headers = data?.headers ?? [];
     const find = (label: string) => headers.findIndex((header) => header === label);
+    // В группе кабинетов часть колонок названа иначе — смысл тот же. Если
+    // искать только по одному имени, find вернёт -1, сводка молча покажет нули
+    // и «себестоимость у 0».
+    const firstOf = (...labels: string[]) => {
+      for (const label of labels) {
+        const index = find(label);
+        if (index >= 0) return index;
+      }
+      return -1;
+    };
     return {
-      cost: find("Себес ₽"),
+      cost: firstOf("Себес ₽", "Себес ₽/ед"),
       orders: find("Заказы"),
       revenue: find("Выручка ₽"),
-      marginUnit: find("Маржа/ед ₽"),
+      marginUnit: firstOf("Маржа/ед ₽", "Маржа ₽/ед"),
       marginPct: find("Маржа % до ДРР"),
+      buyoutPct: firstOf("Выкуп %", "Продажи / заказы %"),
+      ad: find("Реклама ₽"),
     };
   }, [data?.headers]);
 
   const numberAt = (row: (string | number)[], index: number): number | null => {
     if (index < 0) return null;
-    const value = Number(row[index]);
+    const raw = row[index];
+    // Пустая ячейка — это «посчитать нечем», а не ноль: Number("") === 0, и
+    // строка без себестоимости молча становилась нулевой маржой.
+    if (raw === "" || raw == null) return null;
+    const value = Number(raw);
     return Number.isFinite(value) ? value : null;
   };
 
@@ -250,36 +275,18 @@ export function WbUnitPage() {
   // с тем, что человек видит в таблице, а не с полным кабинетом.
   const summary = useMemo(() => {
     const rows = data?.rows ?? [];
-    let revenue = 0;
-    let profit = 0;
-    let profitRevenue = 0;
-    let negative = 0;
-    let costKnown = 0;
-    for (const index of orderedIndices) {
+    return summarizeUnitRows(orderedIndices.map((index) => {
       const row = rows[index];
-      const rowRevenue = numberAt(row, columns.revenue) ?? 0;
-      const orders = numberAt(row, columns.orders) ?? 0;
-      const marginUnit = numberAt(row, columns.marginUnit);
-      const cost = numberAt(row, columns.cost);
-      revenue += rowRevenue;
-      if (cost != null && cost > 0) costKnown++;
-      if (marginUnit != null) {
-        profit += marginUnit * orders;
-        profitRevenue += rowRevenue;
-        if (marginUnit < 0) negative++;
-      }
-    }
-    return {
-      sku: orderedIndices.length,
-      revenue,
-      profit,
-      // Маржа считается только по SKU, где она вообще посчитана, иначе процент
-      // размывался бы выручкой строк без себестоимости.
-      marginPct: profitRevenue > 0 ? (profit / profitRevenue) * 100 : null,
-      negative,
-      costKnown,
-    };
-  }, [columns.cost, columns.marginUnit, columns.orders, columns.revenue, data?.rows, orderedIndices]);
+      return {
+        revenue: numberAt(row, columns.revenue) ?? 0,
+        orders: numberAt(row, columns.orders) ?? 0,
+        buyoutPct: numberAt(row, columns.buyoutPct),
+        marginUnit: numberAt(row, columns.marginUnit),
+        ad: numberAt(row, columns.ad) ?? 0,
+        cost: numberAt(row, columns.cost),
+      };
+    }));
+  }, [columns.ad, columns.buyoutPct, columns.cost, columns.marginUnit, columns.orders, columns.revenue, data?.rows, orderedIndices]);
 
   const { sorted: indices, sortField, sortDir, toggleSort } = useSort(orderedIndices, (rowIndex, field) => {
     const value = data?.rows[rowIndex]?.[Number(field)];
@@ -385,9 +392,9 @@ export function WbUnitPage() {
                 <option value="__none">Без категории</option>
               </select>
             ) : null}
-            {canWrite ? actionButton("prices", "Обновить цены", WalletCards, "bg-violet-600 hover:bg-violet-700") : null}
-            {canWrite ? actionButton("stocks", "Обновить остатки", RefreshCw, "bg-amber-500 hover:bg-amber-600") : null}
-            {canWrite ? actionButton("cogs", "Обновить себест.", Boxes, "bg-violet-600 hover:bg-violet-700") : null}
+            {canRunSync ? actionButton("prices", "Обновить цены", WalletCards, "bg-violet-600 hover:bg-violet-700") : null}
+            {canRunSync ? actionButton("stocks", "Обновить остатки", RefreshCw, "bg-amber-500 hover:bg-amber-600") : null}
+            {canRunSync ? actionButton("cogs", "Обновить себест.", Boxes, "bg-violet-600 hover:bg-violet-700") : null}
             <button type="button" onClick={() => setSolverOpen(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8">
               <Calculator className="h-3.5 w-3.5" /> Калькулятор цены
             </button>
@@ -408,15 +415,27 @@ export function WbUnitPage() {
         {data && !loading && !error ? (
           <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             <SummaryCard label="SKU" value={summary.sku.toLocaleString("ru-RU")} detail={`себестоимость у ${summary.costKnown}`} />
-            <SummaryCard label="Выручка" value={rub(summary.revenue)} detail={formatUnitPeriod(appliedPeriod)} />
-            <SummaryCard label="Прибыль" value={rub(summary.profit)} detail="после ДРР и налога" tone={summary.profit < 0 ? "rose" : "emerald"} />
+            <SummaryCard
+              label="Выручка заказов"
+              value={rub(summary.ordersRevenue)}
+              detail={`выкуплено ${rub(summary.buyoutRevenue)} · ${formatUnitPeriod(appliedPeriod)}`}
+            />
+            <SummaryCard label="Прибыль" value={rub(summary.profit)} detail="по выкупам, после ДРР и налога" tone={summary.profit < 0 ? "rose" : "emerald"} />
             <SummaryCard
               label="Маржа"
               value={summary.marginPct == null ? "—" : `${summary.marginPct.toFixed(1)}%`}
-              detail="по SKU с себестоимостью"
+              detail="от выручки выкупов"
               tone={summary.marginPct != null && summary.marginPct < 0 ? "rose" : "emerald"}
             />
             <SummaryCard label="В минусе" value={summary.negative.toLocaleString("ru-RU")} detail="SKU с отрицательной маржой" tone={summary.negative ? "rose" : "emerald"} />
+          </div>
+        ) : null}
+        {/* Заказ виден сразу, выкуп — после доставки. На коротком периоде прибыль
+            по выкупам законно ниже: не прятать этот разрыв, а объяснить его. */}
+        {data && !loading && !error && summary.ordersRevenue > 0 && summary.buyoutRevenue < summary.ordersRevenue * 0.5 ? (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+            Выкуплено {Math.round(summary.buyouts).toLocaleString("ru-RU")} из {Math.round(summary.orders).toLocaleString("ru-RU")} заказов периода.
+            Прибыль считается по выкупам — на коротком периоде доставка ещё идёт, и цифра догонит заказы позже.
           </div>
         ) : null}
 
@@ -568,7 +587,7 @@ export function WbUnitPage() {
           <aside role="dialog" aria-modal="true" aria-label="Калькулятор цены" className="fixed bottom-0 right-0 top-[54px] z-[80] flex w-full max-w-[920px] flex-col border-l border-slate-200 bg-[#f6f7f9] shadow-2xl">
             <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
               <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-violet-700"><Calculator className="h-4 w-4" /></span>
-              <div className="min-w-0"><h2 className="text-sm font-bold text-slate-800">Калькулятор цены</h2><p className="truncate text-[10px] text-slate-400">Цена под целевую маржу · {activeCabinet?.name ?? "все кабинеты"}</p></div>
+              <div className="min-w-0"><h2 className="text-sm font-bold text-slate-800">Калькулятор цены</h2><p className="truncate text-[10px] text-slate-400">Цена под целевую маржу · {activeCabinet?.name ?? "все кабинеты"}{solver?.truncated ? ` · показаны первые ${solver.items.length} из ${solver.total ?? solver.items.length}` : ""}</p></div>
               <button type="button" onClick={() => setSolverOpen(false)} aria-label="Закрыть" className="ml-auto grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:h-10 sm:w-10"><X className="h-4 w-4" /></button>
             </div>
             <div className="border-b border-slate-200 px-4 py-2 text-[11px] leading-4 text-slate-500">Обратный расчёт: какая цена нужна под 15 / 25 / 35% маржи и насколько она отличается от текущей.</div>

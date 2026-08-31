@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { getServerSession } from "./server";
+import { SESSION_COOKIE } from "./session";
 import type { Session } from "./session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isCabinetScopedRole } from "@/lib/auth/roles";
@@ -23,8 +25,24 @@ export function sessionHasCabinetAccess(
   return cabinetId !== null && session.cabinet_ids.includes(cabinetId);
 }
 
+/**
+ * Отсутствие сессии значит РАЗНОЕ, и раньше эти два случая были смешаны.
+ *
+ * «Куки нет вовсе» — это машинный вызов: прогрев и cron проходят гейт по
+ * Bearer-секрету, и кабинет им открыт намеренно. А вот «кука есть, но сессия не
+ * подтвердилась» — это человек, которого база не признала: учётку отключили,
+ * пользователя удалили, чтение app_users упало. Подписанная кука живёт семь
+ * дней и гейт прокси проходит, поэтому уволенный сотрудник ещё неделю видел
+ * любой кабинет на всех роутах, где нет собственной проверки сессии.
+ */
+async function looksLikeMachineCall(): Promise<boolean> {
+  const jar = await cookies();
+  return !jar.get(SESSION_COOKIE)?.value;
+}
+
 export async function hasCabinetAccess(cabinetId: string | null): Promise<boolean> {
   const session = await getServerSession();
+  if (!session && !(await looksLikeMachineCall())) return false;
   if (!sessionHasCabinetAccess(session, cabinetId)) return false;
   if (!session || session.role !== "seller") return true;
   if (!cabinetId || !session.organization_id) return false;

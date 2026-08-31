@@ -60,11 +60,18 @@ export type KizReconcileDays = 1 | 3 | 7 | 30 | 60 | 90;
  * оборот ничего не вводили. Разделение подсмотрено у optimawb.ru, где счёт
  * идёт как «Вывести: 3 · Нет кода: 497».
  */
-export type KizBucket = "retire" | "no_code" | "check" | "not_checked" | "introduce";
+/**
+ * Корзины сверки. «Вывести из оборота» здесь НЕТ намеренно: когда код привязан
+ * к сборочному заданию, из оборота его выводит сам WB, а узнать, что он этого
+ * не сделал, можно только через True API Честного Знака — его в панели пока
+ * нет. Вкладка «Вывести» существовала и всегда показывала ноль: ни одна ветка
+ * разбора не могла её наполнить. Пустая вкладка читается как «нарушений нет»,
+ * хотя на деле панель этот вопрос просто не задаёт, — поэтому вкладки нет.
+ */
+export type KizBucket = "no_code" | "check" | "not_checked" | "introduce";
 export type KizSource = "orders" | "statuses" | "meta" | "sales" | "claims";
 
 export const KIZ_BUCKET_LABELS: Record<KizBucket, string> = {
-  retire: "Вывести",
   no_code: "Нет кода",
   check: "Проверить",
   not_checked: "Не проверено",
@@ -574,7 +581,7 @@ export async function fetchReturnClaimReasons(options: {
 
 /* ───────────────────────────── сверка ───────────────────────────── */
 
-export type KizRowBucket = "retire" | "no_code" | "check" | "not_checked";
+export type KizRowBucket = "no_code" | "check" | "not_checked";
 
 export interface KizReconcileRow {
   bucket: KizRowBucket;
@@ -612,13 +619,13 @@ export interface KizReturnTask {
   overdue: boolean;
 }
 
-export interface KizReconcileCounts { retire: number; noCode: number; check: number; notChecked: number; introduce: number }
+export interface KizReconcileCounts { noCode: number; check: number; notChecked: number; introduce: number }
 
 /**
  * Группа кодов по началу GTIN. Это НЕ владелец: длина префикса GS1 переменная
  * (7–10 знаков), и без реестра GS1 два разных ИП могут слиться в одну группу.
  */
-export interface KizCodeGroupSummary { gtinPrefix: string | null; codes: number; retire: number; introduce: number }
+export interface KizCodeGroupSummary { gtinPrefix: string | null; codes: number; attention: number; introduce: number }
 
 export interface KizReconcileResult {
   counts: KizReconcileCounts;
@@ -658,7 +665,7 @@ export interface KizReconcileInput {
 
 export function emptyKizReconcileResult(days: KizReconcileDays, warnings: string[] = []): KizReconcileResult {
   return {
-    counts: { retire: 0, noCode: 0, check: 0, notChecked: 0, introduce: 0 },
+    counts: { noCode: 0, check: 0, notChecked: 0, introduce: 0 },
     coverage: { checked: 0, soldTotal: 0, days },
     rows: [],
     returns: [],
@@ -852,7 +859,7 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
   const undatedReturns = returns.filter((row) => !row.returnedAt).length;
   if (undatedReturns) warnings.push(`Возвратов без распознанной даты: ${undatedReturns} — срок ввода в оборот по ним не рассчитан.`);
 
-  // Старые горят первыми: «Вывести» — по дате продажи, возвраты — просроченные сверху.
+  // Старые горят первыми: проданное — по дате продажи, возвраты — просроченные сверху.
   rows.sort((a, b) => (a.soldAt ?? "").localeCompare(b.soldAt ?? ""));
   returns.sort((a, b) => {
     if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
@@ -861,19 +868,18 @@ export function reconcileKizFromWb(input: KizReconcileInput): KizReconcileResult
 
   // Группировка по началу GTIN — фильтр «покажи только эти коды», а не реестр ИП.
   const codeGroups = new Map<string, KizCodeGroupSummary>();
-  const bumpGroup = (prefix: string | null, field: "retire" | "introduce") => {
+  const bumpGroup = (prefix: string | null, field: "attention" | "introduce") => {
     const key = prefix ?? "";
-    const current = codeGroups.get(key) ?? { gtinPrefix: prefix, codes: 0, retire: 0, introduce: 0 };
+    const current = codeGroups.get(key) ?? { gtinPrefix: prefix, codes: 0, attention: 0, introduce: 0 };
     current.codes += 1;
     current[field] += 1;
     codeGroups.set(key, current);
   };
   // «Не проверено» в группы не идёт: там нечего группировать, кода мы не видели.
-  for (const row of rows) if (row.bucket === "retire" || row.bucket === "no_code" || row.bucket === "check") bumpGroup(row.gtinPrefix, "retire");
+  for (const row of rows) if (row.bucket === "no_code" || row.bucket === "check") bumpGroup(row.gtinPrefix, "attention");
   for (const row of returns) bumpGroup(row.gtinPrefix, "introduce");
 
   const counts: KizReconcileCounts = {
-    retire: rows.filter((row) => row.bucket === "retire").length,
     noCode: rows.filter((row) => row.bucket === "no_code").length,
     check: rows.filter((row) => row.bucket === "check").length,
     notChecked: rows.filter((row) => row.bucket === "not_checked").length,

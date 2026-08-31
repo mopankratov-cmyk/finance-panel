@@ -34,22 +34,24 @@ const RATIO_RULES: Record<string, (g: Get) => number | null> = {
   org_cr_pct: (g) => pctOf(g("org_orders_count"), g("org_open_card")),
   org_share_pct: (g) => pctOf(g("org_open_card"), g("open_card")),
   buyout_pct: (g) => pctOf(g("buyouts_count"), g("orders_count")),
-  cancel_pct: (g) => pctOf(g("cancels_count"), g("orders_count")),
-  return_pct: (g) => pctOf(g("returns_count"), g("buyouts_gross_count")),
-  actual_buyout_pct: (g) => {
-    const buyouts = g("buyouts_gross_count");
-    const returns = g("returns_count");
-    const delivered = (buyouts ?? 0) + (returns ?? 0);
-    return buyouts != null && delivered > 0 ? r1((buyouts / delivered) * 100) : null;
+  // Доля отмен — к ОФОРМЛЕННЫМ заказам, то есть к сумме «дошедшие + отменённые»
+  // (так же считает сервер, buildTable). Деление на одни дошедшие завышало
+  // процент, и под фильтром он расходился с той же строкой без фильтра.
+  cancel_pct: (g) => {
+    const cancels = g("cancels_count");
+    const orders = g("orders_count");
+    return cancels != null && orders != null ? pctOf(cancels, cancels + orders) : null;
   },
+  return_pct: (g) => pctOf(g("returns_count"), g("buyouts_gross_count")),
+  // Оставлено у себя / доставлено. Знаменатель — брутто-выкупы: возвраты уже
+  // внутри этого потока, добавлять их ещё раз значит считать каждый дважды.
+  actual_buyout_pct: (g) => pctOf(g("buyouts_count"), g("buyouts_gross_count")),
   fbs_share_pct: (g) => {
     const fbs = g("orders_fbs_sum");
     const known = (fbs ?? 0) + (g("orders_fbw_sum") ?? 0);
     return fbs != null && known > 0 ? r1((fbs / known) * 100) : null;
   },
   drr: (g) => pctOf(g("ad_spent"), g("orders_sum")),
-  margin_pct: (g) => pctOf(g("gross"), g("buyouts_sum")),
-  net_margin_pct: (g) => pctOf(g("net_profit"), g("buyouts_sum")),
   romi: (g) => pctOf(g("gross"), g("ad_spent")),
   gmroi: (g) => {
     const value = pctOf(g("gross"), g("money"));
@@ -78,7 +80,29 @@ function weightedRules(skusMetrics: Map<string, BaseMetric>[], at: At): Record<s
     }
     return weightTotal > 0 ? weightedSum / weightTotal : null;
   };
+  // Знаменатель маржи — выкупы ТОЛЬКО тех SKU, у которых прибыль посчитана.
+  // Сервер считает именно так (costedBuyoutsSumDaily в buildTable). Общий
+  // знаменатель по всем выбранным SKU занижал маржу тем сильнее, чем больше
+  // товаров без себестоимости: половина ассортимента без закупочной цены
+  // превращала честные 20% в 10%, и по этой цифре поднимали цены.
+  const costedRatio = (profitField: string) => (): number | null => {
+    let profit = 0;
+    let buyouts = 0;
+    let seen = false;
+    for (const metrics of skusMetrics) {
+      const gross = metrics.has(profitField) ? at(metrics.get(profitField)!) : null;
+      const sum = metrics.has("buyouts_sum") ? at(metrics.get("buyouts_sum")!) : null;
+      if (gross == null || sum == null) continue;
+      profit += gross;
+      buyouts += sum;
+      seen = true;
+    }
+    return seen && buyouts > 0 ? r1((profit / buyouts) * 100) : null;
+  };
+
   return {
+    margin_pct: costedRatio("gross"),
+    net_margin_pct: costedRatio("net_profit"),
     // Цена покупателя = Σ(цена_i × выкупы_gross_i) / Σвыкупов — точная сумма оплат.
     final_price: () => {
       const value = collect("final_price", "buyouts_gross_count");

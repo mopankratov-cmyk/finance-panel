@@ -124,12 +124,24 @@ interface MetricSource {
   orders_sum?: number | string | null;
 }
 
-function addTo(cell: RkCell, row: MetricSource) {
+/**
+ * У двух источников РАЗНАЯ семантика поля `spent`, и это главная ловушка
+ * журнала.
+ *
+ * Сырой слой (`wb_advert_nm_campaign_daily`) хранит измеренный WB расход, а
+ * разложенный остаток кампании лежит отдельно в `spent_allocated` — журналу
+ * нужна их сумма. А снимок (`wb_rk_journal_daily`) кладёт в `spent` УЖЕ полную
+ * сумму и дублирует разложенное рядом «на память» (см. sync/rk-journal). Пока
+ * читатель применял формулу сырого слоя ко всем строкам, каждый снятый день
+ * считал разложенное ДВАЖДЫ: по кабинету это около 5% лишнего расхода, а по
+ * карточке, где WB не разнёс расход вовсе, — ровно вдвое. Отсюда и расхождение
+ * с РНП, который читает витрину, где раскладка учтена один раз.
+ */
+function addTo(cell: RkCell, row: MetricSource, spentIsFull: boolean) {
   const allocated = rkNum(row.spent_allocated);
   cell.views += rkNum(row.views);
   cell.clicks += rkNum(row.clicks);
-  // Слой хранит факт WB и разложенное отдельно; журналу нужен полный расход.
-  cell.spent += rkNum(row.spent) + allocated;
+  cell.spent += spentIsFull ? rkNum(row.spent) : rkNum(row.spent) + allocated;
   cell.spentAllocated += allocated;
   cell.carts += rkNum(row.carts);
   cell.orders += rkNum(row.orders);
@@ -168,6 +180,12 @@ export function buildRkJournalItems(
     const key = `${seed.nm}|${seed.advertId ?? seed.block}`;
     const row = rows.get(key) ?? { ...seed, cells: new Map<string, RkCell>() };
     if (seed.name && !row.name) row.name = seed.name;
+    // Вид размещения раньше брался из ПЕРВОГО попавшегося источника, а снимки
+    // читаются раньше живого слоя. Кампания, попавшая в старый снимок до того,
+    // как WB отдал её настройки, навсегда оставалась «вид не определён» — и
+    // карточка её вида честно писала «нет кампаний», хотя кампания есть.
+    // Известный вид всегда сильнее неизвестного.
+    if (row.block === WB_RK_BLOCK_UNKNOWN && seed.block !== WB_RK_BLOCK_UNKNOWN) row.block = seed.block;
     rows.set(key, row);
     const cell = row.cells.get(date) ?? emptyCell(snapshot);
     row.cells.set(date, cell);
@@ -178,14 +196,18 @@ export function buildRkJournalItems(
     // Название кампании снимок не хранит — берём из справочника, если она
     // ещё жива у WB.
     const advert = snapshot.advert_id == null ? undefined : advertById.get(snapshot.advert_id);
+    // Справочник кампаний — текущая правда о виде размещения, снимок помнит
+    // лишь то, что было известно в 06:00 того дня. Если кампания ещё жива у
+    // WB, вид берём из справочника.
+    const knownBlock = advert ? rkAdvertBlock(advert) : null;
     const cell = cellOf({
       nm: snapshot.nm_id,
       advertId: snapshot.advert_id ?? null,
       name: advert?.name ?? null,
-      block: snapshot.block,
+      block: knownBlock ?? snapshot.block,
     }, snapshot.date, true);
     cell.bid = snapshot.bid == null ? cell.bid : rkNum(snapshot.bid);
-    addTo(cell, snapshot);
+    addTo(cell, snapshot, true);
   }
 
   for (const row of live) {
@@ -197,7 +219,7 @@ export function buildRkJournalItems(
       name: advert?.name ?? null,
       block: block ?? WB_RK_BLOCK_UNKNOWN,
     }, row.date, false);
-    addTo(cell, row);
+    addTo(cell, row, false);
     const bid = advert
       ? wbAdvertBlockBid({
         bid_search_rub: advert.bid_search_rub == null ? null : rkNum(advert.bid_search_rub),

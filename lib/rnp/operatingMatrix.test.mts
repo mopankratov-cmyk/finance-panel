@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  aggregateRnpWeekly,
   dayOverDayBaseline,
   detectDeclineStreakSignal,
   detectSkuAnomalies,
@@ -189,4 +190,26 @@ test("бейдж читается как у отраслевых кокпито�
     formatAnomalyBadge({ field: "orders_count", label: "Заказы, шт", direction: "negative", delta: null, kind: "streak", days: 3 }),
     "заказы 3 дн",
   );
+});
+
+test("недельная колонка пересчитывает проценты из сумм, а не усредняет по дням", () => {
+  // День с тремя заказами весил столько же, сколько день с тремястами:
+  // средний CTR за неделю расходился с итогом за тот же период.
+  const table = {
+    period: Array.from({ length: 7 }, (_, index) => ({ label: `0${index + 1}.09`, period_type: "рабочий" })),
+    summary: [
+      { field: "clicks", kind: "int", daily: [10, 0, 0, 0, 0, 0, 90] },
+      { field: "views", kind: "int", daily: [100, 0, 0, 0, 0, 0, 900] },
+      { field: "ctr", kind: "pct", daily: [10, null, null, null, null, null, 10] },
+      { field: "stock", kind: "int", daily: [50, 50, 48, 48, 45, 45, 40] },
+    ],
+    skus: [],
+  };
+  // 07.09.2026 — понедельник: неделя укладывается в одну колонку.
+  const weekly = aggregateRnpWeekly(table, "2026-09-07", "2026-09-13");
+  const find = (field: string) => weekly.summary.find((metric) => metric.field === field)!;
+  assert.equal(find("ctr").daily[0], 10, "100 кликов на 1000 показов");
+  assert.equal(find("clicks").daily[0], 100);
+  // Остаток — снимок: сумма за неделю дала бы 326 штук вместо сорока.
+  assert.equal(find("stock").daily[0], 40);
 });

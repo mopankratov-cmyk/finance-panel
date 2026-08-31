@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   appendOrderConversion,
   applyDerivedRatioCoverage,
+  applyAdvertSpendOverlay,
   applySalesReturnsAdjustment,
   buildFunnelMetrics,
   buildMetrics,
@@ -601,7 +602,7 @@ test("выкуплено — брутто, а фактический % выку�
   const metrics = buildMetrics(
     ["2026-08-01"],
     "2026-08-01",
-    // 8 нетто-выкупов + 2 возврата = 10 выкуплено, доставлено 12.
+    // 8 нетто-выкупов + 2 возврата = 10 доставлено покупателю.
     new Map([["2026-08-01", salesDay({})]]),
     0,
     0,
@@ -610,9 +611,10 @@ test("выкуплено — брутто, а фактический % выку�
   const find = (field: string) => metrics.find((item) => item.field === field)!;
   assert.equal(find("buyouts_gross_count").total, 10);
   assert.equal(find("buyouts_count").total, 8);          // нетто не изменилось
-  // 10 / (10 + 2) = 83.3%
-  assert.equal(find("actual_buyout_pct").daily[0], 83.3);
-  assert.equal(find("actual_buyout_pct").total, 83.3);
+  // Доставлено 10, из них оставили 8 → 80%. Прежняя формула делила на 12
+  // (возвраты считались дважды) и показывала завышенные 83.3%.
+  assert.equal(find("actual_buyout_pct").daily[0], 80);
+  assert.equal(find("actual_buyout_pct").total, 80);
 });
 
 test("заказы с СПП берут скидку WB того же дня", () => {
@@ -733,4 +735,35 @@ test("без признака схемы метрики разбивки мол�
   }
   // Общие заказы при этом остаются на месте.
   assert.equal(metrics.find((item) => item.field === "orders_count")!.total, 10);
+});
+
+test("расход рекламы берётся из витрины, а не из агрегата", () => {
+  // Показы и клики РНП читал прямым запросом к витрине, а расход — через
+  // агрегат. Пути разошлись: у кабинета с ограниченным ассортиментом экран
+  // рисовал ноль расхода при живых показах, хотя витрина деньги знала.
+  const rows = applyAdvertSpendOverlay(
+    [{ d: "2026-08-27", nm_id: 111, orders_count: 10, orders_sum: 1000, buyouts_count: 3, buyouts_sum: 300, ad_spent: 0 }],
+    [
+      { nm_id: 111, date: "2026-08-27", views: 100, clicks: 10, spent: 640.5, orders: 1, orders_sum: 100 },
+      { nm_id: 111, date: "2026-08-27", views: 50, clicks: 5, spent: 120, orders: 0, orders_sum: 0 },
+    ],
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].ad_spent, 760.5, "две строки витрины за день складываются");
+  assert.equal(rows[0].orders_count, 10, "остальные факты дня не трогаются");
+});
+
+test("день с одной только рекламой не теряется", () => {
+  const rows = applyAdvertSpendOverlay(
+    [],
+    [{ nm_id: 222, date: "2026-08-28", views: 10, clicks: 1, spent: 55, orders: 0, orders_sum: 0 }],
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].ad_spent, 55);
+  assert.equal(rows[0].orders_count, 0);
+});
+
+test("пустая витрина оставляет прежние значения, а не обнуляет их", () => {
+  const source = [{ d: "2026-08-27", nm_id: 111, orders_count: 1, orders_sum: 10, buyouts_count: 1, buyouts_sum: 10, ad_spent: 42 }];
+  assert.deepEqual(applyAdvertSpendOverlay(source, []), source);
 });

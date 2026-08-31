@@ -477,6 +477,15 @@ export function WbRkJournalPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Сколько товаров осталось без вида размещения: если такие есть, «нет
+  // кампаний» в соседней карточке почти наверняка про них, и молчать нельзя.
+  const unknownBlock = blockSummary.find((summary) => summary.block === WB_RK_BLOCK_UNKNOWN);
+  const emptyBlockHint = [
+    "За выбранный период кампаний этого вида не нашлось.",
+    "Единая реклама считается отдельным видом (ЕРК), а кампания сразу на поиске и полках — видом «поиск + полки».",
+    unknownBlock ? `У ${unknownBlock.skus} товаров WB не отдал вид размещения — они в карточке «${WB_RK_BLOCK_UNKNOWN_LABEL}».` : "",
+  ].filter(Boolean).join(" ");
+
   return (
     <div className="flex min-h-0 flex-col">
       <WbModuleHeader
@@ -615,7 +624,7 @@ export function WbRkJournalPage() {
                   type="button"
                   onClick={() => { if (!summary.empty) setBlockFilter(blockFilter === summary.block ? "all" : summary.block); }}
                   disabled={summary.empty}
-                  title={summary.empty ? "В этом кабинете сейчас нет кампаний такого вида" : undefined}
+                  title={summary.empty ? emptyBlockHint : undefined}
                   className={
                     summary.empty
                       // Пустой вид показываем, но приглушённо и без наведения: это

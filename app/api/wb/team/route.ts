@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isPanelOwner } from "@/lib/auth/owner";
 
 // Команда своей организации: главный пользователь кабинета заводит сотрудников.
 //
@@ -157,10 +158,16 @@ export async function POST(request: NextRequest) {
   const ownUser = async (userId: string) => {
     const { data } = await db
       .from("app_users")
-      .select("id, organization_id, is_active")
+      .select("id, email, role, organization_id, is_active")
       .eq("id", userId)
       .maybeSingle();
     if (!data || String(data.organization_id ?? "") !== caller.organizationId) return null;
+    // Этот экран заводит и выключает СЕЛЛЕРОВ кабинета. Директора и менеджеры
+    // панели живут в той же внутренней организации, и одной проверки «мы из
+    // одной организации» хватало, чтобы админ кабинета выключил директора или
+    // переписал ему доступ. Права владельца панели тем более неприкосновенны.
+    if (String(data.role ?? "") !== "seller") return null;
+    if (isPanelOwner(data.email)) return null;
     return data;
   };
 
@@ -185,10 +192,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Нужны почта и пароль не короче 10 символов" }, { status: 400 });
     }
 
-    const { data: existing } = await db.from("app_users").select("id, organization_id").eq("email", email).maybeSingle();
+    const { data: existing } = await db.from("app_users").select("id, email, role, organization_id").eq("email", email).maybeSingle();
     if (existing && String(existing.organization_id ?? "") !== caller.organizationId) {
       // Чужой сотрудник: не перехватываем и не сообщаем лишнего о нём.
       return NextResponse.json({ ok: false, error: "Такая почта уже занята" }, { status: 409 });
+    }
+    // Своя организация — ещё не повод переписать директора панели: этот экран
+    // распоряжается только селлерами кабинета.
+    if (existing && (String(existing.role ?? "") !== "seller" || isPanelOwner(existing.email))) {
+      return NextResponse.json({ ok: false, error: "Такая почта уже занята" }, { status: 409 });
+    }
+
+    // Своя же почта в организации — не повод молча сбросить коллеге пароль и
+    // переписать ему список кабинетов. Кнопка называется «завести сотрудника»,
+    // и подмена доступа живому человеку должна быть осознанной.
+    if (existing && body?.replaceExisting !== true) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Сотрудник ${email} в организации уже есть. Замена перезапишет ему пароль и список кабинетов.`,
+          exists: true,
+        },
+        { status: 409 },
+      );
     }
 
     const password_hash = await hashPassword(password);

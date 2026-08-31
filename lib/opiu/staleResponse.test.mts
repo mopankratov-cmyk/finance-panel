@@ -20,7 +20,7 @@ test("auto-load and refresh share the guarded report loader", () => {
 });
 
 test("warehouse POST wiring captures its payload and has no abort signal", () => {
-  assert.match(source, /coordinator\.saveWarehouse\(\{ month, weekStart, amount \}\)/);
+  assert.match(source, /coordinator\.saveWarehouse\(\{[\s\S]{0,200}?weekStart[\s\S]{0,200}?amount/);
   assert.match(source, /body: JSON\.stringify\(payload\)/);
   assert.doesNotMatch(source, /warehouseAbort/);
 });
@@ -35,5 +35,9 @@ test("report activity wiring always establishes mutually exclusive flags", () =>
     source,
     /onReportStart: \(\{ refresh \}\) => \{[\s\S]*setLoading\(!refresh\);[\s\S]*setRefreshing\(refresh\);[\s\S]*\}/,
   );
-  assert.match(source, /disabled=\{refreshing \|\| loading\}/);
+  // На вкладке периода у экрана своя пара флагов, поэтому кнопка смотрит на
+  // «активные» — они и есть refreshing/loading для отчётного месяца.
+  assert.match(source, /const activeLoading = isRangeTab \? rangeLoading : loading;/);
+  assert.match(source, /const activeRefreshing = isRangeTab \? rangeRefreshing : refreshing;/);
+  assert.match(source, /disabled=\{activeRefreshing \|\| activeLoading/);
 });

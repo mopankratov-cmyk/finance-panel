@@ -762,6 +762,8 @@ export function formatAnomalyBadge(anomaly: RnpAnomaly): string {
 export type RnpGranularity = "day" | "week";
 
 interface GranularityMetricLike {
+  /** Нужен, чтобы пересчитать производную из её же числителя и знаменателя. */
+  field: string;
   kind: string;
   daily: (number | null)[];
 }
@@ -814,15 +816,63 @@ export function rnpWeekBuckets(fromIso: string, dayCount: number, todayIso = mos
   return buckets;
 }
 
-function aggregateDaily(kind: string, daily: (number | null)[], buckets: WeekBucket[]): (number | null)[] {
+/**
+ * Пары «числитель / знаменатель» для производных метрик.
+ *
+ * Раньше недельная колонка получала СРЕДНЕЕ процентов по дням, и это давало
+ * другой ответ, чем итог за тот же период: день с тремя заказами весил столько
+ * же, сколько день с тремястами. Числители и знаменатели лежат в том же
+ * снимке, поэтому производную честно пересчитать из агрегатов.
+ */
+const WEEKLY_RATIO_PAIRS: Record<string, { numerator: string; denominator: string; scale: 100 | 1; sumDenominator?: boolean }> = {
+  ctr: { numerator: "clicks", denominator: "views", scale: 100 },
+  cart_cr: { numerator: "cart", denominator: "open_card", scale: 100 },
+  order_cr: { numerator: "orders_count", denominator: "open_card", scale: 100 },
+  org_cr_pct: { numerator: "org_orders_count", denominator: "org_open_card", scale: 100 },
+  org_share_pct: { numerator: "org_open_card", denominator: "open_card", scale: 100 },
+  buyout_pct: { numerator: "buyouts_count", denominator: "orders_count", scale: 100 },
+  // Доля отмен — к оформленным: дошедшие плюс отменённые.
+  cancel_pct: { numerator: "cancels_count", denominator: "orders_count", scale: 100, sumDenominator: true },
+  return_pct: { numerator: "returns_count", denominator: "buyouts_gross_count", scale: 100 },
+  actual_buyout_pct: { numerator: "buyouts_count", denominator: "buyouts_gross_count", scale: 100 },
+  fbs_share_pct: { numerator: "orders_fbs_sum", denominator: "orders_fbw_sum", scale: 100, sumDenominator: true },
+  drr: { numerator: "ad_spent", denominator: "orders_sum", scale: 100 },
+  // margin_pct СОЗНАТЕЛЬНО не здесь: сервер делит прибыль на выкупы только тех
+  // SKU, у кого известна себестоимость (costedBuyoutsSumDaily в buildTable), а
+  // в наборе метрик такого знаменателя нет. Пересчёт по общему buyouts_sum
+  // занижал бы недельную маржу и расходился с колонкой «Итого» на том же
+  // экране — ровно та ошибка, которую чинили в сводке под фильтром.
+  net_margin_pct: { numerator: "net_profit", denominator: "buyouts_sum", scale: 100 },
+  romi: { numerator: "gross", denominator: "ad_spent", scale: 100 },
+  avg_order_price: { numerator: "orders_sum", denominator: "orders_count", scale: 1 },
+  avg_buyout_price: { numerator: "buyouts_sum", denominator: "buyouts_count", scale: 1 },
+  profit_per_unit: { numerator: "gross", denominator: "buyouts_count", scale: 1 },
+};
+
+/**
+ * Метрики-снимки: остаток на складе не складывается за неделю. Суммирование
+ * давало семикратный остаток и такую же оборачиваемость.
+ */
+const WEEKLY_POINT_IN_TIME = new Set([
+  "stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total",
+  "money", "turnover", "gmroi", "final_price", "spp_pct", "seller_discount_pct",
+  "reviews_rating", "reviews_bad_share_pct",
+]);
+
+function bucketValues(daily: (number | null)[], bucket: WeekBucket): number[] {
+  return bucket.indexes
+    .map((index) => daily[index])
+    .filter((value): value is number => value != null && Number.isFinite(value));
+}
+
+function aggregateDaily(field: string, kind: string, daily: (number | null)[], buckets: WeekBucket[]): (number | null)[] {
+  const pointInTime = WEEKLY_POINT_IN_TIME.has(field);
   return buckets.map((bucket) => {
-    const values = bucket.indexes
-      .map((index) => daily[index])
-      .filter((value): value is number => value != null && Number.isFinite(value));
+    const values = bucketValues(daily, bucket);
     if (!values.length) return null;
+    // Снимок за неделю — это последнее известное значение, а не сумма и не среднее.
+    if (pointInTime) return values[values.length - 1];
     const sum = values.reduce((acc, value) => acc + value, 0);
-    // Проценты и ставки нельзя пересчитать из сумм (числители/знаменатели не в
-    // снимке) — честно показываем среднее по дням с данными.
     return kind === "pct" ? sum / values.length : sum;
   });
 }
@@ -833,15 +883,51 @@ function aggregateDaily(kind: string, daily: (number | null)[], buckets: WeekBuc
  */
 export function aggregateRnpWeekly<T extends GranularityTableLike>(table: T, fromIso: string, todayIso?: string): T {
   const buckets = rnpWeekBuckets(fromIso, table.period.length, todayIso);
-  const mapMetric = <M extends GranularityMetricLike>(metric: M): M => ({
-    ...metric,
-    daily: aggregateDaily(metric.kind, metric.daily, buckets),
-  });
+  // Производные считаем из АГРЕГИРОВАННЫХ числителя и знаменателя того же
+  // набора метрик — среднее из процентов по дням давало другой ответ, чем итог
+  // за тот же период.
+  const mapMetrics = <M extends GranularityMetricLike>(metrics: M[]): M[] => {
+    const byField = new Map(metrics.map((metric) => [metric.field, metric]));
+    const sums = new Map<string, (number | null)[]>();
+    const sumOf = (field: string): (number | null)[] => {
+      const cached = sums.get(field);
+      if (cached) return cached;
+      const source = byField.get(field);
+      const value = source
+        ? buckets.map((bucket) => {
+          const values = bucketValues(source.daily, bucket);
+          return values.length ? values.reduce((acc, item) => acc + item, 0) : null;
+        })
+        : buckets.map(() => null);
+      sums.set(field, value);
+      return value;
+    };
+    return metrics.map((metric) => {
+      const pair = WEEKLY_RATIO_PAIRS[metric.field];
+      if (!pair || !byField.has(pair.numerator) || !byField.has(pair.denominator)) {
+        return { ...metric, daily: aggregateDaily(metric.field, metric.kind, metric.daily, buckets) };
+      }
+      const numerator = sumOf(pair.numerator);
+      const denominator = sumOf(pair.denominator);
+      return {
+        ...metric,
+        daily: buckets.map((_, index) => {
+          const num = numerator[index];
+          const rawDen = denominator[index];
+          if (num == null || rawDen == null) return null;
+          const den = pair.sumDenominator ? num + rawDen : rawDen;
+          if (!(den > 0)) return null;
+          const value = (num / den) * pair.scale;
+          return pair.scale === 100 ? Math.round(value * 10) / 10 : Math.round(value);
+        }),
+      };
+    });
+  };
   return {
     ...table,
     period: buckets.map((bucket) => ({ label: bucket.label, period_type: bucket.period_type })),
-    summary: table.summary.map(mapMetric),
-    skus: table.skus.map((sku) => ({ ...sku, metrics: sku.metrics.map(mapMetric) })),
+    summary: mapMetrics(table.summary),
+    skus: table.skus.map((sku) => ({ ...sku, metrics: mapMetrics(sku.metrics) })),
   };
 }
 

@@ -49,18 +49,52 @@ export default function TeamPage() {
   useEffect(() => { void load(); }, [load]);
 
   const send = async (payload: Record<string, unknown>, okText: string) => {
-    const response = await fetch("/api/wb/team", {
+    const post = (data: Record<string, unknown>) => fetch("/api/wb/team", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(data),
     });
-    const body = await response.json().catch(() => null);
+    let response = await post(payload);
+    let body = await response.json().catch(() => null);
+    // Почта уже занята в своей же организации — развилка, а не отказ: либо
+    // человек заведён и трогать его не нужно, либо доступ выдаётся заново.
+    if (response.status === 409 && body?.exists) {
+      if (!confirm(`${body.error}\n\nПерезаписать доступ?`)) return false;
+      response = await post({ ...payload, replaceExisting: true });
+      body = await response.json().catch(() => null);
+    }
     if (!response.ok || !body?.ok) {
       setMsg({ ok: false, text: body?.error || "Не получилось" });
       return false;
     }
     setMsg({ ok: true, text: okText });
     return true;
+  };
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [changing, setChanging] = useState(false);
+
+  const changePassword = async () => {
+    setChanging(true);
+    setMsg(null);
+    try {
+      const response = await fetch("/api/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) {
+        setMsg({ ok: false, text: body?.error || "Не удалось сменить пароль" });
+        return;
+      }
+      setMsg({ ok: true, text: "Пароль изменён" });
+      setCurrentPassword("");
+      setNewPassword("");
+    } finally {
+      setChanging(false);
+    }
   };
 
   const create = async () => {
@@ -114,8 +148,42 @@ export default function TeamPage() {
         </div>
         <p className="mt-2 text-xs text-slate-400">
           Пароль передайте лично или через менеджер паролей — не в переписке. Сотрудник
-          сможет сменить его после входа.
+          сможет сменить его ниже, на этой же странице, после входа.
         </p>
+      </section>
+
+      <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-700">Сменить свой пароль</h2>
+        <p className="mt-1 text-xs text-slate-400">
+          Пароль, который выдал админ, знает и он. Смените его на свой — новый нужен не
+          короче десяти символов.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            placeholder="текущий пароль"
+            autoComplete="current-password"
+            className="min-h-11 w-56 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+          />
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            placeholder="новый пароль"
+            autoComplete="new-password"
+            className="min-h-11 w-56 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+          />
+          <button
+            type="button"
+            onClick={changePassword}
+            disabled={changing || !currentPassword || newPassword.length < 10}
+            className="min-h-11 rounded-lg bg-slate-800 px-4 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-40"
+          >
+            {changing ? "Меняем…" : "Сменить пароль"}
+          </button>
+        </div>
       </section>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white">

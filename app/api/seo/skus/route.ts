@@ -26,11 +26,24 @@ interface RpcTotal { nm_id: number; article: string; stock: number; cost: number
 async function loadFbsStocks(cabinetId: string | null): Promise<Map<number, number> | null> {
   const db = getSupabaseAdmin();
   if (!db) return null;
-  const query = db.from("wb_fbs_stocks").select("nm_id, quantity");
-  const { data, error } = await (cabinetId ? query.eq("cabinet_id", cabinetId) : query);
-  // Таблицы ещё нет или доступа нет — молчим и отдаём null: колонка честно
-  // скажет «не собирали», вместо того чтобы показать нули.
-  if (error || !data) return null;
+  // Читаем постранично. Без листания у кабинета с ассортиментом больше тысячи
+  // товаров «хвост» не попадал в карту, и колонка FBS показывала по нему
+  // уверенный ноль — тот самый случай, ради которого ветка ниже и написана.
+  let data: Array<{ nm_id: number; quantity: number | null }>;
+  try {
+    data = await loadAllSupabasePages<{ nm_id: number; quantity: number | null }>((from, to) => {
+      let query = db.from("wb_fbs_stocks")
+        .select("nm_id, quantity")
+        .order("nm_id", { ascending: true })
+        .range(from, to);
+      if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+      return query;
+    }, { label: "Воронка: остатки FBS", maxPages: 100 });
+  } catch {
+    // Таблицы ещё нет или доступа нет — молчим и отдаём null: колонка честно
+    // скажет «не собирали», вместо того чтобы показать нули.
+    return null;
+  }
   // И ни одной строки по кабинету — тоже «не собирали». Без этой ветки пустая
   // таблица давала уверенный ноль по каждому товару: обход ещё не запускался,
   // а экран уже утверждал, что на складе продавца пусто.

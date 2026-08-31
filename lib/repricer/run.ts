@@ -109,7 +109,10 @@ export async function runRepricer(cabinet: string | null, strategies: RepricerSt
 export async function persistDecisions(runDate: string, cabinet: string | null, rows: RepricerRunRow[]): Promise<number> {
   const db = getSupabaseAdmin();
   if (!db) return 0;
-  await db.from("repricer_decisions").delete().eq("run_date", runDate).eq("cabinet", cabinet ?? "");
+  // Ошибки удаления и вставки раньше терялись обе: прогон рапортовал успех, а
+  // таблица решений оставалась пустой — «репрайсер отработал, предложений нет».
+  const removed = await db.from("repricer_decisions").delete().eq("run_date", runDate).eq("cabinet", cabinet ?? "");
+  if (removed.error) throw new Error(`Репрайсер: не удалось очистить прошлый прогон — ${removed.error.message}`);
   const toInsert = rows.map((r) => ({
     run_date: runDate,
     cabinet: r.cabinet ?? "",
@@ -124,6 +127,10 @@ export async function persistDecisions(runDate: string, cabinet: string | null, 
     status: r.decision.status,
     note: r.decision.note ?? null,
   }));
-  if (toInsert.length) await db.from("repricer_decisions").insert(toInsert);
+  // Пачками: одна вставка на несколько тысяч строк упирается в лимит запроса.
+  for (let offset = 0; offset < toInsert.length; offset += 500) {
+    const { error } = await db.from("repricer_decisions").insert(toInsert.slice(offset, offset + 500));
+    if (error) throw new Error(`Репрайсер: не удалось записать решения — ${error.message}`);
+  }
   return toInsert.filter((r) => r.status === "proposed").length;
 }

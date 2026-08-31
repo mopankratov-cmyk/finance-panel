@@ -119,7 +119,10 @@ test("unit table dual auth and explicit cabinet resolution fail closed before da
   assert.match(route, /\["director", "finance", "manager", "seller"\]\.includes\(session\.role\)/);
   assert.match(route, /const p_cabinet = scope\.mode === "single" \? scope\.cabinetId : null/);
   assert.doesNotMatch(route, /if \(!db\) return NextResponse\.json\(\{ headers: \[\], rows: \[\], img_urls: \[\] \}\)/);
-  assert.match(route, /if \(costsRes\.error\) throw/);
+  // Ошибка чтения себестоимостей обязана ронять ответ, а не превращаться в
+  // пустой справочник: иначе экран покажет «нет себестоимости» вместо аварии.
+  // Постраничный загрузчик бросает исключение на первой же ошибке страницы.
+  assert.match(route, /function loadProductCostRows[\s\S]{0,400}loadAllSupabasePages/);
 });
 
 test("unit warmup carries CRON_SECRET through internalFetch", async () => {

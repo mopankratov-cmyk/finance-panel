@@ -99,3 +99,50 @@ test("страница подменяет сводку и её дельты то
   assert.match(page, /previousSkus = activePrevious\.skus\.filter\(\(sku\) => visibleNms\.has\(sku\.nm\)\)/);
   assert.match(page, /сводка по фильтру/);
 });
+
+test("фактический % выкупа под фильтром считается по той же формуле, что на сервере", async () => {
+  // Доставлено 10 (брутто), из них оставили 8 → 80%. Прежняя формула делила на
+  // «брутто + возвраты» = 12 и завышала показатель до 83.3%.
+  const sku = { metrics: [
+    metric("buyouts_count", "int", [8], 8),
+    metric("buyouts_gross_count", "int", [10], 10),
+    metric("returns_count", "int", [2], 2),
+  ] };
+  const summary = composeRnpSummaryFromSkus([metric("actual_buyout_pct", "pct", [null], null)], [sku], 30);
+  assert.equal(summary[0].total, 80);
+  assert.equal(summary[0].daily[0], 80);
+
+  // Формула обязана совпадать с серверной буквально: расхождение здесь означает
+  // две разные правды на одном экране — с фильтром и без.
+  const server = await readFile(new URL("../lib/rnp/buildTable.ts", import.meta.url), "utf8");
+  assert.match(server, /r1\(\(buyoutsCount\[index\] \/ grossBuyoutsCount\[index\]\) \* 100\)/);
+});
+
+test("маржа под фильтром делится на выкупы только посчитанных SKU", () => {
+  // Половина ассортимента без себестоимости: сервер делит прибыль на выкупы
+  // тех SKU, где прибыль известна. Общий знаменатель занижал маржу вдвое, и по
+  // этой цифре принимали решение поднять цены.
+  const withCost = { metrics: [
+    metric("gross", "money", [100_000], 100_000),
+    metric("buyouts_sum", "money", [500_000], 500_000),
+  ] };
+  const withoutCost = { metrics: [
+    metric("buyouts_sum", "money", [500_000], 500_000),
+  ] };
+  const summary = composeRnpSummaryFromSkus(
+    [metric("margin_pct", "pct", [null], null)],
+    [withCost, withoutCost],
+    30,
+  );
+  assert.equal(summary[0].total, 20);
+  assert.equal(summary[0].daily[0], 20);
+});
+
+test("доля отмен под фильтром считается к оформленным заказам", () => {
+  const sku = { metrics: [
+    metric("cancels_count", "int", [10], 10),
+    metric("orders_count", "int", [90], 90),
+  ] };
+  const summary = composeRnpSummaryFromSkus([metric("cancel_pct", "pct", [null], null)], [sku], 30);
+  assert.equal(summary[0].total, 10, "10 из 100 оформленных, а не 10 из 90 дошедших");
+});

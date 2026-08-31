@@ -15,7 +15,19 @@ export interface UnitContribution {
    * Доля СПП (0..1) по факту продаж периода. `null` — фактов нет, СПП неизвестна,
    * и налог придётся считать от цены продавца (это завышает его на величину СПП).
    */
+  /**
+   * Подготовка на единицу (упаковка, маркировка, отгрузка) из справочника
+   * себестоимостей. «Склейки» и ОПиУ её вычитают, а юнит раньше игнорировал —
+   * маржа расходилась с соседними экранами.
+   */
+  prepPerUnit?: number | null;
   sppShare?: number | null;
+  /**
+   * Своя ли это ставка СПП. Средняя по кабинету — оценка, и покрытие по ней
+   * считать нельзя: счётчик «СПП по факту продаж N/M» показывал бы полное
+   * покрытие всегда.
+   */
+  sppOwn?: boolean;
   /**
    * Ставка налога кабинета, %. `null` — не настроена, берётся общая ставка группы.
    * У кабинетов разных юрлиц режимы разные, поэтому в группе нельзя считать одной.
@@ -86,12 +98,12 @@ export function aggregateUnitContributions(
       ? sum((row) => row.revenue * (row.acquiringPct ?? 0) / 100)
       : null;
     const cogs = costKnown ? sum((row) => row.orders * (row.costPerUnit ?? 0)) : null;
-    const fulfillment = orders * options.ff;
+    const fulfillment = orders * options.ff + sum((row) => row.orders * (row.prepPerUnit ?? 0));
     // Налог — с цены покупателя, то есть с выручки за вычетом СПП каждого кабинета.
     // Кабинет без факта СПП входит в базу целиком: занизить налог догадкой хуже, чем
     // оставить его прежним и показать это в покрытии.
     const taxableRevenue = sum((row) => row.revenue * (1 - (row.sppShare ?? 0)));
-    const sppKnown = rows.some((row) => row.sppShare != null);
+    const sppKnown = rows.some((row) => row.sppOwn === true);
     // Ставка своя у каждого кабинета: одно юрлицо на УСН, другое на ОСНО — общая
     // ставка на группу исказила бы обе стороны.
     const taxRub = sum((row) => row.revenue * (1 - (row.sppShare ?? 0)) * (row.taxPct ?? options.taxPct) / 100);

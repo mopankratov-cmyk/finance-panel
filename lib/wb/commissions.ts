@@ -11,6 +11,7 @@ import { cabinetProductScope, getActiveWbCabinets, getWbCabinet, resolveWbToken 
 import { allowsProduct, type WbProductScope } from "./productScope";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { fetchWbReportPages } from "./reportPagination";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 const WB_STATS_TOKEN = process.env.WB_STATS_TOKEN || process.env.WB_TOKEN_STATISTICS;
 const COMMISSION_REPORT_FIELDS = [
@@ -345,18 +346,32 @@ function cachedPartsPct(row: CachedNmRow): DeductionPartsPct | null {
 async function getWbCommissionFromCache(cabinetId: string | null = null): Promise<WbCommission | null> {
   const db = getSupabaseAdmin();
   if (!db) return null;
-  let nmQuery = db.from("wb_nm_commissions")
-    .select("cabinet_id, nm_id, pct, acq_pct, extra_pct, rev, delivery_pct, storage_pct, penalty_pct, acceptance_pct, deduction_pct");
-  let overheadQuery = db.from("wb_cabinet_commission_overhead").select("cabinet_id, overhead_pct, rev");
-  if (cabinetId) {
-    nmQuery = nmQuery.eq("cabinet_id", cabinetId);
-    overheadQuery = overheadQuery.eq("cabinet_id", cabinetId);
-  }
-  const [nmRes, ohRes] = await Promise.all([
-    nmQuery,
-    overheadQuery,
+  // Ставки читаются постранично. Supabase молча отдаёт первую тысячу строк, и
+  // у кабинета с большим ассортиментом товары «за тысячей» теряли свою ставку и
+  // считались по средней — удержания в юните расходились с фактом.
+  const [nmRows, ohRows] = await Promise.all([
+    loadAllSupabasePages<CachedNmRow>((from, to) => {
+      let query = db.from("wb_nm_commissions")
+        .select("cabinet_id, nm_id, pct, acq_pct, extra_pct, rev, delivery_pct, storage_pct, penalty_pct, acceptance_pct, deduction_pct")
+        // Ключ таблицы — (кабинет, товар). В режиме «все кабинеты» один товар
+        // лежит в нескольких строках, и сортировки по одному nm_id мало:
+        // равные ключи при листании съезжают, и часть ставок теряется — товар
+        // молча уезжает на среднюю ставку.
+        .order("cabinet_id", { ascending: true })
+        .order("nm_id", { ascending: true })
+        .range(from, to);
+      if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+      return query;
+    }, { label: "WB: кэш ставок по товарам", maxPages: 100 }),
+    loadAllSupabasePages<{ overhead_pct: number; rev: number }>((from, to) => {
+      let query = db.from("wb_cabinet_commission_overhead")
+        .select("cabinet_id, overhead_pct, rev")
+        .order("cabinet_id", { ascending: true })
+        .range(from, to);
+      if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+      return query;
+    }, { label: "WB: кэш общих удержаний", maxPages: 10 }),
   ]);
-  const nmRows = nmRes.data ?? [];
   if (!nmRows.length) return null; // кэш ещё не наполнен синком
 
   // один nm в нескольких кабинетах — берём строку с большей выручкой (как в live-мердже)
@@ -376,7 +391,6 @@ async function getWbCommissionFromCache(cabinetId: string | null = null): Promis
   let totW = 0, totAcq = 0, totExtra = 0, totRev = 0;
   for (const e of byNm.values()) { totW += e.pct * e.rev; totAcq += e.acqPct * e.rev; totExtra += e.extraPct * e.rev; totRev += e.rev; }
 
-  const ohRows = (ohRes.data ?? []) as { overhead_pct: number; rev: number }[];
   let totOverheadW = 0, totOverheadRev = 0;
   for (const o of ohRows) { const rev = Number(o.rev ?? 0); totOverheadW += Number(o.overhead_pct ?? 0) * rev; totOverheadRev += rev; }
 

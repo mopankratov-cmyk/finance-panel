@@ -16,6 +16,7 @@ import { loadCabinetPimRowsHourly, loadCardsFromDb, type PimCardRef, type PimRow
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
@@ -117,6 +118,16 @@ interface AdNmRow {
   date: string;
   views: number | null;
   clicks: number | null;
+  /**
+   * Расход за день по артикулу. Читается ОТСЮДА же, откуда показы и клики.
+   *
+   * Раньше расход приходил только из агрегата (RPC), а показы и клики — прямым
+   * чтением витрины. Источник один и тот же, но пути разные, и они разошлись:
+   * у кабинета с ограниченным ассортиментом РНП рисовал ноль расхода при живых
+   * показах — витрина при этом деньги знала, что видно на экране CTR-тестов.
+   * Один факт должен приходить одним путём.
+   */
+  spent: number | string | null;
   /** Атрибуцированные к рекламе заказы за день — их пишет синк advert-stats. */
   orders: number | null;
   orders_sum: number | null;
@@ -312,6 +323,16 @@ export function latestDate<Row>(rows: Row[], readDate: (row: Row) => unknown): s
 export function earliestKnownDate(values: Array<string | null | undefined>, fallback: string): string {
   const known = values.filter((value): value is string => !!value);
   return known.length ? known.reduce((earliest, value) => value < earliest ? value : earliest) : fallback;
+}
+
+/**
+ * Граница свежести для строки, которая складывает несколько кабинетов: по
+ * самому отставшему из тех, кому есть что терять. Кабинет без данных за период
+ * границу не двигает — иначе один пустой кабинет обнулил бы сводку целиком.
+ */
+export function summaryFreshnessCutoff(values: Array<string | null | undefined>): string | null {
+  const known = values.filter((value): value is string => !!value);
+  return known.length ? known.reduce((earliest, value) => (value < earliest ? value : earliest)) : null;
 }
 
 export function applyRnpScopeCutoff<Row extends DailyRow>(rows: Row[], asOf: string): Row[] {
@@ -1050,6 +1071,16 @@ export function buildMetrics(
     ? buyoutsCount[index] + returnsCount[index]
     : null);
   const finalPrice = perUnit(buyoutsFinishedSum, grossBuyoutsCount);
+  // День, где возвраты есть, а продаж НЕТ ВОВСЕ, — это не «минус столько-то
+  // выкупов», а прямое доказательство, что продажи за этот день не собраны:
+  // возврат всегда относится к какой-то продаже. Молча печатать отрицательное
+  // число нельзя — по нему считают маржу и среднюю цену выкупа.
+  const salesGapDays = days.filter((_, index) =>
+    (returnsCount[index] ?? 0) > 0 && (grossBuyoutsCount[index] ?? 0) === 0).length;
+  const salesGapNote = salesGapDays > 0
+    ? `За ${salesGapDays} дн. периода пришли возвраты, а продаж нет ни одной — продажи за эти дни ещё не собраны. `
+      + "Отрицательные выкупы в такие дни — это вычет возвратов из несобранных продаж, а не факт."
+    : null;
   // Скидка продавца: насколько цена заказа ниже цены до скидки.
   const sellerDiscountPct = days.map((_, index) =>
     ordersGrossSum[index] != null && ordersSum[index] != null && ordersGrossSum[index] > 0
@@ -1063,12 +1094,14 @@ export function buildMetrics(
     if (!(buyoutsGrossSum[index] > 0)) return null;
     return Math.round(ordersSum[index] * (buyoutsFinishedSum[index] / buyoutsGrossSum[index]));
   });
-  // Фактический % выкупа = выкуплено / доставлено = выкупы / (выкупы + возвраты).
-  // Знаменатель — брутто-выкупы плюс возвраты: это и есть доставленное покупателю.
+  // Фактический % выкупа = оставленное у себя / доставленное = нетто-выкупы /
+  // брутто-выкупы. Доставлено покупателю ровно столько, сколько строк продажи,
+  // то есть брутто; возвраты — часть этого же потока, а не добавка к нему.
+  // Прежняя формула брала знаменателем «брутто + возвраты» и считала каждый
+  // возврат дважды, из-за чего процент выкупа был завышен.
   const actualBuyoutPct = days.map((_, index) => {
-    if (grossBuyoutsCount[index] == null || returnsCount[index] == null) return null;
-    const delivered = grossBuyoutsCount[index] + returnsCount[index];
-    return delivered > 0 ? r1((grossBuyoutsCount[index] / delivered) * 100) : null;
+    if (buyoutsCount[index] == null || grossBuyoutsCount[index] == null) return null;
+    return grossBuyoutsCount[index] > 0 ? r1((buyoutsCount[index] / grossBuyoutsCount[index]) * 100) : null;
   });
   const sppPct = days.map((_, index) =>
     buyoutsGrossSum[index] != null && buyoutsFinishedSum[index] != null && buyoutsGrossSum[index] > 0
@@ -1105,7 +1138,6 @@ export function buildMetrics(
   const totalPlaced = totalOrdersCount != null && totalCancelsCount != null ? totalOrdersCount + totalCancelsCount : null;
   const totalGrossBuyouts = totalBuyoutsCount != null && totalReturnsCount != null ? totalBuyoutsCount + totalReturnsCount : null;
   const totalOrdersSppSum = knownSum(ordersSppSum);
-  const totalDelivered = totalGrossBuyouts != null && totalReturnsCount != null ? totalGrossBuyouts + totalReturnsCount : null;
   const primaryQualityReason: Metric["qualityReason"] = primaryFacts ? undefined : "unsupported_source";
   const totalOrdersGrossSum = knownSum(ordersGrossSum);
   const totalFbsSum = knownSum(ordersFbsSum);
@@ -1202,8 +1234,29 @@ export function buildMetrics(
       note: "Отмены / (заказы + отмены). Заказы могут приходить из воронки WB, а отмены — из статистики заказов, поэтому при расхождении источников доля приблизительная.",
       qualityReason: primaryQualityReason,
     },
-    { field: "buyouts_count", label: "Выкупы, шт", kind: "int", daily: buyoutsCount, total: totalBuyoutsCount, forecast: null, source: "WB Статистика", group_start: true },
-    { field: "buyouts_sum", label: "Выкупы, ₽", kind: "money", daily: buyoutsSum, total: totalBuyoutsSum == null ? null : Math.round(totalBuyoutsSum), forecast: null, source: "WB Статистика" },
+    {
+      field: "buyouts_count",
+      label: "Выкупы, шт",
+      kind: "int",
+      daily: buyoutsCount,
+      total: totalBuyoutsCount,
+      forecast: null,
+      source: "WB Статистика",
+      group_start: true,
+      note: salesGapNote ?? "Выкупы за вычетом возвратов. Возврат приходит в свою дату, поэтому возврат товара, проданного до начала периода, уменьшает выкупы первых дней.",
+      qualityReason: salesGapNote ? "unsupported_source" : undefined,
+    },
+    {
+      field: "buyouts_sum",
+      label: "Выкупы, ₽",
+      kind: "money",
+      daily: buyoutsSum,
+      total: totalBuyoutsSum == null ? null : Math.round(totalBuyoutsSum),
+      forecast: null,
+      source: "WB Статистика",
+      note: salesGapNote ?? undefined,
+      qualityReason: salesGapNote ? "unsupported_source" : undefined,
+    },
     {
       field: "buyouts_gross_count",
       label: "Выкуплено, шт",
@@ -1260,12 +1313,12 @@ export function buildMetrics(
       label: "Фактический % выкупа, %",
       kind: "pct",
       daily: actualBuyoutPct,
-      total: totalGrossBuyouts != null && totalDelivered != null && totalDelivered > 0
-        ? r1((totalGrossBuyouts / totalDelivered) * 100)
+      total: totalBuyoutsCount != null && totalGrossBuyouts != null && totalGrossBuyouts > 0
+        ? r1((totalBuyoutsCount / totalGrossBuyouts) * 100)
         : null,
       forecast: null,
       source: "WB Статистика",
-      note: "Выкуплено / доставлено = выкупы / (выкупы + возвраты). В отличие от «Выкуп потока» считается по факту доставки, а не к заказам другой когорты.",
+      note: "Оставлено у себя / доставлено = выкупы за вычетом возвратов, делённые на выкупы до вычета. В отличие от «Выкуп потока» считается по факту доставки, а не к заказам другой когорты.",
     },
     {
       field: "orders_spp_sum",
@@ -1385,7 +1438,15 @@ export function buildMetrics(
   const turnover = calculateTurnoverDays(stock, turnoverValues.map((item) => item.value), turnoverWindowDays);
   const gmroi = grossTotalForGmroi != null && stockMoney > 0 ? r1(Math.min(999, (grossTotalForGmroi / stockMoney) * 100)) : null;
   const knownStockMoney = stockMoney > 0 || stock === 0 ? Math.round(stockMoney) : null;
-  const snapshotNote = `Текущий снимок показан в дате факта; прошлые дни не подменяются сегодняшним остатком. Оборачиваемость рассчитана по последним ${Math.max(1, turnoverWindowDays)} доступным дням.`;
+  // Сколько дней реально попало в среднее. Раньше подпись обещала окно целиком,
+  // хотя за коротким периодом или дырой в загрузке могло стоять два-три дня:
+  // «оборачиваемость 4 дня» по двум дням продаж — не то же самое, что по
+  // тридцати, и решение о закупке по ней принимают разное.
+  const turnoverObservedDays = turnoverValues.length;
+  const turnoverWindowLabel = turnoverObservedDays > 0 && turnoverObservedDays < Math.max(1, turnoverWindowDays)
+    ? `по ${turnoverObservedDays} доступным дням из ${Math.max(1, turnoverWindowDays)}`
+    : `по последним ${Math.max(1, turnoverWindowDays)} доступным дням`;
+  const snapshotNote = `Текущий снимок показан в дате факта; прошлые дни не подменяются сегодняшним остатком. Оборачиваемость рассчитана ${turnoverWindowLabel}.`;
   const inWayToClient = Math.round(Number(options.inWayToClient ?? 0));
   const inWayFromClient = Math.round(Number(options.inWayFromClient ?? 0));
   const stockTotalWithInWay = stock + inWayToClient + inWayFromClient;
@@ -1622,6 +1683,62 @@ export function applyFunnelOrdersOverlay(rows: SkuDailyRow[], funnelRows: Funnel
     });
   }
 
+  return [...dailyRows.values()].sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id);
+}
+
+/**
+ * Расход рекламы — из витрины по артикулам, прямым чтением.
+ *
+ * Показы и клики РНП всегда читал напрямую из `wb_advert_nm_daily`, а расход
+ * брал из агрегата. Источник один, пути разные — и они разошлись: у кабинета с
+ * ограниченным ассортиментом экран показывал ноль расхода при живых показах,
+ * хотя витрина деньги знала (их видно на экране CTR-тестов, который читает ту
+ * же таблицу напрямую). Одна цифра должна приходить одним путём, иначе
+ * расхождение невозможно ни заметить, ни объяснить.
+ *
+ * Витрина главнее: она и есть то, что агрегат суммирует. Строки, которых в ней
+ * нет, остаются с прежним значением — это «нет данных», а не ноль.
+ */
+export function applyAdvertSpendOverlay(rows: SkuDailyRow[], adRows: AdNmRow[]): SkuDailyRow[] {
+  if (!adRows.length) return rows;
+  const spentByKey = new Map<string, { nmId: number; date: string; spent: number }>();
+  for (const row of adRows) {
+    const nmId = Number(row.nm_id);
+    const date = readDate(row.date);
+    if (!Number.isFinite(nmId) || !date) continue;
+    const spent = Number(row.spent ?? 0);
+    if (!Number.isFinite(spent)) continue;
+    const key = scopedDailyKey(nmId, date);
+    const current = spentByKey.get(key) ?? { nmId, date, spent: 0 };
+    current.spent += spent;
+    spentByKey.set(key, current);
+  }
+  if (!spentByKey.size) return rows;
+
+  const dailyRows = new Map<string, SkuDailyRow>();
+  for (const row of rows) {
+    const nmId = Number(row.nm_id);
+    const date = readDate(row.d);
+    if (!Number.isFinite(nmId) || !date) continue;
+    dailyRows.set(scopedDailyKey(nmId, date), row);
+  }
+  for (const [key, entry] of spentByKey) {
+    const current = dailyRows.get(key);
+    if (current) {
+      dailyRows.set(key, { ...current, ad_spent: entry.spent });
+      continue;
+    }
+    // День, где была только реклама, а заказов и продаж не было, тоже факт.
+    dailyRows.set(key, {
+      d: entry.date,
+      nm_id: entry.nmId,
+      orders_count: 0,
+      orders_sum: 0,
+      buyouts_count: 0,
+      buyouts_sum: 0,
+      ad_spent: entry.spent,
+    } as SkuDailyRow);
+  }
   return [...dailyRows.values()].sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id);
 }
 
@@ -2043,17 +2160,27 @@ async function loadScopedAggregate(
   fbsCutoff: string | null,
 ): Promise<ScopedAggregateRow[] | null> {
   if (!scope.cabinetId) return null;
-  const { data, error } = await db.rpc("rnp_scoped_daily_sku", {
-    p_from: from,
-    p_to: to,
-    p_cabinet: scope.cabinetId,
-    p_nm_ids: allowed,
-    p_fbs_cutoff: fbsCutoff,
-  });
-  // Функции может не быть (миграция не применена) — тогда работает прежний
-  // путь по сырым строкам, и экран этого не замечает.
-  if (error) return null;
-  return (data ?? []) as ScopedAggregateRow[];
+  // Агрегат отдаёт строку на (день × товар): месяц на сотне артикулов — это три
+  // тысячи строк, и без листания PostgREST молча вернул бы первую тысячу.
+  // Обрезанный агрегат выглядит как настоящий: заказы просто «кончаются» в
+  // середине периода.
+  try {
+    return await loadAllSupabasePages<ScopedAggregateRow>((rangeFrom, rangeTo) => db
+      .rpc("rnp_scoped_daily_sku", {
+        p_from: from,
+        p_to: to,
+        p_cabinet: scope.cabinetId,
+        p_nm_ids: allowed,
+        p_fbs_cutoff: fbsCutoff,
+      })
+      .order("d", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(rangeFrom, rangeTo), { label: "RNP: агрегат контура", maxPages: 100 });
+  } catch {
+    // Функции может не быть (миграция не применена) — тогда работает прежний
+    // путь по сырым строкам, и экран этого не замечает.
+    return null;
+  }
 }
 
 async function loadScopedBaseFacts(
@@ -2353,7 +2480,7 @@ export async function buildRnpTable(
           timed("advert_nm_daily", loadAllPages<AdNmRow>((start, end) => {
             let query = db
               .from("wb_advert_nm_daily")
-              .select("nm_id, date, views, clicks, orders, orders_sum")
+              .select("nm_id, date, views, clicks, spent, orders, orders_sum")
               .gte("date", from)
               .lte("date", to)
               .order("date", { ascending: true })
@@ -2506,9 +2633,12 @@ export async function buildRnpTable(
 
     timings.all_sources_done = Date.now() - buildStartedAt;
     const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(
-      applySalesReturnsAdjustment(
-        applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
-        item.returnRows,
+      applyAdvertSpendOverlay(
+        applySalesReturnsAdjustment(
+          applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
+          item.returnRows,
+        ),
+        item.adRows,
       ),
       {
         orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]),
@@ -2669,6 +2799,22 @@ export async function buildRnpTable(
     const asOf = cutoffAsOf(latestKnownDate([ordersCutoff, salesCutoff, advertsCutoff, funnelCutoff]), periodEnd);
     const metricCutoffs: MetricCutoffs = { orders: ordersCutoff, sales: salesCutoff, adverts: advertsCutoff };
     const funnelCutoffs: FunnelCutoffs = { adverts: advertsCutoff, funnel: funnelCutoff };
+    // Сводка складывает кабинеты, поэтому её граница свежести — по САМОМУ
+    // отставшему. По максимуму сумма за день, до которого один кабинет ещё не
+    // досинхронизировался, выглядела бы честным числом, а на деле в ней не
+    // хватало целого кабинета — это читается как падение продаж, которого не
+    // было. Пустой кабинет границу не двигает: терять ему нечего.
+    const earliestAcross = (pick: (item: (typeof scopeData)[number]) => string | null) =>
+      summaryFreshnessCutoff(scopeData.map(pick));
+    const summaryCutoffs: MetricCutoffs = scopeData.length > 1 ? {
+      orders: earliestAcross((item) => latestKnownDate([item.funnelCutoff, item.ordersCutoff])),
+      sales: earliestAcross((item) => item.salesCutoff),
+      adverts: earliestAcross((item) => item.advertsCutoff),
+    } : metricCutoffs;
+    const summaryFunnelCutoffs: FunnelCutoffs = scopeData.length > 1 ? {
+      adverts: summaryCutoffs.adverts,
+      funnel: earliestAcross((item) => item.funnelCutoff),
+    } : funnelCutoffs;
     const period = days.map((d) => { const dt = new Date(d); return { label: `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}`, period_type: WEEKDAY[dt.getDay()] }; });
 
     const dailyByDate = new Map<string, DailyRow>();
@@ -2774,16 +2920,27 @@ export async function buildRnpTable(
       .map(({ _o, ...rest }) => { void _o; return rest; });
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
-    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), metricCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, schemeFacts: schemeFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal });
-    summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, funnelCutoffs, {
+    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), summaryCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, schemeFacts: schemeFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal });
+    summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, summaryFunnelCutoffs, {
       ordersByDate: adOrdersByDateAll,
       ordersSumByDate: adOrdersSumByDateAll,
     }, wishlistByDateAll));
     appendOrderConversion(summary);
     appendOrganicMetrics(summary);
     summary.push(...buildReviewMetrics(days, asOf, reviewsByDateAll));
-    summary.push(...buildAdTypeMetrics(days, asOf, adTypeBuckets, adTypeUnclassifiedSpent, advertsCutoff));
-    const sumDaily = (field: string) => days.map((_, i) => {
+    summary.push(...buildAdTypeMetrics(days, asOf, adTypeBuckets, adTypeUnclassifiedSpent, summaryCutoffs.adverts));
+    // Экономика сводки склеивается суммой по SKU, а у каждого SKU граница
+    // свежести своя — его кабинета. Без общей отсечки получались две правды в
+    // одной таблице: «Выкупы» за вчера пусты (отставший кабинет), а «Прибыль»
+    // за тот же день — число (по кабинетам посвежее). И хуже: прибыль ПОЛНОГО
+    // периода делилась на выкупы УРЕЗАННОГО — прибыль на единицу и ROMI
+    // оказывались завышены.
+    const summaryEconomyAsOf = cutoffAsOf(
+      summaryFreshnessCutoff([summaryCutoffs.sales, summaryCutoffs.adverts]),
+      asOf,
+    );
+    const sumDaily = (field: string) => days.map((day, i) => {
+      if (day > summaryEconomyAsOf) return null;
       let acc = 0, any = false;
       for (const sk of skus) { const m = sk.metrics.find((x) => x.field === field); const v = m?.daily[i]; if (v != null) { acc += Number(v); any = true; } }
       return any ? Math.round(acc) : null;
@@ -2801,7 +2958,8 @@ export async function buildRnpTable(
         ? "missing_rates"
         : undefined;
     const grossTotal = knownSum(grossDaily);
-    const costedBuyoutsSumDaily = days.map((_, index) => {
+    const costedBuyoutsSumDaily = days.map((day, index) => {
+      if (day > summaryEconomyAsOf) return null;
       let sum = 0, any = false;
       for (const sku of costedSkus) {
         const gross = sku.metrics.find((metric) => metric.field === "gross")?.daily[index];

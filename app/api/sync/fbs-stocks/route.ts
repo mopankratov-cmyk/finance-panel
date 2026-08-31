@@ -3,6 +3,7 @@ import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { warmFbsBarcodeCatalog } from "@/lib/wb/fbsBarcodeCatalog";
 import { fetchFbsStocks, fetchFbsWarehouses } from "@/lib/wb/fbsMarketplace";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 // Остатки складов продавца (FBS) в базу.
 //
@@ -56,9 +57,15 @@ export async function GET(request: NextRequest) {
     // складываем, а не берём первый попавшийся.
     const totals = new Map<number, number>();
     let visited = 0;
+    // Обход одного склада идёт чанками по баркодам и на исчерпании бюджета
+    // ВОЗВРАЩАЕТ `complete: false`, а не бросает. Если этот флаг потерять,
+    // склад засчитывается опрошенным целиком, и товары из непрочитанных чанков
+    // выглядят исчезнувшими — с обнулением ниже это стирает живой остаток.
+    let walkComplete = true;
     for (const warehouse of warehouses) {
-      if (Date.now() > deadline) break;
-      const { amounts } = await fetchFbsStocks(target.advertToken, warehouse.id, barcodes, { deadlineMs: deadline });
+      if (Date.now() > deadline) { walkComplete = false; break; }
+      const { amounts, complete } = await fetchFbsStocks(target.advertToken, warehouse.id, barcodes, { deadlineMs: deadline });
+      if (!complete) walkComplete = false;
       for (const [barcode, amount] of amounts) {
         const nmId = nmByBarcode.get(barcode);
         if (!nmId || !Number.isFinite(amount)) continue;
@@ -78,9 +85,26 @@ export async function GET(request: NextRequest) {
     const upsertError = rows.length ? await chunkedUpsert("wb_fbs_stocks", rows, "cabinet_id,nm_id") : null;
     if (upsertError) throw new Error(upsertError);
 
-    const partial = visited < warehouses.length;
+    const partial = visited < warehouses.length || !walkComplete;
+    // Апсёрт не умеет забывать. Товар, который распродали на всех складах
+    // продавца, пропадает из ответа — и его последний остаток жил в базе
+    // вечно. Обнуляем только после ПОЛНОГО обхода: после частичного «пропажа»
+    // означала бы всего лишь неопрошенный склад.
+    // Та же осторожность, что и в FBO: пустой результат обхода чаще означает
+    // сбой на стороне WB, чем «на всех складах ноль».
+    if (!partial && catalog.complete && rows.length > 0) {
+      const db = getSupabaseAdmin();
+      if (db) {
+        const { error: staleError } = await db
+          .from("wb_fbs_stocks")
+          .update({ quantity: 0, warehouses: visited, synced_at: stamp })
+          .eq("cabinet_id", cabinetId)
+          .lt("synced_at", stamp);
+        if (staleError) throw new Error(`не удалось обнулить исчезнувшие остатки FBS: ${staleError.message}`);
+      }
+    }
     const note = `${target.name}: складов ${visited} из ${warehouses.length}, товаров с остатком ${rows.filter((row) => row.quantity > 0).length}`
-      + (partial ? " · обход не закончен, часть складов не опрошена" : "")
+      + (partial ? (visited < warehouses.length ? " · обход не закончен, часть складов не опрошена" : " · обход склада оборван по бюджету, часть баркодов не спрошена") : "")
       + (catalog.complete ? "" : " · справочник баркодов неполный");
     await writeSyncLog("fbs-stocks", partial ? "error" : "ok", rows.length, note, startedAt);
     return NextResponse.json({ ok: !partial, summary: [{ cabinet: target.name, warehouses: visited, rows: rows.length }] });

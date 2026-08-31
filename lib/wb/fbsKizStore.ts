@@ -6,6 +6,7 @@
 // оборота» каждый раз начинала почти с нуля. База переживает и то, и другое.
 
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 /**
  * Сколько задание считается «недавно опрошенным». Пустой ответ WB — это не
@@ -155,17 +156,23 @@ export async function loadReturnFactsFromDb(
   const db = getSupabaseAdmin();
   if (!db) return null;
 
-  const { data, error } = await db
-    .from("wb_sales")
-    .select("sale_id, srid, nm_id, date")
-    .eq("cabinet_id", cabinetId)
-    .gte("date", fromIso)
-    .like("sale_id", "R%")
-    .limit(20_000);
-
-  // Колонки ещё нет — миграция не применена.
-  if (error) return null;
-  if (!data?.length) return [];
+  // Тот же потолок в тысячу строк: возвраты «за тысячей» пропадали из сверки.
+  let data: Array<Record<string, unknown>>;
+  try {
+    data = await loadAllSupabasePages<Record<string, unknown>>((from, to) => db
+      .from("wb_sales")
+      .select("sale_id, srid, nm_id, date")
+      .eq("cabinet_id", cabinetId)
+      .gte("date", fromIso)
+      .like("sale_id", "R%")
+      .order("date", { ascending: false })
+      .order("sale_id", { ascending: true })
+      .range(from, to), { label: "КИЗ: возвраты из базы", maxPages: 21 });
+  } catch {
+    // Колонки ещё нет — миграция не применена.
+    return null;
+  }
+  if (!data.length) return [];
 
   const withSrid = data.filter((row) => String(row.srid ?? "").trim());
   // Строки есть, а srid пуст — синк ещё не дошёл до этих дат. Показывать
@@ -188,16 +195,33 @@ export async function loadReturnFactsFromDb(
     }
   }
 
+  // Колонка «Баркод» в таблице возвратов всегда была пустой, хотя подпись под
+  // таблицей велит сверять единицу именно по баркоду. В карточках его нет, зато
+  // он есть в сборочном задании с тем же srid — берём оттуда.
+  const srids = [...new Set(withSrid.map((row) => String(row.srid ?? "").trim()).filter(Boolean))];
+  const barcodeBySrid = new Map<string, string>();
+  for (let index = 0; index < srids.length; index += 500) {
+    const { data: chunk } = await db
+      .from("wb_fbs_orders")
+      .select("srid, barcode")
+      .eq("cabinet_id", cabinetId)
+      .in("srid", srids.slice(index, index + 500));
+    for (const task of chunk ?? []) {
+      const barcode = String(task.barcode ?? "").trim();
+      if (barcode) barcodeBySrid.set(String(task.srid), barcode);
+    }
+  }
+
   return withSrid.map((row) => {
     const nmId = Number(row.nm_id);
     const card = cards.get(nmId);
+    const srid = String(row.srid ?? "").trim();
     return {
       saleId: String(row.sale_id ?? ""),
-      srid: String(row.srid ?? "").trim(),
+      srid,
       nmId: Number.isFinite(nmId) ? nmId : null,
       article: card?.article ?? "",
-      // Баркод в сверке не участвует: сопоставление идёт по srid.
-      barcode: "",
+      barcode: barcodeBySrid.get(srid) ?? "",
       brand: card?.brand ?? "",
       returnedAt: row.date ? String(row.date).slice(0, 10) : null,
     };
@@ -283,16 +307,33 @@ export async function loadAssemblyTasksFromDb(
   const db = getSupabaseAdmin();
   if (!db) return null;
 
-  const { data, error } = await db
-    .from("wb_fbs_orders")
-    .select("order_id, srid, nm_id, article, barcode, created_at_wb")
-    .eq("cabinet_id", cabinetId)
-    .gte("created_at_wb", new Date(fromMs).toISOString())
-    .lt("created_at_wb", new Date(toMs).toISOString())
-    .not("order_id", "is", null)
-    .limit(limit);
+  // Листаем: `limit` тут задавался двадцатью тысячами, но Supabase молча
+  // отдаёт тысячу. Сверка оборота считала выборку полной и объявляла «кода
+  // нет» по заданиям, которых просто не прочитала.
+  let data: Array<Record<string, unknown>>;
+  try {
+    data = await loadAllSupabasePages<Record<string, unknown>>((from, to) => db
+      .from("wb_fbs_orders")
+      .select("order_id, srid, nm_id, article, barcode, created_at_wb")
+      .eq("cabinet_id", cabinetId)
+      .gte("created_at_wb", new Date(fromMs).toISOString())
+      .lt("created_at_wb", new Date(toMs).toISOString())
+      .not("order_id", "is", null)
+      .order("created_at_wb", { ascending: true })
+      .order("srid", { ascending: true })
+      .range(from, to), {
+      label: "КИЗ: сборочные задания из базы",
+      // На единицу больше, чем нужно под limit: читатель бросает, если ни одной
+      // КОРОТКОЙ страницы не встретил, и ровно на границе полная выборка
+      // превращалась бы в исключение — а обработчик ниже читает его как «нет
+      // таблицы» и уходит выкачивать список у WB заново.
+      maxPages: Math.max(1, Math.ceil(limit / 1000)) + 1,
+    });
+  } catch {
+    return null;
+  }
 
-  if (error || !data?.length) return null;
+  if (!data.length) return null;
 
   const tasks: StoredAssemblyTask[] = [];
   for (const row of data) {

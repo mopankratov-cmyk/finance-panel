@@ -110,8 +110,12 @@ export default function AdvertsPage() {
   const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
-    fetch("/api/adverts/changes", { cache: "no-store" }).then((r) => r.json()).then((j) => setChanges(j.changes ?? [])).catch(() => {});
-  }, []);
+    if (!cabReady) return;
+    // История ставок теперь сужена до кабинета: без него она показывала правки
+    // соседних кабинетов как свои.
+    fetch(`/api/adverts/changes${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" })
+      .then((r) => r.json()).then((j) => setChanges(j.changes ?? [])).catch(() => {});
+  }, [cabId, cabReady]);
 
   useEffect(() => {
     if (!cabReady) return;

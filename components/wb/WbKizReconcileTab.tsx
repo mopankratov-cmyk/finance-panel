@@ -33,7 +33,6 @@ function dayValue(iso: string | null): number | null {
 const today = () => new Date().toISOString().slice(0, 10);
 
 const BUCKETS: { key: KizBucket; label: string; hint: string; tone: string; active: string }[] = [
-  { key: "retire", label: "Вывести", hint: "продано, код не выведен", tone: "text-rose-600", active: "border-rose-300 bg-rose-50" },
   // «Нет кода» намеренно не красный: кода не бывает у немаркируемого товара,
   // и пугать статьёй там, где нарушения нет, — хуже, чем промолчать.
   { key: "no_code", label: "Нет кода", hint: "код не привязан — выводить нечего", tone: "text-amber-600", active: "border-amber-300 bg-amber-50" },
@@ -44,14 +43,12 @@ const BUCKETS: { key: KizBucket; label: string; hint: string; tone: string; acti
 ];
 
 const BUCKET_CHIP: Record<KizRowBucket, string> = {
-  retire: "bg-rose-100 text-rose-700",
   no_code: "bg-amber-100 text-amber-700",
   check: "bg-amber-100 text-amber-700",
   not_checked: "bg-slate-100 text-slate-600",
 };
 
 const BUCKET_ACTION_LABEL: Record<KizRowBucket, string> = {
-  retire: "Вывести",
   no_code: "Нет кода",
   check: "Проверить",
   not_checked: "Проверить ещё раз",
@@ -216,10 +213,19 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
         setError(cause instanceof Error ? cause.message : "Не удалось выполнить сверку");
       })
       .finally(() => { if (current === requestId.current) setLoading(false); });
-    // reloadKey здесь намеренно «лишний»: его инкремент пересоздаёт колбэк и
-    // тем запускает повторную сверку по кнопке «Обновить».
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey ниже
   }, [cabinetId, days, singleCabinet, reloadKey]);
+
+  // Пересоздание колбэка само по себе НИЧЕГО не запускает — на это и был расчёт
+  // прежнего комментария. Из-за этого «скрыть предмет» и возврат предмета в
+  // сверку меняли настройку, но таблица оставалась прежней до ручного
+  // «Проверить»: человек видел скрытое и думал, что кнопка не сработала.
+  const firstReload = useRef(true);
+  useEffect(() => {
+    if (firstReload.current) { firstReload.current = false; return; }
+    check();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- запускаем именно на инкремент
+  }, [reloadKey]);
 
   useEffect(() => {
     if (!singleCabinet) return;
@@ -421,8 +427,7 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
         <>
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
             {BUCKETS.map((item) => {
-              const value = item.key === "retire" ? result.counts.retire
-                : item.key === "no_code" ? result.counts.noCode
+              const value = item.key === "no_code" ? result.counts.noCode
                 : item.key === "check" ? result.counts.check
                 : item.key === "not_checked" ? result.counts.notChecked
                 : result.counts.introduce;

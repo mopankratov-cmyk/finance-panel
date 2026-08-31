@@ -202,3 +202,48 @@ test("кампания со своим артикулом в составе ос
   assert.equal(items[0].campaigns[0].block, "cpc_search");
   assert.equal(items[0].campaigns[0].nmCount, 2);
 });
+
+test("разложенный расход из снимка не считается дважды", () => {
+  // Снимок кладёт в spent УЖЕ полную сумму и дублирует разложенное рядом
+  // «на память». Формула сырого слоя (spent + allocated) на снятом дне давала
+  // двойной счёт: по карточке, где WB не разнёс расход вовсе, — ровно вдвое.
+  const items = buildRkJournalItems(
+    [{
+      cabinet_id: "cab", date: "2026-08-26", nm_id: 111, advert_id: 5, block: "cpc_search",
+      bid: 100, views: 100, clicks: 10, spent: 569.74, spent_allocated: 569.74,
+      carts: 1, orders: 0, orders_sum: 0,
+    }],
+    [],
+    [{ advert_id: 5, cabinet_id: "cab", name: "РК", payment_type: "cpc", placement_search: true, placement_shelf: false, bid_search_rub: 100, bid_shelf_rub: null, bid_cpm_rub: 100, block_override: null, nm_ids: [111] }],
+  );
+  const cell = items[0].campaigns[0].days["2026-08-26"];
+  assert.equal(cell.spent, 569.74);
+  assert.equal(cell.spentAllocated, 569.74);
+});
+
+test("сырой слой по-прежнему складывает измеренное и разложенное", () => {
+  const items = buildRkJournalItems(
+    [],
+    [{
+      cabinet_id: "cab", advert_id: 5, nm_id: 111, date: "2026-08-27",
+      views: 100, clicks: 10, spent: 0, spent_allocated: 569.74, carts: 1, orders: 0, orders_sum: 0,
+    }],
+    [{ advert_id: 5, cabinet_id: "cab", name: "РК", payment_type: "cpc", placement_search: true, placement_shelf: false, bid_search_rub: 100, bid_shelf_rub: null, bid_cpm_rub: 100, block_override: null, nm_ids: [111] }],
+  );
+  assert.equal(items[0].campaigns[0].days["2026-08-27"].spent, 569.74);
+});
+
+test("вид размещения из справочника сильнее замороженного в снимке", () => {
+  // Снимок сделан в 06:00, когда WB ещё не отдал настройки кампании: вид
+  // остался «не определён». Живой справочник знает, что это полки — карточка
+  // «CPC полки» больше не пишет «нет кампаний».
+  const items = buildRkJournalItems(
+    [{
+      cabinet_id: "cab", date: "2026-08-26", nm_id: 111, advert_id: 7, block: "unknown",
+      bid: 50, views: 10, clicks: 1, spent: 40, spent_allocated: 0, carts: 0, orders: 0, orders_sum: 0,
+    }],
+    [],
+    [{ advert_id: 7, cabinet_id: "cab", name: "Полки", payment_type: "cpc", placement_search: false, placement_shelf: true, bid_search_rub: null, bid_shelf_rub: 50, bid_cpm_rub: 50, block_override: null, nm_ids: [111] }],
+  );
+  assert.equal(items[0].campaigns[0].block, "cpc_shelf");
+});

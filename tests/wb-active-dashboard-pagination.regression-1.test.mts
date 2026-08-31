@@ -13,11 +13,13 @@ test("SEO and funnel dashboards drain all daily WB fact pages", async () => {
   assert.match(seo, /loadAllSupabasePages<FunnelRow>/);
   assert.match(seo, /loadAllSupabasePages<AdRow>/);
   assert.match(seo, /"wb-seo-skus"/);
-  assert.match(seo, /schema: 4/);
+  // Номер схемы кэша растёт с каждой правкой полезной нагрузки — пинить его
+  // здесь незачем: тест про листание страниц, а не про версию снимка.
+  assert.match(seo, /schema: \d+/);
   assert.match(funnel, /loadAllSupabasePages<FunnelRow>/);
   assert.match(funnel, /loadAllSupabasePages<AdRow>/);
   assert.match(funnel, /"wb-funnel-day-metrics"/);
-  assert.match(funnel, /schema: 3/);
+  assert.match(funnel, /schema: \d+/);
 });
 
 test("market and review KPIs no longer stop at Supabase's first 1000 rows", async () => {

@@ -166,14 +166,24 @@ export function WbSuppliesPage() {
   // Ленивость сохраняется: пока вкладку не открыли, она не смонтирована и
   // ничего не грузит. Смена кабинета сбрасывает список — данные чужие.
   const [visitedTabs, setVisitedTabs] = useState<Tab[]>([]);
-  useEffect(() => { setVisitedTabs([]); }, [cabinetId]);
+  // Смена кабинета сбрасывает список — данные чужие. Но сбрасывать его В ПУСТОТУ
+  // нельзя: второй эффект добавляет вкладку только при смене самой вкладки, а
+  // она не менялась — человек оставался на пустом экране, пока не уходил на
+  // соседнюю вкладку и обратно. Оставляем текущую вкладку смонтированной.
+  useEffect(() => {
+    setVisitedTabs(needsSuppliesData ? [] : [tab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- перезапуск именно на смену кабинета
+  }, [cabinetId]);
   useEffect(() => {
     if (needsSuppliesData) return;
     setVisitedTabs((current) => current.includes(tab) ? current : [...current, tab]);
   }, [tab, needsSuppliesData]);
 
+  // Ключ включает кабинет: иначе React переиспользует смонтированную панель, и
+  // «Сверка оборота» (она грузится только по кнопке) показывает данные прежнего
+  // кабинета под именем нового.
   const standalonePanels = visitedTabs.map((value) => (
-    <div key={value} className={tab === value ? undefined : "hidden"}>{renderStandalone(value)}</div>
+    <div key={`${cabinetId ?? "all"}:${value}`} className={tab === value ? undefined : "hidden"}>{renderStandalone(value)}</div>
   ));
 
   return (

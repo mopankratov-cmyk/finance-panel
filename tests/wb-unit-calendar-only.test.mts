@@ -7,7 +7,10 @@ const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 
 test("API uses only the period report and passes both dates", async () => {
   const source = await read("app/api/unit/table/route.ts");
   assert.match(source, /parseUnitPeriodQuery/);
-  assert.match(source, /rpc\("unit_report_period",\s*\{\s*p_cabinet,\s*p_from:\s*period\.from,\s*p_to:\s*period\.to\s*\}\)/);
+  // Единственный источник таблицы — календарный RPC периода; читается он
+  // постранично, иначе PostgREST молча отдаёт первую тысячу товаров.
+  assert.match(source, /rpc\("unit_report_period",\s*\{\s*p_cabinet:\s*cabinetId,\s*p_from:\s*period\.from,\s*p_to:\s*period\.to\s*\}\)/);
+  assert.match(source, /loadUnitReportRows\(db, p_cabinet, period\)/);
   assert.doesNotMatch(source, /rpc\("rnp_report"/);
   assert.doesNotMatch(source, /advertCoverage|wb_sync_state|advert[_A-Za-z]*state/i);
   assert.match(source, /periodFrom:\s*period\.from/);

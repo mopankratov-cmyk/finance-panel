@@ -5,6 +5,7 @@ import { gatherAgentContext } from "@/lib/agent/gatherContext";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { CLAUDE_MODEL as MODEL, createClaudeClient } from "@/lib/agent/client";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import {
   callMvpAgent,
   isMvpAgentEnabled,
@@ -69,7 +70,14 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const context = await gatherAgentContext(cabinetIdFromParam(typeof body.cabinet === "string" ? body.cabinet : null));
+      const cabinetId = cabinetIdFromParam(typeof body.cabinet === "string" ? body.cabinet : null);
+      // Разбор агента собирает те же факты, что и экраны, — значит и доступ к
+      // кабинету обязан проверяться так же. Без этого менеджер с урезанным
+      // списком кабинетов получал сводку по всем.
+      if (!(await hasCabinetAccess(cabinetId))) {
+        return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+      }
+      const context = await gatherAgentContext(cabinetId);
       const completion = await callMvpAgent({ config, mode, context, question });
 
       if (mode === "chat") {
@@ -111,7 +119,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const context = await gatherAgentContext(cabinetIdFromParam(typeof body.cabinet === "string" ? body.cabinet : null));
+    const cabinetId = cabinetIdFromParam(typeof body.cabinet === "string" ? body.cabinet : null);
+    if (!(await hasCabinetAccess(cabinetId))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    const context = await gatherAgentContext(cabinetId);
     const contextJson = JSON.stringify(context);
 
     if (mode === "chat") {

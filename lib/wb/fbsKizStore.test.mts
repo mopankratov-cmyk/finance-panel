@@ -41,7 +41,7 @@ test("бюджет не уходит на повторный опрос одни
   const route = await read("../../app/api/supplies/fbs-orders/route.ts");
   assert.match(route, /!kizSnapshot\.recentlyProbed\.has\(row\.id\)/);
   // Пустой ответ пишется как отметка опроса.
-  assert.match(route, /discovered\.set\(orderId, code \? \[code\] : \[\]\)/);
+  assert.match(route, /discoveredCodes\.set\(id, code \? \[code\] : \[\]\)/);
 
   const reconcile = await read("../../app/api/supplies/kiz-reconcile/route.ts");
   assert.match(reconcile, /discovered\.set\(id, codes\)/);

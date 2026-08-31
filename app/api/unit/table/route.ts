@@ -25,13 +25,46 @@ import { loadUnitCommissionCache } from "@/lib/unit/commissionCache";
 import { aggregateUnitContributions, type UnitContribution } from "@/lib/unit/groupAggregation";
 import { mapLimitAllOrThrow } from "@/lib/unit/mapLimit";
 import { loadUnitProductScope } from "@/lib/unit/productScope";
-import { loadUnitSppRates, sppShareForNm, taxableUnitPrice } from "@/lib/unit/sppRates";
+import { loadUnitSppRates, sppShareForNm, sppShareSourceForNm, taxableUnitPrice } from "@/lib/unit/sppRates";
 import {
   loadCabinetUnitSettings,
   resolveExtraCommissionPct,
   resolveTaxPct,
   type CabinetUnitSettings,
 } from "@/lib/unit/cabinetSettings";
+
+interface ProductCostRow {
+  article: string;
+  name: string | null;
+  entity: string | null;
+  cost_rub: number | string | null;
+  warehouse_expenses: number | string | null;
+}
+
+/**
+ * Справочник себестоимостей — постранично. Supabase отдаёт первую тысячу строк
+ * молча: у ассортимента крупнее тысячи артикулов «хвост» оставался без
+ * себестоимости, и юнит показывал такие SKU как непосчитанные, хотя цифры есть.
+ */
+function loadProductCostRows(db: UnitDb) {
+  return loadAllSupabasePages<ProductCostRow>((from, to) => db
+    .from("product_costs")
+    .select("article, name, entity, cost_rub, warehouse_expenses")
+    .order("article", { ascending: true })
+    .range(from, to), { label: "Unit: себестоимости", maxPages: 100 });
+}
+
+/**
+ * RPC тоже страничный: PostgREST режет ответ функции на тысяче строк так же,
+ * как обычную выборку. Без листания таблица юнита теряла товары без единой
+ * ошибки в логе.
+ */
+function loadUnitReportRows(db: UnitDb, cabinetId: string | null, period: { from: string; to: string }) {
+  return loadAllSupabasePages<RpcRow>((from, to) => db
+    .rpc("unit_report_period", { p_cabinet: cabinetId, p_from: period.from, p_to: period.to })
+    .order("nm_id", { ascending: true })
+    .range(from, to), { label: "Unit: отчёт за период", maxPages: 100 });
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -60,10 +93,9 @@ async function loadGroupPayload(
   // а не одной ставкой на всю группу.
   cabinetSettings: Map<string, CabinetUnitSettings>,
 ) {
-  const costsRes = await db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses");
-  if (costsRes.error) throw new Error(costsRes.error.message);
+  const costRows = await loadProductCostRows(db);
   const meta = new Map<string, ProductMeta>();
-  for (const costRow of costsRes.data ?? []) {
+  for (const costRow of costRows) {
     meta.set(costRow.article as string, {
       name: (costRow.name as string) ?? "",
       cat: (costRow.entity as string) ?? "",
@@ -74,11 +106,7 @@ async function loadGroupPayload(
 
   const parts = await mapLimitAllOrThrow(scope.members, 3, async (cabinetId) => {
     const [rpcResult, allowedNmIds, sppRates, commissions] = await Promise.all([
-      db.rpc("unit_report_period", {
-        p_cabinet: cabinetId,
-        p_from: period.from,
-        p_to: period.to,
-      }),
+      loadUnitReportRows(db, cabinetId, period),
       loadUnitProductScope(cabinetId, {
         cabinet: async () => {
           const result = await db.from("wb_cabinets")
@@ -115,8 +143,7 @@ async function loadGroupPayload(
         return { data: result.data, error: result.error };
       }, cabinetId),
     ]);
-    if (rpcResult.error) throw new Error(rpcResult.error.message);
-    let scopedRows = ((rpcResult.data ?? []) as RpcRow[])
+    let scopedRows = (rpcResult as RpcRow[])
       .filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
 
     if (allowedNmIds !== null && allowedNmIds.size > 0 && scopedRows.length === 0) {
@@ -163,10 +190,12 @@ async function loadGroupPayload(
         stock: Number(row.stock ?? 0) + Number(row.in_way_to_client ?? 0),
         adSpend: Number(row.ad_spend_month ?? 0),
         costPerUnit: rowCost != null && rowCost > 0 ? rowCost : null,
+        prepPerUnit: meta.get(row.article)?.storage ?? 0,
         marketplacePct: rates.marketplacePct,
         acquiringPct: rates.acquiringPct,
         ratesFactual: rates.factual,
         sppShare: sppShareForNm(sppRates, row.nm_id),
+        sppOwn: sppShareSourceForNm(sppRates, row.nm_id) === "own",
         taxPct: cabinetSettings.get(cabinetId)?.taxPct ?? null,
         extraCommissionPct: cabinetSettings.get(cabinetId)?.extraCommissionPct ?? null,
       };
@@ -222,7 +251,7 @@ async function loadGroupPayload(
     names: aggregated.map((row) => meta.get(row.article)?.name ?? ""),
     source_url: null,
     coverage: { total: rows.length, costsKnown, factualRatesKnown, complete, sppKnown },
-    meta_text: `Группа ${scope.members.length} кабинетов · юнит по ${rows.length} SKU · полный факт ${complete}/${rows.length} · ставки комиссий — последний синхронизированный 30-дневный snapshot, не исторический факт выбранного периода · целевая цена и дельта для группы недоступны · налог ${money.taxPct}% с цены после СПП, СПП по факту продаж периода ${sppKnown}/${rows.length} · ${formatUnitPeriod(period)}`,
+    meta_text: `Группа ${scope.members.length} кабинетов · юнит по ${rows.length} SKU · полный факт ${complete}/${rows.length} · ставки комиссий — последний синхронизированный 30-дневный snapshot, не исторический факт выбранного периода · целевая цена и дельта для группы недоступны · подготовка из справочника себестоимостей · налог ${money.taxPct}% с цены после СПП, СПП по факту продаж периода ${sppKnown}/${rows.length} · ${formatUnitPeriod(period)}`,
     periodFrom: period.from,
     periodTo: period.to,
     timezone: UNIT_PERIOD_TIMEZONE,
@@ -329,9 +358,9 @@ export async function GET(req: NextRequest) {
     if (scope.mode === "group") {
       return loadGroupPayload(db, scope, period, money, cabinetSettings);
     }
-    const [rpcRes, costsRes, comm, sppRates] = await Promise.all([
-      db.rpc("unit_report_period", { p_cabinet, p_from: period.from, p_to: period.to }),
-      db.from("product_costs").select("article, name, entity, cost_rub, warehouse_expenses"),
+    const [rpcRes, costsRows, comm, sppRates] = await Promise.all([
+      loadUnitReportRows(db, p_cabinet, period),
+      loadProductCostRows(db),
       getWbCommissionForCabinet(p_cabinet, 30, { allowLiveFallback: false }),
       loadUnitSppRates(db, {
         cabinetId: p_cabinet,
@@ -341,10 +370,8 @@ export async function GET(req: NextRequest) {
         label: "Unit: СПП по продажам периода",
       }),
     ]);
-    if (rpcRes.error) throw new Error(rpcRes.error.message);
-    if (costsRes.error) throw new Error(costsRes.error.message);
     const meta = new Map<string, { name: string; cat: string; storage: number; cost: number | null }>();
-    for (const c of costsRes.data ?? []) meta.set(c.article as string, {
+    for (const c of costsRows) meta.set(c.article as string, {
       name: (c.name as string) ?? "",
       cat: (c.entity as string) ?? "",
       storage: Number(c.warehouse_expenses ?? 0),
@@ -361,8 +388,9 @@ export async function GET(req: NextRequest) {
     let costsKnown = 0;
     let factualRatesKnown = 0;
     let sppKnown = 0;
+    let sppAveraged = 0;
 
-    let scopedRows = ((rpcRes.data ?? []) as RpcRow[])
+    let scopedRows = (rpcRes as RpcRow[])
       .filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));
 
     // Optima and other restricted cabinets are driven by their allowlist.
@@ -408,7 +436,9 @@ export async function GET(req: NextRequest) {
       const stock = Number(r.stock ?? 0) + Number(r.in_way_to_client ?? 0);
       const price = orders > 0 ? rev / orders : 0;          // Цена продавца = ср. price_with_disc, до СПП
       const buyoutPct = orders > 0 ? (r.buyouts_month / orders) * 100 : null;
-      const drr = rev > 0 ? (ad / rev) * 100 : 0;
+      // ДРР без выручки — это не ноль. SKU, спаливший рекламный бюджет без
+      // единой продажи, выглядел идеальным: «ДРР 0%».
+      const drr = rev > 0 ? (ad / rev) * 100 : null;
       const adPerUnit = orders > 0 ? ad / orders : 0;
       const rates = resolveWbRatesForNm(comm, r.nm_id);
       if (costKnown) costsKnown++;
@@ -420,12 +450,19 @@ export async function GET(req: NextRequest) {
       // Налог платится с того, что заплатил покупатель, — с цены ПОСЛЕ СПП.
       // Удержания WB и эквайринг остаются на цене продавца: их WB считает от неё.
       const sppShare = sppShareForNm(sppRates, r.nm_id);
-      if (sppShare != null) sppKnown++;
+      // Считаем покрытием только СВОЮ ставку: средняя по кабинету — оценка, и
+      // выдавать её за факт SKU в подписи нельзя.
+      if (sppShareSourceForNm(sppRates, r.nm_id) === "own") sppKnown++;
+      if (sppShareSourceForNm(sppRates, r.nm_id) === "average") sppAveraged++;
       const priceWithSpp = taxableUnitPrice(price, sppShare);
       const taxRub = priceWithSpp * taxPct / 100;
       const canCalculate = price > 0 && costKnown && rates.factual;
       // Маржа ДО ДРР (без рекламы)
-      const marginBeforeDrr = canCalculate ? price - cost - ff - marketplaceRub - acqRub - extraCommissionRub - taxRub : null;
+      // Подготовка (упаковка, маркировка, отгрузка) хранится в product_costs и
+      // вычитается в «Склейках» и ОПиУ, а юнит её игнорировал: маржа была
+      // завышена и не сходилась с соседними экранами.
+      const prep = m?.storage ?? 0;
+      const marginBeforeDrr = canCalculate ? price - cost - ff - prep - marketplaceRub - acqRub - extraCommissionRub - taxRub : null;
       const marginBeforeDrrPct = marginBeforeDrr != null ? (marginBeforeDrr / price) * 100 : null;
       // Маржа/ед и вал % ПОСЛЕ ДРР (минус реклама)
       const marginUnit = marginBeforeDrr != null ? marginBeforeDrr - adPerUnit : null;
@@ -434,8 +471,8 @@ export async function GET(req: NextRequest) {
       // Налог берётся с цены после СПП, значит к цене продавца его ставка эффективно
       // ниже в (1 − СПП) раз — иначе решатель требовал бы цену выше нужной.
       const effectiveTaxPct = taxPct * (price > 0 ? priceWithSpp / price : 1);
-      const den = 1 - (rates.marketplacePct + rates.acquiringPct + extraCommission.extraCommissionPct + effectiveTaxPct + drr + targetMargin) / 100;
-      const targetPrice = canCalculate && den > 0 ? (cost + ff) / den : null;
+      const den = 1 - (rates.marketplacePct + rates.acquiringPct + extraCommission.extraCommissionPct + effectiveTaxPct + (drr ?? 0) + targetMargin) / 100;
+      const targetPrice = canCalculate && den > 0 ? (cost + ff + prep) / den : null;
       const deltaPct = targetPrice && price > 0 ? ((price - targetPrice) / targetPrice) * 100 : null;
 
       rows.push([
@@ -456,7 +493,7 @@ export async function GET(req: NextRequest) {
         blank(price > 0 && rates.factual ? r0(acqRub) : null), // 14 Эквайринг ₽
         blank(price > 0 && extraCommission.extraCommissionPct > 0 ? r0(extraCommissionRub) : null), // 15 Комиссия кабинета ₽
         r0(ad),                               // 16 Реклама ₽
-        r1(drr),                              // 17 ДРР %
+        blank(drr == null ? null : r1(drr)),  // 17 ДРР %
         blank(price > 0 ? r0(taxRub) : null), // 18 Налог ₽
         blank(marginUnit != null ? r0(marginUnit) : null), // 19 Маржа/ед ₽
         marginBeforeDrrPct != null ? r1(marginBeforeDrrPct) : "", // 20 Маржа % до ДРР
@@ -490,7 +527,7 @@ export async function GET(req: NextRequest) {
         extraCommissionSource: extraCommission.source,
         cabinetId: p_cabinet,
       },
-      meta_text: `Юнит по ${totalRows} SKU · полный факт ${completeRows}/${totalRows} · себестоимость ${costsKnown}/${totalRows} · ставки WB ${factualRatesKnown}/${totalRows} · налог ${taxPct}%${tax.source === "cabinet" ? " (настройка кабинета)" : ""} с цены после СПП, СПП по факту продаж периода ${sppKnown}/${totalRows}${extraCommission.extraCommissionPct > 0 ? ` · комиссия кабинета ${extraCommission.extraCommissionPct}%` : ""} · ${formatUnitPeriod(period)}`,
+      meta_text: `Юнит по ${totalRows} SKU · полный факт ${completeRows}/${totalRows} · себестоимость ${costsKnown}/${totalRows} · ставки WB ${factualRatesKnown}/${totalRows} · подготовка из справочника себестоимостей · налог ${taxPct}%${tax.source === "cabinet" ? " (настройка кабинета)" : ""} с цены после СПП, СПП по факту продаж периода ${sppKnown}/${totalRows}${sppAveraged > 0 ? `, ещё ${sppAveraged} по средней кабинета` : ""}${extraCommission.extraCommissionPct > 0 ? ` · комиссия кабинета ${extraCommission.extraCommissionPct}%` : ""} · ${formatUnitPeriod(period)}`,
       periodFrom: period.from,
       periodTo: period.to,
       timezone: UNIT_PERIOD_TIMEZONE,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { buildRnpReport, type RnpRow } from "@/lib/rnp/buildRnp";
 import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
 import { solvePrices } from "@/lib/unit/priceSolver";
@@ -46,14 +47,22 @@ export async function GET(request: NextRequest) {
   // Воронка за окно: сумма открытий/корзин/заказов на nm.
   const fromDate = new Date(Date.now() - windowDays * 86400000).toISOString().slice(0, 10);
   const funnel = new Map<number, { opens: number; carts: number; orders: number }>();
-  let funnelQuery = db
-    .from("wb_funnel_daily")
-    .select("nm_id, open_card, add_to_cart, orders")
-    .gte("date", fromDate);
-  if (cabinetId) funnelQuery = funnelQuery.eq("cabinet_id", cabinetId);
-  if (allowedNmIds) funnelQuery = funnelQuery.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
-  const { data: frows } = await funnelQuery;
-  for (const r of (frows ?? []) as { nm_id: number; open_card: number | null; add_to_cart: number | null; orders: number | null }[]) {
+  // Воронка за окно — это строка на (товар, день): неделя на сотне артикулов
+  // уже за тысячей. Без листания сигналы считались по куску периода, а ошибка
+  // запроса терялась при деструктуризации и выглядела как «данных нет».
+  const frows = await loadAllSupabasePages<{ nm_id: number; open_card: number | null; add_to_cart: number | null; orders: number | null }>((from, to) => {
+    let query = db
+      .from("wb_funnel_daily")
+      .select("nm_id, open_card, add_to_cart, orders")
+      .gte("date", fromDate)
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to);
+    if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+    if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+    return query;
+  }, { label: "Сигналы: воронка", maxPages: 100 });
+  for (const r of frows) {
     if (!requestAllowsNm(allowedNmIds, r.nm_id)) continue;
     const e = funnel.get(r.nm_id) ?? { opens: 0, carts: 0, orders: 0 };
     e.opens += Number(r.open_card ?? 0);

@@ -79,12 +79,27 @@ export async function POST(request: NextRequest) {
   if (!directorSession) return NextResponse.json({ error: "Доступ только для директора" }, { status: 403 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const b = (await request.json().catch(() => ({}))) as { email?: string; password?: string; role?: string; cabinet_ids?: string[] };
+  const b = (await request.json().catch(() => ({}))) as { email?: string; password?: string; role?: string; cabinet_ids?: string[]; replace_existing?: boolean };
   const email = (b.email || "").trim().toLowerCase();
   const role = ["director", "finance", "manager", "ozon_manager", "seller", "warehouse"].includes(b.role || "") ? b.role : "manager";
   if (!email || !b.password || b.password.length < 10) return NextResponse.json({ error: "Email и пароль (≥10 символов)" }, { status: 400 });
   const password_hash = await hashPassword(b.password);
   const { data: existing } = await db.from("app_users").select("id,role,organization_id").eq("email", email).maybeSingle();
+  // Форма называется «добавить сотрудника», а при совпадении почты она молча
+  // переписывала существующему человеку пароль, роль и список кабинетов — и
+  // заново включала отключённую учётку. Директор при этом видел «сохранён» и
+  // не знал, что только что сбросил доступ живому пользователю (в том числе
+  // другому директору). Замену теперь надо подтвердить осознанно.
+  if (existing && !b.replace_existing) {
+    return NextResponse.json(
+      {
+        error: `Пользователь ${email} уже есть (роль «${existing.role}»). Замена перезапишет пароль, роль и кабинеты.`,
+        exists: true,
+        current_role: existing.role,
+      },
+      { status: 409 },
+    );
+  }
   let organizationId: string | null = null;
   if (role === "seller") {
     if (existing?.role === "seller" && existing.organization_id) organizationId = existing.organization_id;

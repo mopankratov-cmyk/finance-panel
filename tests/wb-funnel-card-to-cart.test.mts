@@ -57,9 +57,9 @@ test("routes и UI подключают production helper и новый конт
   ]);
 
   assert.match(skuRoute, /cv_cart_7d:\s*percentRatio\(w\.cart, w\.open\)/);
-  assert.match(skuRoute, /schema:\s*4/);
+  assert.match(skuRoute, /schema:\s*\d+/);
   assert.match(dayRoute, /buildWbFunnelDayMetrics\(scopedFunnelRows, scopedAdRows\)/);
-  assert.match(dayRoute, /schema:\s*4/);
+  assert.match(dayRoute, /schema:\s*\d+/);
   assert.match(ui, /cv_cart_window:\s*number\s*\|\s*null/);
   assert.match(ui, /MetricKey[^;]+"cart_cr"/);
   assert.match(ui, /metricId:\s*"cardToCartCr"/);

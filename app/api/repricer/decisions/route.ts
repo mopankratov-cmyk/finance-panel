@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
-import { filterRepricerRowsByScopes } from "@/lib/repricer/scope";
+import { filterRepricerRowsByScopes, type RepricerScopedRow } from "@/lib/repricer/scope";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { cabinetProductScope, getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 
@@ -26,13 +27,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
 
-  let q = db.from("repricer_decisions").select("*").order("created_at", { ascending: false });
-  if (date) q = q.eq("run_date", date);
-  if (cabinetId) q = q.eq("cabinet", cabinetId);
-  const { data, error } = await q.limit(2000);
-  if (error) return NextResponse.json({ decisions: [], error: error.message });
+  // Решения листаются: `limit(2000)` не спасал — Supabase отдаёт максимум
+  // тысячу строк за запрос, и выгрузка «Новые цены» молча теряла всё, что за
+  // ней. Потерянная строка здесь — это товар, которому не поменяли цену.
+  let data: RepricerScopedRow[];
+  try {
+    data = await loadAllSupabasePages<RepricerScopedRow>((from, to) => {
+      let q = db.from("repricer_decisions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+      if (date) q = q.eq("run_date", date);
+      if (cabinetId) q = q.eq("cabinet", cabinetId);
+      return q;
+    }, { label: "Репрайсер: решения", maxPages: 50 });
+  } catch (error) {
+    return NextResponse.json({ decisions: [], error: error instanceof Error ? error.message : "Ошибка чтения решений" });
+  }
   const cabinets = await getActiveWbCabinets();
   const scopes = new Map(cabinets.map((cabinet) => [cabinet.id, cabinetProductScope(cabinet)]));
-  const decisions = filterRepricerRowsByScopes(data ?? [], scopes);
+  const decisions = filterRepricerRowsByScopes(data, scopes);
   return NextResponse.json({ count: decisions.length, decisions });
 }

@@ -10,7 +10,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
-import { initialStatisticsCursor, statisticsCursor } from "@/lib/wb/syncRecovery";
+import { initialStatisticsCursor, statisticsCursor, statisticsRequestCursor } from "@/lib/wb/syncRecovery";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
 
@@ -90,8 +90,13 @@ export async function GET(request: NextRequest) {
 
       const dateFrom = contexts.reduce((oldest, context) => context.dateFrom < oldest ? context.dateFrom : oldest, contexts[0].dateFrom);
 
+      // Спрашиваем с ПЕРЕХЛЁСТОМ: WB публикует часть строк задним числом, с
+      // lastChangeDate старше сохранённого курсора, и без перехлёста такую
+      // строку не запросят уже никогда. Принудительный ре-синк перехлёста не
+      // требует — там окно задал человек.
+      const requestFrom = forceFrom ? dateFrom : statisticsRequestCursor(dateFrom);
       const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/sales");
-      url.searchParams.set("dateFrom", dateFrom);
+      url.searchParams.set("dateFrom", requestFrom);
       url.searchParams.set("flag", "0");
 
       const res = await fetchWbStatistics({ url: url.toString(), token: contexts[0].target.statsToken, deadline });
@@ -136,9 +141,12 @@ export async function GET(request: NextRequest) {
 
       const sales: Record<string, unknown>[] = await res.json();
       scanned += sales.length;
-      const nextCursor = sales.length
-        ? statisticsCursor(sales, dateFrom)
-        : new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      // Пустой ответ раньше двигал курсор на «сейчас минус два часа» и писал
+      // «догнан на 100%». Одна такая осечка — и продажи за пропущенные дни не
+      // соберутся уже никогда, при том что ВОЗВРАТЫ за те же дни приходят
+      // следующими прогонами. В РНП это выглядит как отрицательные выкупы:
+      // из нуля известных продаж вычитаются пришедшие возвраты.
+      const nextCursor = sales.length ? statisticsCursor(sales, dateFrom) : null;
       const caughtUp = sales.length < 80_000;
       for (const context of contexts) {
         const { target, saved } = context;
@@ -184,14 +192,15 @@ export async function GET(request: NextRequest) {
         total += rows.length;
         let stateError: string | null = null;
         if (!forceFrom && db && target.cabinetId) {
+          const cursorToWrite = nextCursor ?? saved?.cursor ?? context.dateFrom;
           stateError = await writeWbSyncState(db, target.cabinetId, "sales", {
-            cursor: nextCursor,
+            cursor: cursorToWrite,
             status: caughtUp ? "caught_up" : "backfill",
             attempts: 0,
             lastError: null,
             state: {
               historyStart: saved?.state.historyStart ?? context.dateFrom,
-              lastRowDate: nextCursor,
+              lastRowDate: cursorToWrite,
               rowsLoaded: Number(saved?.state.rowsLoaded ?? 0) + rows.length,
               scanned: sales.length,
               caughtUp,
@@ -202,13 +211,29 @@ export async function GET(request: NextRequest) {
           });
         }
         if (stateError) errors.push(`${target.name}: состояние sales: ${stateError}`);
-        progress.push({ cabinet: target.name, scanned: sales.length, matched: rows.length, cursor: nextCursor, caughtUp, sharedRequest: contexts.length > 1, stateError });
+        progress.push({ cabinet: target.name, scanned: sales.length, matched: rows.length, cursor: nextCursor ?? saved?.cursor ?? context.dateFrom, caughtUp, sharedRequest: contexts.length > 1, stateError });
       }
     }
 
-    const ok = errors.length === 0;
-    await writeSyncLog("sales", ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok, rows: total, scanned, cabinets: targets.length, progress, errors, deferred });
+    // То же правило, что и в заказах: нулевой сбор при отложенных кабинетах —
+    // не успех. Зелёный журнал при пустых экранах не заставляет никого
+    // разбираться, и час без продаж проходит незамеченным.
+    const nothingCollected = total === 0 && scanned === 0;
+    const allDeferred = deferred.length > 0 && nothingCollected;
+    const ok = errors.length === 0 && !allDeferred;
+    const logNote = errors.join("; ")
+      || (allDeferred ? `данные не обновлены: ${deferred.join("; ")}` : null);
+    await writeSyncLog("sales", ok ? "ok" : "error", total, logNote, startedAt);
+    return NextResponse.json({
+      ok,
+      rows: total,
+      scanned,
+      cabinets: targets.length,
+      progress,
+      errors,
+      deferred,
+      ...(allDeferred ? { error: `WB ограничил запросы, продажи не обновлены: ${deferred[0]}` } : {}),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     await writeSyncLog("sales", "error", null, msg, startedAt);

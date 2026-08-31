@@ -10,7 +10,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
-import { initialStatisticsCursor, statisticsCursor } from "@/lib/wb/syncRecovery";
+import { initialStatisticsCursor, statisticsCursor, statisticsRequestCursor } from "@/lib/wb/syncRecovery";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
 
@@ -93,8 +93,13 @@ export async function GET(request: NextRequest) {
       // фильтруется и записывается во все виртуальные кабинеты продавца.
       const dateFrom = contexts.reduce((oldest, context) => context.dateFrom < oldest ? context.dateFrom : oldest, contexts[0].dateFrom);
 
+      // Спрашиваем с ПЕРЕХЛЁСТОМ: WB публикует часть строк задним числом, с
+      // lastChangeDate старше сохранённого курсора, и без перехлёста такую
+      // строку не запросят уже никогда. Принудительный ре-синк перехлёста не
+      // требует — там окно задал человек.
+      const requestFrom = forceFrom ? dateFrom : statisticsRequestCursor(dateFrom);
       const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/orders");
-      url.searchParams.set("dateFrom", dateFrom);
+      url.searchParams.set("dateFrom", requestFrom);
       url.searchParams.set("flag", "0");
 
       const res = await fetchWbStatistics({ url: url.toString(), token: contexts[0].target.statsToken, deadline });
@@ -128,9 +133,12 @@ export async function GET(request: NextRequest) {
 
       const orders: Record<string, unknown>[] = await res.json();
       scanned += orders.length;
-      const nextCursor = orders.length
-        ? statisticsCursor(orders, dateFrom)
-        : new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      // Пустой ответ раньше двигал курсор на «сейчас минус два часа». Для
+      // кабинета, который догоняет историю, это означало перепрыгнуть весь
+      // несобранный период и объявить себя догнанным на 100%: заказы за
+      // пропущенные недели не приходили уже никогда. Пустота — это «нового
+      // нет», а не «всё собрано»: курсор остаётся там, где стоял.
+      const nextCursor = orders.length ? statisticsCursor(orders, dateFrom) : null;
       const caughtUp = orders.length < 80_000;
       for (const context of contexts) {
         const { target, saved } = context;
@@ -177,14 +185,15 @@ export async function GET(request: NextRequest) {
         total += rows.length;
         let stateError: string | null = null;
         if (!forceFrom && db && target.cabinetId) {
+          const cursorToWrite = nextCursor ?? saved?.cursor ?? context.dateFrom;
           stateError = await writeWbSyncState(db, target.cabinetId, "orders", {
-            cursor: nextCursor,
+            cursor: cursorToWrite,
             status: caughtUp ? "caught_up" : "backfill",
             attempts: 0,
             lastError: null,
             state: {
               historyStart: saved?.state.historyStart ?? context.dateFrom,
-              lastRowDate: nextCursor,
+              lastRowDate: cursorToWrite,
               rowsLoaded: Number(saved?.state.rowsLoaded ?? 0) + rows.length,
               scanned: orders.length,
               caughtUp,
@@ -195,13 +204,30 @@ export async function GET(request: NextRequest) {
           });
         }
         if (stateError) errors.push(`${target.name}: состояние orders: ${stateError}`);
-        progress.push({ cabinet: target.name, scanned: orders.length, matched: rows.length, cursor: nextCursor, caughtUp, sharedRequest: contexts.length > 1, stateError });
+        progress.push({ cabinet: target.name, scanned: orders.length, matched: rows.length, cursor: nextCursor ?? saved?.cursor ?? context.dateFrom, caughtUp, sharedRequest: contexts.length > 1, stateError });
       }
     }
 
-    const ok = errors.length === 0;
-    await writeSyncLog("orders", ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok, rows: total, scanned, cabinets: targets.length, progress, errors, deferred });
+    // «Успех без единой строки» — самый дорогой вид молчания: журнал зелёный,
+    // экраны пустые, и никто не идёт разбираться. Если WB отбил ЛИМИТОМ все
+    // кабинеты и не записано ничего, это не успех, а отложенный сбор — так и
+    // говорим, иначе сторож синхронизаций пропустит целый час без данных.
+    const nothingCollected = total === 0 && scanned === 0;
+    const allDeferred = deferred.length > 0 && nothingCollected;
+    const ok = errors.length === 0 && !allDeferred;
+    const logNote = errors.join("; ")
+      || (allDeferred ? `данные не обновлены: ${deferred.join("; ")}` : null);
+    await writeSyncLog("orders", ok ? "ok" : "error", total, logNote, startedAt);
+    return NextResponse.json({
+      ok,
+      rows: total,
+      scanned,
+      cabinets: targets.length,
+      progress,
+      errors,
+      deferred,
+      ...(allDeferred ? { error: `WB ограничил запросы, заказы не обновлены: ${deferred[0]}` } : {}),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     await writeSyncLog("orders", "error", null, msg, startedAt);

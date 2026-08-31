@@ -34,6 +34,12 @@ test("supplies header counts the full stock catalog, not only reorder recommenda
 test("RNP warmup covers the same rolling week that opens in the UI", () => {
   const source = read("../app/api/sync/dashboard-cache/route.ts");
   assert.match(source, /timeZone:\s*"Europe\/Moscow"/);
-  assert.match(source, /from:\s*shiftIsoDate\(to,\s*-6\)/);
-  assert.match(source, /\[currentMoscowWeek\(\), currentMoscowMonth\(\)\]/);
+  assert.match(source, /from:\s*shiftIsoDate\(to,\s*-\(days - 1\)\)/);
+  // Ключ снимка — пара дат, поэтому греются ровно пресеты экрана: неделя,
+  // две недели, месяц. Квартал не греется осознанно: он не помещается в
+  // бюджет функции вместе с остальными.
+  assert.match(source, /\[moscowTrailingWindow\(7\), moscowTrailingWindow\(14\), currentMoscowMonth\(\)\]/);
+  const rnpPage = read("../components/wb/WbRnpPage.tsx");
+  assert.match(rnpPage, /start\.setDate\(start\.getDate\(\) - 6\);/, "пресет «Неделя» — последние 7 дней");
+  assert.match(rnpPage, /start\.setDate\(start\.getDate\(\) - 13\);/, "пресет «2 недели» — последние 14 дней");
 });

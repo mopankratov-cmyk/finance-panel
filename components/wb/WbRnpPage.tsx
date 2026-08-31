@@ -8,6 +8,7 @@ import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/component
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
+import { shiftIsoDay } from "@/lib/sync/moscowDay";
 import { readApiResponse, readOkApiResponse } from "@/lib/http/readApiResponse";
 import { buildRnpArticleCompare } from "@/lib/rnp/articleCompare";
 import { expandRnpTable } from "@/lib/rnp/compactTable";
@@ -316,10 +317,16 @@ const PRESETS = [
 ] as const;
 
 const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: readonly RnpMetricField[]; expanded: boolean }> = [
-  { id: "main", label: "Основное", fields: ["orders_count", "buyout_pct", "buyouts_count", "ad_spent", "drr"], expanded: true },
-  { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "orders_spp_sum", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "buyouts_sum", "returns_count", "returns_sum", "return_pct", "actual_buyout_pct"], expanded: false },
+  // «Выкуплено» стоит рядом с «Выкупы» намеренно: первое — все выкупы дня, как
+  // их отдал WB, второе — они же за вычетом возвратов. Возврат приходит в свою
+  // дату и относится к продаже, которой в периоде может не быть вовсе, поэтому
+  // нетто-число законно уходит в минус на краю окна. Видеть обе цифры рядом —
+  // единственный способ не принять этот минус за падение продаж.
+  { id: "main", label: "Основное", fields: ["orders_count", "buyout_pct", "buyouts_gross_count", "buyouts_count", "ad_spent", "drr"], expanded: true },
+  { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "orders_spp_sum", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_rub", "buyouts_sum", "returns_count", "returns_sum", "return_pct", "actual_buyout_pct"], expanded: false },
   { id: "price", label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"], expanded: false },
-  { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr"], expanded: false },
+  { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr", "wishlist", "ad_orders", "ad_orders_sum"], expanded: false },
+  { id: "organic", label: "Органика", fields: ["org_open_card", "org_orders_count", "org_cr_pct", "org_share_pct"], expanded: false },
   { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "agent_commission_rub", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
   { id: "reviews", label: "Отзывы", fields: ["reviews_count", "reviews_rating", "reviews_bad_share_pct"], expanded: false },
   { id: "ads_manual", label: "Реклама · Ручная", fields: ["ads_manual_spent", "ads_manual_views", "ads_manual_clicks", "ads_manual_orders", "ads_manual_orders_sum"], expanded: false },
@@ -1588,9 +1595,10 @@ export function WbRnpPage() {
             const long = (iso: string) => iso.split("-").reverse().join(".");
             return `${long(previous.from)} – ${long(previous.to)}`;
           })()}
-          asOfLabel={activeData?.as_of
-            ? new Date(activeData.as_of).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-            : null}
+          // as_of — это ДАТА среза, без времени. Прогон через Date делал из неё
+          // полночь UTC: в западной таймзоне подпись показывала предыдущий
+          // день, да ещё и выдумывала «00:00».
+          asOfLabel={activeData?.as_of ? activeData.as_of.slice(0, 10).split("-").reverse().join(".") : null}
           downloadDisabled={!activeData}
           onGranularityChange={setGranularity}
           onBurnedOnlyChange={setBurnedOnly}
@@ -2018,15 +2026,18 @@ export function WbRnpPage() {
                   drafts={drafts}
                   saving={saving}
                   journal={journalByNm.get(sku.nm) ?? []}
+                  periodFrom={range.from}
                   onSelectedChange={(selected) => setSelectedOperationNms((current) =>
                     selected ? [...new Set([...current, sku.nm])] : current.filter((nm) => nm !== sku.nm))}
                   onOpenOperations={() => {
                     setOperationsInitialDate(undefined);
                     setOperationsSkuNm(sku.nm);
                   }}
-                  onOpenJournalDate={(dateLabel) => {
-                    const [day, monthPart] = dateLabel.split(".");
-                    setOperationsInitialDate(`${range.to.slice(0, 4)}-${monthPart}-${day}`);
+                  onOpenJournalDate={(_dateLabel, index) => {
+                    // Год брался из конца периода: на отрезке через новый год
+                    // декабрьская запись уезжала на год вперёд. Дата колонки
+                    // однозначно считается от начала периода по её номеру.
+                    setOperationsInitialDate(shiftIsoDay(range.from, index));
                     setOperationsSkuNm(sku.nm);
                   }}
                   onHideMetric={(field) => updateMetricFields(metricFields.filter((item) => item !== field))}
@@ -2324,6 +2335,7 @@ function OptimaProductCard({
   onSelectedChange,
   onOpenOperations,
   onOpenJournalDate,
+  periodFrom,
   onHideMetric,
   onDraftChange,
   onSave,
@@ -2351,7 +2363,9 @@ function OptimaProductCard({
   journal: RnpJournalEntry[];
   onSelectedChange: (selected: boolean) => void;
   onOpenOperations: () => void;
-  onOpenJournalDate: (dateLabel: string) => void;
+  onOpenJournalDate: (dateLabel: string, index: number) => void;
+  /** Первый день периода — для точной даты колонки журнала. */
+  periodFrom?: string;
   onHideMetric: (field: RnpMetricField) => void;
   onDraftChange: (field: string, value: string) => void;
   onSave: (metric: Metric) => void;
@@ -2422,6 +2436,7 @@ function OptimaProductCard({
         sparklinesEnabled={sparklinesEnabled}
         compactNumbers={compactNumbers}
         journal={journal}
+        periodFrom={periodFrom}
         onJournalDate={canWrite ? onOpenJournalDate : undefined}
         onHideMetric={onHideMetric}
         planning={planning && canWrite}
@@ -2446,6 +2461,7 @@ function OptimaMatrixTable({
   sparklinesEnabled,
   compactNumbers,
   journal = [],
+  periodFrom,
   onJournalDate,
   onHideMetric,
   planning = false,
@@ -2465,7 +2481,9 @@ function OptimaMatrixTable({
   sparklinesEnabled: boolean;
   compactNumbers: boolean;
   journal?: RnpJournalEntry[];
-  onJournalDate?: (dateLabel: string) => void;
+  /** Первый день периода в ISO — по нему считается точная дата каждой колонки. */
+  periodFrom?: string;
+  onJournalDate?: (dateLabel: string, index: number) => void;
   onHideMetric: (field: RnpMetricField) => void;
   planning?: boolean;
   plan?: Record<string, number>;
@@ -2480,12 +2498,27 @@ function OptimaMatrixTable({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(OPTIMA_TABLE_GROUPS.filter((group) => group.expanded).map((group) => group.id)),
   );
-  const groupedMetrics = OPTIMA_TABLE_GROUPS
-    .map((group) => ({
+  // Строки рисуются только по группам, поэтому метрика, не попавшая ни в одну,
+  // выбирается в пикере и молча исчезает из таблицы. Так пропадали семь полей:
+  // органика целиком и заказы из рекламы. Остаток собираем в «Прочее», чтобы
+  // забытая группа больше никогда не съедала выбор человека.
+  const groupedFields = new Set(OPTIMA_TABLE_GROUPS.flatMap((group) => group.fields as readonly string[]));
+  const ungrouped = metrics.filter((metric) => !groupedFields.has(metric.field));
+  const groupedMetrics = [
+    ...OPTIMA_TABLE_GROUPS.map((group) => ({
       ...group,
       metrics: metrics.filter((metric) => group.fields.includes(metric.field as RnpMetricField)),
-    }))
-    .filter((group) => group.metrics.length > 0);
+    })),
+    ...(ungrouped.length
+      ? [{
+        id: "other",
+        label: "Прочее",
+        fields: ungrouped.map((metric) => metric.field as RnpMetricField),
+        expanded: true,
+        metrics: ungrouped,
+      }]
+      : []),
+  ].filter((group) => group.metrics.length > 0);
   const totalColumns = 2 + (sparklinesEnabled ? 1 : 0) + period.length;
   return (
     <div className="overflow-x-auto">
@@ -2511,13 +2544,18 @@ function OptimaMatrixTable({
               </td>
               <td className="border-b border-r border-[#eceef4] bg-white" />
               {sparklinesEnabled ? <td className="border-b border-r border-[#eceef4] bg-white" /> : null}
-              {period.map((day) => {
-                const entries = journal.filter((entry) => `${entry.event_date.slice(8, 10)}.${entry.event_date.slice(5, 7)}` === day.label);
+              {period.map((day, index) => {
+                // Сопоставление по «ДД.ММ» тянуло в колонку события прошлых
+                // лет. Считаем полную дату колонки от начала периода.
+                const iso = periodFrom ? shiftIsoDay(periodFrom, index) : null;
+                const entries = iso
+                  ? journal.filter((entry) => entry.event_date.slice(0, 10) === iso)
+                  : [];
                 return (
                   <td key={`journal-${day.label}`} className="h-9 border-b border-r border-[#eceef4] bg-white p-1 text-center">
                     <button
                       type="button"
-                      onClick={() => onJournalDate(day.label)}
+                      onClick={() => onJournalDate(day.label, index)}
                       title={entries.length ? `${entries.length} событий · добавить запись` : "Добавить запись"}
                       className={`mx-auto grid h-6 min-w-6 place-items-center rounded-md px-1 text-[9px] font-semibold ${
                         entries.length ? "bg-violet-50 text-violet-700" : "text-slate-300 hover:bg-slate-50 hover:text-violet-700"

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiSession } from "@/lib/auth/apiGuard";
+import { requireApiSessionOrMachine } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import {
   buildShelfExclusionSet,
@@ -63,7 +63,7 @@ interface HistoryPoint {
 // Исключения применяются ТЕКУЩИЕ (свой бренд + ручные + глобальные кабинета):
 // правка списка честно пересчитывает и исторические точки.
 export async function GET(request: NextRequest) {
-  const gate = await requireApiSession([...READ_ROLES]);
+  const gate = await requireApiSessionOrMachine(request, [...READ_ROLES]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });

@@ -7,6 +7,8 @@ import { allowsNm, isScoped } from "@/lib/wb/productScope";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { fetchWbStatistics } from "@/lib/wb/statisticsRequest";
 import { allocateCampaignSpend } from "@/lib/wb/advertSpendAllocation";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { moscowToday, shiftIsoDay } from "@/lib/sync/moscowDay";
 
 const FULLSTATS_URL = "https://advert-api.wildberries.ru/adv/v3/fullstats";
 // fullstats: до 50 кампаний за раз (WB 400 при >50).
@@ -99,7 +101,10 @@ async function rebuildNmDailyFromCampaigns(
   let columns = `${baseColumns}, spent_allocated`;
   for (let index = 0; index < nmIds.length; index += 200) {
     const chunk = nmIds.slice(index, index + 200);
-    const fetchChunk = async (select: string) => {
+    // `limit(50_000)` не работал: Supabase отдаёт максимум тысячу строк за
+    // запрос. Двести артикулов за две недели — это уже почти три тысячи строк,
+    // и витрина расхода пересобиралась по обрезку, занижая рекламу по товарам.
+    const fetchChunk = (select: string) => loadAllSupabasePages<CampaignNmRow>((rangeFrom, rangeTo) => {
       let query = db
         .from("wb_advert_nm_campaign_daily")
         .select(select)
@@ -108,17 +113,24 @@ async function rebuildNmDailyFromCampaigns(
         .in("nm_id", chunk)
         .order("nm_id", { ascending: true })
         .order("date", { ascending: true })
-        .limit(50_000);
+        // Третий ключ обязателен: у пары (товар, день) столько строк, сколько
+        // кампаний вело этот артикул. Без полного порядка страницы съезжают —
+        // строки на стыке дублируются или теряются, и витрина расхода врёт.
+        .order("advert_id", { ascending: true })
+        .range(rangeFrom, rangeTo);
       query = cabinetId === null ? query.is("cabinet_id", null) : query.eq("cabinet_id", cabinetId);
-      return query;
-    };
-    let { data, error } = await fetchChunk(columns);
-    if (error && /spent_allocated/i.test(error.message)) {
+      return query as unknown as PromiseLike<{ data: CampaignNmRow[] | null; error: { message: string } | null }>;
+    }, { label: "Пересборка витрины рекламы", maxPages: 100 });
+    let rows: CampaignNmRow[];
+    try {
+      rows = await fetchChunk(columns);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      if (!/spent_allocated/i.test(message)) throw new Error(`Пересборка витрины рекламы: ${message}`);
       columns = baseColumns;
-      ({ data, error } = await fetchChunk(columns));
+      rows = await fetchChunk(columns);
     }
-    if (error) throw new Error(`Пересборка витрины рекламы: ${error.message}`);
-    all.push(...((data ?? []) as unknown as CampaignNmRow[]));
+    all.push(...rows);
   }
   return aggregateNmDaily(all, cabinetId);
 }
@@ -148,13 +160,15 @@ export async function GET(request: NextRequest) {
   if ((fromParam && !DATE.test(fromParam)) || (toParam && !DATE.test(toParam))) {
     return NextResponse.json({ error: "Даты периода задаются как ГГГГ-ММ-ДД" }, { status: 400 });
   }
-  const end = toParam ? new Date(`${toParam}T00:00:00.000Z`) : new Date();
-  const begin = fromParam
-    ? new Date(`${fromParam}T00:00:00.000Z`)
-    : new Date(Date.now() - DAYS_BACK * 86400000);
-  if (begin > end) {
+  // Окно — в московском календаре: WB считает рекламный день по Москве, а
+  // UTC-дата после 21:00 ещё вчерашняя, и вечерние прогоны теряли текущий день.
+  const endIso = toParam ?? moscowToday();
+  const beginIso = fromParam ?? shiftIsoDay(endIso, -DAYS_BACK);
+  if (beginIso > endIso) {
     return NextResponse.json({ error: "Дата начала позже даты окончания" }, { status: 400 });
   }
+  const end = new Date(`${endIso}T00:00:00.000Z`);
+  const begin = new Date(`${beginIso}T00:00:00.000Z`);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
   let advertDays = 0;
@@ -180,24 +194,32 @@ export async function GET(request: NextRequest) {
         continue;
       }
       // Fullstats отдаёт активные, приостановленные и завершённые кампании.
-      let aq = db
-        .from("wb_adverts")
-        .select("advert_id, status")
-        .in("status", [7, 9, 11])
-        .order("advert_id", { ascending: true });
-      aq = t.cabinetId === null ? aq.is("cabinet_id", null) : aq.eq("cabinet_id", t.cabinetId);
-      if (isScoped(t.productScope)) {
-        const allowedNmIds = [...new Set(t.productScope.allowedNmIds ?? [])];
-        aq = aq.overlaps("nm_ids", allowedNmIds);
-      }
-      const { data: advRows, error: advErr } = await aq;
-      if (advErr) {
-        errors.push(`${t.name}: ${advErr.message}`);
+      // Список кампаний листается: у кабинета с тысячей с лишним кампаний
+      // «хвост» никогда не попадал в статистику, и его расход оставался нулём.
+      let advRows: { advert_id: number; status: number }[];
+      try {
+        advRows = await loadAllSupabasePages<{ advert_id: number; status: number }>((from, to) => {
+          let aq = db
+            .from("wb_adverts")
+            .select("advert_id, status")
+            .in("status", [7, 9, 11])
+            .order("advert_id", { ascending: true })
+            .range(from, to);
+          aq = t.cabinetId === null ? aq.is("cabinet_id", null) : aq.eq("cabinet_id", t.cabinetId);
+          if (isScoped(t.productScope)) {
+            const allowedNmIds = [...new Set(t.productScope.allowedNmIds ?? [])];
+            aq = aq.overlaps("nm_ids", allowedNmIds);
+          }
+          return aq;
+        }, { label: "Синк рекламы: список кампаний", maxPages: 50 });
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : "Ошибка чтения кампаний";
+        errors.push(`${t.name}: ${message}`);
         if (t.cabinetId) await writeWbSyncState(db, t.cabinetId, "advert-stats", {
           cursor: previous?.cursor ?? null,
           status: "error",
           attempts: (previous?.attempts ?? 0) + 1,
-          lastError: advErr.message,
+          lastError: message,
           state: previous?.state ?? {},
         });
         continue;

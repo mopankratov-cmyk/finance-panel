@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { buildXlsx } from "@/lib/xlsx/write";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -28,6 +29,32 @@ const nothingToExport = (name: string) =>
 const COLUMNS = "code, raw_code, price, article, task_id, sold_at, nm_id";
 
 /**
+ * Все строки партии — постранично.
+ *
+ * Документ ЧЗ вмещает 30 000 кодов, а Supabase отдаёт за запрос максимум
+ * тысячу — молча. Из-за этого захват помечал отправленными все 30 000, а в
+ * файл попадала первая тысяча: остальные коды считались выгруженными и не
+ * появлялись уже ни в одном документе. Повторное скачивание страдало тем же.
+ */
+async function loadBatchRows(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  batchId: string,
+  entityId: string | null,
+): Promise<ExportRow[]> {
+  return loadAllSupabasePages<ExportRow>((from, to) => {
+    let query = db
+      .from("kiz_withdrawals")
+      .select(COLUMNS)
+      .eq("batch_id", batchId)
+      .order("sold_at", { ascending: true })
+      .order("code", { ascending: true })
+      .range(from, to);
+    if (entityId) query = query.eq("legal_entity_id", entityId);
+    return query as unknown as PromiseLike<{ data: ExportRow[] | null; error: { message: string } | null }>;
+  }, { label: "КИЗ: партия на вывод", maxPages: 40 });
+}
+
+/**
  * Файл на вывод из оборота.
  *
  * Формат задан получателем: первым столбцом КИЗ, рядом цена реализации.
@@ -50,8 +77,34 @@ function sheetOf(rows: ExportRow[]): (string | number | null)[][] {
   ];
 }
 
+/**
+ * Документ не должен уезжать пустым — ни при каких обстоятельствах.
+ *
+ * Так уже было: файл собрался на девятнадцать кодов, весил девять килобайт, а
+ * в Excel открывался пустым — разделитель GS внутри кода делал XML
+ * недопустимым, и Excel «чинил» книгу, выбрасывая лист. Ошибки не было нигде:
+ * ни в панели, ни в Excel. Поэтому проверяем не намерение, а результат: в
+ * готовом файле должно лежать столько же строк с кодами, сколько мы собрали, и
+ * ни одного управляющего символа.
+ */
+function assertSheetIsUsable(file: Buffer, expectedRows: number) {
+  const xml = file.toString("utf8");
+  const start = xml.indexOf("<sheetData>");
+  const end = xml.indexOf("</sheetData>");
+  const body = start >= 0 && end > start ? xml.slice(start, end) : "";
+  const rowCount = (body.match(/<row\b/g) ?? []).length;
+  if (rowCount < expectedRows + 1) {
+    throw new Error(`В документе ${Math.max(0, rowCount - 1)} строк вместо ${expectedRows} — файл собрался неверно`);
+  }
+  // eslint-disable-next-line no-control-regex -- ровно эти символы и ломают книгу
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(xml)) {
+    throw new Error("В документе остались управляющие символы — Excel откроет его пустым");
+  }
+}
+
 function fileResponse(rows: ExportRow[], batchId: string | null, remaining: number) {
   const file = buildXlsx("КИЗ на вывод", sheetOf(rows));
+  assertSheetIsUsable(file, rows.length);
   const name = `kiz-na-vyvod-${new Date().toISOString().slice(0, 10)}-${rows.length}.xlsx`;
   return new NextResponse(new Uint8Array(file), {
     headers: {
@@ -87,16 +140,17 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
-  const { data, error } = await db
-    .from("kiz_withdrawals")
-    .select(COLUMNS)
-    .eq("batch_id", batchId)
-    .eq("legal_entity_id", scope.entity.id)
-    .order("sold_at", { ascending: true })
-    .order("code", { ascending: true })
-    .limit(CHZ_DOC_LIMIT);
-  if (error) return fail(missing(error.code) ? MIGRATION_HINT : error.message, missing(error.code) ? 503 : 500);
-  const rows = (data ?? []) as ExportRow[];
+  let rows: ExportRow[];
+  try {
+    rows = await loadBatchRows(db, batchId, scope.entity.id);
+  } catch (cause) {
+    // Постраничный читатель отдаёт только текст ошибки, код PostgreSQL в нём
+    // теряется — ловим по сообщению, иначе подсказка про миграции никогда не
+    // сработает.
+    const message = cause instanceof Error ? cause.message : "Не удалось прочитать партию";
+    const missingTable = /42P01|42703|PGRST20[245]|does not exist|schema cache/i.test(message);
+    return fail(missingTable ? MIGRATION_HINT : message, missingTable ? 503 : 500);
+  }
   if (rows.length === 0) return fail("Партия не найдена — возможно, она собрана под другим юрлицом", 404);
 
   return fileResponse(rows, batchId, 0);
@@ -166,7 +220,24 @@ export async function POST(request: NextRequest) {
     const code = error.code;
     return fail(missing(code) ? MIGRATION_HINT : error.message, missing(code) ? 503 : 500);
   }
-  const claimed = (data ?? []) as ExportRow[];
+  const returned = (data ?? []) as ExportRow[];
+  if (returned.length === 0) return fail(nothingToExport(scope.entity.name), 400);
+  // Захват в базе пометил ВСЮ партию, но ответ RPC обрезан тысячей строк.
+  // Перечитываем партию по её номеру: иначе помеченные, но не отданные коды
+  // исчезли бы навсегда — «отправлены», а ни в одном файле их нет.
+  let claimed: ExportRow[];
+  try {
+    claimed = await loadBatchRows(db, batchId, entityId);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : "Не удалось перечитать партию";
+    // Коды уже помечены отправленными, а файла нет. Отдаём НОМЕР ПАРТИИ:
+    // без него экран не покажет «Скачать заново», и человек решит, что коды
+    // сгорели.
+    return NextResponse.json(
+      { data: null, error: `${message}. Партия захвачена — скачайте её заново по номеру.`, batch: batchId },
+      { status: 500 },
+    );
+  }
   if (claimed.length === 0) return fail(nothingToExport(scope.entity.name), 400);
 
   const rest = await db

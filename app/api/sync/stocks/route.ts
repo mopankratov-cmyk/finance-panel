@@ -3,6 +3,7 @@ import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { discoverCabinetProducts, getWbSyncTargets } from "@/lib/sync/cabinets";
 import { allowsProduct, isScoped } from "@/lib/wb/productScope";
 import { WbStocksApiError, wbWarehouseStockPages } from "@/lib/wb/stocksApi";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const maxDuration = 300;
 
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: `Кабинет не найден: ${onlyCabinet}` }, { status: 404 });
   }
 
+  const db = getSupabaseAdmin();
   let total = 0;
   const errors: string[] = [];
 
@@ -101,6 +103,32 @@ export async function GET(request: NextRequest) {
         continue;
       }
       total += rows.length;
+
+      // Апсёрт только дописывает. Пара (товар, склад), которая пропала из ответа
+      // WB — товар кончился или уехал с этого склада, — оставалась в базе с
+      // последним известным количеством НАВСЕГДА. Экран показывал остаток, а
+      // оборачиваемость и план закупки считались от несуществующих штук.
+      // Обход прошёл целиком (иначе мы бы уже сделали continue), поэтому всё,
+      // что не обновилось этим прогоном, честно обнуляем.
+      // Пустой ответ WB неотличим от «всё распродано», но цена ошибки разная:
+      // обнулить живой остаток по всему кабинету дороже, чем оставить строку
+      // лишний час. Обнуляем только когда обход что-то принёс.
+      if (!db || rows.length === 0) continue;
+      let staleQuery = db
+        .from("wb_stocks")
+        .update({ quantity: 0, in_way_to_client: 0, in_way_from_client: 0, synced_at: stamp })
+        .lt("synced_at", stamp);
+      staleQuery = t.cabinetId === null
+        ? staleQuery.is("cabinet_id", null)
+        : staleQuery.eq("cabinet_id", t.cabinetId);
+      // У кабинета с ограниченным ассортиментом мы спрашивали только свои
+      // товары — чужие строки этим прогоном не подтверждались и обнулять их
+      // нельзя.
+      if (isScoped(t.productScope)) {
+        staleQuery = staleQuery.in("nm_id", [...new Set(t.productScope.allowedNmIds ?? [])]);
+      }
+      const { error: staleError } = await staleQuery;
+      if (staleError) errors.push(`${t.name}: не удалось обнулить исчезнувшие остатки: ${staleError.message}`);
     }
 
     const ok = errors.length === 0;

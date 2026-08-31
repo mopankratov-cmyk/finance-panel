@@ -26,6 +26,15 @@ export async function POST(request: NextRequest) {
   }
   const rows = await runRepricer(cabinetId, strategies);
   const runDate = new Date().toISOString().slice(0, 10);
-  const proposed = await persistDecisions(runDate, cabinetId, rows);
-  return NextResponse.json({ runDate, cabinet: cabinetId, total: rows.length, proposed, skipped: rows.length - proposed });
+  // Запись решений теперь может упасть вслух — раньше сбой вставки терялся, и
+  // прогон отвечал «предложений столько-то» поверх пустой таблицы.
+  try {
+    const proposed = await persistDecisions(runDate, cabinetId, rows);
+    return NextResponse.json({ runDate, cabinet: cabinetId, total: rows.length, proposed, skipped: rows.length - proposed });
+  } catch (cause) {
+    return NextResponse.json(
+      { error: cause instanceof Error ? cause.message : "Не удалось сохранить решения репрайсера" },
+      { status: 502 },
+    );
+  }
 }

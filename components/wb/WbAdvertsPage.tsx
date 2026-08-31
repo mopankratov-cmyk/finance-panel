@@ -109,6 +109,7 @@ interface AdvertsData {
   balance: number | null;
   spend_today_total: number;
   spend_yest_total: number;
+  spend_unattributed?: { today: number; yesterday: number; campaigns: number };
   today?: string;
   yest?: string;
 }
@@ -227,7 +228,7 @@ export function WbAdvertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
-  const [kind, setKind] = useDashboardFilter<"all" | "cpc" | "unified">("kind", "all", ["all", "cpc", "unified"]);
+  const [kind, setKind] = useDashboardFilter<"all" | "cpc" | "unified" | "unknown">("kind", "all", ["all", "cpc", "unified", "unknown"]);
   const [statusFilter, setStatusFilter] = useDashboardFilter<CampaignStatusFilter>("status", "active", ["active", "paused", "archive", "all"]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 16 });
@@ -286,7 +287,11 @@ export function WbAdvertsPage() {
     return (activeData?.articles ?? [])
       .flatMap((article) => article.campaigns.map((campaign) => ({ article, campaign })))
       .filter(({ article, campaign }) => {
-        const campaignKind = campaign.payment === "cpc" ? "cpc" : "unified";
+        // Тип берём из данных WB. Раньше всё, что не cpc, считалось «единой» —
+        // включая кампании, тип которых панель просто не знает.
+        const campaignKind = campaign.payment === "cpc" ? "cpc"
+          : campaign.bid_type === "unified" || campaign.bid_type === "auto" || campaign.payment === "cpm" ? "unified"
+            : "unknown";
         if (kind !== "all" && campaignKind !== kind) return false;
         return !needle || `${article.art} ${article.nm} ${campaign.name} ${campaign.id}`.toLocaleLowerCase("ru-RU").includes(needle);
       })
@@ -327,7 +332,15 @@ export function WbAdvertsPage() {
       <WbModuleHeader
         icon={Megaphone}
         title="Реклама"
-        description={activeData ? `${activeData.count} активных кампаний · расход сегодня ${rub(activeData.spend_today_total)}` : "Кампании, ставки, расписание и статистика"}
+        description={activeData
+          ? `${activeData.count} активных кампаний · расход сегодня ${rub(activeData.spend_today_total)}`
+            // Расход кампании без списка товаров не ложится ни на один артикул.
+            // Молчать об этом нельзя: итог сверху перестал бы сходиться с
+            // суммой строк, и это выглядело бы как ошибка счёта.
+            + (activeData.spend_unattributed?.today
+              ? `, из них ${rub(activeData.spend_unattributed.today)} без привязки к товару`
+              : "")
+          : "Кампании, ставки, расписание и статистика"}
         actions={
           <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 sm:min-h-8">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить
@@ -344,7 +357,7 @@ export function WbAdvertsPage() {
             </label>
             <div className="mt-2 flex items-center gap-1 text-[10px]">
               <span className="mr-1 text-slate-400">тип:</span>
-              {([['all', 'Все'], ['cpc', 'CPC'], ['unified', 'Единая']] as const).map(([value, label]) => (
+              {([['all', 'Все'], ['cpc', 'CPC'], ['unified', 'Единая'], ['unknown', 'Тип неизвестен']] as const).map(([value, label]) => (
                 <button key={value} type="button" onClick={() => setKind(value)} className={`min-h-8 rounded-lg px-2.5 font-semibold transition-colors ${kind === value ? "bg-slate-800 text-white" : "bg-violet-50 text-violet-700 hover:bg-violet-100"}`}>{label}</button>
               ))}
               <span className="ml-auto tabular-nums text-slate-400">{rows.length} из {baseRows.length} РК</span>

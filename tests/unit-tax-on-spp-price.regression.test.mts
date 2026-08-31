@@ -69,14 +69,16 @@ const contribution = (over: Partial<UnitContribution>): UnitContribution => ({
 test("в группе налог берётся с выручки после СПП каждого кабинета", () => {
   const [row] = aggregateUnitContributions(
     [
-      contribution({ cabinetId: "cab-1", revenue: 50_000, sppShare: 0.4 }),
-      contribution({ cabinetId: "cab-2", revenue: 10_000, sppShare: 0.1 }),
+      contribution({ cabinetId: "cab-1", revenue: 50_000, sppShare: 0.4, sppOwn: true }),
+      contribution({ cabinetId: "cab-2", revenue: 10_000, sppShare: 0.1, sppOwn: true }),
     ],
     { taxPct: 7, ff: 0 },
   );
   // 50 000 × 0.6 + 10 000 × 0.9 = 39 000 → налог 2 730 ₽ вместо 4 200 ₽ с полной выручки.
   assert.equal(row.taxableRevenue, 39_000);
   assert.equal(row.taxRub, 2_730);
+  // Покрытие считается по СВОЕЙ ставке СПП: средняя по кабинету — оценка, и
+  // выдавать её за факт SKU нельзя.
   assert.equal(row.sppKnown, true);
 });
 
@@ -103,4 +105,15 @@ test("юнит-роут считает налог от цены с СПП и п�
 test("часовой кэш не отдаёт снимки со старой формулой налога", async () => {
   const period = await readFile(new URL("../lib/unit/period.ts", import.meta.url), "utf8");
   assert.match(period, /UNIT_PERIOD_SCHEMA_VERSION = "unit-period-v\d+"/);
+});
+
+test("средняя ставка СПП не считается фактом SKU", () => {
+  // sppShare подставлен средней по кабинету — база налога считается по ней,
+  // но покрытие остаётся честным: своей ставки у этого SKU нет.
+  const [row] = aggregateUnitContributions(
+    [contribution({ revenue: 50_000, sppShare: 0.2, sppOwn: false })],
+    { taxPct: 7, ff: 0 },
+  );
+  assert.equal(row.taxableRevenue, 40_000);
+  assert.equal(row.sppKnown, false);
 });

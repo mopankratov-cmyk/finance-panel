@@ -11,8 +11,10 @@ test("unit economics reads the synchronized commission snapshot before live WB r
   assert.ok(cabinetFunction.indexOf("getWbCommissionFromCache") < cabinetFunction.indexOf("getWbCabinet"));
   assert.match(cabinetFunction, /allowLiveFallback/);
   assert.ok(cabinetFunction.indexOf("if (!allowLiveFallback) return emptyWbCommission();") < cabinetFunction.indexOf("getWbCabinet"));
-  assert.match(source, /nmQuery = nmQuery\.eq\("cabinet_id", cabinetId\)/);
-  assert.match(source, /overheadQuery = overheadQuery\.eq\("cabinet_id", cabinetId\)/);
+  // Снимок ставок читается постранично и всегда сужается до кабинета: без
+  // листания товары «за тысячей» теряли свою ставку и считались по средней.
+  assert.match(source, /loadAllSupabasePages<CachedNmRow>[\s\S]{0,900}query\.eq\("cabinet_id", cabinetId\)/);
+  assert.match(source, /wb_cabinet_commission_overhead[\s\S]{0,400}query\.eq\("cabinet_id", cabinetId\)/);
 });
 
 test("unit economics includes extra WB charges and suppresses recommendations without factual inputs", async () => {

@@ -59,6 +59,9 @@ export async function GET(request: NextRequest) {
 
   let total = 0;
   const errors: string[] = [];
+  // Неполный обход — не ошибка кабинета, но и не успех: держим отдельным
+  // списком, чтобы он дошёл и до ответа, и до журнала синхронизаций.
+  const incomplete: string[] = [];
   const progress: Array<Record<string, unknown>> = [];
 
   for (const target of targets) {
@@ -74,7 +77,12 @@ export async function GET(request: NextRequest) {
           ? cursorMs
           : startedAt.getTime() - INITIAL_DAYS * 86_400_000;
       const rows: Array<Record<string, unknown>> = [];
+      const seenCreatedAt: string[] = [];
       let next = 0;
+      // Обход ограничен шестьюдесятью страницами. Раньше упор в этот предел
+      // выглядел как «всё прочитано»: курсор двигался на конец окна, статус
+      // писался caught_up, и непрочитанный хвост заданий терялся навсегда.
+      let drained = false;
       for (let page = 0; page < 60; page++) {
         const url = new URL(ORDERS_URL);
         url.searchParams.set("limit", String(PAGE_LIMIT));
@@ -104,6 +112,8 @@ export async function GET(request: NextRequest) {
         const json = (await response.json()) as { next?: number; orders?: MarketplaceOrder[] };
         const orders = json.orders ?? [];
         for (const order of orders) {
+          const createdAt = String(order.createdAt ?? "").trim();
+          if (createdAt) seenCreatedAt.push(createdAt);
           const srid = String(order.rid ?? "").trim();
           const nmId = Number(order.nmId);
           if (!srid || !Number.isFinite(nmId)) continue;
@@ -128,7 +138,7 @@ export async function GET(request: NextRequest) {
           });
         }
         next = Number(json.next ?? 0);
-        if (orders.length < PAGE_LIMIT || !next) break;
+        if (orders.length < PAGE_LIMIT || !next) { drained = true; break; }
       }
 
       // order_id помечен необязательным: до применения миграции синк просто
@@ -150,19 +160,35 @@ export async function GET(request: NextRequest) {
       // окна, оставляя весь период неклассифицированным. Мы запросили окно до
       // startedAt и WB ответил — значит покрыто до startedAt; хвост опоздавших
       // заданий закрывает двухдневный перехлёст следующего прогона.
-      const cursorCandidates = [String(existing?.cursor ?? ""), startedAt.toISOString()].filter(Boolean).sort();
+      // Если обход упёрся в предел страниц, окно НЕ покрыто: двигаем курсор
+      // только до последнего реально прочитанного задания и говорим об этом
+      // вслух. Иначе следующий прогон начал бы с конца окна, а пропущенные
+      // задания не увидел бы уже никто.
+      // Граница — по последнему ПРОСМОТРЕННОМУ заданию, а не по последнему
+      // сохранённому. У агентского кабинета почти все задания чужие: если
+      // считать только свои, у кабинета без единого своего задания в первых
+      // шестидесяти страницах курсор замирал бы навсегда и каждый прогон читал
+      // бы те же страницы.
+      const lastReadAt = seenCreatedAt.sort().at(-1) ?? null;
+      const frontier = drained ? startedAt.toISOString() : lastReadAt;
+      const cursorCandidates = [String(existing?.cursor ?? ""), frontier ?? ""].filter(Boolean).sort();
+      const truncationNote = drained
+        ? null
+        : `обход остановлен на пределе 60 страниц, окно прочитано не полностью (${rows.length} заданий)`;
       await writeWbSyncState(db, cabinetId, JOB, {
-        cursor: cursorCandidates[cursorCandidates.length - 1],
-        status: "caught_up",
+        cursor: cursorCandidates[cursorCandidates.length - 1] || null,
+        status: drained ? "caught_up" : "running",
         attempts: 0,
-        lastError: null,
+        lastError: truncationNote,
         state: {
           coveredFrom: coveredCandidates[0],
           lastRunAt: startedAt.toISOString(),
           rows: rows.length,
+          ...(drained ? {} : { truncated: true }),
         },
       });
-      progress.push({ cabinet: target.name, rows: rows.length, status: "caught_up" });
+      if (truncationNote) incomplete.push(`${target.name}: ${truncationNote}`);
+      progress.push({ cabinet: target.name, rows: rows.length, status: drained ? "caught_up" : "running", truncated: !drained });
     } catch (error) {
       const message = error instanceof Error ? error.message : "неизвестная ошибка";
       errors.push(`${target.name}: ${message}`);
@@ -181,10 +207,11 @@ export async function GET(request: NextRequest) {
   }
 
   const ok = errors.length === 0;
-  await writeSyncLog(JOB, ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
+  const logNote = [...errors, ...incomplete].join("; ") || null;
+  await writeSyncLog(JOB, ok ? "ok" : "error", total, logNote, startedAt);
   // error дублирует errors первой строкой: бэкфилл показывает именно его.
   return NextResponse.json(
-    { ok, rows: total, cabinets: targets.length, progress, errors, error: errors[0] ?? undefined },
+    { ok, rows: total, cabinets: targets.length, progress, errors, incomplete, error: errors[0] ?? undefined },
     { status: ok ? 200 : 502 },
   );
 }

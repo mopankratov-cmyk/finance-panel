@@ -89,13 +89,28 @@ export default function UsersPage() {
   };
   useEffect(() => { load(); }, []);
 
-  const add = async () => {
+  const add = async (replaceExisting = false) => {
     setBusy(true); setMsg(null);
-    const r = await fetch("/api/users", {
+    const send = (replace: boolean) => fetch("/api/users", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, role, cabinet_ids: role === "manager" || role === "ozon_manager" ? sel : [] }),
+      body: JSON.stringify({
+        email,
+        password,
+        role,
+        cabinet_ids: role === "manager" || role === "ozon_manager" ? sel : [],
+        ...(replace ? { replace_existing: true } : {}),
+      }),
     });
-    const j = await r.json();
+    let r = await send(replaceExisting);
+    let j = await r.json();
+    // Совпадение почты — это не ошибка ввода, а развилка: либо человек уже
+    // заведён и его трогать не нужно, либо доступ выдаётся заново. Спрашиваем
+    // прямо, вместо того чтобы молча переписать пароль и роль.
+    if (r.status === 409 && j?.exists && !replaceExisting) {
+      if (!confirm(`${j.error}\n\nПерезаписать доступ ${email}?`)) { setBusy(false); return; }
+      r = await send(true);
+      j = await r.json();
+    }
     if (!r.ok || j.error) setMsg({ ok: false, t: j.error || `Ошибка ${r.status}` });
     else { setMsg({ ok: true, t: `${role === "seller" ? "Внешний селлер" : "Сотрудник"} ${email} сохранён` }); setEmail(""); setPassword(""); setSel([]); await load(); }
     setBusy(false);
@@ -142,7 +157,7 @@ export default function UsersPage() {
           </div>
         )}
         <div className="mt-3 flex items-center gap-3">
-          <button onClick={add} disabled={busy || !email || password.length < 10} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+          <button onClick={() => add()} disabled={busy || !email || password.length < 10} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Сохранить
           </button>
           {msg && <span className={`text-sm ${msg.ok ? "text-emerald-600" : "text-red-600"}`}>{msg.t}</span>}

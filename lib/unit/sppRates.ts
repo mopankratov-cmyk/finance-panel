@@ -42,6 +42,20 @@ export function sppShareForNm(rates: UnitSppRates, nmId: number): number | null 
   return own ?? rates.overall;
 }
 
+/**
+ * Своя ли это ставка СПП или средняя по кабинету.
+ *
+ * Подпись «СПП по факту продаж периода N/M» считалась по тому же
+ * `sppShareForNm`, а он подставляет среднюю всем, у кого своих продаж не было.
+ * Из-за этого счётчик ВСЕГДА показывал полное покрытие: средняя выдавалась за
+ * факт SKU, и налог по товару без продаж выглядел таким же обоснованным, как
+ * по товару с продажами.
+ */
+export function sppShareSourceForNm(rates: UnitSppRates, nmId: number): "own" | "average" | "none" {
+  if (rates.byNm.has(nmId)) return "own";
+  return rates.overall == null ? "none" : "average";
+}
+
 /** Цена, с которой платится налог: цена продавца за вычетом СПП. */
 export function taxableUnitPrice(price: number, sppShare: number | null): number {
   if (!(price > 0)) return 0;

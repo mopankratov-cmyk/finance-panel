@@ -16,3 +16,28 @@ export async function requireApiSession(roles?: Role[]): Promise<NextResponse | 
   }
   return null;
 }
+
+/**
+ * Машинное чтение: внутренний фан-аут и прогрев кэшей.
+ *
+ * Прокси уже пускает вызовы с `Bearer CRON_SECRET` (proxy.ts), но роут поверх
+ * него требовал куку сессии — которой у крона нет. Из-за этого прогрев
+ * «Юнита» и «Журнала РК» возвращал 401 КАЖДЫЙ раз: кэш не наполнялся никогда,
+ * и первый заход человека собирал экран с нуля — те самые пять-семь секунд.
+ * Прогрев при этом честно писал «не удалось», но выглядело это как случайный
+ * сбой, а не как систематическая дыра.
+ *
+ * Дверь узкая намеренно: только GET и только с тем же секретом, который уже
+ * знает прокси. Мутации и любые POST по-прежнему требуют живую сессию.
+ */
+export function isMachineReadRequest(request: Request): boolean {
+  if (request.method !== "GET") return false;
+  const secret = process.env.CRON_SECRET;
+  return Boolean(secret) && request.headers.get("authorization") === `Bearer ${secret}`;
+}
+
+/** Сессия — как обычно, но внутреннему прогреву разрешено читать. */
+export async function requireApiSessionOrMachine(request: Request, roles?: Role[]): Promise<NextResponse | null> {
+  if (isMachineReadRequest(request)) return null;
+  return requireApiSession(roles);
+}

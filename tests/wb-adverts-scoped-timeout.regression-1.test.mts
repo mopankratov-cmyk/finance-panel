@@ -84,11 +84,16 @@ test("WB adverts route keeps selected-cabinet loads off slow global fallbacks", 
 test("WB advert stats filters scoped campaigns before rotating fullstats batches", () => {
   const source = readFileSync(new URL("../app/api/sync/advert-stats/route.ts", import.meta.url), "utf8");
   const scopeFilterIndex = source.indexOf('aq = aq.overlaps("nm_ids", allowedNmIds)');
-  const campaignQueryIndex = source.indexOf("const { data: advRows, error: advErr } = await aq");
+  // Список кампаний листается: у кабинета с тысячей с лишним кампаний хвост
+  // никогда не попадал в статистику. Сужение по контуру обязано жить ВНУТРИ
+  // страничного запроса, иначе каждая страница читала бы чужие кампании.
+  const pagedQueryIndex = source.indexOf('loadAllSupabasePages<{ advert_id: number; status: number }>');
+  const batchIndex = source.indexOf("const ids = (advRows ?? []).map");
 
   assert.notEqual(scopeFilterIndex, -1, "scoped cabinets must filter campaign nm_ids in Supabase");
-  assert.notEqual(campaignQueryIndex, -1, "campaign query contract changed unexpectedly");
-  assert.ok(scopeFilterIndex < campaignQueryIndex, "the SKU scope must be applied before campaigns are loaded and batched");
+  assert.notEqual(pagedQueryIndex, -1, "campaign query contract changed unexpectedly");
+  assert.ok(pagedQueryIndex < scopeFilterIndex, "the SKU scope must be applied inside the paged query");
+  assert.ok(scopeFilterIndex < batchIndex, "the SKU scope must be applied before campaigns are loaded and batched");
 });
 
 test("WB adverts page keeps the last-good list when a refresh times out", () => {

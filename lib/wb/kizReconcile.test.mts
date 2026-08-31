@@ -91,15 +91,18 @@ test("заявки читаются из голого массива и из в�
 test("привязанный непротиворечивый код строки не создаёт", () => {
   const result = reconcileKizFromWb(input({ codesByTask: new Map([[1, [KM]]]) }));
   assert.equal(result.rows.length, 0);
-  assert.deepEqual(result.counts, { retire: 0, check: 0, notChecked: 0, introduce: 0 });
+  assert.deepEqual(result.counts, { noCode: 0, check: 0, notChecked: 0, introduce: 0 });
   assert.deepEqual(result.coverage, { checked: 1, soldTotal: 1, days: 30 });
 });
 
-test("продано без привязанного кода — корзина «Вывести», а не «не проверено»", () => {
+test("продано без привязанного кода — корзина «Нет кода», а не «не проверено»", () => {
+  // «Вывести из оборота» панель не показывает: код, привязанный к заданию,
+  // выводит сам WB, а проверить это без True API Честного Знака нельзя.
+  // Отсутствие кода — отдельный факт, и путать его с «WB не ответил» нельзя.
   const result = reconcileKizFromWb(input({ codesByTask: new Map([[1, []]]) }));
-  assert.equal(result.counts.retire, 1);
+  assert.equal(result.counts.noCode, 1);
   assert.equal(result.counts.notChecked, 0);
-  assert.equal(result.rows[0].bucket, "retire");
+  assert.equal(result.rows[0].bucket, "no_code");
   assert.equal(result.rows[0].brand, "NORVIA");
   assert.match(result.rows[0].reason, /код не привязан/);
 });
@@ -107,7 +110,7 @@ test("продано без привязанного кода — корзина
 test("непроверенное задание уходит в «Не проверено» и не считается нарушением", () => {
   const result = reconcileKizFromWb(input({ tasks: [task(1), task(2)], codesByTask: new Map([[1, [KM]]]) }));
   assert.equal(result.counts.notChecked, 1);
-  assert.equal(result.counts.retire, 0);
+  assert.equal(result.counts.noCode, 0);
   assert.equal(result.counts.check, 0);
   const row = result.rows.find((item) => item.taskId === "2");
   assert.ok(row, "непроверенное задание должно попасть в строки");
@@ -124,7 +127,7 @@ test("оборванный опрос называет причину и не м
     codesLookup: lookup({ lookupStopped: true, stopReason: "forbidden", stopMessage: "нет доступа к кодам маркировки", skipped: 2 }),
   }));
   assert.equal(result.counts.notChecked, 2);
-  assert.equal(result.counts.retire, 0);
+  assert.equal(result.counts.noCode, 0);
   assert.ok(result.warnings.some((text) => /нет доступа к кодам маркировки/.test(text)));
   assert.ok(result.rows.every((row) => /нет доступа к кодам маркировки/.test(row.reason)));
   // Незнание не должно попадать в группировку кодов — там нечего группировать.
@@ -158,7 +161,7 @@ test("GTIN кода против штрихкода задания — «Про�
 test("нераспознанная марка задания — «Проверить», а не «нет кода»", () => {
   const result = reconcileKizFromWb(input({ codesByTask: new Map([[1, ["01046800000001"]]]) }));
   assert.equal(result.counts.check, 1);
-  assert.equal(result.counts.retire, 0);
+  assert.equal(result.counts.noCode, 0);
   assert.equal(result.rows[0].code, null);
   assert.match(result.rows[0].reason, /не распознан/);
 });
@@ -229,7 +232,7 @@ test("группы кодов считаются по началу GTIN и со�
   const prefixes = result.codeGroups.map((group) => group.gtinPrefix);
   assert.deepEqual(prefixes, ["468000000", "590123412"]);
   assert.equal(result.codeGroups[0].codes, 2);
-  assert.equal(result.codeGroups[0].retire, 1);
+  assert.equal(result.codeGroups[0].attention, 1);
   assert.equal(result.codeGroups[0].introduce, 1);
   assert.equal(result.codeGroups[1].codes, 1);
   assert.equal(result.codeGroups[1].introduce, 0);

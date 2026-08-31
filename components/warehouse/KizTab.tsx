@@ -170,6 +170,10 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
       });
       if (!res.ok) {
         const json = await res.json().catch(() => null);
+        // Партия могла быть уже захвачена, а файл не собраться. Тогда коды
+        // помечены отправленными, и человеку нужна плашка «Скачать заново» —
+        // перечитываем реестр, чтобы она появилась сразу.
+        if (json?.batch) await load();
         throw new Error(json?.error || "Не удалось собрать файл");
       }
       const blob = await res.blob();

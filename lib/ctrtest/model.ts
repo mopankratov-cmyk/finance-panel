@@ -1,3 +1,5 @@
+import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
+
 export type CtrTestType = "ctr" | "cr" | "video";
 export type CtrTestStatus = "draft" | "running" | "paused" | "done" | "cancelled";
 
@@ -141,10 +143,19 @@ export function ctrSnapshotDelta(baselineRaw: Partial<CtrMetricSnapshot>, curren
   };
 }
 
+/**
+ * Доля варианта. `null` — знаменателя не хватает, мерить нечем.
+ *
+ * Проект уже установил минимальный знаменатель для доли клика (CTR_MIN_VIEWS),
+ * потому что на десятке показов доля скачет на десятки процентов. Здесь порог
+ * игнорировался: победитель теста и «изменение к базе» считались при любом
+ * знаменателе, и вариант с двумя показами и одним кликом объявлялся лучшим с
+ * CTR 50%. Решение по такому «победителю» принимают всерьёз.
+ */
 export function ctrVariantScore(type: CtrTestType, variant: Pick<CtrVariantTotals, "impressions" | "clicks" | "opens" | "carts" | "orders">): number | null {
   const numerator = type === "ctr" ? variant.clicks : type === "cr" ? variant.carts : variant.orders;
   const denominator = type === "ctr" ? variant.impressions : variant.opens;
-  return denominator > 0 ? numerator / denominator * 100 : null;
+  return denominator >= CTR_MIN_VIEWS ? numerator / denominator * 100 : null;
 }
 
 export function chooseCtrWinner(type: CtrTestType, variants: CtrVariantTotals[]): CtrVariantTotals | null {

@@ -83,6 +83,21 @@ export function evaluateRepricer(m: SkuMetrics, strategies: RepricerStrategy[]):
 
     if (s.action === "dec_pct") {
       const floor = priceForMargin({ cogs: m.cogs, feeFraction: m.feeFraction, currentRevenue: m.currentRevenue, currentCatalogPrice: m.currentPrice, marginPct: s.marginFloor });
+      // «Ограничить снижение» и «поднять цену» — разные вещи, а раньше это был
+      // один и тот же код. Если пол маржи уже выше текущей цены, снижать
+      // нечем: стратегия «снизить» предлагала ПОВЫШЕНИЕ, прямо противоположное
+      // тому, что просил владелец.
+      if (floor != null && floor >= m.currentPrice) {
+        return {
+          strategyId: s.id,
+          strategyName: s.name,
+          oldPrice: m.currentPrice,
+          newPrice: null,
+          used,
+          status: "skipped",
+          note: `маржа уже ниже пола ${s.marginFloor}% — снижать нечем`,
+        };
+      }
       if (floor != null && newPrice < floor) {
         newPrice = floor;
         note = `ограничено margin_floor ${s.marginFloor}%`;

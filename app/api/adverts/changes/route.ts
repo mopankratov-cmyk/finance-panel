@@ -1,4 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { requireApiSession } from "@/lib/auth/apiGuard";
+import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +21,22 @@ export interface AdvertChange {
 // уже пишется на каждую попытку смены ставки, просто читать её было некому.
 // Заодно обнаружено и починено: миграция таблицы существовала в репо, но никогда
 // не применялась к живой БД — каждая запись в лог тихо проваливалась.
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ changes: [] });
-  const { data, error } = await db.from("advert_bid_changes").select("id, advert_id, old_bid, new_bid, status, detail, created_at").order("created_at", { ascending: false }).limit(50);
+  // История ставок отдавалась общим списком на всех: менеджер с урезанным
+  // списком кабинетов видел правки в чужих. Сужаем до выбранного кабинета и
+  // проверяем доступ к нему.
+  const requested = new URL(request.url).searchParams.get("cabinet");
+  const { cabinetId } = await resolveShopCabinet(requested ?? undefined);
+  if (!(await hasCabinetAccess(cabinetId))) {
+    return NextResponse.json({ changes: [], error: "Нет доступа к кабинету" }, { status: 403 });
+  }
+  let query = db.from("advert_bid_changes").select("id, advert_id, old_bid, new_bid, status, detail, created_at").order("created_at", { ascending: false }).limit(50);
+  if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+  const { data, error } = await query;
   if (error) return NextResponse.json({ changes: [], error: error.message });
   const changes: AdvertChange[] = (data ?? []).map((r) => ({
     id: r.id as number, advertId: r.advert_id as number,

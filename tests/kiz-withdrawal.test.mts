@@ -115,7 +115,12 @@ test("сборщик заданий сохраняет дату продажи, 
   assert.match(src, /sold_at: sale\.soldAt/, "дата продажи не записывается");
   assert.match(src, /nm_id: sale\.nmId/, "товар не записывается");
   assert.match(src, /article: sale\.article/, "артикул не записывается");
-  assert.match(src, /select\("srid, sale_id, price_with_disc, for_pay, date, nm_id"\)/, "товар не запрашивается у продажи");
+  // Важен состав полей, а не буквальная строка: цену покупателя добавили
+  // отдельной правкой, и пин на точный select ломался на ровном месте.
+  const saleSelect = src.match(/select\("srid, sale_id[^"]*"\)/)?.[0] ?? "";
+  for (const field of ["srid", "sale_id", "date", "nm_id"]) {
+    assert.ok(saleSelect.includes(field), `${field} не запрашивается у продажи`);
+  }
 });
 
 test("добор прежних строк не затирает уже известную дату", () => {

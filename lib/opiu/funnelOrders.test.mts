@@ -262,8 +262,8 @@ test("canonical PostgREST numeric strings are accepted without loose coercion", 
 test("loadMonth delegates readiness-gated funnel reads and keeps wb_orders cabinet pagination", async () => {
   const source = await readFile(new URL("./loadMonth.ts", import.meta.url), "utf8");
 
-  assert.match(source, /\.from\("wb_orders"\)[\s\S]*?\.select\([^;]*?\.eq\("cabinet_id", OPIU_WB_CABINET_ID\)[\s\S]*?\.gte\("date", dateFrom\)/);
-  assert.match(source, /loadReadyFunnelFacts\([\s\S]*?OPIU_WB_CABINET_ID,[\s\S]*?dateFrom,[\s\S]*?dateTo/);
-  assert.match(source, /overlayFunnelOrders\(cachedOrders, funnelFacts, OPIU_WB_CABINET_ID\)/);
+  assert.match(source, /\.from\("wb_orders"\)[\s\S]*?\.select\([^;]*?\.eq\("cabinet_id", brand\.cabinetId\)[\s\S]*?\.gte\("date", dateFrom\)/);
+  assert.match(source, /loadReadyFunnelFacts\([\s\S]*?brand\.cabinetId,[\s\S]*?dateFrom,[\s\S]*?dateTo/);
+  assert.match(source, /overlayFunnelOrders\(cachedOrders, funnelFacts, brand\.cabinetId\)/);
   assert.doesNotMatch(source, /fetch\(|api\.wildberries|statistics-api|allowLiveFallback:\s*true/);
 });

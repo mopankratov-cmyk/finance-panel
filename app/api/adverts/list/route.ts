@@ -13,6 +13,9 @@ import { advertReportScopeKey, loadCachedAdvertReportRows } from "@/lib/adverts/
 import { aggregateClosedAdvertMetrics, getClosedMoscowPeriod } from "@/lib/adverts/closedPeriodMetrics";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
+import { campaignEconomicsBasis } from "@/lib/adverts/campaignBasis";
+import { loadCabinetUnitSettings, resolveTaxPct, type CabinetUnitSettings } from "@/lib/unit/cabinetSettings";
+import { UNIT_DEFAULT_TAX_PCT } from "@/lib/unit/query";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -71,6 +74,10 @@ interface AdvertRow {
   status: number;
   daily_budget: number | null;
   bid_cpm_rub?: number | null;
+  /** Тип кампании из WB: unified/auto — единая, иначе ручная. */
+  bid_type?: string | null;
+  /** Модель оплаты из WB: cpm или cpc. */
+  payment_type?: string | null;
   last_stats_synced_at?: string | null;
   nm_ids: number[] | null;
 }
@@ -142,6 +149,17 @@ export async function GET(request: NextRequest) {
     requestAllowedNmIds(cabinetId),
     cabinetId ? Promise.resolve([]) : getActiveWbCabinets(),
   ]);
+  // Ставка налога у каждого юрлица своя. Захардкоженные 7% превращали
+  // рекомендацию по ставке в фикцию для всех, у кого режим другой.
+  const taxByCabinet: Map<string, CabinetUnitSettings> = await loadCabinetUnitSettings(
+    db,
+    cabinetId ? [cabinetId] : activeCabinets.map((cabinet) => cabinet.id),
+  ).catch(() => new Map<string, CabinetUnitSettings>());
+  const taxPctFor = (rowCabinetId: string | null) => resolveTaxPct({
+    requested: null,
+    cabinet: taxByCabinet.get(String(rowCabinetId ?? cabinetId ?? ""))?.taxPct ?? null,
+    fallback: UNIT_DEFAULT_TAX_PCT,
+  }).taxPct;
   const allowedByCabinet = new Map(activeCabinets
     .filter((cabinet) => cabinet.allowed_nm_ids !== null)
     .map((cabinet) => [cabinet.id, new Set(cabinet.allowed_nm_ids ?? [])]));
@@ -175,7 +193,7 @@ export async function GET(request: NextRequest) {
       return await loadAllCampaignPages<AdvertRow>((from, to) => {
         let query = db
           .from("wb_adverts")
-          .select("advert_id, cabinet_id, name, status, daily_budget, bid_cpm_rub, last_stats_synced_at, nm_ids")
+          .select("advert_id, cabinet_id, name, status, daily_budget, bid_cpm_rub, bid_type, payment_type, last_stats_synced_at, nm_ids")
           .in("status", [7, 9, 11])
           .order("advert_id", { ascending: true })
           .range(from, to);
@@ -364,9 +382,14 @@ export async function GET(request: NextRequest) {
     reportByNm.set(row.nm_id, row);
   }
 
+  // Журнал изменений пишет статус "ok" (lib/adverts/cabinetGuard.ts), а здесь
+  // искали "success" — совпадений не было НИ РАЗУ, и сравнение «до и после
+  // правки ставки» не показывалось никогда. Старые строки могли лечь под
+  // прежним словом, поэтому принимаем оба.
+  const APPLIED_CHANGE_STATUSES = new Set(["ok", "success"]);
   const latestChangeByAdvert = new Map<number, ChangeRow>();
   for (const change of (changesRes.data ?? []) as ChangeRow[]) {
-    if (!latestChangeByAdvert.has(change.advert_id) && change.status === "success") {
+    if (!latestChangeByAdvert.has(change.advert_id) && APPLIED_CHANGE_STATUSES.has(change.status)) {
       latestChangeByAdvert.set(change.advert_id, change);
     }
   }
@@ -378,21 +401,58 @@ export async function GET(request: NextRequest) {
   // иначе «% к вчера» сравнивает разные множества кампаний.
   const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; spent_sku_7_closed: number; campaigns: Record<string, unknown>[] }>();
   let spendYestTotal = 0;
+  // Кампания без списка товаров не попадает ни в один артикул — раньше вместе
+  // с ней исчезал и её расход: итог «потрачено сегодня» был меньше реального,
+  // и никто не мог понять, почему панель и кабинет WB расходятся. Деньги
+  // потрачены независимо от того, есть ли к чему их привязать.
+  let spendTodayUnattributed = 0;
+  let spendYestUnattributed = 0;
+  let unattributedCampaigns = 0;
   for (const a of advertRows) {
     const nmIds = (a.nm_ids as number[]) ?? [];
     const nm = nmIds[0];
     const rowAllowedNmIds = cabinetId
       ? allowedNmIds
       : (allowedByCabinet.get(String(a.cabinet_id ?? "")) ?? null);
-    if (!nm || !requestAllowsNm(rowAllowedNmIds, nm)) continue;
+    if (!nm) {
+      const st = byAdv.get(a.advert_id);
+      // У кабинета с товарным контуром кампания без списка товаров может быть
+      // просто устаревшей строкой, записанной до включения контура: её расход
+      // не наш, и в итог кабинета он попадать не должен.
+      if (rowAllowedNmIds === null && st && (st.today > 0 || st.yest > 0)) {
+        spendTodayUnattributed += st.today;
+        spendYestUnattributed += st.yest;
+        unattributedCampaigns += 1;
+      }
+      continue;
+    }
+    // Товар чужого контура — это не «неразнесённое», а просто не наш кабинет.
+    if (!requestAllowsNm(rowAllowedNmIds, nm)) continue;
     const st = byAdv.get(a.advert_id) ?? { spent14: 0, views: 0, clicks: 0, ordSum: 0, today: 0, yest: 0 };
     const closed = closedMetricsByAdv.get(a.advert_id) ?? aggregateClosedAdvertMetrics([], metricsPeriod7Closed);
     spendYestTotal += st.yest;
     const report = reportByNm.get(nm);
-    const rate = commission.byNm.get(nm);
-    const price = Number(report?.orders_month ?? 0) > 0
-      ? Number(report?.orders_sum_month ?? 0) / Number(report?.orders_month ?? 0)
-      : 0;
+    // Экономика — по ВСЕМ товарам кампании, а не по первому в списке: расход
+    // один на всех, и цена с себестоимостью первого артикула ничего не говорит
+    // о кампании, где он даёт десятую часть оборота.
+    const campaignSkus = nmIds
+      .filter((candidate) => requestAllowsNm(rowAllowedNmIds, candidate))
+      .map((candidate) => {
+        const row = reportByNm.get(candidate);
+        const skuRate = commission.byNm.get(candidate);
+        return {
+          nm: candidate,
+          orders: Number(row?.orders_month ?? 0),
+          revenue: Number(row?.orders_sum_month ?? 0),
+          cost: Number(row?.cost ?? 0) > 0 ? Number(row?.cost) : null,
+          stock: row ? Number(row.stock ?? 0) : null,
+          commissionPct: skuRate?.pct ?? commission.avgPct,
+          acquiringPct: skuRate?.acqPct ?? commission.avgAcqPct,
+          extraPct: (skuRate?.extraPct ?? commission.avgExtraPct) + commission.overheadPct,
+        };
+      });
+    const basis = campaignEconomicsBasis(campaignSkus);
+    const price = basis.price;
     const latestStatDate = (daysByAdv.get(a.advert_id) ?? []).at(-1)?.ts ?? null;
     const statsSyncedAt = a.last_stats_synced_at ?? (latestStatDate ? `${latestStatDate}T23:59:59.999Z` : null);
     const dataAgeHours = statsSyncedAt
@@ -403,16 +463,16 @@ export async function GET(request: NextRequest) {
       && st.ordSum <= Math.max(1, Number(report?.orders_sum_month ?? 0)) * 1.2;
     const economics = calculateAdvertProfitGuardrail({
       price,
-      cost: Number(report?.cost ?? 0) > 0 ? Number(report?.cost) : null,
+      cost: basis.cost,
       revenue: st.ordSum,
       spent: st.spent14,
-      commissionPct: rate?.pct ?? commission.avgPct,
-      acquiringPct: rate?.acqPct ?? commission.avgAcqPct,
-      extraPct: (rate?.extraPct ?? commission.avgExtraPct) + commission.overheadPct,
-      taxPct: 7,
-      feesComplete: Boolean(rate || commission.avgPct > 0),
-      stock: report ? Number(report.stock ?? 0) : null,
-      dailyUnits: report ? Number(report.orders_month ?? 0) / 30 : null,
+      commissionPct: basis.commissionPct ?? commission.avgPct,
+      acquiringPct: basis.acquiringPct ?? commission.avgAcqPct,
+      extraPct: basis.extraPct ?? (commission.avgExtraPct + commission.overheadPct),
+      taxPct: taxPctFor(a.cabinet_id ?? null),
+      feesComplete: Boolean(basis.commissionPct != null || commission.avgPct > 0),
+      stock: basis.stock,
+      dailyUnits: basis.dailyUnits,
       attributionCompatible,
       dataAgeHours,
     });
@@ -432,7 +492,10 @@ export async function GET(request: NextRequest) {
       status_id: a.status,
       enabled: a.status === 9,
       nm,
-      bid_type: "unified",
+      // Тип кампании и модель оплаты синк давно кладёт в базу, а экран
+      // подставлял «единая» и «cpm» ВСЕМ подряд — фильтр «CPC / Единая» делил
+      // список по выдуманному признаку. Неизвестное называем неизвестным.
+      bid_type: String(a.bid_type ?? "").trim().toLowerCase() || "unknown",
       budget: a.daily_budget ?? 0,
       spend_today: Math.round(st.today),
       spent_14: Math.round(st.spent14),
@@ -449,7 +512,7 @@ export async function GET(request: NextRequest) {
       photo: wbCardImageUrl(nm),
       category: "",
       hours: [],
-      payment: "cpm",
+      payment: String(a.payment_type ?? "").trim().toLowerCase() || "unknown",
       bid_cpm_rub: a.bid_cpm_rub ?? a.daily_budget ?? null,
       stats_synced_at: statsSyncedAt,
       stats_age_hours: roundedDataAgeHours,
@@ -491,7 +554,8 @@ export async function GET(request: NextRequest) {
   }
 
   const articles = [...artMap.values()].sort((a, b) => b.spend - a.spend);
-  const spendTodayTotal = articles.reduce((s, a) => s + a.spend, 0);
+  const spendTodayAttributed = articles.reduce((s, a) => s + a.spend, 0);
+  const spendTodayTotal = spendTodayAttributed + Math.round(spendTodayUnattributed);
   const activeCampaignCount = articles.reduce((count, article) => count + article.campaigns.filter((campaign) => campaign.status === 9).length, 0);
 
   return NextResponse.json({
@@ -503,7 +567,15 @@ export async function GET(request: NextRequest) {
     cap_rub: 5000,
     balance,
     spend_today_total: spendTodayTotal,
-    spend_yest_total: Math.round(spendYestTotal),
+    spend_yest_total: Math.round(spendYestTotal + spendYestUnattributed),
+    // Разница между итогом и суммой по артикулам названа прямо: иначе она
+    // читается как ошибка сложения.
+    spend_today_attributed: spendTodayAttributed,
+    spend_unattributed: {
+      today: Math.round(spendTodayUnattributed),
+      yesterday: Math.round(spendYestUnattributed),
+      campaigns: unattributedCampaigns,
+    },
     today,
     yest,
     ...(wantTimings ? { timings_ms: timings } : {}),

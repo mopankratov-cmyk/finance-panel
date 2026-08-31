@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiSession } from "@/lib/auth/apiGuard";
+import { requireApiSessionOrMachine } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moscowToday } from "@/lib/wb/rkJournalDates";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { buildRkJournalItems } from "@/lib/wb/rkJournalRows";
+import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -88,7 +89,7 @@ function dayList(from: string, to: string): string[] {
 }
 
 export async function GET(request: NextRequest) {
-  const gate = await requireApiSession([...READ_ROLES]);
+  const gate = await requireApiSessionOrMachine(request, [...READ_ROLES]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
@@ -191,7 +192,14 @@ export async function GET(request: NextRequest) {
       .catch(noteOn("статистика кампаний")) as CampaignDayRow[];
   }
 
-  const items = buildRkJournalItems(snapshots, live, adverts);
+  // Товарный контур кабинета. Все остальные экраны WB сужают факты до своих
+  // товаров, а журнал не сужал ничего — у агентского кабинета в него попадали
+  // чужие артикулы, и расход за день расходился с РНП именно на них.
+  const allowedNmIds = await requestAllowedNmIds(cabinetId);
+  const inScope = <T extends { nm_id: number }>(rows: T[]) =>
+    rows.filter((row) => requestAllowsNm(allowedNmIds, Number(row.nm_id)));
+
+  const items = buildRkJournalItems(inScope(snapshots), inScope(live), adverts);
 
   return NextResponse.json({
     from,

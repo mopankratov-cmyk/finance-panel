@@ -53,6 +53,31 @@ export function statisticsCursor(rows: Record<string, unknown>[], fallback: stri
   return latest;
 }
 
+/**
+ * Насколько назад отматывать курсор перед запросом.
+ *
+ * Курсор статистики WB — это `lastChangeDate` самой свежей строки ответа. Но WB
+ * публикует часть строк С ЗАДЕРЖКОЙ, и у них `lastChangeDate` оказывается
+ * СТАРШЕ уже сохранённого курсора: такую строку не запросят уже никогда.
+ *
+ * Именно так у кабинета пропали продажи за десять дней подряд: возвраты
+ * (событие происходит «сейчас») приходили и вычитались из выкупов, а сами
+ * продажи, опубликованные задним числом, курсор уже проскочил — в РНП это
+ * выглядело как отрицательные выкупы при живых заказах.
+ *
+ * Перехлёст лечит гонку: каждый прогон перечитывает последние двое суток.
+ * Запись идемпотентна (upsert по идентификатору строки), поэтому повтор
+ * безопасен, а объём ограничен двумя днями.
+ */
+export const STATISTICS_OVERLAP_HOURS = 48;
+
+/** Курсор с перехлёстом: то, что запрашиваем у WB, а не то, что храним. */
+export function statisticsRequestCursor(cursor: string, hours = STATISTICS_OVERLAP_HOURS): string {
+  const parsed = Date.parse(cursor.length <= 19 ? `${cursor}Z` : cursor);
+  if (!Number.isFinite(parsed)) return cursor;
+  return new Date(parsed - hours * 60 * 60 * 1000).toISOString().slice(0, 19);
+}
+
 export function initialStatisticsCursor(now = new Date()): string {
   // Полную историю scoped-кабинета забирает фильтрованный DETAIL_HISTORY_REPORT.
   // Синхронный statistics API для большого кабинета не успевает вернуть 90 дней

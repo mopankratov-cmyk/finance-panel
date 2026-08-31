@@ -15,10 +15,20 @@ export async function hashPassword(pw: string): Promise<string> {
   return bcrypt.hash(pw, 10);
 }
 
-export async function countUsers(): Promise<number> {
+/**
+ * Сколько всего заведено пользователей. `null` — «не знаем»: база не ответила.
+ *
+ * Раньше ошибка чтения молча превращалась в ноль, а ноль означает «панель
+ * пустая, первый вход создаёт директора». То есть на любой сбой Supabase
+ * форма входа открывала бутстрап: кто угодно вводил любую почту с паролем
+ * подлиннее и становился директором рядом с настоящими пользователями.
+ * Незнание и пустоту здесь смешивать нельзя.
+ */
+export async function countUsers(): Promise<number | null> {
   const db = getSupabaseAdmin();
-  if (!db) return 0;
-  const { count } = await db.from("app_users").select("id", { count: "exact", head: true });
+  if (!db) return null;
+  const { count, error } = await db.from("app_users").select("id", { count: "exact", head: true });
+  if (error) return null;
   return count ?? 0;
 }
 
@@ -32,6 +42,8 @@ export async function authenticate(
   if (!email || !password) return { ok: false, error: "Укажите email и пароль" };
 
   const total = await countUsers();
+  // Бутстрап — только при ПОДТВЕРЖДЁННОМ нуле. При «не знаем» вход не пускаем.
+  if (total === null) return { ok: false, error: "Не удалось проверить учётные записи, попробуйте позже" };
   if (total === 0) {
     if (password.length < 10) return { ok: false, error: "Пароль должен содержать не менее 10 символов" };
     const password_hash = await hashPassword(password);

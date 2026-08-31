@@ -49,8 +49,10 @@ test("окно рекламной статистики задаётся пери
   const route = await read("../app/api/sync/advert-stats/route.ts");
   assert.match(route, /searchParams\.get\("from"\)/);
   assert.match(route, /searchParams\.get\("to"\)/);
-  // Без параметров поведение прежнее — привычное окно.
-  assert.match(route, /new Date\(Date\.now\(\) - DAYS_BACK \* 86400000\)/);
+  // Без параметров поведение прежнее — привычное окно, но отсчитанное по
+  // московскому календарю: по UTC вечерний прогон терял текущий день WB.
+  assert.match(route, /shiftIsoDay\(endIso, -DAYS_BACK\)/);
+  assert.match(route, /const endIso = toParam \?\? moscowToday\(\);/);
   assert.match(route, /Дата начала позже даты окончания/);
 });
 

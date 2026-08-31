@@ -34,7 +34,7 @@ function shiftIsoDate(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function currentMoscowWeek(now = new Date()) {
+function moscowTrailingWindow(days: number, now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Moscow",
     year: "numeric",
@@ -43,7 +43,7 @@ function currentMoscowWeek(now = new Date()) {
   }).formatToParts(now);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
   const to = `${part("year")}-${part("month")}-${part("day")}`;
-  return { from: shiftIsoDate(to, -6), to };
+  return { from: shiftIsoDate(to, -(days - 1)), to };
 }
 
 async function warmWbRnp() {
@@ -62,11 +62,14 @@ async function warmWbRnp() {
       pimWarm.push({ scope: scope.label, ok: false, error: error instanceof Error ? error.message : "Карточки WB не загружены" });
     }
   }
-  // Интерфейс открывает последние 7 дней, а раньше cron грел только календарный
-  // месяц. Из-за несовпадающего ключа кэша первый пользователь запускал тяжёлый
-  // расчёт сам. Греем оба реально используемых периода.
+  // Ключ снимка — это ровно пара дат, поэтому греть надо ИМЕННО те периоды,
+  // которые ставит интерфейс: несовпадение на день означает, что первый
+  // пользователь соберёт тяжёлый расчёт сам. Пресеты экрана: неделя, две
+  // недели, месяц, квартал. Квартал (90 дней) в прогрев не берём осознанно —
+  // он не помещается в бюджет функции вместе с остальными и вытеснил бы их.
   const periods = [...new Map(
-    [currentMoscowWeek(), currentMoscowMonth()].map((period) => [`${period.from}:${period.to}`, period]),
+    [moscowTrailingWindow(7), moscowTrailingWindow(14), currentMoscowMonth()]
+      .map((period) => [`${period.from}:${period.to}`, period]),
   ).values()];
   const snapshots: Array<{ scope: string; from: string; to: string; turnoverWindowDays: number; ok: boolean; generatedAt?: string; error?: string }> = [];
   const warm = async (task: RnpWarmupTask) => {

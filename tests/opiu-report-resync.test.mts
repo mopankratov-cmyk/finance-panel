@@ -31,5 +31,5 @@ test("ручной пересинк не тащит побочные эффек�
   const route = await read("../app/api/opiu/report-sync/route.ts");
   // Уведомления и анализ — забота /api/opiu/monitor; ручной запуск только качает данные.
   assert.doesNotMatch(route, /sendTelegramMessage|runServerFinancialAnalysis|buildMarketplacePayoutForecast/);
-  assert.match(route, /syncOpiuReportPeriod\(\{ dateFrom, dateTo \}\)/);
+  assert.match(route, /syncOpiuReportPeriod\(\{ dateFrom, dateTo \}, brand\.cabinetId\)/);
 });

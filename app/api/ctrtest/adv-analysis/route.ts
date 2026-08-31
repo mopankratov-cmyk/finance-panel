@@ -5,6 +5,7 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,19 +38,33 @@ export async function GET(request: NextRequest) {
   }
   const allowedNmIds = await requestAllowedNmIds(cabinetId);
 
-  let adQ = db.from("wb_advert_nm_daily").select("nm_id, date, views, clicks, spent").gte("date", since);
-  let funnelQ = db.from("wb_funnel_daily").select("nm_id, date, orders_sum").gte("date", since);
-  if (useCustom) { adQ = adQ.lte("date", dateTo!); funnelQ = funnelQ.lte("date", dateTo!); }
-  adQ = adQ.eq("cabinet_id", cabinetId);
-  funnelQ = funnelQ.eq("cabinet_id", cabinetId);
-  if (allowedNmIds) {
-    const nmIds = allowedNmIds.size ? [...allowedNmIds] : [-1];
-    adQ = adQ.in("nm_id", nmIds);
-    funnelQ = funnelQ.in("nm_id", nmIds);
-  }
+  // Факты по дням читаются постранично: 90 дней на сотне артикулов — это девять
+  // тысяч строк, а Supabase молча отдаёт первую тысячу. Обрезанная выборка не
+  // отличается от честной: CTR просто считается по куску периода.
+  const nmIds = allowedNmIds ? (allowedNmIds.size ? [...allowedNmIds] : [-1]) : null;
+  const withScope = <Q extends { lte: (column: string, value: string) => Q; in: (column: string, values: number[]) => Q }>(query: Q) => {
+    let scoped = query;
+    if (useCustom) scoped = scoped.lte("date", dateTo!);
+    if (nmIds) scoped = scoped.in("nm_id", nmIds);
+    return scoped;
+  };
   const [adRes, funnelRes, totals] = await Promise.all([
-    adQ,
-    funnelQ,
+    loadAllSupabasePages<AdRow>((from, to) => withScope(db
+      .from("wb_advert_nm_daily")
+      .select("nm_id, date, views, clicks, spent")
+      .gte("date", since)
+      .eq("cabinet_id", cabinetId)
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to)), { label: "CTR-тест: реклама по дням", maxPages: 100 }),
+    loadAllSupabasePages<FunnelRow>((from, to) => withScope(db
+      .from("wb_funnel_daily")
+      .select("nm_id, date, orders_sum")
+      .gte("date", since)
+      .eq("cabinet_id", cabinetId)
+      .order("date", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(from, to)), { label: "CTR-тест: воронка по дням", maxPages: 100 }),
     loadRnpReportRows<RpcTotal>(db, cabinetId, {
       allowedNmIds,
       label: "CTR-тест: товары WB",
@@ -58,8 +73,8 @@ export async function GET(request: NextRequest) {
 
   const acc = new Map<number, { views: number; clicks: number; spent: number; os: number }>();
   const get = (nm: number) => { let a = acc.get(nm); if (!a) { a = { views: 0, clicks: 0, spent: 0, os: 0 }; acc.set(nm, a); } return a; };
-  for (const a of (adRes.data ?? []) as AdRow[]) { if (!requestAllowsNm(allowedNmIds, a.nm_id)) continue; const x = get(a.nm_id); x.views += a.views || 0; x.clicks += a.clicks || 0; x.spent += Number(a.spent || 0); }
-  for (const f of (funnelRes.data ?? []) as FunnelRow[]) { if (!requestAllowsNm(allowedNmIds, f.nm_id)) continue; const x = get(f.nm_id); x.os += Number(f.orders_sum || 0); }
+  for (const a of adRes) { if (!requestAllowsNm(allowedNmIds, a.nm_id)) continue; const x = get(a.nm_id); x.views += a.views || 0; x.clicks += a.clicks || 0; x.spent += Number(a.spent || 0); }
+  for (const f of funnelRes) { if (!requestAllowsNm(allowedNmIds, f.nm_id)) continue; const x = get(f.nm_id); x.os += Number(f.orders_sum || 0); }
 
   const meta = new Map<number, RpcTotal>();
   for (const t of totals) if (requestAllowsNm(allowedNmIds, t.nm_id)) meta.set(t.nm_id, t);

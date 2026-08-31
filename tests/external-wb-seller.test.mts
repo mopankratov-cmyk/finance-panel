@@ -80,11 +80,16 @@ test("switching an internal account to seller creates a separate tenant", async 
     readFile(new URL("../app/api/users/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/users/[id]/route.ts", import.meta.url), "utf8"),
   ]);
-  for (const source of routes) {
-    assert.match(source, /createSellerOrganization/);
-    assert.match(source, /existing\?\.role === "seller"|currentUser\.role !== "seller"/);
-    assert.match(source, /role === "seller" \? \[\]|patch\.cabinet_ids = \[\]/);
-  }
+  const [collection, single] = routes;
+  for (const source of routes) assert.match(source, /createSellerOrganization/);
+  // Создание сотрудника: селлер заводится в своей организации и без списка
+  // кабинетов — доступ он получает через организацию, а не поимённо.
+  assert.match(collection, /role === "seller" \|\| role === "warehouse" \? \[\]/);
+  // Смена роли уже существующему: тенант определяется видом организации, а
+  // кабинеты берутся из неё же. Обнулять список здесь нельзя — это отрезало бы
+  // селлера от кабинета ровно в момент выдачи роли.
+  assert.match(single, /organizationNow\?\.kind[\s\S]{0,80}!== "seller"/);
+  assert.match(single, /patch\.cabinet_ids/);
 });
 
 test("database migrations create tenants and close browser access to business data", async () => {

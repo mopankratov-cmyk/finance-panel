@@ -8,8 +8,8 @@ test("OPiU reads exact WB finance rows and returns both date views", async () =>
     "utf8",
   );
 
-  assert.match(source, /fetchReportRows\(dateFrom,\s*dateTo,\s*"sale"\)/);
-  assert.match(source, /fetchReportRows\(dateFrom,\s*dateTo,\s*"report"\)/);
+  assert.match(source, /fetchReportRows\(dateFrom,\s*dateTo,\s*"sale",\s*brand\.cabinetId\)/);
+  assert.match(source, /fetchReportRows\(dateFrom,\s*dateTo,\s*"report",\s*brand\.cabinetId\)/);
   assert.match(source, /rowsBySaleDate\(saleDateRows\)/);
   assert.match(source, /reportByReportDate/);
   assert.doesNotMatch(source, /\.from\("wb_sales"\)/);
@@ -47,7 +47,7 @@ test("WB finance report sync is director-only, paginated and idempotent", async 
   assert.match(sync, /\.upsert\(chunk,\s*\{ onConflict: "cabinet_id,rrd_id" \}\)/);
   assert.match(reportSync, /resolveWbToken\(cabinet,\s*"statistics"\)/);
   assert.match(monitor, /export const maxDuration = 300/);
-  assert.match(monitor, /syncOpiuReportPeriod\(reportPeriod\)/);
+  assert.match(monitor, /syncOpiuReportPeriod\(reportPeriod,\s*b\.cabinetId\)/);
   assert.match(monitor, /opiuReportRefreshPeriod\(now\)/);
   assert.match(monitor, /key:\s*"wb-report-sync"/);
 });
