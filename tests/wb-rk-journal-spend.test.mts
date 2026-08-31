@@ -25,10 +25,18 @@ test("читатель различает семантику spent у снимк
 test("журнал сужается товарным контуром кабинета, как остальные экраны WB", () => {
   const route = read("../app/api/wb/rk-journal/route.ts");
   assert.match(route, /const allowedNmIds = await requestAllowedNmIds\(cabinetId\);/);
-  assert.match(route, /buildRkJournalItems\(scopedSnapshots, scopedLive, adverts\)/);
-  // Решение «какой источник за какой день» принимается на тех же сокращённых
-  // строках, что видит сборщик: иначе шапка «снят» разойдётся с цифрами.
-  assert.match(route, /chooseRkDaySources\(scopedSnapshots, scopedLive\)/);
+  assert.match(route, /buildRkJournalItems\(inScope\(snapshots\), inScope\(live\), adverts, sources\)/);
+  // А вот решение «какой источник за какой день» принимается на
+  // НЕСОКРАЩЁННЫХ строках. Посчитанное после контура, оно делало цифры дня
+  // зависимыми от того, кто смотрит: у селлера с узкой выборкой выброшенные
+  // строки — как раз те, которых снимку не хватало, проверка покрытия
+  // проходила, и день замерзал на 06:00.
+  assert.match(route, /const sources = chooseRkDaySources\(snapshots, live\);/);
+  assert.equal(
+    /chooseRkDaySources\(scopedSnapshots, scopedLive\)/.test(route),
+    false,
+    "решение об источнике не считается на сокращённых строках",
+  );
 });
 
 test("снятый вид размещения сильнее нынешних настроек кампании", () => {
@@ -69,12 +77,17 @@ test("пустая карточка различает «таких кампан
   // Раньше обе причины назывались одинаково — «нет кампаний», — и человек шёл
   // искать свои полки в пустой карточке. Теперь факт наличия вида у кабинета
   // приходит с сервера, а не додумывается на экране.
-  assert.match(page, /existsInCabinet: \(data\?\.blocksInCabinet \?\? \[\]\)\.includes\(block\)/);
+  assert.match(page, /const knownBlocks = data\?\.blocksInCabinet \?\? null;/);
+  assert.match(page, /existsInCabinet: knownBlocks == null \? null : knownBlocks\.includes\(block\)/);
   assert.match(page, /summary\.existsInCabinet \? "за период не тратили" : "нет таких кампаний"/);
   assert.match(page, /Кампании этого вида у кабинета есть, но за выбранный период они не тратили\./);
   assert.match(page, /не отдал вид размещения/);
+  // Третье состояние: справочник не прочитался — утверждать нечего.
+  assert.match(page, /"нет данных за период"/);
+  assert.match(page, /Есть ли они у кабинета вообще — сейчас неизвестно/);
   const route = read("../app/api/wb/rk-journal/route.ts");
-  assert.match(route, /const blocksInCabinet = \[\.\.\.new Set\(/);
+  assert.match(route, /const blocksInCabinet = advertsKnown/);
+  assert.match(route, /: null;/);
 });
 
 test("сводка карточек не зависит от выбранного вида размещения", () => {
@@ -82,7 +95,7 @@ test("сводка карточек не зависит от выбранног�
   // Сводка считалась по уже отфильтрованным строкам: клик по одной карточке
   // заставлял остальные шесть написать «нет кампаний», хотя те кампании живы.
   assert.match(page, /const blockSummary = useMemo\(\(\) => \{[\s\S]{0,400}?for \(const item of taggedItems\)/);
-  assert.match(page, /\}, \[data\?\.blocksInCabinet, taggedItems\]\);/);
+  assert.match(page, /\}, \[knownBlocks, taggedItems\]\);/);
   // Вид берётся по дню, иначе кампания, сменившая площадку, попадёт целиком в
   // одну карточку.
   assert.match(page, /const block = campaignBlockAt\(campaign, date\);/);

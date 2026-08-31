@@ -60,6 +60,28 @@ interface JournalCampaign {
  */
 const campaignBlockAt = (campaign: JournalCampaign, date: string) => campaign.blocks?.[date] ?? campaign.block;
 
+/**
+ * Подпись вида размещения для строки кампании и для выгрузки.
+ *
+ * Считается по дням, которые в строке реально остались: под фильтром это ровно
+ * один вид, без фильтра — вся история переключений («поиск → полки → поиск +
+ * полки»). Один ярлык на всю строку врал ровно там, где правка и делалась:
+ * полочный день кампании, у которой сегодня включены обе площадки,
+ * подписывался «CPC поиск + полки» — под фильтром «CPC полки».
+ */
+function campaignBlockLabel(campaign: JournalCampaign): string {
+  if (campaign.block === WB_RK_BLOCK_ATTRIBUTED) return "";
+  const name = (block: string) => block === WB_RK_BLOCK_UNKNOWN
+    ? WB_RK_BLOCK_UNKNOWN_LABEL
+    : WB_RK_BLOCK_LABELS[block as WbRkBlock] ?? block;
+  const sequence: string[] = [];
+  for (const date of Object.keys(campaign.days).sort()) {
+    const block = campaignBlockAt(campaign, date);
+    if (sequence[sequence.length - 1] !== block) sequence.push(block);
+  }
+  return sequence.length ? sequence.map(name).join(" → ") : name(campaign.block);
+}
+
 interface JournalItem {
   nm: number;
   /** Итог по артикулу за день — сумма его кампаний. */
@@ -74,8 +96,13 @@ interface JournalData {
   dates: string[];
   items: JournalItem[];
   snapshotDates: string[];
-  /** Виды размещения, которые есть у кабинета в справочнике WB. */
-  blocksInCabinet?: string[];
+  /** Дни, где снимок есть, но неполон: метрики из слоя, ставки из снимка. */
+  partialDates?: string[];
+  /**
+   * Виды размещения, которые есть у кабинета в справочнике WB.
+   * null — справочник не прочитался: утверждать, что вида нет, нельзя.
+   */
+  blocksInCabinet?: string[] | null;
 }
 
 // Пресеты как в РНП плюс «5 дней» — окно, в котором владелец читает поведение
@@ -379,6 +406,10 @@ export function WbRkJournalPage() {
     return sortByCustomSkuOrder(byBlock, (item) => item.nm, orderIndex);
   }, [blockFilter, orderIndex, taggedItems]);
 
+  // Виды, которые есть у кабинета в справочнике WB. null — справочник не
+  // прочитался: «таких кампаний нет» тогда не факт, а домысел.
+  const knownBlocks = data?.blocksInCabinet ?? null;
+
   // Сводка по видам размещения: числитель и знаменатель складываются отдельно,
   // среднее из процентов по строкам дало бы неверный CPO/CPL.
   const blockSummary = useMemo(() => {
@@ -423,8 +454,9 @@ export function WbRkJournalPage() {
           empty: !acc.has(block),
           // Пусто пусто́му рознь: «таких кампаний у кабинета нет вовсе» и «есть,
           // но за период не тратили» — разные факты, а надпись была одна.
-          // Список видов кабинета приходит из справочника WB вместе с журналом.
-          existsInCabinet: (data?.blocksInCabinet ?? []).includes(block),
+          // Список видов кабинета приходит из справочника WB вместе с журналом;
+          // null — справочник не прочитался, и утверждать нечего.
+          existsInCabinet: knownBlocks == null ? null : knownBlocks.includes(block),
           label: block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL : WB_RK_BLOCK_LABELS[block as WbRkBlock],
           spent: agg.spent,
           allocated: agg.allocated,
@@ -438,7 +470,7 @@ export function WbRkJournalPage() {
           drr: agg.ordersSum ? (agg.spent / agg.ordersSum) * 100 : null,
         };
       });
-  }, [data?.blocksInCabinet, taggedItems]);
+  }, [knownBlocks, taggedItems]);
 
   // Сколько конверсий осталось вне карточек. WB приписывает кампании заказы по
   // товарам, которых она не показывала: вида размещения у таких строк нет, и в
@@ -514,9 +546,7 @@ export function WbRkJournalPage() {
         campaign.block === WB_RK_BLOCK_ATTRIBUTED
           ? WB_RK_BLOCK_ATTRIBUTED_LABEL
           : campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : ""),
-        campaign.block === WB_RK_BLOCK_ATTRIBUTED ? ""
-          : campaign.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL
-            : WB_RK_BLOCK_LABELS[campaign.block as WbRkBlock],
+        campaignBlockLabel(campaign),
         ...dates.flatMap((date) => {
           const cell = campaign.days[date];
           if (isEmpty(cell)) return ["", "", "", "", "", ""];
@@ -544,10 +574,12 @@ export function WbRkJournalPage() {
   // Одна надпись «нет кампаний» покрывала четыре разных факта, и человек шёл
   // искать свои полки в пустой карточке. Теперь причина называется прямо, а в
   // подсказке лежит остальное.
-  const emptyBlockHint = (existsInCabinet: boolean) => [
-    existsInCabinet
-      ? "Кампании этого вида у кабинета есть, но за выбранный период они не тратили."
-      : "У кабинета нет ни одной кампании этого вида — WB не отдал ни одной такой настройки.",
+  const emptyBlockHint = (existsInCabinet: boolean | null) => [
+    existsInCabinet == null
+      ? "За выбранный период кампаний этого вида не нашлось. Есть ли они у кабинета вообще — сейчас неизвестно: справочник кампаний не прочитался."
+      : existsInCabinet
+        ? "Кампании этого вида у кабинета есть, но за выбранный период они не тратили."
+        : "У кабинета нет ни одной кампании этого вида — WB не отдал ни одной такой настройки.",
     "Единая реклама считается отдельным видом (ЕРК), а кампания сразу на поиске и полках — видом «поиск + полки»: WB не делит её расход между площадками, поэтому в «полки» она не попадает.",
     unknownBlock ? `У ${unknownBlock.skus} товаров WB не отдал вид размещения — они в карточке «${WB_RK_BLOCK_UNKNOWN_LABEL}».` : "",
   ].filter(Boolean).join(" ");
@@ -705,7 +737,9 @@ export function WbRkJournalPage() {
                   <div className={`truncate pr-4 text-[11px] font-semibold uppercase tracking-wide ${summary.empty ? "text-slate-400" : blockFilter === summary.block ? "text-violet-700" : "text-slate-500"}`}>{summary.label}</div>
                   <div className={`mt-1 font-bold tabular-nums ${summary.empty ? "text-[13px] leading-tight text-slate-400" : "text-lg text-slate-900"}`}>
                     {summary.empty
-                      ? (summary.existsInCabinet ? "за период не тратили" : "нет таких кампаний")
+                      ? summary.existsInCabinet == null
+                        ? "нет данных за период"
+                        : summary.existsInCabinet ? "за период не тратили" : "нет таких кампаний"
                       : `${money(summary.spent)} ₽`}
                   </div>
                   {summary.empty ? null : <dl className="mt-1 space-y-0.5 text-[11px] text-slate-500">
@@ -787,9 +821,16 @@ export function WbRkJournalPage() {
                       {dates.map((date) => (
                         <th key={date} colSpan={dayCols} className="border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-700">
                           {dayLabel(date)}
+                          {/* Три состояния, а не два. «Снят» раньше значило
+                              «за день есть хоть одна строка снимка», и это
+                              и было причиной занижения: снимок 06:00 ловит
+                              часть кабинета. Теперь «снят» — покрыт целиком,
+                              «частично» — ставки из снимка, метрики из слоя. */}
                           {data.snapshotDates.includes(date)
-                            ? <span className="ml-1 font-normal text-emerald-600" title="День снят в 06:00 МСК: ставка зафиксирована">снят</span>
-                            : <span className="ml-1 font-normal text-slate-400" title="День ещё не снят: считается на лету">live</span>}
+                            ? <span className="ml-1 font-normal text-emerald-600" title="Снимок 06:00 МСК покрыл день целиком: и метрики, и ставки — из него">снят</span>
+                            : (data.partialDates ?? []).includes(date)
+                              ? <span className="ml-1 font-normal text-amber-600" title="Снимок за этот день неполный: метрики взяты из слоя кампаний, ставки — из снимка там, где он их запомнил">частично</span>
+                              : <span className="ml-1 font-normal text-slate-400" title="Снимка за этот день нет: считается на лету, ставка текущая">live</span>}
                         </th>
                       ))}
                     </tr>
@@ -919,10 +960,18 @@ export function WbRkJournalPage() {
                                   <div className="text-[10px] text-slate-400">на {campaign.nmCount} артикулов</div>
                                 ) : null}
                               </td>
-                              <td className="whitespace-nowrap px-2 py-1 text-[11px]">
-                                {campaign.block === WB_RK_BLOCK_ATTRIBUTED ? ""
-                                  : campaign.block === WB_RK_BLOCK_UNKNOWN ? WB_RK_BLOCK_UNKNOWN_LABEL
-                                    : WB_RK_BLOCK_LABELS[campaign.block as WbRkBlock]}
+                              <td
+                                className="whitespace-nowrap px-2 py-1 text-[11px]"
+                                // Стрелка — не всегда наблюдённое переключение:
+                                // вид дня берётся из снимка, а где снимка нет —
+                                // из нынешних настроек кампании. Обещать
+                                // историю площадок там, где её никто не
+                                // записывал, нельзя.
+                                title={campaign.blocks
+                                  ? "Вид размещения по дням: за дни со снимком — как было тогда, за остальные — по нынешним настройкам кампании"
+                                  : undefined}
+                              >
+                                {campaignBlockLabel(campaign)}
                               </td>
                               {dates.map((date) => {
                                 const cell = campaign.days[date];

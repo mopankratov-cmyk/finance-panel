@@ -148,7 +148,17 @@ export interface RkDaySources {
   snapshotDates: string[];
   /** Дни, где слой знает больше снимка: метрики берём из него. */
   liveDates: string[];
+  /**
+   * Пары «кабинет|дата», где снимок покрыл день целиком. Решение принимается
+   * НА КАБИНЕТ, а не на дату: в сводном режиме один отстающий кабинет иначе
+   * снимал пометку «снят» со всех остальных, и один и тот же день одного и
+   * того же кабинета выглядел по-разному в зависимости от селектора.
+   */
+  covered: Set<string>;
 }
+
+/** Ключ решения об источнике: кабинет и дата. */
+export const rkDayKey = (cabinetId: string | null | undefined, date: string) => `${cabinetId ?? ""}|${date}`;
 
 /**
  * Какой источник за какой день считать правдой.
@@ -169,27 +179,33 @@ export interface RkDaySources {
  */
 export function chooseRkDaySources(snapshots: RkSnapshotRow[], live: RkCampaignDayRow[]): RkDaySources {
   const pairs = (rows: { cabinet_id?: string | null; date: string; advert_id?: number | null; nm_id: number }[]) => {
-    const byDate = new Map<string, Set<string>>();
+    const byKey = new Map<string, Set<string>>();
     for (const row of rows) {
-      const set = byDate.get(row.date) ?? new Set<string>();
-      set.add(`${row.cabinet_id ?? ""}|${row.advert_id ?? "-"}|${row.nm_id}`);
-      byDate.set(row.date, set);
+      const key = rkDayKey(row.cabinet_id, row.date);
+      const set = byKey.get(key) ?? new Set<string>();
+      set.add(`${row.advert_id ?? "-"}|${row.nm_id}`);
+      byKey.set(key, set);
     }
-    return byDate;
+    return byKey;
   };
   const snapped = pairs(snapshots);
   const raw = pairs(live);
-  const snapshotDates: string[] = [];
-  const liveDates: string[] = [];
-  for (const date of [...new Set([...snapped.keys(), ...raw.keys()])].sort()) {
-    const snappedSet = snapped.get(date);
-    const rawSet = raw.get(date);
-    const covered = (snappedSet?.size ?? 0) > 0
+  const covered = new Set<string>();
+  const uncovered = new Set<string>();
+  for (const key of new Set([...snapped.keys(), ...raw.keys()])) {
+    const snappedSet = snapped.get(key);
+    const rawSet = raw.get(key);
+    const full = (snappedSet?.size ?? 0) > 0
       && [...(rawSet ?? [])].every((pair) => snappedSet!.has(pair));
-    if (covered) snapshotDates.push(date);
-    else liveDates.push(date);
+    (full ? covered : uncovered).add(key);
   }
-  return { snapshotDates, liveDates };
+  // Для шапки экрана день «снят», только если он снят у ВСЕХ кабинетов
+  // выборки: в сводном режиме иначе пришлось бы выбирать, чью правду показать.
+  const uncoveredDates = new Set([...uncovered].map((key) => key.slice(key.indexOf("|") + 1)));
+  const allDates = new Set([...covered, ...uncovered].map((key) => key.slice(key.indexOf("|") + 1)));
+  const snapshotDates = [...allDates].filter((date) => !uncoveredDates.has(date)).sort();
+  const liveDates = [...uncoveredDates].sort();
+  return { snapshotDates, liveDates, covered };
 }
 
 interface MetricSource {
@@ -242,6 +258,8 @@ export function buildRkJournalItems(
   snapshots: RkSnapshotRow[],
   live: RkCampaignDayRow[],
   adverts: RkAdvertRow[],
+  /** Решение об источнике, посчитанное ДО сужения товарным контуром. */
+  sources?: RkDaySources,
 ): RkJournalItem[] {
   const advertByKey = new Map<string, RkAdvertRow>();
   const advertById = new Map<number, RkAdvertRow>();
@@ -280,26 +298,49 @@ export function buildRkJournalItems(
     return cell;
   };
 
-  const { liveDates } = chooseRkDaySources(snapshots, live);
-  const liveDateSet = new Set(liveDates);
+  // Решение об источнике принимается на несокращённых строках и приходит
+  // снаружи: посчитанное на том, что осталось после товарного контура, оно
+  // делало цифры дня зависимыми от того, кто смотрит и какой кабинет выбран.
+  const { covered } = sources ?? chooseRkDaySources(snapshots, live);
+  const isLiveDay = (cabinetId: string | null | undefined, date: string) => !covered.has(rkDayKey(cabinetId, date));
 
   // Память снимка: ставка и вид размещения того дня. Нужна и за дни, метрики
   // которых мы берём из слоя, — ни ставки, ни площадок в слое нет вовсе.
   const memory = new Map<string, RkSnapshotRow>();
   for (const row of snapshots) memory.set(sourceKey(row.cabinet_id, row.date, row.advert_id, row.nm_id), row);
-  const liveKeys = new Set<string>();
-  for (const row of live) liveKeys.add(sourceKey(row.cabinet_id, row.date, row.advert_id, row.nm_id));
+  // Два набора ключей: полный и без кабинета. Снимок и слой пишутся разными
+  // синками, и рассинхрон cabinet_id — не гипотеза, а то, из-за чего пара
+  // перестаёт совпадать, а деньги считаются дважды.
+  // Ключ БЕЗ кабинета и владелец строки слоя. Снимок и слой пишутся разными
+  // синками, и если cabinet_id разошёлся, пара «кампания × артикул» перестаёт
+  // совпадать: снимок уезжает в собственный «день», который считается полным,
+  // и его деньги складываются со слоем. Решает не сравнение дней, а вопрос
+  // «будет ли посчитана та же строка из слоя».
+  const liveOwner = new Map<string, string | null | undefined>();
+  for (const row of live) liveOwner.set(sourceKey(null, row.date, row.advert_id, row.nm_id), row.cabinet_id);
 
   /**
    * Вид размещения на КОНКРЕТНЫЙ день. Снятый вид — факт того дня; нынешние
    * настройки кампании о вчерашнем размещении не свидетельствуют. Справочник
    * подставляется только там, где снимок вида не знал.
    */
-  const blockOfDay = (frozen: string | null | undefined, advert: RkAdvertRow | undefined): string =>
-    isRealBlock(frozen) ? frozen : rkAdvertBlock(advert) ?? frozen ?? WB_RK_BLOCK_UNKNOWN;
+  const blockOfDay = (frozen: string | null | undefined, advert: RkAdvertRow | undefined): string => {
+    // Ручная разметка владельца сильнее всего — включая снятый вид: размечают
+    // руками ровно то, о чём WB молчит или врёт, и снимок унаследовал бы то же
+    // самое молчание.
+    if (advert && isRealBlock(advert.block_override)) return advert.block_override;
+    return isRealBlock(frozen) ? frozen : rkAdvertBlock(advert) ?? frozen ?? WB_RK_BLOCK_UNKNOWN;
+  };
 
-  /** Ставки блока: основная и вторая площадка у видов «поиск + полки». */
-  const applyBids = (cell: RkCell, advert: RkAdvertRow, block: string) => {
+  /**
+   * Ставки блока: основная и вторая площадка у видов «поиск + полки».
+   *
+   * Вторую ставку показываем ТОЛЬКО когда основная взята из того же источника —
+   * из нынешнего справочника. Иначе в одной ячейке склеивались две разные даты:
+   * слева замороженная ставка того дня, справа сегодняшняя из справочника, — и
+   * читалось это как перекос площадок в тот день.
+   */
+  const applyBids = (cell: RkCell, advert: RkAdvertRow, block: string, allowAlt: boolean) => {
     const search = advert.bid_search_rub == null ? null : rkNum(advert.bid_search_rub);
     const shelf = advert.bid_shelf_rub == null ? null : rkNum(advert.bid_shelf_rub);
     const cpm = advert.bid_cpm_rub == null ? null : rkNum(advert.bid_cpm_rub);
@@ -310,6 +351,7 @@ export function buildRkJournalItems(
       );
       if (bid != null && bid > 0) cell.bid = bid;
     }
+    if (!allowAlt) return;
     if (block !== "cpc_both" && block !== "cpm_both" && block !== "erk") return;
     const primary = search ?? cpm;
     if (primary != null && shelf != null && primary > 0 && shelf > 0 && primary !== shelf) cell.bidAlt = shelf;
@@ -319,8 +361,17 @@ export function buildRkJournalItems(
     // За дни, где слой знает больше снимка, метрики уступаются слою — но только
     // по тем парам, которые в слое действительно есть: строку, которую слой
     // потерял, снимок обязан донести сам.
-    const key = sourceKey(snapshot.cabinet_id, snapshot.date, snapshot.advert_id, snapshot.nm_id);
-    if (liveDateSet.has(snapshot.date) && liveKeys.has(key)) continue;
+    // Ту же строку сейчас посчитает слой — значит снимок молчит. Владельца
+    // берём у строки СЛОЯ, а не у снимка: при рассинхроне кабинета снимок
+    // считает свой «день» полным и складывается со слоем поверх.
+    const keyNoCabinet = sourceKey(null, snapshot.date, snapshot.advert_id, snapshot.nm_id);
+    if (liveOwner.has(keyNoCabinet) && isLiveDay(liveOwner.get(keyNoCabinet), snapshot.date)) continue;
+    // Строку без advert_id к слою не приложить: сравнивать не с чем, а сложить
+    // рядом значит посчитать день дважды — ячейки копятся по ключу
+    // «артикул|кампания», и такая строка заводит себе вторую. За живой день
+    // слой полнее по определению, поэтому снимок здесь молчит. Путь достижим:
+    // роут перечитывает снимки без advert_id, пока миграция не применена.
+    if (snapshot.advert_id == null && isLiveDay(snapshot.cabinet_id, snapshot.date)) continue;
     // Название кампании снимок не хранит — берём из справочника, если она
     // ещё жива у WB.
     const advert = snapshot.advert_id == null ? undefined : advertById.get(snapshot.advert_id);
@@ -335,7 +386,7 @@ export function buildRkJournalItems(
   }
 
   for (const row of live) {
-    if (!liveDateSet.has(row.date)) continue;
+    if (!isLiveDay(row.cabinet_id, row.date)) continue;
     const advert = advertByKey.get(advertKey(row.cabinet_id, row.advert_id));
     const frozen = memory.get(sourceKey(row.cabinet_id, row.date, row.advert_id, row.nm_id));
     const block = blockOfDay(frozen?.block, advert);
@@ -348,8 +399,9 @@ export function buildRkJournalItems(
     addTo(cell, row, false);
     // Ставка того дня — из снимка, если он её запомнил: нынешняя ставка из
     // справочника к прошедшему дню отношения не имеет.
-    if (cell.bid == null && frozen?.bid != null) cell.bid = rkNum(frozen.bid);
-    if (advert) applyBids(cell, advert, block);
+    const bidFromSnapshot = cell.bid == null && frozen?.bid != null;
+    if (bidFromSnapshot) cell.bid = rkNum(frozen!.bid);
+    if (advert) applyBids(cell, advert, block, !bidFromSnapshot);
   }
 
   // Кампании собираются под артикулом, там же складывается его итог за день.
@@ -375,15 +427,37 @@ export function buildRkJournalItems(
       // Подпись строки — вид, на котором кампания сожгла больше всего денег;
       // поденная раскладка едет рядом, чтобы карточки считались по дням, а не
       // по одному ярлыку на всё окно.
+      // Известный вид добивает неизвестный внутри строки: кампания, которую WB
+      // больше не отдаёт, имела вид только в те дни, за которые есть снимок, и
+      // без этого распадалась на две карточки — свою и «Вид не определён».
+      const knownInRow = [...row.blockByDate.values()].find(isRealBlock) ?? (isRealBlock(row.block) ? row.block : null);
+      if (knownInRow) {
+        for (const [date, dayBlock] of row.blockByDate) {
+          if (dayBlock === WB_RK_BLOCK_UNKNOWN) row.blockByDate.set(date, knownInRow);
+        }
+      }
       const spentByBlock = new Map<string, number>();
       for (const [date, cell] of row.cells) {
         const dayBlock = row.blockByDate.get(date) ?? row.block;
         spentByBlock.set(dayBlock, (spentByBlock.get(dayBlock) ?? 0) + cell.spent);
       }
+      // Ничья при нулевом расходе решается явно — числом дней, затем последней
+      // датой, — а не порядком вставки: иначе подпись доставалась дню, который
+      // первым попал в Map, то есть случайному.
+      const daysByBlock = new Map<string, number>();
+      const lastDateByBlock = new Map<string, string>();
+      for (const [date, dayBlock] of [...row.blockByDate].sort((a, b) => a[0].localeCompare(b[0]))) {
+        daysByBlock.set(dayBlock, (daysByBlock.get(dayBlock) ?? 0) + 1);
+        lastDateByBlock.set(dayBlock, date);
+      }
       const seen = [...new Set(row.blockByDate.values())];
       const dominant = seen.length <= 1
         ? seen[0] ?? row.block
-        : [...spentByBlock.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? row.block;
+        : [...spentByBlock.entries()].sort((a, b) =>
+          b[1] - a[1]
+          || (daysByBlock.get(b[0]) ?? 0) - (daysByBlock.get(a[0]) ?? 0)
+          || (lastDateByBlock.get(b[0]) ?? "").localeCompare(lastDateByBlock.get(a[0]) ?? ""),
+        )[0]?.[0] ?? row.block;
       item.campaigns.push({
         advertId: row.advertId,
         block: dominant,

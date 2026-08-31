@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildRkJournalItems } from "./rkJournalRows.ts";
+import { buildRkJournalItems, chooseRkDaySources, rkDayKey } from "./rkJournalRows.ts";
 
 const advert = {
   cabinet_id: "cab-1",
@@ -345,4 +345,95 @@ test("равные ставки второй строкой не дублиру�
     [erk],
   );
   assert.equal(items[0].campaigns[0].days["2026-08-31"].bidAlt, null);
+});
+
+// ── Ревью: двойной счёт и решение об источнике ───────────────────────────────
+
+test("снимок без advert_id за живой день не задваивает расход", () => {
+  // Роут перечитывает снимки БЕЗ advert_id, пока миграция не применена.
+  // Ключ пропуска включал кампанию, а ячейки копятся по «артикул|кампания» —
+  // такая строка заводила себе вторую и удваивала день.
+  const items = buildRkJournalItems(
+    [{ cabinet_id: "cab", date: "2026-08-27", nm_id: 7, advert_id: null, block: "cpc_search", bid: 4.5, spent: 100 }],
+    [
+      { cabinet_id: "cab", advert_id: 101, nm_id: 7, date: "2026-08-27", spent: 100 },
+      { cabinet_id: "cab", advert_id: 909, nm_id: 7, date: "2026-08-27", spent: 400 },
+    ],
+    [advert],
+  );
+  assert.equal(items[0].days["2026-08-27"].spent, 500, "снимок без кампании за живой день молчит");
+});
+
+test("рассинхрон cabinet_id между снимком и слоем не задваивает расход", () => {
+  const items = buildRkJournalItems(
+    [{ cabinet_id: null, date: "2026-08-27", nm_id: 7, advert_id: 101, block: "cpc_search", bid: 4.5, spent: 100 }],
+    [
+      { cabinet_id: "cab-1", advert_id: 101, nm_id: 7, date: "2026-08-27", spent: 100 },
+      { cabinet_id: "cab-1", advert_id: 909, nm_id: 7, date: "2026-08-27", spent: 400 },
+    ],
+    [advert],
+  );
+  assert.equal(items[0].days["2026-08-27"].spent, 500);
+});
+
+test("неполный день одного кабинета не размораживает день соседнего", () => {
+  // Решение об источнике принимается на пару «кабинет + дата». Раньше оно было
+  // общим на дату, и один отстающий кабинет снимал пометку «снят» со всех.
+  const { snapshotDates, covered } = chooseRkDaySources(
+    [
+      { cabinet_id: "A", date: "2026-08-27", nm_id: 1, advert_id: 11, block: "cpc_search", bid: 5, spent: 10 },
+      { cabinet_id: "B", date: "2026-08-27", nm_id: 2, advert_id: 22, block: "cpc_search", bid: 5, spent: 10 },
+    ],
+    [
+      { cabinet_id: "A", advert_id: 11, nm_id: 1, date: "2026-08-27", spent: 10 },
+      { cabinet_id: "B", advert_id: 22, nm_id: 2, date: "2026-08-27", spent: 10 },
+      { cabinet_id: "B", advert_id: 33, nm_id: 2, date: "2026-08-27", spent: 90 },
+    ],
+    );
+  assert.equal(covered.has(rkDayKey("A", "2026-08-27")), true, "у кабинета A день снят целиком");
+  assert.equal(covered.has(rkDayKey("B", "2026-08-27")), false, "у кабинета B слой знает больше");
+  assert.deepEqual(snapshotDates, [], "в шапке день снят, только если снят у всех");
+});
+
+test("ручная разметка владельца сильнее снятого вида", () => {
+  const overridden = { ...advert, advert_id: 70, block_override: "cpm_shelf" };
+  const items = buildRkJournalItems(
+    [{ cabinet_id: "cab-1", date: "2026-08-27", nm_id: 7, advert_id: 70, block: "cpc_search", bid: 5, spent: 100 }],
+    [],
+    [overridden],
+  );
+  assert.equal(items[0].campaigns[0].block, "cpm_shelf");
+});
+
+test("известный вид добивает неизвестный внутри одной кампании", () => {
+  // Кампании нет в справочнике; вид известен только за день со снимком.
+  // Раньше строка распадалась на свою карточку и «Вид не определён».
+  const items = buildRkJournalItems(
+    [{ cabinet_id: "cab", date: "2026-08-27", nm_id: 7, advert_id: 500, block: "cpm_shelf", bid: 200, spent: 100 }],
+    [{ cabinet_id: "cab", advert_id: 500, nm_id: 7, date: "2026-08-28", spent: 300 }],
+    [],
+  );
+  const campaign = items[0].campaigns[0];
+  assert.equal(campaign.blocks, undefined, "оба дня свелись к одному виду");
+  assert.equal(campaign.block, "cpm_shelf");
+});
+
+test("вторая ставка не показывается рядом с замороженной", () => {
+  // Слева была бы ставка того дня из снимка, справа — сегодняшняя из
+  // справочника: две разные даты в одной ячейке.
+  const both = { ...advert, advert_id: 60, placement_shelf: true, bid_search_rub: 5, bid_shelf_rub: 5.5 };
+  const items = buildRkJournalItems(
+    [
+      { cabinet_id: "cab-1", date: "2026-08-31", nm_id: 7, advert_id: 60, block: "cpc_both", bid: 4.2, spent: 10 },
+      { cabinet_id: "cab-1", date: "2026-08-31", nm_id: 8, advert_id: 60, block: "cpc_both", bid: 4.2, spent: 10 },
+    ],
+    [
+      { cabinet_id: "cab-1", advert_id: 60, nm_id: 7, date: "2026-08-31", spent: 10 },
+      { cabinet_id: "cab-1", advert_id: 61, nm_id: 7, date: "2026-08-31", spent: 300 },
+    ],
+    [both],
+  );
+  const cell = items.find((item) => item.nm === 7)!.campaigns.find((c) => c.advertId === 60)!.days["2026-08-31"];
+  assert.equal(cell.bid, 4.2, "ставка того дня — из снимка");
+  assert.equal(cell.bidAlt, null, "вторая ставка из сегодняшнего справочника рядом не рисуется");
 });

@@ -128,6 +128,9 @@ export async function GET(request: NextRequest) {
     : requestedFrom > to ? to : requestedFrom;
   const dates = dayList(from, to);
 
+  // Справочник мог не прочитаться. Тогда «таких кампаний у кабинета нет» —
+  // не факт, а домысел, и утверждать его нельзя.
+  let advertsKnown = false;
   // Кампании нужны, чтобы разложить дни без снимка по видам размещения.
   // Запрос строится внутри колбэка: builder PostgREST одноразовый, повторное
   // использование одного объекта на вторую страницу молча ломает выборку.
@@ -139,7 +142,7 @@ export async function GET(request: NextRequest) {
       return (cabinetId ? q.eq("cabinet_id", cabinetId) : q).order("advert_id", { ascending: true }).range(start, end);
     },
     { maxPages: 60, label: "Журнал РК: кампании", concurrency: 4 },
-  ).catch(noteOn("кампании")) as AdvertRow[];
+  ).then((rows) => { advertsKnown = true; return rows; }).catch(noteOn("кампании")) as AdvertRow[];
 
   // Снимки закрытых дней.
   // Колонка раскладки появляется отдельной миграцией. Пока её нет, читаем без
@@ -212,19 +215,36 @@ export async function GET(request: NextRequest) {
   const inScope = <T extends { nm_id: number }>(rows: T[]) =>
     rows.filter((row) => requestAllowsNm(allowedNmIds, Number(row.nm_id)));
 
-  const scopedSnapshots = inScope(snapshots);
-  const scopedLive = inScope(live);
-  const items = buildRkJournalItems(scopedSnapshots, scopedLive, adverts);
   // «Снят» — день, который снимок покрыл ЦЕЛИКОМ, а не день, за который снимок
-  // хоть что-то записал. Решение то же самое, что внутри сборщика: функция одна.
-  const { snapshotDates } = chooseRkDaySources(scopedSnapshots, scopedLive);
+  // хоть что-то записал. Решение считается на НЕСОКРАЩЁННЫХ строках: посчитав
+  // его после товарного контура, мы делали цифры дня зависимыми от того, кто
+  // смотрит — у селлера с узкой выборкой день «замерзал» на 06:00, а у
+  // директора нет.
+  const sources = chooseRkDaySources(snapshots, live);
+  const items = buildRkJournalItems(inScope(snapshots), inScope(live), adverts, sources);
+  const { snapshotDates } = sources;
+  // Снимок без advert_id склеить со слоем нечем: сборщик такие строки за
+  // живые дни молча пропускает, чтобы не задвоить расход. Молчать об этом
+  // нельзя — часть снятых ставок на экран не попадёт.
+  if (snapshots.length && snapshots.every((row) => row.advert_id == null)) {
+    notes.push("Снимки прочитаны без разбивки по кампаниям (миграция ещё не применена): ставки за снятые дни показаны не везде.");
+  }
 
   // Какие виды размещения у кабинета есть в принципе. Без этого пустая карточка
   // не отличает «таких кампаний тут нет вовсе» от «есть, но за период не
   // тратили» — и одинаково пишет «нет кампаний» в обоих случаях.
-  const blocksInCabinet = [...new Set(
-    adverts.map((advert) => rkAdvertBlock(advert)).filter((block): block is WbRkBlock => block != null),
-  )];
+  // null — «не знаем»: справочник не прочитался, и утверждать, что вида нет,
+  // нельзя. Пустой массив значил бы «проверили, таких кампаний нет».
+  const blocksInCabinet = advertsKnown
+    ? [...new Set(
+      adverts
+        // Считаем только по кампаниям, попавшим в товарный контур: иначе на
+        // агентском кабинете чужие кампании обещают вид, которого у нас нет.
+        .filter((advert) => (advert.nm_ids ?? []).some((nm) => requestAllowsNm(allowedNmIds, Number(nm))) || (advert.nm_ids ?? []).length === 0)
+        .map((advert) => rkAdvertBlock(advert))
+        .filter((block): block is WbRkBlock => block != null),
+    )]
+    : null;
 
   return NextResponse.json({
     from,
@@ -232,6 +252,12 @@ export async function GET(request: NextRequest) {
     dates,
     items,
     snapshotDates,
+    // День, за который снимок есть, но неполон: метрики уже из слоя, а ставки
+    // всё ещё из снимка. Раньше это состояние называлось «снят» — и именно оно
+    // и занижало расход вчетверо.
+    partialDates: [...new Set(snapshots.map((row) => row.date))]
+      .filter((date) => !snapshotDates.includes(date))
+      .sort(),
     blocksInCabinet,
     notes,
   });
