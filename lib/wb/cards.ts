@@ -10,7 +10,10 @@ const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list"
 
 interface Characteristic { name?: string; value?: string | string[] }
 interface RawDimensions { length?: number; width?: number; height?: number; weightBrutto?: number }
-interface RawPhoto { big?: string; c246x328?: string }
+// WB отдаёт шесть размеров одного фото. hq (1800×2400) вдвое больше big
+// (900×1200) — и именно hq обязан уходить в запись и в генерацию: media/save
+// заменяет набор целиком, а оригинала у WB нет вовсе.
+interface RawPhoto { hq?: string; big?: string; c516x688?: string; c246x328?: string }
 interface RawCard {
   nmID: number; imtID?: number; vendorCode: string; title?: string; subjectName?: string; brand?: string;
   characteristics?: Characteristic[]; dimensions?: RawDimensions; photos?: RawPhoto[];
@@ -99,7 +102,7 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
         // Два массива, а не один: миниатюры для сетки превью и большие версии
         // для всего, что уходит наружу — генерации и записи на карточку.
         const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
-        const photosBig = (c.photos || []).map((p) => p.big || p.c246x328 || "").filter(Boolean);
+        const photosBig = (c.photos || []).map((p) => p.hq || p.big || p.c246x328 || "").filter(Boolean);
         rows.push({
           nmId: c.nmID,
           imtId: Number.isFinite(c.imtID) ? Number(c.imtID) : c.nmID,
@@ -260,8 +263,8 @@ export interface CardForWrite {
   found: boolean;
   hasVideo: boolean;
   /**
-   * Фотографии карточки в САМОМ БОЛЬШОМ размере, который отдаёт WB, и в том
-   * порядке, в каком они сейчас стоят.
+   * Фотографии карточки в САМОМ БОЛЬШОМ размере, который отдаёт WB (hq,
+   * 1800×2400), и в том порядке, в каком они сейчас стоят.
    *
    * Это не то же, что PimRow.photos: там лежат витринные миниатюры 246×328 —
    * они годятся для сетки превью и катастрофичны для записи. media/save
@@ -292,7 +295,7 @@ export async function fetchCardForWrite(token: string, nmId: number): Promise<Ca
       return {
         found: true,
         hasVideo: hasVideoOn(found),
-        photos: (found.photos ?? []).map((p) => p.big || "").filter(Boolean),
+        photos: (found.photos ?? []).map((p) => p.hq || p.big || "").filter(Boolean),
       };
     }
     if (batch.length < 100) return blocked; // карточку не нашли — не рискуем

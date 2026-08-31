@@ -88,11 +88,11 @@ export async function POST(req: NextRequest) {
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
 
   const body = (await req.json().catch(() => ({}))) as {
-    cabinetId?: string; nmId?: number; article?: string; photoIndex?: number;
+    cabinetId?: string; nmId?: number; article?: string; photoIndex?: number; photoName?: string;
   };
-  const { cabinetId, nmId, article, photoIndex } = body;
-  if (!cabinetId || !nmId || !Number.isInteger(photoIndex) || (photoIndex as number) < 0) {
-    return NextResponse.json({ ok: false, error: "Не хватает данных: cabinetId, nmId, photoIndex" }, { status: 400 });
+  const { cabinetId, nmId, article, photoIndex, photoName } = body;
+  if (!cabinetId || !nmId || !Number.isInteger(photoIndex) || (photoIndex as number) < 0 || !photoName) {
+    return NextResponse.json({ ok: false, error: "Не хватает данных: cabinetId, nmId, photoIndex, photoName" }, { status: 400 });
   }
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
@@ -122,6 +122,18 @@ export async function POST(req: NextRequest) {
   }
   if (index === 0) {
     return NextResponse.json({ ok: false, error: "Это фото и так главное." }, { status: 409 });
+  }
+  // Номер — ссылка в тот набор, который человек видел на экране. Если порядок
+  // на WB успел измениться (прошлый тест обложки, правка в кабинете), тот же
+  // номер укажет на ЧУЖОЕ фото, и главным станет не то, на что нажали.
+  // Поэтому вместе с номером приходит имя файла: у всех размеров одного фото
+  // оно одинаковое (…/c246x328/3.webp и …/hq/3.webp).
+  const chosenName = String(photoName).split("/").pop() ?? "";
+  if (!chosenName || !card.photos[index].endsWith(`/${chosenName}`)) {
+    return NextResponse.json({
+      ok: false,
+      error: "Порядок фото на WB изменился с момента, когда вы открыли карточку. Обновите страницу и выберите фото заново.",
+    }, { status: 409 });
   }
 
   const photosBefore = card.photos;

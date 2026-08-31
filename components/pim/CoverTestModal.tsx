@@ -20,7 +20,15 @@ export function CoverTestModal({ row, onClose, onDone }: { row: PimRow; onClose:
       // именно URL писать, решает сервер по свежей карточке.
       const res = await fetch("/api/cover-test", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cabinetId: row.cabinetId, nmId: row.nmId, article: row.article, photoIndex: picked }),
+        // Имя файла одинаково у всех размеров одного фото — по нему сервер
+        // сверяет, что номер указывает на то же фото, которое видно здесь.
+        body: JSON.stringify({
+          cabinetId: row.cabinetId,
+          nmId: row.nmId,
+          article: row.article,
+          photoIndex: picked,
+          photoName: row.photos[picked]?.split("/").pop() ?? "",
+        }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) setError(json.error || `HTTP ${res.status}`);
