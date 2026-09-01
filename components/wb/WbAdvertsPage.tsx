@@ -11,6 +11,7 @@ import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
+import { AdActionsPanel } from "./ads/AdActionsPanel";
 import { AdClustersTab } from "./ads/AdClustersTab";
 import { AdJournalTab } from "./ads/AdJournalTab";
 import { AdRulesTab } from "./ads/AdRulesTab";
@@ -711,7 +712,34 @@ export function WbAdvertsPage() {
                 {selected.campaign.days.length === 0 ? <div className="border-t border-slate-100 px-3 py-8 text-center text-xs text-slate-400">Посуточная статистика ещё не синхронизирована.</div> : null}
               </div>
 
-              {cabinetId === "all" ? <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800"><WalletCards className="h-4 w-4 shrink-0" /> В режиме «Все кабинеты» ставки, бюджеты и статусы доступны только для чтения.</div> : null}
+              {singleCabinet && cabinetMoney ? (
+                <AdActionsPanel
+                  cabinetId={cabinetId as string}
+                  campaign={{
+                    id: selected.campaign.id,
+                    name: selected.campaign.name,
+                    status: selected.campaign.status,
+                    bid_cpm_rub: selected.campaign.bid_cpm_rub,
+                    bid_type: selected.campaign.bid_type,
+                    nm: selected.article.nm,
+                    art: selected.article.art,
+                    breakEvenDrr: selected.campaign.economics.breakEvenDrr,
+                    currentDrr: selected.campaign.economics.currentDrr,
+                    profitAfterAds: selected.campaign.economics.profitAfterAds,
+                  }}
+                  cabinetMoney={cabinetMoney}
+                  currency={currency}
+                  onAsk={setConfirmRequest}
+                  onDone={() => setRetryKey((value) => value + 1)}
+                />
+              ) : (
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                  <WalletCards className="h-4 w-4 shrink-0" />
+                  {singleCabinet
+                    ? "Действия недоступны: у вас нет права менять деньги в этом кабинете либо не прочитался ключ Продвижения."
+                    : "Действия доступны при выбранном кабинете — в режиме «Все кабинеты» непонятно, куда их отправлять."}
+                </div>
+              )}
             </div>
           )}
         </section>
