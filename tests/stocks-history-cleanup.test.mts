@@ -14,6 +14,10 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 test("чистка идёт пачками и не пересчитывает таблицу", () => {
   const route = read("../app/api/sync/stocks-history-cleanup/route.ts");
   assert.match(route, /\.limit\(BATCH\)/);
+  // Сортировка по snapshot_at — иначе планировщик идёт первичным ключом и
+  // новый индекс не используется вовсе: 13,1 с против 0,96 с на пачку.
+  assert.match(route, /\.order\("snapshot_at", \{ ascending: true \}\)/);
+  assert.equal(/\.order\("id", \{ ascending: true \}\)/.test(route), false, "по id сортировать нельзя — обесценивает индекс");
   assert.match(route, /\.delete\(\)\.in\("id", ids\)/);
   assert.equal(
     /delete\(\{ count: "exact" \}\)/.test(route),

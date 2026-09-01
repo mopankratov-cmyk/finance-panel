@@ -40,7 +40,11 @@ export async function GET(request: NextRequest) {
         .from("wb_stocks_history")
         .select("id")
         .lt("snapshot_at", cutoff)
-        .order("id", { ascending: true })
+        // Сортировка ИМЕННО по snapshot_at, а не по id. По id планировщик идёт
+        // первичным ключом и проверяет дату у каждой из 1,4 млн строк, минуя
+        // индекс: замер 01.09.2026 — 13,1 с против 0,96 с. Порядок здесь всё
+        // равно любой (удаляем ровно то, что выбрали), а старое — первым.
+        .order("snapshot_at", { ascending: true })
         .limit(BATCH);
       if (pickError) throw new Error(`Очистка wb_stocks_history: ${pickError.message}`);
       const ids = (stale ?? []).map((row) => (row as { id: number }).id);
