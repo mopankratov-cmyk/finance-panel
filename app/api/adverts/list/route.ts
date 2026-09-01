@@ -20,6 +20,16 @@ import { UNIT_DEFAULT_TAX_PCT } from "@/lib/unit/query";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/**
+ * Плановый ритм обновления рекламной статистики, часы.
+ *
+ * Раньше это число жило в двух местах разными значениями: бейдж «устарело»
+ * ставился после трёх часов, а уверенность штрафовалась от ритма в два. Из-за
+ * этого кампания могла быть без бейджа и одновременно с минусом к уверенности —
+ * человек видел следствие, но не видел причины.
+ */
+const ADVERT_DATA_CADENCE_HOURS = 3;
+
 const ADV_BASE = "https://advert-api.wildberries.ru";
 const CAMPAIGN_PAGE_SIZE = 1000;
 const CAMPAIGN_MAX_PAGES = 30;
@@ -350,11 +360,15 @@ export async function GET(request: NextRequest) {
   }
 
   const skuSpend7ClosedByNm = new Map<number, number>();
+  // Собрана ли вообще разбивка расхода по артикулам за окно. Пустая таблица при
+  // живых кампаниях — это несостоявшийся синк, а не «расхода не было».
+  let skuBreakdownCollected = false;
   for (const row of nmDailyRows) {
     const rowAllowedNmIds = cabinetId
       ? allowedNmIds
       : (allowedByCabinet.get(String(row.cabinet_id ?? "")) ?? null);
     if (!requestAllowsNm(rowAllowedNmIds, row.nm_id)) continue;
+    skuBreakdownCollected = true;
     skuSpend7ClosedByNm.set(row.nm_id, (skuSpend7ClosedByNm.get(row.nm_id) ?? 0) + Number(row.spent ?? 0));
   }
 
@@ -399,7 +413,7 @@ export async function GET(request: NextRequest) {
   // группируем кампании по основному nm → article. spendYestTotal считаем в ТОМ ЖЕ
   // проходе и над той же популяцией (только кампании с nm), что и spendTodayTotal —
   // иначе «% к вчера» сравнивает разные множества кампаний.
-  const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; spent_sku_7_closed: number; campaigns: Record<string, unknown>[] }>();
+  const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; spent_sku_7_closed: number | null; campaigns: Record<string, unknown>[] }>();
   let spendYestTotal = 0;
   // Кампания без списка товаров не попадает ни в один артикул — раньше вместе
   // с ней исчезал и её расход: итог «потрачено сегодня» был меньше реального,
@@ -481,6 +495,7 @@ export async function GET(request: NextRequest) {
       dailyUnits: basis.dailyUnits,
       attributionCompatible,
       dataAgeHours,
+      dataCadenceHours: ADVERT_DATA_CADENCE_HOURS,
     });
     const latestChange = latestChangeByAdvert.get(Number(a.advert_id)) ?? null;
     const campaignDays = daysByAdv.get(a.advert_id) ?? [];
@@ -522,7 +537,7 @@ export async function GET(request: NextRequest) {
       bid_cpm_rub: a.bid_cpm_rub ?? a.daily_budget ?? null,
       stats_synced_at: statsSyncedAt,
       stats_age_hours: roundedDataAgeHours,
-      stats_stale: dataAgeHours == null || dataAgeHours > 3,
+      stats_stale: dataAgeHours == null || dataAgeHours > ADVERT_DATA_CADENCE_HOURS,
       cab: cabLabel,
       yesterday: buildAdvertWorkingDaySummary({
         date: yest,
@@ -543,6 +558,9 @@ export async function GET(request: NextRequest) {
       days: campaignDays,
       economics,
       attribution_compatible: attributionCompatible,
+      // Сколько артикулов в кампании. Нужен интерфейсу, чтобы назвать причину,
+      // по которой у многотоварной кампании зелёной рекомендации не бывает.
+      nm_count: nmIds.length,
       last_change: latestChange ? {
         old_bid: latestChange.old_bid,
         new_bid: latestChange.new_bid,
@@ -552,7 +570,19 @@ export async function GET(request: NextRequest) {
     };
     let g = artMap.get(nm);
     if (!g) {
-      g = { nm, art: artByNm.get(nm) || String(nm), photo: wbCardImageUrl(nm), spend: 0, spent_sku_7_closed: Math.round(skuSpend7ClosedByNm.get(nm) ?? 0), campaigns: [] };
+      // Ноль ставим, только если разбивка по артикулам вообще собрана. Когда
+      // синк wb_advert_nm_daily не прошёл, таблица пуста для всех сразу — и
+      // «Расход SKU 7д 0 ₽» в каждой строке был бы уверенным враньём вместо
+      // честного «не собрано».
+      const skuSpend = skuSpend7ClosedByNm.get(nm);
+      g = {
+        nm,
+        art: artByNm.get(nm) || String(nm),
+        photo: wbCardImageUrl(nm),
+        spend: 0,
+        spent_sku_7_closed: skuSpend != null ? Math.round(skuSpend) : skuBreakdownCollected ? 0 : null,
+        campaigns: [],
+      };
       artMap.set(nm, g);
     }
     g.spend += Math.round(st.today);
