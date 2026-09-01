@@ -11,6 +11,13 @@
  * штук и продано), ставки удержаний — по выручке (WB считает их процентом от
  * неё). Себестоимость честно молчит, если её нет хотя бы у одного товара с
  * заказами: неполная сумма затрат завысила бы маржу.
+ *
+ * То же правило теперь распространяется на удержания. Раньше неизвестная ставка
+ * молча превращалась в ноль и попадала в среднее наравне с настоящими: кампания
+ * в кабинете с пустым кэшем комиссий получала «комиссия 0%», точка
+ * безубыточности взлетала, и панель показывала зелёное «Увеличить» там, где
+ * данных не было вовсе. Ноль — законная ставка эквайринга, но не комиссии WB,
+ * поэтому «нет данных» и «ноль процентов» должны различаться.
  */
 
 export interface CampaignSkuFacts {
@@ -37,6 +44,15 @@ export interface CampaignBasis {
   skuCount: number;
   /** У скольких товаров кампании известна себестоимость. */
   costKnownCount: number;
+  /**
+   * Доля выручки кампании, у которой ставка комиссии известна: 1 — известна вся,
+   * 0 — не известна нигде, null — считать не из чего (в окне не было выручки).
+   *
+   * Отдельно от `commissionPct` потому, что среднее по известной части — это
+   * ответ на другой вопрос. Среднее говорит «сколько», покрытие — «насколько
+   * этому можно верить», и решение о рекомендации принимается по второму.
+   */
+  feesCoverage: number | null;
 }
 
 const finite = (value: number | null | undefined) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
@@ -53,6 +69,7 @@ export function campaignEconomicsBasis(rows: CampaignSkuFacts[]): CampaignBasis 
   let acquiringWeighted = 0;
   let extraWeighted = 0;
   let rateWeight = 0;
+  let feesKnownWeight = 0;
   let missingCost = false;
 
   for (const row of rows) {
@@ -73,10 +90,15 @@ export function campaignEconomicsBasis(rows: CampaignSkuFacts[]): CampaignBasis 
     // Ставки — процент от выручки. Товар без выручки веса не имеет, иначе
     // спящий SKU перетянул бы среднее на себя.
     if (rowRevenue > 0) {
-      commissionWeighted += finite(row.commissionPct) * rowRevenue;
-      acquiringWeighted += finite(row.acquiringPct) * rowRevenue;
-      extraWeighted += finite(row.extraPct) * rowRevenue;
       rateWeight += rowRevenue;
+      // В среднее идут только известные ставки. Строка с неизвестной комиссией
+      // не тянет среднее к нулю — она уменьшает покрытие, и это видно снаружи.
+      if (row.commissionPct != null) {
+        commissionWeighted += row.commissionPct * rowRevenue;
+        acquiringWeighted += finite(row.acquiringPct) * rowRevenue;
+        extraWeighted += finite(row.extraPct) * rowRevenue;
+        feesKnownWeight += rowRevenue;
+      }
     }
   }
 
@@ -85,10 +107,11 @@ export function campaignEconomicsBasis(rows: CampaignSkuFacts[]): CampaignBasis 
     cost: missingCost || costOrders <= 0 ? null : costWeighted / costOrders,
     stock: stockKnown ? stock : null,
     dailyUnits: rows.length ? orders / 30 : null,
-    commissionPct: rateWeight > 0 ? commissionWeighted / rateWeight : null,
-    acquiringPct: rateWeight > 0 ? acquiringWeighted / rateWeight : null,
-    extraPct: rateWeight > 0 ? extraWeighted / rateWeight : null,
+    commissionPct: feesKnownWeight > 0 ? commissionWeighted / feesKnownWeight : null,
+    acquiringPct: feesKnownWeight > 0 ? acquiringWeighted / feesKnownWeight : null,
+    extraPct: feesKnownWeight > 0 ? extraWeighted / feesKnownWeight : null,
     skuCount: rows.length,
     costKnownCount,
+    feesCoverage: rateWeight > 0 ? feesKnownWeight / rateWeight : null,
   };
 }

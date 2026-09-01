@@ -446,7 +446,10 @@ export async function GET(request: NextRequest) {
           revenue: Number(row?.orders_sum_month ?? 0),
           cost: Number(row?.cost ?? 0) > 0 ? Number(row?.cost) : null,
           stock: row ? Number(row.stock ?? 0) : null,
-          commissionPct: skuRate?.pct ?? commission.avgPct,
+          // null, а не ноль, когда ставку не знает ни карточка товара, ни
+          // среднее по кабинету: пустой кэш комиссий отдаёт avgPct = 0, и
+          // раньше этот ноль уходил дальше как настоящая ставка.
+          commissionPct: skuRate?.pct ?? (commission.avgPct > 0 ? commission.avgPct : null),
           acquiringPct: skuRate?.acqPct ?? commission.avgAcqPct,
           extraPct: (skuRate?.extraPct ?? commission.avgExtraPct) + commission.overheadPct,
         };
@@ -470,7 +473,10 @@ export async function GET(request: NextRequest) {
       acquiringPct: basis.acquiringPct ?? commission.avgAcqPct,
       extraPct: basis.extraPct ?? (commission.avgExtraPct + commission.overheadPct),
       taxPct: taxPctFor(a.cabinet_id ?? null),
-      feesComplete: Boolean(basis.commissionPct != null || commission.avgPct > 0),
+      // Ставки удержаний считаются известными, только если известны на ВСЮ
+      // выручку кампании. Кампания без выручки в окне опирается на среднее по
+      // кабинету — и оно тоже должно быть настоящим, а не нулём из пустого кэша.
+      feesComplete: basis.feesCoverage == null ? commission.avgPct > 0 : basis.feesCoverage >= 0.999,
       stock: basis.stock,
       dailyUnits: basis.dailyUnits,
       attributionCompatible,
