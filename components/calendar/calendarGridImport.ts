@@ -34,14 +34,22 @@ function isoDate(year: number, targetMonth: number, day: number, weekIndex: numb
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function parseCalendarGridCsv(text: string, accountId: string): Payment[] {
-  const matrix = parseCsv(text);
-  const title = matrix[0]?.[0] ?? "";
-  const year = Number(title.match(/\b(20\d{2})\b/)?.[1]);
-  if (!year) throw new Error("Не удалось определить год календаря");
+export function parseCalendarGrid(matrix: string[][], accountId: string, fallbackPeriod?: { year: number; month: number }): Payment[] {
+  const normalizedRows = matrix.slice(0, 20).map((row) => row.map((cell) => String(cell ?? "").toLowerCase().replace(/ё/g, "е").trim()));
+  const isLoanSchedule = normalizedRows.some((row) => row.includes("тип плановой операции") && row.includes("дата платежа") && row.includes("плановая сумма"));
+  if (isLoanSchedule) {
+    throw new Error("Это график кредита. Загрузите его в разделе «Кредиты и займы» — тело, проценты и неустойки будут разнесены отдельно и затем попадут в календарь");
+  }
+  const headingCandidates = matrix.slice(0, 30).flatMap((row) => row.slice(0, 20)).map((cell) => cell?.trim()).filter(Boolean);
+  const title = headingCandidates.find((cell) => /\b20\d{2}\b/.test(cell) && /(январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр)/i.test(cell))
+    ?? headingCandidates.find((cell) => /\b20\d{2}\b/.test(cell))
+    ?? "";
+  const year = Number(title.match(/\b(20\d{2})\b/)?.[1]) || fallbackPeriod?.year || 0;
+  if (!year) throw new Error("Не удалось определить год календаря. Укажите год и месяц в заголовке файла, например «Сентябрь 2026»");
   const monthNames = ["январ", "феврал", "март", "апрел", "ма", "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр"];
-  const targetMonth = monthNames.findIndex((name) => title.toLowerCase().includes(name));
-  if (targetMonth < 0) throw new Error("Не удалось определить месяц календаря");
+  const titleMonth = monthNames.findIndex((name) => title.toLowerCase().includes(name));
+  const targetMonth = titleMonth >= 0 ? titleMonth : (fallbackPeriod ? fallbackPeriod.month - 1 : -1);
+  if (targetMonth < 0) throw new Error("Не удалось определить месяц календаря. Укажите в заголовке название месяца и год");
   const weekRows = matrix.map((row, index) => row[0]?.toLowerCase().startsWith("неделя") ? index : -1).filter((index) => index >= 0);
   const payments: Payment[] = [];
 
@@ -97,4 +105,8 @@ export function parseCalendarGridCsv(text: string, accountId: string): Payment[]
   });
   if (!payments.length) throw new Error("В календаре не найдено платежей");
   return payments;
+}
+
+export function parseCalendarGridCsv(text: string, accountId: string, fallbackPeriod?: { year: number; month: number }): Payment[] {
+  return parseCalendarGrid(parseCsv(text), accountId, fallbackPeriod);
 }
