@@ -148,6 +148,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
     const command = text.split(/\s+/)[0].toLowerCase().split("@")[0];
+    if (!command.startsWith("/")) {
+      const db = getSupabaseAdmin();
+      if (!db) throw new Error("База не настроена");
+      const pending = await db.from("bank_review_items")
+        .select("reasons")
+        .eq("status", "waiting_manager")
+        .not("manager_question", "is", null)
+        .limit(2);
+      if (pending.error) throw new Error(pending.error.message);
+      if ((pending.data ?? []).length === 1) {
+        const messageMarker = Array.isArray(pending.data![0].reasons)
+          ? pending.data![0].reasons.map(String).find((reason) => reason.startsWith("__telegram_message_id:"))
+          : undefined;
+        const messageId = Number(messageMarker?.slice("__telegram_message_id:".length));
+        if (Number.isFinite(messageId) && messageId > 0) {
+          await handlePaymentReply(text, messageId, String(chatId));
+          return NextResponse.json({ ok: true });
+        }
+      }
+    }
     if (command === "/start" || command === "/help") {
       await sendTelegramMessage(help, String(chatId));
     } else if (command === "/status" || command === "/recalculate") {

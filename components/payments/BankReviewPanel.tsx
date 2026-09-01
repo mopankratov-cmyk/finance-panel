@@ -8,6 +8,7 @@ import { commitImport, planImport } from "./ddsImport";
 import {
   loadBankReviewItems,
   markReviewItems,
+  clearBankImport,
   askManagerAboutBankReviewItem,
   updateBankReviewItem,
   type BankReviewItem,
@@ -25,6 +26,9 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { PAYMENT_CATEGORIES } from "@/lib/constants";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Account } from "@/lib/types";
+import { categoryMatchesDirection, requiresCounterparty } from "./bankAutoClassify";
+import { suggestLoanSplits } from "./loanReviewSuggestion";
+import { useFinance } from "@/components/providers/FinanceProvider";
 
 const REVIEW_CATEGORIES = [
   ...PAYMENT_CATEGORIES,
@@ -37,6 +41,7 @@ const REVIEW_CATEGORIES = [
 ] as const;
 
 export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; companies: DdsCompany[] }) {
+  const { state } = useFinance();
   const [items, setItems] = useState<BankReviewItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -80,6 +85,12 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
     };
   }, []);
 
+  useEffect(() => {
+    if (!items.some((item) => item.status === "waiting_manager")) return;
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [items]);
+
   const updateLocal = async (id: string, patch: Partial<BankReviewItem>) => {
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
     try {
@@ -99,7 +110,11 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
   const readySelected = items.filter((item) => selected.has(item.id));
   const invalidSelected = readySelected.filter((item) => {
     const splits = decodeBankSplits(item.managerAnswer);
-    return splits ? !item.accountId || !splitsAreReady(item, splits) : !item.companyId || !item.accountId || !item.category;
+    return splits
+      ? !item.accountId || !splitsAreReady(item, splits)
+      : !item.companyId || !item.accountId || !item.category
+        || !categoryMatchesDirection(item.category, item.amount)
+        || (requiresCounterparty(item.category) && !item.counterparty.trim());
   });
 
   const approve = async () => {
@@ -167,6 +182,23 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось исключить операции");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearImportedData = async () => {
+    if (!confirm("Удалить всю очередь банковских выписок и все проведённые из неё операции ДДС?\n\nРучные операции, планы календаря, кредиты и справочники сохранятся.")) return;
+    if (!confirm("Подтвердите повторно: банковский импорт будет очищен без возможности отмены.")) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await clearBankImport();
+      setSelected(new Set());
+      await refresh();
+      alert(`Банковский импорт очищен. Удалено из очереди: ${result.reviewItemsDeleted}; операций ДДС: ${result.paymentsDeleted}. Теперь можно загрузить выписки заново.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось очистить банковский импорт");
     } finally {
       setSaving(false);
     }
@@ -265,6 +297,7 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
         <button onClick={() => void refresh()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm"><RefreshCw className="h-4 w-4" /> Обновить</button>
         <button onClick={approve} disabled={saving || selected.size === 0 || invalidSelected.length > 0} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white disabled:opacity-50"><Check className="h-4 w-4" /> Подтвердить ({selected.size})</button>
         <button onClick={reject} disabled={saving || selected.size === 0} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-200 px-3 text-sm text-red-600 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Исключить</button>
+        <button onClick={() => void clearImportedData()} disabled={saving} className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 text-sm font-medium text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Очистить банковский импорт</button>
         {invalidSelected.length > 0 && <span className="text-xs text-amber-700">У {invalidSelected.length} выбранных строк не заполнены компания, кошелёк или статья</span>}
       </div>
 
@@ -305,19 +338,33 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                   <select value={item.accountId ?? ""} onChange={(e) => void updateLocal(item.id, { accountId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
                     <option value="">Кошелёк не определён</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
                   </select>
-                  <select value={item.category ?? ""} onChange={(e) => void updateLocal(item.id, { category: e.target.value || null, status: e.target.value && item.companyId && item.accountId ? "ready" : "needs_info" })} className="min-h-11 rounded-lg border border-slate-300 px-2">
+                  <select value={item.category ?? ""} onChange={(e) => {
+                    const category = e.target.value || null;
+                    const valid = category && item.companyId && item.accountId && categoryMatchesDirection(category, item.amount) && (!requiresCounterparty(category) || Boolean(item.counterparty.trim()));
+                    void updateLocal(item.id, { category, status: valid ? "ready" : "needs_info" });
+                  }} className={`min-h-11 rounded-lg border px-2 ${item.category && !categoryMatchesDirection(item.category, item.amount) ? "border-red-400 bg-red-50" : "border-slate-300"}`}>
                     <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                   </select>
                 </div>
+                {item.category && !categoryMatchesDirection(item.category, item.amount) && <p role="alert" className="text-xs font-medium text-red-700">Статья противоречит знаку операции: расход нельзя отнести к поступлениям, а поступление — к расходам.</p>}
+                {requiresCounterparty(item.category) && !item.counterparty.trim() && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  Для зарплаты обязательно укажите получателя. Без контрагента строку подтвердить нельзя.
+                  <input aria-label="Получатель зарплаты" value={item.counterparty} onChange={(event) => void updateLocal(item.id, { counterparty: event.target.value, status: "needs_info" })} placeholder="ФИО сотрудника" className="mt-2 min-h-11 w-full rounded-lg border border-amber-300 bg-white px-3 text-sm" />
+                </div>}
                 {(() => {
                   const splits = decodeBankSplits(item.managerAnswer);
                   if (!splits) return (
+                    <div className="flex flex-wrap gap-2">
+                    {suggestLoanSplits(item, state.payments) && <button type="button" onClick={() => updateSplitsLocal(item.id, suggestLoanSplits(item, state.payments)!)} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+                      Разбить по графику кредита
+                    </button>}
                     <button type="button" onClick={() => updateSplitsLocal(item.id, [{
                       id: crypto.randomUUID(), amount: Math.abs(item.amount), description: item.purpose || "Часть платежа",
                       category: item.category, companyId: item.companyId, excluded: false, needsClarification: false,
                     }])} className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-medium text-violet-700">
-                      Разбить сумму на несколько статей
+                      Уточнить или разбить операцию
                     </button>
+                    </div>
                   );
                   const total = splitTotal(splits);
                   const matches = Math.abs(total - Math.abs(item.amount)) < 0.01;
