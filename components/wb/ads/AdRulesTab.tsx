@@ -49,6 +49,11 @@ export function AdRulesTab({
   const [minBid, setMinBid] = useState("");
   const [maxBid, setMaxBid] = useState("");
   const [minOrders, setMinOrders] = useState("5");
+  // Место показа выбирается явно. Раньше подставлялось «поиск» для любой ручной
+  // кампании — и для «РС полки» это молча означало правило, которое не
+  // сработает никогда: поисковой ставки у такой кампании просто нет, и движок
+  // честно отвечает «не знаем текущую ставку — менять нечего».
+  const [placement, setPlacement] = useState("search");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,6 +73,7 @@ export function AdRulesTab({
 
   const candidates = rows.filter((row) => row.campaign.status !== 7);
   const selected = candidates.find((row) => String(row.campaign.id) === advertId) ?? null;
+  const isUnified = selected?.campaign.bid_type === "unified" || selected?.campaign.bid_type === "auto";
 
   const save = async () => {
     if (!selected) return;
@@ -76,7 +82,7 @@ export function AdRulesTab({
       cabinetId,
       advertId: selected.campaign.id,
       nmId: selected.nm,
-      placement: selected.campaign.bid_type === "unified" ? "combined" : "search",
+      placement: isUnified ? "combined" : placement,
       goal,
       target: Number(target),
       windowDays: Number(windowDays),
@@ -218,6 +224,23 @@ export function AdRulesTab({
               <option value="drr">Держать ДРР, %</option>
               <option value="cpo">Держать CPO, {currency}</option>
             </select>
+          </label>
+          <label className="text-[11px] text-slate-500">
+            Место показа
+            {isUnified ? (
+              <div className="mt-1 flex h-[38px] items-center rounded-lg border border-slate-200 bg-slate-50 px-2 text-[11px] text-slate-500">
+                поиск и рекомендации
+              </div>
+            ) : (
+              <select
+                value={placement}
+                onChange={(event) => setPlacement(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-[12px] focus:border-violet-500 focus:outline-none"
+              >
+                <option value="search">Поиск</option>
+                <option value="recommendations">Полки (рекомендации)</option>
+              </select>
+            )}
           </label>
           <NumberField label="Значение цели" value={target} onChange={setTarget} />
           <NumberField label="Окно, дней" value={windowDays} onChange={setWindowDays} />
