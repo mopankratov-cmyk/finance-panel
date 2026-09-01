@@ -68,6 +68,6 @@ test("stocks sync stops before the Vercel hard timeout and still writes sync_log
   assert.match(source, /const deadline = Date\.now\(\) \+ 280_000/);
   assert.match(source, /синхронизация перенесена на следующий запуск из-за лимита времени/);
   assert.match(source, /AbortSignal\.timeout/);
-  assert.match(source, /следующая страница остатков перенесена на следующий запуск/);
+  assert.match(source, /ожидание отчёта остатков перенесено на следующий запуск/);
   assert.match(source, /writeSyncLog\("stocks"/);
 });

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { discoverCabinetProducts, getWbSyncTargets } from "@/lib/sync/cabinets";
+import { discoverCabinetProducts, getWbSyncTargets, groupWbStatisticsTargets, type SyncTarget } from "@/lib/sync/cabinets";
 import { allowsProduct, isScoped } from "@/lib/wb/productScope";
-import { WbStocksApiError, wbWarehouseStockPages } from "@/lib/wb/stocksApi";
+import { WbStocksApiError } from "@/lib/wb/stocksApi";
+import { fetchWarehouseRemains, remainsToStockRows, type WbRemainsRow } from "@/lib/wb/remainsApi";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const maxDuration = 300;
@@ -12,9 +13,10 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  // WB ограничивает этот отчёт интервалом между запросами. Даём синку полный
-  // бюджет тяжёлой функции, но оставляем 20с на апсерт, sync_log и ответ — так
-  // Vercel не обрывает процесс немым 504.
+  // Отчёт warehouse_remains задачный: создание → ожидание → скачивание, плюс
+  // лимит 1 задача/мин на аккаунт. Даём синку полный бюджет тяжёлой функции,
+  // но оставляем 20с на апсерт, sync_log и ответ — так Vercel не обрывает
+  // процесс немым 504.
   const deadline = Date.now() + 280_000;
   const allTargets = await getWbSyncTargets();
   if (!allTargets.length) {
@@ -30,105 +32,101 @@ export async function GET(request: NextRequest) {
   let total = 0;
   const errors: string[] = [];
 
+  const boundedFetch: typeof fetch = async (input, init) => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 20_000) throw new WbStocksApiError(408, "лимит времени синхронизации остатков исчерпан");
+    return fetch(input, {
+      ...init,
+      signal: AbortSignal.timeout(Math.min(60_000, remaining - 15_000)),
+    });
+  };
+  const boundedSleep = async (ms: number) => {
+    const remaining = deadline - Date.now();
+    if (remaining <= ms + 20_000) throw new WbStocksApiError(408, "ожидание отчёта остатков перенесено на следующий запуск");
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  };
+
   try {
-    for (const t of targets) {
+    // Кабинеты одного продавца делят и лимит задач, и сам отчёт: warehouse_remains
+    // не умеет фильтровать по nmID, поэтому качаем отчёт один раз на аккаунт и
+    // раскладываем его по кабинетам группы через productScope.
+    for (const group of groupWbStatisticsTargets(targets)) {
       if (Date.now() >= deadline - 20_000) {
-        errors.push(`${t.name}: синхронизация перенесена на следующий запуск из-за лимита времени`);
+        errors.push(`${group.map((t) => t.name).join(", ")}: синхронизация перенесена на следующий запуск из-за лимита времени`);
         break;
       }
-      // Новый метод остатков WB не возвращает бренд. Сначала обновляем каталог
-      // карточек: так scoped-кабинет получает все SKU нужного бренда ещё до заказа.
-      try {
-        await discoverCabinetProducts(t);
-      } catch (error) {
-        if (isScoped(t.productScope) && !t.productScope.allowedNmIds?.length) {
-          errors.push(`${t.name}: ${error instanceof Error ? error.message : "не удалось определить бренды товаров"}`);
-          continue;
-        }
-      }
 
-      // При недоступном Content API сохраняем fail-closed для первого запуска.
-      if (isScoped(t.productScope) && !t.productScope.allowedNmIds?.length) {
-        continue;
-      }
-
-      // WB отдаёт остаток по каждому размеру → один (nm_id, warehouse) встречается
-      // несколько раз. Схлопываем по ключу апсёрта, суммируя количества (иначе
-      // ON CONFLICT падает: «cannot affect row a second time»).
-      const agg = new Map<string, { nm_id: number; warehouse: string; quantity: number; in_way_to_client: number; in_way_from_client: number; cabinet_id: string | null; synced_at: string }>();
-      const stamp = new Date().toISOString();
-      try {
-        for await (const stocks of wbWarehouseStockPages({
-          token: t.statsToken,
-          nmIds: t.productScope.allowedNmIds,
-          fetchImpl: async (input, init) => {
-            const remaining = deadline - Date.now();
-            if (remaining <= 20_000) throw new WbStocksApiError(408, "лимит времени синхронизации остатков исчерпан");
-            return fetch(input, {
-              ...init,
-              signal: AbortSignal.timeout(Math.min(60_000, remaining - 15_000)),
-            });
-          },
-          sleep: async (ms) => {
-            const remaining = deadline - Date.now();
-            if (remaining <= ms + 20_000) throw new WbStocksApiError(408, "следующая страница остатков перенесена на следующий запуск");
-            await new Promise((resolve) => setTimeout(resolve, ms));
-          },
-        })) {
-          for (const s of stocks) {
-            if (!allowsProduct(t.productScope, s.nmId)) continue;
-            const nm_id = s.nmId;
-            const warehouse = s.warehouseName;
-            if (!nm_id || !warehouse) continue;
-            const key = `${nm_id}|${warehouse}`;
-            const cur = agg.get(key) ?? { nm_id, warehouse, quantity: 0, in_way_to_client: 0, in_way_from_client: 0, cabinet_id: t.cabinetId, synced_at: stamp };
-            cur.quantity += s.quantity ?? 0;
-            cur.in_way_to_client += s.inWayToClient ?? 0;
-            cur.in_way_from_client += s.inWayFromClient ?? 0;
-            agg.set(key, cur);
+      const ready: SyncTarget[] = [];
+      for (const t of group) {
+        // Отчёт остатков не возвращает бренд. Сначала обновляем каталог карточек:
+        // так scoped-кабинет получает все SKU нужного бренда ещё до заказа.
+        try {
+          await discoverCabinetProducts(t);
+        } catch (error) {
+          if (isScoped(t.productScope) && !t.productScope.allowedNmIds?.length) {
+            errors.push(`${t.name}: ${error instanceof Error ? error.message : "не удалось определить бренды товаров"}`);
+            continue;
           }
         }
+        // При недоступном Content API сохраняем fail-closed для первого запуска.
+        if (isScoped(t.productScope) && !t.productScope.allowedNmIds?.length) continue;
+        ready.push(t);
+      }
+      if (!ready.length) continue;
+
+      let remains: WbRemainsRow[];
+      try {
+        remains = await fetchWarehouseRemains({
+          token: ready[0].statsToken,
+          fetchImpl: boundedFetch,
+          sleep: boundedSleep,
+        });
       } catch (error) {
         const message = error instanceof WbStocksApiError
           ? `WB ${error.status}: ${error.message}`
           : error instanceof Error ? error.message : "Unknown error";
-        errors.push(`${t.name}: ${message}`);
+        errors.push(`${ready.map((t) => t.name).join(", ")}: ${message}`);
         continue;
       }
-      const rows = [...agg.values()];
 
-      const upsertError = await chunkedUpsert("wb_stocks", rows, "cabinet_id,nm_id,warehouse");
-      if (upsertError) {
-        errors.push(`${t.name}: ${upsertError}`);
-        continue;
-      }
-      total += rows.length;
+      const stamp = new Date().toISOString();
+      for (const t of ready) {
+        const rows = remainsToStockRows(remains.filter((row) => allowsProduct(t.productScope, row.nmId)))
+          .map((row) => ({ ...row, cabinet_id: t.cabinetId, synced_at: stamp }));
 
-      // Апсёрт только дописывает. Пара (товар, склад), которая пропала из ответа
-      // WB — товар кончился или уехал с этого склада, — оставалась в базе с
-      // последним известным количеством НАВСЕГДА. Экран показывал остаток, а
-      // оборачиваемость и план закупки считались от несуществующих штук.
-      // Обход прошёл целиком (иначе мы бы уже сделали continue), поэтому всё,
-      // что не обновилось этим прогоном, честно обнуляем.
-      // Пустой ответ WB неотличим от «всё распродано», но цена ошибки разная:
-      // обнулить живой остаток по всему кабинету дороже, чем оставить строку
-      // лишний час. Обнуляем только когда обход что-то принёс.
-      if (!db || rows.length === 0) continue;
-      let staleQuery = db
-        .from("wb_stocks")
-        .update({ quantity: 0, in_way_to_client: 0, in_way_from_client: 0, synced_at: stamp })
-        .lt("synced_at", stamp);
-      staleQuery = t.cabinetId === null
-        ? staleQuery.is("cabinet_id", null)
-        : staleQuery.eq("cabinet_id", t.cabinetId);
-      // У кабинета с ограниченным ассортиментом мы спрашивали только свои
-      // товары — чужие строки этим прогоном не подтверждались и обнулять их
-      // нельзя.
-      if (isScoped(t.productScope)) {
-        staleQuery = staleQuery.in("nm_id", [...new Set(t.productScope.allowedNmIds ?? [])]);
+        const upsertError = await chunkedUpsert("wb_stocks", rows, "cabinet_id,nm_id,warehouse");
+        if (upsertError) {
+          errors.push(`${t.name}: ${upsertError}`);
+          continue;
+        }
+        total += rows.length;
+
+        // Апсёрт только дописывает. Пара (товар, склад), которая пропала из ответа
+        // WB — товар кончился или уехал с этого склада, — оставалась в базе с
+        // последним известным количеством НАВСЕГДА. Экран показывал остаток, а
+        // оборачиваемость и план закупки считались от несуществующих штук.
+        // Отчёт скачан целиком (иначе мы бы уже сделали continue), поэтому всё,
+        // что не обновилось этим прогоном, честно обнуляем.
+        // Пустой отчёт WB неотличим от «всё распродано», но цена ошибки разная:
+        // обнулить живой остаток по всему кабинету дороже, чем оставить строку
+        // лишний час. Обнуляем только когда отчёт что-то принёс.
+        if (!db || rows.length === 0) continue;
+        let staleQuery = db
+          .from("wb_stocks")
+          .update({ quantity: 0, in_way_to_client: 0, in_way_from_client: 0, synced_at: stamp })
+          .lt("synced_at", stamp);
+        staleQuery = t.cabinetId === null
+          ? staleQuery.is("cabinet_id", null)
+          : staleQuery.eq("cabinet_id", t.cabinetId);
+        // У кабинета с ограниченным ассортиментом мы берём из отчёта только свои
+        // товары — чужие строки этим прогоном не подтверждались и обнулять их
+        // нельзя.
+        if (isScoped(t.productScope)) {
+          staleQuery = staleQuery.in("nm_id", [...new Set(t.productScope.allowedNmIds ?? [])]);
+        }
+        const { error: staleError } = await staleQuery;
+        if (staleError) errors.push(`${t.name}: не удалось обнулить исчезнувшие остатки: ${staleError.message}`);
       }
-      const { error: staleError } = await staleQuery;
-      if (staleError) errors.push(`${t.name}: не удалось обнулить исчезнувшие остатки: ${staleError.message}`);
     }
 
     const ok = errors.length === 0;

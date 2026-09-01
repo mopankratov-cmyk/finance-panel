@@ -30,9 +30,13 @@ export async function GET(request: NextRequest) {
 
   try {
     for (let from = 0; ; from += PAGE_SIZE) {
+      // Синк остатков не удаляет исчезнувшие пары (товар, склад), а обнуляет их,
+      // поэтому wb_stocks копит сотни вечных нулевых строк на артикул. В снимке
+      // они не несут информации: отсутствие пары в снимке и есть ноль.
       const { data, error } = await db
         .from("wb_stocks")
         .select("nm_id, warehouse, cabinet_id, quantity, in_way_to_client, in_way_from_client")
+        .or("quantity.neq.0,in_way_to_client.neq.0,in_way_from_client.neq.0")
         .order("id", { ascending: true })
         .range(from, from + PAGE_SIZE - 1);
 
