@@ -5,7 +5,7 @@ import { useState } from "react";
 import { WbEmptyState } from "@/components/wb/WbModuleHeader";
 import { adGet, adPost, type AdCluster } from "./adControlApi";
 import type { ConfirmRequest } from "./ConfirmAction";
-import type { CampaignRow } from "./WbAdControlPage";
+import type { CampaignRow } from "./campaignRow";
 
 interface ClusterResponse {
   active: AdCluster[];

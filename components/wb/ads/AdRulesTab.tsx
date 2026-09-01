@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { WbEmptyState } from "@/components/wb/WbModuleHeader";
 import { adDelete, adGet, adPost, type AdRule } from "./adControlApi";
 import type { ConfirmRequest } from "./ConfirmAction";
-import type { CampaignRow } from "./WbAdControlPage";
+import type { CampaignRow } from "./campaignRow";
 
 const DECISION_LABEL: Record<string, string> = {
   raise: "подняло",

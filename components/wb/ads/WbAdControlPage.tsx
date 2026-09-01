@@ -9,6 +9,7 @@ import { WbEmptyState, WbErrorState, WbModuleHeader } from "@/components/wb/WbMo
 import { useWbCabinet } from "@/components/wb/WbCabinetContext";
 import { adPost, money, type AdCabinetConfig } from "./adControlApi";
 import { ConfirmAction, type ConfirmRequest } from "./ConfirmAction";
+import type { CampaignRow } from "./campaignRow";
 import { AdClustersTab } from "./AdClustersTab";
 import { AdCreateTab } from "./AdCreateTab";
 import { AdJournalTab } from "./AdJournalTab";
@@ -37,11 +38,7 @@ interface ListResponse {
   articles?: ListArticle[];
 }
 
-export interface CampaignRow {
-  campaign: ListCampaign;
-  nm: number;
-  art: string;
-}
+export type { CampaignRow } from "./campaignRow";
 
 const TABS = [
   { id: "campaigns", label: "Кампании" },

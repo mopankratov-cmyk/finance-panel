@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ChevronRight, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
+import { Archive, ChevronRight, KeyRound, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
@@ -11,6 +11,13 @@ import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbProductImage } from "./WbProductImage";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
+import { AdClustersTab } from "./ads/AdClustersTab";
+import { AdJournalTab } from "./ads/AdJournalTab";
+import { AdRulesTab } from "./ads/AdRulesTab";
+import { AdTokenPanel } from "./ads/AdTokenPanel";
+import { ConfirmAction, type ConfirmRequest } from "./ads/ConfirmAction";
+import type { CampaignRow as AdCampaignRow } from "./ads/campaignRow";
+import { money as adMoney, type AdCabinetConfig } from "./ads/adControlApi";
 
 interface DayPoint {
   ts: string;
@@ -121,6 +128,21 @@ interface CampaignRow {
 }
 
 type CampaignStatusFilter = "active" | "paused" | "archive" | "all";
+
+/**
+ * Разделы объединённого модуля.
+ *
+ * «Что мы меняли», а не «Журнал»: рядом в меню стоит «Журнал РК», и два журнала
+ * в одном контуре гарантируют путаницу. Здесь наши намерения, там факт открутки.
+ */
+const MODULE_VIEWS = [
+  { value: "campaigns", label: "Кампании" },
+  { value: "phrases", label: "Фразы и кластеры" },
+  { value: "rules", label: "Автоправила" },
+  { value: "log", label: "Что мы меняли" },
+] as const;
+
+type ModuleView = (typeof MODULE_VIEWS)[number]["value"];
 
 const STATUS_FILTERS = [
   { value: "active", label: "Активные", Icon: PlayCircle },
@@ -277,6 +299,10 @@ export function WbAdvertsPage() {
     [setSelectedParam],
   );
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 16 });
+  const [view, setView] = useDashboardFilter<ModuleView>("view", "campaigns", MODULE_VIEWS.map((item) => item.value));
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
+  const [cabinetMoney, setCabinetMoney] = useState<AdCabinetConfig | null>(null);
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
@@ -372,6 +398,40 @@ export function WbAdvertsPage() {
     setRowWindow({ start: 0, end: Math.min(16, rows.length) });
   }, [baseRows, rows, selectedId, setSelectedId]);
 
+  const singleCabinet = Boolean(cabinetId && cabinetId !== "all");
+
+  useEffect(() => {
+    if (!singleCabinet) {
+      setCabinetMoney(null);
+      return;
+    }
+    let cancelled = false;
+    // Право менять деньги проверяет сервер. Полагаться на клиентский флаг
+    // нельзя: пока права не загрузились, он оптимистичен — и полоса успела бы
+    // мигнуть тому, кому её видеть не положено.
+    deploymentPinnedFetch(`/api/adverts/config?cabinet=${cabinetId}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json) => { if (!cancelled) setCabinetMoney(json && !json.error ? (json as AdCabinetConfig) : null); })
+      .catch(() => { if (!cancelled) setCabinetMoney(null); });
+    return () => { cancelled = true; };
+  }, [cabinetId, singleCabinet, retryKey]);
+
+  const adRows: AdCampaignRow[] = useMemo(() => baseRows.map(({ article, campaign }) => ({
+    campaign: {
+      id: campaign.id,
+      name: campaign.name,
+      status: campaign.status,
+      bid_cpm_rub: campaign.bid_cpm_rub,
+      bid_type: campaign.bid_type,
+      spend_today: campaign.spend_today,
+      drr: campaign.drr,
+    },
+    nm: article.nm,
+    art: article.art,
+  })), [baseRows]);
+
+  const currency = cabinetMoney?.config?.currency && cabinetMoney.config.currency !== "RUB" ? cabinetMoney.config.currency : "₽";
+
   const selected = baseRows.find(({ campaign }) => campaign.id === selectedId) ?? null;
   // Выбранная кампания есть, но текущий фильтр её не показывает. Молча прятать
   // строку нельзя: человек видит карточку справа и не понимает, где её строка.
@@ -403,13 +463,91 @@ export function WbAdvertsPage() {
               : "")
           : "Кампании, ставки, расписание и статистика"}
         actions={
+          <>
+          {singleCabinet ? (
+            <button type="button" onClick={() => setTokenPanelOpen((open) => !open)} title="Проверить или заменить ключ Продвижения" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 sm:min-h-8">
+              <KeyRound className="h-3.5 w-3.5 text-slate-400" /> Ключ
+            </button>
+          ) : null}
           <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 sm:min-h-8">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить
           </button>
+          </>
         }
       />
 
-      <div className="grid min-h-[calc(100vh-110px)] gap-3 px-2 py-3 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+      {/*
+        Две полосы, а не одна. Полоса А считается из того же запроса, что и
+        список, поэтому работает в любом режиме и у любой роли. Полоса Б живёт
+        отдельным запросом и появляется только там, где сервер подтвердил право
+        менять деньги кабинета. Смешать их значило бы либо потерять первую в
+        режиме «все кабинеты», либо показать вторую тому, кому нельзя.
+      */}
+      {activeData ? (
+        <div className="flex flex-wrap items-center gap-2 px-2 pt-3 text-[11px] sm:px-6">
+          <span className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 font-semibold text-slate-600 shadow-sm">
+            <WalletCards className="h-3.5 w-3.5 text-slate-400" />
+            Расход сегодня {rub(activeData.spend_today_total)}
+            {activeData.spend_yest_total ? ` · вчера ${rub(activeData.spend_yest_total)}` : ""}
+          </span>
+          {activeData.balance != null ? (
+            <span className={`rounded-lg px-2 py-1 font-semibold shadow-sm ${activeData.balance < activeData.cap_rub ? "bg-amber-50 text-amber-800" : "bg-white text-slate-600"}`}>
+              Баланс продвижения {rub(activeData.balance)}
+              {activeData.balance < activeData.cap_rub ? ` · ниже порога ${rub(activeData.cap_rub)}` : ""}
+            </span>
+          ) : null}
+          {cabinetMoney?.token?.sandbox ? (
+            <span className="rounded-lg bg-violet-100 px-2 py-1 font-bold text-violet-700">ПЕСОЧНИЦА — действия не стоят денег</span>
+          ) : null}
+          {cabinetMoney?.money ? (
+            <span className="rounded-lg bg-white px-2 py-1 font-semibold text-slate-600 shadow-sm">
+              Счёт {adMoney(cabinetMoney.money.account, currency)} · Взаимозачёт {adMoney(cabinetMoney.money.net, currency)}
+              {cabinetMoney.money.bonus == null ? "" : ` · Бонусы ${adMoney(cabinetMoney.money.bonus, currency)}`}
+            </span>
+          ) : null}
+          {cabinetMoney?.depositAllowance ? (
+            <span className="rounded-lg bg-white px-2 py-1 font-semibold text-slate-600 shadow-sm">
+              Лимит пополнений: сегодня {adMoney(cabinetMoney.depositAllowance.spentToday, currency)} из {adMoney(cabinetMoney.depositAllowance.maxPerDay, currency)}
+            </span>
+          ) : null}
+          {!singleCabinet ? (
+            <span className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-500">
+              Деньги кабинета и действия — выберите один кабинет
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {singleCabinet && tokenPanelOpen ? (
+        <div className="px-2 pt-3 sm:px-6">
+          <AdTokenPanel cabinetId={cabinetId as string} onClose={() => setTokenPanelOpen(false)} onSaved={() => setRetryKey((value) => value + 1)} />
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-1.5 px-2 pt-3 text-[11px] sm:px-6">
+        {MODULE_VIEWS.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => setView(item.value)}
+            disabled={item.value !== "campaigns" && !singleCabinet}
+            title={item.value !== "campaigns" && !singleCabinet ? "Доступно при выбранном кабинете" : undefined}
+            className={`min-h-8 rounded-lg px-2.5 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${view === item.value ? "bg-slate-800 text-white" : "bg-white text-slate-600 shadow-sm hover:bg-slate-50"}`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {view !== "campaigns" && singleCabinet ? (
+        <div className="px-2 py-3 sm:px-6">
+          {view === "phrases" ? <AdClustersTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} /> : null}
+          {view === "rules" ? <AdRulesTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} /> : null}
+          {view === "log" ? <AdJournalTab cabinetId={cabinetId as string} /> : null}
+        </div>
+      ) : null}
+
+      <div className={`${view === "campaigns" ? "grid" : "hidden"} min-h-[calc(100vh-110px)] gap-3 px-2 py-3 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)]`}>
         <section className="flex min-h-[480px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="border-b border-slate-200 p-3">
             <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 sm:min-h-8">
@@ -473,7 +611,7 @@ export function WbAdvertsPage() {
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} /><StatusIcon className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
                       <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className={`rounded px-1.5 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
                     </div>
-                    <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div title={article.spent_sku_7_closed == null ? "Разбивка расхода по артикулам за период не собрана" : undefined} className={`mt-0.5 text-[9px] font-semibold tabular-nums ${article.spent_sku_7_closed == null ? "text-slate-400" : "text-violet-700"}`}>Расход SKU 7д {article.spent_sku_7_closed == null ? "—" : rub(article.spent_sku_7_closed)}</div><div title={`${closedDrrTitle(campaign)} · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
+                    <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : `ставка ${rub(campaign.bid_cpm_rub)}`} · сегодня {rub(campaign.spend_today)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div title={article.spent_sku_7_closed == null ? "Разбивка расхода по артикулам за период не собрана" : undefined} className={`mt-0.5 text-[9px] font-semibold tabular-nums ${article.spent_sku_7_closed == null ? "text-slate-400" : "text-violet-700"}`}>Расход SKU 7д {article.spent_sku_7_closed == null ? "—" : rub(article.spent_sku_7_closed)}</div><div title={`${closedDrrTitle(campaign)} · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                   </button>
                 );
@@ -578,6 +716,8 @@ export function WbAdvertsPage() {
           )}
         </section>
       </div>
+
+      <ConfirmAction request={confirmRequest} onClose={() => setConfirmRequest(null)} onDone={() => setRetryKey((value) => value + 1)} />
     </div>
   );
 }
