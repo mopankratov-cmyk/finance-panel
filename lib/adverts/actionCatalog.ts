@@ -1,10 +1,14 @@
 // Реестр действий модуля управления рекламой.
 //
-// Один список, из которого живут три вещи: подписи в интерфейсе, расшифровка
-// строк журнала и решение, требует ли действие подтверждения. Раньше эти три
-// знания разъехались бы по компонентам, и через месяц журнал показывал бы
-// «bid» там, где кнопка называется «Ставка», а подтверждение стояло бы не у
-// всех опасных операций, а у тех, о которых вспомнили.
+// Один список, из которого живут подписи в интерфейсе и расшифровка строк
+// журнала. Раньше эти знания разъехались бы по компонентам, и через месяц
+// журнал показывал бы «bid» там, где кнопка называется «Ставка».
+//
+// Поля «требует ли подтверждения» здесь намеренно НЕТ. Оно было, заполнялось у
+// всех действий — и не читалось ни одной строкой кода, при том что выглядело
+// источником истины. Подтверждение сегодня стоит у ВСЕХ операций, и это
+// правильное поведение; описывать его отдельным флагом значит заводить второй
+// источник правды, который однажды разойдётся с первым.
 //
 // Порядок в файле — от безобидного к необратимому. Это не украшение: `risk`
 // ниже читается интерфейсом, и любое новое действие обязано осознанно выбрать
@@ -27,8 +31,6 @@ export interface AdvertActionSpec {
   risk: AdvertActionRisk;
   /** Метод WB, который дёргается. Пусто — действие живёт только у нас. */
   endpoint: string | null;
-  /** Требует явного подтверждения в диалоге. */
-  confirm: boolean;
 }
 
 export const ADVERT_ACTIONS: AdvertActionSpec[] = [
@@ -38,7 +40,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Кампания начнёт показываться и тратить бюджет.",
     risk: "reversible",
     endpoint: "GET /adv/v0/start",
-    confirm: false,
   },
   {
     id: "pause",
@@ -46,7 +47,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Показы остановятся, бюджет и настройки сохранятся.",
     risk: "reversible",
     endpoint: "GET /adv/v0/pause",
-    confirm: false,
   },
   {
     id: "stop",
@@ -54,7 +54,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Кампания закрывается. Запустить её заново нельзя — только создать новую.",
     risk: "money",
     endpoint: "GET /adv/v0/stop",
-    confirm: true,
   },
   {
     id: "rename",
@@ -62,7 +61,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Меняется только название кампании в кабинете WB.",
     risk: "safe",
     endpoint: "POST /adv/v0/rename",
-    confirm: false,
   },
   {
     id: "bid",
@@ -70,7 +68,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Меняет ставку по артикулу и месту показа. Влияет на расход сразу.",
     risk: "money",
     endpoint: "PATCH /api/advert/v1/bids",
-    confirm: true,
   },
   {
     id: "cluster_bid",
@@ -78,7 +75,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Меняет ставку на конкретный поисковый кластер внутри кампании.",
     risk: "money",
     endpoint: "POST /adv/v0/normquery/bids",
-    confirm: true,
   },
   {
     id: "cluster_bid_delete",
@@ -86,7 +82,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Кластер возвращается к общей ставке кампании.",
     risk: "reversible",
     endpoint: "DELETE /adv/v0/normquery/bids",
-    confirm: false,
   },
   {
     id: "minus",
@@ -94,7 +89,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Заменяет весь набор минус-фраз артикула присланным списком.",
     risk: "reversible",
     endpoint: "POST /adv/v0/normquery/set-minus",
-    confirm: true,
   },
   {
     id: "nms",
@@ -102,7 +96,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Меняет набор артикулов, которые продвигает кампания.",
     risk: "reversible",
     endpoint: "PATCH /adv/v0/auction/nms",
-    confirm: true,
   },
   {
     id: "create",
@@ -110,7 +103,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Заводит новую кампанию в кабинете WB. Удалить её из панели нельзя.",
     risk: "money",
     endpoint: "POST /adv/v2/seacat/save-ad",
-    confirm: true,
   },
   {
     id: "deposit",
@@ -118,7 +110,20 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Списывает деньги со счёта, баланса или бонусов в бюджет кампании.",
     risk: "money",
     endpoint: "POST /adv/v1/budget/deposit",
-    confirm: true,
+  },
+  {
+    id: "rule_enable",
+    label: "Включить автоправило",
+    effect: "Правило начнёт менять ставку само, по расписанию и без вашего участия.",
+    risk: "money",
+    endpoint: "POST /api/adverts/rules",
+  },
+  {
+    id: "rule_delete",
+    label: "Удалить автоправило",
+    effect: "Правило перестанет существовать. История его прогонов сохранится.",
+    risk: "reversible",
+    endpoint: "DELETE /api/adverts/rules",
   },
   {
     id: "rule_apply",
@@ -126,7 +131,6 @@ export const ADVERT_ACTIONS: AdvertActionSpec[] = [
     effect: "Правило само изменило ставку по расписанию.",
     risk: "money",
     endpoint: "PATCH /api/advert/v1/bids",
-    confirm: false,
   },
 ];
 

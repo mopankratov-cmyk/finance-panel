@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { decideBid, orderRulesBySafety, type BidRule, type BidRuleDecision, type BidRuleFact } from "@/lib/adverts/bidRules";
-import { checkCronAuth } from "@/lib/sync/helpers";
+import { resolveAdvertCabinetAccess } from "@/lib/adverts/cabinetGuard";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moscowToday, shiftIsoDay } from "@/lib/sync/moscowDay";
 import { setAdvertBids, type AdvertPlacement } from "@/lib/wb/advertApi";
@@ -10,9 +11,9 @@ import { getActiveWbCabinets, resolveWbToken, type WbCabinet } from "@/lib/wb/ca
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// PATCH /api/advert/v1/bids — 5 запросов в секунду на аккаунт. Держимся вдвое
-// ниже потолка: прогон не срочный, а 429 посреди пачки оставляет часть правил
-// применённой, а часть нет.
+// PATCH /api/advert/v1/bids — 5 запросов в секунду на аккаунт продавца. Держимся
+// вдвое ниже потолка: прогон не срочный, а 429 посреди пачки оставляет часть
+// правил применённой, а часть нет.
 const APPLY_PAUSE_MS = 400;
 
 interface RuleRow {
@@ -31,9 +32,10 @@ interface RuleRow {
   enabled: boolean;
 }
 
-interface FactRow {
+interface NmFactRow {
   advert_id: number;
   nm_id: number;
+  date: string;
   spent: number | null;
   orders: number | null;
   orders_sum: number | null;
@@ -60,14 +62,65 @@ function toRule(row: RuleRow): BidRule {
   };
 }
 
+interface Gate {
+  /** Разрешён ли боевой прогон (запись ставок в WB). */
+  live: boolean;
+  /** Ограничение по кабинету: null — все (только крон). */
+  cabinetId: string | null;
+}
+
+/**
+ * Кто имеет право запускать правила.
+ *
+ * Раньше здесь стоял общий `checkCronAuth`, и это была дыра: его allowlist
+ * (director, finance) написан под СИНКИ, которые только читают у маркетплейса и
+ * пишут в нашу же базу. Этот роут другой — без `?dry=1` он вызывает setAdvertBids
+ * и меняет ставки в живом кабинете WB, а без параметра cabinet проходит по ВСЕМ
+ * кабинетам сразу. Обоснование «необратимого действия здесь нет», записанное в
+ * комментарии к allowlist синков, к смене ставок за деньги не относится.
+ *
+ * Теперь право разведено по последствиям:
+ *   Bearer CRON_SECRET — боевой прогон по всем кабинетам. Это машина по расписанию.
+ *   Живая сессия — только через рекламный гейт, с ЯВНО указанным кабинетом и
+ *     правом canOperate в нём. Человек отвечает за один кабинет, а не за все.
+ *   Всё остальное — сухой прогон, если сессия вообще есть.
+ *
+ * Отсутствие CRON_SECRET больше не открывает роут настежь: для читающих синков
+ * это было приемлемым упрощением в разработке, для записи денег — нет.
+ */
+async function resolveGate(request: NextRequest): Promise<{ gate: Gate; response?: never } | { gate?: never; response: NextResponse }> {
+  const secret = process.env.CRON_SECRET;
+  const auth = request.headers.get("authorization");
+  if (secret && auth === `Bearer ${secret}`) {
+    const only = request.nextUrl.searchParams.get("cabinet");
+    return { gate: { live: true, cabinetId: only || null } };
+  }
+
+  const cabinetId = request.nextUrl.searchParams.get("cabinet");
+  if (!cabinetId) {
+    const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value);
+    if (!session) return { response: NextResponse.json({ error: "Требуется вход" }, { status: 401 }) };
+    return {
+      response: NextResponse.json(
+        { error: "Прогон по всем кабинетам доступен только по расписанию. Укажите кабинет параметром cabinet." },
+        { status: 400 },
+      ),
+    };
+  }
+
+  const access = await resolveAdvertCabinetAccess(cabinetId);
+  if (access.response) return { response: access.response };
+  return { gate: { live: true, cabinetId: access.access.cabinet.id } };
+}
+
 /**
  * Текущие ставки кабинета одним запросом.
  *
  * Спрашивать WB отдельно про каждую кампанию было бы и дольше, и дороже по
  * лимиту, а главное — бессмысленно: v2/adverts отдаёт сразу все кампании со
- * ставками по каждому артикулу. Берём факт у WB, а не из своей таблицы:
- * ставку могли поменять руками в кабинете между синками, и правило, считающее
- * от устаревшего числа, шагнёт не оттуда.
+ * ставками по каждому артикулу. Берём факт у WB, а не из своей таблицы: ставку
+ * могли поменять руками в кабинете между синками, и правило, считающее от
+ * устаревшего числа, шагнёт не оттуда.
  */
 async function currentBids(token: string, host: string) {
   const map = new Map<string, number>();
@@ -98,21 +151,20 @@ async function currentBids(token: string, host: string) {
  * Прогон автоправил.
  *
  * Окно факта заканчивается ВЧЕРА, а не сегодня. Сегодняшний день неполон
- * несимметрично: расход в нём уже есть, а заказы по нему ещё доедут — WB
- * отдаёт продажи с задержкой. Правило, считающее ДРР по такому дню, каждое
- * утро видит завышенную цифру и послушно снижает ставку на ровном месте.
+ * несимметрично: расход в нём уже есть, а заказы по нему ещё доедут — WB отдаёт
+ * продажи с задержкой. Правило, считающее ДРР по такому дню, каждое утро видит
+ * завышенную цифру и послушно снижает ставку на ровном месте.
  *
  * `?dry=1` считает и показывает решения, ничего не отправляя в WB. Это не
  * отладочный режим, а нормальный способ работы с автоматикой: прежде чем
  * доверить правилу деньги, полезно неделю посмотреть, что оно собиралось делать.
  */
 export async function GET(request: NextRequest) {
-  const authError = await checkCronAuth(request);
-  if (authError) return authError;
+  const gated = await resolveGate(request);
+  if (gated.response) return gated.response;
+  const gate = gated.gate;
 
-  const params = request.nextUrl.searchParams;
-  const dryRun = params.get("dry") === "1";
-  const onlyCabinet = params.get("cabinet");
+  const dryRun = request.nextUrl.searchParams.get("dry") === "1" || !gate.live;
 
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
@@ -121,7 +173,7 @@ export async function GET(request: NextRequest) {
     .from("advert_rules")
     .select("id, cabinet_id, advert_id, nm_id, placement, goal, target, window_days, step_percent, min_bid, max_bid, min_orders, enabled")
     .eq("enabled", true);
-  if (onlyCabinet) query = query.eq("cabinet_id", onlyCabinet);
+  if (gate.cabinetId) query = query.eq("cabinet_id", gate.cabinetId);
 
   const { data, error } = await query;
   if (error) {
@@ -141,7 +193,6 @@ export async function GET(request: NextRequest) {
   const results: Array<Record<string, unknown>> = [];
   const runLog: Array<Record<string, unknown>> = [];
 
-  // По кабинетам: один токен, один запрос за ставками, один общий счёт лимита.
   const byCabinet = new Map<string, RuleRow[]>();
   for (const row of rows) {
     const list = byCabinet.get(row.cabinet_id) ?? [];
@@ -162,20 +213,36 @@ export async function GET(request: NextRequest) {
     const host = (await import("@/lib/wb/advertApi")).advertHost(token);
     const bids = await currentBids(token, host);
 
-    // Факт по всем кампаниям кабинета сразу: у правил разные окна, поэтому
-    // берём самое длинное и режем по каждому правилу уже в памяти.
     const maxWindow = Math.max(...cabinetRules.map((row) => Number(row.window_days) || 3));
     const from = shiftIsoDay(today, -maxWindow);
     const to = shiftIsoDay(today, -1);
-    const { data: factRows } = await db
-      .from("wb_advert_nm_campaign_daily")
-      .select("advert_id, nm_id, date, spent, orders, orders_sum")
-      .eq("cabinet_id", cabinetId)
-      .in("advert_id", [...new Set(cabinetRules.map((row) => Number(row.advert_id)))])
-      .gte("date", from)
-      .lte("date", to);
+    const advertIds = [...new Set(cabinetRules.map((row) => Number(row.advert_id)))];
 
-    const facts = (factRows ?? []) as Array<FactRow & { date: string }>;
+    const [nmFacts, campaignFacts] = await Promise.all([
+      db
+        .from("wb_advert_nm_campaign_daily")
+        .select("advert_id, nm_id, date, spent, orders, orders_sum")
+        .eq("cabinet_id", cabinetId)
+        .in("advert_id", advertIds)
+        .gte("date", from)
+        .lte("date", to),
+      // Расход кампании целиком — контрольная величина. Нужна не для счёта, а
+      // чтобы отличить «рекламы не было» от «WB не разнёс расход по артикулам».
+      db
+        .from("wb_advert_stats")
+        .select("advert_id, date, sum_spent")
+        .in("advert_id", advertIds)
+        .gte("date", from)
+        .lte("date", to),
+    ]);
+
+    const facts = (nmFacts.data ?? []) as NmFactRow[];
+    const campaignSpend = new Map<number, number>();
+    for (const row of (campaignFacts.data ?? []) as Array<{ advert_id: number; date: string; sum_spent: number | null }>) {
+      if (row.date < from || row.date > to) continue;
+      const id = Number(row.advert_id);
+      campaignSpend.set(id, (campaignSpend.get(id) ?? 0) + Number(row.sum_spent ?? 0));
+    }
 
     const decisions = cabinetRules.map((row) => {
       const rule = toRule(row);
@@ -189,15 +256,29 @@ export async function GET(request: NextRequest) {
         fact.orders += Number(item.orders ?? 0);
         fact.ordersSum += Number(item.orders_sum ?? 0);
       }
-      // Правило без явного артикула всё равно должна применяться к конкретному:
-      // ставка в WB потоварная. Берём тот, по которому в окне был расход, —
-      // иначе менять нечего и правило честно об этом скажет.
+
       const nmId = rule.nmId ?? facts.find((item) => Number(item.advert_id) === rule.advertId && Number(item.spent ?? 0) > 0)?.nm_id ?? null;
       const placement = row.placement as AdvertPlacement;
       const currentBid = nmId == null ? 0 : bids.map.get(`${rule.advertId}|${nmId}|${placement}`) ?? 0;
-      const decision: BidRuleDecision = nmId == null
-        ? { action: "hold", reason: "В окне нет артикула с расходом — менять нечего.", currentBid: 0, newBid: null }
-        : decideBid(rule, fact, currentBid);
+
+      // Расход по артикулам нулевой, а по кампании — нет. Это не «рекламы не
+      // было»: WB просто не разложил расход на артикулы, и такое бывает
+      // регулярно (для отчётов у нас на это есть отдельная раскладка остатка).
+      // Правило в этом случае обязано молчать, а не читать ноль как факт:
+      // ошибка тут всегда в одну сторону — заниженный ДРР и ложное «поднять».
+      const wholeCampaignSpend = campaignSpend.get(rule.advertId) ?? 0;
+      const unallocated = fact.spent <= 0 && wholeCampaignSpend > 0;
+
+      const decision: BidRuleDecision = unallocated
+        ? {
+            action: "hold",
+            reason: `WB не разнёс расход кампании по артикулам за окно (по кампании ${Math.round(wholeCampaignSpend)}, по артикулам 0) — считать ДРР не из чего.`,
+            currentBid,
+            newBid: null,
+          }
+        : nmId == null
+          ? { action: "hold", reason: "В окне нет артикула с расходом — менять нечего.", currentBid: 0, newBid: null }
+          : decideBid(rule, fact, currentBid);
       return { row, rule, fact, nmId, placement, decision };
     });
 
@@ -263,6 +344,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (bids.error) results.push({ cabinetId, warning: `Ставки WB прочитаны не полностью: ${bids.error}` });
+    if (nmFacts.error) results.push({ cabinetId, warning: `Факт по артикулам прочитан не полностью: ${nmFacts.error.message}` });
+    if (campaignFacts.error) results.push({ cabinetId, warning: `Расход кампаний прочитан не полностью: ${campaignFacts.error.message}` });
   }
 
   if (!dryRun && runLog.length) {

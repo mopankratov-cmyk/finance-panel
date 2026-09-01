@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { WbEmptyState } from "@/components/wb/WbModuleHeader";
 import { adDelete, adGet, adPost, type AdRule } from "./adControlApi";
+import type { ConfirmRequest } from "./ConfirmAction";
 import type { CampaignRow } from "./WbAdControlPage";
 
 const DECISION_LABEL: Record<string, string> = {
@@ -23,7 +24,17 @@ const DECISION_LABEL: Record<string, string> = {
  * и правило, которое неделю не запускалось, выглядят одинаково ровно до тех
  * пор, пока причина не написана словами.
  */
-export function AdRulesTab({ cabinetId, rows, currency }: { cabinetId: string; rows: CampaignRow[]; currency: string }) {
+export function AdRulesTab({
+  cabinetId,
+  rows,
+  currency,
+  onAsk,
+}: {
+  cabinetId: string;
+  rows: CampaignRow[];
+  currency: string;
+  onAsk: (request: ConfirmRequest) => void;
+}) {
   const [rules, setRules] = useState<AdRule[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,7 +98,7 @@ export function AdRulesTab({ cabinetId, rows, currency }: { cabinetId: string; r
     void load();
   };
 
-  const toggle = async (rule: AdRule) => {
+  const saveRule = async (rule: AdRule, enabled: boolean) => {
     setBusy(true);
     const result = await adPost("/api/adverts/rules", {
       cabinetId,
@@ -102,18 +113,45 @@ export function AdRulesTab({ cabinetId, rows, currency }: { cabinetId: string; r
       minBid: rule.minBid,
       maxBid: rule.maxBid,
       minOrders: rule.minOrders,
-      enabled: !rule.enabled,
+      enabled,
     });
     setBusy(false);
     if (!result.ok) setError(result.error);
     void load();
+    return { ok: result.ok, error: result.error };
   };
 
-  const remove = async (rule: AdRule) => {
-    setBusy(true);
-    await adDelete("/api/adverts/rules", { cabinetId, id: rule.id });
-    setBusy(false);
-    void load();
+  /**
+   * Выключить правило можно сразу: это снятие полномочий, а не выдача.
+   * Включить — только через подтверждение: с этой секунды ставку меняет машина
+   * без человека, и по весу это не меньше разовой смены ставки, у которой
+   * диалог есть.
+   */
+  const toggle = (rule: AdRule) => {
+    if (rule.enabled) {
+      void saveRule(rule, false);
+      return;
+    }
+    onAsk({
+      actionId: "rule_enable",
+      subject: `Кампания ${rule.advertId}${rule.nmId ? ` · артикул ${rule.nmId}` : ""}`,
+      detail: `Цель ${rule.goal === "drr" ? "ДРР" : "CPO"} ≤ ${rule.target}${rule.goal === "drr" ? "%" : ` ${currency}`}, шаг ${rule.stepPercent}%, ставка не выйдет за ${rule.minBid}–${rule.maxBid} ${currency}. Правило не сработает, пока в окне меньше ${rule.minOrders} заказов.`,
+      run: () => saveRule(rule, true),
+    });
+  };
+
+  const remove = (rule: AdRule) => {
+    onAsk({
+      actionId: "rule_delete",
+      subject: `Кампания ${rule.advertId}${rule.nmId ? ` · артикул ${rule.nmId}` : ""}`,
+      run: async () => {
+        setBusy(true);
+        const result = await adDelete("/api/adverts/rules", { cabinetId, id: rule.id });
+        setBusy(false);
+        void load();
+        return { ok: result.ok, error: result.error };
+      },
+    });
   };
 
   const preview = async () => {
@@ -136,6 +174,17 @@ export function AdRulesTab({ cabinetId, rows, currency }: { cabinetId: string; r
   return (
     <div className="space-y-3">
       {error ? <div className="rounded-xl bg-rose-50 px-4 py-3 text-[12px] text-rose-700">{error}</div> : null}
+
+      {/*
+        Пока прогона по расписанию нет, вкладка выглядит включённым автопилотом:
+        человек заводит правило, включает его — и ничего не происходит, потому
+        что запускать некому. Молчать об этом хуже всего: правило, которое не
+        сработало, неотличимо от правила, которое сработало и решило не трогать.
+      */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-5 text-amber-900">
+        <b>Автопрогон по расписанию пока не подключён.</b> Включённое правило само ставку не изменит — оно считается только по
+        кнопке «Что сделали бы правила сейчас». Это осознанно: сперва посмотрите неделю, что автоматика собиралась делать.
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Новое правило</div>
@@ -227,7 +276,7 @@ export function AdRulesTab({ cabinetId, rows, currency }: { cabinetId: string; r
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => void toggle(rule)}
+                    onClick={() => toggle(rule)}
                     className="min-h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                   >
                     {rule.enabled ? "Выключить" : "Включить"}
@@ -235,7 +284,7 @@ export function AdRulesTab({ cabinetId, rows, currency }: { cabinetId: string; r
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => void remove(rule)}
+                    onClick={() => remove(rule)}
                     className="min-h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-40"
                   >
                     Удалить

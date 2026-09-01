@@ -345,7 +345,7 @@ export function WbAdControlPage() {
 
         {tab === "clusters" ? <AdClustersTab cabinetId={cabinetId} rows={rows} currency={currency} onAsk={setConfirmRequest} /> : null}
         {tab === "create" ? <AdCreateTab cabinetId={cabinetId} onAsk={setConfirmRequest} onCreated={reload} /> : null}
-        {tab === "rules" ? <AdRulesTab cabinetId={cabinetId} rows={rows} currency={currency} /> : null}
+        {tab === "rules" ? <AdRulesTab cabinetId={cabinetId} rows={rows} currency={currency} onAsk={setConfirmRequest} /> : null}
         {tab === "journal" ? <AdJournalTab cabinetId={cabinetId} /> : null}
       </div>
 
