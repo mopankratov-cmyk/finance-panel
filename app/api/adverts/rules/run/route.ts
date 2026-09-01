@@ -58,6 +58,8 @@ function toRule(row: RuleRow): BidRule {
     minBid: Number(row.min_bid),
     maxBid: Number(row.max_bid),
     minOrders: Number(row.min_orders),
+    // В сухом прогоне правило рассматривается как включённое: вопрос
+    // «что бы оно сделало» бессмыслен при ответе «ничего, оно выключено».
     enabled: row.enabled,
   };
 }
@@ -171,8 +173,13 @@ export async function GET(request: NextRequest) {
 
   let query = db
     .from("advert_rules")
-    .select("id, cabinet_id, advert_id, nm_id, placement, goal, target, window_days, step_percent, min_bid, max_bid, min_orders, enabled")
-    .eq("enabled", true);
+    .select("id, cabinet_id, advert_id, nm_id, placement, goal, target, window_days, step_percent, min_bid, max_bid, min_orders, enabled");
+  // Боевой прогон трогает только включённые правила. Сухой считает ВСЕ, включая
+  // выключенные, и это не послабление, а условие работоспособности замысла:
+  // правило заводится выключенным, а интерфейс предлагает неделю смотреть, что
+  // оно сделало бы. Если предпросмотр игнорирует выключенные, посмотреть можно
+  // только после включения — то есть ровно тогда, когда смотреть уже поздно.
+  if (!dryRun) query = query.eq("enabled", true);
   if (gate.cabinetId) query = query.eq("cabinet_id", gate.cabinetId);
 
   const { data, error } = await query;
@@ -245,7 +252,7 @@ export async function GET(request: NextRequest) {
     }
 
     const decisions = cabinetRules.map((row) => {
-      const rule = toRule(row);
+      const rule = dryRun ? { ...toRule(row), enabled: true } : toRule(row);
       const ruleFrom = shiftIsoDay(today, -rule.windowDays);
       const fact: BidRuleFact = { spent: 0, orders: 0, ordersSum: 0 };
       for (const item of facts) {
@@ -285,6 +292,7 @@ export async function GET(request: NextRequest) {
     for (const item of orderRulesBySafety(decisions)) {
       const base = {
         ruleId: item.rule.id,
+        ruleEnabled: item.row.enabled,
         advertId: item.rule.advertId,
         nmId: item.nmId,
         placement: item.placement,

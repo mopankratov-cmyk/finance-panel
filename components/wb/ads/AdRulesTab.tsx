@@ -157,7 +157,7 @@ export function AdRulesTab({
   const preview = async () => {
     setBusy(true);
     setDryRun(null);
-    const result = await adGet<{ results: Array<{ advertId: number; decision: string; reason: string; oldBid: number | null; newBid: number | null }> }>(
+    const result = await adGet<{ results: Array<{ advertId: number; ruleEnabled?: boolean; decision: string; reason: string; oldBid: number | null; newBid: number | null }> }>(
       `/api/adverts/rules/run?cabinet=${cabinetId}&dry=1`,
     );
     setBusy(false);
@@ -165,8 +165,11 @@ export function AdRulesTab({
       setError(result.error);
       return;
     }
+    // Выключенные правила в предпросмотре считаются как включённые — иначе
+    // «посмотрите неделю, прежде чем включать» невыполнимо. Но выдавать это за
+    // то, что происходит на самом деле, нельзя: помечаем прямо в строке.
     const lines = (result.data?.results ?? []).map((item) =>
-      `Кампания ${item.advertId}: ${DECISION_LABEL[item.decision] ?? item.decision}${item.newBid ? ` → ${item.newBid} ${currency}` : ""} — ${item.reason}`,
+      `Кампания ${item.advertId}${item.ruleEnabled === false ? " (правило выключено)" : ""}: ${DECISION_LABEL[item.decision] ?? item.decision}${item.newBid ? ` → ${item.newBid} ${currency}` : ""} — ${item.reason}`,
     );
     setDryRun(lines.length ? lines.join("\n") : "Ни одно правило не сработало бы прямо сейчас.");
   };
