@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { resolveAdvertCabinetAccess, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
+import { auditAdvertOperation, resolveAdvertCabinetAccess, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -164,6 +164,23 @@ export async function POST(request: NextRequest) {
       { status: duplicate ? 409 : 500 },
     );
   }
+
+  // Включение правила пишется в журнал наравне с разовой сменой ставки: с этой
+  // секунды ставку меняет машина, и вопрос «кто это включил и когда» возникает
+  // ровно тогда, когда ставка уже уехала. Сохранение выключенного правила в
+  // журнал не идёт — оно ещё ничего не делает.
+  if (row.enabled) {
+    await auditAdvertOperation({
+      context: resolved.context,
+      advertId,
+      action: "rule_enable",
+      status: "ok",
+      oldValue: null,
+      newValue: { goal, target, stepPercent, minBid, maxBid, minOrders, windowDays, placement, nmId },
+      wbResult: { ruleId: data?.id ?? null },
+    });
+  }
+
   return NextResponse.json({ ok: true, id: data?.id ?? null, enabled: row.enabled });
 }
 
@@ -174,12 +191,31 @@ export async function DELETE(request: NextRequest) {
 
   const gate = await resolveAdvertCabinetAccess(body.cabinetId);
   if (gate.response) return gate.response;
+  const { db, cabinet, session } = gate.access;
 
-  const { error } = await gate.access.db
+  // Читаем правило до удаления: после него сказать в журнале, ЧТО именно
+  // удалили, будет уже не из чего, а строка «удалено правило» без содержания
+  // ничем не помогает через месяц.
+  const { data: before } = await db
     .from("advert_rules")
-    .delete()
+    .select("advert_id, nm_id, placement, goal, target, min_bid, max_bid, enabled")
     .eq("id", id)
-    .eq("cabinet_id", gate.access.cabinet.id);
+    .eq("cabinet_id", cabinet.id)
+    .maybeSingle();
+
+  const { error } = await db.from("advert_rules").delete().eq("id", id).eq("cabinet_id", cabinet.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (before) {
+    await auditAdvertOperation({
+      context: { session, db, cabinet, token: gate.access.token, adverts: new Map() },
+      advertId: Number(before.advert_id),
+      action: "rule_delete",
+      status: "ok",
+      oldValue: before,
+      newValue: null,
+      wbResult: { ruleId: id },
+    });
+  }
   return NextResponse.json({ ok: true });
 }
