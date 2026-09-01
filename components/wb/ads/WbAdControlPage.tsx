@@ -13,6 +13,7 @@ import { AdClustersTab } from "./AdClustersTab";
 import { AdCreateTab } from "./AdCreateTab";
 import { AdJournalTab } from "./AdJournalTab";
 import { AdRulesTab } from "./AdRulesTab";
+import { AdTokenPanel } from "./AdTokenPanel";
 
 interface ListCampaign {
   id: number;
@@ -90,6 +91,7 @@ export function WbAdControlPage() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
@@ -182,17 +184,21 @@ export function WbAdControlPage() {
             Лимит пополнений: сегодня {money(allowance.spentToday, currency)} из {money(allowance.maxPerDay, currency)}
           </span>
         ) : null}
-        <span
-          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 font-semibold shadow-sm ${token.promotionAvailable ? "bg-white text-slate-600" : "bg-rose-50 text-rose-700"}`}
+        <button
+          type="button"
+          onClick={() => setTokenPanelOpen((open) => !open)}
+          title="Проверить или заменить ключ Продвижения"
+          className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-2 py-1 font-semibold shadow-sm transition-colors ${token.promotionAvailable ? "bg-white text-slate-600 hover:bg-slate-50" : "bg-rose-50 text-rose-700 hover:bg-rose-100"}`}
         >
           <KeyRound className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
           {token.promotionAvailable
             ? `Ключ Продвижения${token.daysLeft != null ? `, ${token.daysLeft} дн.` : ""}`
             : token.promotionError ?? "Ключ не работает"}
-        </span>
+        </button>
       </div>
     );
   }, [config, currency, allowance]);
+
 
   if (!cabinetId || cabinetId === "all") {
     return (
@@ -229,6 +235,13 @@ export function WbAdControlPage() {
 
       <div className="space-y-3 p-3 sm:p-6">
         {header}
+        {tokenPanelOpen ? (
+          <AdTokenPanel
+            cabinetId={cabinetId}
+            onClose={() => setTokenPanelOpen(false)}
+            onSaved={reload}
+          />
+        ) : null}
         {configError ? <WbErrorState message={configError} onRetry={reload} /> : null}
         {flash ? (
           <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[12px] font-semibold text-emerald-700">{flash}</div>

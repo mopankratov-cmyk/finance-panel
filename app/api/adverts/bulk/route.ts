@@ -1,62 +1,92 @@
 import { NextRequest, NextResponse } from "next/server";
+
 import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
+import { ADVERT_STATUS_BY_ACTION, setAdvertLifecycle, type AdvertLifecycleAction } from "@/lib/wb/advertApi";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const ADV_BASE = "https://advert-api.wildberries.ru";
+// Мягкая пауза между кампаниями: лимит WB считается на аккаунт продавца, а не
+// на кампанию, и пачка без пауз упирается в него на середине.
+const PAUSE_MS = 700;
 
-const ACTIONS: Record<string, { path: string; status: number }> = {
-  start: { path: "/adv/v0/start", status: 9 },
-  pause: { path: "/adv/v0/pause", status: 11 },
-  stop: { path: "/adv/v0/stop", status: 7 },
-};
+function isLifecycleAction(value: unknown): value is AdvertLifecycleAction {
+  return value === "start" || value === "pause" || value === "stop";
+}
 
-// Массовое действие над набором кампаний. Между запросами — пауза (rate limit WB).
+/**
+ * Массовое действие над набором кампаний.
+ *
+ * Как и одиночный роут, переведено на общий клиент Продвижения — раньше здесь
+ * наружу уходило `WB 403` без объяснения, и в пачке это особенно неудобно:
+ * сорок одинаковых «WB 403» не говорят, что причина одна и общая.
+ *
+ * Отказ по правам токена прекращает прогон сразу. Продолжать смысла нет: если
+ * ключ выпущен только на чтение, следующие сорок запросов получат тот же ответ,
+ * потратив лимит WB и засорив журнал сорока одинаковыми строками.
+ */
 export async function POST(request: NextRequest) {
-  const b = await request.json().catch(() => ({}));
-  const ids: number[] = Array.isArray(b.advertIds) ? b.advertIds.filter((x: unknown) => typeof x === "number") : [];
-  const action: string = typeof b.action === "string" ? b.action : "";
+  const body = await request.json().catch(() => ({}));
+  const ids: number[] = Array.isArray(body.advertIds)
+    ? body.advertIds.filter((value: unknown): value is number => typeof value === "number")
+    : [];
+  const action: unknown = body.action;
 
-  if (!ids.length || !ACTIONS[action]) {
+  if (!ids.length || !isLifecycleAction(action)) {
     return NextResponse.json({ error: "Неверные параметры (advertIds/action)" }, { status: 400 });
   }
-  const resolved = await resolveAdvertCabinetContext({ cabinetId: b.cabinetId, advertIds: ids });
+  const resolved = await resolveAdvertCabinetContext({ cabinetId: body.cabinetId, advertIds: ids });
   if (resolved.response) return resolved.response;
   const context = resolved.context;
 
-  const { path, status } = ACTIONS[action];
-  const results: { advertId: number; ok: boolean; error?: string }[] = [];
+  const status = ADVERT_STATUS_BY_ACTION[action];
+  const results: Array<{ advertId: number; ok: boolean; error?: string }> = [];
+  let stoppedEarly: string | null = null;
 
-  for (let i = 0; i < ids.length; i++) {
-    if (i > 0) await new Promise((r) => setTimeout(r, 700)); // мягкая пауза для rate limit
-    const advertId = ids[i];
-    try {
-      const res = await fetch(`${ADV_BASE}${path}?id=${advertId}`, {
-        method: "GET",
-        headers: { Authorization: context.token },
-        cache: "no-store",
-      });
-      if (res.ok) {
-        await context.db.from("wb_adverts").update({ status }).eq("advert_id", advertId).eq("cabinet_id", context.cabinet.id);
-        await auditAdvertOperation({ context, advertId, action, status: "ok", oldValue: context.adverts.get(advertId)?.status ?? null, newValue: status, wbResult: { status: res.status } });
-        results.push({ advertId, ok: true });
-      } else {
-        const message = `WB ${res.status}: ${(await res.text()).slice(0, 160)}`;
-        await auditAdvertOperation({ context, advertId, action, status: "error", oldValue: context.adverts.get(advertId)?.status ?? null, newValue: status, wbResult: message });
-        results.push({ advertId, ok: false, error: `WB ${res.status}` });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "error";
-      await auditAdvertOperation({ context, advertId, action, status: "error", oldValue: context.adverts.get(advertId)?.status ?? null, newValue: status, wbResult: message });
-      results.push({ advertId, ok: false, error: message });
+  for (let index = 0; index < ids.length; index++) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, PAUSE_MS));
+    const advertId = ids[index];
+    const oldStatus = context.adverts.get(advertId)?.status ?? null;
+
+    const result = await setAdvertLifecycle(context.token, advertId, action);
+    if (result.ok) {
+      await context.db.from("wb_adverts").update({ status }).eq("advert_id", advertId).eq("cabinet_id", context.cabinet.id);
+      await auditAdvertOperation({ context, advertId, action, status: "ok", oldValue: oldStatus, newValue: status, wbResult: result.data });
+      results.push({ advertId, ok: true });
+      continue;
+    }
+
+    await auditAdvertOperation({
+      context,
+      advertId,
+      action,
+      status: "error",
+      oldValue: oldStatus,
+      newValue: status,
+      wbResult: result.raw ?? result.message,
+    });
+    results.push({ advertId, ok: false, error: result.message });
+
+    if (result.forbidden) {
+      stoppedEarly = result.message;
+      break;
     }
   }
 
-  const okCount = results.filter((r) => r.ok).length;
+  const okCount = results.filter((item) => item.ok).length;
   const ok = okCount === ids.length;
   return NextResponse.json(
-    { ok, total: ids.length, success: okCount, failed: ids.length - okCount, results },
+    {
+      ok,
+      total: ids.length,
+      success: okCount,
+      failed: results.length - okCount,
+      // Сколько кампаний вообще не пробовали: молчать об этом нельзя, иначе
+      // «обработано 3 из 40» читается как «37 не удалось».
+      skipped: ids.length - results.length,
+      stoppedEarly,
+      results,
+    },
     { status: ok ? 200 : 502 },
   );
 }
