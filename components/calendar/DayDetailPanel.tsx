@@ -27,6 +27,7 @@ interface DayDetailPanelProps {
   onClose: () => void;
   onAddPayment: (payment: Payment, companyId?: string | null) => void;
   onUpdatePayment: (payment: Payment, companyId: string | null) => void;
+  onDeletePayment: (payment: Payment) => boolean;
   quickAddOpen?: boolean;
   onQuickAddConsumed?: () => void;
 }
@@ -95,6 +96,7 @@ export function DayDetailPanel({
   onClose,
   onAddPayment,
   onUpdatePayment,
+  onDeletePayment,
   quickAddOpen = false,
   onQuickAddConsumed,
 }: DayDetailPanelProps) {
@@ -307,6 +309,9 @@ export function DayDetailPanel({
                     payment={row.payment}
                     onSubmit={handleEditSubmit}
                     onCancel={() => setEditingPayment(null)}
+                    onDelete={() => {
+                      if (onDeletePayment(row.payment)) setEditingPayment(null);
+                    }}
                   />
                 </li>
               ) : (
@@ -342,6 +347,8 @@ export function DayDetailPanel({
                 flowType="expense"
                 date={date}
                 accounts={accounts}
+                companies={companies}
+                requireCompany
                 onSubmit={handleAdd("expense")}
                 onCancel={() => setShowExpenseForm(false)}
               />

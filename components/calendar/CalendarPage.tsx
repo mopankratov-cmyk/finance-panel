@@ -361,6 +361,24 @@ export function CalendarPage() {
     }));
   };
 
+  const handleDeletePayment = (payment: Payment): boolean => {
+    const scheduleKey = loanScheduleKey(payment);
+    const paymentsToDelete = scheduleKey
+      ? state.payments.filter((item) => loanScheduleKey(item) === scheduleKey)
+      : [payment];
+    const message = scheduleKey
+      ? "Удалить весь платёж графика кредита, включая тело, проценты, пени и штрафы на эту дату?"
+      : "Удалить этот платёж из календаря?";
+    if (!window.confirm(`${message}\n\nДействие нельзя отменить.`)) return false;
+    for (const item of paymentsToDelete) dispatch({ type: "DELETE_PAYMENT", payload: item.id });
+    setCompanyByPayment((current) => {
+      const next = new Map(current);
+      for (const item of paymentsToDelete) next.delete(item.id);
+      return next;
+    });
+    return true;
+  };
+
   const confirmPlanFactMatch = async (planned: Payment, fact: Payment) => {
     try {
       const payment = await persistCalendarFactLink(planned.id, fact.id, "confirmed");
@@ -703,6 +721,7 @@ export function CalendarPage() {
         onClose={handleClosePanel}
         onAddPayment={handleAddPayment}
         onUpdatePayment={handleUpdatePayment}
+        onDeletePayment={handleDeletePayment}
         quickAddOpen={quickAddPending}
         onQuickAddConsumed={() => setQuickAddPending(false)}
       />
