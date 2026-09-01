@@ -5,6 +5,7 @@ import { allowsProduct, isScoped } from "@/lib/wb/productScope";
 import { WbStocksApiError } from "@/lib/wb/stocksApi";
 import { fetchWarehouseRemains, remainsToStockRows, type WbRemainsRow } from "@/lib/wb/remainsApi";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isWbGlobalRateLimitMessage } from "@/lib/wb/rateLimit";
 
 export const maxDuration = 300;
 
@@ -31,6 +32,8 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   let total = 0;
   const errors: string[] = [];
+  /** Кабинеты, которых притормозил WB: подождать, а не чинить. */
+  const deferred: string[] = [];
 
   const boundedFetch: typeof fetch = async (input, init) => {
     const remaining = deadline - Date.now();
@@ -85,6 +88,15 @@ export async function GET(request: NextRequest) {
         const message = error instanceof WbStocksApiError
           ? `WB ${error.status}: ${error.message}`
           : error instanceof Error ? error.message : "Unknown error";
+        // 429 от WB — не поломка синка, а лимит площадки: у агентского
+        // кабинета на тысячи кампаний он ловится штатно по нескольку раз в
+        // сутки. Записывать это ошибкой значит держать журнал вечно красным и
+        // прятать в нём настоящие сбои. Строки при этом просто не обновились —
+        // следующий прогон возьмёт их снова.
+        if (isWbGlobalRateLimitMessage(message)) {
+          deferred.push(`${ready.map((t) => t.name).join(", ")}: ${message}`);
+          continue;
+        }
         errors.push(`${ready.map((t) => t.name).join(", ")}: ${message}`);
         continue;
       }
@@ -129,8 +141,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const ok = errors.length === 0;
-    await writeSyncLog("stocks", ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);
+    // Отложенное по лимиту — отдельное состояние: не успех (часть кабинетов
+    // не обновилась) и не ошибка (чинить нечего, надо подождать).
+    const ok = errors.length === 0 && deferred.length === 0;
+    const note = [...errors, ...deferred].join("; ") || null;
+    const status = errors.length ? "error" : deferred.length ? "partial" : "ok";
+    await writeSyncLog("stocks", status, total, note, startedAt);
     return NextResponse.json({ ok, rows: total, cabinets: targets.length, errors });
   } catch (err) {
     const cause = err instanceof Error && err.cause instanceof Error ? ` (${err.cause.message})` : "";

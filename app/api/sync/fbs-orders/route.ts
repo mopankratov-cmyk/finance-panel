@@ -3,6 +3,7 @@ import { checkCronAuth, chunkedUpsertWithOptionalColumns, writeSyncLog } from "@
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { allowsNm } from "@/lib/wb/productScope";
+import { isWbGlobalRateLimitMessage } from "@/lib/wb/rateLimit";
 import { readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,8 @@ export async function GET(request: NextRequest) {
 
   let total = 0;
   const errors: string[] = [];
+  /** Кабинеты, которых притормозил WB: подождать, а не чинить. */
+  const deferred: string[] = [];
   // Неполный обход — не ошибка кабинета, но и не успех: держим отдельным
   // списком, чтобы он дошёл и до ответа, и до журнала синхронизаций.
   const incomplete: string[] = [];
@@ -191,24 +194,34 @@ export async function GET(request: NextRequest) {
       progress.push({ cabinet: target.name, rows: rows.length, status: drained ? "caught_up" : "running", truncated: !drained });
     } catch (error) {
       const message = error instanceof Error ? error.message : "неизвестная ошибка";
-      errors.push(`${target.name}: ${message}`);
+      // 429 — лимит площадки, а не наш сбой. Курсор не двигаем и попытки НЕ
+      // накручиваем: счётчик attempts нужен для настоящих отказов, а от лимита
+      // он растёт сам собой у агентских кабинетов и обесценивает сигнал.
+      const throttled = isWbGlobalRateLimitMessage(message);
+      if (throttled) deferred.push(`${target.name}: ${message}`);
+      else errors.push(`${target.name}: ${message}`);
       if (!forceFrom) {
         const saved = await readWbSyncState(db, cabinetId, JOB);
         await writeWbSyncState(db, cabinetId, JOB, {
           cursor: saved?.cursor ?? null,
-          status: "error",
-          attempts: (saved?.attempts ?? 0) + 1,
+          status: throttled ? "running" : "error",
+          attempts: throttled ? (saved?.attempts ?? 0) : (saved?.attempts ?? 0) + 1,
           lastError: message,
-          state: saved?.state ?? {},
+          state: throttled
+            ? { ...(saved?.state ?? {}), lastRateLimitedAt: new Date().toISOString() }
+            : saved?.state ?? {},
         });
       }
-      progress.push({ cabinet: target.name, status: "error", error: message });
+      progress.push({ cabinet: target.name, status: throttled ? "deferred" : "error", error: message });
     }
   }
 
-  const ok = errors.length === 0;
-  const logNote = [...errors, ...incomplete].join("; ") || null;
-  await writeSyncLog(JOB, ok ? "ok" : "error", total, logNote, startedAt);
+  // Притормозили лимитом — это «partial»: часть кабинетов не обновилась, но
+  // чинить нечего. Красный журнал на штатный лимит прячет настоящие сбои.
+  const status = errors.length ? "error" : deferred.length ? "partial" : "ok";
+  const ok = status === "ok";
+  const logNote = [...errors, ...deferred, ...incomplete].join("; ") || null;
+  await writeSyncLog(JOB, status, total, logNote, startedAt);
   // error дублирует errors первой строкой: бэкфилл показывает именно его.
   return NextResponse.json(
     { ok, rows: total, cabinets: targets.length, progress, errors, incomplete, error: errors[0] ?? undefined },
