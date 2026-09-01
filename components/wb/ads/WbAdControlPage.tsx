@@ -429,7 +429,9 @@ function BidButton({
           onAsk({
             actionId: "bid",
             subject: `${row.campaign.name} · ${row.art} · ${row.nm}`,
-            detail: `Было ${row.campaign.bid_cpm_rub ?? "—"} ${currency}, станет ${bidRub} ${currency}. Шаг ставки кабинета — ${step} ${currency}.`,
+            detail: row.campaign.bid_cpm_rub == null
+              ? `Станет ${bidRub} ${currency}. Прежняя ставка панели неизвестна, поэтому защита от роста ×2 не сработает — проверьте сумму сами. Шаг ставки кабинета — ${step} ${currency}.`
+              : `Было ${row.campaign.bid_cpm_rub} ${currency}, станет ${bidRub} ${currency}. Шаг ставки кабинета — ${step} ${currency}.`,
             run: async () => {
               const result = await adPost("/api/adverts/bid", {
                 cabinetId,

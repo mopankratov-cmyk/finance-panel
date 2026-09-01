@@ -93,6 +93,9 @@ export async function POST(request: NextRequest) {
 
   const oldBid = context.adverts.get(advertId)?.bid_cpm_rub ?? null;
   const bids: NmBidInput[] = [];
+  // Сработала ли защита от роста ×2. Если прежняя ставка неизвестна, она не
+  // сработает — и об этом надо сказать вслух в ответе, а не промолчать.
+  let unguarded = false;
   for (const raw of parsed) {
     const kopecks = Math.round(raw.bidRub * 100);
     if (kopecks % stepKopecks !== 0) {
@@ -102,7 +105,12 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    if (oldBid && raw.bidRub > oldBid * MAX_GROWTH_FACTOR) {
+    // Защита работает только когда есть от чего считать. Раньше при пустой
+    // прежней ставке условие было ложным и проверка пропускалась целиком —
+    // молча, ровно в том случае, где ошибиться проще всего.
+    if (oldBid == null || !(oldBid > 0)) {
+      unguarded = true;
+    } else if (raw.bidRub > oldBid * MAX_GROWTH_FACTOR) {
       await auditAdvertOperation({
         context,
         advertId,
@@ -155,5 +163,12 @@ export async function POST(request: NextRequest) {
     wbResult: result.data,
   });
 
-  return NextResponse.json({ ok: true, advertId, oldBid, bids: bids.map((b) => ({ nmId: b.nmId, bidRub: b.bidKopecks / 100, placement: b.placement })) });
+  return NextResponse.json({
+    ok: true,
+    advertId,
+    oldBid,
+    unguarded,
+    note: unguarded ? "Прежняя ставка кампании панели неизвестна — защита от роста ×2 не применялась." : null,
+    bids: bids.map((b) => ({ nmId: b.nmId, bidRub: b.bidKopecks / 100, placement: b.placement })),
+  });
 }
