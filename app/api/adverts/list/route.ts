@@ -72,6 +72,7 @@ interface FunnelDayRow {
 }
 interface ChangeRow {
   advert_id: number;
+  action: string | null;
   old_bid: number | null;
   new_bid: number | null;
   status: string;
@@ -181,7 +182,9 @@ export async function GET(request: NextRequest) {
   const today = addIsoDays(yest, 1);
   const legacyStatsDateFrom = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
   const statsDateFrom = legacyStatsDateFrom < metricsPeriod7Closed.dateFrom ? legacyStatsDateFrom : metricsPeriod7Closed.dateFrom;
-  let changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
+  // `action` в выборке — не украшение: без него отфильтровать журнал по виду
+  // события физически невозможно, а он пишется на КАЖДУЮ операцию модуля.
+  let changesQ = db.from("advert_bid_changes").select("advert_id, action, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
   if (cabinetId) changesQ = changesQ.eq("cabinet_id", cabinetId);
 
   // ?timings=1 — длительности источников в ответе, чтобы мерить узкие места
@@ -403,9 +406,16 @@ export async function GET(request: NextRequest) {
   const APPLIED_CHANGE_STATUSES = new Set(["ok", "success"]);
   const latestChangeByAdvert = new Map<number, ChangeRow>();
   for (const change of (changesRes.data ?? []) as ChangeRow[]) {
-    if (!latestChangeByAdvert.has(change.advert_id) && APPLIED_CHANGE_STATUSES.has(change.status)) {
-      latestChangeByAdvert.set(change.advert_id, change);
-    }
+    if (latestChangeByAdvert.has(change.advert_id)) continue;
+    if (!APPLIED_CHANGE_STATUSES.has(change.status)) continue;
+    // Сравнение «до и после» имеет смысл только для СТАВКИ. В журнал пишутся и
+    // переименования, и минус-фразы, и пополнения — у них ставок нет, и блок
+    // рисовал по ним «— → —», выдавая переименование за правку ставки. Старые
+    // записи легли до появления колонки action: у них вид неизвестен, и признаком
+    // служит наличие самой ставки.
+    const isBidChange = change.action == null ? change.new_bid != null : change.action === "bid" || change.action === "rule_apply";
+    if (!isBidChange || change.new_bid == null) continue;
+    latestChangeByAdvert.set(change.advert_id, change);
   }
 
   const cabLabel = label || "Все кабинеты";
@@ -534,7 +544,10 @@ export async function GET(request: NextRequest) {
       category: "",
       hours: [],
       payment: String(a.payment_type ?? "").trim().toLowerCase() || "unknown",
-      bid_cpm_rub: a.bid_cpm_rub ?? a.daily_budget ?? null,
+      // Только настоящая ставка. Раньше при пустом bid_cpm_rub подставлялся
+      // daily_budget — человеку показывали дневной бюджет с подписью «Ставка
+      // CPM», а роут смены ставки на это же число опирал защиту от роста ×2.
+      bid_cpm_rub: a.bid_cpm_rub ?? null,
       stats_synced_at: statsSyncedAt,
       stats_age_hours: roundedDataAgeHours,
       stats_stale: dataAgeHours == null || dataAgeHours > ADVERT_DATA_CADENCE_HOURS,

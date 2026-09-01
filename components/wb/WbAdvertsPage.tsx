@@ -167,6 +167,22 @@ function syncLabel(summary: CampaignDaySummary) {
  * неизвестен» по настоящим полям. Роут специально ставит "unknown", чтобы не
  * выдумывать; список продолжал выдумывать за него.
  */
+/**
+ * Почему сравнения «до / после» нет.
+ *
+ * Общая фраза «нужны минимум два дня статистики» верна, но не отвечает на
+ * вопрос человека, который смотрит на пустой блок. Причин ровно три, и они
+ * требуют разных действий: подождать, забыть или поменять ставку.
+ */
+function beforeAfterReason(campaign: Campaign): string {
+  const change = campaign.last_change;
+  if (!change) return "Ставку этой кампании через панель ещё не меняли — сравнивать нечего.";
+  const days = Math.floor((Date.now() - new Date(change.created_at).getTime()) / 86_400_000);
+  if (days < 2) return `Ставку меняли ${days === 0 ? "сегодня" : "вчера"} — для сравнения нужно ещё как минимум два полных дня после правки.`;
+  if (days > 12) return `Последняя правка ставки была ${days} дн. назад и вышла за 14-дневное окно статистики — сравнивать её уже не с чем.`;
+  return "Не хватает дней с расходом по одну из сторон от правки: нужно минимум по два дня до и после.";
+}
+
 function campaignPaymentKind(campaign: Campaign): "cpc" | "unified" | "unknown" {
   if (campaign.payment === "cpc") return "cpc";
   if (campaign.bid_type === "unified" || campaign.bid_type === "auto" || campaign.payment === "cpm") return "unified";
@@ -546,7 +562,7 @@ export function WbAdvertsPage() {
 
               <section className="mt-3 rounded-xl border border-slate-200 p-3">
                 <div className="flex items-center justify-between gap-2"><h2 className="text-xs font-bold text-slate-700">До / после изменения ставки</h2>{selected.campaign.last_change && <span className="text-[9px] text-slate-400">{new Date(selected.campaign.last_change.created_at).toLocaleDateString("ru-RU")}</span>}</div>
-                {selected.campaign.comparison ? <div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">До</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.before.drr)}</div><div className="text-[9px] text-slate-400">{selected.campaign.comparison.before.days} дн.</div></div><div className="rounded-lg bg-violet-50 p-2"><div className="text-[9px] text-violet-500">Изменение</div><div className="mt-1 font-semibold text-violet-700">{selected.campaign.last_change?.old_bid ?? "—"} → {selected.campaign.last_change?.new_bid ?? "—"}</div><div className="text-[9px] text-violet-500">ставка</div></div><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">После</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.after.drr)}</div><div className={`text-[9px] ${Number(selected.campaign.comparison.drrDelta) <= 0 ? "text-emerald-600" : "text-rose-600"}`}>{selected.campaign.comparison.drrDelta == null ? "—" : `${selected.campaign.comparison.drrDelta > 0 ? "+" : ""}${selected.campaign.comparison.drrDelta} п.п.`}</div></div></div> : <p className="mt-2 text-[10px] leading-4 text-slate-400">Нужны минимум два дня статистики до и после последнего зафиксированного изменения ставки.</p>}
+                {selected.campaign.comparison ? <div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">До</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.before.drr)}</div><div className="text-[9px] text-slate-400">{selected.campaign.comparison.before.days} дн.</div></div><div className="rounded-lg bg-violet-50 p-2"><div className="text-[9px] text-violet-500">Изменение</div><div className="mt-1 font-semibold text-violet-700">{selected.campaign.last_change?.old_bid ?? "—"} → {selected.campaign.last_change?.new_bid ?? "—"}</div><div className="text-[9px] text-violet-500">ставка</div></div><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">После</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.after.drr)}</div><div className={`text-[9px] ${Number(selected.campaign.comparison.drrDelta) <= 0 ? "text-emerald-600" : "text-rose-600"}`}>{selected.campaign.comparison.drrDelta == null ? "—" : `${selected.campaign.comparison.drrDelta > 0 ? "+" : ""}${selected.campaign.comparison.drrDelta} п.п.`}</div></div></div> : <p className="mt-2 text-[10px] leading-4 text-slate-400">{beforeAfterReason(selected.campaign)}</p>}
               </section>
 
               <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
