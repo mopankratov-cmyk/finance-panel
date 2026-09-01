@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
+import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
+import { useCategoryMap } from "@/lib/useCategoryMap";
 import { readOkApiResponse } from "@/lib/http/readApiResponse";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbProductImage } from "./WbProductImage";
@@ -304,6 +306,11 @@ export function WbAdvertsPage() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
   const [cabinetMoney, setCabinetMoney] = useState<AdCabinetConfig | null>(null);
+  // Категории живут в product_costs, а не в WB-таблицах, поэтому фильтруем уже
+  // загруженные строки. Тот же источник, что и на остальных экранах панели —
+  // иначе «Ковры» здесь и «Ковры» в РНП разошлись бы.
+  const [category, setCategory] = useDashboardFilter<string>("cat", "");
+  const { categories, byArticle } = useCategoryMap();
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
@@ -356,7 +363,7 @@ export function WbAdvertsPage() {
 
   const baseRows = useMemo<CampaignRow[]>(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
-    return (activeData?.articles ?? [])
+    return filterByCategory(activeData?.articles ?? [], (article) => article.art, byArticle, category)
       .flatMap((article) => article.campaigns.map((campaign) => ({ article, campaign })))
       .filter(({ article, campaign }) => {
         // Тип берём из данных WB. Раньше всё, что не cpc, считалось «единой» —
@@ -365,7 +372,7 @@ export function WbAdvertsPage() {
         return !needle || `${article.art} ${article.nm} ${campaign.name} ${campaign.id}`.toLocaleLowerCase("ru-RU").includes(needle);
       })
       .sort((left, right) => compareAdvertCampaigns(left.campaign, right.campaign));
-  }, [activeData?.articles, kind, query]);
+  }, [activeData?.articles, byArticle, category, kind, query]);
 
   const statusCounts = useMemo(() => STATUS_FILTERS.reduce<Record<CampaignStatusFilter, number>>((acc, filter) => {
     acc[filter.value] = filter.value === "all"
@@ -555,6 +562,11 @@ export function WbAdvertsPage() {
               <Search className="h-3.5 w-3.5 text-slate-400" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="артикул, название или #id" className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400" />
             </label>
+            {categories.length > 0 ? (
+              <div className="mt-2">
+                <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+              </div>
+            ) : null}
             <div className="mt-2 flex items-center gap-1 text-[10px]">
               <span className="mr-1 text-slate-400">тип:</span>
               {([['all', 'Все'], ['cpc', 'CPC'], ['unified', 'Единая'], ['unknown', 'Тип неизвестен']] as const).map(([value, label]) => (
