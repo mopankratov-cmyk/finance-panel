@@ -1,43 +1,97 @@
 import { NextRequest, NextResponse } from "next/server";
+
 import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
+import { depositAllowance, judgeDeposit } from "@/lib/adverts/depositLimits";
+import { DEPOSIT_SOURCE_LABEL, depositAdvertBudget, getAdvertConfig, type DepositSource } from "@/lib/wb/advertApi";
 
 export const dynamic = "force-dynamic";
 
-const ADV_BASE = "https://advert-api.wildberries.ru";
+const SOURCES: DepositSource[] = [0, 1, 3];
 
-// Пополнение бюджета кампании. type источника: 0 — счёт, 1 — баланс, 3 — бонусы.
+/**
+ * Пополнение бюджета кампании — единственное действие модуля, которое двигает
+ * деньги и не отменяется: вернуть сумму из бюджета кампании обратно на счёт WB
+ * не умеет.
+ *
+ * Поэтому здесь четыре проверки подряд, и порядок у них не случайный: сначала
+ * то, что не стоит ни одного запроса наружу (права, форма запроса), потом
+ * минимум и лимиты, и только в самом конце — сеть. Отказ должен стоить дёшево.
+ *
+ * Отклонённые попытки пишутся в журнал наравне с успешными. Три отказа подряд
+ * по суточному лимиту — это разговор с человеком, а не строка, которую стоит
+ * потерять.
+ */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const advertId: number | null = typeof body.advertId === "number" ? body.advertId : null;
-  const sum: number | null = typeof body.sum === "number" ? body.sum : null;
-  const type: number = typeof body.type === "number" ? body.type : 1; // по умолчанию — баланс
+  const sum: number = Number(body.sum);
+  const source = (typeof body.type === "number" ? body.type : 1) as DepositSource;
 
-  if (!advertId || !sum || sum < 50) {
-    return NextResponse.json({ error: "Сумма пополнения минимум 50 ₽" }, { status: 400 });
+  if (!advertId) return NextResponse.json({ error: "Нужен advertId" }, { status: 400 });
+  if (!SOURCES.includes(source)) {
+    return NextResponse.json({ error: "Неизвестный источник пополнения" }, { status: 400 });
   }
+
   const resolved = await resolveAdvertCabinetContext({ cabinetId: body.cabinetId, advertIds: [advertId] });
   if (resolved.response) return resolved.response;
   const context = resolved.context;
 
-  try {
-    const url = `${ADV_BASE}/adv/v1/budget/deposit?id=${advertId}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: context.token, "Content-Type": "application/json" },
-      body: JSON.stringify({ sum, type, return: true }),
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      await auditAdvertOperation({ context, advertId, action: "deposit", status: "error", oldValue: null, newValue: { sum, type }, wbResult: `WB ${res.status}: ${text.slice(0, 200)}` });
-      return NextResponse.json({ error: `WB ${res.status}: ${text.slice(0, 200)}` }, { status: 502 });
-    }
-    const data = await res.json().catch(() => ({}));
-    await auditAdvertOperation({ context, advertId, action: "deposit", status: "ok", oldValue: null, newValue: { sum, type }, wbResult: { total: data?.total ?? null } });
-    return NextResponse.json({ ok: true, advertId, total: data?.total ?? null });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    await auditAdvertOperation({ context, advertId, action: "deposit", status: "error", oldValue: null, newValue: { sum, type }, wbResult: msg });
-    return NextResponse.json({ error: msg }, { status: 500 });
+  // Минимальную сумму называет сам WB и она зависит от валюты кабинета.
+  // Константа «минимум 50» здесь была бы выдумкой для любого нерублёвого счёта.
+  const config = await getAdvertConfig(context.token);
+  if (!config.ok) {
+    return NextResponse.json(
+      { error: `Не удалось узнать условия кабинета: ${config.message}` },
+      { status: config.status === 0 ? 500 : 502 },
+    );
   }
+  const minTopUp = config.data.minTopUp / 100;
+
+  const allowance = await depositAllowance(context.db, context.cabinet.id);
+  const verdict = judgeDeposit({ sum, minTopUp, allowance });
+  if (!verdict.allowed) {
+    await auditAdvertOperation({
+      context,
+      advertId,
+      action: "deposit",
+      status: "rejected",
+      oldValue: { spentToday: allowance.spentToday },
+      newValue: { sum, type: source },
+      wbResult: verdict.reason,
+    });
+    return NextResponse.json({ error: verdict.reason, allowance }, { status: 400 });
+  }
+
+  const result = await depositAdvertBudget(context.token, advertId, sum, source);
+  if (!result.ok) {
+    await auditAdvertOperation({
+      context,
+      advertId,
+      action: "deposit",
+      status: "error",
+      oldValue: { spentToday: allowance.spentToday },
+      newValue: { sum, type: source },
+      wbResult: result.raw ?? result.message,
+    });
+    return NextResponse.json({ error: result.message }, { status: result.status === 0 ? 500 : 502 });
+  }
+
+  await auditAdvertOperation({
+    context,
+    advertId,
+    action: "deposit",
+    status: "ok",
+    oldValue: { spentToday: allowance.spentToday },
+    newValue: { sum, type: source, source: DEPOSIT_SOURCE_LABEL[source] },
+    wbResult: result.data,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    advertId,
+    sum,
+    source: DEPOSIT_SOURCE_LABEL[source],
+    total: result.data?.total ?? null,
+    allowance: { ...allowance, spentToday: allowance.spentToday + sum, remainingToday: allowance.remainingToday - sum },
+  });
 }
