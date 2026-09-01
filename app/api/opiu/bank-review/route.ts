@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { findCertainTransferPairs } from "@/lib/opiu/bankTransferMatching";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
+import { transferCategories } from "@/lib/opiu/bankTransferClassification";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
 type SuggestionInput = {
@@ -183,19 +184,14 @@ export async function POST(request: Request) {
     })
     .select("id");
   if (error) return jsonError(error.message, 500);
-  const [active, companies] = await Promise.all([
-    db.from("bank_review_items")
+  const active = await db.from("bank_review_items")
       .select("id,date,amount,bank_account_number,owner_inn,counterparty_inn,reasons,company_id,account_id,category,matched_transfer_id")
       .in("status", ACTIVE_STATUSES)
       .is("matched_transfer_id", null)
-      .limit(5_000),
-    db.from("companies").select("id,group_name"),
-  ]);
+      .limit(5_000);
   if (active.error) return jsonError(active.error.message, 500);
-  if (companies.error) return jsonError(companies.error.message, 500);
   const activeRows = active.data ?? [];
   const byId = new Map(activeRows.map((row) => [row.id, row]));
-  const groupByCompany = new Map((companies.data ?? []).map((company) => [company.id, company.group_name]));
   const pairs = findCertainTransferPairs(activeRows.map((row) => ({
     id: row.id,
     date: row.date,
@@ -209,10 +205,10 @@ export async function POST(request: Request) {
     const outgoing = byId.get(pair.outgoingId);
     const incoming = byId.get(pair.incomingId);
     if (!outgoing || !incoming) continue;
-    const sameGroup = outgoing.company_id && incoming.company_id
-      && groupByCompany.get(outgoing.company_id) === groupByCompany.get(incoming.company_id);
-    const outgoingCategory = sameGroup ? "Выбытие — Перевод между счетами" : outgoing.category;
-    const incomingCategory = sameGroup ? "Поступление — Перевод между счетами" : incoming.category;
+    // Между разными юрлицами это выдача/получение займа; между счетами одного — внутренний перевод.
+    const categories = transferCategories(outgoing.company_id, incoming.company_id);
+    const outgoingCategory = categories.outgoing;
+    const incomingCategory = categories.incoming;
     const updates = await Promise.all([
       db.from("bank_review_items").update({
         matched_transfer_id: incoming.id,
@@ -336,4 +332,26 @@ export async function PATCH(request: Request) {
     .in("status", ACTIVE_STATUSES);
   if (error) return jsonError(error.message, 500);
   return NextResponse.json({ ok: true });
+}
+
+export async function DELETE() {
+  const gate = await requireApiSession(["director", "finance"]);
+  if (gate) return gate;
+  const db = getSupabaseAdmin();
+  if (!db) return jsonError("Серверная база не настроена", 503);
+  const imported = await db.from("payments").select("id").like("import_source", "bank-review:%").limit(20_000);
+  if (imported.error) return jsonError(imported.error.message, 500);
+  const paymentIds = (imported.data ?? []).map((row) => row.id);
+  if (paymentIds.length) {
+    const deletedPayments = await db.from("payments").delete().in("id", paymentIds);
+    if (deletedPayments.error) return jsonError(deletedPayments.error.message, 500);
+  }
+  const reviewRows = await db.from("bank_review_items").select("id").limit(20_000);
+  if (reviewRows.error) return jsonError(reviewRows.error.message, 500);
+  const reviewIds = (reviewRows.data ?? []).map((row) => row.id);
+  if (reviewIds.length) {
+    const deletedReview = await db.from("bank_review_items").delete().in("id", reviewIds);
+    if (deletedReview.error) return jsonError(deletedReview.error.message, 500);
+  }
+  return NextResponse.json({ reviewItemsDeleted: reviewIds.length, paymentsDeleted: paymentIds.length });
 }

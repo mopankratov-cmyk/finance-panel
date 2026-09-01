@@ -681,13 +681,18 @@ export function CalendarPage() {
         onClose={() => setReplaceCalendarOpen(false)}
         accounts={state.accounts}
         companies={companies}
-        existingCount={state.payments.filter((payment) => payment.status === "planned" && !companyByPayment.get(payment.id)).length}
-        onReplace={async (payments, companyId) => {
-          const oldPlanIds = state.payments.filter((payment) => payment.status === "planned" && (companyId ? companyByPayment.get(payment.id) === companyId : !companyByPayment.get(payment.id))).map((payment) => payment.id);
+        existingCounts={{
+          expenses: state.payments.filter((payment) => payment.status === "planned" && payment.amount < 0 && !companyByPayment.get(payment.id)).length,
+          income: state.payments.filter((payment) => payment.status === "planned" && payment.amount > 0 && !companyByPayment.get(payment.id)).length,
+          all: state.payments.filter((payment) => payment.status === "planned" && !companyByPayment.get(payment.id)).length,
+        }}
+        onReplace={async (payments, companyId, scope) => {
+          const matchesScope = (payment: Payment) => scope === "all" || (scope === "income" ? payment.amount > 0 : payment.amount < 0);
+          const oldPlanIds = state.payments.filter((payment) => payment.status === "planned" && matchesScope(payment) && (companyId ? companyByPayment.get(payment.id) === companyId : !companyByPayment.get(payment.id))).map((payment) => payment.id);
           for (const paymentId of oldPlanIds) dispatch({ type: "DELETE_PAYMENT", payload: paymentId });
           const existingFacts = state.payments.filter((payment) => payment.status === "done");
           const normalized = (value: string) => value.toLowerCase().replace(/[^а-яa-z0-9]+/gi, "");
-          const safePayments = payments.filter((payment) => payment.status !== "done" || !existingFacts.some((fact) =>
+          const safePayments = payments.filter(matchesScope).filter((payment) => payment.status !== "done" || !existingFacts.some((fact) =>
             fact.date === payment.date &&
             Math.abs(fact.amount - payment.amount) < 0.01 &&
             normalized(fact.name) === normalized(payment.name),

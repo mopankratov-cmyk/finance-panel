@@ -58,6 +58,18 @@ function keywordCategory(row: BankStatementRow): { category: string; confidence:
   return null;
 }
 
+export function categoryMatchesDirection(category: string | null, amount: number): boolean {
+  if (!category) return true;
+  const value = normalize(category);
+  if (amount < 0 && /(продажи на мп|получение кредит|поступление|вклад.*собствен)/.test(value)) return false;
+  if (amount > 0 && /(погашение|оплата|выбытие|выдача кредит|расход|налог|зарплат)/.test(value)) return false;
+  return true;
+}
+
+export function requiresCounterparty(category: string | null): boolean {
+  return Boolean(category && /зарплат|аванс.*зп/i.test(category));
+}
+
 function learnedCategory(row: BankStatementRow, payments: PaymentWithCompany[]) {
   const counterparty = normalize(row.counterparty);
   const purpose = `${row.counterparty} ${row.purpose}`;
@@ -172,12 +184,19 @@ export function classifyBankStatement(
     } else {
       const learned = learnedCategory(row, payments);
       const keyword = keywordCategory(row);
-      const best = [learned, keyword].filter(Boolean).sort((a, b) => b!.confidence - a!.confidence)[0];
+      // Явное назначение банка важнее истории: прошлые ошибки не должны «обучать» новые строки.
+      const best = keyword ?? (learned && categoryMatchesDirection(learned.category, row.amount) ? learned : null);
       if (best) {
         category = best.category;
         categoryConfidence = best.confidence;
         reasons.push(best.reason);
       }
+    }
+
+    if (!categoryMatchesDirection(category, row.amount)) {
+      reasons.push(`Статья «${category}» противоречит знаку операции и сброшена`);
+      category = null;
+      categoryConfidence = 0;
     }
 
     const learned = learnedOwnership(row, payments);
