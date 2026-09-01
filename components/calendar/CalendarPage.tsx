@@ -717,7 +717,6 @@ export function CalendarPage() {
         allPayments={visibleCalendarPayments}
         accounts={state.accounts}
         companies={companies}
-        calendarPeriod={{ year, month: month + 1 }}
         companyByPayment={companyByPayment}
         onClose={handleClosePanel}
         onAddPayment={handleAddPayment}
@@ -739,12 +738,15 @@ export function CalendarPage() {
         }}
       />
       )}
+      {/* Период нужен разбору сетки: без него даты из файла не к чему привязать.
+          Он был по ошибке отдан DayDetailPanel, который о нём не знает вовсе. */}
       {!isForecastView && (
       <ReplaceCalendarModal
         open={replaceCalendarOpen}
         onClose={() => setReplaceCalendarOpen(false)}
         accounts={state.accounts}
         companies={companies}
+        calendarPeriod={{ year, month: month + 1 }}
         existingCounts={{
           expenses: state.payments.filter((payment) => payment.status === "planned" && payment.amount < 0 && !companyByPayment.get(payment.id)).length,
           income: state.payments.filter((payment) => payment.status === "planned" && payment.amount > 0 && !companyByPayment.get(payment.id)).length,
