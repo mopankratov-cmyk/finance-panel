@@ -17,6 +17,7 @@ import { calendarExportRows, calendarTemplateSheets, downloadCalendarXlsx } from
 import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
 import { WeekSummaryCell } from "./WeekSummaryCell";
 import { cleanPaymentComment, getPaymentPriority, PRIORITY_META, priorityRank, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
+import { loanScheduleKey, loanScheduleKeysWithDdsCandidate, overdueLoanInstallmentsToMove, rescheduleLoanInstallment } from "./loanPaymentReschedule";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
@@ -98,6 +99,7 @@ export function CalendarPage() {
   const [companyScope, setCompanyScope] = useState("all");
   const [companies, setCompanies] = useState<DdsCompany[]>([]);
   const [companyByPayment, setCompanyByPayment] = useState<Map<string, string | null>>(new Map());
+  const [companyLinksLoaded, setCompanyLinksLoaded] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFlow, setBulkFlow] = useState<"expense" | "income">("expense");
   const [calendarLayout, setCalendarLayout] = useState<"agenda" | "grid">("grid");
@@ -119,6 +121,7 @@ export function CalendarPage() {
       if (cancelled) return;
       setCompanies(loadedCompanies);
       setCompanyByPayment(new Map(links.map((link) => [link.paymentId, link.companyId])));
+      setCompanyLinksLoaded(true);
     });
     return () => { cancelled = true; };
   }, []);
@@ -191,6 +194,7 @@ export function CalendarPage() {
   const planFactMatches = planFactMatching.matched;
   const planFactReview = planFactMatching.review;
   const factLinkRequests = useRef(new Set<string>());
+  const overdueLoanRolloverStarted = useRef(false);
   const [factLinkError, setFactLinkError] = useState<string | null>(null);
   useEffect(() => {
     for (const match of allPlanFactMatching.matched) {
@@ -209,6 +213,22 @@ export function CalendarPage() {
         });
     }
   }, [allPlanFactMatching.matched, dispatch]);
+  useEffect(() => {
+    if (overdueLoanRolloverStarted.current || !companyLinksLoaded || state.payments.length === 0) return;
+    const protectedPlanIds = new Set([
+      ...allPlanFactMatching.matched.map((match) => match.planned.id),
+      ...allPlanFactMatching.review.map((match) => match.planned.id),
+    ]);
+    const ddsCandidateKeys = loanScheduleKeysWithDdsCandidate(state.payments, companyByPayment);
+    const updates = overdueLoanInstallmentsToMove(state.payments, today, protectedPlanIds, ddsCandidateKeys);
+    overdueLoanRolloverStarted.current = true;
+    if (!updates.length) return;
+    for (const payment of updates) dispatch({ type: "UPDATE_PAYMENT", payload: payment });
+    void Promise.all(updates.map((payment) => {
+      const companyId = companyByPayment.get(payment.id);
+      return companyId ? savePaymentWithCompany(payment, companyId) : Promise.resolve();
+    })).catch((error: unknown) => setFactLinkError(error instanceof Error ? error.message : "Не удалось перенести просроченные платежи по кредитам"));
+  }, [allPlanFactMatching.matched, allPlanFactMatching.review, companyByPayment, companyLinksLoaded, dispatch, state.payments, today]);
   const planFactPeriod = useMemo(() => {
     const dates = planFactMatches.flatMap((match) => [match.planned.date, match.fact.date]).sort();
     return dates.length ? { from: dates[0], to: dates.at(-1)! } : null;
@@ -312,9 +332,33 @@ export function CalendarPage() {
   };
 
   const handleUpdatePayment = (payment: Payment, companyId: string | null) => {
-    dispatch({ type: "UPDATE_PAYMENT", payload: payment });
-    setCompanyByPayment((current) => new Map(current).set(payment.id, companyId));
-    void updatePaymentCompany(payment.id, companyId);
+    const previous = state.payments.find((item) => item.id === payment.id);
+    const updates = previous && loanScheduleKey(previous) && previous.date !== payment.date
+      ? rescheduleLoanInstallment(state.payments, previous, payment.date).map((part) => {
+          if (part.id !== payment.id) return part;
+          const originalDueMarker = part.comment?.match(/\[original-due:[^\]]+\]/)?.[0];
+          const editedComment = payment.comment ?? "";
+          return {
+            ...part,
+            ...payment,
+            date: part.date,
+            comment: originalDueMarker && !editedComment.includes("[original-due:")
+              ? `${editedComment}${editedComment ? " " : ""}${originalDueMarker}`
+              : editedComment,
+          };
+        })
+      : [payment];
+    for (const update of updates) dispatch({ type: "UPDATE_PAYMENT", payload: update });
+    setCompanyByPayment((current) => {
+      const next = new Map(current);
+      for (const update of updates) next.set(update.id, update.id === payment.id ? companyId : current.get(update.id) ?? null);
+      return next;
+    });
+    void Promise.all(updates.map(async (update) => {
+      const linkedCompanyId = update.id === payment.id ? companyId : companyByPayment.get(update.id) ?? null;
+      await updatePaymentCompany(update.id, linkedCompanyId);
+      if (linkedCompanyId) await savePaymentWithCompany(update, linkedCompanyId);
+    }));
   };
 
   const confirmPlanFactMatch = async (planned: Payment, fact: Payment) => {

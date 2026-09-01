@@ -267,18 +267,17 @@ export async function PATCH(request: Request) {
     if (updated.error) return jsonError(updated.error.message, 500);
     try {
       const telegramMessageId = await sendTelegramMessage([
-        "❓ <b>Нужно пояснить платёж</b>",
-        `Дата: ${telegramHtml(item.data.date)}`,
-        `Сумма: ${Number(item.data.amount).toLocaleString("ru-RU")} ₽`,
-        `Юрлицо: ${telegramHtml(company.data?.name || "ещё не определено")}`,
-        `Банк / кошелёк: ${telegramHtml(account.data?.name || "ещё не определён")}`,
+        `❓ <b>${telegramHtml(question)}</b>`,
+        "",
+        `<b>${telegramHtml(item.data.date)} · ${Number(item.data.amount).toLocaleString("ru-RU")} ₽</b>`,
+        `<b>Со счёта:</b> ${telegramHtml(company.data?.name || "юрлицо ещё не определено")} · ${telegramHtml(account.data?.name || "банк не определён")}`,
+        `<b>Контрагент:</b> ${telegramHtml(item.data.counterparty || "не указан")}`,
+        `<b>Назначение банка:</b> ${telegramHtml(item.data.purpose || "не указано")}`,
+        "",
+        "<b>Дополнительные реквизиты</b>",
         `Расчётный счёт: ${telegramHtml(item.data.bank_account_number || "не указан")}`,
-        `ИНН владельца: ${telegramHtml(item.data.owner_inn || "не указан")}`,
-        `Контрагент: ${telegramHtml(item.data.counterparty || "не указан")}`,
-        `ИНН контрагента: ${telegramHtml(item.data.counterparty_inn || "не указан")}`,
-        `Комментарий банка: ${telegramHtml(item.data.purpose || "не указан")}`,
-        `Файл выписки: ${telegramHtml(item.data.source_file_name || "не указан")}`,
-        `Вопрос: <b>${telegramHtml(question)}</b>`,
+        `ИНН владельца / контрагента: ${telegramHtml(item.data.owner_inn || "—")} / ${telegramHtml(item.data.counterparty_inn || "—")}`,
+        `Файл: ${telegramHtml(item.data.source_file_name || "не указан")}`,
         "",
         "Нажмите «Ответить» на это сообщение и напишите пояснение или отправьте голосовое.",
       ].join("\n"), undefined, { forceReply: true });
