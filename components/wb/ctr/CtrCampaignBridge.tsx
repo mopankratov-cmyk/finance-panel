@@ -31,10 +31,14 @@ export function CtrCampaignBridge({ cabinetId, nmId }: { cabinetId: string; nmId
     const date = moscowYesterday();
     fetch(`/api/wb/ctr-breakdown?cabinet=${encodeURIComponent(cabinetId)}&nm=${nmId}&date=${date}`, { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
-      .then((json: { campaigns?: CtrCampaignRow[] } | null) => {
+      // Роут отдаёт {meta, data: {campaigns, total}} — как и всплывашка по дню,
+      // которая его уже использует. Читать campaigns с верхнего уровня значило бы
+      // всегда получать undefined и молча не показывать блок никогда: ошибка,
+      // которую видно только на живых данных, а не в типах.
+      .then((json: { data?: { campaigns?: CtrCampaignRow[] } } | null) => {
         if (cancelled) return;
         if (!json) { setFailed(true); return; }
-        setRows(json.campaigns ?? []);
+        setRows(json.data?.campaigns ?? []);
       })
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
