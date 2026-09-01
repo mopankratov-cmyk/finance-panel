@@ -655,6 +655,7 @@ export function CalendarPage() {
         allPayments={visibleCalendarPayments}
         accounts={state.accounts}
         companies={companies}
+        calendarPeriod={{ year, month: month + 1 }}
         companyByPayment={companyByPayment}
         onClose={handleClosePanel}
         onAddPayment={handleAddPayment}

@@ -1,8 +1,9 @@
 "use client";
 
-import { FileUp, RefreshCw } from "lucide-react";
+import { FileSpreadsheet, RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { parseCalendarGridCsv } from "./calendarGridImport";
+import { parseCalendarGrid, parseCalendarGridCsv } from "./calendarGridImport";
+import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
 import { Modal } from "@/components/ui/Modal";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import type { Account, Payment } from "@/lib/types";
@@ -14,6 +15,7 @@ export function ReplaceCalendarModal({
   onClose,
   accounts,
   companies,
+  calendarPeriod,
   existingCounts,
   onReplace,
 }: {
@@ -21,6 +23,7 @@ export function ReplaceCalendarModal({
   onClose: () => void;
   accounts: Account[];
   companies: DdsCompany[];
+  calendarPeriod: { year: number; month: number };
   existingCounts: Record<CalendarReplaceScope, number>;
   onReplace: (payments: Payment[], companyId: string | null, scope: CalendarReplaceScope) => Promise<void>;
 }) {
@@ -34,7 +37,9 @@ export function ReplaceCalendarModal({
 
   const readFile = async (file: File) => {
     try {
-      const parsed = parseCalendarGridCsv(await file.text(), accountId);
+      const parsed = file.name.toLowerCase().endsWith(".xlsx")
+        ? parseCalendarGrid(await readFirstSheetXlsx(file), accountId, calendarPeriod)
+        : parseCalendarGridCsv(await file.text(), accountId, calendarPeriod);
       setPayments(parsed);
       setFileName(file.name);
       setError("");
@@ -92,9 +97,10 @@ export function ReplaceCalendarModal({
           </label>
         </div>
         <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-violet-200 bg-violet-50 text-center hover:bg-violet-100">
-          <FileUp className="mb-2 h-5 w-5 text-violet-700" />
-          <span className="font-semibold text-violet-800">Выбрать CSV календаря</span>
-          <input type="file" accept=".csv" className="hidden" onChange={(event) => event.target.files?.[0] && void readFile(event.target.files[0])} />
+          <FileSpreadsheet className="mb-2 h-5 w-5 text-violet-700" />
+          <span className="font-semibold text-violet-800">Выбрать календарь CSV или Excel</span>
+          <span className="mt-1 px-3 text-xs text-violet-600">Поддерживаются .csv и .xlsx. Если в файле нет периода, используется открытый месяц календаря.</span>
+          <input type="file" accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(event) => event.target.files?.[0] && void readFile(event.target.files[0])} />
         </label>
         {error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
         {payments.length > 0 && <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
