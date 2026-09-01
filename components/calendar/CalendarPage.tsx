@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, CloudUpload, FileSpreadsheet, FileUp, LayoutGrid, List, Loader2, Plus, Search, TrendingUp, TriangleAlert, X } from "lucide-react";
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, CloudUpload, FileSpreadsheet, FileUp, LayoutGrid, List, Loader2, Plus, Search, SlidersHorizontal, TrendingUp, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BulkPaymentModal } from "./BulkPaymentModal";
 import { CalendarAgenda } from "./CalendarAgenda";
@@ -109,6 +109,7 @@ export function CalendarPage() {
   const [flowScope, setFlowScope] = useState<"all" | "expense" | "income">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [planFactOpen, setPlanFactOpen] = useState(false);
   const [googleSyncing, setGoogleSyncing] = useState(false);
   const googleSyncRef = useRef<Promise<{ ok: boolean; error?: string }> | null>(null);
@@ -275,6 +276,7 @@ export function CalendarPage() {
     [searchedCalendarPayments, priorityScope],
   );
   const hasCalendarFilters = Boolean(searchQuery.trim() || flowScope !== "all" || dateFrom || dateTo);
+  const activeCalendarFilterCount = Number(Boolean(searchQuery.trim())) + Number(flowScope !== "all") + Number(Boolean(dateFrom)) + Number(Boolean(dateTo));
   const searchResults = useMemo(
     () => visibleCalendarPayments.filter((payment) => payment.status !== "cancelled").sort((left, right) => right.date.localeCompare(left.date)).slice(0, 50),
     [visibleCalendarPayments],
@@ -442,42 +444,6 @@ export function CalendarPage() {
           </div>
         </div>
       </div>
-
-      {!isForecastView && <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="grid gap-2 md:grid-cols-[minmax(260px,1fr)_180px_170px_170px_auto]">
-          <label className="relative">
-            <span className="sr-only">Поиск в платёжном календаре</span>
-            <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Поиск по слову, сумме, статье, компании…" className="min-h-11 w-full rounded-lg border border-slate-300 pl-10 pr-3 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100" />
-          </label>
-          <select value={flowScope} onChange={(event) => setFlowScope(event.target.value as typeof flowScope)} aria-label="Фильтр по типу платежа" className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm">
-            <option value="all">Все операции</option>
-            <option value="expense">Только расходы</option>
-            <option value="income">Только поступления</option>
-          </select>
-          <label className="text-xs font-medium text-slate-600">С даты<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm" /></label>
-          <label className="text-xs font-medium text-slate-600">По дату<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm" /></label>
-          <button type="button" disabled={!searchQuery && flowScope === "all" && !dateFrom && !dateTo} onClick={() => { setSearchQuery(""); setFlowScope("all"); setDateFrom(""); setDateTo(""); }} className="inline-flex min-h-11 items-center justify-center gap-2 self-end rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"><X className="h-4 w-4" /> Сбросить</button>
-        </div>
-        <p className="mt-2 text-xs text-slate-500">Найдено операций: {visibleCalendarPayments.filter((payment) => payment.status !== "cancelled").length}</p>
-        {hasCalendarFilters && <div className="mt-3 max-h-80 overflow-y-auto rounded-lg border border-slate-200">
-          {searchResults.length === 0 ? <p className="p-5 text-center text-sm text-slate-500">По заданным условиям ничего не найдено.</p> : searchResults.map((payment) => {
-            const companyId = companyByPayment.get(payment.id);
-            return <button key={payment.id} type="button" onClick={() => {
-              setCurrentDate(new Date(`${payment.date}T00:00:00`));
-              setSelectedDate(payment.date);
-              setQuickAddPending(false);
-              setView("calendar");
-            }} className="grid min-h-14 w-full gap-1 border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-violet-50 sm:grid-cols-[110px_130px_1fr_220px] sm:items-center">
-              <span className="font-medium text-slate-700">{formatDate(payment.date)}</span>
-              <span className={`font-bold tabular-nums ${payment.amount < 0 ? "text-rose-700" : "text-emerald-700"}`}>{formatMoney(payment.amount)}</span>
-              <span className="min-w-0"><span className="block font-medium text-slate-900">{payment.category || "Без статьи"}</span><span className="block truncate text-xs text-slate-500">{payment.name || displayPaymentComment(payment.comment) || "Без назначения"}</span></span>
-              <span className="text-xs text-slate-500">{companyId ? companyById.get(companyId)?.name ?? "Неизвестная компания" : "Компания не назначена"}</span>
-            </button>;
-          })}
-          {visibleCalendarPayments.filter((payment) => payment.status !== "cancelled").length > 50 && <p className="border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">Показаны первые 50 операций. Уточните поиск или период.</p>}
-        </div>}
-      </div>}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryTile icon={TrendingUp} label="План поступлений" value={plannedIncome} tone="emerald" />
@@ -654,13 +620,27 @@ export function CalendarPage() {
               <h2 className="font-semibold text-slate-900">Денежный поток по дням</h2>
               <p className="mt-1 text-sm text-slate-500">Календарь по дням: суммы, статьи расходов и ожидаемый остаток.</p>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+            <button type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)} className={`inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${hasCalendarFilters ? "border-violet-300 bg-violet-50 text-violet-800" : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}><SlidersHorizontal className="h-4 w-4" /> Фильтры{activeCalendarFilterCount > 0 && <span className="rounded-full bg-violet-600 px-2 py-0.5 text-xs text-white">{activeCalendarFilterCount}</span>}<ChevronDown className={`h-4 w-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`} /></button>
             <div className="flex rounded-lg bg-slate-100 p-1">
               <button onClick={() => setCalendarLayout("grid")} className={`inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold ${calendarLayout === "grid" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}`}><LayoutGrid className="h-4 w-4" /> Календарь</button>
               <button onClick={() => setCalendarLayout("agenda")} className={`inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold ${calendarLayout === "agenda" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}`}><List className="h-4 w-4" /> Список</button>
             </div>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
+          {filtersOpen && <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+            <div className="grid gap-2 md:grid-cols-[minmax(260px,1fr)_180px_170px_170px_auto]">
+              <label className="relative"><span className="sr-only">Поиск в платёжном календаре</span><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Поиск по слову, сумме, статье, компании…" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-3 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100" /></label>
+              <select value={flowScope} onChange={(event) => setFlowScope(event.target.value as typeof flowScope)} aria-label="Фильтр по типу платежа" className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="all">Все операции</option><option value="expense">Только расходы</option><option value="income">Только поступления</option></select>
+              <label className="text-xs font-medium text-slate-600">С даты<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm" /></label>
+              <label className="text-xs font-medium text-slate-600">По дату<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm" /></label>
+              <button type="button" disabled={!hasCalendarFilters} onClick={() => { setSearchQuery(""); setFlowScope("all"); setDateFrom(""); setDateTo(""); }} className="inline-flex min-h-11 items-center justify-center gap-2 self-end rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"><X className="h-4 w-4" /> Сбросить</button>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">Найдено операций: {visibleCalendarPayments.filter((payment) => payment.status !== "cancelled").length}</p>
+            {hasCalendarFilters && <div className="mt-3 max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-white">{searchResults.length === 0 ? <p className="p-5 text-center text-sm text-slate-500">По заданным условиям ничего не найдено.</p> : searchResults.map((payment) => { const companyId = companyByPayment.get(payment.id); return <button key={payment.id} type="button" onClick={() => { setCurrentDate(new Date(`${payment.date}T00:00:00`)); setSelectedDate(payment.date); setQuickAddPending(false); setView("calendar"); }} className="grid min-h-14 w-full gap-1 border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-violet-50 sm:grid-cols-[110px_130px_1fr_220px] sm:items-center"><span className="font-medium text-slate-700">{formatDate(payment.date)}</span><span className={`font-bold tabular-nums ${payment.amount < 0 ? "text-rose-700" : "text-emerald-700"}`}>{formatMoney(payment.amount)}</span><span className="min-w-0"><span className="block font-medium text-slate-900">{payment.category || "Без статьи"}</span><span className="block truncate text-xs text-slate-500">{payment.name || displayPaymentComment(payment.comment) || "Без назначения"}</span></span><span className="text-xs text-slate-500">{companyId ? companyById.get(companyId)?.name ?? "Неизвестная компания" : "Компания не назначена"}</span></button>; })}{visibleCalendarPayments.filter((payment) => payment.status !== "cancelled").length > 50 && <p className="border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">Показаны первые 50 операций. Уточните поиск или период.</p>}</div>}
+          </div>}
           <CashFlowSparkline year={year} month={month} dailyMap={dailyMap} />
 
           {calendarLayout === "grid" && <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-500">
