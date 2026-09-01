@@ -29,11 +29,11 @@ const emptyRow = (accounts: Account[], flow: "expense" | "income"): DraftRow => 
   flow,
   amount: "",
   name: "",
-  category: flow === "income" ? "Продажи на МП" : PAYMENT_CATEGORIES[0],
+  category: flow === "income" ? "Продажи на МП" : "",
   accountId: accounts[0]?.id ?? "",
   counterparty: "",
   status: "planned",
-  priority: suggestPaymentPriority(flow === "income" ? "Продажи на МП" : PAYMENT_CATEGORIES[0]),
+  priority: flow === "income" ? suggestPaymentPriority("Продажи на МП") : "C",
 });
 
 const normalized = (value: string) => value.trim().toLowerCase().replace(/ё/g, "е");
@@ -192,9 +192,12 @@ export function BulkPaymentModal({
               <div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Строка {index + 1}</span><button onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} aria-label="Удалить строку" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button></div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <input type="date" value={row.date} onChange={(event) => update(row.id, { date: event.target.value })} className="min-h-11 rounded-lg border border-slate-300 px-3" />
-                <div className="grid grid-cols-2 gap-2"><select value={row.flow} onChange={(event) => update(row.id, { flow: event.target.value as DraftRow["flow"] })} className="min-h-11 rounded-lg border border-slate-300 px-2"><option value="expense">Расход</option><option value="income">Поступление</option></select><input type="number" min="0" step="0.01" value={row.amount} onChange={(event) => update(row.id, { amount: event.target.value })} placeholder="Сумма" className="min-h-11 rounded-lg border border-slate-300 px-3" /></div>
+                <div className="grid grid-cols-2 gap-2"><select value={row.flow} onChange={(event) => {
+                  const flow = event.target.value as DraftRow["flow"];
+                  update(row.id, { flow, category: flow === "expense" ? "" : "Продажи на МП", priority: flow === "expense" ? "C" : suggestPaymentPriority("Продажи на МП") });
+                }} className="min-h-11 rounded-lg border border-slate-300 px-2"><option value="expense">Расход</option><option value="income">Поступление</option></select><input type="number" min="0" step="0.01" value={row.amount} onChange={(event) => update(row.id, { amount: event.target.value })} placeholder="Сумма" className="min-h-11 rounded-lg border border-slate-300 px-3" /></div>
                 <input value={row.name} onChange={(event) => update(row.id, { name: event.target.value })} placeholder="Назначение платежа" className="min-h-11 rounded-lg border border-slate-300 px-3" />
-                <select value={row.category} onChange={(event) => update(row.id, { category: event.target.value })} className="min-h-11 rounded-lg border border-slate-300 px-3">{PAYMENT_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select>
+                <select required value={row.category} onChange={(event) => update(row.id, { category: event.target.value })} className="min-h-11 rounded-lg border border-slate-300 px-3"><option value="" disabled>Выберите статью</option>{PAYMENT_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select>
                 <select value={row.accountId} onChange={(event) => update(row.id, { accountId: event.target.value })} className="min-h-11 rounded-lg border border-slate-300 px-3">{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
                 <input value={row.counterparty} onChange={(event) => update(row.id, { counterparty: event.target.value })} placeholder="Контрагент" className="min-h-11 rounded-lg border border-slate-300 px-3" />
                 <select value={row.status} onChange={(event) => update(row.id, { status: event.target.value as DraftRow["status"] })} className="min-h-11 rounded-lg border border-slate-300 px-3"><option value="planned">План</option><option value="done">Факт</option></select>

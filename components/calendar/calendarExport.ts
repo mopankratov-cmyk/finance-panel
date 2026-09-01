@@ -1,5 +1,5 @@
 import { buildMultiSheetXlsx } from "@/components/payments/ddsExport";
-import { cleanPaymentComment } from "./paymentPriority";
+import { displayPaymentComment } from "./paymentPriority";
 import type { Payment } from "@/lib/types";
 
 export type CalendarExportSheet = { name: string; rows: Array<Array<string | number>>; rowIds: string[] };
@@ -18,17 +18,17 @@ export function calendarTemplateSheets({ payments, companyNames, companyByPaymen
   return [{
     name: "Плановый Реестр поступлений",
     rows: [["Контрагент", "Статья поступлений", "Ответственный", "Сумма план", "Дата планируемого получения", "Комментарий", "Год план", "Месяц план", "Номер недели план"],
-      ...income.map((p) => [p.counterparty || company(p), p.category, "", Math.abs(p.amount), p.date, cleanPaymentComment(p.comment), Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), ""])],
+      ...income.map((p) => [p.counterparty || company(p), p.category, "", Math.abs(p.amount), p.date, displayPaymentComment(p.comment), Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), ""])],
     rowIds: income.map((payment) => payment.id),
   }, {
     name: "План выбытий",
     rows: [["Номер недели", "Начало недели", "Конец недели", "Стутус оплаты", "Комментарий", "Сумма план", "Дата планируемой оплаты", "Статья", "Контрагент", "Ответственный", "Год план", "Месяц план", "Повторяющийся платеж"],
-      ...outflow.map((p) => ["", "", "", "Не оплачено", p.name || cleanPaymentComment(p.comment), Math.abs(p.amount), p.date, p.category, p.counterparty || company(p), "", Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), p.comment?.includes("[recurring:") ? "Да" : "Нет"])],
+      ...outflow.map((p) => ["", "", "", "Не оплачено", p.name || displayPaymentComment(p.comment), Math.abs(p.amount), p.date, p.category, p.counterparty || company(p), "", Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), p.comment?.includes("[recurring:") ? "Да" : "Нет"])],
     rowIds: outflow.map((payment) => payment.id),
   }, {
     name: "Факт ДДС",
     rows: [["Год", "Месяц", "День недели", "Дата", "Сумма", "Контрагент", "Назначение платежа", "Статья", "Платеж/поступл"],
-      ...facts.map((p) => [Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), "", p.date, p.amount, p.counterparty, p.name || cleanPaymentComment(p.comment), p.category, p.amount >= 0 ? "Поступление" : "Выбытие"])],
+      ...facts.map((p) => [Number(p.date.slice(0, 4)), Number(p.date.slice(5, 7)), "", p.date, p.amount, p.counterparty, p.name || displayPaymentComment(p.comment), p.category, p.amount >= 0 ? "Поступление" : "Выбытие"])],
     rowIds: facts.map((payment) => payment.id),
   }];
 }

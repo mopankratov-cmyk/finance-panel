@@ -16,3 +16,9 @@ test("зарплате обязательно нужен контрагент", 
   assert.equal(requiresCounterparty("Зарплата административного персонала"), true);
   assert.equal(requiresCounterparty("УСН"), false);
 });
+
+test("статьи расходов на персонал соответствуют расходному направлению", () => {
+  assert.equal(categoryMatchesDirection("Поиск и найм персонала", -25_000), true);
+  assert.equal(categoryMatchesDirection("Расходы на персонал", -10_000), true);
+  assert.equal(categoryMatchesDirection("Расходы на персонал", 10_000), false);
+});
