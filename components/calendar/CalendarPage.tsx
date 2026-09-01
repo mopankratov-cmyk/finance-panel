@@ -18,6 +18,7 @@ import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
 import { WeekSummaryCell } from "./WeekSummaryCell";
 import { cleanPaymentComment, getPaymentPriority, PRIORITY_META, priorityRank, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
 import { loanScheduleKey, loanScheduleKeysWithDdsCandidate, overdueLoanInstallmentsToMove, rescheduleLoanInstallment } from "./loanPaymentReschedule";
+import { useDailyLoanCurrencyRefresh } from "@/components/loans/currencyRefresh";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
@@ -229,6 +230,9 @@ export function CalendarPage() {
       return companyId ? savePaymentWithCompany(payment, companyId) : Promise.resolve();
     })).catch((error: unknown) => setFactLinkError(error instanceof Error ? error.message : "Не удалось перенести просроченные платежи по кредитам"));
   }, [allPlanFactMatching.matched, allPlanFactMatching.review, companyByPayment, companyLinksLoaded, dispatch, state.payments, today]);
+  useDailyLoanCurrencyRefresh(state.payments, dispatch, (error) => {
+    setFactLinkError(error instanceof Error ? error.message : "Не удалось обновить валютный график кредитов");
+  });
   const planFactPeriod = useMemo(() => {
     const dates = planFactMatches.flatMap((match) => [match.planned.date, match.fact.date]).sort();
     return dates.length ? { from: dates[0], to: dates.at(-1)! } : null;

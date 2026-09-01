@@ -7,6 +7,7 @@ import type { Account, Loan, LoanStatus, PaymentStatus } from "@/lib/types";
 import { extractOfficeText } from "./officeText";
 import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
 import { aggregateRecognizedSchedule, mergeRecognition, recognizeLoanSpreadsheet, recognizeLoanText, type LoanCurrency, type RecognizedLoan, type RecognizedScheduleRow } from "./loanRecognition";
+import { roundToTenth } from "@/lib/opiu/loanCurrency";
 
 export interface LoanScheduleDraft {
   id: string;
@@ -15,6 +16,10 @@ export interface LoanScheduleDraft {
   interest: number;
   penalty: number;
   fine: number;
+  principalOriginal?: number;
+  interestOriginal?: number;
+  penaltyOriginal?: number;
+  fineOriginal?: number;
   status: PaymentStatus;
 }
 
@@ -54,7 +59,7 @@ interface LoanFormProps {
 }
 
 const fieldClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
-const emptySchedule = (): LoanScheduleDraft => ({ id: crypto.randomUUID(), date: "", principal: 0, interest: 0, penalty: 0, fine: 0, status: "planned" });
+const emptySchedule = (): LoanScheduleDraft => ({ id: crypto.randomUUID(), date: "", principal: 0, interest: 0, penalty: 0, fine: 0, principalOriginal: 0, interestOriginal: 0, penaltyOriginal: 0, fineOriginal: 0, status: "planned" });
 const initialRecognition = (): RecognizedLoan => ({ contractNumber: "", creditorName: "", companyHint: "", accountHint: "", principalAmount: 0, currency: "RUB", annualRate: 0, originationFee: 0, feeAmortizationMonths: 36, startDate: "", dueDate: "", interestFrequency: "unknown", confidence: 0, warnings: [] });
 
 function fileBase64(file: File) {
@@ -83,7 +88,8 @@ function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[
   const due = new Date(`${data.dueDate}T12:00:00`);
   if (data.interestFrequency !== "monthly") {
     const days = Math.max(1, Math.round((due.getTime() - start.getTime()) / 86_400_000));
-    return [{ id: crypto.randomUUID(), date: data.dueDate, principal: principalRub, interest: principalRub * data.annualRate / 100 * days / 365, penalty: 0, fine: 0, status: "planned" }];
+    const interestOriginal = data.principalAmount * data.annualRate / 100 * days / 365;
+    return [{ id: crypto.randomUUID(), date: data.dueDate, principal: roundToTenth(principalRub), interest: roundToTenth(interestOriginal * rate), penalty: 0, fine: 0, principalOriginal: data.principalAmount, interestOriginal, penaltyOriginal: 0, fineOriginal: 0, status: "planned" }];
   }
   const rows: LoanScheduleDraft[] = [];
   let cursor = new Date(start);
@@ -95,10 +101,14 @@ function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[
     rows.push({
       id: crypto.randomUUID(),
       date: next.toISOString().slice(0, 10),
-      principal: next.getTime() === due.getTime() ? principalRub : 0,
-      interest: principalRub * data.annualRate / 100 * days / 365,
+      principal: roundToTenth(next.getTime() === due.getTime() ? principalRub : 0),
+      interest: roundToTenth(data.principalAmount * data.annualRate / 100 * days / 365 * rate),
       penalty: 0,
       fine: 0,
+      principalOriginal: next.getTime() === due.getTime() ? data.principalAmount : 0,
+      interestOriginal: data.principalAmount * data.annualRate / 100 * days / 365,
+      penaltyOriginal: 0,
+      fineOriginal: 0,
       status: "planned",
     });
     cursor = next;
@@ -111,10 +121,14 @@ function recognizedSchedule(rows: RecognizedScheduleRow[] | undefined, rate: num
     .map((row) => ({
       id: crypto.randomUUID(),
       date: row.date,
-      principal: Number(row.principal || 0) * rate,
-      interest: Number(row.interest || 0) * rate,
-      penalty: Number(row.penalty || 0) * rate,
-      fine: Number(row.fine || 0) * rate,
+      principal: roundToTenth(Number(row.principal || 0) * rate),
+      interest: roundToTenth(Number(row.interest || 0) * rate),
+      penalty: roundToTenth(Number(row.penalty || 0) * rate),
+      fine: roundToTenth(Number(row.fine || 0) * rate),
+      principalOriginal: Number(row.principal || 0),
+      interestOriginal: Number(row.interest || 0),
+      penaltyOriginal: Number(row.penalty || 0),
+      fineOriginal: Number(row.fine || 0),
       status: "planned" as PaymentStatus,
     }));
 }
@@ -124,6 +138,12 @@ function companyMatchesHint(companyName: string, hint: string) {
   const recognized = hint.toLowerCase();
   if (/филиппов|коровкин/.test(recognized)) return /филиппов|коровкин/.test(company);
   return company.includes(recognized) || recognized.includes(company);
+}
+
+function scheduleSourceAmount(row: LoanScheduleDraft, kind: "principal" | "interest" | "penalty" | "fine", currency: LoanCurrency, rate: number): number {
+  if (currency === "RUB") return Number(row[kind] || 0);
+  const original = row[`${kind}Original` as "principalOriginal" | "interestOriginal" | "penaltyOriginal" | "fineOriginal"];
+  return Number.isFinite(original) ? Number(original) : Number(row[kind] || 0) / (rate || 1);
 }
 
 export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, onSubmit, onCancel }: LoanFormProps) {
@@ -154,9 +174,23 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
   const [correctionText, setCorrectionText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const totals = useMemo(() => schedule.reduce((sum, row) => ({ principal: sum.principal + Number(row.principal || 0), interest: sum.interest + Number(row.interest || 0), penalty: sum.penalty + Number(row.penalty || 0), fine: sum.fine + Number(row.fine || 0) }), { principal: 0, interest: 0, penalty: 0, fine: 0 }), [schedule]);
+  const originalTotals = useMemo(() => schedule.reduce((sum, row) => ({
+    principal: sum.principal + scheduleSourceAmount(row, "principal", data.currency, exchangeRate),
+    interest: sum.interest + scheduleSourceAmount(row, "interest", data.currency, exchangeRate),
+    penalty: sum.penalty + scheduleSourceAmount(row, "penalty", data.currency, exchangeRate),
+    fine: sum.fine + scheduleSourceAmount(row, "fine", data.currency, exchangeRate),
+  }), { principal: 0, interest: 0, penalty: 0, fine: 0 }), [data.currency, exchangeRate, schedule]);
 
   const updateData = (patch: Partial<RecognizedLoan>) => setData((current) => ({ ...current, ...patch }));
   const updateSchedule = (id: string, patch: Partial<LoanScheduleDraft>) => setSchedule((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  const updateScheduleMoney = (id: string, kind: "principal" | "interest" | "penalty" | "fine", value: number) => {
+    const originalKey = `${kind}Original` as "principalOriginal" | "interestOriginal" | "penaltyOriginal" | "fineOriginal";
+    setSchedule((current) => current.map((row) => row.id === id ? {
+      ...row,
+      [kind]: roundToTenth(data.currency === "RUB" ? value : value * exchangeRate),
+      [originalKey]: value,
+    } : row));
+  };
 
   const loadRate = async (currency: LoanCurrency) => {
     if (currency === "RUB") {
@@ -281,8 +315,27 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
   const recalculate = async (currency = data.currency) => {
     setBusy(true);
     try {
+      const previousRate = exchangeRate || 1;
       const rate = await loadRate(currency);
-      setSchedule(monthlySchedule({ ...data, currency }, rate));
+      setSchedule((rows) => rows.map((row) => {
+        if (row.status !== "planned") return row;
+        const source = (kind: "principal" | "interest" | "penalty" | "fine") => {
+          const original = row[`${kind}Original` as "principalOriginal" | "interestOriginal" | "penaltyOriginal" | "fineOriginal"];
+          return Number.isFinite(original) ? Number(original) : Number(row[kind] || 0) / previousRate;
+        };
+        const principalOriginal = source("principal");
+        const interestOriginal = source("interest");
+        const penaltyOriginal = source("penalty");
+        const fineOriginal = source("fine");
+        return {
+          ...row,
+          principalOriginal, interestOriginal, penaltyOriginal, fineOriginal,
+          principal: roundToTenth(principalOriginal * rate),
+          interest: roundToTenth(interestOriginal * rate),
+          penalty: roundToTenth(penaltyOriginal * rate),
+          fine: roundToTenth(fineOriginal * rate),
+        };
+      }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось пересчитать график");
     } finally {
@@ -295,13 +348,17 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     const cleanSchedule = [...schedule.reduce((byDate, row) => {
       if (!row.date || Number(row.principal) + Number(row.interest) + Number(row.penalty) + Number(row.fine) <= 0) return byDate;
       const current = byDate.get(row.date);
-      if (!current) byDate.set(row.date, { ...row });
+      if (!current) byDate.set(row.date, { ...row, principal: roundToTenth(row.principal), interest: roundToTenth(row.interest), penalty: roundToTenth(row.penalty), fine: roundToTenth(row.fine) });
       else byDate.set(row.date, {
         ...current,
-        principal: current.principal + Number(row.principal || 0),
-        interest: current.interest + Number(row.interest || 0),
-        penalty: current.penalty + Number(row.penalty || 0),
-        fine: current.fine + Number(row.fine || 0),
+        principal: roundToTenth(current.principal + Number(row.principal || 0)),
+        interest: roundToTenth(current.interest + Number(row.interest || 0)),
+        penalty: roundToTenth(current.penalty + Number(row.penalty || 0)),
+        fine: roundToTenth(current.fine + Number(row.fine || 0)),
+        principalOriginal: Number(current.principalOriginal || 0) + Number(row.principalOriginal || 0),
+        interestOriginal: Number(current.interestOriginal || 0) + Number(row.interestOriginal || 0),
+        penaltyOriginal: Number(current.penaltyOriginal || 0) + Number(row.penaltyOriginal || 0),
+        fineOriginal: Number(current.fineOriginal || 0) + Number(row.fineOriginal || 0),
         status: current.status === "done" && row.status === "done" ? "done" : "planned",
       });
       return byDate;
@@ -320,7 +377,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       await onSubmit({
         loan: {
           creditorName: data.creditorName.trim(),
-          principalAmount: data.principalAmount * exchangeRate,
+          principalAmount: roundToTenth(data.principalAmount * exchangeRate),
           interestRatePerDay: data.annualRate / 365,
           startDate: data.startDate,
           dueDate: data.dueDate,
@@ -376,27 +433,27 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         <label className="text-sm font-medium text-slate-700 md:col-span-2">Кредитор / займодавец<input required value={data.creditorName} onChange={(e) => updateData({ creditorName: e.target.value })} className={fieldClass} placeholder="ФИО или название организации" /></label>
         <label className="text-sm font-medium text-slate-700">Компания<select required value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)} className={fieldClass}><option value="">Проверьте и выберите</option>{companies.filter((item) => item.isActive).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="text-sm font-medium text-slate-700">Счёт оплаты<select required value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)} className={fieldClass}><option value="">Проверьте и выберите</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <label className="text-sm font-medium text-slate-700">Сумма в валюте договора<input required type="number" min="0" step="0.01" value={data.principalAmount || ""} onChange={(e) => updateData({ principalAmount: Number(e.target.value) })} className={fieldClass} /></label>
+        <label className="text-sm font-medium text-slate-700">Сумма в валюте договора<input required type="number" min="0" step="0.1" value={data.principalAmount || ""} onChange={(e) => updateData({ principalAmount: Number(e.target.value) })} onBlur={() => updateData({ principalAmount: roundToTenth(data.principalAmount) })} className={fieldClass} /></label>
         <label className="text-sm font-medium text-slate-700">Валюта<select value={data.currency} onChange={(e) => { const currency = e.target.value as LoanCurrency; updateData({ currency }); void recalculate(currency); }} className={fieldClass}><option value="RUB">Рубли</option><option value="USD">Доллары США</option><option value="EUR">Евро</option><option value="CNY">Юани</option></select></label>
         <label className="text-sm font-medium text-slate-700">Ставка, % годовых<input required type="number" min="0" step="0.001" value={data.annualRate} onChange={(e) => updateData({ annualRate: Number(e.target.value) })} className={fieldClass} /></label>
         <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm"><p className="text-xs text-slate-500">Курс для планового графика</p><p className="mt-1 font-bold">{exchangeRate.toLocaleString("ru-RU")} ₽ за {data.currency === "RUB" ? "1 ₽" : `1 ${data.currency}`}</p><button type="button" disabled={busy} onClick={() => void recalculate()} className="mt-2 text-xs font-bold text-violet-700">Обновить курс и график</button>{rateDate && <p className="mt-1 text-xs text-slate-400">Банк России, {rateDate}</p>}</div>
         <label className="text-sm font-medium text-slate-700">Дата получения<input required type="date" value={data.startDate} onChange={(e) => updateData({ startDate: e.target.value })} className={fieldClass} /></label>
         <label className="text-sm font-medium text-slate-700">Дата возврата тела<input required type="date" value={data.dueDate} onChange={(e) => updateData({ dueDate: e.target.value })} className={fieldClass} /></label>
-        <label className="text-sm font-medium text-slate-700">Комиссия за выдачу, ₽<input type="number" min="0" step="0.01" value={data.originationFee || ""} onChange={(e) => updateData({ originationFee: Number(e.target.value) })} className={fieldClass} /><span className="mt-1 block text-xs text-slate-500">Попадает в ОПиУ частями, но не создаёт платёж в календаре.</span></label>
+        <label className="text-sm font-medium text-slate-700">Комиссия за выдачу, ₽<input type="number" min="0" step="0.1" value={data.originationFee || ""} onChange={(e) => updateData({ originationFee: Number(e.target.value) })} onBlur={() => updateData({ originationFee: roundToTenth(data.originationFee) })} className={fieldClass} /><span className="mt-1 block text-xs text-slate-500">Попадает в ОПиУ частями, но не создаёт платёж в календаре.</span></label>
         <label className="text-sm font-medium text-slate-700">Распределить комиссию, месяцев<input type="number" min="1" max="120" value={data.feeAmortizationMonths} onChange={(e) => updateData({ feeAmortizationMonths: Number(e.target.value) })} className={fieldClass} /></label>
       </section>
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold">График платежей в рублях</h3><p className="text-xs text-slate-500">Проценты для валютного займа рассчитаны по выбранному курсу. Перед оплатой их можно обновить.</p></div><button type="button" onClick={() => setSchedule((rows) => [...rows, emptySchedule()])} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-bold"><Plus className="h-4 w-4" />Добавить платёж</button></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold">График платежей {data.currency === "RUB" ? "в рублях" : `в ${data.currency} и рублях`}</h3><p className="text-xs text-slate-500">Все суммы округляются до десятых. Валютные плановые строки пересчитываются по свежему курсу; оплаченные фиксируются.</p></div><button type="button" onClick={() => setSchedule((rows) => [...rows, emptySchedule()])} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-bold"><Plus className="h-4 w-4" />Добавить платёж</button></div>
         {schedule.map((row, index) => <div key={row.id} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-[1.1fr_1fr_1fr_1fr_1fr_1fr_44px]">
           <label className="text-xs font-medium">Дата<input type="date" value={row.date} onChange={(e) => updateSchedule(row.id, { date: e.target.value })} className={fieldClass} /></label>
-          <label className="text-xs font-medium">Тело, ₽<input type="number" min="0" step="0.01" value={row.principal || ""} onChange={(e) => updateSchedule(row.id, { principal: Number(e.target.value) })} className={fieldClass} /></label>
-          <label className="text-xs font-medium">Проценты, ₽<input type="number" min="0" step="0.01" value={row.interest || ""} onChange={(e) => updateSchedule(row.id, { interest: Number(e.target.value) })} className={fieldClass} /></label>
-          <label className="text-xs font-medium">Пени, ₽<input type="number" min="0" step="0.01" value={row.penalty || ""} onChange={(e) => updateSchedule(row.id, { penalty: Number(e.target.value) })} className={fieldClass} /></label>
-          <label className="text-xs font-medium">Штрафы, ₽<input type="number" min="0" step="0.01" value={row.fine || ""} onChange={(e) => updateSchedule(row.id, { fine: Number(e.target.value) })} className={fieldClass} /></label>
+          {(["principal", "interest", "penalty", "fine"] as const).map((kind) => {
+            const labels = { principal: "Тело", interest: "Проценты", penalty: "Пени", fine: "Штрафы" };
+            return <label key={kind} className="text-xs font-medium">{labels[kind]}, {data.currency}<input type="number" min="0" step="0.1" value={scheduleSourceAmount(row, kind, data.currency, exchangeRate) || ""} onChange={(e) => updateScheduleMoney(row.id, kind, Number(e.target.value))} onBlur={(e) => updateScheduleMoney(row.id, kind, roundToTenth(Number(e.target.value)))} className={fieldClass} />{data.currency !== "RUB" && <span className="mt-1 block text-[10px] font-normal text-slate-500">≈ {roundToTenth(row[kind]).toLocaleString("ru-RU")} ₽</span>}</label>;
+          })}
           <label className="text-xs font-medium">Состояние<select value={row.status} onChange={(e) => updateSchedule(row.id, { status: e.target.value as PaymentStatus })} className={fieldClass}><option value="planned">Запланировано</option><option value="done">Оплачено</option><option value="cancelled">Отменено</option></select></label>
           <button type="button" aria-label={`Удалить платёж ${index + 1}`} onClick={() => setSchedule((rows) => rows.filter((item) => item.id !== row.id))} className="mt-5 flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
         </div>)}
-        <div className="grid gap-2 rounded-xl bg-slate-900 p-4 text-white sm:grid-cols-5"><div><p className="text-xs text-slate-400">Тело</p><b>{totals.principal.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Проценты</p><b>{totals.interest.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Пени</p><b>{totals.penalty.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Штрафы</p><b>{totals.fine.toLocaleString("ru-RU")} ₽</b></div><div><p className="text-xs text-slate-400">Всего выплат</p><b>{(totals.principal + totals.interest + totals.penalty + totals.fine).toLocaleString("ru-RU")} ₽</b></div></div>
+        <div className="grid gap-2 rounded-xl bg-slate-900 p-4 text-white sm:grid-cols-5">{(["principal", "interest", "penalty", "fine"] as const).map((kind) => <div key={kind}><p className="text-xs text-slate-400">{{ principal: "Тело", interest: "Проценты", penalty: "Пени", fine: "Штрафы" }[kind]}</p><b>{roundToTenth(totals[kind]).toLocaleString("ru-RU")} ₽</b>{data.currency !== "RUB" && <p className="text-xs text-slate-400">{roundToTenth(originalTotals[kind]).toLocaleString("ru-RU")} {data.currency}</p>}</div>)}<div><p className="text-xs text-slate-400">Всего выплат</p><b>{roundToTenth(totals.principal + totals.interest + totals.penalty + totals.fine).toLocaleString("ru-RU")} ₽</b>{data.currency !== "RUB" && <p className="text-xs text-slate-400">{roundToTenth(originalTotals.principal + originalTotals.interest + originalTotals.penalty + originalTotals.fine).toLocaleString("ru-RU")} {data.currency}</p>}</div></div>
       </section>
       {file && <p className="flex items-center gap-2 text-sm text-slate-600"><FileText className="h-4 w-4" />Документ обработан: {file.name}</p>}
       {message && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{message}</p>}
