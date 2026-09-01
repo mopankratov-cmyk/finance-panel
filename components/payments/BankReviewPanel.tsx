@@ -292,8 +292,8 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
 
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => setQueueFilter("review")} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "review" ? "bg-violet-600 text-white" : "border border-slate-300"}`}>На проверке ({items.filter((item) => item.status !== "waiting_manager" && !(item.managerAnswer && !decodeBankSplits(item.managerAnswer))).length})</button>
-        <button onClick={() => setQueueFilter("waiting")} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "waiting" ? "bg-amber-500 text-white" : "border border-amber-300 text-amber-800"}`}>Ждут ответа ({items.filter((item) => item.status === "waiting_manager").length})</button>
-        <button onClick={() => setQueueFilter("answered")} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "answered" ? "bg-emerald-600 text-white" : "border border-emerald-300 text-emerald-800"}`}>Ответ получен ({items.filter((item) => item.status !== "waiting_manager" && item.managerAnswer && !decodeBankSplits(item.managerAnswer)).length})</button>
+        <button onClick={() => setQueueFilter("waiting")} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "waiting" ? "bg-amber-500 text-white" : "border border-amber-300 text-amber-800"}`}>Ждут ответа ({items.filter((item) => item.status === "waiting_manager" && !(item.managerAnswer && !decodeBankSplits(item.managerAnswer))).length})</button>
+        <button onClick={() => setQueueFilter("answered")} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "answered" ? "bg-emerald-600 text-white" : "border border-emerald-300 text-emerald-800"}`}>Ответ получен ({items.filter((item) => item.managerAnswer && !decodeBankSplits(item.managerAnswer)).length})</button>
         <button onClick={() => void refresh()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm"><RefreshCw className="h-4 w-4" /> Обновить</button>
         <button onClick={approve} disabled={saving || selected.size === 0 || invalidSelected.length > 0} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white disabled:opacity-50"><Check className="h-4 w-4" /> Подтвердить ({selected.size})</button>
         <button onClick={reject} disabled={saving || selected.size === 0} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-200 px-3 text-sm text-red-600 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Исключить</button>
@@ -310,8 +310,8 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
         <div className="space-y-3">
           {items.filter((item) => {
             const hasManagerAnswer = Boolean(item.managerAnswer && !decodeBankSplits(item.managerAnswer));
-            if (queueFilter === "waiting") return item.status === "waiting_manager";
-            if (queueFilter === "answered") return item.status !== "waiting_manager" && hasManagerAnswer;
+            if (queueFilter === "waiting") return item.status === "waiting_manager" && !hasManagerAnswer;
+            if (queueFilter === "answered") return hasManagerAnswer;
             return item.status !== "waiting_manager" && !hasManagerAnswer;
           }).map((item) => (
             <Card key={item.id} className={item.status === "waiting_manager" ? "border-amber-300" : ""}>
@@ -400,7 +400,12 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                     </div>
                   );
                 })()}
-                {item.managerQuestion && <div className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Вопрос: {item.managerQuestion}{item.managerAnswer && !decodeBankSplits(item.managerAnswer) ? ` · Ответ: ${item.managerAnswer}` : " · ждём ответа"}</div>}
+                {item.managerQuestion && <div className={`rounded-lg p-3 text-xs ${item.managerAnswer && !decodeBankSplits(item.managerAnswer) ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-800"}`}>
+                  <p><b>Вопрос:</b> {item.managerQuestion}</p>
+                  {item.managerAnswer && !decodeBankSplits(item.managerAnswer)
+                    ? <><p className="mt-1"><b>Ответ руководителя:</b> {item.managerAnswer}</p>{item.status === "waiting_manager" && <p className="mt-1 font-medium text-amber-700">Бот запросил дополнительное уточнение. Полученный ответ уже сохранён.</p>}</>
+                    : <p className="mt-1">Ждём ответа руководителя</p>}
+                </div>}
               </CardContent>
             </Card>
           ))}

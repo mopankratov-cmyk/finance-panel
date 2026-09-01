@@ -11,6 +11,7 @@ import type { Payment } from "@/lib/types";
 import type { Account } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
+import { originalLoanDueDate } from "./loanPaymentReschedule";
 
 function signedMoney(amount: number, forcePlus = false): string {
   const prefix = amount > 0 && forcePlus ? "+" : "";
@@ -45,6 +46,7 @@ function PaymentRow({ row, companyName, onEdit }: PaymentRowProps) {
   const { payment, runningBalance } = row;
   const isIncome = payment.amount > 0;
   const isCancelled = payment.status === "cancelled";
+  const originalDueDate = originalLoanDueDate(payment);
 
   const rowStyle = isCancelled
     ? { backgroundColor: "#f8fafc" }
@@ -75,7 +77,7 @@ function PaymentRow({ row, companyName, onEdit }: PaymentRowProps) {
             {formatMoney(payment.amount)}
           </span>
           <span className={`flex min-w-0 items-center gap-2 truncate text-sm font-semibold ${isCancelled ? "text-slate-400 line-through" : "text-slate-900"}`}><span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span><span className="truncate">{payment.category}</span></span>
-          <span className={`truncate text-sm ${isCancelled ? "text-slate-400 line-through" : "text-slate-600"}`} title={payment.name}>{payment.name}</span>
+          <span className={`truncate text-sm ${isCancelled ? "text-slate-400 line-through" : "text-slate-600"}`} title={payment.name}>{payment.name}{originalDueDate && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">перенесён с {originalDueDate}</span>}</span>
           <span className={`truncate text-sm ${companyName === "Не назначена" ? "text-slate-400" : "text-slate-700"}`}>{companyName}</span>
           <span className={`text-right text-sm font-semibold tabular-nums ${runningBalance < 0 ? "text-red-600" : "text-slate-700"}`}>{formatMoney(runningBalance)}</span>
         </button>

@@ -20,6 +20,14 @@ interface InlinePaymentFormProps {
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500";
 
+function commentWithPreservedMetadata(payment: Payment | undefined, editableComment: string, priority: PaymentPriority): string {
+  const metadata = (payment?.comment?.match(/\[[^\]]+\]/g) ?? [])
+    .filter((marker) => !/^\[priority:[ABC]\]$/i.test(marker));
+  const clean = editableComment.replace(/\[[^\]]+\]/g, " ").replace(/\s{2,}/g, " ").trim();
+  const merged = [clean, ...metadata].filter(Boolean).join(" ");
+  return setPaymentPriorityComment(merged || undefined, priority);
+}
+
 export function InlinePaymentForm({
   flowType,
   date,
@@ -50,7 +58,7 @@ export function InlinePaymentForm({
       accountId: fd.get("accountId") as string,
       status: fd.get("status") as Payment["status"],
       counterparty: (fd.get("counterparty") as string) || "",
-      comment: setPaymentPriorityComment((fd.get("comment") as string) || undefined, fd.get("priority") as PaymentPriority),
+      comment: commentWithPreservedMetadata(payment, (fd.get("comment") as string) || "", fd.get("priority") as PaymentPriority),
     }, payment ? undefined : {
       frequency: recurrence,
       until: recurrenceUntil,
@@ -219,7 +227,7 @@ export function InlinePaymentForm({
         <label className="mb-1 block text-xs font-medium text-slate-600">Ваш комментарий</label>
         <input
           name="comment"
-          defaultValue={cleanPaymentComment(payment?.comment)}
+          defaultValue={cleanPaymentComment(payment?.comment).replace(/\[[^\]]+\]/g, " ").replace(/\s{2,}/g, " ").trim()}
           className={inputClass}
           placeholder="Любое пояснение для себя или руководителя"
         />
