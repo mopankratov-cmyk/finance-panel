@@ -2,6 +2,13 @@ export interface StoredCostRow {
   article: string;
   name?: string | null;
   cost_rub?: number | string | null;
+  /**
+   * Фулфилмент на единицу: приёмка, упаковка, маркировка, отгрузка.
+   * Историческое имя колонки — warehouse_expenses, и в коде маржи оно зовётся
+   * то storage, то prep. По данным это именно ФФ: 9–187 ₽ на единицу у 170 из
+   * 215 товаров. Экран называет его тем, что это есть на самом деле.
+   */
+  warehouse_expenses?: number | string | null;
   brand?: string | null;
   category?: string | null;
 }
@@ -19,6 +26,8 @@ export interface CostCatalogRow {
   article: string;
   name: string;
   cost_rub: number;
+  /** Фулфилмент на единицу — вторая половина того, что уходит в маржу. */
+  fulfillment_rub: number;
   brand: string;
   category: string;
   source: string;
@@ -52,6 +61,7 @@ export function mergeCostCatalog(
       article,
       name: clean(item.name) || article,
       cost_rub: Number(item.cost_rub ?? 0) || 0,
+      fulfillment_rub: Number(item.warehouse_expenses ?? 0) || 0,
       brand: clean(item.brand),
       category: clean(item.category),
       source: "Справочник",
@@ -77,6 +87,8 @@ export function mergeCostCatalog(
       article,
       name: clean(product.name) || article,
       cost_rub: Number(product.resolvedCostRub ?? 0) || 0,
+      // Маркетплейс о фулфилменте не знает: он наш, а не его.
+      fulfillment_rub: 0,
       brand: clean(product.brand),
       category: "",
       source: product.source,
