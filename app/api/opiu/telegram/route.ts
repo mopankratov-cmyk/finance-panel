@@ -155,13 +155,12 @@ export async function POST(request: Request) {
         .select("reasons")
         .eq("status", "waiting_manager")
         .not("manager_question", "is", null)
-        .limit(2);
+        .limit(5_000);
       if (pending.error) throw new Error(pending.error.message);
-      if ((pending.data ?? []).length === 1) {
-        const messageMarker = Array.isArray(pending.data![0].reasons)
-          ? pending.data![0].reasons.map(String).find((reason) => reason.startsWith("__telegram_message_id:"))
-          : undefined;
-        const messageId = Number(messageMarker?.slice("__telegram_message_id:".length));
+      if ((pending.data ?? []).length > 0) {
+        const messageId = Math.max(...(pending.data ?? []).flatMap((item) => Array.isArray(item.reasons)
+          ? item.reasons.map(String).filter((reason) => reason.startsWith("__telegram_message_id:")).map((reason) => Number(reason.slice("__telegram_message_id:".length)))
+          : []).filter((id) => Number.isFinite(id)));
         if (Number.isFinite(messageId) && messageId > 0) {
           await handlePaymentReply(text, messageId, String(chatId));
           return NextResponse.json({ ok: true });

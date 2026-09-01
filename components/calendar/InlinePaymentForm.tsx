@@ -13,8 +13,10 @@ interface InlinePaymentFormProps {
   companies?: DdsCompany[];
   companyId?: string | null;
   payment?: Payment;
+  requireCompany?: boolean;
   onSubmit: (data: Omit<Payment, "id">, recurrence?: RecurrenceRule, companyId?: string | null) => void;
   onCancel: () => void;
+  onDelete?: () => void;
 }
 
 const inputClass =
@@ -35,8 +37,10 @@ export function InlinePaymentForm({
   companies = [],
   companyId = null,
   payment,
+  requireCompany = false,
   onSubmit,
   onCancel,
+  onDelete,
 }: InlinePaymentFormProps) {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -121,9 +125,10 @@ export function InlinePaymentForm({
         <select
           name="category"
           required
-          defaultValue={payment?.category ?? PAYMENT_CATEGORIES[0]}
+          defaultValue={payment?.category ?? (flowType === "expense" ? "" : PAYMENT_CATEGORIES[0])}
           className={inputClass}
         >
+          {!payment && flowType === "expense" && <option value="" disabled>Выберите статью</option>}
           {PAYMENT_CATEGORIES.map((cat) => (
             <option key={cat} value={cat}>
               {cat}
@@ -136,10 +141,11 @@ export function InlinePaymentForm({
         <label className="mb-1 block text-xs font-medium text-slate-600">Компания</label>
         <select
           name="companyId"
+          required={requireCompany}
           defaultValue={companyId ?? ""}
           className={inputClass}
         >
-          <option value="">Не назначена</option>
+          <option value="">{requireCompany ? "Выберите компанию" : "Не назначена"}</option>
           {companies.filter((company) => company.isActive).map((company) => (
             <option key={company.id} value={company.id}>
               {company.name}
@@ -234,10 +240,17 @@ export function InlinePaymentForm({
       </div>
 
       <div className="flex justify-end gap-2 pt-1">
+        {payment && onDelete && <button
+          type="button"
+          onClick={onDelete}
+          className="mr-auto min-h-11 rounded-lg border border-red-300 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50"
+        >
+          Удалить платёж
+        </button>}
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-lg px-3 py-1.5 text-sm text-slate-400 transition-colors hover:bg-white hover:text-slate-200"
+          className="min-h-11 rounded-lg px-3 py-1.5 text-sm text-slate-500 transition-colors hover:bg-white hover:text-slate-700"
         >
           Отмена
         </button>

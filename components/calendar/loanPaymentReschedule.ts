@@ -47,7 +47,7 @@ export function overdueLoanInstallmentsToMove(
       .filter((payment) => payment.status === "planned" && payment.date < today && !payment.comment?.includes("[paid-by:"))
       .filter((payment) => !protectedPlanIds.has(payment.id))
       .map(loanScheduleKey)
-      .filter((key): key is string => Boolean(key) && !protectedKeys.has(key)),
+      .filter((key): key is string => key !== null && !protectedKeys.has(key)),
   );
 
   return payments
