@@ -86,6 +86,7 @@ interface Campaign {
   days: DayPoint[];
   economics: AdvertEconomics;
   attribution_compatible: boolean;
+  nm_count: number | null;
   last_change: { old_bid: number | null; new_bid: number | null; created_at: string } | null;
   comparison: BeforeAfter | null;
 }
@@ -95,7 +96,7 @@ interface Article {
   art: string;
   photo: string;
   spend: number;
-  spent_sku_7_closed: number;
+  spent_sku_7_closed: number | null;
   campaigns: Campaign[];
 }
 
@@ -157,6 +158,26 @@ function syncLabel(summary: CampaignDaySummary) {
   if (summary.stats_age_hours <= 1) return "синк свежий";
   return `синк ${summary.stats_age_hours} ч назад`;
 }
+
+/**
+ * Вид кампании по тому, что сказал WB.
+ *
+ * Раньше бейджи «CPM» и «единая» печатались в каждой строке подряд, без
+ * обращения к данным, — при том что фильтр рядом уже умел говорить «тип
+ * неизвестен» по настоящим полям. Роут специально ставит "unknown", чтобы не
+ * выдумывать; список продолжал выдумывать за него.
+ */
+function campaignPaymentKind(campaign: Campaign): "cpc" | "unified" | "unknown" {
+  if (campaign.payment === "cpc") return "cpc";
+  if (campaign.bid_type === "unified" || campaign.bid_type === "auto" || campaign.payment === "cpm") return "unified";
+  return "unknown";
+}
+
+const PAYMENT_BADGE: Record<"cpc" | "unified" | "unknown", { label: string; className: string }> = {
+  cpc: { label: "CPC", className: "bg-sky-50 text-sky-700" },
+  unified: { label: "единая", className: "bg-violet-50 text-violet-700" },
+  unknown: { label: "тип неизвестен", className: "bg-slate-100 text-slate-500" },
+};
 
 function campaignStatusKind(campaign: Campaign): Exclude<CampaignStatusFilter, "all"> {
   if (campaign.status === 9 || campaign.enabled) return "active";
@@ -297,10 +318,7 @@ export function WbAdvertsPage() {
       .filter(({ article, campaign }) => {
         // Тип берём из данных WB. Раньше всё, что не cpc, считалось «единой» —
         // включая кампании, тип которых панель просто не знает.
-        const campaignKind = campaign.payment === "cpc" ? "cpc"
-          : campaign.bid_type === "unified" || campaign.bid_type === "auto" || campaign.payment === "cpm" ? "unified"
-            : "unknown";
-        if (kind !== "all" && campaignKind !== kind) return false;
+        if (kind !== "all" && campaignPaymentKind(campaign) !== kind) return false;
         return !needle || `${article.art} ${article.nm} ${campaign.name} ${campaign.id}`.toLocaleLowerCase("ru-RU").includes(needle);
       })
       .sort((left, right) => compareAdvertCampaigns(left.campaign, right.campaign));
@@ -437,9 +455,9 @@ export function WbAdvertsPage() {
                     <WbProductImage nm={article.nm} src={article.photo} loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} /><StatusIcon className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
-                      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">CPM</span><span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">единая</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
+                      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className={`rounded px-1.5 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
                     </div>
-                    <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-violet-700">Расход SKU 7д {rub(article.spent_sku_7_closed)}</div><div title={closedDrrTitle(campaign)} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
+                    <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div title={article.spent_sku_7_closed == null ? "Разбивка расхода по артикулам за период не собрана" : undefined} className={`mt-0.5 text-[9px] font-semibold tabular-nums ${article.spent_sku_7_closed == null ? "text-slate-400" : "text-violet-700"}`}>Расход SKU 7д {article.spent_sku_7_closed == null ? "—" : rub(article.spent_sku_7_closed)}</div><div title={`${closedDrrTitle(campaign)} · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                   </button>
                 );
@@ -515,7 +533,13 @@ export function WbAdvertsPage() {
                   <div className="text-right"><div className="text-[9px] opacity-70">Ожидаемый эффект за 14 дней</div><div className="mt-1 text-sm font-bold tabular-nums">{rub(selected.campaign.economics.expectedProfitEffect)}</div></div>
                 </div>
                 <p className="mt-2 text-[11px] leading-5">{selected.campaign.economics.reason}</p>
-                {!selected.campaign.attribution_compatible && <p className="mt-1 text-[10px] font-semibold">Модели атрибуции или состав кампании не совпадают — рекомендация понижена по уверенности.</p>}
+                {!selected.campaign.attribution_compatible && (
+                  <p className="mt-1 text-[10px] font-semibold">
+                    {selected.campaign.nm_count != null && selected.campaign.nm_count > 1
+                      ? `В кампании ${selected.campaign.nm_count} артикулов — панель не может отнести выручку к одному, поэтому рекомендацию на повышение ставки не даёт вовсе.`
+                      : "Выручка кампании расходится с выручкой товара за месяц — рекомендация понижена по уверенности."}
+                  </p>
+                )}
               </section>
 
               <div className="rounded-xl border border-slate-200 p-3"><div className="mb-2 flex items-center justify-between"><h2 className="text-xs font-bold text-slate-700">Расход по дням</h2><span className="text-[10px] text-slate-400">последние 14 дней</span></div><Sparkline values={selected.campaign.days.map((day) => day.spend)} /></div>
