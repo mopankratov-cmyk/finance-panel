@@ -64,3 +64,25 @@ jobs:
           fi
 
           echo "Прод задеплоен и canary пройден: $url"
+
+      # Провал выкладки был НЕМЫМ. 01.09.2026 чужая ошибка типов влилась в main,
+      # сборка легла, и прод простоял пять часов на старой версии — заметил это
+      # случайно тот, кто следующим полез выкатываться вручную. Сама выкладка
+      # чинится не здесь (сборку до мёржа гейт не гоняет — см. комментарий в
+      # ai-gate.yml о том, почему код PR там не исполняется), но молчать о
+      # сломанном проде нельзя: за пять часов о нём не узнал никто.
+      - name: Провал выкладки — в Telegram
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+        run: |
+          set -uo pipefail
+          [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ] || { echo "Telegram не настроен — пропускаю"; exit 0; }
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TEXT=$(printf '🔴 Прод НЕ обновился\n\nВыкладка упала на коммите %s в main.\nПрод остался на предыдущей версии — всё, что влили после, до пользователей не доехало.\n\nЛог: %s' \
+            "${GITHUB_SHA:0:8}" "$RUN_URL")
+          curl -fsS -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=${TEXT}" \
+            --data-urlencode "disable_web_page_preview=true" >/dev/null || echo "Telegram не ответил"
