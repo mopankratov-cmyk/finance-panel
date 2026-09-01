@@ -108,6 +108,26 @@ test("повторяет один 429 по Retry-After — лимит задач
   assert.deepEqual(report, []);
 });
 
+test("429 без Retry-After ждёт по X-RateLimit-Retry, а не слепые 60с", async () => {
+  let calls = 0;
+  const waits: number[] = [];
+  const fetchImpl = async () => {
+    calls++;
+    if (calls === 1) return new Response("too many requests", { status: 429, headers: { "x-ratelimit-retry": "17" } });
+    if (calls === 2) return Response.json({ data: { taskId: "task-4" } });
+    if (calls === 3) return Response.json({ data: { id: "task-4", status: "done" } });
+    return Response.json([]);
+  };
+
+  await fetchWarehouseRemains({
+    token: "test-token",
+    fetchImpl,
+    sleep: async (ms) => { waits.push(ms); },
+  });
+
+  assert.deepEqual(waits, [17_000, 5_000]);
+});
+
 test("нежданный статус задачи — ошибка, а не вечный цикл", async () => {
   const fetchImpl = async (input: string | URL | Request) => {
     if (String(input).includes("/status")) return Response.json({ data: { status: "canceled" } });

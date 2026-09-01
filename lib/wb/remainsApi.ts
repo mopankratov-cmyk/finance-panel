@@ -73,7 +73,9 @@ export interface WarehouseRemainsOptions {
 }
 
 function retryDelayMs(response: Response, fallbackMs: number): number {
-  const raw = response.headers.get("retry-after");
+  // WB на этом эндпоинте кладёт время ожидания в X-RateLimit-Retry (секунды),
+  // а не в стандартный Retry-After — читаем оба, слепой fallback только затем.
+  const raw = response.headers.get("retry-after") ?? response.headers.get("x-ratelimit-retry");
   const seconds = raw ? Number(raw) : Number.NaN;
   return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : fallbackMs;
 }
