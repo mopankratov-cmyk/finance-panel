@@ -4,6 +4,7 @@ import { formatAlert, formatStatus, runServerFinancialAnalysis, sendTelegramMess
 import { buildMarketplacePayoutForecast } from "@/lib/opiu/forecast";
 import { recognizePaymentAnswer } from "@/lib/opiu/paymentAnswerRecognition";
 import { PAYMENT_CATEGORIES } from "@/lib/constants";
+import { selectPendingTelegramPayment } from "@/lib/opiu/telegramPaymentReply";
 
 export const maxDuration = 60;
 
@@ -52,7 +53,7 @@ async function transcribeTelegramVoice(fileId: string) {
   return result.text.trim();
 }
 
-async function handlePaymentReply(text: string, replyMessageId: number, chatId: string) {
+async function handlePaymentReply(text: string, replyMessageId: number | undefined, chatId: string): Promise<boolean> {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("База не настроена");
   const pending = await db.from("bank_review_items")
@@ -60,13 +61,13 @@ async function handlePaymentReply(text: string, replyMessageId: number, chatId: 
     .eq("status", "waiting_manager")
     .limit(5_000);
   if (pending.error) throw new Error(pending.error.message);
-  const marker = `__telegram_message_id:${replyMessageId}`;
-  const matches = (pending.data ?? []).filter((item) => Array.isArray(item.reasons) && item.reasons.includes(marker));
-  if (matches.length !== 1) {
-    await sendTelegramMessage("Не удалось однозначно связать ответ с платежом. Откройте исходное сообщение бота и нажмите «Ответить».", chatId);
-    return;
+  const rows = pending.data ?? [];
+  if (rows.length === 0) return false;
+  const item = selectPendingTelegramPayment(rows, replyMessageId);
+  if (!item) {
+    await sendTelegramMessage("Сейчас ответа ждут несколько платежей. Нажмите «Ответить» именно на сообщение с нужной суммой и датой — тогда я свяжу пояснение автоматически.", chatId);
+    return true;
   }
-  const item = matches[0];
   const companies = await db.from("companies").select("id,name").eq("is_active", true);
   if (companies.error) throw new Error(companies.error.message);
   const recognition = await recognizePaymentAnswer({
@@ -95,7 +96,7 @@ async function handlePaymentReply(text: string, replyMessageId: number, chatId: 
       status: "waiting_manager",
     }).eq("id", item.id).eq("status", "waiting_manager");
     if (updated.error) throw new Error(updated.error.message);
-    return;
+    return true;
   }
   const reasons = Array.isArray(item.reasons)
     ? [...item.reasons.map(String).filter((reason) => !reason.startsWith("__telegram_message_id:")), `Ответ руководителя распознан: ${recognition.explanation}`]
@@ -110,6 +111,7 @@ async function handlePaymentReply(text: string, replyMessageId: number, chatId: 
   }).eq("id", item.id).eq("status", "waiting_manager");
   if (updated.error) throw new Error(updated.error.message);
   await sendTelegramMessage("✅ Ответ распознан и передан финансовому специалисту на окончательную проверку.", chatId);
+  return true;
 }
 
 const help = [
@@ -149,23 +151,7 @@ export async function POST(request: Request) {
     }
     const command = text.split(/\s+/)[0].toLowerCase().split("@")[0];
     if (!command.startsWith("/")) {
-      const db = getSupabaseAdmin();
-      if (!db) throw new Error("База не настроена");
-      const pending = await db.from("bank_review_items")
-        .select("reasons")
-        .eq("status", "waiting_manager")
-        .not("manager_question", "is", null)
-        .limit(5_000);
-      if (pending.error) throw new Error(pending.error.message);
-      if ((pending.data ?? []).length > 0) {
-        const messageId = Math.max(...(pending.data ?? []).flatMap((item) => Array.isArray(item.reasons)
-          ? item.reasons.map(String).filter((reason) => reason.startsWith("__telegram_message_id:")).map((reason) => Number(reason.slice("__telegram_message_id:".length)))
-          : []).filter((id) => Number.isFinite(id)));
-        if (Number.isFinite(messageId) && messageId > 0) {
-          await handlePaymentReply(text, messageId, String(chatId));
-          return NextResponse.json({ ok: true });
-        }
-      }
+      if (await handlePaymentReply(text, undefined, String(chatId))) return NextResponse.json({ ok: true });
     }
     if (command === "/start" || command === "/help") {
       await sendTelegramMessage(help, String(chatId));

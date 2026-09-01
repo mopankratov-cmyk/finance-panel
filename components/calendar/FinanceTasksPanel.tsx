@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ClipboardList, Loader2, Send, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, ClipboardList, Loader2, Send, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
 
@@ -22,6 +22,7 @@ export function FinanceTasksPanel() {
   const [configured, setConfigured] = useState(true);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
 
   const load = async () => {
     const response = await fetch("/api/opiu/tasks", { cache: "no-store" });
@@ -90,14 +91,16 @@ export function FinanceTasksPanel() {
 
   return (
     <Card>
-      <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="flex min-h-16 w-full items-center gap-3 px-5 py-4 text-left hover:bg-slate-50">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><ClipboardList className="h-5 w-5" /></div>
-        <div>
+        <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-slate-900">Задачи руководителя</h2>
           <p className="text-sm text-slate-500">Сообщения из финансового Telegram-бота.</p>
         </div>
-      </div>
-      <div className="p-5">
+        {!loading && tasks.length > 0 && <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">{tasks.length}</span>}
+        <ChevronDown className={`h-5 w-5 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && <div className="border-t border-slate-100 p-5">
         {loading ? <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Загружаю задачи…</p>
           : !configured ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Появится после выполнения SQL и подключения Telegram владельцем.</p>
           : tasks.length === 0 ? <p className="flex items-center gap-2 text-sm text-slate-500"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Новых задач нет.</p>
@@ -112,7 +115,7 @@ export function FinanceTasksPanel() {
                     <input value={answers[task.id] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [task.id]: event.target.value }))} placeholder="Ответ руководителю" aria-label={`Ответ на задачу ${task.id}`} className="min-h-11 flex-1 rounded-lg border border-slate-300 px-3 text-sm" />
                     <button disabled={savingId === task.id || !answers[task.id]?.trim()} onClick={() => void answerAndClose(task)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white disabled:opacity-50"><Send className="h-4 w-4" /> Ответить и закрыть</button>
                   </div>}
-                  {task.source === "telegram" && task.status === "new" && <button disabled={savingId === task.id} onClick={() => void moveToPaymentAnswer(task)} className="mt-2 min-h-11 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 disabled:opacity-50">Это ответ на платёж</button>}
+                  {task.source === "telegram" && task.status === "new" && <button disabled={savingId === task.id} onClick={() => void moveToPaymentAnswer(task)} className="mt-2 min-h-11 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 disabled:opacity-50">Перенести в «Ответ получен»</button>}
                 </div>
                 <div className="flex gap-2 md:flex-col">
                   <select value={task.status} onChange={(event) => void changeStatus(task, event.target.value as FinanceTask["status"])} className="min-h-11 flex-1 rounded-lg border border-slate-300 px-3 text-sm font-medium">
@@ -123,7 +126,7 @@ export function FinanceTasksPanel() {
               </div>
             ))}
           </div>}
-      </div>
+      </div>}
     </Card>
   );
 }

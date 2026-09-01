@@ -3,7 +3,7 @@
 import { PAYMENT_CATEGORIES } from "@/lib/constants";
 import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
-import { cleanPaymentComment, getPaymentPriority, PRIORITY_META, setPaymentPriorityComment, suggestPaymentPriority, type PaymentPriority } from "./paymentPriority";
+import { editablePaymentComment, getPaymentPriority, PRIORITY_META, setPaymentPriorityComment, type PaymentPriority } from "./paymentPriority";
 import type { RecurrenceRule } from "./recurringPayments";
 
 interface InlinePaymentFormProps {
@@ -174,7 +174,7 @@ export function InlinePaymentForm({
         <label className="mb-1 block text-xs font-medium text-slate-600">Приоритет платежа</label>
         <select
           name="priority"
-          defaultValue={payment ? getPaymentPriority(payment) : suggestPaymentPriority(PAYMENT_CATEGORIES[0])}
+          defaultValue={payment ? getPaymentPriority(payment) : "C"}
           className={inputClass}
         >
           {(Object.keys(PRIORITY_META) as PaymentPriority[]).map((priority) => (
@@ -233,7 +233,7 @@ export function InlinePaymentForm({
         <label className="mb-1 block text-xs font-medium text-slate-600">Ваш комментарий</label>
         <input
           name="comment"
-          defaultValue={cleanPaymentComment(payment?.comment).replace(/\[[^\]]+\]/g, " ").replace(/\s{2,}/g, " ").trim()}
+          defaultValue={editablePaymentComment(payment?.comment)}
           className={inputClass}
           placeholder="Любое пояснение для себя или руководителя"
         />
