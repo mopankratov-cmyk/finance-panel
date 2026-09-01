@@ -65,7 +65,12 @@ export function AdActionsPanel({
   const [sum, setSum] = useState("");
   const [source, setSource] = useState("1");
 
-  const subject = `${campaign.name} · ${campaign.art} · ${campaign.nm}`;
+  // Артикул почти всегда уже стоит в названии кампании — WB так их и заводит.
+  // Дублировать его значит писать «HT-83-35 · HT-83-35» и приучать глаз
+  // пропускать эту строку, а она здесь ровно затем, чтобы её читали.
+  const subject = campaign.name.includes(campaign.art)
+    ? `${campaign.name} · ${campaign.nm}`
+    : `${campaign.name} · ${campaign.art} · ${campaign.nm}`;
   const allowance = cabinetMoney?.depositAllowance ?? null;
   const minTopUp = cabinetMoney?.config?.minTopUpRub ?? null;
   const step = cabinetMoney?.config?.cpmStepRub ?? 1;

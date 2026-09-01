@@ -185,14 +185,6 @@ function syncLabel(summary: CampaignDaySummary) {
 }
 
 /**
- * Вид кампании по тому, что сказал WB.
- *
- * Раньше бейджи «CPM» и «единая» печатались в каждой строке подряд, без
- * обращения к данным, — при том что фильтр рядом уже умел говорить «тип
- * неизвестен» по настоящим полям. Роут специально ставит "unknown", чтобы не
- * выдумывать; список продолжал выдумывать за него.
- */
-/**
  * Почему сравнения «до / после» нет.
  *
  * Общая фраза «нужны минимум два дня статистики» верна, но не отвечает на
@@ -208,16 +200,45 @@ function beforeAfterReason(campaign: Campaign): string {
   return "Не хватает дней с расходом по одну из сторон от правки: нужно минимум по два дня до и после.";
 }
 
-function campaignPaymentKind(campaign: Campaign): "cpc" | "unified" | "unknown" {
+/**
+ * Модель оплаты кампании — по тому, что сказал WB.
+ *
+ * Это НЕ то же самое, что тип ставки, и путать их дорого. Живая проверка
+ * 02.09.2026 поймала ровно эту путаницу: бейдж строки писал «единая», потому
+ * что оплата CPM, а панель действий на той же карточке предлагала выбрать
+ * место показа — то есть ставка ручная. Два утверждения об одной кампании на
+ * одном экране, и одно из них ложное.
+ *
+ * Фильтр рядом всегда отбирал именно по оплате: «не CPC и известно» он называл
+ * «Единой». Теперь он называется тем, чем является.
+ */
+function campaignPaymentKind(campaign: Campaign): "cpc" | "cpm" | "unknown" {
   if (campaign.payment === "cpc") return "cpc";
-  if (campaign.bid_type === "unified" || campaign.bid_type === "auto" || campaign.payment === "cpm") return "unified";
+  if (campaign.payment === "cpm") return "cpm";
+  // Старые кампании синхронизировались до появления payment_type. Тип ставки
+  // у них есть, и по нему оплату можно назвать: единая ставка — всегда за показы.
+  if (campaign.bid_type === "unified" || campaign.bid_type === "auto") return "cpm";
   return "unknown";
 }
 
-const PAYMENT_BADGE: Record<"cpc" | "unified" | "unknown", { label: string; className: string }> = {
+/** Тип ставки: кто выбирает место показа и запросы — человек или алгоритм WB. */
+function campaignBidKind(campaign: Campaign): "manual" | "unified" | "unknown" {
+  const raw = String(campaign.bid_type ?? "").toLowerCase();
+  if (raw === "unified" || raw === "auto" || raw === "automatic") return "unified";
+  if (raw === "manual" || raw === "cpm" || raw === "auction") return "manual";
+  return "unknown";
+}
+
+const PAYMENT_BADGE: Record<"cpc" | "cpm" | "unknown", { label: string; className: string }> = {
   cpc: { label: "CPC", className: "bg-sky-50 text-sky-700" },
-  unified: { label: "единая", className: "bg-violet-50 text-violet-700" },
-  unknown: { label: "тип неизвестен", className: "bg-slate-100 text-slate-500" },
+  cpm: { label: "CPM", className: "bg-violet-50 text-violet-700" },
+  unknown: { label: "оплата ?", className: "bg-slate-100 text-slate-500" },
+};
+
+const BID_BADGE: Record<"manual" | "unified" | "unknown", { label: string; className: string }> = {
+  manual: { label: "ручная", className: "bg-amber-50 text-amber-700" },
+  unified: { label: "единая", className: "bg-emerald-50 text-emerald-700" },
+  unknown: { label: "ставка ?", className: "bg-slate-100 text-slate-500" },
 };
 
 function campaignStatusKind(campaign: Campaign): Exclude<CampaignStatusFilter, "all"> {
@@ -290,7 +311,7 @@ export function WbAdvertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
-  const [kind, setKind] = useDashboardFilter<"all" | "cpc" | "unified" | "unknown">("kind", "all", ["all", "cpc", "unified", "unknown"]);
+  const [kind, setKind] = useDashboardFilter<"all" | "cpc" | "cpm" | "unknown">("kind", "all", ["all", "cpc", "cpm", "unknown"]);
   const [statusFilter, setStatusFilter] = useDashboardFilter<CampaignStatusFilter>("status", "active", ["active", "paused", "archive", "all"]);
   // Выбранная кампания живёт в адресе страницы. Это не «чтобы можно было
   // поделиться ссылкой» (хотя и это тоже): выбор — часть состояния, за которым
@@ -569,7 +590,7 @@ export function WbAdvertsPage() {
             ) : null}
             <div className="mt-2 flex items-center gap-1 text-[10px]">
               <span className="mr-1 text-slate-400">тип:</span>
-              {([['all', 'Все'], ['cpc', 'CPC'], ['unified', 'Единая'], ['unknown', 'Тип неизвестен']] as const).map(([value, label]) => (
+              {([['all', 'Все'], ['cpc', 'CPC'], ['cpm', 'CPM'], ['unknown', 'Оплата неизвестна']] as const).map(([value, label]) => (
                 <button key={value} type="button" onClick={() => setKind(value)} className={`min-h-8 rounded-lg px-2.5 font-semibold transition-colors ${kind === value ? "bg-slate-800 text-white" : "bg-violet-50 text-violet-700 hover:bg-violet-100"}`}>{label}</button>
               ))}
               <span className="ml-auto tabular-nums text-slate-400">{rows.length} из {baseRows.length} РК</span>
@@ -622,7 +643,7 @@ export function WbAdvertsPage() {
                     <WbProductImage nm={article.nm} src={article.photo} loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} /><StatusIcon className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
-                      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className={`rounded px-1.5 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
+                      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className={`rounded px-1.5 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span><span className={`rounded px-1.5 py-0.5 ${BID_BADGE[campaignBidKind(campaign)].className}`}>{BID_BADGE[campaignBidKind(campaign)].label}</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
                     </div>
                     <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : `ставка ${rub(campaign.bid_cpm_rub)}`} · сегодня {rub(campaign.spend_today)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div title={article.spent_sku_7_closed == null ? "Разбивка расхода по артикулам за период не собрана" : undefined} className={`mt-0.5 text-[9px] font-semibold tabular-nums ${article.spent_sku_7_closed == null ? "text-slate-400" : "text-violet-700"}`}>Расход SKU 7д {article.spent_sku_7_closed == null ? "—" : rub(article.spent_sku_7_closed)}</div><div title={`${closedDrrTitle(campaign)} · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
