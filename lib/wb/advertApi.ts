@@ -179,8 +179,14 @@ export function getAdvertConfig(token: string) {
 export interface AdvertBalance {
   balance: number;
   net: number;
-  bonus: number;
   currency: string;
+  /**
+   * Бонусы. Необязательное поле: живая проверка 01.09.2026 показала, что для
+   * кабинета без бонусной программы WB не присылает его вовсе — не ноль, а
+   * отсутствие ключа. Объявлять его обязательным значило бы обещать типу то,
+   * чего в ответе нет.
+   */
+  bonus?: number;
 }
 
 export function getAdvertBalance(token: string) {

@@ -171,7 +171,8 @@ export function WbAdControlPage() {
         {config.money ? (
           <span className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 font-semibold text-slate-600 shadow-sm">
             <Wallet className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
-            Счёт {money(config.money.account, currency)} · Баланс {money(config.money.net, currency)} · Бонусы {money(config.money.bonus, currency)}
+            Счёт {money(config.money.account, currency)} · Баланс {money(config.money.net, currency)}
+            {config.money.bonus == null ? null : ` · Бонусы ${money(config.money.bonus, currency)}`}
           </span>
         ) : config.moneyError ? (
           <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-700">Деньги не прочитались: {config.moneyError}</span>

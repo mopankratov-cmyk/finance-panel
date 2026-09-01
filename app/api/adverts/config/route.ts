@@ -61,7 +61,17 @@ export async function GET(request: NextRequest) {
         }
       : null,
     money: balance.ok
-      ? { account: balance.data.balance, net: balance.data.net, bonus: balance.data.bonus, currency: balance.data.currency }
+      ? {
+          account: balance.data.balance,
+          net: balance.data.net,
+          currency: balance.data.currency,
+          // Бонусы кладём, только если WB их действительно назвал. Живая
+          // проверка 01.09.2026 показала, что для кабинета без бонусной
+          // программы поля `bonus` в ответе нет вовсе — а undefined,
+          // отрисованный прочерком, читается как «спросили и не смогли
+          // узнать». Это разные вещи, и вторую показывать не за что.
+          ...(Number.isFinite(balance.data.bonus) ? { bonus: balance.data.bonus } : {}),
+        }
       : null,
     moneyError: balance.ok ? null : balance.message,
     depositAllowance: allowance,

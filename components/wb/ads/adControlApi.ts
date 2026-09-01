@@ -59,7 +59,7 @@ export interface AdCabinetConfig {
     promotionError: string | null;
   };
   config: { currency: string; cpmStepRub: number; cpcStepRub: number; minTopUpRub: number } | null;
-  money: { account: number; net: number; bonus: number; currency: string } | null;
+  money: { account: number; net: number; bonus?: number; currency: string } | null;
   moneyError: string | null;
   depositAllowance: {
     spentToday: number;
