@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const WB_THUMBNAIL_FILES = [
-  "app/adverts/page.tsx",
+  // app/adverts/page.tsx здесь больше нет: экран стал редиректом на
+  // объединённый модуль «Реклама» и картинок не рисует вовсе. Его строка списка
+  // с фото переехала в components/wb/WbAdvertsPage.tsx, который в списке ниже.
   "app/rnp/page.tsx",
   "app/seo/page.tsx",
   "app/sklejki/page.tsx",
