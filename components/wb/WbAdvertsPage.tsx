@@ -1,7 +1,7 @@
 "use client";
 
 import { Archive, ChevronRight, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
@@ -230,7 +230,15 @@ export function WbAdvertsPage() {
   const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
   const [kind, setKind] = useDashboardFilter<"all" | "cpc" | "unified" | "unknown">("kind", "all", ["all", "cpc", "unified", "unknown"]);
   const [statusFilter, setStatusFilter] = useDashboardFilter<CampaignStatusFilter>("status", "active", ["active", "paused", "archive", "all"]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Выбранная кампания живёт в адресе страницы. Это не «чтобы можно было
+  // поделиться ссылкой» (хотя и это тоже): выбор — часть состояния, за которым
+  // закреплены будущие кнопки действий, и терять его при перерисовке нельзя.
+  const [selectedParam, setSelectedParam] = useDashboardFilter<string>("campaign", "");
+  const selectedId = selectedParam ? Number(selectedParam) : null;
+  const setSelectedId = useCallback(
+    (id: number | null) => setSelectedParam(id == null ? "" : String(id)),
+    [setSelectedParam],
+  );
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 16 });
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
@@ -309,12 +317,31 @@ export function WbAdvertsPage() {
     ? baseRows
     : baseRows.filter(({ campaign }) => campaignStatusKind(campaign) === statusFilter), [baseRows, statusFilter]);
 
+  /**
+   * Кампания выбирается один раз и дальше держится сама.
+   *
+   * Раньше здесь стояло «нет в отфильтрованном списке — берём первую строку».
+   * Список отсортирован по расходу, фильтр по умолчанию «Активные», и цепочка
+   * получалась такая: кампанию поставили на паузу → она выпала из фильтра →
+   * карточка справа молча перецелилась на самую жгущую бюджет активную
+   * кампанию. Пока карточка только показывает, это раздражает. Когда в ней
+   * появятся кнопки, следующий клик в том же месте экрана уйдёт по чужой
+   * кампании, причём по самой дорогой из активных.
+   *
+   * Теперь автоматический выбор происходит ровно в одном случае: когда не
+   * выбрано ничего. Выпавшая из фильтра кампания остаётся выбранной и
+   * показывается отдельной строкой над списком.
+   */
   useEffect(() => {
-    if (!rows.some(({ campaign }) => campaign.id === selectedId)) setSelectedId(rows[0]?.campaign.id ?? null);
+    const known = baseRows.some(({ campaign }) => campaign.id === selectedId);
+    if (!known) setSelectedId(rows[0]?.campaign.id ?? null);
     setRowWindow({ start: 0, end: Math.min(16, rows.length) });
-  }, [rows, selectedId]);
+  }, [baseRows, rows, selectedId, setSelectedId]);
 
-  const selected = rows.find(({ campaign }) => campaign.id === selectedId) ?? null;
+  const selected = baseRows.find(({ campaign }) => campaign.id === selectedId) ?? null;
+  // Выбранная кампания есть, но текущий фильтр её не показывает. Молча прятать
+  // строку нельзя: человек видит карточку справа и не понимает, где её строка.
+  const selectedOutsideFilter = selected != null && !rows.some(({ campaign }) => campaign.id === selectedId);
   const selectedStatus = selected ? campaignStatusMeta(selected.campaign) : null;
   const selectedYesterday = selected?.campaign.yesterday ?? emptyDaySummary(activeData?.yest, true);
   const selectedTodayOpen = selected?.campaign.today_open ?? emptyDaySummary(activeData?.today, false);
@@ -380,8 +407,26 @@ export function WbAdvertsPage() {
             </div>
           ) : null}
 
-          {loading && !activeData ? <div className="p-3"><LoadingBanner seconds={elapsed} hint={`реклама · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonCards count={5} /></div> : error && !activeData ? <div className="p-3"><WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /></div> : rows.length === 0 ? <div className="p-3"><WbEmptyState>Кампаний по выбранному фильтру нет.</WbEmptyState></div> : (
+          {loading && !activeData ? <div className="p-3"><LoadingBanner seconds={elapsed} hint={`реклама · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonCards count={5} /></div> : error && !activeData ? <div className="p-3"><WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /></div> : rows.length === 0 && !selectedOutsideFilter ? <div className="p-3"><WbEmptyState>Кампаний по выбранному фильтру нет.</WbEmptyState></div> : (
             <div className="min-h-0 flex-1 overflow-auto overscroll-contain" onScroll={(event) => updateWindow(event.currentTarget)}>
+              {selectedOutsideFilter && selected ? (
+                <div className="border-b border-violet-200 bg-violet-50/70 px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${campaignStatusMeta(selected.campaign).dot}`} />
+                    <span className="truncate text-[11px] font-semibold text-slate-700">{selected.campaign.name}</span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between gap-2 text-[9px] text-violet-700">
+                    <span className="truncate">{selected.article.art} · открыта справа, но не проходит фильтр «{STATUS_FILTERS.find((filter) => filter.value === statusFilter)?.label ?? statusFilter}»</span>
+                    <button
+                      type="button"
+                      onClick={() => setStatusFilter(campaignStatusKind(selected.campaign))}
+                      className="shrink-0 rounded border border-violet-300 px-1.5 py-0.5 font-semibold text-violet-700 transition-colors hover:bg-violet-100"
+                    >
+                      показать
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {rowWindow.start > 0 ? <div aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }} /> : null}
               {rows.slice(rowWindow.start, rowWindow.end).map(({ article, campaign }) => {
                 const active = selectedId === campaign.id;
