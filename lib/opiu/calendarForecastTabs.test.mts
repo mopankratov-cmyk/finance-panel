@@ -13,7 +13,8 @@ test("calendar forecast tabs default to calendar and mount publication panels co
 
 test("calendar-only mutation controls stay outside forecast views", () => {
   assert.match(source, /const isForecastView = view === "forecast" \|\| view === "ozon-forecast";/);
-  assert.match(source, /\{view !== "forecast" && view !== "ozon-forecast" && <FinancialAlertsPanel/);
+  // Панель может быть обёрнута в скобки и перенесена на новую строку — сторожу важно условие, а не форматирование.
+  assert.match(source, /\{view !== "forecast" && view !== "ozon-forecast" && \(?\s*<FinancialAlertsPanel/);
   assert.match(source, /\{!isForecastView && <FinanceTasksPanel \/>\}/);
   assert.match(source, /if \(isForecastView \|\| calendarRows\.length <= 1\) return;/);
 });
