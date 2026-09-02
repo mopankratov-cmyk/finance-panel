@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
   if (!advertId || !isLifecycleAction(action)) {
     return NextResponse.json({ error: "Неверные параметры (advertId/action)" }, { status: 400 });
   }
+  // Причина словами человека — необязательна, пишется в журнал как есть.
+  const reason = typeof body.reason === "string" ? body.reason : null;
   const resolved = await resolveAdvertCabinetContext({ cabinetId: body.cabinetId, advertIds: [advertId] });
   if (resolved.response) return resolved.response;
   const context = resolved.context;
@@ -43,6 +45,7 @@ export async function POST(request: NextRequest) {
   if (!result.ok) {
     await auditAdvertOperation({
       context,
+      reason,
       advertId,
       action,
       status: "error",
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
 
   // Оптимистично обновляем статус в Supabase, чтобы UI не ждал ресинка.
   await context.db.from("wb_adverts").update({ status }).eq("advert_id", advertId).eq("cabinet_id", context.cabinet.id);
-  await auditAdvertOperation({ context, advertId, action, status: "ok", oldValue: oldStatus, newValue: status, wbResult: result.data });
+  await auditAdvertOperation({ context, reason, advertId, action, status: "ok", oldValue: oldStatus, newValue: status, wbResult: result.data });
 
   return NextResponse.json({ ok: true, advertId, status });
 }

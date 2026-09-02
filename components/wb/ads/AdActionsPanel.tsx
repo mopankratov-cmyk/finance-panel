@@ -107,8 +107,9 @@ export function AdActionsPanel({
     onAsk({
       actionId: action,
       subject,
-      run: async () => {
-        const result = await adPost("/api/adverts/action", { cabinetId, advertId: campaign.id, action });
+      askReason: true,
+      run: async (reason) => {
+        const result = await adPost("/api/adverts/action", { cabinetId, advertId: campaign.id, action, reason });
         if (result.ok) onDone();
         return { ok: result.ok, error: result.error };
       },
@@ -198,11 +199,13 @@ export function AdActionsPanel({
                   detail: campaign.bid_cpm_rub == null
                     ? `Станет ${bidValue} ${currency}. Прежняя ставка панели неизвестна, поэтому защита от роста ×2 не сработает — проверьте сумму сами.`
                     : `Было ${campaign.bid_cpm_rub} ${currency}, станет ${bidValue} ${currency}.`,
-                  run: async () => {
+                  askReason: true,
+                  run: async (reason) => {
                     const result = await adPost("/api/adverts/bid", {
                       cabinetId,
                       advertId: campaign.id,
                       bids: [{ nmId: campaign.nm, bidRub: bidValue, placement }],
+                      reason,
                     });
                     if (result.ok) {
                       setBid("");
@@ -249,12 +252,14 @@ export function AdActionsPanel({
                   detail: allowance
                     ? `Сегодня уже пополнено ${allowance.spentToday.toLocaleString("ru-RU")} ${currency} из ${allowance.maxPerDay.toLocaleString("ru-RU")} ${currency}. Вернуть сумму из бюджета кампании обратно нельзя.`
                     : "Вернуть сумму из бюджета кампании обратно нельзя.",
-                  run: async () => {
+                  askReason: true,
+                  run: async (reason) => {
                     const result = await adPost("/api/adverts/deposit", {
                       cabinetId,
                       advertId: campaign.id,
                       sum: sumValue,
                       type: Number(source),
+                      reason,
                     });
                     if (result.ok) {
                       setSum("");

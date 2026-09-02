@@ -32,6 +32,8 @@ export interface AdvertAuditInput {
   oldValue?: unknown;
   newValue?: unknown;
   wbResult?: unknown;
+  /** Причина словами человека. Панель сюда своих формулировок не пишет. */
+  reason?: string | null;
 }
 
 function error(message: string, status: number) {
@@ -156,6 +158,7 @@ export async function auditAdvertOperation(input: AdvertAuditInput): Promise<voi
     new_value: input.newValue ?? null,
     status: input.status,
     detail,
+    reason: input.reason?.trim() ? input.reason.trim().slice(0, 500) : null,
     wb_result: input.wbResult ?? null,
   });
   if (extended.error?.code === "42703" || extended.error?.code === "PGRST204") {

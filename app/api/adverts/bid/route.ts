@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
   if (!rawBids.length) return NextResponse.json({ error: "Не переданы ставки" }, { status: 400 });
   if (rawBids.length > 50) return NextResponse.json({ error: "WB принимает не больше 50 артикулов за раз" }, { status: 400 });
 
+  // Причина словами человека — необязательна, пишется в журнал как есть.
+  const reason = typeof body.reason === "string" ? body.reason : null;
   const resolved = await resolveAdvertCabinetContext({ cabinetId: body.cabinetId, advertIds: [advertId] });
   if (resolved.response) return resolved.response;
   const context = resolved.context;
@@ -113,6 +115,7 @@ export async function POST(request: NextRequest) {
     } else if (raw.bidRub > oldBid * MAX_GROWTH_FACTOR) {
       await auditAdvertOperation({
         context,
+        reason,
         advertId,
         action: "bid",
         status: "rejected",
@@ -134,6 +137,7 @@ export async function POST(request: NextRequest) {
   if (!result.ok) {
     await auditAdvertOperation({
       context,
+      reason,
       advertId,
       action: "bid",
       status: "error",
@@ -155,6 +159,7 @@ export async function POST(request: NextRequest) {
 
   await auditAdvertOperation({
     context,
+    reason,
     advertId,
     action: "bid",
     status: "ok",

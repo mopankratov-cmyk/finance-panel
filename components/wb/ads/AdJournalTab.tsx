@@ -132,13 +132,14 @@ export function AdJournalTab({
         <WbEmptyState>Записей нет. Здесь появится каждое действие модуля — включая те, что не прошли предохранители.</WbEmptyState>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full min-w-[760px] text-[12px]">
+          <table className="w-full min-w-[900px] text-[12px]">
             <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Когда</th>
                 <th className="px-3 py-2 text-left font-semibold">Действие</th>
                 <th className="px-3 py-2 text-left font-semibold">Кампания</th>
                 <th className="px-3 py-2 text-left font-semibold">Было → стало</th>
+                <th className="px-3 py-2 text-left font-semibold">Почему</th>
                 <th className="px-3 py-2 text-left font-semibold">Кто</th>
                 <th className="px-3 py-2 text-left font-semibold">Исход</th>
               </tr>
@@ -156,6 +157,7 @@ export function AdJournalTab({
                   <td className="px-3 py-2 tabular-nums text-slate-600">
                     {describeValue(entry.oldValue)} → {describeValue(entry.newValue)}
                   </td>
+                  <td className="max-w-[240px] px-3 py-2 text-slate-600">{entry.reason || <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-2 text-slate-500">{entry.userEmail ?? "—"}</td>
                   <td className="px-3 py-2">
                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_TONE[entry.status] ?? "bg-slate-100 text-slate-500"}`}>

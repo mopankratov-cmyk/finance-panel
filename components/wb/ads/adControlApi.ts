@@ -80,6 +80,7 @@ export interface AdJournalEntry {
   oldValue: unknown;
   newValue: unknown;
   detail: string | null;
+  reason: string | null;
   createdAt: string;
 }
 

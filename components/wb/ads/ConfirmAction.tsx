@@ -14,7 +14,9 @@ export interface ConfirmRequest {
   detail?: string;
   /** Для операций с деньгами — сумма, которую человек должен подтвердить. */
   amount?: string;
-  run: () => Promise<{ ok: boolean; error: string | null }>;
+  /** Спросить причину. Поле пустое и необязательное — см. комментарий ниже. */
+  askReason?: boolean;
+  run: (reason: string) => Promise<{ ok: boolean; error: string | null }>;
 }
 
 /**
@@ -38,12 +40,14 @@ export function ConfirmAction({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (request) {
       setError(null);
       setBusy(false);
+      setReason("");
       cancelRef.current?.focus();
     }
   }, [request]);
@@ -64,7 +68,7 @@ export function ConfirmAction({
   const confirm = async () => {
     setBusy(true);
     setError(null);
-    const result = await request.run();
+    const result = await request.run(reason);
     setBusy(false);
     if (!result.ok) {
       setError(result.error ?? "Не получилось");
@@ -105,6 +109,27 @@ export function ConfirmAction({
             {ADVERT_RISK_LABEL[spec.risk]}
             {spec.endpoint ? <span className="ml-2 font-mono normal-case tracking-normal text-slate-300">{spec.endpoint}</span> : null}
           </div>
+        ) : null}
+
+        {request.askReason ? (
+          <label className="mt-3 block">
+            <span className="text-[11px] font-semibold text-slate-500">Почему <span className="font-normal text-slate-400">— необязательно, но через неделю пригодится</span></span>
+            {/*
+              Поле открывается ПУСТЫМ и остаётся необязательным.
+              Предзаполнить его формулировкой панели было бы вредно вдвойне:
+              обязательность, которую закрывает значение по умолчанию, не
+              обязательность, а в аудите осталась бы фраза алгоритма, подписанная
+              именем человека. Ценность записи именно в том, что её написали.
+            */}
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              rows={2}
+              maxLength={500}
+              placeholder="Например: ДРР вырос после смены главного фото, снижаю до выяснения"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-[12px] focus:border-violet-500 focus:outline-none"
+            />
+          </label>
         ) : null}
 
         {error ? <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{error}</div> : null}

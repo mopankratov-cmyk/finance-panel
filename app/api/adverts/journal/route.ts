@@ -18,6 +18,7 @@ export interface AdvertJournalEntry {
   oldValue: unknown;
   newValue: unknown;
   detail: string | null;
+  reason: string | null;
   createdAt: string;
 }
 
@@ -30,6 +31,7 @@ interface JournalRow {
   old_value: unknown;
   new_value: unknown;
   detail: string | null;
+  reason?: string | null;
   created_at: string;
 }
 
@@ -58,18 +60,28 @@ export async function GET(request: NextRequest) {
   const status = params.get("status");
   const advertId = Number(params.get("advertId"));
 
-  let query = db
-    .from("advert_bid_changes")
-    .select("id, advert_id, action, status, user_email, old_value, new_value, detail, created_at")
-    .eq("cabinet_id", cabinet.id)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  // Колонку reason заводит миграция 202609020002. Она уходит владельцу на ручное
+  // одобрение и может лечь позже кода, поэтому её отсутствие — не поломка
+  // журнала, а просто пустая графа «Почему». Без этого отката журнал ответил бы
+  // чужим сообщением про совсем другую миграцию.
+  const build = (withReason: boolean) => {
+    const columns = withReason
+      ? "id, advert_id, action, status, user_email, old_value, new_value, detail, reason, created_at"
+      : "id, advert_id, action, status, user_email, old_value, new_value, detail, created_at";
+    let q = db
+      .from("advert_bid_changes")
+      .select(columns)
+      .eq("cabinet_id", cabinet.id)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (action) q = q.eq("action", action);
+    if (status) q = q.eq("status", status);
+    if (Number.isInteger(advertId) && advertId > 0) q = q.eq("advert_id", advertId);
+    return q;
+  };
 
-  if (action) query = query.eq("action", action);
-  if (status) query = query.eq("status", status);
-  if (Number.isInteger(advertId) && advertId > 0) query = query.eq("advert_id", advertId);
-
-  const { data, error } = await query;
+  let { data, error } = await build(true);
+  if (error?.code === "42703") ({ data, error } = await build(false));
   if (error) {
     // Расширенные колонки журнала заводит миграция 20260714. Пока её нет,
     // читать нечего — но сказать об этом прямо лучше, чем отдать пустой список
@@ -86,7 +98,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const rows = (data ?? []) as JournalRow[];
+  // Набор колонок выбирается в рантайме (с reason или без), поэтому вывести
+  // тип автоматически клиент не может — приводим явно.
+  const rows = (data ?? []) as unknown as JournalRow[];
   const ids = [...new Set(rows.map((row) => Number(row.advert_id)).filter((id) => id > 0))];
   const names = new Map<number, string>();
   if (ids.length) {
@@ -113,6 +127,7 @@ export async function GET(request: NextRequest) {
       oldValue: row.old_value,
       newValue: row.new_value,
       detail: row.detail,
+      reason: row.reason ?? null,
       createdAt: row.created_at,
     };
   });

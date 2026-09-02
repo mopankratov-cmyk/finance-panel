@@ -642,10 +642,11 @@ export function WbAdvertsPage() {
       actionId: action,
       subject: withPlural(ids.length, "кампания", "кампании", "кампаний"),
       detail: `${names.slice(0, 4).join(", ")}${names.length > 4 ? ` и ещё ${names.length - 4}` : ""}. Кампании обрабатываются по очереди с паузой — WB считает лимит на весь кабинет.`,
-      run: async () => {
+      askReason: true,
+      run: async (reason) => {
         const result = await adPost<{ success: number; failed: number; skipped: number; stoppedEarly: string | null }>(
           "/api/adverts/bulk",
-          { cabinetId, advertIds: ids, action },
+          { cabinetId, advertIds: ids, action, reason },
         );
         // Частичный успех — обычный исход пачки, и молчать о нём нельзя:
         // «готово» после трёх обработанных из сорока читается как «все сорок».
