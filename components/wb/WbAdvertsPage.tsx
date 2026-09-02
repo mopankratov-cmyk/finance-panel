@@ -347,6 +347,9 @@ export function WbAdvertsPage() {
   // «смотрю эту» и «делаю с этими» — разные намерения, и склеивать их значит
   // выполнять действие над карточкой, которую человек просто открыл почитать.
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  // Ссылка на контейнер списка. Нужна, чтобы пересчитывать видимое окно от
+  // РЕАЛЬНОЙ позиции прокрутки, а не сбрасывать его вслепую.
+  const listRef = useRef<HTMLDivElement | null>(null);
   // Категории живут в product_costs, а не в WB-таблицах, поэтому фильтруем уже
   // загруженные строки. Тот же источник, что и на остальных экранах панели —
   // иначе «Ковры» здесь и «Ковры» в РНП разошлись бы.
@@ -447,8 +450,25 @@ export function WbAdvertsPage() {
   useEffect(() => {
     const known = baseRows.some(({ campaign }) => campaign.id === selectedId);
     if (!known) setSelectedId(rows[0]?.campaign.id ?? null);
-    setRowWindow({ start: 0, end: Math.min(16, rows.length) });
   }, [baseRows, rows, selectedId, setSelectedId]);
+
+  /**
+   * Окно виртуального списка сбрасывается вместе с прокруткой — и только когда
+   * состав списка действительно поменялся.
+   *
+   * Раньше оно обнулялось при каждой смене выбранной кампании, а позиция
+   * прокрутки оставалась на месте. Список держат распорки нужной высоты, и
+   * пересчитывается окно только по onScroll, — поэтому клик по строке ниже
+   * шестнадцатой оставлял на экране пустое белое поле, пока человек не дёрнет
+   * колесо. На фильтре «Активные» (10 строк) это не проявляется вовсе, а на
+   * «Все» (238) и «Пауза» (64) — всегда: ровно там, куда идут искать вчерашнего
+   * сжигателя бюджета.
+   */
+  useEffect(() => {
+    const element = listRef.current;
+    if (element) element.scrollTop = 0;
+    setRowWindow({ start: 0, end: Math.min(16, rows.length) });
+  }, [cabinetId, statusFilter, kind, query, category, rows.length]);
 
   const singleCabinet = Boolean(cabinetId && cabinetId !== "all");
 
@@ -703,7 +723,7 @@ export function WbAdvertsPage() {
                 </button>
               </div>
             ) : null}
-            <div className="min-h-0 flex-1 overflow-auto overscroll-contain" onScroll={(event) => updateWindow(event.currentTarget)}>
+            <div ref={listRef} className="min-h-0 flex-1 overflow-auto overscroll-contain" onScroll={(event) => updateWindow(event.currentTarget)}>
               {selectedOutsideFilter && selected ? (
                 <div className="border-b border-violet-200 bg-violet-50/70 px-3 py-2">
                   <div className="flex items-center gap-1.5">
