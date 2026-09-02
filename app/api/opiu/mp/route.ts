@@ -35,14 +35,19 @@ export async function GET(request: NextRequest) {
   const from = new Date(Date.now() - weeks * 7 * 86_400_000).toISOString().slice(0, 10);
 
   const wbPromise = loadWbCachedFinance({ dateFrom: from, dateTo: to, cabinetId: wbCabinetId, taxPct })
+    // Кэш продаж не содержит логистику, хранение, штрафы и соинвест. Раньше они
+    // отдавались нулём, страница рисовала «Логистика — 0 ₽», а прибыль считалась
+    // без них — то есть завышалась на всю логистику. null = «не считается»:
+    // строка не рисуется, а страница честно говорит, чего в прибыли нет.
     .then((value) => ({
       revenue_before_spp: value.revenueBeforeSpp,
-      coinvest: 0,
+      coinvest: null,
       revenue: value.revenue,
       commission: value.commission,
-      logistics: 0,
-      storage: 0,
-      penalty: 0,
+      logistics: null,
+      storage: null,
+      penalty: null,
+      notComputed: ["логистика", "хранение", "штрафы", "соинвест"],
       acquiring: value.acquiring,
       ad: value.ad,
       other: value.marketplaceOther,

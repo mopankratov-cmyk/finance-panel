@@ -6,12 +6,12 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { FinanceTabs } from "@/components/FinanceTabs";
 
-type WB = { revenue_before_spp: number; coinvest: number; revenue: number; commission: number; logistics: number; storage: number; penalty: number; acquiring: number; ad: number; other: number; cogs: number; tax: number; profit: number; margin: number; error?: string };
+type WB = { revenue_before_spp: number; coinvest: number | null; revenue: number; commission: number; logistics: number | null; storage: number | null; penalty: number | null; notComputed?: string[]; acquiring: number; ad: number; other: number; cogs: number; tax: number; profit: number; margin: number; error?: string };
 type OZ = { revenue: number; commission: number; delivery: number; services: number; cogs: number; tax: number; profit: number; margin: number; error?: string; noCabinet?: boolean };
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
-function Line({ label, v, kind }: { label: string; v: number | undefined; kind?: "minus" | "sum" | "head" }) {
+function Line({ label, v, kind }: { label: string; v: number | null | undefined; kind?: "minus" | "sum" | "head" }) {
   if (v == null) return null;
   return (
     <div className={`flex items-center justify-between px-4 py-1.5 ${kind === "sum" ? "border-t-2 border-gray-300 bg-gray-50 font-bold" : "border-t border-gray-100"}`}>
@@ -93,6 +93,11 @@ export default function PnlPage() {
                 <Line label="Прочие удержания" v={wb.other} kind="minus" />
                 <Line label={`Налог ${tax}%`} v={wb.tax} kind="minus" />
                 <Line label="Чистая прибыль" v={wb.profit} kind="sum" />
+                {wb.notComputed?.length ? (
+                  <p className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+                    В этой сводке не учтены: {wb.notComputed.join(", ")} — прибыль без них завышена. Полный разбор с логистикой и хранением — на вкладке «WB недельный».
+                  </p>
+                ) : null}
               </>
             )}
           </div>
@@ -113,7 +118,7 @@ export default function PnlPage() {
           </div>
         </div>
       )}
-      <p className="mt-3 text-[11px] text-gray-400">WB: выручка считается от цены до СПП (retail_price_withdisc_rub) + соинвест, как принято у вас. Ozon: от начисленного (accruals_for_sale). Налог — % от выручки, настраивается.</p>
+      <p className="mt-3 text-[11px] text-gray-400">WB: выручка считается от цены до СПП (retail_price_withdisc_rub) по кэшу продаж; логистика, хранение, штрафы и соинвест в эту сводку не входят. Ozon: от начисленного (accruals_for_sale). Налог — % от выручки, настраивается.</p>
     </div>
   );
 }
