@@ -44,6 +44,13 @@ test("агент и история ставок проверяют доступ 
   const changes = read("../app/api/adverts/changes/route.ts");
   assert.match(changes, /await requireApiSession\(\)/);
   assert.match(changes, /if \(cabinetId\) query = query\.eq\("cabinet_id", cabinetId\)/);
-  const page = read("../app/adverts/page.tsx");
-  assert.match(page, /api\/adverts\/changes\$\{cabId \? `\?cabinet=\$\{cabId\}` : ""\}/);
+  // Старый экран /adverts стал редиректом на объединённый модуль и запросов
+  // больше не делает. Инвариант не исчез, а переехал: журнал операций читает
+  // раздел «Что мы меняли», и он тоже обязан передавать кабинет — иначе
+  // менеджер с урезанным списком увидит правки в чужих кабинетах.
+  const journal = read("../app/api/adverts/journal/route.ts");
+  assert.match(journal, /resolveAdvertCabinetAccess/, "журнал операций за рекламным гейтом");
+  assert.match(journal, /\.eq\("cabinet_id", cabinet\.id\)/, "журнал сужен до выбранного кабинета");
+  const journalTab = read("../components/wb/ads/AdJournalTab.tsx");
+  assert.match(journalTab, /cabinet: cabinetId/, "клиент журнала передаёт кабинет");
 });

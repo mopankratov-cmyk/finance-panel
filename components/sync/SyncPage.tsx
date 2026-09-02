@@ -323,7 +323,10 @@ export function SyncPage() {
                         className={`rounded px-1.5 py-0.5 text-xs ${
                           r.status === "ok"
                             ? "bg-emerald-50 text-emerald-700"
-                            : "bg-red-50 text-red-700"
+                            : r.status === "partial"
+                              // Начали и не доделали — это не провал, но и не успех.
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-red-50 text-red-700"
                         }`}
                       >
                         {r.status}

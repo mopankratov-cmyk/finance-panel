@@ -122,9 +122,16 @@ test("UI distinguishes campaign spend from comparable SKU spend and preserves DR
   assert.match(route, /spent_sku_7_closed:/);
   assert.match(route, /yesterday:\s*buildAdvertWorkingDaySummary/);
   assert.match(route, /today_open:\s*buildAdvertWorkingDaySummary/);
-  assert.match(page, /Расход РК 7д/);
-  assert.match(page, /Расход SKU 7д/);
-  assert.match(page, /ДРР РК 7д/);
+  assert.match(page, /за 7 дн\. \{rub\(campaign\.spent_7_closed\)\}/, "расход кампании за закрытую неделю");
+  // Расход по артикулу теперь показывается, только когда он ОТЛИЧАЕТСЯ от
+  // расхода кампании: в кабинете из 46 кампаний с расходом 19 давали ровно те же
+  // рубли, и второе число дублировало первое, отнимая место у имени кампании.
+  // Различение при этом не ослабло, а усилилось — отличие стало сигналом «по
+  // этому товару бьют и другие кампании».
+  assert.match(page, /по артикулу \{rub\(article\.spent_sku_7_closed\)\}/);
+  assert.match(page, /Math\.round\(article\.spent_sku_7_closed\) !== Math\.round\(campaign\.spent_7_closed\)/);
+  assert.match(page, /по артикулу —/, "нет данных отличается от нуля");
+  assert.match(page, /ДРР 7д/);
   assert.match(page, /Вчера · полный день/);
   assert.match(page, /Корзины SKU/);
   assert.match(page, /Заказы SKU, шт/);

@@ -20,6 +20,16 @@ import { UNIT_DEFAULT_TAX_PCT } from "@/lib/unit/query";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/**
+ * Плановый ритм обновления рекламной статистики, часы.
+ *
+ * Раньше это число жило в двух местах разными значениями: бейдж «устарело»
+ * ставился после трёх часов, а уверенность штрафовалась от ритма в два. Из-за
+ * этого кампания могла быть без бейджа и одновременно с минусом к уверенности —
+ * человек видел следствие, но не видел причины.
+ */
+const ADVERT_DATA_CADENCE_HOURS = 3;
+
 const ADV_BASE = "https://advert-api.wildberries.ru";
 const CAMPAIGN_PAGE_SIZE = 1000;
 const CAMPAIGN_MAX_PAGES = 30;
@@ -62,6 +72,7 @@ interface FunnelDayRow {
 }
 interface ChangeRow {
   advert_id: number;
+  action: string | null;
   old_bid: number | null;
   new_bid: number | null;
   status: string;
@@ -171,7 +182,9 @@ export async function GET(request: NextRequest) {
   const today = addIsoDays(yest, 1);
   const legacyStatsDateFrom = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
   const statsDateFrom = legacyStatsDateFrom < metricsPeriod7Closed.dateFrom ? legacyStatsDateFrom : metricsPeriod7Closed.dateFrom;
-  let changesQ = db.from("advert_bid_changes").select("advert_id, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
+  // `action` в выборке — не украшение: без него отфильтровать журнал по виду
+  // события физически невозможно, а он пишется на КАЖДУЮ операцию модуля.
+  let changesQ = db.from("advert_bid_changes").select("advert_id, action, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
   if (cabinetId) changesQ = changesQ.eq("cabinet_id", cabinetId);
 
   // ?timings=1 — длительности источников в ответе, чтобы мерить узкие места
@@ -350,11 +363,15 @@ export async function GET(request: NextRequest) {
   }
 
   const skuSpend7ClosedByNm = new Map<number, number>();
+  // Собрана ли вообще разбивка расхода по артикулам за окно. Пустая таблица при
+  // живых кампаниях — это несостоявшийся синк, а не «расхода не было».
+  let skuBreakdownCollected = false;
   for (const row of nmDailyRows) {
     const rowAllowedNmIds = cabinetId
       ? allowedNmIds
       : (allowedByCabinet.get(String(row.cabinet_id ?? "")) ?? null);
     if (!requestAllowsNm(rowAllowedNmIds, row.nm_id)) continue;
+    skuBreakdownCollected = true;
     skuSpend7ClosedByNm.set(row.nm_id, (skuSpend7ClosedByNm.get(row.nm_id) ?? 0) + Number(row.spent ?? 0));
   }
 
@@ -389,9 +406,16 @@ export async function GET(request: NextRequest) {
   const APPLIED_CHANGE_STATUSES = new Set(["ok", "success"]);
   const latestChangeByAdvert = new Map<number, ChangeRow>();
   for (const change of (changesRes.data ?? []) as ChangeRow[]) {
-    if (!latestChangeByAdvert.has(change.advert_id) && APPLIED_CHANGE_STATUSES.has(change.status)) {
-      latestChangeByAdvert.set(change.advert_id, change);
-    }
+    if (latestChangeByAdvert.has(change.advert_id)) continue;
+    if (!APPLIED_CHANGE_STATUSES.has(change.status)) continue;
+    // Сравнение «до и после» имеет смысл только для СТАВКИ. В журнал пишутся и
+    // переименования, и минус-фразы, и пополнения — у них ставок нет, и блок
+    // рисовал по ним «— → —», выдавая переименование за правку ставки. Старые
+    // записи легли до появления колонки action: у них вид неизвестен, и признаком
+    // служит наличие самой ставки.
+    const isBidChange = change.action == null ? change.new_bid != null : change.action === "bid" || change.action === "rule_apply";
+    if (!isBidChange || change.new_bid == null) continue;
+    latestChangeByAdvert.set(change.advert_id, change);
   }
 
   const cabLabel = label || "Все кабинеты";
@@ -399,7 +423,7 @@ export async function GET(request: NextRequest) {
   // группируем кампании по основному nm → article. spendYestTotal считаем в ТОМ ЖЕ
   // проходе и над той же популяцией (только кампании с nm), что и spendTodayTotal —
   // иначе «% к вчера» сравнивает разные множества кампаний.
-  const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; spent_sku_7_closed: number; campaigns: Record<string, unknown>[] }>();
+  const artMap = new Map<number, { nm: number; art: string; photo: string; spend: number; spent_sku_7_closed: number | null; campaigns: Record<string, unknown>[] }>();
   let spendYestTotal = 0;
   // Кампания без списка товаров не попадает ни в один артикул — раньше вместе
   // с ней исчезал и её расход: итог «потрачено сегодня» был меньше реального,
@@ -446,7 +470,10 @@ export async function GET(request: NextRequest) {
           revenue: Number(row?.orders_sum_month ?? 0),
           cost: Number(row?.cost ?? 0) > 0 ? Number(row?.cost) : null,
           stock: row ? Number(row.stock ?? 0) : null,
-          commissionPct: skuRate?.pct ?? commission.avgPct,
+          // null, а не ноль, когда ставку не знает ни карточка товара, ни
+          // среднее по кабинету: пустой кэш комиссий отдаёт avgPct = 0, и
+          // раньше этот ноль уходил дальше как настоящая ставка.
+          commissionPct: skuRate?.pct ?? (commission.avgPct > 0 ? commission.avgPct : null),
           acquiringPct: skuRate?.acqPct ?? commission.avgAcqPct,
           extraPct: (skuRate?.extraPct ?? commission.avgExtraPct) + commission.overheadPct,
         };
@@ -470,11 +497,15 @@ export async function GET(request: NextRequest) {
       acquiringPct: basis.acquiringPct ?? commission.avgAcqPct,
       extraPct: basis.extraPct ?? (commission.avgExtraPct + commission.overheadPct),
       taxPct: taxPctFor(a.cabinet_id ?? null),
-      feesComplete: Boolean(basis.commissionPct != null || commission.avgPct > 0),
+      // Ставки удержаний считаются известными, только если известны на ВСЮ
+      // выручку кампании. Кампания без выручки в окне опирается на среднее по
+      // кабинету — и оно тоже должно быть настоящим, а не нулём из пустого кэша.
+      feesComplete: basis.feesCoverage == null ? commission.avgPct > 0 : basis.feesCoverage >= 0.999,
       stock: basis.stock,
       dailyUnits: basis.dailyUnits,
       attributionCompatible,
       dataAgeHours,
+      dataCadenceHours: ADVERT_DATA_CADENCE_HOURS,
     });
     const latestChange = latestChangeByAdvert.get(Number(a.advert_id)) ?? null;
     const campaignDays = daysByAdv.get(a.advert_id) ?? [];
@@ -513,10 +544,13 @@ export async function GET(request: NextRequest) {
       category: "",
       hours: [],
       payment: String(a.payment_type ?? "").trim().toLowerCase() || "unknown",
-      bid_cpm_rub: a.bid_cpm_rub ?? a.daily_budget ?? null,
+      // Только настоящая ставка. Раньше при пустом bid_cpm_rub подставлялся
+      // daily_budget — человеку показывали дневной бюджет с подписью «Ставка
+      // CPM», а роут смены ставки на это же число опирал защиту от роста ×2.
+      bid_cpm_rub: a.bid_cpm_rub ?? null,
       stats_synced_at: statsSyncedAt,
       stats_age_hours: roundedDataAgeHours,
-      stats_stale: dataAgeHours == null || dataAgeHours > 3,
+      stats_stale: dataAgeHours == null || dataAgeHours > ADVERT_DATA_CADENCE_HOURS,
       cab: cabLabel,
       yesterday: buildAdvertWorkingDaySummary({
         date: yest,
@@ -537,6 +571,9 @@ export async function GET(request: NextRequest) {
       days: campaignDays,
       economics,
       attribution_compatible: attributionCompatible,
+      // Сколько артикулов в кампании. Нужен интерфейсу, чтобы назвать причину,
+      // по которой у многотоварной кампании зелёной рекомендации не бывает.
+      nm_count: nmIds.length,
       last_change: latestChange ? {
         old_bid: latestChange.old_bid,
         new_bid: latestChange.new_bid,
@@ -546,7 +583,19 @@ export async function GET(request: NextRequest) {
     };
     let g = artMap.get(nm);
     if (!g) {
-      g = { nm, art: artByNm.get(nm) || String(nm), photo: wbCardImageUrl(nm), spend: 0, spent_sku_7_closed: Math.round(skuSpend7ClosedByNm.get(nm) ?? 0), campaigns: [] };
+      // Ноль ставим, только если разбивка по артикулам вообще собрана. Когда
+      // синк wb_advert_nm_daily не прошёл, таблица пуста для всех сразу — и
+      // «Расход SKU 7д 0 ₽» в каждой строке был бы уверенным враньём вместо
+      // честного «не собрано».
+      const skuSpend = skuSpend7ClosedByNm.get(nm);
+      g = {
+        nm,
+        art: artByNm.get(nm) || String(nm),
+        photo: wbCardImageUrl(nm),
+        spend: 0,
+        spent_sku_7_closed: skuSpend != null ? Math.round(skuSpend) : skuBreakdownCollected ? 0 : null,
+        campaigns: [],
+      };
       artMap.set(nm, g);
     }
     g.spend += Math.round(st.today);

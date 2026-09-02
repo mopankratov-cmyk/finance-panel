@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CTR_FORCE_HINT, type CtrTestType } from "@/lib/ctrtest/model";
 import { useCategoryMap } from "@/lib/useCategoryMap";
+import { CtrCampaignBridge } from "./ctr/CtrCampaignBridge";
 import { CtrTestDetail } from "./ctr/CtrTestDetail";
 import { CtrTestWizard } from "./ctr/CtrTestWizard";
 import type { CtrCandidate, CtrTestView, CtrVariantView, CtrWizardSeed } from "./ctr/types";
@@ -238,7 +239,7 @@ export function WbCtrPage() {
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}
         {error && !loading ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
 
-        {selectedTest ? <CtrTestDetail test={selectedTest} busy={busy} onBack={() => setSelectedId(null)} onAction={(name, variantId, explanation) => void action(name, variantId, explanation)} onFlywheel={openFlywheel} /> : wizard !== false && canWrite ? <CtrTestWizard cabinetId={cabinetId} type={type} candidates={candidates} seed={wizard} onClose={() => setWizard(false)} onCreated={() => reload("Черновик теста создан")} /> : <>
+        {selectedTest ? <><CtrTestDetail test={selectedTest} busy={busy} onBack={() => setSelectedId(null)} onAction={(name, variantId, explanation) => void action(name, variantId, explanation)} onFlywheel={openFlywheel} /><CtrCampaignBridge cabinetId={cabinetId} nmId={selectedTest.nmId} /></> : wizard !== false && canWrite ? <CtrTestWizard cabinetId={cabinetId} type={type} candidates={candidates} seed={wizard} onClose={() => setWizard(false)} onCreated={() => reload("Черновик теста создан")} /> : <>
           <section className="flex min-h-14 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center">
             <div><div className="flex items-center gap-2 text-sm font-bold text-slate-800"><Plus className="h-4 w-4" />Новый тест</div><div className="mt-0.5 text-[10px] text-slate-400">{eligibleCount} SKU подходят по ориентиру Inferno: ≥1 000 показов и CTR ниже 3%</div></div>
             <button type="button" disabled={!canWrite || loading} onClick={() => setWizard(null)} className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"><Plus className="h-3.5 w-3.5" />создать тест</button>

@@ -168,6 +168,28 @@ function bidRange(campaigns: JournalCampaign[], date: string): string {
   return min === max ? short(min) : `${short(min)}–${short(max)}`;
 }
 
+/**
+ * Подсказка над клеткой задачи.
+ *
+ * У предложения алгоритма показываем ПРИЧИНУ: совет без основания человек
+ * принимает вслепую или отвергает не глядя, и в обоих случаях сверять потом
+ * нечего. У переписанного совета показываем ещё и что предлагалось — это
+ * ровно то место, где видно расхождение.
+ */
+function noteTitle(entry: RkNote): string {
+  const parts: string[] = [];
+  if (entry.done) parts.push("Сделано:");
+  parts.push(entry.note);
+  if (entry.source === "auto" && entry.suggestedReason) {
+    parts.push(`\n\nПредложил алгоритм: ${entry.suggestedReason}`);
+  }
+  if (entry.source === "human" && entry.suggestedNote && entry.suggestedNote !== entry.note) {
+    parts.push(`\n\nАлгоритм предлагал: ${entry.suggestedNote}`);
+    if (entry.suggestedReason) parts.push(`(${entry.suggestedReason})`);
+  }
+  return parts.join(" ");
+}
+
 export function WbRkJournalPage() {
   const { cabinetId, hasExactCabinet, ready, canWrite } = useWbCabinet();
   const [range, setRange] = useState(() => ({ ...rangeForPreset("5d"), preset: "5d" as string }));
@@ -239,11 +261,16 @@ export function WbRkJournalPage() {
     <button
       type="button"
       onClick={open}
-      title={entry ? `${entry.done ? "Сделано: " : ""}${entry.note}` : emptyHint}
-      aria-label={entry ? `Задача: ${entry.note}` : emptyHint}
+      title={entry ? noteTitle(entry) : emptyHint}
+      aria-label={entry ? `${entry.source === "auto" ? "Предложение алгоритма" : "Задача"}: ${entry.note}` : emptyHint}
       className={`inline-flex items-center justify-center gap-1 rounded-full py-[3px] text-[10px] font-semibold leading-4 transition-colors ${
         entry
-          ? `w-[80px] px-2 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-60" : ""}`
+          // Предложение алгоритма и решение человека не должны выглядеть
+          // одинаково: иначе непонятно, что уже решено, а с чем можно спорить.
+          // Совет — пунктиром и приглушённо, решение — заливкой.
+          ? entry.source === "auto"
+            ? `w-[80px] border border-dashed border-violet-300 bg-violet-50/60 px-2 text-violet-700${entry.done ? " opacity-60" : ""}`
+            : `w-[80px] px-2 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-60" : ""}`
           : "border border-dashed border-slate-200 px-1 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
       }`}
     >

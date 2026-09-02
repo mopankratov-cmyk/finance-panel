@@ -80,6 +80,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/sync/rk-autotask",
+      "schedule": "20 3 * * *"
+    },
+    {
       "path": "/api/sync/screen-latency",
       "schedule": "30 4 * * *"
     },
@@ -106,6 +110,10 @@
     {
       "path": "/api/signals?persist=1",
       "schedule": "40 6 * * *"
+    },
+    {
+      "path": "/api/adverts/rules/run",
+      "schedule": "0 7 * * *"
     }
   ]
 }

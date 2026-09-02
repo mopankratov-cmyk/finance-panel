@@ -32,8 +32,28 @@ test("тип кампании и модель оплаты берутся из �
   assert.match(route, /bid_type, payment_type/, "колонки надо запросить, иначе брать неоткуда");
   assert.equal(/bid_type: "unified",/.test(route), false, "выдуманный тип возвращаться не должен");
   assert.equal(/payment: "cpm",/.test(route), false);
-  // Неизвестный тип — отдельный фильтр, а не молчаливая «единая».
-  assert.match(page, /\['unknown', 'Тип неизвестен'\]/);
+  // Неизвестное — отдельный вариант фильтра, а не молчаливое «CPM».
+  assert.match(page, /\['unknown', 'Оплата неизвестна'\]/);
+});
+
+test("модель оплаты и тип ставки — два разных утверждения о кампании", () => {
+  // Живая проверка 02.09.2026 поймала противоречие на одном экране: бейдж
+  // строки писал «единая», потому что оплата CPM, а панель действий на той же
+  // карточке предлагала выбрать место показа — то есть ставка ручная.
+  //
+  // Ошибка была в том, что одна функция отвечала на два вопроса сразу. Теперь
+  // их две, и бейджей в строке тоже два.
+  assert.match(page, /function campaignPaymentKind\(campaign: Campaign\): "cpc" \| "cpm" \| "unknown"/);
+  assert.match(page, /function campaignBidKind\(campaign: Campaign\): "manual" \| "unified" \| "unknown"/);
+  assert.match(page, /BID_BADGE\[campaignBidKind\(campaign\)\]/, "тип ставки виден в строке");
+  assert.equal(
+    /campaign\.payment === "cpm" \? "unified"/.test(page),
+    false,
+    "оплата за показы не делает ставку единой",
+  );
+  // Панель действий решает про место показа по типу ставки — тем же признаком.
+  const panel = readFileSync(new URL("../components/wb/ads/AdActionsPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /bid_type === "unified" \|\| campaign\.bid_type === "auto"/);
 });
 
 test("последняя правка ставки находится по тому статусу, который пишет журнал", () => {

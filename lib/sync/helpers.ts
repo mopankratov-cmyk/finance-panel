@@ -111,7 +111,10 @@ export async function chunkedUpsertWithOptionalColumns(
 // (видно в логах Vercel), если после ретраев всё равно не удалось записать.
 export async function writeSyncLog(
   job: string,
-  status: "ok" | "error",
+  // «partial» — работа началась и не доделана до конца (упёрлись в бюджет
+  // времени, в лимит площадки, в предел страниц). Это отдельное состояние:
+  // выдавать его за «ok» значит рапортовать об успехе там, где хвост остался.
+  status: "ok" | "partial" | "error",
   rowsAffected: number | null,
   error: string | null,
   startedAt: Date,

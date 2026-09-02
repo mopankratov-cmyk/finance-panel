@@ -10,6 +10,8 @@ import { downloadSimpleXlsx } from "@/components/payments/ddsExport";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Loan, Payment } from "@/lib/types";
+import { originalLoanPaymentAmount, roundToTenth } from "@/lib/opiu/loanCurrency";
+import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
 
 const marker = (loanId: string) => `[loan:${loanId}:`;
 const receiptMarker = (loanId: string) => `[loan:${loanId}:receipt]`;
@@ -29,8 +31,10 @@ function scheduleFromPayments(payments: Payment[], loanId: string): LoanSchedule
     const match = payment.comment?.match(/\[loan:[^:]+:schedule:([^:]+):(principal|interest|penalty|fine)\]/);
     if (!match) continue;
     const [, rowId, kind] = match;
-    const current = grouped.get(rowId) ?? { id: rowId, date: payment.date, principal: 0, interest: 0, penalty: 0, fine: 0, status: payment.status };
+    const current = grouped.get(rowId) ?? { id: rowId, date: payment.date, principal: 0, interest: 0, penalty: 0, fine: 0, principalOriginal: 0, interestOriginal: 0, penaltyOriginal: 0, fineOriginal: 0, status: payment.status };
     current[kind as "principal" | "interest" | "penalty" | "fine"] = Math.abs(payment.amount);
+    const savedRate = Number(commentValue(payment.comment, "fx-rate")) || 1;
+    current[`${kind}Original` as "principalOriginal" | "interestOriginal" | "penaltyOriginal" | "fineOriginal"] = originalLoanPaymentAmount(payment, savedRate);
     if (payment.status === "done" || commentValue(payment.comment, "paid-by")) current.status = "done";
     grouped.set(rowId, current);
   }
@@ -101,16 +105,17 @@ function paymentMatchesCreditor(payment: Payment, creditor: string) {
 
 function exportRows(loans: Loan[], payments: Payment[], companies: DdsCompany[], companyByPayment: Map<string, string | null>) {
   const companyNames = new Map(companies.map((company) => [company.id, company.name]));
-  const header: Array<string | number> = ["Компания", "Кредитор", "Дата платежа", "Тело", "Проценты", "Всего", "Статус", "Остаток тела", "Договор"];
+  const header: Array<string | number> = ["Компания", "Кредитор", "Дата платежа", "Валюта", "Тело в валюте", "Проценты в валюте", "Тело, ₽", "Проценты, ₽", "Всего, ₽", "Статус", "Остаток тела, ₽", "Договор"];
   const rows: Array<Array<string | number>> = [header];
   for (const loan of loans) {
     const schedule = scheduleFromPayments(payments, loan.id);
     const firstLinked = linkedRows(payments, loan.id)[0];
     const company = companyNames.get(companyByPayment.get(firstLinked?.id) ?? "") ?? "Не назначена";
+    const currency = commentValue(firstLinked?.comment, "currency") || "RUB";
     let balance = loan.principalAmount;
     for (const item of schedule) {
       balance = Math.max(0, balance - item.principal);
-      rows.push([company, loan.creditorName, item.date, item.principal, item.interest + item.penalty + item.fine, item.principal + item.interest + item.penalty + item.fine, item.status === "done" ? "Оплачено" : item.status === "cancelled" ? "Отменено" : "План", balance, contractName(payments, loan.id)]);
+      rows.push([company, loan.creditorName, item.date, currency, item.principalOriginal ?? item.principal, (item.interestOriginal ?? item.interest) + (item.penaltyOriginal ?? item.penalty) + (item.fineOriginal ?? item.fine), item.principal, item.interest + item.penalty + item.fine, item.principal + item.interest + item.penalty + item.fine, item.status === "done" ? "Оплачено" : item.status === "cancelled" ? "Отменено" : "План", balance, contractName(payments, loan.id)]);
     }
   }
   return rows;
@@ -146,6 +151,10 @@ export function LoansPage() {
     });
   }, []);
 
+  useDailyLoanCurrencyRefresh(state.payments, dispatch, (error) => {
+    console.error("Не удалось обновить валютный график кредитов", error);
+  });
+
   const loanCompany = (loanId: string) => {
     const linked = linkedRows(state.payments, loanId);
     return linked.map((payment) => companyByPayment.get(payment.id)).find(Boolean) ?? null;
@@ -159,7 +168,10 @@ export function LoansPage() {
   });
   const schedules = useMemo(() => new Map(state.loans.map((loan) => [loan.id, scheduleFromPayments(state.payments, loan.id)])), [state.loans, state.payments]);
   const outstanding = filteredLoans.reduce((sum, loan) => {
-    const paidPrincipal = (schedules.get(loan.id) ?? []).filter((row) => row.status === "done").reduce((value, row) => value + row.principal, 0);
+    const schedule = schedules.get(loan.id) ?? [];
+    const currency = commentValue(firstLoanComment(state.payments, loan.id), "currency") || "RUB";
+    if (currency !== "RUB") return sum + schedule.filter((row) => row.status === "planned").reduce((value, row) => value + row.principal, 0);
+    const paidPrincipal = schedule.filter((row) => row.status === "done").reduce((value, row) => value + row.principal, 0);
     return sum + Math.max(0, loan.principalAmount - paidPrincipal);
   }, 0);
   const next30 = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
@@ -255,6 +267,10 @@ export function LoansPage() {
     else dispatch({ type: "ADD_LOAN", payload: loan });
     const existing = linkedRows(state.payments, loan.id);
     const existingByMarker = new Map(existing.map((payment) => [payment.comment?.match(/\[loan:[^\]]+\]/)?.[0] ?? "", payment]));
+    const originalMeta = (amount: number, original: number | undefined) => {
+      const source = result.currency === "RUB" ? amount : Number.isFinite(original) ? Number(original) : amount / (result.exchangeRate || 1);
+      return ` [amount-original:${source}] [amount-currency:${result.currency}]`;
+    };
     const desired: Payment[] = [{
       id: existing.find((payment) => payment.comment?.includes(receiptMarker(loan.id)))?.id ?? generateId("loan-receipt"),
       date: loan.startDate,
@@ -273,12 +289,12 @@ export function LoansPage() {
           id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-principal"),
           date: row.date,
           name: `Погашение тела — ${loan.creditorName}`,
-          amount: -Math.abs(row.principal),
+          amount: -roundToTenth(Math.abs(row.principal)),
           category: "Погашение тела кредита",
           accountId: result.accountId,
           status: row.status,
           counterparty: loan.creditorName,
-          comment: `${rowMarker}${currencyMeta}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
+          comment: `${rowMarker}${currencyMeta}${originalMeta(row.principal, row.principalOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
         });
       }
       if (row.interest > 0) {
@@ -287,12 +303,12 @@ export function LoansPage() {
           id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-interest"),
           date: row.date,
           name: `Проценты по кредиту — ${loan.creditorName}`,
-          amount: -Math.abs(row.interest),
+          amount: -roundToTenth(Math.abs(row.interest)),
           category: "Проценты по кредитам и займам",
           accountId: result.accountId,
           status: row.status,
           counterparty: loan.creditorName,
-          comment: `${rowMarker}${currencyMeta}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
+          comment: `${rowMarker}${currencyMeta}${originalMeta(row.interest, row.interestOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
         });
       }
       if (row.penalty > 0) {
@@ -301,12 +317,12 @@ export function LoansPage() {
           id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-penalty"),
           date: row.date,
           name: `Пени и штрафы — ${loan.creditorName}`,
-          amount: -Math.abs(row.penalty),
+          amount: -roundToTenth(Math.abs(row.penalty)),
           category: "Пени и штрафы по кредитам и займам",
           accountId: result.accountId,
           status: row.status,
           counterparty: loan.creditorName,
-          comment: `${rowMarker}${currencyMeta}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
+          comment: `${rowMarker}${currencyMeta}${originalMeta(row.penalty, row.penaltyOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
         });
       }
       if (row.fine > 0) {
@@ -315,12 +331,12 @@ export function LoansPage() {
           id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-fine"),
           date: row.date,
           name: `Штраф по кредиту — ${loan.creditorName}`,
-          amount: -Math.abs(row.fine),
+          amount: -roundToTenth(Math.abs(row.fine)),
           category: "Штрафы по кредитам и займам",
           accountId: result.accountId,
           status: row.status,
           counterparty: loan.creditorName,
-          comment: `${rowMarker}${currencyMeta}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
+          comment: `${rowMarker}${currencyMeta}${originalMeta(row.fine, row.fineOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
         });
       }
     }
@@ -431,7 +447,10 @@ export function LoansPage() {
         {filteredLoans.length === 0 ? <Card><CardContent className="py-14 text-center text-slate-500">Для выбранной компании договоров пока нет.</CardContent></Card> : filteredLoans.map((loan) => {
           const schedule = schedules.get(loan.id) ?? [];
           const paidBody = schedule.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal, 0);
-          const balance = Math.max(0, loan.principalAmount - paidBody);
+          const currency = commentValue(firstLoanComment(state.payments, loan.id), "currency") || "RUB";
+          const balance = currency === "RUB"
+            ? Math.max(0, loan.principalAmount - paidBody)
+            : schedule.filter((row) => row.status === "planned").reduce((sum, row) => sum + row.principal, 0);
           const next = schedule.find((row) => row.status === "planned" && row.date >= today);
           const company = companies.find((item) => item.id === loanCompany(loan.id));
           const fee = metadataNumber(state.payments, loan.id, "origination-fee");
@@ -498,10 +517,14 @@ export function LoansPage() {
 
 function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { loan: Loan; company: string; schedule: LoanScheduleDraft[]; payments: Payment[]; onClose: () => void; onEdit: () => void }) {
   const paidPrincipal = schedule.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal, 0);
-  const balance = Math.max(0, loan.principalAmount - paidPrincipal);
   const fee = metadataNumber(payments, loan.id, "origination-fee");
   const feeMonths = metadataNumber(payments, loan.id, "fee-months", 36);
   const fileName = contractName(payments, loan.id);
+  const currency = commentValue(firstLoanComment(payments, loan.id), "currency") || "RUB";
+  const balance = currency === "RUB"
+    ? Math.max(0, loan.principalAmount - paidPrincipal)
+    : schedule.filter((row) => row.status === "planned").reduce((sum, row) => sum + row.principal, 0);
+  const originalPrincipal = Number(commentValue(firstLoanComment(payments, loan.id), "principal-original")) || loan.principalAmount;
   const openSource = async () => {
     try {
       if (!await openLoanDocument(loan.id)) alert("Исходный файл не найден. Откройте редактирование и прикрепите его повторно.");
@@ -514,11 +537,12 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
     <div className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
       <header className="flex items-start justify-between gap-4 border-b p-5"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">{company}</p><h2 className="mt-1 text-xl font-bold text-slate-950">{loan.creditorName}</h2><p className="mt-1 text-sm text-slate-500">{contractNumber(payments, loan.id) ? `Договор № ${contractNumber(payments, loan.id)} от ` : "Договор от "}{formatDate(loan.startDate)} · срок до {formatDate(loan.dueDate)}</p></div><button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
       <div className="overflow-y-auto p-5">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={formatMoney(loan.principalAmount)} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
-        <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[900px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th><th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={currency === "RUB" ? formatMoney(loan.principalAmount) : `${roundToTenth(originalPrincipal).toLocaleString("ru-RU")} ${currency} · ${formatMoney(loan.principalAmount)}`} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
+        <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th>{currency !== "RUB" && <th className="p-3 text-right">В валюте договора</th>}<th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
           const paidBefore = schedule.filter((item) => item.status === "done" && item.date <= row.date).reduce((sum, item) => sum + item.principal, 0);
           const overdue = row.status === "planned" && row.date < todayISO();
-          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
+          const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);
+          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundToTenth(originalTotal).toLocaleString("ru-RU")} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
         })}</tbody></table></div>
       </div>
       <footer className="flex flex-wrap justify-between gap-3 border-t p-4"><button type="button" disabled={!fileName} onClick={() => void openSource()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-4 font-bold text-violet-700 disabled:opacity-40"><ExternalLink className="h-4 w-4" />Открыть исходный файл</button><div className="flex gap-2"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></div></footer>
