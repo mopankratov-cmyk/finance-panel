@@ -1,3 +1,4 @@
+import { consumedFactIds } from "@/lib/finance/factLinks";
 import type { Payment } from "@/lib/types";
 
 export interface PlanFactMatch {
@@ -42,6 +43,8 @@ export function findPlanFactMatches(
 ): PlanFactMatchingResult {
   const planned = payments.filter((payment) => (payment.status === "planned" && isCalendarCashFlow(payment)) || Boolean(linkedFactId(payment)));
   const facts = payments.filter((payment) => payment.status === "done" && isCalendarCashFlow(payment));
+  // Факт, уже закрывший строку графика кредита или другой план, второй раз не предлагается.
+  const consumed = consumedFactIds(payments);
   const usedFacts = new Set<string>();
   const matched: PlanFactMatch[] = [];
   const review: PlanFactMatch[] = [];
@@ -55,7 +58,7 @@ export function findPlanFactMatches(
       continue;
     }
     const candidates = facts
-      .filter((fact) => !usedFacts.has(fact.id))
+      .filter((fact) => !usedFacts.has(fact.id) && (!consumed.has(fact.id) || persistedFactId === fact.id))
       .map((fact) => {
         if (Math.sign(plan.amount) !== Math.sign(fact.amount)) return null;
         const planCompany = companyByPayment.get(plan.id) ?? null;
@@ -84,7 +87,11 @@ export function findPlanFactMatches(
 
     const best = candidates[0];
     const gap = best ? best.score - (candidates[1]?.score ?? 0) : 0;
-    if (best && best.score >= 80 && gap >= 10) {
+    // Автоматически (без подтверждения) план закрывается только фактом с той же
+    // суммой: совпавшие компания/кошелёк/контрагент/статья набирали 80+ баллов и
+    // при расхождении до 30% — план на 100 000 гасился фактом на 70 000.
+    const exactAmount = best ? Math.abs(plan.amount - best.fact.amount) <= Math.max(0.01, Math.abs(plan.amount) * 0.01) : false;
+    if (best && best.score >= 80 && gap >= 10 && exactAmount) {
       usedFacts.add(best.fact.id);
       matched.push({ planned: plan, fact: best.fact, score: Math.min(100, best.score), source: "automatic" });
     } else if (best && best.score >= 55) {

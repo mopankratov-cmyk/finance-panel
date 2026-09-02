@@ -9,6 +9,7 @@ import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, upda
 import { downloadSimpleXlsx } from "@/components/payments/ddsExport";
 import { Card, CardContent } from "@/components/ui/Card";
 import { LOAN_CATEGORIES } from "@/lib/finance/categories";
+import { consumedFactIds, preservedLoanMarkers } from "@/lib/finance/factLinks";
 import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Loan, Payment } from "@/lib/types";
 import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurrency";
@@ -195,7 +196,9 @@ export function LoansPage() {
   const rowIdsForExport = exportRowIds(filteredLoans, state.payments);
 
   const reconcileWithDds = useCallback(async (showResult = true) => {
-    const actualPayments = state.payments.filter((payment) => payment.status === "done" && payment.amount < 0 && !payment.comment?.includes("[loan:"));
+    // Факт, уже закрывший план календаря или другую строку графика, второй раз не используется.
+    const consumed = consumedFactIds(state.payments);
+    const actualPayments = state.payments.filter((payment) => payment.status === "done" && payment.amount < 0 && !payment.comment?.includes("[loan:") && !consumed.has(payment.id));
     const usedActual = new Set<string>();
     let matched = 0;
     for (const loan of state.loans) {
@@ -340,6 +343,20 @@ export function LoansPage() {
           comment: `${rowMarker}${currencyMeta}${originalMeta(row.fine, row.fineOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
         });
       }
+    }
+    // Строка, уже закрытая фактом ДДС ([paid-by:…]), при пересохранении договора
+    // оставалась бы с status из формы — «done» — и воскресала бы в реестре рядом
+    // с настоящим банковским платежом. Сохраняем её статус и служебные метки.
+    const existingById = new Map(existing.map((payment) => [payment.id, payment]));
+    for (const [index, payment] of desired.entries()) {
+      const prior = existingById.get(payment.id);
+      if (!prior) continue;
+      const markers = preservedLoanMarkers(prior.comment);
+      desired[index] = {
+        ...payment,
+        status: prior.comment?.includes("[paid-by:") ? "cancelled" : payment.status,
+        comment: markers ? `${payment.comment ?? ""} ${markers}`.trim() : payment.comment,
+      };
     }
     const desiredIds = new Set(desired.map((payment) => payment.id));
     for (const payment of existing.filter((payment) => !desiredIds.has(payment.id))) dispatch({ type: "DELETE_PAYMENT", payload: payment.id });
