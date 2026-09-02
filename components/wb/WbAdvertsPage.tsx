@@ -766,10 +766,32 @@ export function WbAdvertsPage() {
                   <button type="button" onClick={() => setSelectedId(campaign.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500">
                     <WbProductImage nm={article.nm} src={article.photo} loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} /><StatusIcon className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
-                      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className={`rounded px-1.5 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span><span className={`rounded px-1.5 py-0.5 ${BID_BADGE[campaignBidKind(campaign)].className}`}>{BID_BADGE[campaignBidKind(campaign)].label}</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">{article.art}</span></div>
+                      {/*
+                        Артикул впереди имени, и он же выделен. WB заводит
+                        кампании как «РС полки <id> - <артикул>», поэтому в узкой
+                        колонке все имена обрезались до «РС полки …» и строки
+                        становились неразличимы: из 238 имён кабинета 113 длиннее,
+                        чем сюда влезает. Опознаёт кампанию именно артикул — он и
+                        должен стоять первым.
+                      */}
+                      <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} /><StatusIcon className="h-3 w-3 shrink-0 text-slate-400" /><span className="shrink-0 text-[11px] font-bold text-slate-800">{article.art}</span><span className="truncate text-[10px] text-slate-400">{campaign.name}</span></div>
+                      <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className={`rounded px-1.5 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span><span className={`rounded px-1.5 py-0.5 ${BID_BADGE[campaignBidKind(campaign)].className}`}>{BID_BADGE[campaignBidKind(campaign)].label}</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">nm {article.nm}</span></div>
                     </div>
-                    <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : `ставка ${rub(campaign.bid_cpm_rub)}`} · сегодня {rub(campaign.spend_today)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div title={article.spent_sku_7_closed == null ? "Разбивка расхода по артикулам за период не собрана" : undefined} className={`mt-0.5 text-[9px] font-semibold tabular-nums ${article.spent_sku_7_closed == null ? "text-slate-400" : "text-violet-700"}`}>Расход SKU 7д {article.spent_sku_7_closed == null ? "—" : rub(article.spent_sku_7_closed)}</div><div title={`${closedDrrTitle(campaign)} · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
+                    <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : `ставка ${rub(campaign.bid_cpm_rub)}`} · сегодня {rub(campaign.spend_today)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-700">за 7 дн. {rub(campaign.spent_7_closed)}</div>{
+                      /*
+                        Расход по артикулу показываем, только когда он ОТЛИЧАЕТСЯ
+                        от расхода кампании. В кабинете из 46 кампаний с расходом
+                        19 дают ровно те же рубли — то есть на артикул тратит
+                        только эта кампания, и второе число дублирует первое,
+                        отнимая место у имени. Отличие же значимо: оно означает,
+                        что по товару бьют и другие кампании.
+                      */
+                      article.spent_sku_7_closed == null
+                        ? <div title="Разбивка расхода по артикулам за период не собрана" className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-400">по артикулу —</div>
+                        : Math.round(article.spent_sku_7_closed) !== Math.round(campaign.spent_7_closed)
+                          ? <div title="По этому артикулу тратит не только эта кампания" className="mt-0.5 text-[9px] font-semibold tabular-nums text-violet-700">по артикулу {rub(article.spent_sku_7_closed)}</div>
+                          : null
+                    }<div title={`${closedDrrTitle(campaign)} · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР 7д {closedDrrLabel(campaign)}</div></div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                   </button>
                   </div>
