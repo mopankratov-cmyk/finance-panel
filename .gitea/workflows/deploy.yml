@@ -45,8 +45,30 @@ jobs:
           # VERCEL_ORG_ID/VERCEL_PROJECT_ID из env указывают проект.
           deploy_output=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN")
           printf '%s\n' "$deploy_output"
-          url=$(printf '%s\n' "$deploy_output" | grep -Eo 'https://[^ ]+\.vercel\.app' | tail -n 1)
-          test -n "$url"
+
+          # Публичный алиас ИСКЛЮЧАЕМ из поиска адреса деплоя.
+          #
+          # Vercel CLI теперь печатает две строки с адресами, и «Aliased» идёт
+          # ПОСЛЕДНЕЙ:
+          #   ▲ Production  https://finance-panel-<хеш>-<команда>.vercel.app
+          #   ▲ Aliased     https://finance-panel-two.vercel.app
+          # Прежний `tail -n 1` брал вторую, и следующая команда выполнялась как
+          # `vercel alias set finance-panel-two.vercel.app finance-panel-two.vercel.app`
+          # — привязка домена к самому себе. Она падает, и выкладка помечается
+          # провалившейся уже ПОСЛЕ успешного деплоя: отсюда «Failing after 2m27s»
+          # и алерт «прод не обновился» при обновившемся проде.
+          #
+          # Раннер ставит `vercel@latest`, поэтому сломалось это молча, в момент
+          # изменения вывода CLI, и падало на каждом коммите подряд.
+          url=$(printf '%s\n' "$deploy_output" \
+            | grep -Eo 'https://[^ ]+\.vercel\.app' \
+            | grep -v '^https://finance-panel-two\.vercel\.app$' \
+            | tail -n 1)
+          if [ -z "$url" ]; then
+            echo "Не удалось разобрать адрес деплоя из вывода Vercel CLI — см. вывод выше."
+            exit 1
+          fi
+          echo "Адрес деплоя: $url"
 
           # Сначала промоутим публичный alias, потом проверяем именно его.
           # Технический *.vercel.app URL деплоя может быть закрыт Vercel SSO и отдавать 302,
