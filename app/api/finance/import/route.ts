@@ -115,12 +115,27 @@ export async function DELETE() {
   const accounts = await db.from("accounts").select("id").in("name", DEMO_ACCOUNT_NAMES);
   if (accounts.error) return NextResponse.json({ error: accounts.error.message }, { status: 500 });
   const ids = (accounts.data ?? []).map((row) => String(row.id));
-  if (!ids.length) return NextResponse.json({ accountsDeleted: 0, paymentsDeleted: 0 });
-  const payments = await db.from("payments").select("id").in("account_id", ids);
-  if (payments.error) return NextResponse.json({ error: payments.error.message }, { status: 500 });
-  const paymentsDelete = await db.from("payments").delete().in("account_id", ids);
-  if (paymentsDelete.error) return NextResponse.json({ error: paymentsDelete.error.message }, { status: 500 });
-  const accountsDelete = await db.from("accounts").delete().in("id", ids);
-  if (accountsDelete.error) return NextResponse.json({ error: accountsDelete.error.message }, { status: 500 });
-  return NextResponse.json({ accountsDeleted: ids.length, paymentsDeleted: payments.data?.length ?? 0 });
+  if (!ids.length) return NextResponse.json({ accountsDeleted: 0, paymentsDeleted: 0, accountsKept: 0 });
+  // Импорт переиспользует счета по имени, поэтому на «Наличных» или «Банковском
+  // счёте» могут лежать боевые платежи. Демо — только то, что не пришло из файла
+  // или выписки и не привязано к компании; раньше удалялось всё на этих счетах.
+  const demoPayments = await db.from("payments").select("id").in("account_id", ids).is("import_source", null).is("company_id", null);
+  if (demoPayments.error) return NextResponse.json({ error: demoPayments.error.message }, { status: 500 });
+  const demoIds = (demoPayments.data ?? []).map((row) => String(row.id));
+  if (demoIds.length) {
+    const paymentsDelete = await db.from("payments").delete().in("id", demoIds);
+    if (paymentsDelete.error) return NextResponse.json({ error: paymentsDelete.error.message }, { status: 500 });
+  }
+  // Счёт удаляем, только если на нём не осталось ни одного платежа.
+  const deletable: string[] = [];
+  for (const id of ids) {
+    const rest = await db.from("payments").select("id").eq("account_id", id).limit(1);
+    if (rest.error) return NextResponse.json({ error: rest.error.message }, { status: 500 });
+    if (!(rest.data ?? []).length) deletable.push(id);
+  }
+  if (deletable.length) {
+    const accountsDelete = await db.from("accounts").delete().in("id", deletable);
+    if (accountsDelete.error) return NextResponse.json({ error: accountsDelete.error.message }, { status: 500 });
+  }
+  return NextResponse.json({ accountsDeleted: deletable.length, paymentsDeleted: demoIds.length, accountsKept: ids.length - deletable.length });
 }

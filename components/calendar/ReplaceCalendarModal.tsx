@@ -7,8 +7,9 @@ import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
 import { Modal } from "@/components/ui/Modal";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import type { Account, Payment } from "@/lib/types";
+import { importedMonths, type CalendarReplaceScope } from "./calendarReplace";
 
-export type CalendarReplaceScope = "expenses" | "income" | "all";
+export type { CalendarReplaceScope };
 
 export function ReplaceCalendarModal({
   open,
@@ -16,7 +17,7 @@ export function ReplaceCalendarModal({
   accounts,
   companies,
   calendarPeriod,
-  existingCounts,
+  countExisting,
   onReplace,
 }: {
   open: boolean;
@@ -24,7 +25,8 @@ export function ReplaceCalendarModal({
   accounts: Account[];
   companies: DdsCompany[];
   calendarPeriod: { year: number; month: number };
-  existingCounts: Record<CalendarReplaceScope, number>;
+  /** Сколько старых плановых строк реально удалится — считается той же функцией, что удаляет. */
+  countExisting: (imported: Payment[], companyId: string | null, scope: CalendarReplaceScope) => number;
   onReplace: (payments: Payment[], companyId: string | null, scope: CalendarReplaceScope) => Promise<void>;
 }) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
@@ -52,10 +54,14 @@ export function ReplaceCalendarModal({
   const replace = async () => {
     if (!payments.length || !accountId) return;
     const scopeLabel = scope === "expenses" ? "расходов" : scope === "income" ? "поступлений" : "расходов и поступлений";
-    if (!confirm(`Удалить ${existingCounts[scope]} старых плановых строк ${scopeLabel} этой компании и заменить их данными из файла?`)) return;
+    const withAccount = payments.map((payment) => ({ ...payment, accountId }));
+    const months = [...importedMonths(withAccount)].sort().join(", ");
+    const companyLabel = companyId ? "этой компании" : "без назначенной компании";
+    const count = countExisting(withAccount, companyId || null, scope);
+    if (!confirm(`Удалить ${count} старых плановых строк ${scopeLabel} ${companyLabel} за ${months} и заменить их данными из файла?\n\nПланы других месяцев и фактические платежи не тронутся.`)) return;
     setSaving(true);
     try {
-      await onReplace(payments.map((payment) => ({ ...payment, accountId })), companyId || null, scope);
+      await onReplace(withAccount, companyId || null, scope);
       setPayments([]);
       setFileName("");
       onClose();

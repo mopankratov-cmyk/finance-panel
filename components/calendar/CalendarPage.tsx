@@ -15,6 +15,7 @@ import { FinancialAlertsPanel } from "./FinancialAlertsPanel";
 import { FinanceTasksPanel } from "./FinanceTasksPanel";
 import { calendarExportRows, calendarTemplateSheets, downloadCalendarXlsx } from "./calendarExport";
 import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
+import { importedMonths, matchesReplaceScope, plannedPaymentsToReplace } from "./calendarReplace";
 import { OverdueLoanQueue } from "./OverdueLoanQueue";
 import { WeekSummaryCell } from "./WeekSummaryCell";
 import { chronologicalPaymentOrder, displayPaymentComment, getPaymentPriority, PRIORITY_META, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
@@ -843,18 +844,14 @@ export function CalendarPage() {
         accounts={state.accounts}
         companies={companies}
         calendarPeriod={{ year, month: month + 1 }}
-        existingCounts={{
-          expenses: state.payments.filter((payment) => payment.status === "planned" && payment.amount < 0 && !companyByPayment.get(payment.id)).length,
-          income: state.payments.filter((payment) => payment.status === "planned" && payment.amount > 0 && !companyByPayment.get(payment.id)).length,
-          all: state.payments.filter((payment) => payment.status === "planned" && !companyByPayment.get(payment.id)).length,
-        }}
+        countExisting={(imported, companyId, scope) => plannedPaymentsToReplace(state.payments, companyByPayment, { companyId, scope, months: importedMonths(imported) }).length}
         onReplace={async (payments, companyId, scope) => {
-          const matchesScope = (payment: Payment) => scope === "all" || (scope === "income" ? payment.amount > 0 : payment.amount < 0);
-          const oldPlanIds = state.payments.filter((payment) => payment.status === "planned" && matchesScope(payment) && (companyId ? companyByPayment.get(payment.id) === companyId : !companyByPayment.get(payment.id))).map((payment) => payment.id);
+          // Удаляются планы только тех месяцев, что есть в файле, — по той же функции, что считала число в подтверждении.
+          const oldPlanIds = plannedPaymentsToReplace(state.payments, companyByPayment, { companyId, scope, months: importedMonths(payments) }).map((payment) => payment.id);
           for (const paymentId of oldPlanIds) dispatch({ type: "DELETE_PAYMENT", payload: paymentId });
           const existingFacts = state.payments.filter((payment) => payment.status === "done");
           const normalized = (value: string) => value.toLowerCase().replace(/[^а-яa-z0-9]+/gi, "");
-          const safePayments = payments.filter(matchesScope).filter((payment) => payment.status !== "done" || !existingFacts.some((fact) =>
+          const safePayments = payments.filter((payment) => matchesReplaceScope(payment, scope)).filter((payment) => payment.status !== "done" || !existingFacts.some((fact) =>
             fact.date === payment.date &&
             Math.abs(fact.amount - payment.amount) < 0.01 &&
             normalized(fact.name) === normalized(payment.name),

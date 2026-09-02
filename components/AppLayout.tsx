@@ -6,7 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { useFinance } from "./providers/FinanceProvider";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { hydrated, loadError } = useFinance();
+  const { hydrated, loadError, persistError, clearPersistError } = useFinance();
   const pathname = usePathname();
   // Страница входа и публичная политика конфиденциальности — без сайдбара и без гейта загрузки финансов
   if (pathname === "/login" || pathname === "/privacy") return <>{children}</>;
@@ -86,6 +86,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <main className="min-w-0 flex-1 lg:ml-64">
         <div className="px-4 py-6 pt-16 lg:px-8 lg:py-8 lg:pt-8">
+          {persistError && (
+            <div role="alert" className="mb-4 flex flex-col gap-3 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 sm:flex-row sm:items-center sm:justify-between">
+              <span>{persistError}</span>
+              <span className="flex shrink-0 gap-2">
+                <button type="button" onClick={() => window.location.reload()} className="min-h-10 rounded-lg bg-rose-600 px-3 font-semibold text-white hover:bg-rose-700">Обновить страницу</button>
+                <button type="button" onClick={clearPersistError} aria-label="Скрыть" className="min-h-10 rounded-lg border border-rose-300 px-3 font-semibold text-rose-800 hover:bg-rose-100">Скрыть</button>
+              </span>
+            </div>
+          )}
           {children}
         </div>
       </main>

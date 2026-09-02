@@ -250,9 +250,9 @@ export async function commitImport(
   };
 }
 
-export async function cleanDemoData(): Promise<{ accountsDeleted: number; paymentsDeleted: number }> {
+export async function cleanDemoData(): Promise<{ accountsDeleted: number; paymentsDeleted: number; accountsKept: number }> {
   const response = await fetch("/api/finance/import", { method: "DELETE" });
-  const body = await response.json().catch(() => ({})) as { accountsDeleted?: number; paymentsDeleted?: number; error?: string };
+  const body = await response.json().catch(() => ({})) as { accountsDeleted?: number; paymentsDeleted?: number; accountsKept?: number; error?: string };
   if (!response.ok) throw new Error(body.error || `Ошибка очистки ${response.status}`);
-  return { accountsDeleted: Number(body.accountsDeleted ?? 0), paymentsDeleted: Number(body.paymentsDeleted ?? 0) };
+  return { accountsDeleted: Number(body.accountsDeleted ?? 0), paymentsDeleted: Number(body.paymentsDeleted ?? 0), accountsKept: Number(body.accountsKept ?? 0) };
 }
