@@ -1,23 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rkTargetCpo, suggestRkTask, type RkAutoTaskInput } from "./rkAutoTask.ts";
+import {
+  computeRkTaskBounds,
+  RK_DEFAULT_BOUNDS,
+  suggestRkTask,
+  type RkAutoTaskInput,
+} from "./rkAutoTask.ts";
 
-// Цель 300 ₽: маржа 600 ₽ на единицу, половина её отдана в рекламу.
-const TARGET = 300;
+// Границы СЛОЁНО по августу: ДРР потолок 12%, пол 2%, расход без заказов 1000 ₽.
 const base: RkAutoTaskInput = {
-  block: "cpc_search", spent: 0, orders: 0, views: 1000,
-  bid: 5, stock: 10, targetCpo: TARGET, dayClosed: true,
+  block: "cpc_search", spent: 0, orders: 0, ordersSum: 0, views: 1000,
+  bid: 5, stock: 10, bounds: RK_DEFAULT_BOUNDS, dayClosed: true,
 };
 const at = (patch: Partial<RkAutoTaskInput>) => suggestRkTask({ ...base, ...patch });
 
 test("советчик молчит чаще, чем говорит", () => {
   // 61% дней ставку не трогают вовсе — молчание это норма, а не отказ.
-  assert.equal(at({ dayClosed: false, spent: 900 }), null, "живой день не советуем");
-  assert.equal(at({ block: "unknown", spent: 900 }), null, "вид не определён");
-  assert.equal(at({ views: 0, spent: 900 }), null, "тишина в показах ≠ плохо крутилось");
-  assert.equal(at({ block: "erk", spent: 900 }), null, "ЕРК управляется правилами WB");
-  assert.equal(at({ bid: null, spent: 900 }), null, "ставка неизвестна");
-  assert.equal(at({ targetCpo: null, spent: 900 }), null, "без цели порогов нет");
+  assert.equal(at({ dayClosed: false, spent: 5000 }), null, "живой день не советуем");
+  assert.equal(at({ block: "unknown", spent: 5000 }), null, "вид не определён");
+  assert.equal(at({ views: 0, spent: 5000 }), null, "тишина в показах ≠ плохо крутилось");
+  assert.equal(at({ block: "erk", spent: 5000 }), null, "ЕРК управляется правилами WB");
+  assert.equal(at({ bid: null, spent: 5000 }), null, "ставка неизвестна");
 });
 
 test("нулевой остаток — единственный совет не про ставку", () => {
@@ -26,49 +29,56 @@ test("нулевой остаток — единственный совет не
   assert.equal(at({ stock: null, spent: 10 }), null);
 });
 
-test("поиск: нет заказов и потрачено больше цели — снизить", () => {
-  const out = at({ spent: 350, orders: 0 });
+test("поиск: нет заказов и расход выше границы кабинета — снизить", () => {
+  const out = at({ spent: 1500, orders: 0 });
   assert.equal(out?.note, "Снизить ставку до 4 ₽");
   assert.match(out!.reason, /Заказов нет/);
-  // Потратили меньше цели — рано делать вывод.
-  assert.equal(at({ spent: 120, orders: 0 }), null);
+  // Ниже границы — рано делать вывод: так проходит девять дней из десяти.
+  assert.equal(at({ spent: 400, orders: 0 }), null);
 });
 
-test("поиск: дорогой заказ — снизить, дешёвый — поднять", () => {
-  assert.match(at({ spent: 600, orders: 1 })!.note, /Снизить/); // CPO 600 > 480
-  assert.match(at({ spent: 150, orders: 1 })!.note, /Поднять/); // CPO 150 < 180
-  // Между полом и потолком — рабочий режим, трогать нечего.
-  assert.equal(at({ spent: 300, orders: 1 }), null);
+test("поиск: мера — ДРР, а не рубли", () => {
+  // Один и тот же расход при разной выручке значит разное.
+  assert.match(at({ spent: 900, orders: 3, ordersSum: 5_000 })!.note, /Снизить/);  // ДРР 18%
+  assert.equal(at({ spent: 900, orders: 3, ordersSum: 15_000 }), null);            // ДРР 6% — рабочий режим
+  assert.match(at({ spent: 900, orders: 3, ordersSum: 90_000 })!.note, /Поднять/); // ДРР 1% — есть запас
 });
 
 test("полки: правило обратное поисковому", () => {
-  // На полках ставка покупает позицию, а не заказ: 62% решений при отсутствии
-  // заказов — ПОДНЯТЬ, и 70% при дорогом заказе — тоже поднять.
-  const noOrders = at({ block: "cpc_shelf", spent: 350, orders: 0 });
-  assert.match(noOrders!.note, /Поднять/);
-  const dear = at({ block: "cpc_shelf", spent: 600, orders: 1 });
-  assert.match(dear!.note, /Поднять/);
-  // Тот же вход на поиске даёт противоположное — это и есть суть правила.
-  assert.match(at({ block: "cpc_search", spent: 600, orders: 1 })!.note, /Снизить/);
+  // На полках ставка покупает позицию, а не заказ: заказов нет — ПОДНЯТЬ,
+  // дорого — тоже поднять. Тот же вход на поиске даёт противоположное.
+  assert.match(at({ block: "cpc_shelf", spent: 1500, orders: 0 })!.note, /Поднять/);
+  assert.match(at({ block: "cpc_shelf", spent: 900, orders: 3, ordersSum: 5_000 })!.note, /Поднять/);
+  assert.match(at({ block: "cpc_search", spent: 900, orders: 3, ordersSum: 5_000 })!.note, /Снизить/);
 });
 
 test("корзины на решение не влияют", () => {
-  // 27% против базовых 24% — шум. Корзин во входе нет вовсе, и это осознанно:
-  // тест сторожит, что их не добавят «на всякий случай».
-  const keys = Object.keys(base);
-  assert.equal(keys.includes("carts"), false);
+  // 27% против базовых 24% — шум. Их нет во входе, и это осознанно.
+  assert.equal(Object.keys(base).includes("carts"), false);
 });
 
 test("шаг решения крупный: мелкое движение — не решение", () => {
-  const out = at({ spent: 350, orders: 0, bid: 10 });
-  assert.equal(out?.bidTo, 8, "20% вниз от 10 ₽");
-  assert.equal(at({ spent: 100, orders: 1, bid: 10 })?.bidTo, 12, "20% вверх");
+  assert.equal(at({ spent: 1500, orders: 0, bid: 10 })?.bidTo, 8, "20% вниз");
+  assert.equal(at({ spent: 100, orders: 3, ordersSum: 90_000, bid: 10 })?.bidTo, 12, "20% вверх");
 });
 
-test("цель считается из маржи, а не зашита числом", () => {
-  assert.equal(rkTargetCpo(600, 0.5), 300);
-  assert.equal(rkTargetCpo(null, 0.5), null);
-  assert.equal(rkTargetCpo(600, 0), null, "нулевая доля — не цель");
-  assert.equal(rkTargetCpo(600, 1.5), null, "доля больше единицы бессмысленна");
-  assert.equal(rkTargetCpo(-10, 0.5), null, "убыточный товар цели не задаёт");
+test("границы считаются из истории кабинета, а не выдумываются", () => {
+  // Ровный ряд: ДРР от 1% до 20%, расходы без заказов от 10 до 2000 ₽.
+  const history = [
+    ...Array.from({ length: 200 }, (_, i) => ({ spend: 100 + i, orders: 2, ordersSum: (100 + i) / ((1 + (i % 20)) / 100) })),
+    ...Array.from({ length: 60 }, (_, i) => ({ spend: 10 + i * 33, orders: 0, ordersSum: 0 })),
+  ];
+  const bounds = computeRkTaskBounds(history);
+  assert.ok(bounds, "истории достаточно");
+  assert.ok(bounds!.drrCeilingPct > bounds!.drrFloorPct, "потолок выше пола");
+  assert.ok(bounds!.spendWithoutOrder > 0);
+  // Пол не должен схлопнуться с потолком у кабинета, где почти всё бесплатно.
+  const cheap = Array.from({ length: 150 }, () => ({ spend: 50, orders: 5, ordersSum: 1_000_000 }));
+  const cheapBounds = computeRkTaskBounds(cheap);
+  assert.ok(cheapBounds!.drrFloorPct >= 0.5, "пол не вырождается в ноль");
+});
+
+test("истории мало — границ нет, а не выдуманные", () => {
+  assert.equal(computeRkTaskBounds([]), null);
+  assert.equal(computeRkTaskBounds(Array.from({ length: 40 }, () => ({ spend: 100, orders: 1, ordersSum: 1000 }))), null);
 });

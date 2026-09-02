@@ -8,7 +8,7 @@
 //     66% на CPC и 80% на CPM мельче 5% — это следование за минимальной
 //     ставкой, а не решение. Настоящих решений (шаг крупнее 15%) — 303;
 //   • правило на поиске и на полках ПРОТИВОПОЛОЖНОЕ. CPC: заказов нет и
-//     потрачено больше цели — снижают в 76%; заказ дорогой — снижают в 79%;
+//     потрачено много — снижают в 76%; заказ дорогой — снижают в 79%;
 //     заказ дешёвый — поднимают в 57%. Полки: заказов нет — ПОДНИМАЮТ в 62%,
 //     дорогой заказ — поднимают в 70%. На полках ставка покупает позицию, а не
 //     заказ, и ограничителем работает дневной бюджет;
@@ -19,14 +19,92 @@
 // Отсюда главное свойство этого модуля: он МОЛЧИТ чаще, чем говорит. Советчик,
 // который пишет что-то каждый день по каждой строке, превращается в шум и его
 // выключают.
+//
+// Мера «дорого» — ДРР, процент рекламы от заказов, а не рубли и не доля маржи.
+// Порог в рублях у товара за 500 ₽ и за 5 000 ₽ означает разное; доля маржи
+// требует числа, которого никто не знает наверняка. ДРР же виден в самих
+// данных, и границы берутся из истории КАБИНЕТА (computeRkTaskBounds).
 
 import { WB_RK_BLOCK_UNKNOWN } from "./advertBlocks";
 
-/** Во сколько раз заказ дороже цели считается дорогим, и во сколько — дешёвым. */
-export const CPO_CEILING_RATIO = 1.6;
-export const CPO_FLOOR_RATIO = 0.6;
 /** Шаг настоящего решения. Мельче — это следование за рынком, а не решение. */
 export const BID_STEP_PCT = 20;
+
+/**
+ * Границы, по которым день считается дорогим или дешёвым.
+ *
+ * Не зашиты числом и не выведены из доли маржи: берутся из ИСТОРИИ САМОГО
+ * КАБИНЕТА (computeRkTaskBounds). Мера — ДРР, процент рекламы от заказов: он
+ * сам подстраивается под цену товара, тогда как порог в рублях у товара за
+ * 500 ₽ и за 5 000 ₽ означает разное.
+ *
+ * Для дня БЕЗ заказов ДРР не определён — там мерой служит сам расход, и его
+ * граница тоже берётся из истории кабинета.
+ */
+export interface RkTaskBounds {
+  /** Расход за день без единого заказа, выше которого пора снижать. */
+  spendWithoutOrder: number;
+  /** ДРР выше этого — реклама съедает слишком много. */
+  drrCeilingPct: number;
+  /** ДРР ниже этого при живых заказах — есть запас, чтобы купить больше. */
+  drrFloorPct: number;
+}
+
+/**
+ * Границы СЛОЁНО по августу 2026 — значение по умолчанию, пока история
+ * кабинета не посчитана. Замер на 5 446 артикуло-днях: ДРР 90-го перцентиля
+ * 11,5%, 75-го — 5,7%; расход без заказов 90-го перцентиля 1 109 ₽.
+ * Отдельная сверка: 90-й перцентиль CPO дал 869 ₽ — почти ровно тот порог
+ * «дорогого заказа» в 800 ₽, который читается из рабочей таблицы владельца.
+ * Две независимые выборки на одной границе — повод ей верить.
+ */
+export const RK_DEFAULT_BOUNDS: RkTaskBounds = {
+  spendWithoutOrder: 1_000,
+  drrCeilingPct: 12,
+  drrFloorPct: 2,
+};
+
+interface RkTaskHistoryRow {
+  /** Полный расход за артикуло-день. */
+  spend: number;
+  orders: number;
+  /** Сумма заказов за тот же день — знаменатель ДРР. */
+  ordersSum: number;
+}
+
+const percentile = (sorted: number[], p: number): number | null =>
+  sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] : null;
+
+/**
+ * Границы из истории кабинета. Советчик должен срабатывать на верхних
+ * десяти процентах, а не на каждой строке: 90-й перцентиль и есть «дорого»
+ * по меркам этого кабинета, а не по чужим.
+ *
+ * `null` в ответе — истории мало, и выдумывать границы нельзя.
+ */
+export function computeRkTaskBounds(history: readonly RkTaskHistoryRow[]): RkTaskBounds | null {
+  const spent = history.filter((row) => row.spend >= 1);
+  if (spent.length < 100) return null;
+  const drr = spent
+    .filter((row) => row.orders > 0 && row.ordersSum > 0)
+    .map((row) => (row.spend / row.ordersSum) * 100)
+    .sort((left, right) => left - right);
+  const noOrders = spent.filter((row) => row.orders === 0).map((row) => row.spend).sort((left, right) => left - right);
+  const ceiling = percentile(drr, 0.9);
+  const floor = percentile(drr, 0.25);
+  // Дней без заказов может не быть вовсе — у кабинета, где реклама всегда что-то
+  // приносит. Это не повод остаться без границ по ДРР: недостающую составляющую
+  // берём из умолчания, а не отменяем весь расчёт.
+  const spendCut = percentile(noOrders, 0.9) ?? RK_DEFAULT_BOUNDS.spendWithoutOrder;
+  if (ceiling == null || floor == null) return null;
+  return {
+    spendWithoutOrder: round2(spendCut),
+    drrCeilingPct: round2(ceiling),
+    // Пол не может совпасть с потолком: у кабинета, где почти всё бесплатно,
+    // 25-й перцентиль вырождается в ноль и «поднять» не сработает никогда.
+    drrFloorPct: round2(Math.max(0.5, Math.min(floor, ceiling / 4))),
+  };
+}
 
 export interface RkAutoTaskInput {
   /** Вид размещения ЭТОГО дня, а не нынешние настройки кампании. */
@@ -37,12 +115,10 @@ export interface RkAutoTaskInput {
   bid: number | null;
   /** Остаток товара. null — не знаем, и это не то же самое, что ноль. */
   stock: number | null;
-  /**
-   * Сколько мы готовы заплатить за заказ. Считается из юнит-экономики
-   * (маржа до рекламы × доля на рекламу), а не зашито числом: у разных
-   * юрлиц разная маржа, и один порог для всех врёт.
-   */
-  targetCpo: number | null;
+  /** Сумма заказов за день — знаменатель ДРР. */
+  ordersSum: number;
+  /** Границы кабинета. Берутся из его же истории, а не зашиты числом. */
+  bounds: RkTaskBounds;
   /** День закрыт целиком. Незакрытый день советовать нельзя. */
   dayClosed: boolean;
 }
@@ -87,11 +163,11 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
   // ЕРК управляется правилами WB, переносить на неё логику ручной ставки нельзя.
   if (input.block === "erk") return null;
   if (input.bid == null || input.bid <= 0) return null;
-  if (input.targetCpo == null || input.targetCpo <= 0) return null;
 
-  const ceiling = input.targetCpo * CPO_CEILING_RATIO;
-  const floor = input.targetCpo * CPO_FLOOR_RATIO;
-  const cpo = input.orders > 0 ? input.spent / input.orders : null;
+  const { bounds } = input;
+  // ДРР — процент рекламы от заказов. Порог в рублях у товара за 500 ₽ и за
+  // 5 000 ₽ означает разное, а этот сам подстраивается под цену.
+  const drr = input.orders > 0 && input.ordersSum > 0 ? (input.spent / input.ordersSum) * 100 : null;
   const step = input.bid * (BID_STEP_PCT / 100);
   const down = round2(Math.max(0.01, input.bid - step));
   const up = round2(input.bid + step);
@@ -108,10 +184,10 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
         bidTo: up,
       };
     }
-    if (cpo != null && cpo > ceiling) {
+    if (drr != null && drr > bounds.drrCeilingPct) {
       return {
         note: `Поднять ставку до ${money(up)} ₽`,
-        reason: `Полки, CPO ${money(cpo)} ₽ выше потолка ${money(ceiling)} ₽ — на полках это лечится позицией, а не тушением`,
+        reason: `Полки, ДРР ${money(drr)}% выше потолка ${money(bounds.drrCeilingPct)}% — на полках это лечится позицией, а не тушением`,
         bidTo: up,
       };
     }
@@ -123,45 +199,32 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
   if (!isSearchLike(input.block) && input.block !== "cpc_both" && input.block !== "cpm_both") return null;
 
   if (input.orders === 0) {
-    // Потратили на заказ и не получили его. Порог — сама цель, а не круглое число.
-    if (input.spent >= input.targetCpo) {
+    // Заказов нет — ДРР не определён, и мерой служит сам расход. Граница взята
+    // из истории кабинета: выше неё он тратит лишь в десятой части дней.
+    if (input.spent >= bounds.spendWithoutOrder) {
       return {
         note: `Снизить ставку до ${money(down)} ₽`,
-        reason: `Заказов нет, потрачено ${money(input.spent)} ₽ при цели ${money(input.targetCpo)} ₽ за заказ`,
+        reason: `Заказов нет, потрачено ${money(input.spent)} ₽ при границе ${money(bounds.spendWithoutOrder)} ₽`,
         bidTo: down,
       };
     }
     return null;
   }
 
-  if (cpo != null && cpo > ceiling) {
+  if (drr != null && drr > bounds.drrCeilingPct) {
     return {
       note: `Снизить ставку до ${money(down)} ₽`,
-      reason: `Заказ есть, но стоил ${money(cpo)} ₽ при потолке ${money(ceiling)} ₽`,
+      reason: `Заказы есть, но реклама съела ${money(drr)}% от них при потолке ${money(bounds.drrCeilingPct)}%`,
       bidTo: down,
     };
   }
-  if (cpo != null && cpo < floor) {
+  if (drr != null && drr < bounds.drrFloorPct) {
     return {
       note: `Поднять ставку до ${money(up)} ₽`,
-      reason: `Заказ стоил ${money(cpo)} ₽ при поле ${money(floor)} ₽ — есть запас, чтобы купить больше`,
+      reason: `Реклама съела ${money(drr)}% от заказов при поле ${money(bounds.drrFloorPct)}% — есть запас, чтобы купить больше`,
       bidTo: up,
     };
   }
   // Между полом и потолком — рабочий режим. Молчим.
   return null;
-}
-
-/**
- * Целевой CPO из юнит-экономики: сколько готовы отдать за заказ.
- *
- * `marginPerUnit` — маржа ДО рекламы на единицу, `adShare` — доля этой маржи,
- * которую владелец согласен отдать в рекламу. Зашивать сюда число нельзя: в
- * разобранной таблице пороги фактически стояли около 300 ₽ снизу и 800 ₽
- * сверху, но это следствие конкретной маржи конкретного товара, а не закон.
- */
-export function rkTargetCpo(marginPerUnit: number | null, adShare: number): number | null {
-  if (marginPerUnit == null || !Number.isFinite(marginPerUnit) || marginPerUnit <= 0) return null;
-  if (!Number.isFinite(adShare) || adShare <= 0 || adShare > 1) return null;
-  return round2(marginPerUnit * adShare);
 }
