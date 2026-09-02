@@ -74,8 +74,14 @@ export function ConfirmAction({
     onClose();
   };
 
+  // z-[100], а не z-50. На z-50 подложка честно накрывала окно целиком, но
+  // сайдбар оболочки стоит на z-[70] и шапка на z-[60] — они рисовались ПОВЕРХ
+  // затемнения, и половина экрана оставалась светлой и кликабельной. Для окна,
+  // которое спрашивает разрешение на трату, это плохо вдвойне: рядом с вопросом
+  // остаётся живое меню, по которому можно уйти, не ответив.
+  // Слой и цвет взяты у соседей по разделу — WbCtrDayPopup и WbRkNotePopup.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-[2px]" role="dialog" aria-modal="true">
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
         <div className="flex items-start gap-2.5">
           <AlertTriangle className={`mt-0.5 h-[18px] w-[18px] shrink-0 ${isMoney ? "text-rose-500" : "text-amber-500"}`} aria-hidden="true" />
