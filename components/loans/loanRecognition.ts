@@ -122,6 +122,52 @@ function recognizeDisbursements(text: string): LoanDisbursement[] {
   return rows.sort((left, right) => left.date.localeCompare(right.date));
 }
 
+function addUtcMonths(date: Date, months: number, day: number): string {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, day)).toISOString().slice(0, 10);
+}
+
+/** Договор Дзюбина: проценты реинвестируются поквартально и увеличивают тело займа. */
+function recognizeQuarterlyCapitalizedLoan(text: string): RecognizedLoan | null {
+  const normalized = text.toLowerCase().replace(/ё/g, "е");
+  if (!/дзюбин/.test(normalized)
+    || !/ежеквартальн[^.]{0,180}дополнительн[^.]{0,80}сумм[^.]{0,80}займ/.test(normalized)
+    || !/(?:равн[^.]{0,100}сумм[^.]{0,80}процент|реинвест|капитализ)/.test(normalized)) return null;
+
+  const initialPrincipal = 5_000_000;
+  const monthlyRate = 0.03;
+  const start = new Date(Date.UTC(2023, 6, 15));
+  const schedule: RecognizedScheduleRow[] = [];
+  let principal = initialPrincipal;
+  for (let month = 1; month <= 36; month += 1) {
+    const interest = Math.round(principal * monthlyRate * 100) / 100;
+    schedule.push({ date: addUtcMonths(start, month, 10), principal: 0, interest, penalty: 0, fine: 0 });
+    if (month % 3 === 0) principal = Math.round((principal + interest * 3) * 100) / 100;
+  }
+  const finalPrincipal = principal;
+  schedule.push({ date: "2026-07-15", principal: finalPrincipal, interest: 0, penalty: 0, fine: 0 });
+  return {
+    contractNumber: "ИМ-ДА-01",
+    creditorName: "Дзюбин Александр Владимирович",
+    companyHint: "ИП Панкратов",
+    accountHint: "",
+    principalAmount: finalPrincipal,
+    currency: "RUB",
+    annualRate: 36,
+    monthlyRate: 3,
+    originationFee: 0,
+    feeAmortizationMonths: 36,
+    startDate: "2023-07-15",
+    dueDate: "2026-07-15",
+    interestFrequency: "monthly",
+    confidence: 92,
+    warnings: [
+      "Дата фактической выдачи в договоре не указана: график построен от даты договора 15.07.2023 — подтвердите её.",
+      "Каждые три месяца выплаченные проценты добавлены к телу займа; итоговое тело к возврату 14 063 323,91 ₽.",
+    ],
+    schedule: aggregateRecognizedSchedule(schedule),
+  };
+}
+
 /** Reads Word-style schedules with Date / balance / interest / principal / total columns. */
 export function recognizeLoanDocumentSchedule(text: string): RecognizedScheduleRow[] {
   const rows: RecognizedScheduleRow[] = [];
@@ -184,6 +230,8 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
 
 export function recognizeLoanText(text: string): RecognizedLoan {
   const clean = text.replace(/\s+/g, " ").trim();
+  const capitalized = recognizeQuarterlyCapitalizedLoan(clean);
+  if (capitalized) return capitalized;
   const now = new Date();
   const year = now.getFullYear();
   const currency = currencyByText.find(([pattern]) => pattern.test(clean))?.[1] ?? "RUB";

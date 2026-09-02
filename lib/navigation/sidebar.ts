@@ -5,6 +5,7 @@ const FINANCE_SIDEBAR_PATHS = [
   "/opiu",
   "/calendar",
   "/payments",
+  "/payroll",
   "/accounts",
   "/loans",
   "/costs",
