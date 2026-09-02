@@ -71,7 +71,7 @@ test("two monthly payment dates split interest and respect every dollar tranche"
   assert.equal(result.monthlyRate, 5);
   assert.equal(result.interestFrequency, "semi_monthly");
   assert.equal(result.dueDate, "2027-03-31");
-  assert.equal(result.schedule?.find((row) => row.date === "2026-06-16")?.interest, 952.9);
-  assert.equal(result.schedule?.find((row) => row.date === "2026-06-30")?.interest, 845.8);
+  assert.equal(result.schedule?.find((row) => row.date === "2026-06-16")?.interest, 952.92);
+  assert.equal(result.schedule?.find((row) => row.date === "2026-06-30")?.interest, 845.83);
   assert.equal(result.schedule?.at(-1)?.principal, 36_250);
 });
