@@ -229,6 +229,21 @@ function campaignBidKind(campaign: Campaign): "manual" | "unified" | "unknown" {
   return "unknown";
 }
 
+/**
+ * Риск остатка словом рядом с числом.
+ *
+ * «23,6 дн.» само по себе ничего не требует, и глаз проходит мимо. Ровно этот
+ * риск при этом сильнее всех прочих доводов в рекомендации: кончился товар —
+ * реклама жжёт бюджет в никуда, какой бы хороший ДРР ни был.
+ */
+const STOCK_RISK_NOTE: Record<string, string> = {
+  out: " · товар кончился",
+  critical: " · критично",
+  warning: " · на исходе",
+  ok: "",
+  unknown: "",
+};
+
 const PAYMENT_BADGE: Record<"cpc" | "cpm" | "unknown", { label: string; className: string }> = {
   cpc: { label: "CPC", className: "bg-sky-50 text-sky-700" },
   cpm: { label: "CPM", className: "bg-violet-50 text-violet-700" },
@@ -357,7 +372,10 @@ export function WbAdvertsPage() {
     const controller = new AbortController();
     const current = ++requestId.current;
     let timedOut = false;
-    const deadline = window.setTimeout(() => { timedOut = true; controller.abort(); }, 45_000);
+    // Дедлайн клиента был короче серверного (maxDuration = 60 у /api/adverts/list):
+    // на тяжёлом кабинете человек получал отказ по запросу, который сервер бы
+    // дотянул. Даём серверу доработать и ещё пять секунд на дорогу.
+    const deadline = window.setTimeout(() => { timedOut = true; controller.abort(); }, 65_000);
     setLoading(true);
     setError(null);
     deploymentPinnedFetch(`/api/adverts/list?cabinet=${encodeURIComponent(cabinetId || "all")}`, { cache: "no-store", signal: controller.signal })
@@ -373,7 +391,7 @@ export function WbAdvertsPage() {
       })
       .catch((cause: unknown) => {
         if (current !== requestId.current || (controller.signal.aborted && !timedOut)) return;
-        setError(timedOut ? "Рекламный кабинет не ответил за 45 секунд. Повторите запрос." : cause instanceof Error ? cause.message : "Не удалось загрузить рекламу");
+        setError(timedOut ? "Рекламный кабинет не ответил за 65 секунд. Повторите запрос." : cause instanceof Error ? cause.message : "Не удалось загрузить рекламу");
       })
       .finally(() => {
         window.clearTimeout(deadline);
@@ -445,7 +463,17 @@ export function WbAdvertsPage() {
     return () => { cancelled = true; };
   }, [cabinetId, singleCabinet, retryKey]);
 
-  const adRows: AdCampaignRow[] = useMemo(() => baseRows.map(({ article, campaign }) => ({
+  /**
+   * Кампании для разделов «Фразы и кластеры» и «Автоправила».
+   *
+   * Берутся из полного ответа, а НЕ из отфильтрованного списка кампаний. Иначе
+   * слово, набранное в поиске слева, молча урезало бы выпадашки справа — и
+   * объяснение «нет кампаний с ручной ставкой» стало бы ложью: они есть, просто
+   * не подошли под поиск, о котором человек в этот момент уже не думает.
+   */
+  const adRows: AdCampaignRow[] = useMemo(() => (activeData?.articles ?? [])
+    .flatMap((article) => article.campaigns.map((campaign) => ({ article, campaign })))
+    .map(({ article, campaign }) => ({
     campaign: {
       id: campaign.id,
       name: campaign.name,
@@ -457,7 +485,7 @@ export function WbAdvertsPage() {
     },
     nm: article.nm,
     art: article.art,
-  })), [baseRows]);
+  })), [activeData?.articles]);
 
   const currency = cabinetMoney?.config?.currency && cabinetMoney.config.currency !== "RUB" ? cabinetMoney.config.currency : "₽";
 
@@ -673,7 +701,9 @@ export function WbAdvertsPage() {
                   ["ДРР / break-even · 14 дней, атрибуция WB", `${pct(selected.campaign.economics.currentDrr)} / ${pct(selected.campaign.economics.breakEvenDrr)}`],
                   ["Прибыль после рекламы", rub(selected.campaign.economics.profitAfterAds)],
                   ["ROAS / break-even", `${selected.campaign.economics.currentRoas ?? "—"}× / ${selected.campaign.economics.breakEvenRoas ?? "—"}×`],
-                  ["Запас", selected.campaign.economics.daysCover == null ? "—" : `${selected.campaign.economics.daysCover} дн.`],
+                  ["Запас", selected.campaign.economics.daysCover == null
+                    ? "—"
+                    : `${selected.campaign.economics.daysCover} дн.${STOCK_RISK_NOTE[selected.campaign.economics.stockRisk] ?? ""}`],
                   ["Ставка CPM", rub(selected.campaign.bid_cpm_rub)],
                   ["Уверенность", `${selected.campaign.economics.confidencePct}%`],
                 ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-sm font-semibold tabular-nums text-slate-700">{value}</div></div>)}
