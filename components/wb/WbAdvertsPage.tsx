@@ -237,6 +237,40 @@ function campaignBidKind(campaign: Campaign): "manual" | "unified" | "unknown" {
  * риск при этом сильнее всех прочих доводов в рекомендации: кончился товар —
  * реклама жжёт бюджет в никуда, какой бы хороший ДРР ни был.
  */
+/**
+ * Вердикт кампании в строке списка.
+ *
+ * Панель считает его для КАЖДОЙ из 238 кампаний и до сих пор показывала только
+ * в карточке одной выбранной. В кабинете это 49 «снизить или пауза» и 12
+ * «поднять» — чтобы их найти, менеджеру приходилось открывать карточки по одной.
+ *
+ * Процента здесь намеренно НЕТ, хотя он посчитан. Поле называется
+ * budgetChangePct и относится к РАСХОДУ, а единственный рычаг модуля — ставка
+ * CPM: снизить ставку на 20% не значит снизить расход на 20%. Направление
+ * осмысленно и его достаточно для триажа, а число рядом с полем ставки
+ * превращается в инструкцию, которой оно не является. Величина и объяснение
+ * остаются в карточке, где есть место сказать, к чему они относятся.
+ *
+ * «Держать» не показывается вовсе: таких кампаний 171 из 238, и бейдж на каждой
+ * второй строке перестаёт быть сигналом.
+ */
+const VERDICT_BADGE: Record<string, { label: string; className: string } | null> = {
+  pause: { label: "Остановить", className: "bg-rose-100 text-rose-700" },
+  decrease: { label: "Снизить расход", className: "bg-amber-100 text-amber-800" },
+  increase: { label: "Можно поднять", className: "bg-emerald-100 text-emerald-700" },
+  insufficient: { label: "Нет данных", className: "bg-slate-100 text-slate-500" },
+  hold: null,
+};
+
+/**
+ * Порядок срочности вердиктов. По рублям ожидаемого эффекта список
+ * СОЗНАТЕЛЬНО не сортируется: это линейная экстраполяция средней отдачи на
+ * предельную трату, а у убыточного товара формула даёт «остановка кампании с
+ * расходом 10 000 ₽ принесёт 20 000 ₽». Складывать такую оценку в один
+ * порядок с измеренным расходом — ранжировать несравнимое.
+ */
+const VERDICT_RANK: Record<string, number> = { pause: 0, decrease: 1, increase: 2, insufficient: 3, hold: 4 };
+
 const STOCK_RISK_NOTE: Record<string, string> = {
   out: " · товар кончился",
   critical: " · критично",
@@ -354,6 +388,7 @@ export function WbAdvertsPage() {
   // загруженные строки. Тот же источник, что и на остальных экранах панели —
   // иначе «Ковры» здесь и «Ковры» в РНП разошлись бы.
   const [category, setCategory] = useDashboardFilter<string>("cat", "");
+  const [order, setOrder] = useDashboardFilter<"spend" | "verdict">("order", "spend", ["spend", "verdict"]);
   const { categories, byArticle } = useCategoryMap();
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
@@ -428,9 +463,26 @@ export function WbAdvertsPage() {
     return acc;
   }, { active: 0, paused: 0, archive: 0, all: 0 }), [baseRows]);
 
-  const rows = useMemo(() => statusFilter === "all"
-    ? baseRows
-    : baseRows.filter(({ campaign }) => campaignStatusKind(campaign) === statusFilter), [baseRows, statusFilter]);
+  const rows = useMemo(() => {
+    const filtered = statusFilter === "all"
+      ? baseRows
+      : baseRows.filter(({ campaign }) => campaignStatusKind(campaign) === statusFilter);
+    if (order !== "verdict") return filtered;
+    // Внутри одной срочности порядок остаётся прежним — по расходу. Так
+    // переключатель меняет только группировку, а не всё сразу: человек, который
+    // привык к порядку списка, не теряет его целиком.
+    return [...filtered].sort((left, right) => {
+      const rank = (VERDICT_RANK[left.campaign.economics.action] ?? 9) - (VERDICT_RANK[right.campaign.economics.action] ?? 9);
+      return rank !== 0 ? rank : compareAdvertCampaigns(left.campaign, right.campaign);
+    });
+  }, [baseRows, statusFilter, order]);
+
+  // Сколько кампаний в текущем фильтре ждут решения. Число в кнопке отвечает на
+  // вопрос «есть ли смысл переключаться» до того, как человек переключился.
+  const needDecision = useMemo(
+    () => rows.filter(({ campaign }) => campaign.economics.action !== "hold" && campaign.economics.action !== "insufficient").length,
+    [rows],
+  );
 
   /**
    * Кампания выбирается один раз и дальше держится сама.
@@ -468,7 +520,7 @@ export function WbAdvertsPage() {
     const element = listRef.current;
     if (element) element.scrollTop = 0;
     setRowWindow({ start: 0, end: Math.min(16, rows.length) });
-  }, [cabinetId, statusFilter, kind, query, category, rows.length]);
+  }, [cabinetId, statusFilter, kind, query, category, order, rows.length]);
 
   const singleCabinet = Boolean(cabinetId && cabinetId !== "all");
 
@@ -669,6 +721,20 @@ export function WbAdvertsPage() {
               <Search className="h-3.5 w-3.5 text-slate-400" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="артикул, название или #id" className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400" />
             </label>
+            <div className="mt-2 flex items-center gap-1 text-[10px]">
+              <span className="mr-1 text-slate-400">порядок:</span>
+              {([["spend", "по расходу"], ["verdict", "сначала требующие решения"]] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setOrder(value)}
+                  className={`min-h-7 rounded-lg px-2 font-semibold transition-colors ${order === value ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+                >
+                  {label}
+                  {value === "verdict" && needDecision > 0 ? <span className="ml-1 rounded bg-white/20 px-1">{needDecision}</span> : null}
+                </button>
+              ))}
+            </div>
             {categories.length > 0 ? (
               <div className="mt-2">
                 <CategoryFilter categories={categories} value={category} onChange={setCategory} />
@@ -777,7 +843,7 @@ export function WbAdvertsPage() {
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} /><StatusIcon className="h-3 w-3 shrink-0 text-slate-400" /><span className="shrink-0 text-[11px] font-bold text-slate-800">{article.art}</span><span className="truncate text-[10px] text-slate-400">{campaign.name}</span></div>
                       <div className="mt-1 flex items-center gap-1.5 text-[9px] text-slate-400"><span className={`rounded px-1.5 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span><span className={`rounded px-1.5 py-0.5 ${BID_BADGE[campaignBidKind(campaign)].className}`}>{BID_BADGE[campaignBidKind(campaign)].label}</span>{campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}<span className="truncate">nm {article.nm}</span></div>
                     </div>
-                    <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : `ставка ${rub(campaign.bid_cpm_rub)}`} · сегодня {rub(campaign.spend_today)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-700">за 7 дн. {rub(campaign.spent_7_closed)}</div>{
+                    <div className="shrink-0 text-right">{VERDICT_BADGE[campaign.economics.action] ? <div className={`mb-0.5 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold ${VERDICT_BADGE[campaign.economics.action]!.className}`}>{VERDICT_BADGE[campaign.economics.action]!.label}</div> : null}<div className="text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : `ставка ${rub(campaign.bid_cpm_rub)}`} · сегодня {rub(campaign.spend_today)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-700">за 7 дн. {rub(campaign.spent_7_closed)}</div>{
                       /*
                         Расход по артикулу показываем, только когда он ОТЛИЧАЕТСЯ
                         от расхода кампании. В кабинете из 46 кампаний с расходом
