@@ -62,3 +62,16 @@ test("monthly interest wording creates a monthly schedule without invented rows"
   assert.equal(result.annualRate, 38);
   assert.equal(result.schedule, undefined);
 });
+
+test("two monthly payment dates split interest and respect every dollar tranche", () => {
+  const result = recognizeLoanText("Займ Евгений Я. 29.01.2026, взято 2000$, затем 15.04.2026 3000$, 29.04.2026 15000$, 10.05.2026 - 8000$, 01.06.2026 - 8250$, 5% от суммы займа в месяц, оплата 16 и 30 числа. 16 числа оплата с 31 или 1 числа по 15 число, 30 числа оплата за начисление с 16 по 29 число. тело в конце срока, займ до марта 2027");
+  assert.equal(result.currency, "USD");
+  assert.equal(result.principalAmount, 36_250);
+  assert.equal(result.annualRate, 60);
+  assert.equal(result.monthlyRate, 5);
+  assert.equal(result.interestFrequency, "semi_monthly");
+  assert.equal(result.dueDate, "2027-03-31");
+  assert.equal(result.schedule?.find((row) => row.date === "2026-06-16")?.interest, 952.9);
+  assert.equal(result.schedule?.find((row) => row.date === "2026-06-30")?.interest, 845.8);
+  assert.equal(result.schedule?.at(-1)?.principal, 36_250);
+});

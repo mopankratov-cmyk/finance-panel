@@ -59,6 +59,21 @@ function metadataNumber(payments: Payment[], loanId: string, key: string, fallba
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function metadataDisbursements(payments: Payment[], loanId: string) {
+  return commentValue(firstLoanComment(payments, loanId), "tranches").split(";").flatMap((item) => {
+    const [date, rawAmount] = item.split("=");
+    const amount = Number(rawAmount);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date ?? "") && Number.isFinite(amount) && amount > 0 ? [{ date, amount }] : [];
+  });
+}
+
+function metadataPaymentDays(payments: Payment[], loanId: string): [number, number] | undefined {
+  const values = commentValue(firstLoanComment(payments, loanId), "payment-days").split(",").map(Number);
+  return values.length === 2 && values.every((value) => Number.isInteger(value) && value >= 1 && value <= 31)
+    ? [values[0], values[1]]
+    : undefined;
+}
+
 function monthCountInPeriod(startDate: string, months: number, periodStart: string, periodEnd: string) {
   if (!startDate || months <= 0) return 0;
   const startMonth = new Date(`${startDate.slice(0, 7)}-01T12:00:00`);
@@ -234,7 +249,8 @@ export function LoansPage() {
     if (result.contractFile) {
       await saveLoanDocument(loan.id, result.contractFile, result.companyId);
     }
-    const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]${result.contractNumber ? ` [contract-number:${result.contractNumber.replace(/\]/g, "")}]` : ""}`;
+    const tranches = result.disbursements.map((item) => `${item.date}=${item.amount}`).join(";");
+    const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [interest-frequency:${result.interestFrequency}] [monthly-rate:${result.monthlyRate}]${result.paymentDays ? ` [payment-days:${result.paymentDays.join(",")}]` : ""}${tranches ? ` [tranches:${tranches}]` : ""} [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]${result.contractNumber ? ` [contract-number:${result.contractNumber.replace(/\]/g, "")}]` : ""}`;
     if (editing) dispatch({ type: "UPDATE_LOAN", payload: loan });
     else dispatch({ type: "ADD_LOAN", payload: loan });
     const existing = linkedRows(state.payments, loan.id);
@@ -458,6 +474,10 @@ export function LoansPage() {
             annualRate={editing ? Number(commentValue(linkedRows(state.payments, editing.id)[0]?.comment, "annual-rate")) || editing.interestRatePerDay * 365 : undefined}
             originationFee={editing ? metadataNumber(state.payments, editing.id, "origination-fee") : 0}
             feeAmortizationMonths={editing ? metadataNumber(state.payments, editing.id, "fee-months", 36) : 36}
+            interestFrequency={editing ? commentValue(firstLoanComment(state.payments, editing.id), "interest-frequency") as LoanFormResult["interestFrequency"] || undefined : undefined}
+            monthlyRate={editing ? metadataNumber(state.payments, editing.id, "monthly-rate") : 0}
+            disbursements={editing ? metadataDisbursements(state.payments, editing.id) : []}
+            paymentDays={editing ? metadataPaymentDays(state.payments, editing.id) : undefined}
             onSubmit={handleSubmit}
             onCancel={() => { setModalOpen(false); setEditing(null); }}
           />

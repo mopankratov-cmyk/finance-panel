@@ -28,9 +28,10 @@ class ValidationError extends Error {
 
 const system = `Ты финансовый ассистент. Извлеки условия кредита или займа.
 Верни ТОЛЬКО JSON без markdown:
-{"contractNumber":"","creditorName":"","companyHint":"","accountHint":"","principalAmount":0,"currency":"RUB","annualRate":0,"originationFee":0,"feeAmortizationMonths":36,"startDate":"YYYY-MM-DD","dueDate":"YYYY-MM-DD","interestFrequency":"weekly|monthly|quarterly|at_maturity|unknown","confidence":0,"warnings":[],"schedule":[{"date":"YYYY-MM-DD","principal":0,"interest":0,"penalty":0,"fine":0}]}
+{"contractNumber":"","creditorName":"","companyHint":"","accountHint":"","principalAmount":0,"currency":"RUB","annualRate":0,"monthlyRate":0,"originationFee":0,"feeAmortizationMonths":36,"startDate":"YYYY-MM-DD","dueDate":"YYYY-MM-DD","interestFrequency":"weekly|monthly|semi_monthly|quarterly|at_maturity|unknown","paymentDays":[16,30],"disbursements":[{"date":"YYYY-MM-DD","amount":0}],"confidence":0,"warnings":[],"schedule":[{"date":"YYYY-MM-DD","principal":0,"interest":0,"penalty":0,"fine":0}]}
 Не выдумывай отсутствующие данные. ИП Филиппов и ИП Коровкин — одно юридическое лицо. Ставку возвращай в процентах годовых.
 Если договор говорит, что проценты выплачиваются ежемесячно, верни interestFrequency=monthly. Не создавай расчётный график с разными суммами процентов, если готового графика нет в самом документе.
+Если ставка указана «в месяц» и есть две даты оплаты процентов, верни interestFrequency=semi_monthly, monthlyRate без пересчёта, annualRate=monthlyRate×12, paymentDays и все отдельные выдачи займа в disbursements. Месячную ставку нельзя начислять полностью на каждую из двух дат.
 Если ставка переменная, в annualRate укажи начальную годовую ставку и опиши периоды изменения в warnings.
 Если в документе есть график платежей, перенеси ВСЕ строки графика без пересчёта: дату, основной долг, проценты и штраф/пеню. Не заменяй недельный график месячным.
 Если пользователь просит перенести платёж, измени дату именно указанной строки, сохрани её тело, проценты, пени и штрафы; остальные строки не меняй. Если на новой дате уже есть платёж, верни обе обязанности отдельными строками — не теряй ни одну сумму.

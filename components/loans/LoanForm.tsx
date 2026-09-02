@@ -8,7 +8,7 @@ import { extractOfficeText } from "./officeText";
 import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
 import { aggregateRecognizedSchedule, mergeRecognition, recognizeLoanSpreadsheet, recognizeLoanText, type LoanCurrency, type RecognizedLoan, type RecognizedScheduleRow } from "./loanRecognition";
 import { applyLoanScheduleCorrections } from "./loanScheduleCorrections";
-import { fixedMonthlyInterest } from "./loanInterest";
+import { buildSplitMonthlyInterestSchedule, fixedMonthlyInterest, type LoanDisbursement } from "./loanInterest";
 
 export interface LoanScheduleDraft {
   id: string;
@@ -33,6 +33,10 @@ export interface LoanFormResult {
   annualRate: number;
   originationFee: number;
   feeAmortizationMonths: number;
+  interestFrequency: RecognizedLoan["interestFrequency"];
+  monthlyRate: number;
+  disbursements: LoanDisbursement[];
+  paymentDays?: [number, number];
   contractFile?: File;
 }
 
@@ -51,6 +55,10 @@ interface LoanFormProps {
   annualRate?: number;
   originationFee?: number;
   feeAmortizationMonths?: number;
+  interestFrequency?: RecognizedLoan["interestFrequency"];
+  monthlyRate?: number;
+  disbursements?: LoanDisbursement[];
+  paymentDays?: [number, number];
   onSubmit: (result: LoanFormResult) => void | Promise<void>;
   onCancel: () => void;
 }
@@ -82,6 +90,19 @@ function imageMediaType(file: File) {
 function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[] {
   if (!data.startDate || !data.dueDate || data.principalAmount <= 0) return [emptySchedule()];
   const principalRub = data.principalAmount * rate;
+  if (data.interestFrequency === "semi_monthly" && data.disbursements?.length && data.monthlyRate && data.paymentDays) {
+    return buildSplitMonthlyInterestSchedule({
+      disbursements: data.disbursements,
+      monthlyRate: data.monthlyRate,
+      dueDate: data.dueDate,
+      paymentDays: data.paymentDays,
+    }).map((row) => scheduleRow({
+      ...row,
+      principal: row.principal * rate,
+      interest: row.interest * rate,
+      status: "planned",
+    }));
+  }
   const start = new Date(`${data.startDate}T12:00:00`);
   const due = new Date(`${data.dueDate}T12:00:00`);
   if (data.interestFrequency !== "monthly") {
@@ -128,7 +149,7 @@ function companyMatchesHint(companyName: string, hint: string) {
   return company.includes(recognized) || recognized.includes(company);
 }
 
-export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, onSubmit, onCancel }: LoanFormProps) {
+export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, interestFrequency, monthlyRate = 0, disbursements = [], paymentDays, onSubmit, onCancel }: LoanFormProps) {
   const editing = Boolean(loan);
   const [stage, setStage] = useState<"source" | "review">(editing ? "review" : "source");
   const [description, setDescription] = useState("");
@@ -144,7 +165,10 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     feeAmortizationMonths,
     startDate: loan.startDate,
     dueDate: loan.dueDate,
-    interestFrequency: initialSchedule && initialSchedule.length > 1 ? "monthly" : "unknown",
+    interestFrequency: interestFrequency ?? (initialSchedule && initialSchedule.length > 1 ? "monthly" : "unknown"),
+    monthlyRate,
+    disbursements,
+    paymentDays,
     confidence: 100,
   } : initialRecognition());
   const [selectedCompany, setSelectedCompany] = useState(companyId ?? "");
@@ -218,6 +242,15 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         // Для текстового описания и Office-файлов остаётся локальный резерв.
       }
       const recognized = mergeRecognition(local, remote);
+      if (local.interestFrequency === "semi_monthly") {
+        recognized.principalAmount = local.principalAmount;
+        recognized.currency = local.currency;
+        recognized.annualRate = local.annualRate;
+        recognized.interestFrequency = local.interestFrequency;
+        recognized.monthlyRate = local.monthlyRate;
+        recognized.disbursements = local.disbursements;
+        recognized.paymentDays = local.paymentDays;
+      }
       // Если в DOCX/Excel нет самого графика, не принимаем сгенерированные ИИ
       // строки как договорные. Для ежемесячной выплаты строим их по условиям.
       const officeDocument = Boolean(file && !pdfBase64 && !imageBase64);
@@ -376,6 +409,10 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         annualRate: data.annualRate,
         originationFee: data.originationFee,
         feeAmortizationMonths: data.feeAmortizationMonths,
+        interestFrequency: data.interestFrequency,
+        monthlyRate: Number(data.monthlyRate || 0),
+        disbursements: data.disbursements ?? [],
+        paymentDays: data.paymentDays,
         contractFile: file ?? undefined,
       });
     } catch (error) {
@@ -418,7 +455,9 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         <label className="text-sm font-medium text-slate-700">Счёт оплаты<select required value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)} className={fieldClass}><option value="">Проверьте и выберите</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="text-sm font-medium text-slate-700">Сумма в валюте договора<input required type="number" min="0" step="0.01" value={data.principalAmount || ""} onChange={(e) => updateData({ principalAmount: Number(e.target.value) })} className={fieldClass} /></label>
         <label className="text-sm font-medium text-slate-700">Валюта<select value={data.currency} onChange={(e) => { const currency = e.target.value as LoanCurrency; updateData({ currency }); void recalculate(currency); }} className={fieldClass}><option value="RUB">Рубли</option><option value="USD">Доллары США</option><option value="EUR">Евро</option><option value="CNY">Юани</option></select></label>
-        <label className="text-sm font-medium text-slate-700">Ставка, % годовых<input required type="number" min="0" step="0.001" value={data.annualRate} onChange={(e) => updateData({ annualRate: Number(e.target.value) })} className={fieldClass} />{data.interestFrequency === "monthly" && <span className="mt-1 block text-xs text-slate-500">Фиксированные проценты за месяц: сумма займа × ставка ÷ 12.</span>}</label>
+        {data.interestFrequency === "semi_monthly"
+          ? <label className="text-sm font-medium text-slate-700">Ставка, % в месяц<input required type="number" min="0" step="0.001" value={data.monthlyRate || ""} onChange={(e) => { const value = Number(e.target.value); updateData({ monthlyRate: value, annualRate: value * 12 }); }} className={fieldClass} /><span className="mt-1 block text-xs text-slate-500">Месячная ставка делится между платежами 16-го и 30-го пропорционально дням.</span></label>
+          : <label className="text-sm font-medium text-slate-700">Ставка, % годовых<input required type="number" min="0" step="0.001" value={data.annualRate} onChange={(e) => updateData({ annualRate: Number(e.target.value) })} className={fieldClass} />{data.interestFrequency === "monthly" && <span className="mt-1 block text-xs text-slate-500">Фиксированные проценты за месяц: сумма займа × ставка ÷ 12.</span>}</label>}
         <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm"><p className="text-xs text-slate-500">Курс для планового графика</p><p className="mt-1 font-bold">{exchangeRate.toLocaleString("ru-RU")} ₽ за {data.currency === "RUB" ? "1 ₽" : `1 ${data.currency}`}</p><button type="button" disabled={busy} onClick={() => void recalculate()} className="mt-2 text-xs font-bold text-violet-700">Обновить курс и график</button>{rateDate && <p className="mt-1 text-xs text-slate-400">Банк России, {rateDate}</p>}</div>
         <label className="text-sm font-medium text-slate-700">Дата получения<input required type="date" value={data.startDate} onChange={(e) => updateData({ startDate: e.target.value })} className={fieldClass} /></label>
         <label className="text-sm font-medium text-slate-700">Дата возврата тела<input required type="date" value={data.dueDate} onChange={(e) => updateData({ dueDate: e.target.value })} className={fieldClass} /></label>
