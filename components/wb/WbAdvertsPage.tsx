@@ -419,6 +419,19 @@ export function WbAdvertsPage() {
   // читал сотню перемешанных строк по всему кабинету.
   const [journalAdvertId, setJournalAdvertId] = useState<number | null>(null);
   const [cabinetMoney, setCabinetMoney] = useState<AdCabinetConfig | null>(null);
+  /**
+   * Почему денег кабинета нет: прав не хватает или что-то сломалось.
+   *
+   * Раньше оба случая сводились к null, и человек читал внизу карточки плашку
+   * «нет права ЛИБО не прочитался ключ». Для наёмного менеджера это худшая из
+   * формулировок: он не понимает, это его роль — то есть так и задумано — или
+   * панель сломалась и надо кого-то дёргать.
+   */
+  const [moneyGate, setMoneyGate] = useState<"ok" | "forbidden" | "error" | null>(null);
+  // Момент, когда данные приехали. Запрос уходит только при смене кабинета и по
+  // кнопке: вкладка, открытая утром и оставленная до обеда, показывает утренние
+  // цифры без единого признака этого.
+  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   // Отметки для массового действия. Живут отдельно от выбранной кампании:
   // «смотрю эту» и «делаю с этими» — разные намерения, и склеивать их значит
   // выполнять действие над карточкой, которую человек просто открыл почитать.
@@ -473,6 +486,7 @@ export function WbAdvertsPage() {
         setData(body);
         dataKeyRef.current = requestKey;
         setDataKey(requestKey);
+        setLoadedAt(new Date());
       })
       .catch((cause: unknown) => {
         if (current !== requestId.current || (controller.signal.aborted && !timedOut)) return;
@@ -571,6 +585,7 @@ export function WbAdvertsPage() {
   useEffect(() => {
     if (!singleCabinet) {
       setCabinetMoney(null);
+      setMoneyGate(null);
       return;
     }
     let cancelled = false;
@@ -578,9 +593,16 @@ export function WbAdvertsPage() {
     // нельзя: пока права не загрузились, он оптимистичен — и полоса успела бы
     // мигнуть тому, кому её видеть не положено.
     deploymentPinnedFetch(`/api/adverts/config?cabinet=${cabinetId}`)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((json) => { if (!cancelled) setCabinetMoney(json && !json.error ? (json as AdCabinetConfig) : null); })
-      .catch(() => { if (!cancelled) setCabinetMoney(null); });
+      .then(async (response) => {
+        if (cancelled) return;
+        if (response.status === 403) { setCabinetMoney(null); setMoneyGate("forbidden"); return; }
+        if (!response.ok) { setCabinetMoney(null); setMoneyGate("error"); return; }
+        const json = await response.json().catch(() => null);
+        if (cancelled) return;
+        if (json && !json.error) { setCabinetMoney(json as AdCabinetConfig); setMoneyGate("ok"); }
+        else { setCabinetMoney(null); setMoneyGate("error"); }
+      })
+      .catch(() => { if (!cancelled) { setCabinetMoney(null); setMoneyGate("error"); } });
     return () => { cancelled = true; };
   }, [cabinetId, singleCabinet, retryKey]);
 
@@ -724,6 +746,19 @@ export function WbAdvertsPage() {
           {!singleCabinet ? (
             <span className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-500">
               Деньги кабинета и действия — выберите один кабинет
+            </span>
+          ) : moneyGate === "forbidden" ? (
+            <span className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-600">
+              Только просмотр: менять ставки и бюджеты в этом кабинете может руководитель
+            </span>
+          ) : moneyGate === "error" ? (
+            <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-800">
+              Деньги кабинета не прочитались — проверьте ключ Продвижения
+            </span>
+          ) : null}
+          {loadedAt ? (
+            <span title="Данные подгружаются при смене кабинета и по кнопке «Обновить», сами не освежаются" className="rounded-lg px-2 py-1 font-medium text-slate-400">
+              загружено в {loadedAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
             </span>
           ) : null}
         </div>
@@ -915,6 +950,17 @@ export function WbAdvertsPage() {
                     </div>
                     <div className="w-[128px] shrink-0 text-right">
                       <div title={closedDrrTitle(campaign) + ` · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`inline-block rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР 7д {closedDrrLabel(campaign)}</div>
+                      {/*
+                        Порог ЭТОЙ кампании вторым числом, а не другим цветом.
+                        Цвет бейджа считается по универсальным 10/20%, а карточка
+                        судит по собственному break-even: строка красит зелёным
+                        убыточную кампанию с порогом 8% и красным прибыльную с
+                        порогом 35%. Перекрашивать по break-even нельзя — он точка
+                        нулевой прибыли, и «зелёный, пока ниже» назовёт хорошим
+                        ДРР 34% при пороге 35%. Показываем оба числа и даём
+                        человеку сравнить самому.
+                      */}
+                      <div className="text-[9px] tabular-nums text-slate-400">{campaign.economics.breakEvenDrr == null ? "порога нет" : `порог ${campaign.economics.breakEvenDrr}%`}</div>
                       <div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : rub(campaign.bid_cpm_rub)} · сег. {rub(campaign.spend_today)}</div>
                       <div className="mt-0.5 text-[9px] tabular-nums text-slate-500">вчера {rub(campaign.yesterday?.spend ?? 0)} · 7 дн. {rub(campaign.spent_7_closed)}</div>
                       {article.spent_sku_7_closed == null
@@ -1056,9 +1102,11 @@ export function WbAdvertsPage() {
               ) : (
                 <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
                   <WalletCards className="h-4 w-4 shrink-0" />
-                  {singleCabinet
-                    ? "Действия недоступны: у вас нет права менять деньги в этом кабинете либо не прочитался ключ Продвижения."
-                    : "Действия доступны при выбранном кабинете — в режиме «Все кабинеты» непонятно, куда их отправлять."}
+                  {!singleCabinet
+                    ? "Действия доступны при выбранном кабинете — в режиме «Все кабинеты» непонятно, куда их отправлять."
+                    : moneyGate === "forbidden"
+                      ? "У вас доступ на просмотр: ставки, бюджеты и статусы кампаний в этом кабинете меняет руководитель. Это не поломка."
+                      : "Не прочитались деньги кабинета — скорее всего дело в ключе Продвижения. Проверить можно кнопкой «Ключ» в шапке."}
                 </div>
               )}
             </div>
