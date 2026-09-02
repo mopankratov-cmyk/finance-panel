@@ -1,29 +1,8 @@
+import { DDS_CATEGORIES } from "./finance/categories";
 import type { Account, FinanceState } from "./types";
 
-export const PAYMENT_CATEGORIES = [
-  "Продажи на МП",
-  "Закуп товара",
-  "РКО",
-  "Фулфилмент",
-  "Зарплата административного персонала",
-  "Зарплата коммерческого персонала",
-  "Поиск и найм персонала",
-  "Расходы на персонал",
-  "Маркетинговые подрядчики",
-  "Административные подрядчики",
-  "ПО",
-  "Получение кредитов и займов",
-  "Оплаты по кредитам и займам",
-  "Дивиденды",
-  "УСН",
-  "Внутренняя реклама на МП",
-  "Оплата % по кредиту",
-  "Оплата услуг склада",
-  "Доставка до маркеплейса",
-  "Выкупы",
-  "Кешбэк",
-  "Прочее",
-] as const;
+/** @deprecated Единый справочник статей — lib/finance/categories.ts; имя оставлено для старых импортов. */
+export const PAYMENT_CATEGORIES = DDS_CATEGORIES;
 
 export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   marketplace: "Маркетплейс",

@@ -26,7 +26,7 @@ import {
   type BankInstructionSplit,
 } from "./bankInstructionSplits";
 import { Card, CardContent } from "@/components/ui/Card";
-import { PAYMENT_CATEGORIES } from "@/lib/constants";
+import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Account } from "@/lib/types";
 import { categoryMatchesDirection, requiresCounterparty } from "./bankAutoClassify";
@@ -34,15 +34,8 @@ import { suggestLoanSplits } from "./loanReviewSuggestion";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadFinanceState } from "@/lib/db";
 
-const REVIEW_CATEGORIES = [
-  ...PAYMENT_CATEGORIES,
-  "Поступление — Перевод между счетами",
-  "Выбытие — Перевод между счетами",
-  "Вклады от собственников",
-  "Выдача кредитов и займов",
-  "Получение кредитов и займов",
-  "Возврат кредитов и займов",
-] as const;
+// Статьи — из единого справочника (раньше свой список дублировал «Получение кредитов и займов»).
+const REVIEW_CATEGORIES = DDS_CATEGORIES;
 
 const normalizeCompanyText = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]+/g, " ").trim();
 

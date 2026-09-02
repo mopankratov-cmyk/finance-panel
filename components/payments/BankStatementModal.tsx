@@ -6,18 +6,12 @@ import { parseBankStatement, type BankStatement } from "./bankStatement";
 import { classifyBankStatement, type BankSuggestion } from "./bankAutoClassify";
 import type { DdsCompany } from "./ddsCompanies";
 import { loadBankAccountMappings, rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
-import { PAYMENT_CATEGORIES } from "@/lib/constants";
+import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 
-const BANK_CATEGORIES = [
-  ...PAYMENT_CATEGORIES,
-  "Поступление — Перевод между счетами",
-  "Выбытие — Перевод между счетами",
-  "Вклады от собственников",
-  "Выдача кредитов и займов",
-  "Возврат кредитов и займов",
-] as const;
+// Статьи — из единого справочника; отдельного списка «для выписки» больше нет.
+const BANK_CATEGORIES = DDS_CATEGORIES;
 
 interface Props {
   open: boolean;

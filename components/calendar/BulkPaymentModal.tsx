@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
 import { parseCsv, parseRussianAmount, parseRussianDate } from "@/components/payments/ddsCsv";
 import { Modal } from "@/components/ui/Modal";
-import { PAYMENT_CATEGORIES } from "@/lib/constants";
+import { categoryOptions } from "@/lib/finance/categories";
 import { generateId } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import { PRIORITY_META, setPaymentPriorityComment, suggestPaymentPriority, type PaymentPriority } from "./paymentPriority";
@@ -139,9 +139,10 @@ export function BulkPaymentModal({
   };
 
   const save = () => {
-    const invalid = activeRows.find((row) => !row.date || !Number(row.amount) || !row.name.trim() || !row.accountId);
+    // Статья обязательна: пустая уходила в базу и в своде становилась «Без статьи».
+    const invalid = activeRows.find((row) => !row.date || !Number(row.amount) || !row.name.trim() || !row.category.trim() || !row.accountId);
     if (invalid) {
-      setError("Заполните дату, сумму, название и кошелёк во всех строках");
+      setError("Заполните дату, сумму, статью, назначение и кошелёк во всех строках");
       return;
     }
     const duplicates: string[] = [];
@@ -197,7 +198,7 @@ export function BulkPaymentModal({
                   update(row.id, { flow, category: flow === "expense" ? "" : "Продажи на МП", priority: flow === "expense" ? "C" : suggestPaymentPriority("Продажи на МП") });
                 }} className="min-h-11 rounded-lg border border-slate-300 px-2"><option value="expense">Расход</option><option value="income">Поступление</option></select><input type="number" min="0" step="0.01" value={row.amount} onChange={(event) => update(row.id, { amount: event.target.value })} placeholder="Сумма" className="min-h-11 rounded-lg border border-slate-300 px-3" /></div>
                 <input value={row.name} onChange={(event) => update(row.id, { name: event.target.value })} placeholder="Назначение платежа" className="min-h-11 rounded-lg border border-slate-300 px-3" />
-                <select required value={row.category} onChange={(event) => update(row.id, { category: event.target.value })} className="min-h-11 rounded-lg border border-slate-300 px-3"><option value="" disabled>Выберите статью</option>{PAYMENT_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select>
+                <select required value={row.category} onChange={(event) => update(row.id, { category: event.target.value })} className="min-h-11 rounded-lg border border-slate-300 px-3"><option value="" disabled>Выберите статью</option>{categoryOptions(row.category).map((category) => <option key={category}>{category}</option>)}</select>
                 <select value={row.accountId} onChange={(event) => update(row.id, { accountId: event.target.value })} className="min-h-11 rounded-lg border border-slate-300 px-3">{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
                 <input value={row.counterparty} onChange={(event) => update(row.id, { counterparty: event.target.value })} placeholder="Контрагент" className="min-h-11 rounded-lg border border-slate-300 px-3" />
                 <select value={row.status} onChange={(event) => update(row.id, { status: event.target.value as DraftRow["status"] })} className="min-h-11 rounded-lg border border-slate-300 px-3"><option value="planned">План</option><option value="done">Факт</option></select>

@@ -1,6 +1,6 @@
 "use client";
 
-import { PAYMENT_CATEGORIES } from "@/lib/constants";
+import { categoryOptions } from "@/lib/finance/categories";
 import type { Payment } from "@/lib/types";
 import type { Account } from "@/lib/types";
 import type { DdsCompany } from "./ddsCompanies";
@@ -31,18 +31,24 @@ export function PaymentForm({
     const rawAmount = Math.abs(Number(fd.get("amount")));
     const amount = type === "expense" ? -rawAmount : rawAmount;
 
+    // Комментарий формой не редактируется, но в нём живут служебные метки
+    // ([loan:…], [calendar-fact:…], [priority:…]) — их нельзя терять при сохранении.
     onSubmit({
       date: fd.get("date") as string,
       name: fd.get("name") as string,
       amount,
       category: fd.get("category") as string,
       accountId: fd.get("accountId") as string,
-      status: "done",
+      status: payment?.status ?? "done",
       counterparty: fd.get("counterparty") as string,
+      comment: payment?.comment,
     }, fd.get("companyId") as string);
   };
 
   const defaultAmount = payment ? Math.abs(payment.amount) : 0;
+  // Текущая статья платежа остаётся в списке, даже если её нет в справочнике —
+  // иначе браузер молча подставит первую опцию.
+  const categories = categoryOptions(payment?.category);
   const defaultFlow = payment && payment.amount < 0 ? "expense" : "income";
 
   return (
@@ -109,10 +115,10 @@ export function PaymentForm({
         </label>
         <select
           name="companyId"
-          required
-          defaultValue={companyId ?? companies[0]?.id}
+          defaultValue={companyId ?? (payment ? "" : companies[0]?.id ?? "")}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
         >
+          <option value="">Общее по группе</option>
           {companies.filter((company) => company.isActive).map((company) => (
             <option key={company.id} value={company.id}>
               {company.name}
@@ -128,10 +134,10 @@ export function PaymentForm({
         <select
           name="category"
           required
-          defaultValue={payment?.category ?? PAYMENT_CATEGORIES[0]}
+          defaultValue={payment?.category ?? categories[0]}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
         >
-          {PAYMENT_CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <option key={cat} value={cat}>
               {cat}
             </option>

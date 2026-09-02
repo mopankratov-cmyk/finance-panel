@@ -54,8 +54,9 @@ export async function POST(request: NextRequest) {
   }
   if (action === "payment") {
     const payment = body.payment && typeof body.payment === "object" ? body.payment as Record<string, unknown> : null;
-    const companyId = String(body.company_id ?? "");
-    if (!payment || !companyId) return NextResponse.json({ error: "Некорректный платёж" }, { status: 400 });
+    // Пустая компания — легальное состояние «Общее по группе», а не ошибка.
+    const companyId = String(body.company_id ?? "").trim();
+    if (!payment) return NextResponse.json({ error: "Некорректный платёж" }, { status: 400 });
     const amount = Number(payment.amount);
     if (!String(payment.id ?? "") || !Number.isFinite(amount)) return NextResponse.json({ error: "Некорректный платёж" }, { status: 400 });
     const result = await db.from("payments").upsert({
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
       status: String(payment.status ?? "planned"),
       counterparty: String(payment.counterparty ?? ""),
       comment: payment.comment == null ? null : String(payment.comment),
-      company_id: companyId,
+      company_id: companyId || null,
     });
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
     return NextResponse.json({ ok: true });

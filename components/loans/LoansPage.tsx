@@ -8,6 +8,7 @@ import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
 import { downloadSimpleXlsx } from "@/components/payments/ddsExport";
 import { Card, CardContent } from "@/components/ui/Card";
+import { LOAN_CATEGORIES } from "@/lib/finance/categories";
 import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Loan, Payment } from "@/lib/types";
 import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurrency";
@@ -276,7 +277,7 @@ export function LoansPage() {
       date: loan.startDate,
       name: `Получение кредита — ${loan.creditorName}`,
       amount: loan.principalAmount,
-      category: "Получение кредитов и займов",
+      category: LOAN_CATEGORIES.receipt,
       accountId: result.accountId,
       status: existing.find((payment) => payment.comment?.includes(receiptMarker(loan.id)))?.status ?? "planned",
       counterparty: loan.creditorName,
@@ -290,7 +291,7 @@ export function LoansPage() {
           date: row.date,
           name: `Погашение тела — ${loan.creditorName}`,
           amount: -roundLoanMoney(Math.abs(row.principal)),
-          category: "Погашение тела кредита",
+          category: LOAN_CATEGORIES.principal,
           accountId: result.accountId,
           status: row.status,
           counterparty: loan.creditorName,
@@ -304,7 +305,7 @@ export function LoansPage() {
           date: row.date,
           name: `Проценты по кредиту — ${loan.creditorName}`,
           amount: -roundLoanMoney(Math.abs(row.interest)),
-          category: "Проценты по кредитам и займам",
+          category: LOAN_CATEGORIES.interest,
           accountId: result.accountId,
           status: row.status,
           counterparty: loan.creditorName,
@@ -318,7 +319,7 @@ export function LoansPage() {
           date: row.date,
           name: `Пени и штрафы — ${loan.creditorName}`,
           amount: -roundLoanMoney(Math.abs(row.penalty)),
-          category: "Пени и штрафы по кредитам и займам",
+          category: LOAN_CATEGORIES.penalty,
           accountId: result.accountId,
           status: row.status,
           counterparty: loan.creditorName,
@@ -332,7 +333,7 @@ export function LoansPage() {
           date: row.date,
           name: `Штраф по кредиту — ${loan.creditorName}`,
           amount: -roundLoanMoney(Math.abs(row.fine)),
-          category: "Штрафы по кредитам и займам",
+          category: LOAN_CATEGORIES.fine,
           accountId: result.accountId,
           status: row.status,
           counterparty: loan.creditorName,

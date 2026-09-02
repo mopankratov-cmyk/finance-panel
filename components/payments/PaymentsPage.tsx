@@ -23,7 +23,7 @@ import { PaymentForm } from "./PaymentForm";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
-import { PAYMENT_CATEGORIES } from "@/lib/constants";
+import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { formatDate, formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
 
@@ -94,6 +94,14 @@ export function PaymentsPage() {
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [paymentsWithCompany, dateFrom, dateTo, filterCategory, filterAccount, filterCompany]);
+
+  // В фильтре должны быть и статьи вне справочника (старые выгрузки) — иначе их не отобрать.
+  const filterCategories = useMemo(() => {
+    const known = new Set(DDS_CATEGORIES);
+    const extra = [...new Set(state.payments.map((payment) => payment.category).filter((category) => category && !known.has(category)))]
+      .sort((a, b) => a.localeCompare(b, "ru"));
+    return [...DDS_CATEGORIES, ...extra];
+  }, [state.payments]);
 
   const getAccountName = (id: string) =>
     state.accounts.find((a) => a.id === id)?.name ?? "—";
@@ -349,7 +357,7 @@ export function PaymentsPage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               >
                 <option value="">Все</option>
-                {PAYMENT_CATEGORIES.map((cat) => (
+                {filterCategories.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>

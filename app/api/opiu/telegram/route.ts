@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { formatAlert, formatStatus, runServerFinancialAnalysis, sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { buildMarketplacePayoutForecast } from "@/lib/opiu/forecast";
 import { recognizePaymentAnswer } from "@/lib/opiu/paymentAnswerRecognition";
-import { PAYMENT_CATEGORIES } from "@/lib/constants";
+import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { selectPendingTelegramPayment } from "@/lib/opiu/telegramPaymentReply";
 
 export const maxDuration = 60;
@@ -19,11 +19,7 @@ interface TelegramUpdate {
   };
 }
 
-const REVIEW_CATEGORIES = [
-  ...PAYMENT_CATEGORIES,
-  "Поступление — Перевод между счетами", "Выбытие — Перевод между счетами",
-  "Вклады от собственников", "Выдача кредитов и займов", "Возврат кредитов и займов",
-];
+const REVIEW_CATEGORIES = [...DDS_CATEGORIES];
 
 async function transcribeTelegramVoice(fileId: string) {
   const telegramToken = process.env.FINANCE_TELEGRAM_BOT_TOKEN;

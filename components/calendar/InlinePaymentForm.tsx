@@ -1,6 +1,6 @@
 "use client";
 
-import { PAYMENT_CATEGORIES } from "@/lib/constants";
+import { categoryOptions, DDS_CATEGORIES } from "@/lib/finance/categories";
 import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { editablePaymentComment, getPaymentPriority, PRIORITY_META, setPaymentPriorityComment, type PaymentPriority } from "./paymentPriority";
@@ -125,11 +125,11 @@ export function InlinePaymentForm({
         <select
           name="category"
           required
-          defaultValue={payment?.category ?? (flowType === "expense" ? "" : PAYMENT_CATEGORIES[0])}
+          defaultValue={payment?.category ?? (flowType === "expense" ? "" : DDS_CATEGORIES[0])}
           className={inputClass}
         >
           {!payment && flowType === "expense" && <option value="" disabled>Выберите статью</option>}
-          {PAYMENT_CATEGORIES.map((cat) => (
+          {categoryOptions(payment?.category).map((cat) => (
             <option key={cat} value={cat}>
               {cat}
             </option>
