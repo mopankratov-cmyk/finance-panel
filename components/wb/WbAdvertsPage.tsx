@@ -7,6 +7,7 @@ import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from 
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
 import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
+import { withPlural } from "@/lib/ozon/plural";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { readOkApiResponse } from "@/lib/http/readApiResponse";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
@@ -501,7 +502,7 @@ export function WbAdvertsPage() {
     const names = baseRows.filter(({ campaign }) => checked.has(campaign.id)).map(({ campaign }) => campaign.name);
     setConfirmRequest({
       actionId: action,
-      subject: `${ids.length} кампаний`,
+      subject: withPlural(ids.length, "кампания", "кампании", "кампаний"),
       detail: `${names.slice(0, 4).join(", ")}${names.length > 4 ? ` и ещё ${names.length - 4}` : ""}. Кампании обрабатываются по очереди с паузой — WB считает лимит на весь кабинет.`,
       run: async () => {
         const result = await adPost<{ success: number; failed: number; skipped: number; stoppedEarly: string | null }>(
