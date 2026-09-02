@@ -15,9 +15,10 @@ import { FinancialAlertsPanel } from "./FinancialAlertsPanel";
 import { FinanceTasksPanel } from "./FinanceTasksPanel";
 import { calendarExportRows, calendarTemplateSheets, downloadCalendarXlsx } from "./calendarExport";
 import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
+import { OverdueLoanQueue } from "./OverdueLoanQueue";
 import { WeekSummaryCell } from "./WeekSummaryCell";
 import { chronologicalPaymentOrder, displayPaymentComment, getPaymentPriority, PRIORITY_META, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
-import { loanScheduleKey, loanScheduleKeysWithDdsCandidate, overdueLoanInstallmentsToMove, rescheduleLoanInstallment } from "./loanPaymentReschedule";
+import { loanScheduleKey, overdueLoanInstallmentsForReview, rescheduleLoanInstallment, rescheduleOverdueLoanInstallment, type OverdueLoanInstallment } from "./loanPaymentReschedule";
 import { useDailyLoanCurrencyRefresh } from "@/components/loans/currencyRefresh";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
@@ -100,7 +101,6 @@ export function CalendarPage() {
   const [companyScope, setCompanyScope] = useState("all");
   const [companies, setCompanies] = useState<DdsCompany[]>([]);
   const [companyByPayment, setCompanyByPayment] = useState<Map<string, string | null>>(new Map());
-  const [companyLinksLoaded, setCompanyLinksLoaded] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFlow, setBulkFlow] = useState<"expense" | "income">("expense");
   const [calendarLayout, setCalendarLayout] = useState<"agenda" | "grid">("grid");
@@ -127,7 +127,6 @@ export function CalendarPage() {
       if (cancelled) return;
       setCompanies(loadedCompanies);
       setCompanyByPayment(new Map(links.map((link) => [link.paymentId, link.companyId])));
-      setCompanyLinksLoaded(true);
     });
     return () => { cancelled = true; };
   }, []);
@@ -142,18 +141,30 @@ export function CalendarPage() {
       return companyId === companyScope;
     });
   }, [state.payments, companyScope, companyByPayment, companyById]);
+  const overdueLoanInstallments = useMemo(
+    () => overdueLoanInstallmentsForReview(scopedPayments, today),
+    [scopedPayments, today],
+  );
+  const overdueLoanPaymentIds = useMemo(
+    () => new Set(overdueLoanInstallments.flatMap((installment) => installment.payments.map((payment) => payment.id))),
+    [overdueLoanInstallments],
+  );
+  const activeCalendarScopedPayments = useMemo(
+    () => scopedPayments.filter((payment) => !overdueLoanPaymentIds.has(payment.id)),
+    [overdueLoanPaymentIds, scopedPayments],
+  );
   const calendarRows = useMemo(() => calendarExportRows({
-    payments: scopedPayments,
+    payments: activeCalendarScopedPayments,
     accountNames: new Map(state.accounts.map((account) => [account.id, account.name])),
     companyNames: new Map(companies.map((company) => [company.id, company.name])),
     companyByPayment,
-  }), [scopedPayments, state.accounts, companies, companyByPayment]);
+  }), [activeCalendarScopedPayments, state.accounts, companies, companyByPayment]);
   const calendarSheets = useMemo(() => calendarTemplateSheets({
-    payments: scopedPayments,
+    payments: activeCalendarScopedPayments,
     accountNames: new Map(state.accounts.map((account) => [account.id, account.name])),
     companyNames: new Map(companies.map((company) => [company.id, company.name])),
     companyByPayment,
-  }), [scopedPayments, state.accounts, companies, companyByPayment]);
+  }), [activeCalendarScopedPayments, state.accounts, companies, companyByPayment]);
   const syncCalendarToGoogle = useCallback(() => {
     if (googleSyncRef.current) return googleSyncRef.current;
     setGoogleSyncing(true);
@@ -200,7 +211,6 @@ export function CalendarPage() {
   const planFactMatches = planFactMatching.matched;
   const planFactReview = planFactMatching.review;
   const factLinkRequests = useRef(new Set<string>());
-  const overdueLoanRolloverStarted = useRef(false);
   const [factLinkError, setFactLinkError] = useState<string | null>(null);
   useEffect(() => {
     for (const match of allPlanFactMatching.matched) {
@@ -219,22 +229,6 @@ export function CalendarPage() {
         });
     }
   }, [allPlanFactMatching.matched, dispatch]);
-  useEffect(() => {
-    if (overdueLoanRolloverStarted.current || !companyLinksLoaded || state.payments.length === 0) return;
-    const protectedPlanIds = new Set([
-      ...allPlanFactMatching.matched.map((match) => match.planned.id),
-      ...allPlanFactMatching.review.map((match) => match.planned.id),
-    ]);
-    const ddsCandidateKeys = loanScheduleKeysWithDdsCandidate(state.payments, companyByPayment);
-    const updates = overdueLoanInstallmentsToMove(state.payments, today, protectedPlanIds, ddsCandidateKeys);
-    overdueLoanRolloverStarted.current = true;
-    if (!updates.length) return;
-    for (const payment of updates) dispatch({ type: "UPDATE_PAYMENT", payload: payment });
-    void Promise.all(updates.map((payment) => {
-      const companyId = companyByPayment.get(payment.id);
-      return companyId ? savePaymentWithCompany(payment, companyId) : Promise.resolve();
-    })).catch((error: unknown) => setFactLinkError(error instanceof Error ? error.message : "Не удалось перенести просроченные платежи по кредитам"));
-  }, [allPlanFactMatching.matched, allPlanFactMatching.review, companyByPayment, companyLinksLoaded, dispatch, state.payments, today]);
   useDailyLoanCurrencyRefresh(state.payments, dispatch, (error) => {
     setFactLinkError(error instanceof Error ? error.message : "Не удалось обновить валютный график кредитов");
   });
@@ -244,8 +238,8 @@ export function CalendarPage() {
   }, [planFactMatches]);
   const accountNames = useMemo(() => new Map(state.accounts.map((account) => [account.id, account.name])), [state.accounts]);
   const calendarPayments = useMemo(
-    () => calendarPaymentsWithoutMatchedPlans(scopedPayments, allPlanFactMatching.matched),
-    [scopedPayments, allPlanFactMatching.matched],
+    () => calendarPaymentsWithoutMatchedPlans(activeCalendarScopedPayments, allPlanFactMatching.matched),
+    [activeCalendarScopedPayments, allPlanFactMatching.matched],
   );
   const allVisibleCalendarPayments = useMemo(
     () => calendarPayments.filter(isCalendarCashFlow),
@@ -400,6 +394,37 @@ export function CalendarPage() {
     }));
   };
 
+  const handleRescheduleOverdueLoan = async (installment: OverdueLoanInstallment, targetDate: string) => {
+    const updates = rescheduleOverdueLoanInstallment(state.payments, installment, targetDate, today);
+    if (!updates.length) throw new Error("Выберите сегодняшнюю или будущую дату.");
+    await Promise.all(updates.map((payment) => {
+      const companyId = companyByPayment.get(payment.id);
+      return companyId ? savePaymentWithCompany(payment, companyId) : Promise.resolve();
+    }));
+    for (const payment of updates) dispatch({ type: "UPDATE_PAYMENT", payload: payment });
+    setFactLinkError(null);
+  };
+
+  const handleRescheduleCriticalPayment = async (sourcePayment: Payment, targetDate: string) => {
+    if (!targetDate || targetDate < today) throw new Error("Выберите сегодняшнюю или будущую дату.");
+    const scheduleKey = loanScheduleKey(sourcePayment);
+    const overdueInstallment = scheduleKey
+      ? overdueLoanInstallments.find((installment) => installment.key === scheduleKey)
+      : undefined;
+    const updates = overdueInstallment
+      ? rescheduleOverdueLoanInstallment(state.payments, overdueInstallment, targetDate, today)
+      : scheduleKey
+        ? rescheduleLoanInstallment(state.payments, sourcePayment, targetDate)
+        : [{ ...sourcePayment, date: targetDate }];
+    if (!updates.length) throw new Error("Не удалось подготовить платёж к переносу.");
+    await Promise.all(updates.map((payment) => {
+      const companyId = companyByPayment.get(payment.id);
+      return companyId ? savePaymentWithCompany(payment, companyId) : Promise.resolve();
+    }));
+    for (const payment of updates) dispatch({ type: "UPDATE_PAYMENT", payload: payment });
+    setFactLinkError(null);
+  };
+
   const handleDeletePayment = (payment: Payment): boolean => {
     const scheduleKey = loanScheduleKey(payment);
     const paymentsToDelete = scheduleKey
@@ -455,6 +480,17 @@ export function CalendarPage() {
         <SummaryTile icon={CheckCircle2} label="План совпал с фактом" value={planFactMatches.length} count tone="violet" onClick={() => setPlanFactOpen((open) => !open)} expanded={planFactOpen} />
         <SummaryTile icon={negativeDays > 0 ? TriangleAlert : Clock3} label="Дней с кассовым разрывом" value={negativeDays} count tone={negativeDays > 0 ? "amber" : "slate"} />
       </div>
+
+      {!isForecastView && (
+        <OverdueLoanQueue
+          installments={overdueLoanInstallments}
+          today={today}
+          accounts={state.accounts}
+          companies={companies}
+          companyByPayment={companyByPayment}
+          onReschedule={handleRescheduleOverdueLoan}
+        />
+      )}
 
       {planFactOpen && (
         <Card>
@@ -609,7 +645,14 @@ export function CalendarPage() {
         </div>
       </div>}
 
-      {view !== "forecast" && view !== "ozon-forecast" && <FinancialAlertsPanel accounts={state.accounts} payments={scopedPayments} />}
+      {view !== "forecast" && view !== "ozon-forecast" && (
+        <FinancialAlertsPanel
+          accounts={state.accounts}
+          payments={scopedPayments}
+          today={today}
+          onReschedulePayment={handleRescheduleCriticalPayment}
+        />
+      )}
       {!isForecastView && <FinanceTasksPanel />}
 
       <div id="calendar-main-content" className="scroll-mt-4">

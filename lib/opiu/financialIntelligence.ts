@@ -65,7 +65,7 @@ export function analyzeFinances({
   }
 
   const alerts: FinancialAlert[] = [];
-  const overdueCritical = duePlans.filter((payment) => payment.amount < 0 && priority(payment) === "A");
+  const overdueCritical = duePlans.filter((payment) => payment.date < today && payment.amount < 0 && priority(payment) === "A");
   if (overdueCritical.length) {
     const amount = overdueCritical.reduce((sum, payment) => sum + Math.abs(payment.amount), 0);
     alerts.push({
