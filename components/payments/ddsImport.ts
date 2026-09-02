@@ -5,7 +5,7 @@
 // Счета сверяются по названию. Чтение и запись идут через закрытый серверный API.
 
 import type { Account, Payment } from "@/lib/types";
-import type { DdsParseResult } from "./ddsCsv";
+import type { DdsDraft, DdsParseResult } from "./ddsCsv";
 import type { DdsCompany } from "./ddsCompanies";
 
 type AccountRow = { id: string; name: string; type: string; currency: string; balance: number };
@@ -73,12 +73,15 @@ const baseExactKey = (date: string, amount: number, category: string, wallet: st
 const looseKey = (date: string, amount: number, wallet: string) => `${date}|${amount}|${wallet}`;
 
 function companyIdForDraft(
-  companyName: string,
+  draft: Pick<DdsDraft, "company" | "companyId">,
   assignment: CompanyAssignment,
 ): string | null {
   if (assignment.overrideCompanyId !== undefined) return assignment.overrideCompanyId;
-  if (companyName === "Группа (общее)") return null;
-  return assignment.companies.find((company) => company.name === companyName)?.id ?? null;
+  // Явный id из очереди выписок важнее имени: поиск по имени терял компанию,
+  // если её переименовали или деактивировали, и платёж уходил в «Общее по группе».
+  if (draft.companyId !== undefined) return draft.companyId;
+  if (draft.company === "Группа (общее)") return null;
+  return assignment.companies.find((company) => company.name === draft.company)?.id ?? null;
 }
 
 // Строит план вставки против переданного снимка базы (без записи).
@@ -132,7 +135,7 @@ export function buildImportPlan(
   let duplicatePayments = 0;
 
   for (const d of result.drafts) {
-    const companyId = companyIdForDraft(d.company, assignment);
+    const companyId = companyIdForDraft(d, assignment);
     const ek = exactKey(d.date, d.amount, d.category, d.wallet, d.name, companyId);
     const rem = exactRemaining.get(ek) ?? 0;
     if (rem > 0) {

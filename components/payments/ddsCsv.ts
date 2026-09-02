@@ -14,6 +14,8 @@ export interface DdsDraft {
   counterparty: string;
   activity: string; // Вид деятельности (операционная/финансовая/…)
   company: string; // Направление бизнеса (для Этапа 2)
+  /** Компания по id — приоритетнее имени. Очередь выписок передаёт именно его: имя могло измениться. */
+  companyId?: string | null;
   comment?: string;
   importSource?: string; // устойчивый ключ для идемпотентного импорта из внешней очереди
 }

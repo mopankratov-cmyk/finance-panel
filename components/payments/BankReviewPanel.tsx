@@ -150,7 +150,7 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
         if (!splits) return [{
           date: item.date, amount: item.amount, name: item.purpose, category: item.category!,
           wallet: accountById.get(item.accountId!) ?? "", counterparty: item.counterparty, activity: "",
-          company: companyById.get(item.companyId!) ?? "", comment: `Банковская выписка · ${item.sourceFileName}`,
+          company: companyById.get(item.companyId!) ?? "", companyId: item.companyId, comment: `Банковская выписка · ${item.sourceFileName}`,
           importSource: `bank-review:${item.id}`,
         }];
         return splits.filter((split) => !split.excluded).map((split, index) => ({
@@ -162,6 +162,7 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
           counterparty: item.counterparty,
           activity: "",
           company: companyById.get(split.companyId!) ?? "",
+          companyId: split.companyId,
           comment: `Часть банковской операции ${formatMoney(Math.abs(item.amount))} · ${item.sourceFileName}`,
           importSource: index === 0 ? `bank-review:${item.id}` : `bank-review:${item.id}:split:${index}`,
         }));

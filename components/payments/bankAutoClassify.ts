@@ -96,7 +96,9 @@ function learnedOwnership(row: BankStatementRow, payments: PaymentWithCompany[])
       `${row.counterparty} ${row.purpose}`,
       `${payment.counterparty} ${payment.name} ${payment.comment}`,
     ) >= 0.62);
-  if (!matches.length) return null;
+  // Одна похожая операция — не история, а совпадение слов: по ней нельзя
+  // назначать юрлицо и кошелёк (у статьи тот же минимум — count < 2 → null).
+  if (matches.length < 2) return null;
   const companyCounts = new Map<string, number>();
   const accountCounts = new Map<string, number>();
   for (const payment of matches) {
@@ -117,6 +119,10 @@ function ownerCompany(statement: BankStatement, companies: DdsCompany[], mapping
   const mapped = mappings.find((mapping) => mapping.bankAccountNumber === statement.accountNumber);
   if (mapped) return { companyId: mapped.companyId, confidence: 1, reason: "Компания запомнена для этого банковского счёта" };
   const owner = normalize(statement.owner).replace(/^индивидуальный предприниматель\s+/, "");
+  // Владелец не распознан (банк пишет «Наименование:» вместо «Клиент:») —
+  // `name.includes("")` было бы true для первой же компании, и вся выписка
+  // уходила ей с уверенностью 0.94. Лучше «не знаю» и ручная проверка.
+  if (!owner) return null;
   if (owner.includes("филиппов")) {
     const korovkin = companies.find((item) => normalize(item.name).includes("коровкин"));
     if (korovkin) {
@@ -127,11 +133,13 @@ function ownerCompany(statement: BankStatement, companies: DdsCompany[], mapping
       };
     }
   }
-  const company = companies.find((item) => {
+  const matched = companies.filter((item) => {
     const name = normalize(item.name).replace(/^ип\s+/, "");
-    return owner.includes(name) || name.includes(owner);
+    return name.length >= 3 && (owner.includes(name) || name.includes(owner));
   });
-  return company ? { companyId: company.id, confidence: 0.94, reason: "Компания определена по владельцу выписки" } : null;
+  // Две компании подошли под одного владельца — выбирать наугад нельзя.
+  if (matched.length !== 1) return null;
+  return { companyId: matched[0].id, confidence: 0.94, reason: "Компания определена по владельцу выписки" };
 }
 
 function mappedAccount(statement: BankStatement, mappings: BankAccountMapping[]) {
@@ -142,11 +150,13 @@ function mappedAccount(statement: BankStatement, mappings: BankAccountMapping[])
 function accountFromNumber(statement: BankStatement, accounts: Account[]) {
   const number = statement.accountNumber.replace(/\D/g, "");
   if (!number) return null;
-  const account = accounts.find((item) => {
+  const matched = accounts.filter((item) => {
     const digits = item.name.replace(/\D/g, "");
     return digits.length >= 4 && (digits.endsWith(number.slice(-4)) || number.endsWith(digits.slice(-4)));
   });
-  return account ? { accountId: account.id, confidence: 0.96, reason: "Кошелёк определён по номеру банковского счёта" } : null;
+  // Два кошелька с одинаковым хвостом номера — ничья, а не «первый в списке».
+  if (matched.length !== 1) return null;
+  return { accountId: matched[0].id, confidence: 0.96, reason: "Кошелёк определён по номеру банковского счёта" };
 }
 
 function accountFromOwnerAndBank(statement: BankStatement, accounts: Account[]) {
