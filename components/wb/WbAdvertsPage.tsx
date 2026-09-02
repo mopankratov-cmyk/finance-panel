@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
-import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
 import { withPlural } from "@/lib/ozon/plural";
 import { useCategoryMap } from "@/lib/useCategoryMap";
@@ -512,6 +512,13 @@ export function WbAdvertsPage() {
       .sort((left, right) => compareAdvertCampaigns(left.campaign, right.campaign));
   }, [activeData?.articles, byArticle, category, kind, query]);
 
+  // Кнопки строим по товарам кабинета до фильтрации: иначе выбранная категория
+  // схлопнула бы список до самой себя, а набранный поиск выкашивал бы кнопки.
+  const catOptions = useMemo(
+    () => categoriesOnScreen(activeData?.articles ?? [], (article) => article.art, byArticle, categories),
+    [activeData?.articles, byArticle, categories],
+  );
+
   const statusCounts = useMemo(() => STATUS_FILTERS.reduce<Record<CampaignStatusFilter, number>>((acc, filter) => {
     acc[filter.value] = filter.value === "all"
       ? baseRows.length
@@ -817,7 +824,7 @@ export function WbAdvertsPage() {
             </div>
             {categories.length > 0 ? (
               <div className="mt-2">
-                <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+                <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
               </div>
             ) : null}
             <div className="mt-2 flex items-center gap-1 text-[10px]">

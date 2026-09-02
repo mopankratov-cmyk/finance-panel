@@ -5,7 +5,7 @@ import { Search } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
-import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { useSort, sortGlyph } from "@/lib/useSort";
@@ -67,6 +67,7 @@ export default function SeoPage() {
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
   const filtered = filterByCategory(data?.skus ?? [], (s) => s.art, byArticle, category);
+  const catOptions = categoriesOnScreen(data?.skus ?? [], (s) => s.art, byArticle, categories);
   const { sorted: skus, sortField, sortDir, toggleSort } = useSort(filtered, (s, field) =>
     field === "art" ? s.art : (s[field as keyof SeoSku] as number | null));
 
@@ -85,11 +86,11 @@ export default function SeoPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Search className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">SEO / Воронка</h1>
-            <p className="text-xs text-gray-500">{data ? `${data.count} SKU · ${data.metrics_period}` : "показы → CTR → корзина → заказ"}</p>
+            <p className="text-xs text-gray-500">{data ? `${category ? `${filtered.length} из ${data.count}` : data.count} SKU · ${data.metrics_period}` : "показы → CTR → корзина → заказ"}</p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
-            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+            <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[1, 7, 30].map((d) => (
                 <button key={d} onClick={() => { setWin(d); setCustomFrom(""); setCustomTo(""); }} className={`rounded px-3 py-1 text-xs font-semibold ${win === d && !customFrom ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d === 1 ? "вчера" : d + "д"}</button>

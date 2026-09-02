@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { formatNumber } from "@/lib/analytics/format";
-import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { StockCatalogRow } from "@/app/api/supplies/route";
@@ -28,6 +28,10 @@ export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
     if (hideEmpty) out = out.filter((r) => r.quantity > 0 || r.inWayToClient > 0 || r.inWayFromClient > 0);
     return filterByCategory(out, (r) => r.article, byArticle, category);
   }, [rows, q, hideEmpty, category, byArticle]);
+  const catOptions = useMemo(
+    () => categoriesOnScreen(rows, (r) => r.article, byArticle, categories),
+    [rows, byArticle, categories],
+  );
 
   const totalQuantity = filtered.reduce((s, r) => s + r.quantity, 0);
   const totalToClient = filtered.reduce((s, r) => s + r.inWayToClient, 0);
@@ -71,7 +75,7 @@ export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+        <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
           className="rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none sm:w-64" />
         <label className="flex items-center gap-1.5 text-sm text-slate-600">

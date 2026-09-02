@@ -10,7 +10,11 @@ const table = readFileSync(new URL("../lib/rnp/buildTable.ts", import.meta.url),
 test("бренд и категория РНП приходят из товарных карточек", () => {
   assert.match(table, /loadCabinetPimRowsHourly/);
   assert.match(table, /brand: card\?\.brand \|\| cost\?\.brand/);
-  assert.match(table, /subject: card\?\.subject \|\| cost\?\.category/);
+  // Инвариант тот же — категория берётся из карточки или себестоимости, а не
+  // выдумывается. Порядок источников перевернулся 02.09.2026: вписанная руками
+  // категория теперь сильнее предмета WB, иначе РНП оставался единственным
+  // экраном, который ручной ввод игнорирует.
+  assert.match(table, /subject: cost\?\.category \|\| card\?\.subject/);
   assert.match(toolbar, /aria-label="Бренд товара"/);
   assert.doesNotMatch(toolbar, /value=\{props\.cabinetId\}/);
   assert.match(page, /filterRnpProductFacets/);

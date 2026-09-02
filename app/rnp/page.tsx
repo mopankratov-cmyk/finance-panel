@@ -5,7 +5,7 @@ import { Table2 } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
-import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
@@ -76,6 +76,7 @@ export default function RnpPage() {
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
   const filtered = filterByCategory(data?.skus ?? [], (s) => s.art, byArticle, category);
+  const catOptions = categoriesOnScreen(data?.skus ?? [], (s) => s.art, byArticle, categories);
   const { sorted: skus, sortField, sortDir, toggleSort } = useSort(filtered, (s, field) =>
     field === "art" ? s.art : total(s.metrics, field));
 
@@ -88,11 +89,11 @@ export default function RnpPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Table2 className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">РНП по SKU</h1>
-            <p className="text-xs text-gray-500">{data ? `${data.shop_label} · ${data.sku_count} SKU · ${win} дней` : "расход / выручка / маржа"}</p>
+            <p className="text-xs text-gray-500">{data ? `${data.shop_label} · ${category ? `${filtered.length} из ${data.sku_count}` : data.sku_count} SKU · ${win} дней` : "расход / выручка / маржа"}</p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
-            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+            <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[7, 14, 30].map((d) => (
                 <button key={d} onClick={() => { setWin(d); setCustomFrom(""); setCustomTo(""); }} className={`rounded px-3 py-1 text-xs font-semibold ${win === d && !customFrom ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d}д</button>
@@ -114,6 +115,19 @@ export default function RnpPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : data ? (
           <>
+            {/*
+              Плитки считает сервер по всему кабинету, и пересчитать их по
+              отфильтрованным строкам нельзя честно: часть рекламного расхода WB
+              не разносит по артикулам, поэтому сумма строк заведомо меньше
+              правды. Выбор между «показать заниженное число» и «сказать, что
+              это число про кабинет» решён в пользу второго — до появления
+              категорий фильтра не существовало и вопрос не стоял.
+            */}
+            {category ? (
+              <div className="mb-2 text-[11px] text-gray-500">
+                Плитки — по всему кабинету. Фильтр «{category === "__none" ? "Остальное" : category}» применён к таблице.
+              </div>
+            ) : null}
             <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {[
                 { f: "orders_sum", l: "Заказы, ₽", k: "money" },

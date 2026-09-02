@@ -5,7 +5,7 @@ import { Layers } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
-import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useSort, sortGlyph } from "@/lib/useSort";
 import { WbProductImage } from "@/components/wb/WbProductImage";
@@ -101,6 +101,12 @@ export default function SklejkiPage() {
   const groupsMulti = (data?.groups_multi ?? [])
     .map((g) => ({ ...g, skus: filterByCategory(g.skus, (s) => s.art, byArticle, category) }))
     .filter((g) => g.skus.length > 0);
+  const catOptions = categoriesOnScreen(
+    (data?.groups_multi ?? []).flatMap((g) => g.skus),
+    (s) => s.art,
+    byArticle,
+    categories,
+  );
 
   return (
     <div className="bg-gray-50 text-gray-900">
@@ -113,7 +119,7 @@ export default function SklejkiPage() {
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
-            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+            <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
           </div>
         </div>
       </header>
@@ -129,6 +135,11 @@ export default function SklejkiPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : data ? (
           <>
+            {category ? (
+              <div className="mb-2 text-[11px] text-gray-500">
+                Плитки — по всему кабинету. Фильтр «{category === "__none" ? "Остальное" : category}» применён к склейкам ниже.
+              </div>
+            ) : null}
             <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[
                 { l: "Всего карточек", v: data.total_sku },

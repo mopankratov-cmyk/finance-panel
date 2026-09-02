@@ -5,7 +5,7 @@ import { Sigma } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
-import { CategoryFilter } from "@/components/ui/CategoryFilter";
+import { CategoryFilter, categoriesOnScreen } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useSort, sortGlyph } from "@/lib/useSort";
 import { WbProductImage } from "@/components/wb/WbProductImage";
@@ -73,6 +73,7 @@ export function UnitMarginPage() {
     const article = String(data!.rows[index][2]);
     return category === "__none" ? !byArticle[article] : byArticle[article] === category;
   });
+  const catOptions = categoriesOnScreen(data?.rows ?? [], (row) => String(row[2]), byArticle, categories);
   const { sorted: indices, sortField, sortDir, toggleSort } = useSort(filteredIndices, (rowIndex, field) => {
     const value = data?.rows[rowIndex]?.[Number(field)];
     if (value == null || value === "") return null;
@@ -94,7 +95,7 @@ export function UnitMarginPage() {
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
-            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+            <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
           </div>
         </div>
       </header>

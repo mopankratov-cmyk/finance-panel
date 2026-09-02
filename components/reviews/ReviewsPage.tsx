@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { MessageSquare, Star } from "lucide-react";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
-import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { LoadingBanner, SkeletonCards, SkeletonKpiRow, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { ReviewCard } from "@/components/reviews/ReviewCard";
@@ -82,6 +82,7 @@ export function ReviewsPage() {
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
   const filtered = filterByCategory(rows, (r) => r.article, byArticle, category);
+  const catOptions = categoriesOnScreen(rows, (r) => r.article, byArticle, categories);
 
   return (
     <div className="bg-gray-50 text-gray-900">
@@ -94,7 +95,7 @@ export function ReviewsPage() {
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
-            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+            <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
           </div>
         </div>
       </header>

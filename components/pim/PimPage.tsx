@@ -5,7 +5,7 @@ import { PackageSearch, ExternalLink, Images } from "lucide-react";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
-import { CategoryFilter, filterByCategory } from "@/components/ui/CategoryFilter";
+import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { formatTime } from "@/lib/analytics/format";
@@ -65,6 +65,10 @@ export function PimPage() {
     if (s) out = out.filter((r) => r.name.toLowerCase().includes(s) || r.article.toLowerCase().includes(s) || String(r.nmId).includes(s));
     return filterByCategory(out, (r) => r.article, byArticle, category);
   }, [rows, q, category, byArticle]);
+  const catOptions = useMemo(
+    () => categoriesOnScreen(rows, (r) => r.article, byArticle, categories),
+    [rows, byArticle, categories],
+  );
 
   const completeCount = filtered.filter(isComplete).length;
 
@@ -118,7 +122,7 @@ export function PimPage() {
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
-            <CategoryFilter categories={categories} value={category} onChange={setCategory} />
+            <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none sm:w-64" />
           </div>

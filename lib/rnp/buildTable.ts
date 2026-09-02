@@ -2910,7 +2910,8 @@ export async function buildRnpTable(
           art: t.article || card?.article || String(t.nm_id),
           name: card?.name || cost?.name || t.article || String(t.nm_id),
           brand: card?.brand || cost?.brand || "",
-          subject: card?.subject || cost?.category || "",
+          // Рука вперёд предмета: вписанная категория сильнее предмета WB.
+          subject: cost?.category || card?.subject || "",
           img_url: imageByNm.get(t.nm_id) ?? wbCardImageUrl(t.nm_id),
           metrics,
           _o: orders,

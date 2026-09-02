@@ -29,8 +29,11 @@ export function rnpCategoryOptions(
   skus: RnpFacetSku[],
   fallbackByArticle: Record<string, string> = {},
 ) {
+  // Рука вперёд предмета. Пока категорий не было ни одной, порядок роли не
+  // играл; теперь играет: вписанная владельцем категория должна пересилить
+  // предмет WB, а не наоборот, иначе РНП единственный её проигнорирует.
   return sortedUnique(skus.map((sku) =>
-    cleanFacet(sku.subject) || cleanFacet(fallbackByArticle[sku.art])));
+    cleanFacet(fallbackByArticle[sku.art]) || cleanFacet(sku.subject)));
 }
 
 export function filterRnpProductFacets<T extends RnpFacetSku>(
@@ -47,7 +50,7 @@ export function filterRnpProductFacets<T extends RnpFacetSku>(
 
   return skus.filter((sku) => {
     const skuBrand = cleanFacet(sku.brand);
-    const skuCategory = cleanFacet(sku.subject) || cleanFacet(fallbackByArticle[sku.art]);
+    const skuCategory = cleanFacet(fallbackByArticle[sku.art]) || cleanFacet(sku.subject);
     if (brand && skuBrand !== brand) return false;
     if (category === "__none") return !skuCategory;
     return !category || skuCategory === category;
