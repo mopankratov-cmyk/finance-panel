@@ -27,6 +27,15 @@ function describeValue(value: unknown): string {
     if (typeof record.sum === "number") return `${record.sum}`;
     if (typeof record.count === "number") return `${record.count} фраз`;
     if (typeof record.name === "string") return record.name;
+    // Правило описываем его условием, а не перечнем имён полей. Раньше здесь
+    // выводилось «goal, nm_id, target» — это ключи объекта, а не то, что человек
+    // сделал: через месяц по такой записи не понять ничего.
+    if (typeof record.goal === "string" && record.target != null) {
+      const goal = record.goal === "cpo" ? "CPO" : "ДРР";
+      const bounds = record.min_bid != null && record.max_bid != null ? `, ставка ${record.min_bid}–${record.max_bid}` : "";
+      return `${goal} ≤ ${record.target}${bounds}`;
+    }
+    if (Array.isArray(record.phrases)) return `${record.phrases.length} фраз`;
     return Object.keys(record).slice(0, 3).join(", ");
   }
   return String(value);
@@ -42,7 +51,16 @@ function describeValue(value: unknown): string {
  * суточному лимиту означают либо заниженный лимит, либо попытку обойти его
  * повторами, и оба разговора невозможны, пока отказы не видны.
  */
-export function AdJournalTab({ cabinetId }: { cabinetId: string }) {
+export function AdJournalTab({
+  cabinetId,
+  advertId,
+  onClearAdvert,
+}: {
+  cabinetId: string;
+  /** Показать историю одной кампании. Роут этот параметр умел с самого начала. */
+  advertId?: number | null;
+  onClearAdvert?: () => void;
+}) {
   const [entries, setEntries] = useState<AdJournalEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,6 +72,7 @@ export function AdJournalTab({ cabinetId }: { cabinetId: string }) {
     const params = new URLSearchParams({ cabinet: cabinetId, limit: "100" });
     if (action) params.set("action", action);
     if (status) params.set("status", status);
+    if (advertId) params.set("advertId", String(advertId));
     const result = await adGet<{ entries: AdJournalEntry[]; error?: string }>(`/api/adverts/journal?${params}`);
     setLoading(false);
     if (!result.ok) {
@@ -63,7 +82,7 @@ export function AdJournalTab({ cabinetId }: { cabinetId: string }) {
     }
     setError(null);
     setEntries(result.data?.entries ?? []);
-  }, [cabinetId, action, status]);
+  }, [cabinetId, action, status, advertId]);
 
   useEffect(() => {
     void load();
@@ -71,7 +90,16 @@ export function AdJournalTab({ cabinetId }: { cabinetId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 text-[11px]">
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        {advertId ? (
+          <button
+            type="button"
+            onClick={onClearAdvert}
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-violet-100 px-2 font-semibold text-violet-800 transition-colors hover:bg-violet-200"
+          >
+            Только кампания {advertId} ✕
+          </button>
+        ) : null}
         <select
           value={action}
           onChange={(event) => setAction(event.target.value)}

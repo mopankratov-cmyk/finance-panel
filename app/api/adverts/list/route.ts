@@ -73,6 +73,7 @@ interface FunnelDayRow {
 interface ChangeRow {
   advert_id: number;
   action: string | null;
+  user_email: string | null;
   old_bid: number | null;
   new_bid: number | null;
   status: string;
@@ -184,7 +185,7 @@ export async function GET(request: NextRequest) {
   const statsDateFrom = legacyStatsDateFrom < metricsPeriod7Closed.dateFrom ? legacyStatsDateFrom : metricsPeriod7Closed.dateFrom;
   // `action` в выборке — не украшение: без него отфильтровать журнал по виду
   // события физически невозможно, а он пишется на КАЖДУЮ операцию модуля.
-  let changesQ = db.from("advert_bid_changes").select("advert_id, action, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
+  let changesQ = db.from("advert_bid_changes").select("advert_id, action, user_email, old_bid, new_bid, status, created_at").order("created_at", { ascending: false }).limit(500);
   if (cabinetId) changesQ = changesQ.eq("cabinet_id", cabinetId);
 
   // ?timings=1 — длительности источников в ответе, чтобы мерить узкие места
@@ -578,6 +579,11 @@ export async function GET(request: NextRequest) {
         old_bid: latestChange.old_bid,
         new_bid: latestChange.new_bid,
         created_at: latestChange.created_at,
+        // Кто подвинул ставку последним. Автоправила отрабатывают в 10:00 МСК —
+        // ровно в час утреннего обхода, — и менеджер видит ставку, которую не
+        // ставил. Без этого признака он идёт выяснять в другой раздел.
+        by_rule: latestChange.action === "rule_apply",
+        by: latestChange.user_email,
       } : null,
       comparison,
     };

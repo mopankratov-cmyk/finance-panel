@@ -98,7 +98,7 @@ interface Campaign {
   economics: AdvertEconomics;
   attribution_compatible: boolean;
   nm_count: number | null;
-  last_change: { old_bid: number | null; new_bid: number | null; created_at: string } | null;
+  last_change: { old_bid: number | null; new_bid: number | null; created_at: string; by_rule?: boolean; by?: string | null } | null;
   comparison: BeforeAfter | null;
 }
 
@@ -414,6 +414,10 @@ export function WbAdvertsPage() {
   const [view, setView] = useDashboardFilter<ModuleView>("view", "campaigns", MODULE_VIEWS.map((item) => item.value));
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
+  // Журнал умеет фильтровать по кампании — роут читает advertId, — но интерфейс
+  // этот параметр не слал. На вопрос «мы вчера эту трогали?» менеджер глазами
+  // читал сотню перемешанных строк по всему кабинету.
+  const [journalAdvertId, setJournalAdvertId] = useState<number | null>(null);
   const [cabinetMoney, setCabinetMoney] = useState<AdCabinetConfig | null>(null);
   // Отметки для массового действия. Живут отдельно от выбранной кампании:
   // «смотрю эту» и «делаю с этими» — разные намерения, и склеивать их значит
@@ -750,7 +754,7 @@ export function WbAdvertsPage() {
         <div className="px-2 py-3 sm:px-6">
           {view === "phrases" ? <AdClustersTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} /> : null}
           {view === "rules" ? <AdRulesTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} /> : null}
-          {view === "log" ? <AdJournalTab cabinetId={cabinetId as string} /> : null}
+          {view === "log" ? <AdJournalTab cabinetId={cabinetId as string} advertId={journalAdvertId} onClearAdvert={() => setJournalAdvertId(null)} /> : null}
         </div>
       ) : null}
 
@@ -900,6 +904,11 @@ export function WbAdvertsPage() {
                       <div className="mt-0.5 flex items-center gap-1 text-[9px] text-slate-400">
                         <span className={`shrink-0 rounded px-1 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span>
                         <span className={`shrink-0 rounded px-1 py-0.5 ${BID_BADGE[campaignBidKind(campaign)].className}`}>{BID_BADGE[campaignBidKind(campaign)].label}</span>
+                        {campaign.last_change?.by_rule ? (
+                          <span title={`Ставку последним менял автопрогон правил, ${new Date(campaign.last_change.created_at).toLocaleString("ru-RU")}`} className="shrink-0 rounded bg-violet-100 px-1 py-0.5 font-semibold text-violet-700">
+                            правило
+                          </span>
+                        ) : null}
                         {campaign.stats_stale ? <span title={campaign.stats_synced_at || "Статистика ещё не загружена"} className="shrink-0 rounded bg-rose-50 px-1 py-0.5 font-semibold text-rose-700">данные {campaign.stats_age_hours == null ? "нет" : `${campaign.stats_age_hours} ч.`}</span> : null}
                       </div>
                       <div className="mt-0.5 truncate text-[9px] text-slate-400" title={campaign.name}>{campaign.name}</div>
@@ -1005,7 +1014,14 @@ export function WbAdvertsPage() {
               <div className="rounded-xl border border-slate-200 p-3"><div className="mb-2 flex items-center justify-between"><h2 className="text-xs font-bold text-slate-700">Расход по дням</h2><span className="text-[10px] text-slate-400">последние 14 дней</span></div><Sparkline values={selected.campaign.days.map((day) => day.spend)} /></div>
 
               <section className="mt-3 rounded-xl border border-slate-200 p-3">
-                <div className="flex items-center justify-between gap-2"><h2 className="text-xs font-bold text-slate-700">До / после изменения ставки</h2>{selected.campaign.last_change && <span className="text-[9px] text-slate-400">{new Date(selected.campaign.last_change.created_at).toLocaleDateString("ru-RU")}</span>}</div>
+                <div className="flex items-center justify-between gap-2"><h2 className="text-xs font-bold text-slate-700">До / после изменения ставки</h2>
+                  <button
+                    type="button"
+                    onClick={() => { setJournalAdvertId(selected.campaign.id); setView("log"); }}
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                  >
+                    История этой кампании
+                  </button>{selected.campaign.last_change && <span className="text-[9px] text-slate-400">{new Date(selected.campaign.last_change.created_at).toLocaleDateString("ru-RU")}</span>}</div>
                 {selected.campaign.comparison ? <div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">До</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.before.drr)}</div><div className="text-[9px] text-slate-400">{selected.campaign.comparison.before.days} дн.</div></div><div className="rounded-lg bg-violet-50 p-2"><div className="text-[9px] text-violet-500">Изменение</div><div className="mt-1 font-semibold text-violet-700">{selected.campaign.last_change?.old_bid ?? "—"} → {selected.campaign.last_change?.new_bid ?? "—"}</div><div className="text-[9px] text-violet-500">ставка</div></div><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">После</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.after.drr)}</div><div className={`text-[9px] ${Number(selected.campaign.comparison.drrDelta) <= 0 ? "text-emerald-600" : "text-rose-600"}`}>{selected.campaign.comparison.drrDelta == null ? "—" : `${selected.campaign.comparison.drrDelta > 0 ? "+" : ""}${selected.campaign.comparison.drrDelta} п.п.`}</div></div></div> : <p className="mt-2 text-[10px] leading-4 text-slate-400">{beforeAfterReason(selected.campaign)}</p>}
               </section>
 
