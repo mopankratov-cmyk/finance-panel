@@ -80,6 +80,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/sync/rk-autotask",
+      "schedule": "20 3 * * *"
+    },
+    {
       "path": "/api/sync/screen-latency",
       "schedule": "30 4 * * *"
     },

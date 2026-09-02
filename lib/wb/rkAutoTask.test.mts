@@ -48,6 +48,9 @@ test("полки: правило обратное поисковому", () => {
   // На полках ставка покупает позицию, а не заказ: заказов нет — ПОДНЯТЬ,
   // дорого — тоже поднять. Тот же вход на поиске даёт противоположное.
   assert.match(at({ block: "cpc_shelf", spent: 1500, orders: 0 })!.note, /Поднять/);
+  // Копейки — не сигнал: прогон по живому дню выдавал «поднять до 247 ₽»
+  // при расходе 21 копейка, пока на полках не было нижней границы.
+  assert.equal(at({ block: "cpc_shelf", spent: 0.21, orders: 0 }), null);
   assert.match(at({ block: "cpc_shelf", spent: 900, orders: 3, ordersSum: 5_000 })!.note, /Поднять/);
   assert.match(at({ block: "cpc_search", spent: 900, orders: 3, ordersSum: 5_000 })!.note, /Снизить/);
 });
