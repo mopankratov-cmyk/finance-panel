@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   try {
     data = await loadAllSupabasePages<Record<string, unknown>>((rangeFrom, rangeTo) => {
       let query = db.from("wb_rk_notes")
-        .select("nm_id, advert_id, date, note, done, updated_at")
+        .select("nm_id, advert_id, date, note, done, updated_at, source, suggested_note, suggested_reason")
         .eq("cabinet_id", cabinetId)
         .order("date", { ascending: true })
         .order("nm_id", { ascending: true })
@@ -58,6 +58,9 @@ export async function GET(request: NextRequest) {
     note: String(row.note ?? ""),
     done: Boolean(row.done),
     updatedAt: row.updated_at ? String(row.updated_at) : null,
+    source: row.source === "auto" ? "auto" : "human",
+    suggestedNote: row.suggested_note == null ? null : String(row.suggested_note),
+    suggestedReason: row.suggested_reason == null ? null : String(row.suggested_reason),
   }));
   return NextResponse.json({ notes });
 }
@@ -110,6 +113,10 @@ export async function POST(request: NextRequest) {
     date,
     note: note.slice(0, 2000),
     done,
+    // Человек написал или переписал — последнее слово за ним. Предложение
+    // алгоритма (suggested_note) при этом НЕ трогаем: расхождение между
+    // советом и правкой и есть материал, по которому правила потом чинятся.
+    source: "human",
     updated_at: new Date().toISOString(),
   }, { onConflict: "cabinet_id,nm_id,advert_id,date" });
   if (error) return NextResponse.json({ ok: false, error: "Не удалось сохранить заметку" }, { status: 502 });
