@@ -1,3 +1,4 @@
+import { getPaymentPriority } from "@/components/calendar/paymentPriority";
 import type { Account, Payment } from "@/lib/types";
 
 export type FinancialAlertSeverity = "critical" | "warning" | "info";
@@ -32,8 +33,10 @@ export interface FinancialIntelligenceResult {
 const dayDistance = (a: string, b: string) =>
   Math.abs(new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86_400_000;
 
-const priority = (payment: Payment) =>
-  payment.comment?.match(/\[priority:([ABC])\]/i)?.[1]?.toUpperCase() ?? "C";
+// Тот же приоритет, что показывает календарь: метка [priority:X], а без неё —
+// подсказка по статье и названию. Раньше здесь без метки было «C», и панель
+// «Финансовый контроль» видела 0 критичных там, где плитка A показывала N.
+const priority = (payment: Payment) => getPaymentPriority(payment);
 
 export function analyzeFinances({
   accounts,

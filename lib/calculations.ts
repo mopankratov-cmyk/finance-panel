@@ -41,7 +41,8 @@ export function getRecentTransactions(
   payments: Payment[],
   limit = 10,
 ): Payment[] {
-  return [...payments]
+  // Отменённый платёж — не операция; в «последних» ему не место.
+  return getActivePayments(payments)
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, limit);
 }
@@ -253,14 +254,15 @@ export function sumActivePayments(
   return { income, expense, net: income - expense };
 }
 
-function getISOWeekNumber(date: Date): number {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 4 - ((d.getDay() + 6) % 7) + 1);
-  const yearStart = new Date(d.getFullYear(), 0, 1);
-  return Math.ceil(
-    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
+// ISO 8601: неделя принадлежит году своего четверга. Прежний сдвиг «+4 − пн + 1»
+// целил в субботу, и весь 2027 год нумеровался на единицу больше
+// (1 января 2027 — пятница, по ISO это 53-я неделя 2026-го).
+export function getISOWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNumber = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNumber);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
 function toLocalISO(date: Date): string {

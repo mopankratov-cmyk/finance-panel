@@ -365,6 +365,9 @@ export function ImportDdsModal({
                   value={fmt(preview.suspectedRows.length)}
                   sub={preview.suspectedRows.length > 0 ? "спросим перед добавлением" : undefined}
                 />
+                {result.skipped > 0 && (
+                  <Stat label="Пропущено строк" value={fmt(result.skipped)} sub="нет даты или суммы — проверьте файл" bad />
+                )}
               </div>
 
               {result.warnings.map((w, i) => (
