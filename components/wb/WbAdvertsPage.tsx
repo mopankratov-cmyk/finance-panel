@@ -284,6 +284,24 @@ const VERDICT_RANK: Record<string, number> = { pause: 0, decrease: 1, increase: 
  * Решения требует то, что МОЖЕТ утечь: кампания не завершена и в ней есть
  * движение денег. Всё остальное — справедливое замечание не по адресу.
  */
+/**
+ * Кампания вчера тратила, а сегодня молчит.
+ *
+ * Единственное событие, ради которого менеджер открывает панель утром, до сих
+ * пор выражалось ИСЧЕЗНОВЕНИЕМ строки: фильтр по умолчанию «Активные», и
+ * кампания, остановленная ночью, просто пропадала. Вместо десяти строк человек
+ * видел девять и узнавал об этом, только если помнил вчерашнее число.
+ *
+ * Формулировка намеренно описывает факт, а не причину. Сказать «WB остановил
+ * ночью» панель не может: снимка вчерашнего СТАТУСА нет нигде, и та же картина
+ * получится у кампании, которую вечером остановили мы сами. Что именно
+ * произошло — видно в разделе «Что мы меняли».
+ */
+function wentQuiet(campaign: Campaign): boolean {
+  const yesterday = campaign.yesterday?.spend ?? 0;
+  return yesterday > 0 && campaign.spend_today <= 0;
+}
+
 function needsDecision(campaign: Campaign): boolean {
   if (campaign.status === 7) return false;
   const action = campaign.economics.action;
@@ -868,6 +886,11 @@ export function WbAdvertsPage() {
                         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} />
                         <StatusIcon className="h-3 w-3 shrink-0 text-slate-400" />
                         <span className="shrink-0 text-[11px] font-bold text-slate-800">{article.art}</span>
+                        {wentQuiet(campaign) ? (
+                          <span title="Вчера кампания тратила, сегодня расхода нет. Что именно произошло — смотрите в разделе «Что мы меняли»." className="shrink-0 rounded bg-slate-800 px-1 py-0.5 text-[9px] font-bold text-white">
+                            замолчала
+                          </span>
+                        ) : null}
                         {needsDecision(campaign) && VERDICT_BADGE[campaign.economics.action] ? (
                           <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold ${VERDICT_BADGE[campaign.economics.action]!.className}`}>
                             {VERDICT_BADGE[campaign.economics.action]!.label}
@@ -884,7 +907,7 @@ export function WbAdvertsPage() {
                     <div className="w-[128px] shrink-0 text-right">
                       <div title={closedDrrTitle(campaign) + ` · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`inline-block rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР 7д {closedDrrLabel(campaign)}</div>
                       <div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : rub(campaign.bid_cpm_rub)} · сег. {rub(campaign.spend_today)}</div>
-                      <div className="mt-0.5 text-[9px] tabular-nums text-slate-500">7 дн. {rub(campaign.spent_7_closed)}</div>
+                      <div className="mt-0.5 text-[9px] tabular-nums text-slate-500">вчера {rub(campaign.yesterday?.spend ?? 0)} · 7 дн. {rub(campaign.spent_7_closed)}</div>
                       {article.spent_sku_7_closed == null
                         ? <div title="Разбивка расхода по артикулам за период не собрана" className="text-[9px] tabular-nums text-slate-400">по артикулу —</div>
                         : Math.round(article.spent_sku_7_closed) !== Math.round(campaign.spent_7_closed)
