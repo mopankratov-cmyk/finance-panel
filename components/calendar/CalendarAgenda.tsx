@@ -4,7 +4,7 @@ import { CalendarPlus, CheckCircle2, Clock3 } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { DayInfo } from "@/lib/calculations";
 import type { Payment } from "@/lib/types";
-import { getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
+import { displayPaymentComment, getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
 
 export function CalendarAgenda({
   days,
@@ -48,14 +48,16 @@ export function CalendarAgenda({
               <button onClick={() => onSelect(day.date)} className="min-w-0 text-left">
                 {expenses.length ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {expenses.slice(0, 4).map((payment) => (
-                      <span key={payment.id} title={payment.name} className="inline-flex max-w-56 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
+                    {expenses.slice(0, 4).map((payment) => {
+                      const label = displayPaymentComment(payment.comment) || payment.name || payment.counterparty || payment.category || "Без комментария";
+                      return (
+                      <span key={payment.id} title={label} className="inline-flex max-w-56 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
                         {payment.status === "done" ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" /> : <Clock3 className="h-3.5 w-3.5 shrink-0 text-amber-600" />}
                         <span className={`rounded border px-1 text-[9px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span>
-                        <span className="truncate">{payment.category}</span>
+                        <span className="truncate">{label}</span>
                         <b className="shrink-0 tabular-nums">{formatMoney(Math.abs(payment.amount))}</b>
                       </span>
-                    ))}
+                    );})}
                     {expenses.length > 4 && <span className="px-2 py-1 text-xs text-slate-500">ещё {expenses.length - 4}</span>}
                   </div>
                 ) : <span className="text-sm text-slate-400">Расходов нет</span>}

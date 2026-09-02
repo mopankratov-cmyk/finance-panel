@@ -59,3 +59,13 @@ export function setPaymentPriorityComment(comment: string | undefined, priority:
 export function priorityRank(payment: Pick<Payment, "comment" | "category" | "name">): number {
   return { A: 0, B: 1, C: 2 }[getPaymentPriority(payment)];
 }
+
+export function chronologicalPaymentOrder(
+  left: Pick<Payment, "date" | "amount" | "comment" | "category" | "name">,
+  right: Pick<Payment, "date" | "amount" | "comment" | "category" | "name">,
+): number {
+  return right.date.localeCompare(left.date)
+    || priorityRank(left) - priorityRank(right)
+    || Math.abs(right.amount) - Math.abs(left.amount)
+    || left.name.localeCompare(right.name, "ru");
+}

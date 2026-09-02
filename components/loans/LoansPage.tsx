@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CalendarClock, ChevronRight, Download, ExternalLink, FileText, Pencil, Plus, RefreshCw, Trash2, WalletCards, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronRight, Download, ExternalLink, FileText, Pencil, Plus, RefreshCw, Sparkles, Trash2, WalletCards, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoanForm, type LoanFormResult, type LoanScheduleDraft } from "./LoanForm";
 import { deleteLoanDocument, openLoanDocument, saveLoanDocument } from "./loanDocuments";
@@ -61,6 +61,21 @@ function firstLoanComment(payments: Payment[], loanId: string) {
 function metadataNumber(payments: Payment[], loanId: string, key: string, fallback = 0) {
   const value = Number(commentValue(firstLoanComment(payments, loanId), key));
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function metadataDisbursements(payments: Payment[], loanId: string) {
+  return commentValue(firstLoanComment(payments, loanId), "tranches").split(";").flatMap((item) => {
+    const [date, rawAmount] = item.split("=");
+    const amount = Number(rawAmount);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date ?? "") && Number.isFinite(amount) && amount > 0 ? [{ date, amount }] : [];
+  });
+}
+
+function metadataPaymentDays(payments: Payment[], loanId: string): [number, number] | undefined {
+  const values = commentValue(firstLoanComment(payments, loanId), "payment-days").split(",").map(Number);
+  return values.length === 2 && values.every((value) => Number.isInteger(value) && value >= 1 && value <= 31)
+    ? [values[0], values[1]]
+    : undefined;
 }
 
 function monthCountInPeriod(startDate: string, months: number, periodStart: string, periodEnd: string) {
@@ -246,7 +261,8 @@ export function LoansPage() {
     if (result.contractFile) {
       await saveLoanDocument(loan.id, result.contractFile, result.companyId);
     }
-    const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]${result.contractNumber ? ` [contract-number:${result.contractNumber.replace(/\]/g, "")}]` : ""}`;
+    const tranches = result.disbursements.map((item) => `${item.date}=${item.amount}`).join(";");
+    const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [interest-frequency:${result.interestFrequency}] [monthly-rate:${result.monthlyRate}]${result.paymentDays ? ` [payment-days:${result.paymentDays.join(",")}]` : ""}${tranches ? ` [tranches:${tranches}]` : ""} [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]${result.contractNumber ? ` [contract-number:${result.contractNumber.replace(/\]/g, "")}]` : ""}`;
     if (editing) dispatch({ type: "UPDATE_LOAN", payload: loan });
     else dispatch({ type: "ADD_LOAN", payload: loan });
     const existing = linkedRows(state.payments, loan.id);
@@ -441,7 +457,7 @@ export function LoansPage() {
           return <article key={loan.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-lg font-bold text-slate-950">{loan.creditorName}</h2><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${loan.status === "active" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{loan.status === "active" ? "Активен" : "Закрыт"}</span></div><p className="mt-1 text-sm text-slate-500">{company?.name ?? "Компания не назначена"} · {contractNumber(state.payments, loan.id) ? `договор № ${contractNumber(state.payments, loan.id)} от ` : "договор от "}{formatDate(loan.startDate)}</p></div>
-              <div className="flex gap-2"><button onClick={() => setDetails(loan)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 text-sm font-bold text-violet-700 hover:bg-violet-50">Подробнее<ChevronRight className="h-4 w-4" /></button><button aria-label="Редактировать договор" onClick={() => { setEditing(loan); setModalOpen(true); }} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"><Pencil className="h-4 w-4" /></button><button aria-label="Удалить договор" onClick={() => void handleDelete(loan)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div>
+              <div className="flex flex-wrap gap-2"><button onClick={() => setDetails(loan)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 text-sm font-bold text-violet-700 hover:bg-violet-50">Подробнее<ChevronRight className="h-4 w-4" /></button><button onClick={() => { setEditing(loan); setModalOpen(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-violet-600" />Изменить график текстом</button><button aria-label="Редактировать договор вручную" onClick={() => { setEditing(loan); setModalOpen(true); }} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"><Pencil className="h-4 w-4" /></button><button aria-label="Удалить договор" onClick={() => void handleDelete(loan)} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Сумма договора" value={formatMoney(loan.principalAmount)} />
@@ -477,6 +493,10 @@ export function LoansPage() {
             annualRate={editing ? Number(commentValue(linkedRows(state.payments, editing.id)[0]?.comment, "annual-rate")) || editing.interestRatePerDay * 365 : undefined}
             originationFee={editing ? metadataNumber(state.payments, editing.id, "origination-fee") : 0}
             feeAmortizationMonths={editing ? metadataNumber(state.payments, editing.id, "fee-months", 36) : 36}
+            interestFrequency={editing ? commentValue(firstLoanComment(state.payments, editing.id), "interest-frequency") as LoanFormResult["interestFrequency"] || undefined : undefined}
+            monthlyRate={editing ? metadataNumber(state.payments, editing.id, "monthly-rate") : 0}
+            disbursements={editing ? metadataDisbursements(state.payments, editing.id) : []}
+            paymentDays={editing ? metadataPaymentDays(state.payments, editing.id) : undefined}
             onSubmit={handleSubmit}
             onCancel={() => { setModalOpen(false); setEditing(null); }}
           />

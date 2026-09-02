@@ -7,6 +7,8 @@ import type { Account, Loan, LoanStatus, PaymentStatus } from "@/lib/types";
 import { extractOfficeText } from "./officeText";
 import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
 import { aggregateRecognizedSchedule, mergeRecognition, recognizeLoanSpreadsheet, recognizeLoanText, type LoanCurrency, type RecognizedLoan, type RecognizedScheduleRow } from "./loanRecognition";
+import { applyLoanScheduleCorrections } from "./loanScheduleCorrections";
+import { buildSplitMonthlyInterestSchedule, fixedMonthlyInterest, type LoanDisbursement } from "./loanInterest";
 import { roundToTenth } from "@/lib/opiu/loanCurrency";
 
 export interface LoanScheduleDraft {
@@ -36,6 +38,10 @@ export interface LoanFormResult {
   annualRate: number;
   originationFee: number;
   feeAmortizationMonths: number;
+  interestFrequency: RecognizedLoan["interestFrequency"];
+  monthlyRate: number;
+  disbursements: LoanDisbursement[];
+  paymentDays?: [number, number];
   contractFile?: File;
 }
 
@@ -54,12 +60,17 @@ interface LoanFormProps {
   annualRate?: number;
   originationFee?: number;
   feeAmortizationMonths?: number;
+  interestFrequency?: RecognizedLoan["interestFrequency"];
+  monthlyRate?: number;
+  disbursements?: LoanDisbursement[];
+  paymentDays?: [number, number];
   onSubmit: (result: LoanFormResult) => void | Promise<void>;
   onCancel: () => void;
 }
 
 const fieldClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
 const emptySchedule = (): LoanScheduleDraft => ({ id: crypto.randomUUID(), date: "", principal: 0, interest: 0, penalty: 0, fine: 0, principalOriginal: 0, interestOriginal: 0, penaltyOriginal: 0, fineOriginal: 0, status: "planned" });
+const scheduleRow = (row: Omit<LoanScheduleDraft, "id">): LoanScheduleDraft => ({ id: crypto.randomUUID(), ...row });
 const initialRecognition = (): RecognizedLoan => ({ contractNumber: "", creditorName: "", companyHint: "", accountHint: "", principalAmount: 0, currency: "RUB", annualRate: 0, originationFee: 0, feeAmortizationMonths: 36, startDate: "", dueDate: "", interestFrequency: "unknown", confidence: 0, warnings: [] });
 
 function fileBase64(file: File) {
@@ -84,6 +95,25 @@ function imageMediaType(file: File) {
 function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[] {
   if (!data.startDate || !data.dueDate || data.principalAmount <= 0) return [emptySchedule()];
   const principalRub = data.principalAmount * rate;
+  if (data.interestFrequency === "semi_monthly" && data.disbursements?.length && data.monthlyRate && data.paymentDays) {
+    return buildSplitMonthlyInterestSchedule({
+      disbursements: data.disbursements,
+      monthlyRate: data.monthlyRate,
+      dueDate: data.dueDate,
+      paymentDays: data.paymentDays,
+    }).map((row) => scheduleRow({
+      ...row,
+      principal: roundToTenth(row.principal * rate),
+      interest: roundToTenth(row.interest * rate),
+      penalty: roundToTenth(row.penalty * rate),
+      fine: roundToTenth(row.fine * rate),
+      principalOriginal: row.principal,
+      interestOriginal: row.interest,
+      penaltyOriginal: row.penalty,
+      fineOriginal: row.fine,
+      status: "planned",
+    }));
+  }
   const start = new Date(`${data.startDate}T12:00:00`);
   const due = new Date(`${data.dueDate}T12:00:00`);
   if (data.interestFrequency !== "monthly") {
@@ -97,16 +127,16 @@ function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[
     const next = new Date(cursor);
     next.setMonth(next.getMonth() + 1);
     if (next > due) next.setTime(due.getTime());
-    const days = Math.max(1, Math.round((next.getTime() - cursor.getTime()) / 86_400_000));
+    const interestOriginal = fixedMonthlyInterest(data.principalAmount, data.annualRate);
     rows.push({
       id: crypto.randomUUID(),
       date: next.toISOString().slice(0, 10),
       principal: roundToTenth(next.getTime() === due.getTime() ? principalRub : 0),
-      interest: roundToTenth(data.principalAmount * data.annualRate / 100 * days / 365 * rate),
+      interest: roundToTenth(interestOriginal * rate),
       penalty: 0,
       fine: 0,
       principalOriginal: next.getTime() === due.getTime() ? data.principalAmount : 0,
-      interestOriginal: data.principalAmount * data.annualRate / 100 * days / 365,
+      interestOriginal,
       penaltyOriginal: 0,
       fineOriginal: 0,
       status: "planned",
@@ -146,7 +176,7 @@ function scheduleSourceAmount(row: LoanScheduleDraft, kind: "principal" | "inter
   return Number.isFinite(original) ? Number(original) : Number(row[kind] || 0) / (rate || 1);
 }
 
-export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, onSubmit, onCancel }: LoanFormProps) {
+export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, interestFrequency, monthlyRate = 0, disbursements = [], paymentDays, onSubmit, onCancel }: LoanFormProps) {
   const editing = Boolean(loan);
   const [stage, setStage] = useState<"source" | "review">(editing ? "review" : "source");
   const [description, setDescription] = useState("");
@@ -162,6 +192,10 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     feeAmortizationMonths,
     startDate: loan.startDate,
     dueDate: loan.dueDate,
+    interestFrequency: interestFrequency ?? (initialSchedule && initialSchedule.length > 1 ? "monthly" : "unknown"),
+    monthlyRate,
+    disbursements,
+    paymentDays,
     confidence: 100,
   } : initialRecognition());
   const [selectedCompany, setSelectedCompany] = useState(companyId ?? "");
@@ -171,6 +205,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
   const [schedule, setSchedule] = useState<LoanScheduleDraft[]>(initialSchedule?.length ? initialSchedule : [emptySchedule()]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [correctionNotice, setCorrectionNotice] = useState("");
   const [correctionText, setCorrectionText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const totals = useMemo(() => schedule.reduce((sum, row) => ({ principal: sum.principal + Number(row.principal || 0), interest: sum.interest + Number(row.interest || 0), penalty: sum.penalty + Number(row.penalty || 0), fine: sum.fine + Number(row.fine || 0) }), { principal: 0, interest: 0, penalty: 0, fine: 0 }), [schedule]);
@@ -248,6 +283,27 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         // Для текстового описания и Office-файлов остаётся локальный резерв.
       }
       const recognized = mergeRecognition(local, remote);
+      if (local.interestFrequency === "semi_monthly") {
+        recognized.principalAmount = local.principalAmount;
+        recognized.currency = local.currency;
+        recognized.annualRate = local.annualRate;
+        recognized.interestFrequency = local.interestFrequency;
+        recognized.monthlyRate = local.monthlyRate;
+        recognized.disbursements = local.disbursements;
+        recognized.paymentDays = local.paymentDays;
+      }
+      // Если в DOCX/Excel нет самого графика, не принимаем сгенерированные ИИ
+      // строки как договорные. Для ежемесячной выплаты строим их по условиям.
+      const officeDocument = Boolean(file && !pdfBase64 && !imageBase64);
+      if (officeDocument && !local.schedule?.length && !spreadsheetRecognition?.schedule?.length) {
+        recognized.schedule = undefined;
+      }
+      // Табличный график из Word/текста читается локально по колонкам договора.
+      // Он точнее свободного ответа ИИ, поэтому сохраняем его без подмены строк.
+      if (local.schedule?.length) {
+        recognized.schedule = local.schedule;
+        recognized.dueDate = local.dueDate || recognized.dueDate;
+      }
       // Для XLSX точные серийные даты и суммы читаются локально из ячеек.
       // Текстовый ИИ может принять 18.08 за номер месяца и превратить её в 01.08,
       // поэтому не разрешаем ему заменять детерминированно прочитанный график.
@@ -256,9 +312,13 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         recognized.dueDate = spreadsheetRecognition.dueDate || recognized.dueDate;
       }
       const rate = await loadRate(recognized.currency).catch(() => 1);
-      setData(recognized);
       const exactSchedule = recognizedSchedule(recognized.schedule, rate);
-      setSchedule(exactSchedule.length ? exactSchedule : monthlySchedule(recognized, rate));
+      const baseSchedule = exactSchedule.length ? exactSchedule : monthlySchedule(recognized, rate);
+      const localCorrection = applyLoanScheduleCorrections(baseSchedule, description, scheduleRow);
+      const correctedDueDate = localCorrection.schedule.at(-1)?.date ?? recognized.dueDate;
+      setData({ ...recognized, dueDate: correctedDueDate });
+      setSchedule(localCorrection.schedule);
+      setCorrectionNotice(localCorrection.actions.join(". "));
       const company = companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));
       const account = accounts.find((item) => recognized.accountHint && item.name.toLowerCase().includes(recognized.accountHint.toLowerCase()));
       if (company) setSelectedCompany(company.id);
@@ -275,31 +335,50 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     if (!correctionText.trim()) return;
     setBusy(true);
     setMessage("");
+    setCorrectionNotice("");
     try {
-      const response = await fetch("/api/opiu/loan-recognize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          corrections: correctionText,
-          existingRecognition: {
-            ...data,
-            schedule: schedule.map(({ date, principal, interest, penalty, fine }) => ({
-              date,
-              principal: principal / exchangeRate,
-              interest: interest / exchangeRate,
-              penalty: penalty / exchangeRate,
-              fine: fine / exchangeRate,
-            })),
-          },
-        }),
-      });
-      const corrected = await response.json() as Partial<RecognizedLoan> & { error?: string };
-      if (!response.ok) throw new Error(corrected.error || "Не удалось применить корректировки");
+      const localCorrection = applyLoanScheduleCorrections(schedule, correctionText, scheduleRow);
+      let corrected: Partial<RecognizedLoan> & { error?: string } = {};
+      try {
+        const response = await fetch("/api/opiu/loan-recognize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            corrections: correctionText,
+            existingRecognition: {
+              ...data,
+              schedule: localCorrection.schedule.map(({ date, principal, interest, penalty, fine }) => ({
+                date,
+                principal: principal / exchangeRate,
+                interest: interest / exchangeRate,
+                penalty: penalty / exchangeRate,
+                fine: fine / exchangeRate,
+              })),
+            },
+          }),
+        });
+        corrected = await response.json() as Partial<RecognizedLoan> & { error?: string };
+        if (!response.ok) throw new Error(corrected.error || "Не удалось применить корректировки");
+      } catch (error) {
+        if (!localCorrection.actions.length) throw error;
+      }
       const recognized = mergeRecognition(data, corrected);
       const rate = await loadRate(recognized.currency).catch(() => exchangeRate);
-      setData(recognized);
       const correctedSchedule = recognizedSchedule(corrected.schedule, rate);
-      if (correctedSchedule.length) setSchedule(correctedSchedule);
+      let finalSchedule = schedule;
+      if (localCorrection.actions.length) {
+        finalSchedule = localCorrection.schedule;
+        setCorrectionNotice(localCorrection.actions.join(". "));
+      } else if (correctedSchedule.length) {
+        const previousByDate = new Map(schedule.map((row) => [row.date, row]));
+        finalSchedule = correctedSchedule.map((row) => {
+          const previous = previousByDate.get(row.date);
+          return previous ? { ...row, id: previous.id, status: previous.status } : row;
+        });
+        setCorrectionNotice("Изменения применены. Проверьте обновлённый график перед сохранением.");
+      }
+      setSchedule(finalSchedule);
+      setData({ ...recognized, dueDate: finalSchedule.at(-1)?.date ?? recognized.dueDate });
       const company = companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));
       const account = accounts.find((item) => recognized.accountHint && item.name.toLowerCase().includes(recognized.accountHint.toLowerCase()));
       if (company) setSelectedCompany(company.id);
@@ -394,6 +473,10 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         annualRate: data.annualRate,
         originationFee: data.originationFee,
         feeAmortizationMonths: data.feeAmortizationMonths,
+        interestFrequency: data.interestFrequency,
+        monthlyRate: Number(data.monthlyRate || 0),
+        disbursements: data.disbursements ?? [],
+        paymentDays: data.paymentDays,
         contractFile: file ?? undefined,
       });
     } catch (error) {
@@ -425,8 +508,9 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><div><p className="font-bold text-emerald-900">Данные подготовлены — проверьте перед сохранением</p><p className="text-sm text-emerald-800">Любое поле можно исправить. Компания и счёт требуют вашего подтверждения.</p></div></div>
       {data.warnings.length > 0 && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800"><b>Нужно проверить:</b> {data.warnings.join("; ")}.</div>}
       <section className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
-        <label className="block text-sm font-semibold text-slate-800">Корректировки после распознавания<textarea value={correctionText} onChange={(event) => setCorrectionText(event.target.value)} rows={3} className={`${fieldClass} resize-y py-3`} placeholder="Напишите обычным текстом, что исправить или дополнить" /></label>
-        <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs text-slate-500">Например: изменить кредитора, комиссию, дату или конкретную строку графика.</p><button type="button" disabled={busy || !correctionText.trim()} onClick={() => void applyCorrections()} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Применить</button></div>
+        <label className="block text-sm font-semibold text-slate-800">Изменить договор или график обычным текстом<textarea value={correctionText} onChange={(event) => setCorrectionText(event.target.value)} rows={4} className={`${fieldClass} resize-y py-3`} placeholder="Например: с декабря 2024 по февраль 2025 не платили; перенести платёж с декабря на март" /></label>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><p className="max-w-2xl text-xs leading-5 text-slate-500">Можно перенести платёж, отметить период неоплаченным, изменить условия или вставить новый график. Для нового графика начните с «Заменить график» и укажите строки: дата; тело; проценты; пени; штрафы.</p><button type="button" disabled={busy || !correctionText.trim()} onClick={() => void applyCorrections()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Применить к графику</button></div>
+        {correctionNotice && <p role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{correctionNotice}. Нажмите «Сохранить изменения», чтобы записать результат.</p>}
       </section>
       <section className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
         <label className="text-sm font-medium text-slate-700">Номер договора<input value={data.contractNumber} onChange={(e) => updateData({ contractNumber: e.target.value })} className={fieldClass} placeholder="Например, 2026020800236" /></label>
@@ -435,7 +519,9 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         <label className="text-sm font-medium text-slate-700">Счёт оплаты<select required value={selectedAccount} onChange={(e) => setSelectedAccount(e.target.value)} className={fieldClass}><option value="">Проверьте и выберите</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="text-sm font-medium text-slate-700">Сумма в валюте договора<input required type="number" min="0" step="0.1" value={data.principalAmount || ""} onChange={(e) => updateData({ principalAmount: Number(e.target.value) })} onBlur={() => updateData({ principalAmount: roundToTenth(data.principalAmount) })} className={fieldClass} /></label>
         <label className="text-sm font-medium text-slate-700">Валюта<select value={data.currency} onChange={(e) => { const currency = e.target.value as LoanCurrency; updateData({ currency }); void recalculate(currency); }} className={fieldClass}><option value="RUB">Рубли</option><option value="USD">Доллары США</option><option value="EUR">Евро</option><option value="CNY">Юани</option></select></label>
-        <label className="text-sm font-medium text-slate-700">Ставка, % годовых<input required type="number" min="0" step="0.001" value={data.annualRate} onChange={(e) => updateData({ annualRate: Number(e.target.value) })} className={fieldClass} /></label>
+        {data.interestFrequency === "semi_monthly"
+          ? <label className="text-sm font-medium text-slate-700">Ставка, % в месяц<input required type="number" min="0" step="0.001" value={data.monthlyRate || ""} onChange={(e) => { const value = Number(e.target.value); updateData({ monthlyRate: value, annualRate: value * 12 }); }} className={fieldClass} /><span className="mt-1 block text-xs text-slate-500">Месячная ставка делится между платежами 16-го и 30-го пропорционально дням.</span></label>
+          : <label className="text-sm font-medium text-slate-700">Ставка, % годовых<input required type="number" min="0" step="0.001" value={data.annualRate} onChange={(e) => updateData({ annualRate: Number(e.target.value) })} className={fieldClass} />{data.interestFrequency === "monthly" && <span className="mt-1 block text-xs text-slate-500">Фиксированные проценты за месяц: сумма займа × ставка ÷ 12.</span>}</label>}
         <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm"><p className="text-xs text-slate-500">Курс для планового графика</p><p className="mt-1 font-bold">{exchangeRate.toLocaleString("ru-RU")} ₽ за {data.currency === "RUB" ? "1 ₽" : `1 ${data.currency}`}</p><button type="button" disabled={busy} onClick={() => void recalculate()} className="mt-2 text-xs font-bold text-violet-700">Обновить курс и график</button>{rateDate && <p className="mt-1 text-xs text-slate-400">Банк России, {rateDate}</p>}</div>
         <label className="text-sm font-medium text-slate-700">Дата получения<input required type="date" value={data.startDate} onChange={(e) => updateData({ startDate: e.target.value })} className={fieldClass} /></label>
         <label className="text-sm font-medium text-slate-700">Дата возврата тела<input required type="date" value={data.dueDate} onChange={(e) => updateData({ dueDate: e.target.value })} className={fieldClass} /></label>

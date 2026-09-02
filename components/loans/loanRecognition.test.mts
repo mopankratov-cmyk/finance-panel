@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateRecognizedSchedule, recognizeLoanSpreadsheet } from "@/components/loans/loanRecognition";
+import { aggregateRecognizedSchedule, recognizeLoanDocumentSchedule, recognizeLoanSpreadsheet, recognizeLoanText } from "./loanRecognition.ts";
 
 test("loan schedule sums every payment component falling on the same date", () => {
   assert.deepEqual(aggregateRecognizedSchedule([
@@ -41,4 +41,37 @@ test("bank spreadsheet parser classifies and sums same-date schedule components"
     penalty: 11_063.31,
     fine: 0,
   }]);
+});
+
+test("Word contract schedule keeps exact principal and interest columns", () => {
+  const schedule = recognizeLoanDocumentSchedule(`
+    Дата Остаток ссудной задолженности Проценты Ссудная задолженность Платеж
+    01.12.2024 9 801 428,80р. 179 692,86р. 202 211,67р. 381 904,53р.
+    01.01.2025 9 599 217,13р. 175 985,65р. 205 918,88р. 381 904,53р.
+  `);
+  assert.deepEqual(schedule, [
+    { date: "2024-12-01", principal: 202_211.67, interest: 179_692.86, penalty: 0, fine: 0 },
+    { date: "2025-01-01", principal: 205_918.88, interest: 175_985.65, penalty: 0, fine: 0 },
+  ]);
+});
+
+test("monthly interest wording creates a monthly schedule without invented rows", () => {
+  const result = recognizeLoanText("Заем 5 000 000 рублей от 09.10.2025 до 09.01.2026 под 38% годовых. Проценты выплачиваются ежемесячно.");
+  assert.equal(result.interestFrequency, "monthly");
+  assert.equal(result.principalAmount, 5_000_000);
+  assert.equal(result.annualRate, 38);
+  assert.equal(result.schedule, undefined);
+});
+
+test("two monthly payment dates split interest and respect every dollar tranche", () => {
+  const result = recognizeLoanText("Займ Евгений Я. 29.01.2026, взято 2000$, затем 15.04.2026 3000$, 29.04.2026 15000$, 10.05.2026 - 8000$, 01.06.2026 - 8250$, 5% от суммы займа в месяц, оплата 16 и 30 числа. 16 числа оплата с 31 или 1 числа по 15 число, 30 числа оплата за начисление с 16 по 29 число. тело в конце срока, займ до марта 2027");
+  assert.equal(result.currency, "USD");
+  assert.equal(result.principalAmount, 36_250);
+  assert.equal(result.annualRate, 60);
+  assert.equal(result.monthlyRate, 5);
+  assert.equal(result.interestFrequency, "semi_monthly");
+  assert.equal(result.dueDate, "2027-03-31");
+  assert.equal(result.schedule?.find((row) => row.date === "2026-06-16")?.interest, 952.9);
+  assert.equal(result.schedule?.find((row) => row.date === "2026-06-30")?.interest, 845.8);
+  assert.equal(result.schedule?.at(-1)?.principal, 36_250);
 });

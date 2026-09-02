@@ -18,7 +18,10 @@ import {
   decodeBankSplits,
   encodeBankSplits,
   parseBankInstructionList,
+  splitBankTotal,
   splitTotal,
+  splitNetTotal,
+  splitAccountId,
   splitsAreReady,
   type BankInstructionSplit,
 } from "./bankInstructionSplits";
@@ -29,6 +32,7 @@ import type { Account } from "@/lib/types";
 import { categoryMatchesDirection, requiresCounterparty } from "./bankAutoClassify";
 import { suggestLoanSplits } from "./loanReviewSuggestion";
 import { useFinance } from "@/components/providers/FinanceProvider";
+import { loadFinanceState } from "@/lib/db";
 
 const REVIEW_CATEGORIES = [
   ...PAYMENT_CATEGORIES,
@@ -40,8 +44,30 @@ const REVIEW_CATEGORIES = [
   "Возврат кредитов и займов",
 ] as const;
 
+const normalizeCompanyText = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]+/g, " ").trim();
+
+function mentionedCompanyId(item: BankReviewItem, companies: DdsCompany[]) {
+  const answer = normalizeCompanyText(item.managerAnswer ?? "");
+  if (!answer) return null;
+  const direct = companies.find((company) => {
+    const name = normalizeCompanyText(company.name).replace(/^(ип|ооо) /, "");
+    return company.id !== item.companyId && Boolean(name) && answer.includes(name);
+  });
+  if (direct) return direct.id;
+  if (answer.includes("филиппов")) {
+    return companies.find((company) => company.id !== item.companyId
+      && /филиппов|коровкин/.test(normalizeCompanyText(company.name)))?.id ?? null;
+  }
+  return null;
+}
+
+function isRioCompany(company: DdsCompany | undefined) {
+  const value = normalizeCompanyText(`${company?.groupName ?? ""} ${company?.name ?? ""}`);
+  return /рио|митриченко|панкратов|кучеренко/.test(value);
+}
+
 export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; companies: DdsCompany[] }) {
-  const { state } = useFinance();
+  const { state, dispatch } = useFinance();
   const [items, setItems] = useState<BankReviewItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -108,21 +134,25 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
   });
 
   const readySelected = items.filter((item) => selected.has(item.id));
-  const invalidSelected = readySelected.filter((item) => {
+  const itemIsReady = (item: BankReviewItem) => {
     const splits = decodeBankSplits(item.managerAnswer);
-    return splits
-      ? !item.accountId || !splitsAreReady(item, splits)
-      : !item.companyId || !item.accountId || !item.category
-        || !categoryMatchesDirection(item.category, item.amount)
-        || (requiresCounterparty(item.category) && !item.counterparty.trim());
-  });
+    if (splits) return splitsAreReady(item, splits);
+    const sourceCompany = companies.find((company) => company.id === item.companyId);
+    const mustBeIntercompanyLoan = item.amount < 0
+      && isRioCompany(sourceCompany)
+      && Boolean(mentionedCompanyId(item, companies));
+    return !mustBeIntercompanyLoan && Boolean(item.companyId && item.accountId && item.category
+      && categoryMatchesDirection(item.category, item.amount)
+      && (!requiresCounterparty(item.category) || item.counterparty.trim()));
+  };
+  const invalidSelected = readySelected.filter((item) => !itemIsReady(item));
 
-  const approve = async () => {
-    if (readySelected.length === 0 || invalidSelected.length > 0) return;
+  const approveItems = async (targetItems: BankReviewItem[]) => {
+    if (targetItems.length === 0 || targetItems.some((item) => !itemIsReady(item))) return;
     setSaving(true);
     setError(null);
     try {
-      const drafts: DdsDraft[] = readySelected.flatMap((item) => {
+      const drafts: DdsDraft[] = targetItems.flatMap((item) => {
         const splits = decodeBankSplits(item.managerAnswer);
         if (!splits) return [{
           date: item.date, amount: item.amount, name: item.purpose, category: item.category!,
@@ -132,10 +162,10 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
         }];
         return splits.filter((split) => !split.excluded).map((split, index) => ({
           date: item.date,
-          amount: item.amount < 0 ? -split.amount : split.amount,
+          amount: (split.flow ?? (item.amount < 0 ? "expense" : "income")) === "expense" ? -split.amount : split.amount,
           name: split.description,
           category: split.category!,
-          wallet: accountById.get(item.accountId!) ?? "",
+          wallet: accountById.get(splitAccountId(item, split) ?? "") ?? "",
           counterparty: item.counterparty,
           activity: "",
           company: companyById.get(split.companyId!) ?? "",
@@ -163,8 +193,13 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
         plan,
         acceptSuspected ? new Set(plan.suspectedRows.map((row) => row.row.id)) : new Set(),
       );
-      await markReviewItems(readySelected.map((item) => item.id), "approved");
-      setSelected(new Set());
+      await markReviewItems(targetItems.map((item) => item.id), "approved");
+      dispatch({ type: "LOAD", payload: await loadFinanceState() });
+      setSelected((current) => {
+        const next = new Set(current);
+        targetItems.forEach((item) => next.delete(item.id));
+        return next;
+      });
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось подтвердить операции");
@@ -172,6 +207,8 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
       setSaving(false);
     }
   };
+
+  const approve = async () => approveItems(readySelected);
 
   const reject = async () => {
     if (selected.size === 0 || !confirm(`Исключить выбранные операции (${selected.size})?`)) return;
@@ -274,6 +311,17 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
     await updateLocal(item.id, { managerAnswer: encodeBankSplits(splits), status });
   };
 
+  const saveAndApproveSplits = async (item: BankReviewItem, splits: BankInstructionSplit[]) => {
+    if (!splitsAreReady(item, splits)) return;
+    const prepared = { ...item, managerAnswer: encodeBankSplits(splits), status: "ready" as const };
+    try {
+      await updateBankReviewItem(item.id, { managerAnswer: prepared.managerAnswer, status: prepared.status });
+      await approveItems([prepared]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сохранить и добавить операцию в ДДС");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -353,7 +401,12 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                 </div>}
                 {(() => {
                   const splits = decodeBankSplits(item.managerAnswer);
+                  const destinationCompanyId = mentionedCompanyId(item, companies);
+                  const sourceCompany = companies.find((company) => company.id === item.companyId);
+                  const intercompanyLoanSuggested = item.amount < 0 && isRioCompany(sourceCompany) && Boolean(destinationCompanyId);
                   if (!splits) return (
+                    <div className="space-y-2">
+                    {intercompanyLoanSuggested && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-medium text-amber-900">Похоже на займ между компаниями: источник относится к группе РИО, а в ответе указан получатель {companyById.get(destinationCompanyId!)}. Проверьте и оформите две связанные записи ДДС.</p>}
                     <div className="flex flex-wrap gap-2">
                     {suggestLoanSplits(item, state.payments) && <button type="button" onClick={() => updateSplitsLocal(item.id, suggestLoanSplits(item, state.payments)!)} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                       Разбить по графику кредита
@@ -361,40 +414,67 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                     <button type="button" onClick={() => updateSplitsLocal(item.id, [{
                       id: crypto.randomUUID(), amount: Math.abs(item.amount), description: item.purpose || "Часть платежа",
                       category: item.category, companyId: item.companyId, excluded: false, needsClarification: false,
+                      flow: item.amount < 0 ? "expense" : "income", accountId: item.accountId, countsTowardBank: true,
                     }])} className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-medium text-violet-700">
-                      Уточнить или разбить операцию
+                      Разбить на несколько частей
                     </button>
+                    {item.amount < 0 && <button type="button" onClick={() => updateSplitsLocal(item.id, [
+                      { id: crypto.randomUUID(), amount: Math.abs(item.amount), description: "Перевод на другой кошелёк", category: "Выбытие — Перевод между счетами", companyId: item.companyId, accountId: item.accountId, flow: "expense", countsTowardBank: true, excluded: false, needsClarification: false },
+                      { id: crypto.randomUUID(), amount: Math.abs(item.amount), description: "Поступление на другой кошелёк", category: "Поступление — Перевод между счетами", companyId: item.companyId, accountId: null, flow: "income", countsTowardBank: false, excluded: false, needsClarification: false },
+                      { id: crypto.randomUUID(), amount: Math.abs(item.amount), description: item.purpose || "Последующий расход", category: null, companyId: item.companyId, accountId: null, flow: "expense", countsTowardBank: false, excluded: false, needsClarification: false },
+                    ])} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800">
+                      Перевод на другой кошелёк + расход
+                    </button>}
+                    {item.amount < 0 && <button type="button" onClick={() => updateSplitsLocal(item.id, [
+                      { id: crypto.randomUUID(), amount: Math.abs(item.amount), description: "Выдача займа другой компании", category: "Выдача кредитов и займов", companyId: item.companyId, accountId: item.accountId, flow: "expense", countsTowardBank: true, excluded: false, needsClarification: false },
+                      { id: crypto.randomUUID(), amount: Math.abs(item.amount), description: "Получение займа от другой компании", category: "Получение кредитов и займов", companyId: destinationCompanyId, accountId: null, flow: "income", countsTowardBank: false, excluded: false, needsClarification: false },
+                    ])} className={`rounded-lg border px-3 py-2 text-xs font-medium ${intercompanyLoanSuggested ? "border-amber-400 bg-amber-100 text-amber-950" : "border-emerald-300 bg-emerald-50 text-emerald-800"}`}>
+                      Оформить займ между компаниями
+                    </button>}
+                    </div>
                     </div>
                   );
                   const total = splitTotal(splits);
-                  const matches = Math.abs(total - Math.abs(item.amount)) < 0.01;
+                  const netTotal = splitNetTotal(item, splits);
+                  const bankTotal = splitBankTotal(item, splits);
+                  const matches = Math.abs(bankTotal - item.amount) < 0.01;
                   return (
                     <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/40 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                         <b>Разбиение операции</b>
                         <span className={matches ? "text-emerald-700" : "font-semibold text-red-600"}>
-                          Части: {formatMoney(total)} · Банк: {formatMoney(Math.abs(item.amount))}{matches ? " · сумма сошлась" : " · есть расхождение"}
+                          Оборот ДДС: {formatMoney(total)} · Итог ДДС: {formatMoney(netTotal)} · Строка банка: {formatMoney(bankTotal)} из {formatMoney(item.amount)}{matches ? " · сумма сошлась" : " · есть расхождение"}
                         </span>
                       </div>
                       {splits.map((split, index) => (
-                        <div key={split.id} className="grid gap-2 rounded-lg bg-white p-2 lg:grid-cols-[130px_1fr_220px_250px_auto]">
+                        <div key={split.id} className="grid gap-2 rounded-lg bg-white p-2 lg:grid-cols-[115px_125px_1fr_190px_210px_210px_auto]">
                           <input type="number" min="0" step="0.01" value={split.amount} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, amount: Number(event.target.value) } : part))} className="min-h-10 rounded border border-slate-300 px-2" />
+                          <select value={split.flow ?? (item.amount < 0 ? "expense" : "income")} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, flow: event.target.value as "income" | "expense" } : part))} className="min-h-10 rounded border border-slate-300 px-2 disabled:opacity-50"><option value="expense">Расход</option><option value="income">Поступление</option></select>
                           <input value={split.description} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, description: event.target.value } : part))} className="min-h-10 rounded border border-slate-300 px-2" />
                           <select value={split.companyId ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, companyId: event.target.value || null } : part))} className="min-h-10 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Компания не определена</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                          </select>
+                          <select value={splitAccountId(item, split) ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, accountId: event.target.value || null } : part))} className="min-h-10 rounded border border-slate-300 px-2 disabled:opacity-50">
+                            <option value="">Кошелёк не определён</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
                           </select>
                           <select value={split.category ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, category: event.target.value || null, needsClarification: false } : part))} className="min-h-10 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                           </select>
                           <div className="flex items-center gap-2">
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] ${split.countsTowardBank === false ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"}`}>{split.countsTowardBank === false ? "связано" : "банк"}</span>
                             <label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, excluded: event.target.checked } : part))} /> Не в ДДС</label>
                             <button type="button" onClick={() => updateSplitsLocal(item.id, splits.filter((_, partIndex) => partIndex !== index))} className="text-red-500">×</button>
                           </div>
                         </div>
                       ))}
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => updateSplitsLocal(item.id, [...splits, { id: crypto.randomUUID(), amount: 0, description: "", category: null, companyId: null, excluded: false, needsClarification: false }])} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs">+ Добавить часть</button>
+                        <button type="button" onClick={() => updateSplitsLocal(item.id, [...splits, { id: crypto.randomUUID(), amount: 0, description: "", category: null, companyId: null, accountId: null, flow: "expense", countsTowardBank: false, excluded: false, needsClarification: false }])} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs">+ Добавить расход/поступление</button>
+                        <button type="button" onClick={() => updateSplitsLocal(item.id, [...splits,
+                          { id: crypto.randomUUID(), amount: 0, description: "Перевод с кошелька", category: "Выбытие — Перевод между счетами", companyId: null, accountId: null, flow: "expense", countsTowardBank: false, excluded: false, needsClarification: false },
+                          { id: crypto.randomUUID(), amount: 0, description: "Поступление на кошелёк", category: "Поступление — Перевод между счетами", companyId: null, accountId: null, flow: "income", countsTowardBank: false, excluded: false, needsClarification: false },
+                        ])} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-800">+ Перевод между кошельками</button>
                         <button type="button" onClick={() => void saveSplits(item, splits)} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-medium text-white">Сохранить разбиение</button>
+                        <button type="button" disabled={saving || !splitsAreReady(item, splits)} onClick={() => void saveAndApproveSplits(item, splits)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">Сохранить и добавить в ДДС</button>
                       </div>
                       {splits.some((split) => split.needsClarification) && <p className="text-xs text-amber-700">Есть части с пометкой «уточнить» — выберите статью после получения ответа.</p>}
                     </div>
@@ -405,6 +485,10 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                   {item.managerAnswer && !decodeBankSplits(item.managerAnswer)
                     ? <><p className="mt-1"><b>Ответ руководителя:</b> {item.managerAnswer}</p>{item.status === "waiting_manager" && <p className="mt-1 font-medium text-amber-700">Бот запросил дополнительное уточнение. Полученный ответ уже сохранён.</p>}</>
                     : <p className="mt-1">Ждём ответа руководителя</p>}
+                </div>}
+                {item.managerAnswer && !decodeBankSplits(item.managerAnswer) && <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div><p className="text-sm font-semibold text-emerald-950">Ответ получен — операция готова к оформлению</p><p className="mt-1 text-xs text-emerald-800">Проверьте компанию, кошелёк и статью выше. Если платёж составной, сначала разбейте его на части.</p></div>
+                  <button type="button" disabled={saving || !itemIsReady(item)} onClick={() => void approveItems([item])} className="min-h-11 shrink-0 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">Добавить эту операцию в ДДС</button>
                 </div>}
               </CardContent>
             </Card>
