@@ -271,6 +271,26 @@ const VERDICT_BADGE: Record<string, { label: string; className: string } | null>
  */
 const VERDICT_RANK: Record<string, number> = { pause: 0, decrease: 1, increase: 2, insufficient: 3, hold: 4 };
 
+/**
+ * Требует ли кампания решения ПРЯМО СЕЙЧАС.
+ *
+ * Одного вердикта мало. Проверка на живом кабинете показала, почему: порядок
+ * «сначала требующие решения» вывел наверх завершённые кампании с нулевым
+ * расходом. Вердикт у них честный — «товар убыточен ещё до рекламы», это
+ * первая же ветка расчёта, — но останавливать там нечего: кампания закрыта и
+ * денег не тратит. Из 238 кампаний кабинета таких оказалось большинство от
+ * шестидесяти одной «требующей решения».
+ *
+ * Решения требует то, что МОЖЕТ утечь: кампания не завершена и в ней есть
+ * движение денег. Всё остальное — справедливое замечание не по адресу.
+ */
+function needsDecision(campaign: Campaign): boolean {
+  if (campaign.status === 7) return false;
+  const action = campaign.economics.action;
+  if (action === "hold" || action === "insufficient") return false;
+  return campaign.spend_today > 0 || campaign.spent_7_closed > 0;
+}
+
 const STOCK_RISK_NOTE: Record<string, string> = {
   out: " · товар кончился",
   critical: " · критично",
@@ -472,6 +492,8 @@ export function WbAdvertsPage() {
     // переключатель меняет только группировку, а не всё сразу: человек, который
     // привык к порядку списка, не теряет его целиком.
     return [...filtered].sort((left, right) => {
+      const need = Number(needsDecision(right.campaign)) - Number(needsDecision(left.campaign));
+      if (need !== 0) return need;
       const rank = (VERDICT_RANK[left.campaign.economics.action] ?? 9) - (VERDICT_RANK[right.campaign.economics.action] ?? 9);
       return rank !== 0 ? rank : compareAdvertCampaigns(left.campaign, right.campaign);
     });
@@ -480,7 +502,7 @@ export function WbAdvertsPage() {
   // Сколько кампаний в текущем фильтре ждут решения. Число в кнопке отвечает на
   // вопрос «есть ли смысл переключаться» до того, как человек переключился.
   const needDecision = useMemo(
-    () => rows.filter(({ campaign }) => campaign.economics.action !== "hold" && campaign.economics.action !== "insufficient").length,
+    () => rows.filter(({ campaign }) => needsDecision(campaign)).length,
     [rows],
   );
 
@@ -846,7 +868,7 @@ export function WbAdvertsPage() {
                         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} />
                         <StatusIcon className="h-3 w-3 shrink-0 text-slate-400" />
                         <span className="shrink-0 text-[11px] font-bold text-slate-800">{article.art}</span>
-                        {VERDICT_BADGE[campaign.economics.action] ? (
+                        {needsDecision(campaign) && VERDICT_BADGE[campaign.economics.action] ? (
                           <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold ${VERDICT_BADGE[campaign.economics.action]!.className}`}>
                             {VERDICT_BADGE[campaign.economics.action]!.label}
                           </span>
