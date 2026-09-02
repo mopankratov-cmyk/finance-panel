@@ -164,11 +164,14 @@ export async function GET(request: NextRequest) {
 
     const now = new Date().toISOString();
     const rows: Record<string, unknown>[] = [];
+    /** Одна клетка — одна задача, даже если совет пришёл от нескольких кампаний. */
+    const written = new Set<string>();
     const preview: { nm: number; advert: number | null; note: string; reason: string }[] = [];
 
     for (const snapshot of snapshots) {
-      const cellKey = `${snapshot.cabinet_id}|${snapshot.nm_id}|${snapshot.advert_id ?? "-"}`;
-      if (taken.has(cellKey)) { skippedTaken++; continue; }
+      // Занятость проверяем ПОСЛЕ совета: у задачи про товар ключ другой
+      // (advert_id = null), и ранняя проверка по ключу кампании отсекала бы
+      // «Откл до отгрузки» из-за занятой соседней клетки.
       const bounds = boundsByCabinet.get(snapshot.cabinet_id) ?? RK_DEFAULT_BOUNDS;
       const stock = stockByKey.has(`${snapshot.cabinet_id}|${snapshot.nm_id}`)
         ? stockByKey.get(`${snapshot.cabinet_id}|${snapshot.nm_id}`)!
@@ -186,6 +189,14 @@ export async function GET(request: NextRequest) {
         dayClosed: true,
       });
       if (!suggestion) continue;
+      // Задача про ТОВАР пишется один раз, с advert_id = null. Иначе «Откл до
+      // отгрузки» дублируется по каждой кампании: прогон по 01.09 дал четыре
+      // одинаковых задачи на один артикул только у Retail Family.
+      const advertId = suggestion.scope === "article" ? null : snapshot.advert_id;
+      const rowKey = `${snapshot.cabinet_id}|${snapshot.nm_id}|${advertId ?? "-"}`;
+      if (written.has(rowKey)) continue;
+      if (taken.has(rowKey)) { skippedTaken++; continue; }
+      written.add(rowKey);
       suggested++;
       if (preview.length < 20) {
         preview.push({ nm: snapshot.nm_id, advert: snapshot.advert_id, note: suggestion.note, reason: suggestion.reason });
@@ -193,7 +204,7 @@ export async function GET(request: NextRequest) {
       rows.push({
         cabinet_id: snapshot.cabinet_id,
         nm_id: snapshot.nm_id,
-        advert_id: snapshot.advert_id,
+        advert_id: advertId,
         date,
         note: suggestion.note,
         done: false,

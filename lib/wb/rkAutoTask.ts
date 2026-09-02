@@ -64,6 +64,24 @@ export const RK_DEFAULT_BOUNDS: RkTaskBounds = {
   drrFloorPct: 2,
 };
 
+/**
+ * Выше этого ДРР день убыточен независимо от маржи: реклама съедает половину
+ * выручки, а таких чистых марж на маркетплейсе не бывает после комиссии и
+ * логистики. Потолок кабинета не может быть выше — иначе советчик закрепит
+ * плохую практику как норму.
+ *
+ * Проверено на живых данных 02.09.2026: у COSMOS SHOP 90-й перцентиль ДРР дал
+ * 136%, у Оптимы — 64%. Это не пороги, а описание их нынешнего положения.
+ */
+export const RK_MAX_SANE_DRR_PCT = 50;
+
+/**
+ * Меньше этого числа артикуло-дней перцентили нестабильны, и «граница» будет
+ * случайной. Лучше умолчание, чем выдуманное число: у CLERIN на 222 днях и у
+ * COSMOS SHOP на 140 расчёт давал бессмыслицу.
+ */
+export const RK_MIN_HISTORY_DAYS = 300;
+
 interface RkTaskHistoryRow {
   /** Полный расход за артикуло-день. */
   spend: number;
@@ -84,7 +102,7 @@ const percentile = (sorted: number[], p: number): number | null =>
  */
 export function computeRkTaskBounds(history: readonly RkTaskHistoryRow[]): RkTaskBounds | null {
   const spent = history.filter((row) => row.spend >= 1);
-  if (spent.length < 100) return null;
+  if (spent.length < RK_MIN_HISTORY_DAYS) return null;
   const drr = spent
     .filter((row) => row.orders > 0 && row.ordersSum > 0)
     .map((row) => (row.spend / row.ordersSum) * 100)
@@ -97,12 +115,15 @@ export function computeRkTaskBounds(history: readonly RkTaskHistoryRow[]): RkTas
   // берём из умолчания, а не отменяем весь расчёт.
   const spendCut = percentile(noOrders, 0.9) ?? RK_DEFAULT_BOUNDS.spendWithoutOrder;
   if (ceiling == null || floor == null) return null;
+  // Потолок кабинета ограничен сверху: выше половины ДРР день убыточен при
+  // любой марже, и калибровать это под кабинет незачем.
+  const cappedCeiling = Math.min(ceiling, RK_MAX_SANE_DRR_PCT);
   return {
     spendWithoutOrder: round2(spendCut),
-    drrCeilingPct: round2(ceiling),
+    drrCeilingPct: round2(cappedCeiling),
     // Пол не может совпасть с потолком: у кабинета, где почти всё бесплатно,
     // 25-й перцентиль вырождается в ноль и «поднять» не сработает никогда.
-    drrFloorPct: round2(Math.max(0.5, Math.min(floor, ceiling / 4))),
+    drrFloorPct: round2(Math.max(0.5, Math.min(floor, cappedCeiling / 4))),
   };
 }
 
@@ -124,6 +145,12 @@ export interface RkAutoTaskInput {
 }
 
 export interface RkAutoTaskSuggestion {
+  /**
+   * Уровень задачи. «Откл до отгрузки» — про ТОВАР: остаток общий, и одна и
+   * та же задача, продублированная по каждой кампании, превращается в шум.
+   * Таблица заметок это различает: advert_id = NULL значит «про товар целиком».
+   */
+  scope: "article" | "campaign";
   /** Текст задачи — то, что увидит человек в клетке. */
   note: string;
   /** Почему так. Показывается рядом и попадает в разбор расхождений. */
@@ -153,6 +180,7 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
   // совет не про ставку. Про null молчим: «не знаем остаток» ≠ «остатка нет».
   if (input.stock === 0) {
     return {
+      scope: "article",
       note: "Откл до отгрузки",
       reason: "Остаток нулевой — рекламировать нечего",
       bidTo: null,
@@ -182,6 +210,7 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
     // «поднять ставку до 247 ₽» при расходе 21 копейка, что не сигнал, а шум.
     if (input.orders === 0 && input.spent >= bounds.spendWithoutOrder) {
       return {
+        scope: "campaign",
         note: `Поднять ставку до ${money(up)} ₽`,
         reason: `Полки, заказов нет при расходе ${money(input.spent)} ₽: ставка покупает позицию — за неё и доплачиваем`,
         bidTo: up,
@@ -189,6 +218,7 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
     }
     if (drr != null && drr > bounds.drrCeilingPct) {
       return {
+        scope: "campaign",
         note: `Поднять ставку до ${money(up)} ₽`,
         reason: `Полки, ДРР ${money(drr)}% выше потолка ${money(bounds.drrCeilingPct)}% — на полках это лечится позицией, а не тушением`,
         bidTo: up,
@@ -206,6 +236,7 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
     // из истории кабинета: выше неё он тратит лишь в десятой части дней.
     if (input.spent >= bounds.spendWithoutOrder) {
       return {
+        scope: "campaign",
         note: `Снизить ставку до ${money(down)} ₽`,
         reason: `Заказов нет, потрачено ${money(input.spent)} ₽ при границе ${money(bounds.spendWithoutOrder)} ₽`,
         bidTo: down,
@@ -216,6 +247,7 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
 
   if (drr != null && drr > bounds.drrCeilingPct) {
     return {
+      scope: "campaign",
       note: `Снизить ставку до ${money(down)} ₽`,
       reason: `Заказы есть, но реклама съела ${money(drr)}% от них при потолке ${money(bounds.drrCeilingPct)}%`,
       bidTo: down,
@@ -223,6 +255,7 @@ export function suggestRkTask(input: RkAutoTaskInput): RkAutoTaskSuggestion | nu
   }
   if (drr != null && drr < bounds.drrFloorPct) {
     return {
+      scope: "campaign",
       note: `Поднять ставку до ${money(up)} ₽`,
       reason: `Реклама съела ${money(drr)}% от заказов при поле ${money(bounds.drrFloorPct)}% — есть запас, чтобы купить больше`,
       bidTo: up,

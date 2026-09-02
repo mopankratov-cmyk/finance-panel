@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   computeRkTaskBounds,
   RK_DEFAULT_BOUNDS,
+  RK_MAX_SANE_DRR_PCT,
   suggestRkTask,
   type RkAutoTaskInput,
 } from "./rkAutoTask.ts";
@@ -68,20 +69,30 @@ test("шаг решения крупный: мелкое движение — н
 test("границы считаются из истории кабинета, а не выдумываются", () => {
   // Ровный ряд: ДРР от 1% до 20%, расходы без заказов от 10 до 2000 ₽.
   const history = [
-    ...Array.from({ length: 200 }, (_, i) => ({ spend: 100 + i, orders: 2, ordersSum: (100 + i) / ((1 + (i % 20)) / 100) })),
-    ...Array.from({ length: 60 }, (_, i) => ({ spend: 10 + i * 33, orders: 0, ordersSum: 0 })),
+    ...Array.from({ length: 400 }, (_, i) => ({ spend: 100 + i, orders: 2, ordersSum: (100 + i) / ((1 + (i % 20)) / 100) })),
+    ...Array.from({ length: 120 }, (_, i) => ({ spend: 10 + i * 33, orders: 0, ordersSum: 0 })),
   ];
   const bounds = computeRkTaskBounds(history);
   assert.ok(bounds, "истории достаточно");
   assert.ok(bounds!.drrCeilingPct > bounds!.drrFloorPct, "потолок выше пола");
   assert.ok(bounds!.spendWithoutOrder > 0);
   // Пол не должен схлопнуться с потолком у кабинета, где почти всё бесплатно.
-  const cheap = Array.from({ length: 150 }, () => ({ spend: 50, orders: 5, ordersSum: 1_000_000 }));
+  const cheap = Array.from({ length: 400 }, () => ({ spend: 50, orders: 5, ordersSum: 1_000_000 }));
   const cheapBounds = computeRkTaskBounds(cheap);
   assert.ok(cheapBounds!.drrFloorPct >= 0.5, "пол не вырождается в ноль");
 });
 
+test("потолок кабинета ограничен здравым смыслом", () => {
+  // У кабинета, где реклама систематически съедает больше выручки, 90-й
+  // перцентиль ДРР даёт 136% — это не порог, а описание его положения.
+  // Живые данные 02.09.2026: COSMOS SHOP 136%, Оптима 64%.
+  const awful = Array.from({ length: 400 }, () => ({ spend: 1500, orders: 1, ordersSum: 1000 })); // ДРР 150%
+  const bounds = computeRkTaskBounds(awful);
+  assert.equal(bounds!.drrCeilingPct, RK_MAX_SANE_DRR_PCT, "выше половины ДРР день убыточен при любой марже");
+  assert.ok(bounds!.drrFloorPct < bounds!.drrCeilingPct);
+});
+
 test("истории мало — границ нет, а не выдуманные", () => {
   assert.equal(computeRkTaskBounds([]), null);
-  assert.equal(computeRkTaskBounds(Array.from({ length: 40 }, () => ({ spend: 100, orders: 1, ordersSum: 1000 }))), null);
+  assert.equal(computeRkTaskBounds(Array.from({ length: 200 }, () => ({ spend: 100, orders: 1, ordersSum: 1000 }))), null);
 });
