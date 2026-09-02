@@ -20,7 +20,7 @@ import { AdRulesTab } from "./ads/AdRulesTab";
 import { AdTokenPanel } from "./ads/AdTokenPanel";
 import { ConfirmAction, type ConfirmRequest } from "./ads/ConfirmAction";
 import type { CampaignRow as AdCampaignRow } from "./ads/campaignRow";
-import { money as adMoney, type AdCabinetConfig } from "./ads/adControlApi";
+import { adPost, money as adMoney, type AdCabinetConfig } from "./ads/adControlApi";
 
 interface DayPoint {
   ts: string;
@@ -342,6 +342,10 @@ export function WbAdvertsPage() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
   const [cabinetMoney, setCabinetMoney] = useState<AdCabinetConfig | null>(null);
+  // Отметки для массового действия. Живут отдельно от выбранной кампании:
+  // «смотрю эту» и «делаю с этими» — разные намерения, и склеивать их значит
+  // выполнять действие над карточкой, которую человек просто открыл почитать.
+  const [checked, setChecked] = useState<Set<number>>(new Set());
   // Категории живут в product_costs, а не в WB-таблицах, поэтому фильтруем уже
   // загруженные строки. Тот же источник, что и на остальных экранах панели —
   // иначе «Ковры» здесь и «Ковры» в РНП разошлись бы.
@@ -463,6 +467,8 @@ export function WbAdvertsPage() {
     return () => { cancelled = true; };
   }, [cabinetId, singleCabinet, retryKey]);
 
+  useEffect(() => { setChecked(new Set()); }, [cabinetId]);
+
   /**
    * Кампании для разделов «Фразы и кластеры» и «Автоправила».
    *
@@ -488,6 +494,37 @@ export function WbAdvertsPage() {
   })), [activeData?.articles]);
 
   const currency = cabinetMoney?.config?.currency && cabinetMoney.config.currency !== "RUB" ? cabinetMoney.config.currency : "₽";
+
+  const runBulk = (action: "pause" | "start") => {
+    const ids = [...checked];
+    if (!ids.length) return;
+    const names = baseRows.filter(({ campaign }) => checked.has(campaign.id)).map(({ campaign }) => campaign.name);
+    setConfirmRequest({
+      actionId: action,
+      subject: `${ids.length} кампаний`,
+      detail: `${names.slice(0, 4).join(", ")}${names.length > 4 ? ` и ещё ${names.length - 4}` : ""}. Кампании обрабатываются по очереди с паузой — WB считает лимит на весь кабинет.`,
+      run: async () => {
+        const result = await adPost<{ success: number; failed: number; skipped: number; stoppedEarly: string | null }>(
+          "/api/adverts/bulk",
+          { cabinetId, advertIds: ids, action },
+        );
+        // Частичный успех — обычный исход пачки, и молчать о нём нельзя:
+        // «готово» после трёх обработанных из сорока читается как «все сорок».
+        const data = result.data;
+        if (data && (data.failed > 0 || data.skipped > 0)) {
+          return {
+            ok: false,
+            error: `Обработано ${data.success} из ${ids.length}. Не удалось: ${data.failed}${data.skipped ? `, не пробовали: ${data.skipped}` : ""}.${data.stoppedEarly ? ` ${data.stoppedEarly}` : ""}`,
+          };
+        }
+        if (result.ok) {
+          setChecked(new Set());
+          setRetryKey((value) => value + 1);
+        }
+        return { ok: result.ok, error: result.error };
+      },
+    });
+  };
 
   const selected = baseRows.find(({ campaign }) => campaign.id === selectedId) ?? null;
   // Выбранная кампания есть, но текущий фильтр её не показывает. Молча прятать
@@ -642,6 +679,29 @@ export function WbAdvertsPage() {
           ) : null}
 
           {loading && !activeData ? <div className="p-3"><LoadingBanner seconds={elapsed} hint={`реклама · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonCards count={5} /></div> : error && !activeData ? <div className="p-3"><WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /></div> : rows.length === 0 && !selectedOutsideFilter ? <div className="p-3"><WbEmptyState>Кампаний по выбранному фильтру нет.</WbEmptyState></div> : (
+            <>
+            {checked.size > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5 border-b border-violet-200 bg-violet-50 px-3 py-2 text-[11px]">
+                <span className="font-semibold text-violet-800">Отмечено {checked.size}</span>
+                <button
+                  type="button"
+                  onClick={() => runBulk("pause")}
+                  className="min-h-7 rounded-lg border border-amber-300 bg-white px-2 font-semibold text-amber-800 transition-colors hover:bg-amber-50"
+                >
+                  Пауза
+                </button>
+                <button
+                  type="button"
+                  onClick={() => runBulk("start")}
+                  className="min-h-7 rounded-lg border border-emerald-300 bg-white px-2 font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+                >
+                  Запустить
+                </button>
+                <button type="button" onClick={() => setChecked(new Set())} className="ml-auto text-violet-600 underline-offset-2 hover:underline">
+                  снять
+                </button>
+              </div>
+            ) : null}
             <div className="min-h-0 flex-1 overflow-auto overscroll-contain" onScroll={(event) => updateWindow(event.currentTarget)}>
               {selectedOutsideFilter && selected ? (
                 <div className="border-b border-violet-200 bg-violet-50/70 px-3 py-2">
@@ -667,7 +727,22 @@ export function WbAdvertsPage() {
                 const status = campaignStatusMeta(campaign);
                 const StatusIcon = status.Icon;
                 return (
-                  <button type="button" key={campaign.id} onClick={() => setSelectedId(campaign.id)} className={`flex h-[76px] w-full items-center gap-2 border-b border-slate-100 px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}>
+                  <div key={campaign.id} className={`flex h-[76px] items-center border-b border-slate-100 transition-colors ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}>
+                    {singleCabinet && cabinetMoney ? (
+                      <label className="flex h-full shrink-0 cursor-pointer items-center pl-2 pr-1" title="Отметить для массового действия">
+                        <input
+                          type="checkbox"
+                          checked={checked.has(campaign.id)}
+                          onChange={() => setChecked((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(campaign.id)) next.delete(campaign.id); else next.add(campaign.id);
+                            return next;
+                          })}
+                          className="h-3.5 w-3.5 accent-violet-600"
+                        />
+                      </label>
+                    ) : null}
+                  <button type="button" onClick={() => setSelectedId(campaign.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500">
                     <WbProductImage nm={article.nm} src={article.photo} loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} /><StatusIcon className="h-3 w-3 shrink-0 text-slate-400" /><span className="truncate text-[11px] font-medium text-slate-700">{campaign.name}</span></div>
@@ -676,10 +751,12 @@ export function WbAdvertsPage() {
                     <div className="shrink-0 text-right"><div className="text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : `ставка ${rub(campaign.bid_cpm_rub)}`} · сегодня {rub(campaign.spend_today)}</div><div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-700">Расход РК 7д {rub(campaign.spent_7_closed)}</div><div title={article.spent_sku_7_closed == null ? "Разбивка расхода по артикулам за период не собрана" : undefined} className={`mt-0.5 text-[9px] font-semibold tabular-nums ${article.spent_sku_7_closed == null ? "text-slate-400" : "text-violet-700"}`}>Расход SKU 7д {article.spent_sku_7_closed == null ? "—" : rub(article.spent_sku_7_closed)}</div><div title={`${closedDrrTitle(campaign)} · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР РК 7д {closedDrrLabel(campaign)}</div></div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                   </button>
+                  </div>
                 );
               })}
               {rowWindow.end < rows.length ? <div aria-hidden="true" style={{ height: (rows.length - rowWindow.end) * ROW_HEIGHT }} /> : null}
             </div>
+            </>
           )}
         </section>
 
