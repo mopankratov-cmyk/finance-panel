@@ -1,9 +1,10 @@
 "use client";
 
 import { PauseCircle, PlayCircle, Square, Wallet } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { adPost, money, type AdCabinetConfig } from "./adControlApi";
+import type { BidRecommendation } from "@/app/api/adverts/cpm-reco/route";
+import { adGet, adPost, money, type AdCabinetConfig } from "./adControlApi";
 import type { ConfirmRequest } from "./ConfirmAction";
 
 export interface AdActionsCampaign {
@@ -64,6 +65,33 @@ export function AdActionsPanel({
   const [placement, setPlacement] = useState(isUnified ? "combined" : "search");
   const [sum, setSum] = useState("");
   const [source, setSource] = useState("1");
+  const [reco, setReco] = useState<BidRecommendation[] | null>(null);
+  const [recoNote, setRecoNote] = useState<string | null>(null);
+
+  /**
+   * Рекомендации WB рядом с полем ставки.
+   *
+   * Это единственный в панели ответ на вопрос, с которого начинается работа со
+   * ставкой: «а сколько ставить». Раньше роут существовал, но его не звал ни
+   * один экран — человек оставался наедине с пустым полем.
+   *
+   * Числа кликабельны: нажатие подставляет ставку в поле, но НЕ отправляет её.
+   * Между «WB считает так» и «я решил так» должен остаться шаг.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setReco(null);
+    setRecoNote(null);
+    adGet<{ recommendations: BidRecommendation[]; note: string | null }>(
+      `/api/adverts/cpm-reco?cabinet=${cabinetId}&advertId=${campaign.id}&nmId=${campaign.nm}`,
+    ).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) { setRecoNote(result.error); return; }
+      setReco(result.data?.recommendations ?? []);
+      setRecoNote(result.data?.note ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [cabinetId, campaign.id, campaign.nm]);
 
   // Артикул почти всегда уже стоит в названии кампании — WB так их и заводит.
   // Дублировать его значит писать «HT-83-35 · HT-83-35» и приучать глаз
@@ -125,6 +153,25 @@ export function AdActionsPanel({
             {" · "}текущий {campaign.currentDrr == null ? "—" : `${campaign.currentDrr}%`}
             {campaign.profitAfterAds == null ? "" : ` · прибыль после рекламы ${money(campaign.profitAfterAds, currency)}`}
           </div>
+          {reco && reco.length > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1">
+              <span className="text-[9px] uppercase tracking-wide text-slate-400">WB советует</span>
+              {reco.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  title={item.hint}
+                  onClick={() => setBid(String(item.bidRub))}
+                  className="rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-100"
+                >
+                  {item.label} {money(item.bidRub, currency)}
+                </button>
+              ))}
+            </div>
+          ) : recoNote ? (
+            <div className="mt-2 text-[10px] leading-4 text-slate-400">{recoNote}</div>
+          ) : null}
+
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <input
               value={bid}
