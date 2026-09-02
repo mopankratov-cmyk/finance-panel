@@ -91,6 +91,19 @@ function spreadsheetAmount(raw: string) {
   return Number.isFinite(amount) ? Math.abs(amount) : 0;
 }
 
+/** Reads Word-style schedules with Date / balance / interest / principal / total columns. */
+export function recognizeLoanDocumentSchedule(text: string): RecognizedScheduleRow[] {
+  const rows: RecognizedScheduleRow[] = [];
+  const pattern = /(\d{1,2}[./-]\d{1,2}[./-]\d{4})\s+(\d[\d\s\u00a0\u202f]*[.,]\d{2})\s*р?\.?\s+(\d[\d\s\u00a0\u202f]*[.,]\d{2})\s*р?\.?\s+(\d[\d\s\u00a0\u202f]*[.,]\d{2})\s*р?\.?\s+(\d[\d\s\u00a0\u202f]*[.,]\d{2})\s*р?\.?/gi;
+  for (const match of text.matchAll(pattern)) {
+    const date = isoDate(match[1], new Date().getFullYear());
+    const interest = spreadsheetAmount(match[3]);
+    const principal = spreadsheetAmount(match[4]);
+    if (date && principal + interest > 0) rows.push({ date, principal, interest, penalty: 0, fine: 0 });
+  }
+  return aggregateRecognizedSchedule(rows);
+}
+
 /** Exact local parser for bank schedules with Date / operation type / amount columns. */
 export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLoan> {
   const normalize = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
@@ -149,7 +162,10 @@ export function recognizeLoanText(text: string): RecognizedLoan {
   const dueMatch = clean.match(/(?:тела|возврат\w*|погашен\w*|до)\s*(\d{1,2}[.\-/]\d{1,2}(?:[.\-/]\d{2,4})?)/i);
   const nameMatch = clean.match(/(?:займ|кредит)\s+([^,;]+?)(?=\s+\d{1,2}[.\-/]|\s+\d[\d\s]*(?:[.,]\d+)?\s*(?:тыс|млн|руб|доллар|usd|eur)|[,;]|$)/i);
   const startDate = isoDate(startMatch?.[1] ?? "", year);
-  let dueDate = isoDate(dueMatch?.[1] ?? "", startDate ? Number(startDate.slice(0, 4)) : year);
+  const documentSchedule = recognizeLoanDocumentSchedule(clean);
+  let dueDate = isoDate(dueMatch?.[1] ?? "", startDate ? Number(startDate.slice(0, 4)) : year)
+    || documentSchedule.at(-1)?.date
+    || "";
   if (startDate && dueDate && dueDate < startDate && !/\d{4}/.test(dueMatch?.[1] ?? "")) {
     dueDate = `${Number(dueDate.slice(0, 4)) + 1}${dueDate.slice(4)}`;
   }
@@ -172,13 +188,14 @@ export function recognizeLoanText(text: string): RecognizedLoan {
     feeAmortizationMonths: 36,
     startDate,
     dueDate,
-    interestFrequency: /процент\w*\s+ежемесяч/i.test(clean)
+    interestFrequency: documentSchedule.length || /процент[а-яёa-z]*[^.!?]{0,80}ежемесяч/i.test(clean)
       ? "monthly"
-      : /процент\w*\s+(?:в\s+конце|при\s+погашении)/i.test(clean)
+      : /процент[а-яёa-z]*[^.!?]{0,80}(?:в\s+конце|при\s+погашении)/i.test(clean)
         ? "at_maturity"
         : "unknown",
     confidence: Math.max(20, 100 - warnings.length * 15),
     warnings,
+    schedule: documentSchedule.length ? documentSchedule : undefined,
   };
 }
 

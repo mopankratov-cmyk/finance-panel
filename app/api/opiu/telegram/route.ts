@@ -79,9 +79,10 @@ async function handlePaymentReply(text: string, replyMessageId: number | undefin
     companies: companies.data ?? [],
     categories: REVIEW_CATEGORIES,
   });
-  const needsClarification = recognition.confidence < 0.85 || !recognition.category || !recognition.companyId;
+  const sourceCompanyId = item.company_id || recognition.companyId;
+  const needsClarification = recognition.confidence < 0.85 || !recognition.category || !sourceCompanyId;
   if (needsClarification) {
-    const clarification = recognition.clarification || (!recognition.companyId
+    const clarification = recognition.clarification || (!sourceCompanyId
       ? "Для какого юридического лица был этот платёж?"
       : "Уточните, пожалуйста, за какой именно товар или услугу был платёж.");
     const messageId = await sendTelegramMessage(`🤔 ${clarification}`, chatId, { forceReply: true });
@@ -104,7 +105,9 @@ async function handlePaymentReply(text: string, replyMessageId: number | undefin
   const status = item.account_id ? "ready" : "needs_info";
   const updated = await db.from("bank_review_items").update({
     manager_answer: text,
-    company_id: recognition.companyId,
+    // Юрлицо банковского счёта нельзя заменять юрлицом, упомянутым в ответе.
+    // Получателя/направление пользователь назначает отдельным частям проводки.
+    company_id: sourceCompanyId,
     category: recognition.category,
     reasons,
     status,

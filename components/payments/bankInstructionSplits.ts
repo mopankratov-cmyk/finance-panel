@@ -11,6 +11,9 @@ export interface BankInstructionSplit {
   companyId: string | null;
   excluded: boolean;
   needsClarification: boolean;
+  flow?: "income" | "expense";
+  accountId?: string | null;
+  countsTowardBank?: boolean;
 }
 
 export interface ParsedBankInstruction {
@@ -112,6 +115,25 @@ export function splitTotal(splits: BankInstructionSplit[]) {
   return Math.round(splits.reduce((sum, split) => sum + split.amount, 0) * 100) / 100;
 }
 
+export function splitNetTotal(item: Pick<BankReviewItem, "amount">, splits: BankInstructionSplit[]) {
+  return Math.round(splits.reduce((sum, split) => {
+    const flow = split.flow ?? (item.amount < 0 ? "expense" : "income");
+    return sum + (flow === "expense" ? -split.amount : split.amount);
+  }, 0) * 100) / 100;
+}
+
+export function splitBankTotal(item: Pick<BankReviewItem, "amount">, splits: BankInstructionSplit[]) {
+  return Math.round(splits.reduce((sum, split) => {
+    if (split.countsTowardBank === false) return sum;
+    const flow = split.flow ?? (item.amount < 0 ? "expense" : "income");
+    return sum + (flow === "expense" ? -split.amount : split.amount);
+  }, 0) * 100) / 100;
+}
+
+export function splitAccountId(item: Pick<BankReviewItem, "accountId">, split: BankInstructionSplit) {
+  return split.accountId === undefined ? item.accountId : split.accountId;
+}
+
 export function encodeBankSplits(splits: BankInstructionSplit[]) {
   return `${BANK_SPLIT_PREFIX}${JSON.stringify(splits)}`;
 }
@@ -127,7 +149,7 @@ export function decodeBankSplits(value: string | null): BankInstructionSplit[] |
 }
 
 export function splitsAreReady(item: BankReviewItem, splits: BankInstructionSplit[]) {
-  return Math.abs(splitTotal(splits) - Math.abs(item.amount)) < 0.01
+  return Math.abs(splitBankTotal(item, splits) - item.amount) < 0.01
     && splits.length > 0
-    && splits.every((split) => split.excluded || (split.amount > 0 && split.category && split.companyId && !split.needsClarification));
+    && splits.every((split) => split.excluded || (split.amount > 0 && split.category && split.companyId && splitAccountId(item, split) && !split.needsClarification));
 }

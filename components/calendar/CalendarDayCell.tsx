@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import type { DayInfo } from "@/lib/calculations";
 import { formatMoney } from "@/lib/format";
 import type { Payment } from "@/lib/types";
-import { getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
+import { displayPaymentComment, getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
 
 interface CalendarDayCellProps {
   dateStr: string;
@@ -36,6 +36,7 @@ export function CalendarDayCell({
   const expense = activePayments.filter((payment) => payment.amount < 0).reduce((sum, payment) => sum - payment.amount, 0);
   const expenseRows = activePayments.filter((payment) => payment.amount < 0).sort((a, b) => priorityRank(a) - priorityRank(b) || a.amount - b.amount).slice(0, 3);
   const hiddenExpenses = activePayments.filter((payment) => payment.amount < 0).length - expenseRows.length;
+  const compactLabel = (payment: Payment) => displayPaymentComment(payment.comment) || payment.name || payment.counterparty || payment.category || "Без комментария";
 
   const negative = info?.isNegative;
 
@@ -78,10 +79,10 @@ export function CalendarDayCell({
           <div className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Расходы за день</p>
             {expenseRows.map((payment) => (
-              <div key={payment.id} title={payment.name} className="flex min-w-0 items-center gap-1.5 text-[11px] leading-tight text-slate-700">
+              <div key={payment.id} title={compactLabel(payment)} className="flex min-w-0 items-center gap-1.5 text-[11px] leading-tight text-slate-700">
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${payment.status === "done" ? "bg-emerald-500" : "bg-amber-500"}`} />
                 <span className={`shrink-0 rounded border px-1 text-[9px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span>
-                <span className="min-w-0 flex-1 truncate font-medium">{payment.category}</span>
+                <span className="min-w-0 flex-1 truncate font-medium">{compactLabel(payment)}</span>
                 <span className="shrink-0 font-semibold tabular-nums">−{compactMoney(payment.amount)}</span>
               </div>
             ))}

@@ -16,7 +16,7 @@ import { FinanceTasksPanel } from "./FinanceTasksPanel";
 import { calendarExportRows, calendarTemplateSheets, downloadCalendarXlsx } from "./calendarExport";
 import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
 import { WeekSummaryCell } from "./WeekSummaryCell";
-import { displayPaymentComment, getPaymentPriority, PRIORITY_META, priorityRank, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
+import { chronologicalPaymentOrder, displayPaymentComment, getPaymentPriority, PRIORITY_META, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
 import { loanScheduleKey, loanScheduleKeysWithDdsCandidate, overdueLoanInstallmentsToMove, rescheduleLoanInstallment } from "./loanPaymentReschedule";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
@@ -278,7 +278,7 @@ export function CalendarPage() {
   const hasCalendarFilters = Boolean(searchQuery.trim() || flowScope !== "all" || dateFrom || dateTo);
   const activeCalendarFilterCount = Number(Boolean(searchQuery.trim())) + Number(flowScope !== "all") + Number(Boolean(dateFrom)) + Number(Boolean(dateTo));
   const searchResults = useMemo(
-    () => visibleCalendarPayments.filter((payment) => payment.status !== "cancelled").sort((left, right) => right.date.localeCompare(left.date)).slice(0, 50),
+    () => visibleCalendarPayments.filter((payment) => payment.status !== "cancelled").sort(chronologicalPaymentOrder).slice(0, 50),
     [visibleCalendarPayments],
   );
   const prioritySummary = useMemo(() => (["A", "B", "C"] as PaymentPriority[]).map((priority) => {
@@ -887,7 +887,7 @@ function FlowList({
 }) {
   const rows = payments
     .filter((payment) => payment.status !== "cancelled" && (flow === "income" ? isMarketplaceOrLoanIncome(payment) : payment.amount < 0))
-    .sort((a, b) => priorityRank(a) - priorityRank(b) || b.date.localeCompare(a.date));
+    .sort(chronologicalPaymentOrder);
   const accountNames = new Map(accounts.map((account) => [account.id, account.name]));
   const companyNames = new Map(companies.map((company) => [company.id, company.name]));
   const total = rows.reduce((sum, payment) => sum + Math.abs(payment.amount), 0);
