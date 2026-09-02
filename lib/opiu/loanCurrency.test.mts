@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { originalLoanPaymentAmount, recalculatePlannedLoanPayment, roundToTenth } from "./loanCurrency.ts";
+import { originalLoanPaymentAmount, recalculatePlannedLoanPayment, roundLoanMoney, roundToTenth } from "./loanCurrency.ts";
 
 const payment = {
   id: "p1", date: "2026-09-10", name: "Проценты", amount: -51271.023,
@@ -8,9 +8,11 @@ const payment = {
   counterparty: "Новиков", comment: "[loan:l1:schedule:r1:interest] [currency:USD] [fx-rate:80] [amount-original:640]",
 };
 
-test("денежные значения округляются до одного знака", () => {
+test("денежные значения кредита округляются до копеек", () => {
   assert.equal(roundToTenth(51271.023), 51271);
   assert.equal(roundToTenth(51271.06), 51271.1);
+  assert.equal(roundLoanMoney(51271.023), 51271.02);
+  assert.equal(roundLoanMoney(51271.026), 51271.03);
 });
 
 test("плановый валютный платёж пересчитывается, исходная сумма сохраняется", () => {

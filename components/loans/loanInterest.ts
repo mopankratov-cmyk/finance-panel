@@ -1,7 +1,9 @@
+import { roundLoanMoney } from "@/lib/opiu/loanCurrency";
+
 /** Фиксированный платёж процентов за полный месяц по годовой ставке. */
 export function fixedMonthlyInterest(principalRub: number, annualRate: number) {
   const value = Number(principalRub) * Number(annualRate) / 100 / 12;
-  return Number.isFinite(value) ? Math.round(value * 10) / 10 : 0;
+  return Number.isFinite(value) ? roundLoanMoney(value) : 0;
 }
 
 export interface LoanDisbursement {
@@ -78,7 +80,7 @@ export function buildSplitMonthlyInterestSchedule({
         const outstanding = tranches.reduce((value, item) => item.date <= dayIso ? value + item.amount : value, 0);
         return sum + outstanding;
       }, 0);
-      const interest = Math.round(principalDays * monthlyRate / 100 / cycleDays * 10) / 10;
+      const interest = roundLoanMoney(principalDays * monthlyRate / 100 / cycleDays);
       if (interest > 0) rows.push({ date: iso(period.payment), principal: 0, interest, penalty: 0, fine: 0 });
     }
   }

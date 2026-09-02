@@ -1,6 +1,7 @@
 import type { Payment } from "@/lib/types";
 
 export const roundToTenth = (value: number): number => Math.round((Number(value) + Number.EPSILON) * 10) / 10;
+export const roundLoanMoney = (value: number): number => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
 export function loanCommentValue(comment: string | undefined, key: string): string {
   return comment?.match(new RegExp(`\\[${key}:([^\\]]*)\\]`))?.[1] ?? "";
@@ -35,5 +36,5 @@ export function recalculatePlannedLoanPayment(
   comment = setLoanCommentValue(comment, "amount-currency", currency);
   comment = setLoanCommentValue(comment, "fx-rate-current", currentRate);
   comment = setLoanCommentValue(comment, "fx-rate-date", rateDate);
-  return { ...payment, amount: payment.amount < 0 ? -roundToTenth(original * currentRate) : roundToTenth(original * currentRate), comment };
+  return { ...payment, amount: payment.amount < 0 ? -roundLoanMoney(original * currentRate) : roundLoanMoney(original * currentRate), comment };
 }

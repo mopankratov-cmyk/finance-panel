@@ -10,7 +10,7 @@ import { downloadSimpleXlsx } from "@/components/payments/ddsExport";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Loan, Payment } from "@/lib/types";
-import { originalLoanPaymentAmount, roundToTenth } from "@/lib/opiu/loanCurrency";
+import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
 
 const marker = (loanId: string) => `[loan:${loanId}:`;
@@ -268,7 +268,7 @@ export function LoansPage() {
     const existing = linkedRows(state.payments, loan.id);
     const existingByMarker = new Map(existing.map((payment) => [payment.comment?.match(/\[loan:[^\]]+\]/)?.[0] ?? "", payment]));
     const originalMeta = (amount: number, original: number | undefined) => {
-      const source = result.currency === "RUB" ? amount : Number.isFinite(original) ? Number(original) : amount / (result.exchangeRate || 1);
+      const source = roundLoanMoney(result.currency === "RUB" ? amount : Number.isFinite(original) ? Number(original) : amount / (result.exchangeRate || 1));
       return ` [amount-original:${source}] [amount-currency:${result.currency}]`;
     };
     const desired: Payment[] = [{
@@ -289,7 +289,7 @@ export function LoansPage() {
           id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-principal"),
           date: row.date,
           name: `Погашение тела — ${loan.creditorName}`,
-          amount: -roundToTenth(Math.abs(row.principal)),
+          amount: -roundLoanMoney(Math.abs(row.principal)),
           category: "Погашение тела кредита",
           accountId: result.accountId,
           status: row.status,
@@ -303,7 +303,7 @@ export function LoansPage() {
           id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-interest"),
           date: row.date,
           name: `Проценты по кредиту — ${loan.creditorName}`,
-          amount: -roundToTenth(Math.abs(row.interest)),
+          amount: -roundLoanMoney(Math.abs(row.interest)),
           category: "Проценты по кредитам и займам",
           accountId: result.accountId,
           status: row.status,
@@ -317,7 +317,7 @@ export function LoansPage() {
           id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-penalty"),
           date: row.date,
           name: `Пени и штрафы — ${loan.creditorName}`,
-          amount: -roundToTenth(Math.abs(row.penalty)),
+          amount: -roundLoanMoney(Math.abs(row.penalty)),
           category: "Пени и штрафы по кредитам и займам",
           accountId: result.accountId,
           status: row.status,
@@ -331,7 +331,7 @@ export function LoansPage() {
           id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-fine"),
           date: row.date,
           name: `Штраф по кредиту — ${loan.creditorName}`,
-          amount: -roundToTenth(Math.abs(row.fine)),
+          amount: -roundLoanMoney(Math.abs(row.fine)),
           category: "Штрафы по кредитам и займам",
           accountId: result.accountId,
           status: row.status,
@@ -537,12 +537,12 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
     <div className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
       <header className="flex items-start justify-between gap-4 border-b p-5"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">{company}</p><h2 className="mt-1 text-xl font-bold text-slate-950">{loan.creditorName}</h2><p className="mt-1 text-sm text-slate-500">{contractNumber(payments, loan.id) ? `Договор № ${contractNumber(payments, loan.id)} от ` : "Договор от "}{formatDate(loan.startDate)} · срок до {formatDate(loan.dueDate)}</p></div><button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
       <div className="overflow-y-auto p-5">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={currency === "RUB" ? formatMoney(loan.principalAmount) : `${roundToTenth(originalPrincipal).toLocaleString("ru-RU")} ${currency} · ${formatMoney(loan.principalAmount)}`} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={currency === "RUB" ? formatMoney(loan.principalAmount) : `${roundLoanMoney(originalPrincipal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency} · ${formatMoney(loan.principalAmount)}`} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
         <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th>{currency !== "RUB" && <th className="p-3 text-right">В валюте договора</th>}<th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
           const paidBefore = schedule.filter((item) => item.status === "done" && item.date <= row.date).reduce((sum, item) => sum + item.principal, 0);
           const overdue = row.status === "planned" && row.date < todayISO();
           const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);
-          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundToTenth(originalTotal).toLocaleString("ru-RU")} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
+          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
         })}</tbody></table></div>
       </div>
       <footer className="flex flex-wrap justify-between gap-3 border-t p-4"><button type="button" disabled={!fileName} onClick={() => void openSource()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-4 font-bold text-violet-700 disabled:opacity-40"><ExternalLink className="h-4 w-4" />Открыть исходный файл</button><div className="flex gap-2"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></div></footer>
