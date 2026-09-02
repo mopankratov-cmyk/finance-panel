@@ -113,7 +113,7 @@
     },
     {
       "path": "/api/adverts/rules/run",
-      "schedule": "0 7 * * *"
+      "schedule": "0 6 * * *"
     }
   ]
 }
