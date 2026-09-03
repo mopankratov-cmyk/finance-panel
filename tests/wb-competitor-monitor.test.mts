@@ -43,3 +43,31 @@ test("вид конкурентов повторяет вёрстку полок
   const title = "text-[17px] font-bold tracking-[-0.01em] text-slate-800";
   assert.ok(view.includes(title) && shelf.includes(title), "заголовок строки одинаковый");
 });
+
+test("график не тянет линию через дни без сбора", () => {
+  // Сплошная линия через пропуск показала бы стабильность цены там, где её
+  // просто не мерили. Ряд рвётся на дырах и рисуется отрезками.
+  const view = read("../components/wb/WbCompetitorsView.tsx");
+  assert.ok(view.includes("if (value == null || value <= 0) { if (current.length > 1) runs.push(current.join(\" \")); current = []; return; }"),
+    "пропуск разрывает ряд, а не продолжает его");
+  assert.ok(view.includes("line((point) => point.our).map((points, index) =>"), "линия рисуется отрезками");
+});
+
+test("день ряда считается по Москве, а не по UTC", () => {
+  // Сборы идут в 10:00 / 18:00 / 22:00 МСК: по UTC вечерний снимок уехал бы
+  // в следующие сутки и разорвал день надвое.
+  const route = read("../app/api/wb/competitors/route.ts");
+  assert.match(route, /timeZone: "Europe\/Moscow"/);
+});
+
+test("товар и конкурент попадают в список сборщика", () => {
+  // Без строки в wb_shelf_watch цена не соберётся ни у нашего товара, ни у
+  // чужого — сборщик обходит только то, что там записано.
+  const route = read("../app/api/wb/competitors/route.ts");
+  assert.match(route, /\.upsert\(\{ cabinet_id: cabinetId, nm_id: nmId, active: true, purpose: "price" \}/);
+  // Удаление конкурента убирает СВЯЗЬ, а не артикул: он может сравниваться с
+  // другим нашим товаром.
+  assert.match(route, /Убираем связь, а не сам артикул/);
+  // И не выключает полку — её ведёт другой раздел.
+  assert.match(route, /\.eq\("purpose", "price"\)/);
+});

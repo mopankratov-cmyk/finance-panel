@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, Loader2, Plus, Trash2 } from "lucide-react";
 import { WbErrorState } from "./WbModuleHeader";
 import { WbProductImage } from "./WbProductImage";
 
@@ -12,6 +12,12 @@ interface Competitor {
   img: string | null;
   price: number | null;
   collectedAt: string | null;
+}
+
+interface HistoryPoint {
+  date: string;
+  our: number | null;
+  average: number | null;
 }
 
 export interface CompetitorItem {
@@ -26,6 +32,92 @@ export interface CompetitorItem {
   average: number | null;
   diffPct: number | null;
   pending: number;
+  history: HistoryPoint[];
+}
+
+/**
+ * Искра цены за период: наша линия и средняя по конкурентам.
+ *
+ * Дни без сбора остаются разрывом, а не тянутся прямой — иначе график
+ * покажет стабильность там, где цену просто не мерили.
+ */
+function Spark({ history }: { history: HistoryPoint[] }) {
+  const values = history.flatMap((point) => [point.our, point.average]).filter((v): v is number => v != null && v > 0);
+  if (values.length < 2) return <span className="hidden h-[26px] w-[88px] sm:block" aria-hidden="true" />;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = Math.max(max - min, 1);
+  const x = (index: number) => 2 + (index / Math.max(1, history.length - 1)) * 84;
+  const y = (value: number) => 22 - ((value - min) / spread) * 18;
+  const line = (pick: (point: HistoryPoint) => number | null) => {
+    const runs: string[] = [];
+    let current: string[] = [];
+    history.forEach((point, index) => {
+      const value = pick(point);
+      if (value == null || value <= 0) { if (current.length > 1) runs.push(current.join(" ")); current = []; return; }
+      current.push(`${x(index).toFixed(1)},${y(value).toFixed(1)}`);
+    });
+    if (current.length > 1) runs.push(current.join(" "));
+    return runs;
+  };
+  return (
+    <svg viewBox="0 0 88 26" className="hidden h-[26px] w-[88px] sm:block" role="img" aria-label="Наша цена и средняя по конкурентам">
+      {line((point) => point.average).map((points, index) => (
+        <polyline key={`a${index}`} points={points} fill="none" stroke="#94a3b8" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
+      ))}
+      {line((point) => point.our).map((points, index) => (
+        <polyline key={`o${index}`} points={points} fill="none" stroke="#7c3aed" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      ))}
+    </svg>
+  );
+}
+
+/** График цены в раскрытой карточке: те же две линии, крупнее и с подписями. */
+function PriceChart({ history }: { history: HistoryPoint[] }) {
+  const values = history.flatMap((point) => [point.our, point.average]).filter((v): v is number => v != null && v > 0);
+  if (values.length < 2) {
+    return <div className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-[11px] text-slate-400">Для графика нужно хотя бы два дня со снятой ценой.</div>;
+  }
+  const W = 720;
+  const H = 150;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = Math.max(max - min, 1);
+  const x = (index: number) => 40 + (index / Math.max(1, history.length - 1)) * (W - 60);
+  const y = (value: number) => H - 26 - ((value - min) / spread) * (H - 50);
+  const line = (pick: (point: HistoryPoint) => number | null) => {
+    const runs: string[] = [];
+    let current: string[] = [];
+    history.forEach((point, index) => {
+      const value = pick(point);
+      if (value == null || value <= 0) { if (current.length > 1) runs.push(current.join(" ")); current = []; return; }
+      current.push(`${x(index).toFixed(1)},${y(value).toFixed(1)}`);
+    });
+    if (current.length > 1) runs.push(current.join(" "));
+    return runs;
+  };
+  const label = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[480px]" role="img" aria-label="Динамика нашей цены и средней по конкурентам">
+        <text x="4" y={y(max) + 4} className="fill-slate-400" fontSize="9">{Math.round(max)}</text>
+        <text x="4" y={y(min) + 4} className="fill-slate-400" fontSize="9">{Math.round(min)}</text>
+        {line((point) => point.average).map((points, index) => (
+          <polyline key={`a${index}`} points={points} fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+        {line((point) => point.our).map((points, index) => (
+          <polyline key={`o${index}`} points={points} fill="none" stroke="#7c3aed" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+        {history.map((point, index) => index === 0 || index === history.length - 1 || index === Math.floor(history.length / 2) ? (
+          <text key={point.date} x={x(index)} y={H - 6} textAnchor="middle" className="fill-slate-400" fontSize="9">{label(point.date)}</text>
+        ) : null)}
+      </svg>
+      <div className="mt-1 flex gap-4 text-[10px] text-slate-500">
+        <span className="flex items-center gap-1"><span className="h-[2px] w-4 rounded bg-violet-600" />наша</span>
+        <span className="flex items-center gap-1"><span className="h-[2px] w-4 rounded bg-slate-400" />средняя у конкурентов</span>
+      </div>
+    </div>
+  );
 }
 
 const money = (value: number | null) => value == null ? "—" : `${Math.round(value).toLocaleString("ru-RU")} ₽`;
@@ -62,6 +154,44 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [newProduct, setNewProduct] = useState("");
+  const [newRival, setNewRival] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  /** Добавить товар в мониторинг или конкурента к нему. */
+  const add = async (nm: string, ourNmId?: number) => {
+    const nmId = Number(String(nm).replace(/\D/g, ""));
+    if (!Number.isInteger(nmId) || nmId <= 0 || busy) return;
+    setBusy(true); setError(null);
+    try {
+      const response = await fetch(`/api/wb/competitors?cabinet=${encodeURIComponent(cabinetId)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nmId, ourNmId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+      if (ourNmId) setNewRival((current) => ({ ...current, [ourNmId]: "" })); else setNewProduct("");
+      setReloadKey((value) => value + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось добавить");
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (nmId: number, ourNmId?: number) => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const query = new URLSearchParams({ cabinet: cabinetId, nmId: String(nmId) });
+      if (ourNmId) query.set("ourNmId", String(ourNmId));
+      const response = await fetch(`/api/wb/competitors?${query}`, { method: "DELETE" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+      setReloadKey((value) => value + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось убрать");
+    } finally { setBusy(false); }
+  };
 
   useEffect(() => {
     if (!ready) return;
@@ -76,7 +206,7 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Не удалось загрузить"))
       .finally(() => setLoading(false));
-  }, [cabinetId, days, hasExactCabinet, ready]);
+  }, [cabinetId, days, hasExactCabinet, ready, reloadKey]);
 
   if (loading) {
     return <div className="py-16 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin motion-reduce:animate-none" /></div>;
@@ -109,6 +239,32 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
 
   return (
     <div className="space-y-3">
+      {/* Добавление товара — как на полках: номер артикула и кнопка. */}
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Артикул WB</span>
+          <input
+            value={newProduct}
+            onChange={(event) => setNewProduct(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") add(newProduct); }}
+            inputMode="numeric"
+            placeholder="1224108263"
+            className="min-h-11 w-44 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-9"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => add(newProduct)}
+          disabled={busy || !newProduct.trim()}
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-50 sm:min-h-9"
+        >
+          <Plus className="h-3.5 w-3.5" /> отслеживать
+        </button>
+        <span className="text-[11px] text-slate-400">
+          Цена появится после ближайшего обхода сборщика — он ходит раз в 15 минут.
+        </span>
+      </div>
+
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {tiles.map((tile) => (
           <div key={tile.label} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -167,6 +323,7 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
                 </div>
 
                 <div className="flex items-center gap-3">
+                  <Spark history={item.history} />
                   <div className="grid grid-cols-[110px_130px_90px_120px] gap-3">
                     <div className="text-right text-[17px] font-bold tabular-nums text-slate-800">{money(item.ourPrice)}</div>
                     <div className="text-right text-[17px] font-semibold tabular-nums text-slate-600">{money(item.average)}</div>
@@ -188,6 +345,37 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
 
               {open ? (
                 <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+                  <div className="mb-3 rounded-lg bg-white p-3 ring-1 ring-slate-200/60">
+                    <PriceChart history={item.history} />
+                  </div>
+
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <input
+                      value={newRival[item.nmId] ?? ""}
+                      onChange={(event) => setNewRival((current) => ({ ...current, [item.nmId]: event.target.value }))}
+                      onKeyDown={(event) => { if (event.key === "Enter") add(newRival[item.nmId] ?? "", item.nmId); }}
+                      inputMode="numeric"
+                      placeholder="артикул конкурента"
+                      className="min-h-10 w-52 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => add(newRival[item.nmId] ?? "", item.nmId)}
+                      disabled={busy || !(newRival[item.nmId] ?? "").trim()}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> добавить конкурента
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remove(item.nmId)}
+                      disabled={busy}
+                      className="ml-auto inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> убрать товар
+                    </button>
+                  </div>
+
                   <div className="space-y-1.5">
                     {item.competitors.map((competitor) => (
                       <div key={competitor.nmId} className="flex items-center gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200/60">
@@ -214,6 +402,15 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
                         </div>
                         <div className="w-[110px] shrink-0 text-right text-[15px] font-semibold tabular-nums text-slate-800">{money(competitor.price)}</div>
                         <div className="w-[110px] shrink-0 text-right text-[11px] text-slate-400">{age(competitor.collectedAt)}</div>
+                        <button
+                          type="button"
+                          onClick={() => remove(competitor.nmId, item.nmId)}
+                          disabled={busy}
+                          aria-label={`Убрать конкурента ${competitor.nmId}`}
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     ))}
                   </div>
