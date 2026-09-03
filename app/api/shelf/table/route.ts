@@ -87,10 +87,14 @@ export async function GET(request: NextRequest) {
   // замер показал по 0.5 и 0.7 секунды подряд, хотя запросы независимы.
   const [watchesRes, settingsRes] = await Promise.all([
     (() => {
+      // Только НАШИ товары. Артикулы конкурентов лежат в той же таблице с
+      // purpose='price' — они нужны сборщику ради цены и на экране «Полок»
+      // им делать нечего: без фильтра 96 чужих карточек засоряли список.
       let watchQ = db
         .from("wb_shelf_watch")
         .select("id, cabinet_id, nm_id, supplier_article, our_brand, our_link, our_img, extra_excluded_brands, active")
         .order("created_at", { ascending: true });
+      watchQ = watchQ.eq("purpose", "shelf");
       if (cabinetId) watchQ = watchQ.eq("cabinet_id", cabinetId);
       return watchQ;
     })(),

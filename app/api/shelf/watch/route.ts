@@ -34,10 +34,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
 
+  // Только НАШИ товары. Артикулы конкурентов лежат в той же таблице с
+  // purpose='price' — они нужны сборщику ради цены и на экране «Полок»
+  // им делать нечего: без фильтра 96 чужих карточек засоряли список.
   let watchQ = db
     .from("wb_shelf_watch")
     .select("id, cabinet_id, nm_id, supplier_article, our_brand, our_link, our_img, extra_excluded_brands, active, created_at")
     .order("created_at", { ascending: true });
+  watchQ = watchQ.eq("purpose", "shelf");
   if (cabinetId) watchQ = watchQ.eq("cabinet_id", cabinetId);
   const watches = await watchQ;
   if (watches.error) return NextResponse.json({ error: watches.error.message }, { status: 502 });

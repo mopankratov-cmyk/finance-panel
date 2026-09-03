@@ -22,6 +22,11 @@ test("WB navigation exposes only the approved dashboards as direct links", () =>
     "/wb/reviews",
     "/wb/ctr",
     "/wb/shelf",
+    // Мониторинг конкурентов — ОТДЕЛЬНЫЙ раздел, а не вид внутри «Полок».
+    // Задачи разные: полки показывают, кого WB поставил рядом с нами, а
+    // мониторинг — тех, с кем владелец сам решил сравниваться. Смешение
+    // засоряло экран «Полок» чужими карточками.
+    "/wb/competitors",
     "/wb/market",
   ]);
   assert.equal(new Set(WB_NAVIGATION_ITEMS.map((item) => item.href)).size, WB_NAVIGATION_ITEMS.length);

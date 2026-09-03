@@ -18,7 +18,8 @@ export const WB_NAVIGATION_ITEMS: WbNavigationItem[] = [
   { label: "Склейки", href: "/wb/sklejki" },
   { label: "Отзывы", href: "/wb/reviews" },
   { label: "CTR-тесты", href: "/wb/ctr" },
-  { label: "Полки / Цены", href: "/wb/shelf" },
+  { label: "Полки", href: "/wb/shelf" },
+  { label: "Мониторинг конкурентов", href: "/wb/competitors" },
   { label: "Рынок", href: "/wb/market" },
 ];
 
