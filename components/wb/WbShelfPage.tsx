@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, ChevronDown, Info, Loader2, Plus, RefreshCw, Rows3, Trash2 } from "lucide-react";
+import { Ban, ChevronDown, Info, Loader2, Plus, RefreshCw, Rows3, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import type { ShelfMarkedRow, ShelfSliceResult } from "@/lib/shelf/slices";
@@ -489,7 +489,7 @@ export function WbShelfPage() {
   return (
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
-        icon={Rows3}
+        icon={view === "shelf" ? Rows3 : Users}
         title={view === "shelf" ? "Полки — цены конкурентов" : "Мониторинг конкурентов"}
         description={view === "shelf"
           ? "Блок «Смотрите также» на карточках WB: гость, Москва, снимки 10:00 / 18:00 / 22:00 МСК"

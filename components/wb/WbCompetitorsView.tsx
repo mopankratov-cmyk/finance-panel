@@ -87,8 +87,36 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready }: {
     return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-12 text-center text-sm text-slate-500">Список пуст: добавьте артикулы конкурентов к своим товарам.</div>;
   }
 
+  // Сводка над списком — как на полках: четыре плитки одного вида. Без них
+  // под шапкой оставалась пустая полоса, и раздел выглядел недоделанным.
+  const withDiff = items.filter((item) => item.diffPct != null);
+  const cheaper = withDiff.filter((item) => item.diffPct! < 0).length;
+  const dearer = withDiff.filter((item) => item.diffPct! > 0).length;
+  const links = items.reduce((sum, item) => sum + item.competitors.length, 0);
+  const lastAt = items
+    .flatMap((item) => item.competitors.map((competitor) => competitor.collectedAt))
+    .filter((at): at is string => Boolean(at))
+    .sort()
+    .at(-1) ?? null;
+  const tiles = [
+    { label: "В реестре", value: String(items.length), hint: `${links} связей с конкурентами` },
+    { label: "Мы дешевле рынка", value: cheaper ? String(cheaper) : "—", hint: "по средней цене конкурентов", tone: cheaper ? "text-emerald-600" : undefined },
+    { label: "Мы дороже рынка", value: dearer ? String(dearer) : "—", hint: withDiff.length ? "по средней цене конкурентов" : "нет данных", tone: dearer ? "text-rose-600" : undefined },
+    { label: "Последний сбор", value: lastAt ? new Date(lastAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—", hint: lastAt ? age(lastAt) : "сборов ещё не было" },
+  ];
+
   return (
     <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {tiles.map((tile) => (
+          <div key={tile.label} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{tile.label}</div>
+            <div className={`mt-1.5 whitespace-nowrap text-[26px] font-bold leading-7 tracking-[-0.02em] tabular-nums ${tile.tone ?? "text-slate-800"}`}>{tile.value}</div>
+            <div className="text-[9px] text-slate-400">{tile.hint}</div>
+          </div>
+        ))}
+      </div>
+
       {notes.length ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
           Часть данных не прочиталась: {notes.join(" · ")}
