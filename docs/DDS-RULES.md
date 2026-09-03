@@ -27,6 +27,8 @@
 | Связь план → факт | `lib/finance/factLinks.ts` | `consumedFactIds()` — все факты, уже занятые какой-либо меткой. Любой новый сопоставитель обязан её вызывать. |
 | Замена части календаря | `components/calendar/calendarReplace.ts` | Одна функция и для числа в подтверждении, и для удаления. |
 | Раздел ДДС для свода | `sectionForCategory()` из справочника | `ddsSummary.ts` только реэкспортирует. |
+| Распознавание договора | `lib/loans/recognizeLoan.ts` (+ `aiRecognition.ts`, `schedule.ts`, `exchangeRate.ts`) | Единственный путь: файл → условия + график + курс + подсказка компании/счёта. |
+| Распознавание выписки | `lib/finance/bankStatementServer.ts` (+ `xlsxGrid.ts`, `bankStatementGrid.ts`, `bankStatementPdf.ts`) | XLSX детерминированно, PDF через ИИ; классификация с данными из базы. Первый лист — по `workbook.xml`. |
 
 ## 2. Инварианты
 
@@ -39,6 +41,7 @@
 - **I7. Компания и кошелёк — по id, не по имени.** Между очередью, импортом и календарём передаётся `companyId`. Эвристика без якоря (пустой владелец выписки, два подходящих кошелька, одна похожая операция) → «не знаю» + `needsReview`, а не первый элемент списка. Сторож: `lib/opiu/bankOwnerGuess.test.mts`.
 - **I8. Служебные метки в `comment` не стираются формами.** Календарь — `commentWithPreservedMetadata`; кредиты — `preservedLoanMarkers`; реестр — `PaymentForm` передаёт `comment` как есть. Сторож: `lib/finance/factLinks.test.mts`.
 - **I9. Любая выборка, которая может превысить 1000 строк, — через `loadAllSupabasePages`.** `.limit(5000)` не помогает: PostgREST режет на 1000. (Долг: `app/api/opiu/bank-review/route.ts`.)
+- **I11. Распознавание документов — только на сервере.** Договоры (`/api/opiu/loan-recognize`) и выписки (`/api/opiu/bank-statement`) разбираются в `lib/loans/*` и `lib/finance/bankStatement*`; браузер отправляет файл `FormData` и показывает ответ. Регулярок, чтения XLSX/DOCX и слияния результатов в компонентах быть не должно — иначе у разных сотрудников по одному документу выходит разное. Сторожа: `lib/loans/recognizeLoan.test.mts`, `lib/finance/xlsxGrid.test.mts`, `lib/finance/bankStatementGrid.test.mts`.
 - **I10. Тест-сторож — в `lib/` или `tests/`.** `npm test` не гоняет `components/**/*.test.mts` (см. `package.json`); файл с сторожем кладём туда, где он выполнится.
 
 ## 3. Словарь меток в `comment`

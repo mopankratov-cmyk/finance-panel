@@ -1,258 +1,110 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { RecognizedLoan } from "@/components/loans/loanRecognition";
+import { aiConfigured, LoanAiUnavailableError, LoanRecognitionValidationError, recognizeLoanWithAi } from "@/lib/loans/aiRecognition";
+import { fetchCbrRate } from "@/lib/loans/exchangeRate";
+import { applyLoanCorrections, recognizeLoanDocument, type LoanRecognitionDeps } from "@/lib/loans/recognizeLoan";
+import type { LoanScheduleDraft } from "@/lib/loans/schedule";
 
 export const maxDuration = 120;
 
-type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-type RecognitionBody = {
-  text?: string;
-  pdfBase64?: string;
-  imageBase64?: string;
-  imageMediaType?: ImageMediaType;
-  fileName?: string;
-  existingRecognition?: unknown;
-  corrections?: string;
-};
+// Распознавание договора целиком на сервере. Раньше браузер сам вытаскивал
+// текст из DOCX/XLSX, гонял регулярки, звал ИИ, сливал результаты и строил
+// график — и у разных сотрудников по одному документу выходило разное.
+// Теперь три входа:
+//  - multipart: file + description → полное распознавание (§recognizeLoanDocument);
+//  - JSON { corrections, existingRecognition, schedule, exchangeRate } → корректировка текстом;
+//  - JSON { text | pdfBase64 | imageBase64 } → только ИИ (старый контракт, оставлен для совместимости).
 
 const MAX_REQUEST_BYTES = 28 * 1024 * 1024;
-const MAX_PDF_BYTES = 20 * 1024 * 1024;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_TEXT_LENGTH = 200_000;
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
-class ValidationError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-  }
-}
-
-const system = `Ты финансовый ассистент. Извлеки условия кредита или займа.
-Верни ТОЛЬКО JSON без markdown:
-{"contractNumber":"","creditorName":"","companyHint":"","accountHint":"","principalAmount":0,"currency":"RUB","annualRate":0,"monthlyRate":0,"originationFee":0,"feeAmortizationMonths":36,"startDate":"YYYY-MM-DD","dueDate":"YYYY-MM-DD","interestFrequency":"weekly|monthly|semi_monthly|quarterly|at_maturity|unknown","paymentDays":[16,30],"disbursements":[{"date":"YYYY-MM-DD","amount":0}],"confidence":0,"warnings":[],"schedule":[{"date":"YYYY-MM-DD","principal":0,"interest":0,"penalty":0,"fine":0}]}
-Не выдумывай отсутствующие данные. ИП Филиппов и ИП Коровкин — одно юридическое лицо. Ставку возвращай в процентах годовых.
-Если договор говорит, что проценты выплачиваются ежемесячно, верни interestFrequency=monthly. Не создавай расчётный график с разными суммами процентов, если готового графика нет в самом документе.
-Если ставка указана «в месяц» и есть две даты оплаты процентов, верни interestFrequency=semi_monthly, monthlyRate без пересчёта, annualRate=monthlyRate×12, paymentDays и все отдельные выдачи займа в disbursements. Месячную ставку нельзя начислять полностью на каждую из двух дат.
-Если ставка переменная, в annualRate укажи начальную годовую ставку и опиши периоды изменения в warnings.
-Если в документе есть график платежей, перенеси ВСЕ строки графика без пересчёта: дату, основной долг, проценты и штраф/пеню. Не заменяй недельный график месячным.
-Если пользователь просит перенести платёж, измени дату именно указанной строки, сохрани её тело, проценты, пени и штрафы; остальные строки не меняй. Если на новой дате уже есть платёж, верни обе обязанности отдельными строками — не теряй ни одну сумму.
-Фраза «не платили» не означает удаление платежей: такие строки остаются в графике неоплаченными. Не удаляй просроченные обязательства.
-creditorName — займодавец/кредитор, а companyHint — заёмщик. accountHint — расчётный счёт заёмщика.
-contractNumber — номер договора без слова «№», но со всеми цифрами, дефисами и дополнительными частями номера.
-originationFee — сумма комиссии за выдачу в валюте договора. Если комиссия указана в процентах, рассчитай сумму от principalAmount. Если комиссия равна нулю, не добавляй предупреждение про feeAmortizationMonths.`;
-
-function jsonFrom(value: string) {
-  const match = value.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("ИИ не вернул структурированные данные");
-  return JSON.parse(match[0]) as unknown;
-}
-
-function promptFor(body: RecognitionBody) {
-  if (body.corrections?.trim() && body.existingRecognition) {
-    return `Текущие распознанные данные:\n${JSON.stringify(body.existingRecognition)}\n\nКорректировки пользователя:\n${body.corrections.trim()}\n\nВерни полный исправленный JSON. Сохрани все данные и строки графика, которых корректировка не касается.`;
-  }
-  return `${body.fileName ? `Файл: ${body.fileName}\n` : ""}${body.text?.trim() || "Изучи приложенный договор или изображение графика платежей и извлеки все доступные условия."}`;
-}
-
-function decodeBase64(value: string, maxBytes: number, label: string): Buffer {
-  const rawBase64 = value.replace(/^data:[^;]+;base64,/i, "").replace(/\s+/g, "");
-  if (!rawBase64 || rawBase64.length > Math.ceil(maxBytes * 4 / 3) + 8) {
-    throw new ValidationError(`${label} превышает допустимый размер`, 413);
-  }
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(rawBase64) || rawBase64.length % 4 === 1) {
-    throw new ValidationError(`${label} содержит некорректные base64-данные`, 400);
-  }
-  const decoded = Buffer.from(rawBase64, "base64");
-  if (!decoded.length || decoded.length > maxBytes) {
-    throw new ValidationError(`${label} превышает допустимый размер`, 413);
-  }
-  return decoded;
-}
-
-function normalizePdf(body: RecognitionBody): RecognitionBody {
-  if (!body.pdfBase64) return body;
-
-  const source = decodeBase64(body.pdfBase64, MAX_PDF_BYTES, "PDF");
-  const pdfStart = source.indexOf(Buffer.from("%PDF-"));
-  const pdfEnd = source.lastIndexOf(Buffer.from("%%EOF"));
-
-  if (pdfStart < 0 || pdfEnd < pdfStart) {
-    throw new ValidationError("В выбранном файле не найден PDF-документ. Возможно, это файл электронной подписи без вложенного договора.", 415);
-  }
-
-  // Некоторые банки присылают договор как подписанный PKCS#7-контейнер с PDF внутри.
-  // ИИ-сервисы принимают только сам вложенный PDF, без оболочки электронной подписи.
-  const pdf = source.subarray(pdfStart, pdfEnd + Buffer.byteLength("%%EOF"));
-  return { ...body, pdfBase64: pdf.toString("base64") };
-}
-
-function normalizeImage(body: RecognitionBody): RecognitionBody {
-  if (!body.imageBase64) return body;
-  if (!body.imageMediaType || !["image/jpeg", "image/png", "image/gif", "image/webp"].includes(body.imageMediaType)) {
-    throw new ValidationError("Неподдерживаемый тип изображения", 415);
-  }
-  const image = decodeBase64(body.imageBase64, MAX_IMAGE_BYTES, "Изображение");
-  const signatures: Record<ImageMediaType, (value: Buffer) => boolean> = {
-    "image/jpeg": (value) => value.length >= 3 && value[0] === 0xff && value[1] === 0xd8 && value[2] === 0xff,
-    "image/png": (value) => value.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
-    "image/gif": (value) => ["GIF87a", "GIF89a"].includes(value.subarray(0, 6).toString("ascii")),
-    "image/webp": (value) => value.subarray(0, 4).toString("ascii") === "RIFF" && value.subarray(8, 12).toString("ascii") === "WEBP",
-  };
-  if (!signatures[body.imageMediaType](image)) {
-    throw new ValidationError("Содержимое изображения не соответствует указанному формату", 415);
-  }
-  return { ...body, imageBase64: image.toString("base64") };
-}
-
-function validateBody(body: RecognitionBody): RecognitionBody {
-  if (typeof body.text === "string" && body.text.length > MAX_TEXT_LENGTH) {
-    throw new ValidationError("Текст договора слишком большой", 413);
-  }
-  if (typeof body.corrections === "string" && body.corrections.length > 20_000) {
-    throw new ValidationError("Текст корректировки слишком большой", 413);
-  }
-  if (typeof body.fileName === "string" && body.fileName.length > 255) {
-    throw new ValidationError("Слишком длинное имя файла", 400);
-  }
-  return normalizeImage(normalizePdf(body));
-}
-
-async function recognizeWithAnthropic(body: RecognitionBody) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY не настроен");
-
-  const client = new Anthropic({ apiKey, timeout: 55_000, maxRetries: 0 });
-  const content: Anthropic.MessageCreateParams["messages"][number]["content"] = [];
-  if (body.pdfBase64) {
-    content.push({
-      type: "document",
-      source: { type: "base64", media_type: "application/pdf", data: body.pdfBase64 },
-    });
-  }
-  if (body.imageBase64 && body.imageMediaType) {
-    content.push({
-      type: "image",
-      source: { type: "base64", media_type: body.imageMediaType, data: body.imageBase64 },
-    });
-  }
-  content.push({ type: "text", text: promptFor(body) });
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 6500,
-    temperature: 0,
-    system,
-    messages: [{ role: "user", content }],
-  });
-  const text = response.content
-    .filter((item) => item.type === "text")
-    .map((item) => item.text)
-    .join("\n");
-  return jsonFrom(text);
-}
-
-async function recognizeWithPolza(body: RecognitionBody) {
-  const apiKey = process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY;
-  if (!apiKey) throw new Error("POLZA_API_KEY не настроен");
-
-  const content: Array<Record<string, unknown>> = [
-    { type: "text", text: promptFor(body) },
-  ];
-  if (body.pdfBase64) {
-    content.push({
-      type: "file",
-      file: {
-        filename: body.fileName || "loan-document.pdf",
-        file_data: `data:application/pdf;base64,${body.pdfBase64}`,
-      },
-    });
-  }
-  if (body.imageBase64 && body.imageMediaType) {
-    content.push({
-      type: "image_url",
-      image_url: { url: `data:${body.imageMediaType};base64,${body.imageBase64}` },
-    });
-  }
-
-  const response = await fetch("https://polza.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+async function buildDeps(): Promise<LoanRecognitionDeps> {
+  const db = getSupabaseAdmin();
+  const [companies, accounts] = db
+    ? await Promise.all([
+        db.from("companies").select("id,name").eq("is_active", true),
+        db.from("accounts").select("id,name"),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
+  return {
+    ai: aiConfigured() ? (body) => recognizeLoanWithAi(body) as Promise<Partial<RecognizedLoan>> : undefined,
+    rate: async (currency) => {
+      const result = await fetchCbrRate(currency);
+      return { rate: result.rate, date: result.date };
     },
-    body: JSON.stringify({
-      model: process.env.POLZA_MODEL || "openai/gpt-4o",
-      temperature: 0,
-      max_tokens: 6500,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content },
-      ],
-    }),
-    signal: AbortSignal.timeout(55_000),
-  });
+    companies: (companies.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })),
+    accounts: (accounts.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })),
+  };
+}
 
-  const payload = await response.json().catch(() => null) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    error?: { message?: string };
-  } | null;
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || `Polza вернула ошибку ${response.status}`);
-  }
-  const text = payload?.choices?.[0]?.message?.content;
-  if (!text) throw new Error("Polza не вернула результат распознавания");
-  return jsonFrom(text);
+function errorResponse(error: unknown, fallback: string) {
+  if (error instanceof LoanRecognitionValidationError) return NextResponse.json({ error: error.message }, { status: error.status });
+  if (error instanceof LoanAiUnavailableError) return NextResponse.json({ error: error.message }, { status: 503 });
+  return NextResponse.json({ error: error instanceof Error ? error.message : fallback }, { status: 500 });
 }
 
 export async function POST(request: Request) {
   const gate = await requireApiSession(["director", "finance"]);
   if (gate) return gate;
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+    return NextResponse.json({ error: "Документ слишком большой" }, { status: 413 });
+  }
+  const contentType = request.headers.get("content-type") ?? "";
+
+  if (contentType.includes("multipart/form-data")) {
+    try {
+      const form = await request.formData();
+      const file = form.get("file");
+      const description = String(form.get("description") ?? "");
+      if (file instanceof File && file.size > MAX_FILE_BYTES) return NextResponse.json({ error: "Файл договора больше 20 МБ" }, { status: 413 });
+      if (!(file instanceof File) && !description.trim()) return NextResponse.json({ error: "Добавьте договор или опишите займ текстом." }, { status: 400 });
+      const upload = file instanceof File && file.size > 0
+        ? { name: file.name, bytes: Buffer.from(await file.arrayBuffer()), mimeType: file.type }
+        : undefined;
+      const result = await recognizeLoanDocument({ description, file: upload }, await buildDeps());
+      return NextResponse.json(result);
+    } catch (error) {
+      return errorResponse(error, "Не удалось прочитать документ");
+    }
+  }
+
+  const body = await request.json().catch(() => null) as
+    | { corrections?: string; existingRecognition?: RecognizedLoan; schedule?: LoanScheduleDraft[]; exchangeRate?: number; text?: string; pdfBase64?: string; imageBase64?: string; imageMediaType?: string; fileName?: string }
+    | null;
+  if (!body) return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
+
+  if (body.corrections?.trim() && body.existingRecognition && Array.isArray(body.schedule)) {
+    try {
+      const result = await applyLoanCorrections({
+        existing: body.existingRecognition,
+        schedule: body.schedule,
+        corrections: body.corrections,
+        exchangeRate: Number(body.exchangeRate) || 1,
+      }, await buildDeps());
+      return NextResponse.json(result);
+    } catch (error) {
+      return errorResponse(error, "Не удалось применить корректировки");
+    }
+  }
+
+  // Старый контракт: только ИИ по тексту/PDF/картинке.
+  if (!body.text?.trim() && !body.pdfBase64 && !body.imageBase64 && !body.corrections?.trim()) {
+    return NextResponse.json({ error: "Добавьте текст, документ или изображение графика" }, { status: 400 });
+  }
   try {
-    const contentLength = Number(request.headers.get("content-length") ?? 0);
-    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
-      return NextResponse.json({ error: "Документ слишком большой" }, { status: 413 });
-    }
-    const body = validateBody(await request.json() as RecognitionBody);
-    if (!body.text?.trim() && !body.pdfBase64 && !body.imageBase64 && !body.corrections?.trim()) {
-      return NextResponse.json({ error: "Добавьте текст, документ или изображение графика" }, { status: 400 });
-    }
-    const hasPolzaKey = Boolean(process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY);
-    if (!process.env.ANTHROPIC_API_KEY && !hasPolzaKey) {
-      return NextResponse.json(
-        { error: "ИИ-распознавание не подключено: настройте ANTHROPIC_API_KEY или резервный POLZA_API_KEY" },
-        { status: 503 },
-      );
-    }
-
-    let primaryError = "";
-    if (process.env.ANTHROPIC_API_KEY) {
-      try {
-        return NextResponse.json(await recognizeWithAnthropic(body));
-      } catch (error) {
-        primaryError = error instanceof Error ? error.message : "ошибка основного ИИ-сервиса";
-      }
-    }
-
-    if (hasPolzaKey) {
-      try {
-        return NextResponse.json(await recognizeWithPolza(body));
-      } catch (error) {
-        const fallbackError = error instanceof Error ? error.message : "ошибка резервного ИИ-сервиса";
-        console.error("Loan recognition providers failed", { primaryError, fallbackError });
-        return NextResponse.json(
-          { error: "Не удалось распознать документ ни основным, ни резервным ИИ-сервисом. Проверьте баланс и ключи сервисов." },
-          { status: 503 },
-        );
-      }
-    }
-
-    console.error("Primary loan recognition failed and Polza is not configured", { primaryError });
-    return NextResponse.json(
-      { error: "Основной ИИ-сервис недоступен, а резервный POLZA_API_KEY пока не настроен" },
-      { status: 503 },
-    );
+    return NextResponse.json(await recognizeLoanWithAi({
+      text: body.text,
+      pdfBase64: body.pdfBase64,
+      imageBase64: body.imageBase64,
+      imageMediaType: body.imageMediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp" | undefined,
+      fileName: body.fileName,
+      existingRecognition: body.existingRecognition,
+      corrections: body.corrections,
+    }));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Не удалось распознать договор";
-    return NextResponse.json({ error: message }, { status: error instanceof ValidationError ? error.status : 500 });
+    return errorResponse(error, "Не удалось распознать договор");
   }
 }

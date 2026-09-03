@@ -4,26 +4,16 @@ import { AlertCircle, CheckCircle2, FileText, LoaderCircle, Plus, Sparkles, Tras
 import { useMemo, useRef, useState } from "react";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import type { Account, Loan, LoanStatus, PaymentStatus } from "@/lib/types";
-import { extractOfficeText } from "./officeText";
-import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
-import { aggregateRecognizedSchedule, mergeRecognition, recognizeLoanSpreadsheet, recognizeLoanText, type LoanCurrency, type RecognizedLoan, type RecognizedScheduleRow } from "./loanRecognition";
-import { applyLoanScheduleCorrections } from "./loanScheduleCorrections";
-import { buildSplitMonthlyInterestSchedule, fixedMonthlyInterest, type LoanDisbursement } from "./loanInterest";
+import type { LoanCurrency, RecognizedLoan } from "./loanRecognition";
+import type { LoanDisbursement } from "./loanInterest";
 import { roundLoanMoney } from "@/lib/opiu/loanCurrency";
+import { emptyScheduleRow, normalizeScheduleMoney, type LoanScheduleDraft } from "@/lib/loans/schedule";
+import type { LoanCorrectionsOutcome, LoanRecognitionOutcome } from "@/lib/loans/recognizeLoan";
 
-export interface LoanScheduleDraft {
-  id: string;
-  date: string;
-  principal: number;
-  interest: number;
-  penalty: number;
-  fine: number;
-  principalOriginal?: number;
-  interestOriginal?: number;
-  penaltyOriginal?: number;
-  fineOriginal?: number;
-  status: PaymentStatus;
-}
+// Распознавание и построение графика — на сервере (/api/opiu/loan-recognize).
+// Форма только отправляет файл с описанием и показывает результат: у любого
+// сотрудника по одному документу получается одно и то же.
+export type { LoanScheduleDraft };
 
 export interface LoanFormResult {
   loan: Omit<Loan, "id">;
@@ -69,120 +59,14 @@ interface LoanFormProps {
 }
 
 const fieldClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100";
-const emptySchedule = (): LoanScheduleDraft => ({ id: crypto.randomUUID(), date: "", principal: 0, interest: 0, penalty: 0, fine: 0, principalOriginal: 0, interestOriginal: 0, penaltyOriginal: 0, fineOriginal: 0, status: "planned" });
-const scheduleRow = (row: Omit<LoanScheduleDraft, "id">): LoanScheduleDraft => ({ id: crypto.randomUUID(), ...row });
+const emptySchedule = emptyScheduleRow;
 const initialRecognition = (): RecognizedLoan => ({ contractNumber: "", creditorName: "", companyHint: "", accountHint: "", principalAmount: 0, currency: "RUB", annualRate: 0, originationFee: 0, feeAmortizationMonths: 36, startDate: "", dueDate: "", interestFrequency: "unknown", confidence: 0, warnings: [] });
 
-function normalizeScheduleMoney(row: LoanScheduleDraft): LoanScheduleDraft {
-  return {
-    ...row,
-    principal: roundLoanMoney(row.principal),
-    interest: roundLoanMoney(row.interest),
-    penalty: roundLoanMoney(row.penalty),
-    fine: roundLoanMoney(row.fine),
-    principalOriginal: roundLoanMoney(Number(row.principalOriginal ?? row.principal)),
-    interestOriginal: roundLoanMoney(Number(row.interestOriginal ?? row.interest)),
-    penaltyOriginal: roundLoanMoney(Number(row.penaltyOriginal ?? row.penalty)),
-    fineOriginal: roundLoanMoney(Number(row.fineOriginal ?? row.fine)),
-  };
-}
 
-function fileBase64(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error);
-    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
-    reader.readAsDataURL(file);
-  });
-}
 
-function imageMediaType(file: File) {
-  const type = file.type.toLowerCase();
-  if (["image/jpeg", "image/png", "image/gif", "image/webp"].includes(type)) return type;
-  if (/\.jpe?g$/i.test(file.name)) return "image/jpeg";
-  if (/\.png$/i.test(file.name)) return "image/png";
-  if (/\.gif$/i.test(file.name)) return "image/gif";
-  if (/\.webp$/i.test(file.name)) return "image/webp";
-  return "";
-}
 
-function monthlySchedule(data: RecognizedLoan, rate: number): LoanScheduleDraft[] {
-  if (!data.startDate || !data.dueDate || data.principalAmount <= 0) return [emptySchedule()];
-  const principalRub = data.principalAmount * rate;
-  if (data.interestFrequency === "semi_monthly" && data.disbursements?.length && data.monthlyRate && data.paymentDays) {
-    return buildSplitMonthlyInterestSchedule({
-      disbursements: data.disbursements,
-      monthlyRate: data.monthlyRate,
-      dueDate: data.dueDate,
-      paymentDays: data.paymentDays,
-    }).map((row) => scheduleRow({
-      ...row,
-      principal: roundLoanMoney(row.principal * rate),
-      interest: roundLoanMoney(row.interest * rate),
-      penalty: roundLoanMoney(row.penalty * rate),
-      fine: roundLoanMoney(row.fine * rate),
-      principalOriginal: roundLoanMoney(row.principal),
-      interestOriginal: roundLoanMoney(row.interest),
-      penaltyOriginal: roundLoanMoney(row.penalty),
-      fineOriginal: roundLoanMoney(row.fine),
-      status: "planned",
-    }));
-  }
-  const start = new Date(`${data.startDate}T12:00:00`);
-  const due = new Date(`${data.dueDate}T12:00:00`);
-  if (data.interestFrequency !== "monthly") {
-    const days = Math.max(1, Math.round((due.getTime() - start.getTime()) / 86_400_000));
-    const interestOriginal = data.principalAmount * data.annualRate / 100 * days / 365;
-    return [{ id: crypto.randomUUID(), date: data.dueDate, principal: roundLoanMoney(principalRub), interest: roundLoanMoney(interestOriginal * rate), penalty: 0, fine: 0, principalOriginal: roundLoanMoney(data.principalAmount), interestOriginal: roundLoanMoney(interestOriginal), penaltyOriginal: 0, fineOriginal: 0, status: "planned" }];
-  }
-  const rows: LoanScheduleDraft[] = [];
-  let cursor = new Date(start);
-  while (cursor < due && rows.length < 240) {
-    const next = new Date(cursor);
-    next.setMonth(next.getMonth() + 1);
-    if (next > due) next.setTime(due.getTime());
-    const interestOriginal = fixedMonthlyInterest(data.principalAmount, data.annualRate);
-    rows.push({
-      id: crypto.randomUUID(),
-      date: next.toISOString().slice(0, 10),
-      principal: roundLoanMoney(next.getTime() === due.getTime() ? principalRub : 0),
-      interest: roundLoanMoney(interestOriginal * rate),
-      penalty: 0,
-      fine: 0,
-      principalOriginal: roundLoanMoney(next.getTime() === due.getTime() ? data.principalAmount : 0),
-      interestOriginal: roundLoanMoney(interestOriginal),
-      penaltyOriginal: 0,
-      fineOriginal: 0,
-      status: "planned",
-    });
-    cursor = next;
-  }
-  return rows.length ? rows : [emptySchedule()];
-}
 
-function recognizedSchedule(rows: RecognizedScheduleRow[] | undefined, rate: number) {
-  return aggregateRecognizedSchedule(rows)
-    .map((row) => ({
-      id: crypto.randomUUID(),
-      date: row.date,
-      principal: roundLoanMoney(Number(row.principal || 0) * rate),
-      interest: roundLoanMoney(Number(row.interest || 0) * rate),
-      penalty: roundLoanMoney(Number(row.penalty || 0) * rate),
-      fine: roundLoanMoney(Number(row.fine || 0) * rate),
-      principalOriginal: roundLoanMoney(Number(row.principal || 0)),
-      interestOriginal: roundLoanMoney(Number(row.interest || 0)),
-      penaltyOriginal: roundLoanMoney(Number(row.penalty || 0)),
-      fineOriginal: roundLoanMoney(Number(row.fine || 0)),
-      status: "planned" as PaymentStatus,
-    }));
-}
 
-function companyMatchesHint(companyName: string, hint: string) {
-  const company = companyName.toLowerCase();
-  const recognized = hint.toLowerCase();
-  if (/филиппов|коровкин/.test(recognized)) return /филиппов|коровкин/.test(company);
-  return company.includes(recognized) || recognized.includes(company);
-}
 
 function scheduleSourceAmount(row: LoanScheduleDraft, kind: "principal" | "interest" | "penalty" | "fine", currency: LoanCurrency, rate: number): number {
   if (currency === "RUB") return Number(row[kind] || 0);
@@ -264,86 +148,19 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     setBusy(true);
     setMessage("");
     try {
-      let extractedText = description.trim();
-      let pdfBase64 = "";
-      let imageBase64 = "";
-      let imageType = "";
-      let spreadsheetRecognition: Partial<RecognizedLoan> | undefined;
-      if (file) {
-        if (file.name.toLowerCase().endsWith(".pdf")) pdfBase64 = await fileBase64(file);
-        else if ((imageType = imageMediaType(file))) imageBase64 = await fileBase64(file);
-        else {
-          extractedText = `${extractedText}\n${await extractOfficeText(file)}`.trim();
-          if (file.name.toLowerCase().endsWith(".xlsx")) {
-            spreadsheetRecognition = recognizeLoanSpreadsheet(await readFirstSheetXlsx(file));
-          }
-        }
-      }
-      const local = mergeRecognition(recognizeLoanText(extractedText || file?.name || ""), spreadsheetRecognition);
-      let remote: Partial<RecognizedLoan> | undefined;
-      try {
-        const response = await fetch("/api/opiu/loan-recognize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: extractedText, pdfBase64, imageBase64, imageMediaType: imageType, fileName: file?.name }),
-        });
-        const responseBody = await response.json() as Partial<RecognizedLoan> & { error?: string };
-        if (response.ok) {
-          remote = responseBody;
-        } else if (pdfBase64) {
-          throw new Error(responseBody.error || "Не удалось распознать PDF");
-        }
-      } catch (error) {
-        if (pdfBase64 || imageBase64) throw error;
-        // Для текстового описания и Office-файлов остаётся локальный резерв.
-      }
-      const recognized = mergeRecognition(local, remote);
-      if (local.interestFrequency === "semi_monthly") {
-        recognized.principalAmount = local.principalAmount;
-        recognized.currency = local.currency;
-        recognized.annualRate = local.annualRate;
-        recognized.interestFrequency = local.interestFrequency;
-        recognized.monthlyRate = local.monthlyRate;
-        recognized.disbursements = local.disbursements;
-        recognized.paymentDays = local.paymentDays;
-      }
-      // Если в DOCX/Excel нет самого графика, не принимаем сгенерированные ИИ
-      // строки как договорные. Для ежемесячной выплаты строим их по условиям.
-      const officeDocument = Boolean(file && !pdfBase64 && !imageBase64);
-      if (officeDocument && !local.schedule?.length && !spreadsheetRecognition?.schedule?.length) {
-        recognized.schedule = undefined;
-      }
-      // Табличный график из Word/текста читается локально по колонкам договора.
-      // Он точнее свободного ответа ИИ, поэтому сохраняем его без подмены строк.
-      if (local.schedule?.length) {
-        recognized.schedule = local.schedule;
-        recognized.dueDate = local.dueDate || recognized.dueDate;
-      }
-      // Для XLSX точные серийные даты и суммы читаются локально из ячеек.
-      // Текстовый ИИ может принять 18.08 за номер месяца и превратить её в 01.08,
-      // поэтому не разрешаем ему заменять детерминированно прочитанный график.
-      if (spreadsheetRecognition?.schedule?.length) {
-        recognized.schedule = spreadsheetRecognition.schedule;
-        recognized.dueDate = spreadsheetRecognition.dueDate || recognized.dueDate;
-      }
-      const rate = await loadRate(recognized.currency).catch(() => 1);
-      const exactSchedule = recognizedSchedule(recognized.schedule, rate);
-      const baseSchedule = exactSchedule.length ? exactSchedule : monthlySchedule(recognized, rate);
-      const localCorrection = applyLoanScheduleCorrections(baseSchedule, description, scheduleRow);
-      const correctedDueDate = localCorrection.schedule.at(-1)?.date ?? recognized.dueDate;
-      setData({
-        ...recognized,
-        principalAmount: roundLoanMoney(recognized.principalAmount),
-        originationFee: roundLoanMoney(recognized.originationFee),
-        disbursements: recognized.disbursements?.map((item) => ({ ...item, amount: roundLoanMoney(item.amount) })),
-        dueDate: correctedDueDate,
-      });
-      setSchedule(localCorrection.schedule.map(normalizeScheduleMoney));
-      setCorrectionNotice(localCorrection.actions.join(". "));
-      const company = companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));
-      const account = accounts.find((item) => recognized.accountHint && item.name.toLowerCase().includes(recognized.accountHint.toLowerCase()));
-      if (company) setSelectedCompany(company.id);
-      if (account) setSelectedAccount(account.id);
+      const body = new FormData();
+      body.append("description", description.trim());
+      if (file) body.append("file", file);
+      const response = await fetch("/api/opiu/loan-recognize", { method: "POST", body });
+      const result = await response.json().catch(() => null) as (LoanRecognitionOutcome & { error?: string }) | null;
+      if (!response.ok || !result?.recognized) throw new Error(result?.error || "Не удалось прочитать документ");
+      setData(result.recognized);
+      setSchedule(result.schedule.map(normalizeScheduleMoney));
+      setExchangeRate(result.exchangeRate || 1);
+      setRateDate(result.rateDate ?? "");
+      setCorrectionNotice(result.actions.join(". "));
+      if (result.suggestedCompanyId) setSelectedCompany(result.suggestedCompanyId);
+      if (result.suggestedAccountId) setSelectedAccount(result.suggestedAccountId);
       setStage("review");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось прочитать документ");
@@ -358,59 +175,18 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     setMessage("");
     setCorrectionNotice("");
     try {
-      const localCorrection = applyLoanScheduleCorrections(schedule, correctionText, scheduleRow);
-      let corrected: Partial<RecognizedLoan> & { error?: string } = {};
-      try {
-        const response = await fetch("/api/opiu/loan-recognize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            corrections: correctionText,
-            existingRecognition: {
-              ...data,
-              schedule: localCorrection.schedule.map(({ date, principal, interest, penalty, fine }) => ({
-                date,
-                principal: principal / exchangeRate,
-                interest: interest / exchangeRate,
-                penalty: penalty / exchangeRate,
-                fine: fine / exchangeRate,
-              })),
-            },
-          }),
-        });
-        corrected = await response.json() as Partial<RecognizedLoan> & { error?: string };
-        if (!response.ok) throw new Error(corrected.error || "Не удалось применить корректировки");
-      } catch (error) {
-        if (!localCorrection.actions.length) throw error;
-      }
-      const recognized = mergeRecognition(data, corrected);
-      const rate = await loadRate(recognized.currency).catch(() => exchangeRate);
-      const correctedSchedule = recognizedSchedule(corrected.schedule, rate);
-      let finalSchedule = schedule;
-      if (localCorrection.actions.length) {
-        finalSchedule = localCorrection.schedule;
-        setCorrectionNotice(localCorrection.actions.join(". "));
-      } else if (correctedSchedule.length) {
-        const previousByDate = new Map(schedule.map((row) => [row.date, row]));
-        finalSchedule = correctedSchedule.map((row) => {
-          const previous = previousByDate.get(row.date);
-          return previous ? { ...row, id: previous.id, status: previous.status } : row;
-        });
-        setCorrectionNotice("Изменения применены. Проверьте обновлённый график перед сохранением.");
-      }
-      const normalizedSchedule = finalSchedule.map(normalizeScheduleMoney);
-      setSchedule(normalizedSchedule);
-      setData({
-        ...recognized,
-        principalAmount: roundLoanMoney(recognized.principalAmount),
-        originationFee: roundLoanMoney(recognized.originationFee),
-        disbursements: recognized.disbursements?.map((item) => ({ ...item, amount: roundLoanMoney(item.amount) })),
-        dueDate: normalizedSchedule.at(-1)?.date ?? recognized.dueDate,
+      const response = await fetch("/api/opiu/loan-recognize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ corrections: correctionText, existingRecognition: data, schedule, exchangeRate }),
       });
-      const company = companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));
-      const account = accounts.find((item) => recognized.accountHint && item.name.toLowerCase().includes(recognized.accountHint.toLowerCase()));
-      if (company) setSelectedCompany(company.id);
-      if (account) setSelectedAccount(account.id);
+      const result = await response.json().catch(() => null) as (LoanCorrectionsOutcome & { error?: string }) | null;
+      if (!response.ok || !result?.recognized) throw new Error(result?.error || "Не удалось применить корректировки");
+      setSchedule(result.schedule.map(normalizeScheduleMoney));
+      setData(result.recognized);
+      setExchangeRate(result.exchangeRate || exchangeRate);
+      if (result.rateDate) setRateDate(result.rateDate);
+      setCorrectionNotice(result.notice);
       setCorrectionText("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось применить корректировки");
