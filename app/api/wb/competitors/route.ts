@@ -34,6 +34,13 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db || !cabinetId) return NextResponse.json({ items: [] });
 
+  // Окно свежести. Цена, снятая месяц назад, не «текущая»: считать её в
+  // средней значит выдавать протухшее за факт. За пределами окна цена
+  // показывается как не снятая.
+  const daysRaw = Number(new URL(request.url).searchParams.get("days") ?? 14);
+  const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.round(daysRaw), 1), 90) : 14;
+  const freshFrom = new Date(Date.now() - days * 86_400_000).toISOString();
+
   const notes: string[] = [];
   const watches = await loadAllSupabasePages<WatchRow>(
     (from, to) => db.from("wb_price_watch")
@@ -53,31 +60,36 @@ export async function GET(request: NextRequest) {
   // Последняя известная цена каждого артикула. Снимков много, берём свежие и
   // оставляем первый по каждому nm — порядок задан по времени убыванием.
   const prices = new Map<number, { price: number | null; brand: string | null; img: string | null; at: string }>();
-  const priceRows = await loadAllSupabasePages<PriceRow>(
+  const pricesPromise = loadAllSupabasePages<PriceRow>(
     (from, to) => db.from("wb_shelf_snapshots")
       .select("nm_id, our_price, our_brand, our_img, collected_at")
       .in("nm_id", allNm)
+      .gte("collected_at", freshFrom)
       .order("collected_at", { ascending: false }).order("nm_id", { ascending: true })
       .range(from, to),
-    { maxPages: 40, label: "Конкуренты: цены" },
+    { maxPages: 10, label: "Конкуренты: цены", concurrency: 2 },
   ).catch((cause) => {
     notes.push(`цены: ${cause instanceof Error ? cause.message : String(cause)}`);
     return [] as PriceRow[];
   });
-  for (const row of priceRows) {
-    if (!prices.has(row.nm_id)) {
-      prices.set(row.nm_id, { price: num(row.our_price), brand: row.our_brand, img: row.our_img, at: row.collected_at });
-    }
-  }
 
   const cards = new Map<number, CardRow>();
-  const cardRows = await loadAllSupabasePages<CardRow>(
+  const cardsPromise = loadAllSupabasePages<CardRow>(
     (from, to) => db.from("wb_cards")
       .select("nm_id, article, name, brand")
       .eq("cabinet_id", cabinetId).in("nm_id", allNm)
       .order("nm_id", { ascending: true }).range(from, to),
     { maxPages: 20, label: "Конкуренты: карточки" },
   ).catch(() => [] as CardRow[]);
+
+  // Цены и карточки друг от друга не зависят: читаем разом. Последовательно
+  // это складывалось в лишнюю секунду ожидания на каждом открытии экрана.
+  const [priceRows, cardRows] = await Promise.all([pricesPromise, cardsPromise]);
+  for (const row of priceRows) {
+    if (!prices.has(row.nm_id)) {
+      prices.set(row.nm_id, { price: num(row.our_price), brand: row.our_brand, img: row.our_img, at: row.collected_at });
+    }
+  }
   for (const row of cardRows) cards.set(row.nm_id, row);
 
   const byOur = new Map<number, WatchRow[]>();

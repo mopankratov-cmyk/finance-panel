@@ -50,10 +50,12 @@ function age(iso: string | null): string {
  * Отличие по сути: на полках конкурентов находит WB в блоке «Смотрите также»,
  * здесь список ведёт владелец сам.
  */
-export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready }: {
+export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
   cabinetId: string;
   hasExactCabinet: boolean;
   ready: boolean;
+  /** Окно свежести: цена старше него не считается текущей. */
+  days: number;
 }) {
   const [items, setItems] = useState<CompetitorItem[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
@@ -65,7 +67,7 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready }: {
     if (!ready) return;
     if (!hasExactCabinet) { setItems([]); setLoading(false); return; }
     setLoading(true); setError(null);
-    fetch(`/api/wb/competitors?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store" })
+    fetch(`/api/wb/competitors?cabinet=${encodeURIComponent(cabinetId)}&days=${days}`, { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
@@ -74,7 +76,7 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready }: {
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Не удалось загрузить"))
       .finally(() => setLoading(false));
-  }, [cabinetId, hasExactCabinet, ready]);
+  }, [cabinetId, days, hasExactCabinet, ready]);
 
   if (loading) {
     return <div className="py-16 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin motion-reduce:animate-none" /></div>;
@@ -100,8 +102,8 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready }: {
     .at(-1) ?? null;
   const tiles = [
     { label: "В реестре", value: String(items.length), hint: `${links} связей с конкурентами` },
-    { label: "Мы дешевле рынка", value: cheaper ? String(cheaper) : "—", hint: "по средней цене конкурентов", tone: cheaper ? "text-emerald-600" : undefined },
-    { label: "Мы дороже рынка", value: dearer ? String(dearer) : "—", hint: withDiff.length ? "по средней цене конкурентов" : "нет данных", tone: dearer ? "text-rose-600" : undefined },
+    { label: "Мы дешевле рынка", value: cheaper ? String(cheaper) : "—", hint: `по ценам за ${days} дней`, tone: cheaper ? "text-emerald-600" : undefined },
+    { label: "Мы дороже рынка", value: dearer ? String(dearer) : "—", hint: withDiff.length ? `по ценам за ${days} дней` : "нет данных", tone: dearer ? "text-rose-600" : undefined },
     { label: "Последний сбор", value: lastAt ? new Date(lastAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—", hint: lastAt ? age(lastAt) : "сборов ещё не было" },
   ];
 

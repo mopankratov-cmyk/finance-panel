@@ -500,11 +500,14 @@ export function WbShelfPage() {
               <button key={value} type="button" onClick={() => switchView(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${view === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{label}</button>
             ))}
           </div>
-          {view === "shelf" ? <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">
+          {/* Период нужен обоим видам: на полках это глубина графика, на
+              конкурентах — окно свежести цены. Пропадая на одном из них, он
+              заставлял панель прыгать и оставлял справа пустоту. */}
+          <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">
             {[7, 14, 30].map((value) => (
               <button key={value} type="button" onClick={() => setDays(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${days === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{value} дней</button>
             ))}
-          </div> : null}
+          </div>
           <div className="relative">
             <button type="button" onClick={() => setInfoOpen((open) => !open)} aria-label="Как это устроено" aria-expanded={infoOpen} className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 sm:h-8 sm:w-8">
               <Info className="h-3.5 w-3.5" />
@@ -523,7 +526,7 @@ export function WbShelfPage() {
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
         {view === "competitors" ? (
-          <WbCompetitorsView cabinetId={cabinetId} hasExactCabinet={hasExactCabinet} ready={ready} />
+          <WbCompetitorsView cabinetId={cabinetId} hasExactCabinet={hasExactCabinet} ready={ready} days={days} />
         ) : <>
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}
         {error && !loading ? <WbErrorState message={error} onRetry={() => reload()} /> : null}
