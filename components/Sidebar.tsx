@@ -31,6 +31,7 @@ import {
   TrendingUp,
   RefreshCw,
   Rows3,
+  UserRoundCog,
   TrendingDown,
   Truck,
   Users,
@@ -91,6 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/payments", label: "Платежи", icon: CreditCard },
       { href: "/accounts", label: "Счета", icon: Wallet },
       { href: "/loans", label: "Кредиты", icon: Landmark },
+      { href: "/payroll", label: "Зарплатная ведомость", icon: UserRoundCog },
     ],
   },
   {
@@ -134,6 +136,7 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
       { href: "/payments", label: "Платежи", icon: CreditCard },
       { href: "/accounts", label: "Счета", icon: Wallet },
       { href: "/loans", label: "Кредиты", icon: Landmark },
+      { href: "/payroll", label: "Зарплатная ведомость", icon: UserRoundCog },
     ],
   },
   {

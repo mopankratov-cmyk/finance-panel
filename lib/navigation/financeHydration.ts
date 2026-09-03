@@ -1,4 +1,4 @@
-const FINANCE_HYDRATION_PATHS = ["/accounts", "/calendar", "/loans", "/payments"] as const;
+const FINANCE_HYDRATION_PATHS = ["/accounts", "/calendar", "/loans", "/payments", "/payroll"] as const;
 
 export function needsFinanceHydration(pathname: string | null | undefined): boolean {
   if (!pathname) return false;

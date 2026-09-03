@@ -18,6 +18,7 @@ export interface Payment {
   amount: number;
   category: string;
   accountId: string;
+  companyId?: string | null;
   status: PaymentStatus;
   counterparty: string;
   comment?: string;

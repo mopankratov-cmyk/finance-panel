@@ -22,7 +22,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 // Доступные префиксы путей по роли. director — всё.
 const ACCESS: Record<Role, string[]> = {
   director: ["*"],
-  finance: ["/", "/calendar", "/payments", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
+  finance: ["/", "/calendar", "/payments", "/payroll", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
   manager: ["/", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/costs", "/warehouse", "/agent", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
   // Менеджер Ozon ведёт кабинеты Ozon и товародвижение по ним. Финансовый
   // контур компании, WB-контур и системные настройки ему не нужны и потому
