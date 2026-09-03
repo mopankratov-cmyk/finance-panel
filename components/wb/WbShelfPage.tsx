@@ -8,6 +8,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { nmMatchesTags, useRnpTags, WbTagFilterChips } from "./useRnpTags";
 import { displaySkuArticle, displaySkuName, useWbSkuNames } from "./useWbSkuNames";
+import { WbCompetitorsView } from "./WbCompetitorsView";
 import { WbProductImage } from "./WbProductImage";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -329,6 +330,24 @@ export function WbShelfPage() {
   // Внешний селлер пользуется «Полками» полностью: ведёт конкурентов своего
   // кабинета сам (общий canWrite для него false — он про владельческие правки).
   const canManage = canWrite || (user?.role === "seller" && hasExactCabinet);
+  /**
+   * Раздел один, видов два. Полки показывают, кого WB поставил рядом с нами;
+   * мониторинг — тех, с кем владелец сам решил сравниваться. Оба про цены,
+   * поэтому живут вместе и переключаются здесь, а не в меню.
+   * Вид держится в адресе, чтобы ссылку можно было переслать.
+   */
+  const [view, setView] = useState<"shelf" | "competitors">(() => {
+    if (typeof window === "undefined") return "shelf";
+    return new URLSearchParams(window.location.search).get("view") === "competitors" ? "competitors" : "shelf";
+  });
+  const switchView = (next: "shelf" | "competitors") => {
+    setView(next);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (next === "shelf") url.searchParams.delete("view");
+    else url.searchParams.set("view", next);
+    window.history.replaceState(null, "", url.toString());
+  };
   const [items, setItems] = useState<ShelfItem[]>([]);
   const [settings, setSettings] = useState<SettingsRow[]>([]);
   const [days, setDays] = useState(14);
@@ -471,14 +490,21 @@ export function WbShelfPage() {
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Rows3}
-        title="Полки — цены конкурентов"
-        description="Блок «Смотрите также» на карточках WB: гость, Москва, снимки 10:00 / 18:00 / 22:00 МСК"
+        title={view === "shelf" ? "Полки — цены конкурентов" : "Мониторинг конкурентов"}
+        description={view === "shelf"
+          ? "Блок «Смотрите также» на карточках WB: гость, Москва, снимки 10:00 / 18:00 / 22:00 МСК"
+          : "Свой список артикулов против каждого товара — и разница в цене"}
         actions={<div className="flex items-center gap-2">
           <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">
+            {([["shelf", "Полки"], ["competitors", "Конкуренты"]] as const).map(([value, label]) => (
+              <button key={value} type="button" onClick={() => switchView(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${view === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{label}</button>
+            ))}
+          </div>
+          {view === "shelf" ? <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">
             {[7, 14, 30].map((value) => (
               <button key={value} type="button" onClick={() => setDays(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${days === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{value} дней</button>
             ))}
-          </div>
+          </div> : null}
           <div className="relative">
             <button type="button" onClick={() => setInfoOpen((open) => !open)} aria-label="Как это устроено" aria-expanded={infoOpen} className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 sm:h-8 sm:w-8">
               <Info className="h-3.5 w-3.5" />
@@ -496,6 +522,9 @@ export function WbShelfPage() {
       />
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
+        {view === "competitors" ? (
+          <WbCompetitorsView cabinetId={cabinetId} hasExactCabinet={hasExactCabinet} ready={ready} />
+        ) : <>
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}
         {error && !loading ? <WbErrorState message={error} onRetry={() => reload()} /> : null}
 
@@ -802,7 +831,7 @@ export function WbShelfPage() {
             </div>
           </div>
         )}
-
+        </>}
       </div>
     </div>
   );

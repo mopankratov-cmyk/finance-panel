@@ -26,8 +26,20 @@ test("средняя цена считается только по собран�
   assert.match(route, /pending: competitors\.length - known\.length/);
 });
 
-test("мониторинг конкурентов — отдельный раздел, «Полки» остались", () => {
+test("полки и конкуренты — один раздел с переключателем", () => {
   const nav = read("../lib/wb/navigation.ts");
-  assert.match(nav, /\{ label: "Полки", href: "\/wb\/shelf" \}/);
-  assert.match(nav, /\{ label: "Мониторинг конкурентов", href: "\/wb\/competitors" \}/);
+  assert.match(nav, /\{ label: "Полки \/ Цены", href: "\/wb\/shelf" \}/);
+  assert.equal(/\/wb\/competitors/.test(nav), false, "отдельного пункта меню быть не должно");
+});
+
+test("вид конкурентов повторяет вёрстку полок", () => {
+  // Один раздел — один язык: та же карточка-строка, то же фото, то же
+  // раскрытие. Иначе при переключении приходится переучиваться.
+  const view = read("../components/wb/WbCompetitorsView.tsx");
+  const shelf = read("../components/wb/WbShelfPage.tsx");
+  const marker = "h-16 w-[52px] shrink-0 rounded-lg bg-slate-100 object-cover ring-1 ring-slate-200/60";
+  assert.ok(view.includes(marker), "фото товара как на полках");
+  assert.ok(shelf.includes(marker), "полки не поменяли вёрстку");
+  const title = "text-[17px] font-bold tracking-[-0.01em] text-slate-800";
+  assert.ok(view.includes(title) && shelf.includes(title), "заголовок строки одинаковый");
 });

@@ -17,7 +17,7 @@ export const maxDuration = 60;
 // его собственном снимке.
 
 interface WatchRow { our_nm_id: number; competitor_nm_id: number; label: string | null }
-interface PriceRow { nm_id: number; our_price: number | string | null; collected_at: string }
+interface PriceRow { nm_id: number; our_price: number | string | null; our_brand: string | null; our_img: string | null; collected_at: string }
 interface CardRow { nm_id: number; article: string | null; name: string | null; brand: string | null }
 
 const num = (value: number | string | null | undefined) => {
@@ -52,10 +52,10 @@ export async function GET(request: NextRequest) {
 
   // Последняя известная цена каждого артикула. Снимков много, берём свежие и
   // оставляем первый по каждому nm — порядок задан по времени убыванием.
-  const prices = new Map<number, { price: number | null; at: string }>();
+  const prices = new Map<number, { price: number | null; brand: string | null; img: string | null; at: string }>();
   const priceRows = await loadAllSupabasePages<PriceRow>(
     (from, to) => db.from("wb_shelf_snapshots")
-      .select("nm_id, our_price, collected_at")
+      .select("nm_id, our_price, our_brand, our_img, collected_at")
       .in("nm_id", allNm)
       .order("collected_at", { ascending: false }).order("nm_id", { ascending: true })
       .range(from, to),
@@ -65,7 +65,9 @@ export async function GET(request: NextRequest) {
     return [] as PriceRow[];
   });
   for (const row of priceRows) {
-    if (!prices.has(row.nm_id)) prices.set(row.nm_id, { price: num(row.our_price), at: row.collected_at });
+    if (!prices.has(row.nm_id)) {
+      prices.set(row.nm_id, { price: num(row.our_price), brand: row.our_brand, img: row.our_img, at: row.collected_at });
+    }
   }
 
   const cards = new Map<number, CardRow>();
@@ -93,6 +95,8 @@ export async function GET(request: NextRequest) {
       return {
         nmId: watch.competitor_nm_id,
         label: watch.label,
+        brand: price?.brand ?? null,
+        img: price?.img ?? null,
         price: price?.price ?? null,
         collectedAt: price?.at ?? null,
       };
@@ -109,6 +113,8 @@ export async function GET(request: NextRequest) {
       nmId: nm,
       article: card?.article ?? null,
       name: card?.name ?? null,
+      brand: card?.brand ?? our?.brand ?? null,
+      img: our?.img ?? null,
       ourPrice,
       ourCollectedAt: our?.at ?? null,
       competitors,
