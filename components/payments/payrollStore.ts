@@ -1,6 +1,6 @@
 "use client";
 
-import type { PayrollData, PayrollDebtOpening, PayrollDraftEntry, PayrollEmployee, PayrollEntry, PayrollPaymentAllocation, PayrollPeriod } from "./payroll";
+import type { PayrollAccrualLine, PayrollData, PayrollDebtOpening, PayrollDraftEntry, PayrollEmployee, PayrollEntry, PayrollPaymentAllocation, PayrollPeriod } from "./payroll";
 
 type Row = Record<string, unknown>;
 
@@ -15,18 +15,24 @@ const employeeFromRow = (row: Row): PayrollEmployee => ({
   fullName: String(row.full_name),
   employmentStatus: row.employment_status === "terminated" ? "terminated" : "active",
   employmentType: row.employment_type as PayrollEmployee["employmentType"],
+  employmentDetails: String(row.employment_details ?? ""),
   hireDate: row.hire_date ? String(row.hire_date) : null,
   terminationDate: row.termination_date ? String(row.termination_date) : null,
   employerName: String(row.employer_name ?? ""),
+  companyIds: Array.isArray(row.company_ids) ? row.company_ids.map(String) : (row.company_id ? [String(row.company_id)] : []),
   companyId: row.company_id ? String(row.company_id) : null,
   position: String(row.position ?? ""),
   project: String(row.project ?? ""),
   city: String(row.city ?? ""),
+  workEmail: String(row.work_email ?? ""),
+  birthDate: row.birth_date ? String(row.birth_date) : null,
   monthlySalary: Number(row.monthly_salary ?? 0),
   taxRate: row.tax_rate == null ? null : Number(row.tax_rate),
   defaultPaymentMethod: row.default_payment_method as PayrollEmployee["defaultPaymentMethod"],
   bankName: String(row.bank_name ?? ""),
   phone: String(row.phone ?? ""),
+  settlementAccountDetails: String(row.settlement_account_details ?? ""),
+  cardTransferDetails: String(row.card_transfer_details ?? ""),
   paymentDetails: String(row.payment_details ?? ""),
   paymentDetailsMasked: String(row.payment_details_masked ?? ""),
   notes: String(row.notes ?? ""),
@@ -54,6 +60,21 @@ const entryFromRow = (row: Row): PayrollEntry => ({
   salaryPaymentId: row.salary_payment_id ? String(row.salary_payment_id) : null,
   taxPaymentId: row.tax_payment_id ? String(row.tax_payment_id) : null,
   comment: String(row.comment ?? ""),
+  lines: (Array.isArray(row.allocation_lines) ? row.allocation_lines : []).map((line) => {
+    const item = line as Record<string, unknown>;
+    return {
+      id: String(item.id),
+      kind: item.kind as PayrollAccrualLine["kind"],
+      amount: Number(item.amount ?? 0),
+      taxAmount: Number(item.taxAmount ?? 0),
+      companyId: item.companyId ? String(item.companyId) : null,
+      accountId: item.accountId ? String(item.accountId) : null,
+      paymentMethod: item.paymentMethod as PayrollAccrualLine["paymentMethod"],
+      salaryPaymentId: item.salaryPaymentId ? String(item.salaryPaymentId) : null,
+      taxPaymentId: item.taxPaymentId ? String(item.taxPaymentId) : null,
+      comment: String(item.comment ?? ""),
+    };
+  }),
 });
 
 const debtFromRow = (row: Row): PayrollDebtOpening => ({
@@ -69,39 +90,48 @@ const allocationFromRow = (row: Row): PayrollPaymentAllocation => ({
   paymentId: String(row.payment_id),
   employeeId: String(row.employee_id),
   entryId: row.entry_id ? String(row.entry_id) : null,
+  payrollLineId: row.payroll_line_id ? String(row.payroll_line_id) : null,
   debtOpeningId: row.debt_opening_id ? String(row.debt_opening_id) : null,
   amount: Number(row.amount ?? 0),
   allocationKind: row.allocation_kind as PayrollPaymentAllocation["allocationKind"],
   comment: String(row.comment ?? ""),
+  confirmedBy: String(row.confirmed_by ?? ""),
   confirmedAt: String(row.confirmed_at),
 });
 
 export async function loadPayrollData(): Promise<PayrollData> {
-  const body = await fetch("/api/finance/payroll", { cache: "no-store" }).then(json<{ employees?: Row[]; periods?: Row[]; entries?: Row[]; debts?: Row[]; allocations?: Row[]; preview?: boolean }>);
+  const [body, privateBody] = await Promise.all([
+    fetch("/api/payroll", { cache: "no-store" }).then(json<{ employees?: Row[]; periods?: Row[]; entries?: Row[]; debts?: Row[]; allocations?: Row[]; preview?: boolean }>),
+    fetch("/api/payroll/private", { cache: "no-store" }).then(async (response) => response.status === 403
+      ? { privateRows: [] as Row[], canViewPrivate: false }
+      : { ...(await json<{ privateRows?: Row[] }>(response)), canViewPrivate: true }),
+  ]);
+  const privateByEmployee = new Map((privateBody.privateRows ?? []).map((row) => [String(row.employee_id), row]));
   return {
-    employees: (body.employees ?? []).map(employeeFromRow),
+    employees: (body.employees ?? []).map((row) => employeeFromRow({ ...row, ...(privateByEmployee.get(String(row.id)) ?? {}) })),
     periods: (body.periods ?? []).map(periodFromRow),
     entries: (body.entries ?? []).map(entryFromRow),
     debts: (body.debts ?? []).map(debtFromRow),
     allocations: (body.allocations ?? []).map(allocationFromRow),
     preview: body.preview === true,
+    canViewPrivate: privateBody.canViewPrivate,
   };
 }
 
 export async function savePayrollDebt(employeeId: string, debtYear: number, amount: number, comment = ""): Promise<void> {
-  await fetch("/api/finance/payroll", {
+  await fetch("/api/payroll", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "save_debt", employeeId, debtYear, amount, comment }),
   }).then(json<{ debt: Row }>);
 }
 
-export async function importPayrollRequisites(records: Array<{ fullName: string; bankName: string; paymentDetails: string; phone: string }>): Promise<number> {
-  const result = await fetch("/api/finance/payroll", {
+export async function importPayrollRequisites(records: Array<{ fullName: string; bankName: string; paymentDetails: string; settlementAccountDetails: string; cardTransferDetails: string; phone: string; workEmail: string; birthDate: string | null }>): Promise<number> {
+  const result = await fetch("/api/payroll/private", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "import_requisites", records }),
-  }).then(json<{ updated: number }>);
+    body: JSON.stringify({ action: "import_private", records }),
+  }).then(json<{ updated: number; skipped: number }>);
   return result.updated;
 }
 
@@ -109,12 +139,13 @@ export async function allocatePayrollPayment(input: {
   paymentId: string;
   employeeId: string;
   entryId?: string;
+  payrollLineId?: string;
   debtOpeningId?: string;
   amount: number;
   allocationKind: PayrollPaymentAllocation["allocationKind"];
   comment?: string;
 }): Promise<void> {
-  await fetch("/api/finance/payroll", {
+  await fetch("/api/payroll", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "allocate_payment", ...input }),
@@ -122,15 +153,31 @@ export async function allocatePayrollPayment(input: {
 }
 
 export async function savePayrollEmployee(employee: PayrollEmployee): Promise<void> {
-  await fetch("/api/finance/payroll", {
+  const result = await fetch("/api/payroll", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "save_employee", employee }),
   }).then(json<{ employee: Row }>);
+  const employeeId = String(result.employee.id);
+  const privateResponse = await fetch("/api/payroll/private", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "save_private", employeeId, private: employee }),
+  });
+  if (privateResponse.status !== 403) await json<{ ok: boolean }>(privateResponse);
+}
+
+export async function importPayrollEmployees(records: Array<Pick<PayrollEmployee, "fullName" | "employmentDetails" | "employmentType" | "hireDate" | "terminationDate" | "employerName" | "companyIds" | "companyId" | "position" | "project" | "city" | "monthlySalary" | "defaultPaymentMethod">>): Promise<number> {
+  const result = await fetch("/api/payroll", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "import_employees", records }),
+  }).then(json<{ updated: number; skipped: number }>);
+  return result.updated;
 }
 
 export async function savePayrollPeriod(payDate: string, entries: PayrollDraftEntry[]): Promise<void> {
-  await fetch("/api/finance/payroll", {
+  await fetch("/api/payroll", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "save_period", payDate, entries }),

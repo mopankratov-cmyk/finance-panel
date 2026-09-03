@@ -7,10 +7,10 @@
 
 import type { Payment } from "@/lib/types";
 
-const FACT_LINK_PATTERNS = [/\[calendar-fact:([^\]]+)\]/g, /\[paid-by:([^\]]+)\]/g];
+const FACT_LINK_PATTERNS = [/\[calendar-fact:([^\]]+)\]/g, /\[paid-by:([^\]]+)\]/g, /\[payroll-paid:([^\]]+)\]/g];
 
 /** Метки, которые нельзя терять при пересборке строки графика из формы договора. */
-const PRESERVED_MARKER_PATTERN = /\[(?:paid-by|calendar-fact|original-due|overdue-calendar-date):[^\]]+\]/g;
+const PRESERVED_MARKER_PATTERN = /\[(?:paid-by|calendar-fact|payroll-paid|priority|original-due|overdue-calendar-date):[^\]]+\]/g;
 
 /** Id фактов, на которые ссылается комментарий одного платежа. */
 export function linkedFactIds(comment: string | null | undefined): string[] {
@@ -26,7 +26,10 @@ export function linkedFactIds(comment: string | null | undefined): string[] {
  * Все факты, уже занятые каким-либо планом. `exceptPlanId` — план, чью
  * собственную связь учитывать не надо (он может её подтвердить заново).
  */
-export function consumedFactIds(payments: readonly Pick<Payment, "id" | "comment">[], exceptPlanId?: string): Set<string> {
+export function consumedFactIds(
+  payments: readonly { id: Payment["id"]; comment?: string | null }[],
+  exceptPlanId?: string,
+): Set<string> {
   const consumed = new Set<string>();
   for (const payment of payments) {
     if (payment.id === exceptPlanId) continue;

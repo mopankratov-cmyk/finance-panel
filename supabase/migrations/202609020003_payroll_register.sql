@@ -18,6 +18,8 @@ create table if not exists public.payroll_employees (
     check (default_payment_method in ('card', 'bank_account', 'cash')),
   bank_name text,
   phone text,
+  settlement_account_details text,
+  card_transfer_details text,
   payment_details text,
   payment_details_masked text,
   notes text,
@@ -30,6 +32,8 @@ alter table public.payroll_employees
     check (employment_status in ('active', 'terminated'));
 
 alter table public.payroll_employees add column if not exists phone text;
+alter table public.payroll_employees add column if not exists settlement_account_details text;
+alter table public.payroll_employees add column if not exists card_transfer_details text;
 alter table public.payroll_employees add column if not exists payment_details text;
 
 create table if not exists public.payroll_periods (
@@ -58,6 +62,7 @@ create table if not exists public.payroll_entries (
   salary_payment_id uuid references public.payments(id) on delete set null,
   tax_payment_id uuid references public.payments(id) on delete set null,
   comment text,
+  allocation_lines jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (period_id, employee_id)
@@ -74,15 +79,19 @@ create table if not exists public.payroll_debt_openings (
   unique (employee_id, debt_year)
 );
 
+alter table public.payroll_entries add column if not exists allocation_lines jsonb not null default '[]'::jsonb;
+
 create table if not exists public.payroll_payment_allocations (
   id uuid primary key default gen_random_uuid(),
   payment_id uuid not null references public.payments(id) on delete cascade,
   employee_id uuid not null references public.payroll_employees(id) on delete cascade,
   entry_id uuid references public.payroll_entries(id) on delete cascade,
+  payroll_line_id text,
   debt_opening_id uuid references public.payroll_debt_openings(id) on delete cascade,
   amount numeric(14, 2) not null check (amount > 0),
   allocation_kind text not null check (allocation_kind in ('current_salary', 'current_year_debt', 'prior_year_debt')),
   comment text,
+  confirmed_by text,
   confirmed_at timestamptz not null default now(),
   check (num_nonnulls(entry_id, debt_opening_id) = 1)
 );
@@ -92,8 +101,11 @@ create index if not exists payroll_entries_period_idx on public.payroll_entries(
 create index if not exists payroll_entries_employee_idx on public.payroll_entries(employee_id);
 create index if not exists payroll_debt_employee_idx on public.payroll_debt_openings(employee_id, debt_year);
 create index if not exists payroll_allocations_employee_idx on public.payroll_payment_allocations(employee_id, confirmed_at);
-create unique index if not exists payroll_allocations_payment_entry_uq
-  on public.payroll_payment_allocations(payment_id, entry_id) where entry_id is not null;
+alter table public.payroll_payment_allocations add column if not exists payroll_line_id text;
+alter table public.payroll_payment_allocations add column if not exists confirmed_by text;
+drop index if exists public.payroll_allocations_payment_entry_uq;
+create unique index if not exists payroll_allocations_payment_entry_line_uq
+  on public.payroll_payment_allocations(payment_id, entry_id, payroll_line_id) where entry_id is not null;
 create unique index if not exists payroll_allocations_payment_debt_uq
   on public.payroll_payment_allocations(payment_id, debt_opening_id) where debt_opening_id is not null;
 
@@ -102,6 +114,24 @@ alter table public.payroll_periods enable row level security;
 alter table public.payroll_entries enable row level security;
 alter table public.payroll_debt_openings enable row level security;
 alter table public.payroll_payment_allocations enable row level security;
+
+-- Платёжные реквизиты и телефоны не должны возвращаться финансовой роли
+-- вместе с общим справочником сотрудников. Доступ к этой таблице даёт только
+-- отдельный серверный роут с ролью director.
+create table if not exists public.payroll_employee_private (
+  employee_id uuid primary key references public.payroll_employees(id) on delete cascade,
+  bank_name text,
+  phone text,
+  settlement_account_details text,
+  card_transfer_details text,
+  payment_details text,
+  payment_details_masked text,
+  passport_ref text,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.payroll_employee_private enable row level security;
+comment on table public.payroll_employee_private is 'Закрытые реквизиты сотрудников. Читаются только директорским API; в платежи и экспорт не попадают.';
 
 comment on table public.payroll_employees is 'Справочник сотрудников. Полные платёжные реквизиты загружаются пользователем после внедрения и не хранятся в Git.';
 comment on table public.payroll_entries is 'Начисления по сотруднику за полумесяц и устойчивые связи с плановыми строками календаря.';
@@ -233,3 +263,41 @@ on conflict (full_name) do update set
   bank_name = excluded.bank_name,
   notes = excluded.notes,
   updated_at = now();
+
+-- Переносим даже ранее сохранённые реквизиты в закрытую таблицу. Старые
+-- колонки оставлены пустыми только для безопасного перехода уже созданных БД.
+insert into public.payroll_employee_private (
+  employee_id, bank_name, phone, settlement_account_details,
+  card_transfer_details, payment_details, payment_details_masked
+)
+select id, bank_name, phone, settlement_account_details,
+       card_transfer_details, payment_details, payment_details_masked
+from public.payroll_employees
+where nullif(bank_name, '') is not null
+   or nullif(phone, '') is not null
+   or nullif(settlement_account_details, '') is not null
+   or nullif(card_transfer_details, '') is not null
+   or nullif(payment_details, '') is not null
+   or nullif(payment_details_masked, '') is not null
+on conflict (employee_id) do update set
+  bank_name = excluded.bank_name,
+  phone = excluded.phone,
+  settlement_account_details = excluded.settlement_account_details,
+  card_transfer_details = excluded.card_transfer_details,
+  payment_details = excluded.payment_details,
+  payment_details_masked = excluded.payment_details_masked,
+  updated_at = now();
+
+update public.payroll_employees set
+  bank_name = null,
+  phone = null,
+  settlement_account_details = null,
+  card_transfer_details = null,
+  payment_details = null,
+  payment_details_masked = null
+where bank_name is not null
+   or phone is not null
+   or settlement_account_details is not null
+   or card_transfer_details is not null
+   or payment_details is not null
+   or payment_details_masked is not null;

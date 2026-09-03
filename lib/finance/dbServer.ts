@@ -6,7 +6,7 @@ import type { Account, FinanceAction, FinanceState, Loan, Payment } from "@/lib/
 
 type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 type AccountRow = { id: string; name: string; type: string; currency: string; balance: number; created_at?: string };
-type PaymentRow = { id: string; name: string; amount: number; type: string; category: string; account_id: string; date: string; status: string; counterparty: string; comment: string | null; created_at?: string };
+type PaymentRow = { id: string; name: string; amount: number; type: string; category: string; account_id: string; company_id?: string | null; date: string; status: string; counterparty: string; comment: string | null; created_at?: string };
 type LoanRow = { id: string; creditor: string; principal: number; rate_per_day: number; start_date: string; due_date: string; status: string; created_at?: string };
 
 const accountToRow = (account: Account) => ({
@@ -24,6 +24,7 @@ const paymentToRow = (payment: Payment) => ({
   type: payment.amount >= 0 ? "income" : "expense",
   category: payment.category,
   account_id: payment.accountId,
+  company_id: payment.companyId ?? null,
   date: payment.date,
   status: payment.status,
   counterparty: payment.counterparty,
@@ -103,6 +104,7 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
       amount: Number(row.amount),
       category: row.category,
       accountId: row.account_id,
+      companyId: row.company_id ?? null,
       date: row.date,
       status: row.status as Payment["status"],
       counterparty: row.counterparty ?? "",

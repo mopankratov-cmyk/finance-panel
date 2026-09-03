@@ -3,24 +3,46 @@ import type { Payment } from "@/lib/types";
 export type PayrollEmploymentType = "official" | "unofficial" | "partial" | "individual_entrepreneur" | "self_employed";
 export type PayrollPaymentMethod = "card" | "bank_account" | "cash";
 export type PayrollEmploymentStatus = "active" | "terminated";
+export type PayrollLineKind = "official" | "unofficial" | "contractor";
+
+export interface PayrollAccrualLine {
+  id: string;
+  kind: PayrollLineKind;
+  amount: number;
+  taxAmount: number;
+  companyId: string | null;
+  accountId: string | null;
+  paymentMethod: PayrollPaymentMethod;
+  salaryPaymentId: string | null;
+  taxPaymentId: string | null;
+  comment: string;
+}
 
 export interface PayrollEmployee {
   id: string;
   fullName: string;
   employmentStatus: PayrollEmploymentStatus;
   employmentType: PayrollEmploymentType;
+  /** Исходное описание трудоустройства из кадровой таблицы. */
+  employmentDetails: string;
   hireDate: string | null;
   terminationDate: string | null;
   employerName: string;
+  /** Все компании, на которые работает сотрудник. companyId остаётся основной. */
+  companyIds: string[];
   companyId: string | null;
   position: string;
   project: string;
   city: string;
+  workEmail: string;
+  birthDate: string | null;
   monthlySalary: number;
   taxRate: number | null;
   defaultPaymentMethod: PayrollPaymentMethod;
   bankName: string;
   phone: string;
+  settlementAccountDetails: string;
+  cardTransferDetails: string;
   paymentDetails: string;
   paymentDetailsMasked: string;
   notes: string;
@@ -48,6 +70,7 @@ export interface PayrollEntry {
   salaryPaymentId: string | null;
   taxPaymentId: string | null;
   comment: string;
+  lines: PayrollAccrualLine[];
 }
 
 export interface PayrollDraftEntry {
@@ -60,6 +83,7 @@ export interface PayrollDraftEntry {
   companyId: string | null;
   accountId: string | null;
   comment: string;
+  lines: PayrollAccrualLine[];
 }
 
 export interface PayrollDebtOpening {
@@ -75,10 +99,12 @@ export interface PayrollPaymentAllocation {
   paymentId: string;
   employeeId: string;
   entryId: string | null;
+  payrollLineId: string | null;
   debtOpeningId: string | null;
   amount: number;
   allocationKind: "current_salary" | "current_year_debt" | "prior_year_debt";
   comment: string;
+  confirmedBy: string;
   confirmedAt: string;
 }
 
@@ -89,6 +115,7 @@ export interface PayrollData {
   debts: PayrollDebtOpening[];
   allocations: PayrollPaymentAllocation[];
   preview?: boolean;
+  canViewPrivate?: boolean;
 }
 
 export function allocatedToEntry(entryId: string, allocations: PayrollPaymentAllocation[]): number {
@@ -180,11 +207,27 @@ export function taxIsPayable(employee: PayrollEmployee, entry: Pick<PayrollDraft
   return true;
 }
 
-export function payrollSalaryAmount(entry: Pick<PayrollDraftEntry, "officialAmount" | "unofficialAmount" | "contractorAmount">): number {
+/** Налог по строке: официальная часть всегда облагается, ИП/СЗ — только при выплате на р/с. */
+export function payrollLineTaxIsPayable(
+  employee: PayrollEmployee,
+  line: Pick<PayrollAccrualLine, "kind" | "paymentMethod">,
+): boolean {
+  if (line.kind === "unofficial") return false;
+  if (line.kind === "contractor"
+    || employee.employmentType === "individual_entrepreneur"
+    || employee.employmentType === "self_employed") {
+    return line.paymentMethod === "bank_account";
+  }
+  return line.kind === "official";
+}
+
+export function payrollSalaryAmount(entry: Pick<PayrollDraftEntry, "officialAmount" | "unofficialAmount" | "contractorAmount"> & { lines?: PayrollAccrualLine[] }): number {
+  if (entry.lines?.length) return roundMoney(entry.lines.reduce((sum, line) => sum + line.amount, 0));
   return roundMoney(entry.officialAmount + entry.unofficialAmount + entry.contractorAmount);
 }
 
 export function payrollTaxAmount(employee: PayrollEmployee, entry: PayrollDraftEntry): number {
+  if (entry.lines.length) return roundMoney(entry.lines.reduce((sum, line) => sum + (payrollLineTaxIsPayable(employee, line) ? line.taxAmount : 0), 0));
   return taxIsPayable(employee, entry) ? roundMoney(entry.taxAmount) : 0;
 }
 
@@ -193,6 +236,17 @@ export function payrollEntryTotal(employee: PayrollEmployee, entry: PayrollDraft
 }
 
 export function blankPayrollEntry(employee: PayrollEmployee): PayrollDraftEntry {
+  const makeLine = (kind: PayrollLineKind, paymentMethod: PayrollPaymentMethod): PayrollAccrualLine => ({
+    id: crypto.randomUUID(), kind, amount: 0, taxAmount: 0, companyId: employee.companyId,
+    accountId: null, paymentMethod, salaryPaymentId: null, taxPaymentId: null, comment: "",
+  });
+  const lines = employee.employmentType === "partial"
+    ? [makeLine("official", "bank_account"), makeLine("unofficial", "card")]
+    : employee.employmentType === "official"
+      ? [makeLine("official", employee.defaultPaymentMethod)]
+      : employee.employmentType === "unofficial"
+        ? [makeLine("unofficial", employee.defaultPaymentMethod)]
+        : [makeLine("contractor", employee.defaultPaymentMethod)];
   return {
     employeeId: employee.id,
     officialAmount: 0,
@@ -203,6 +257,7 @@ export function blankPayrollEntry(employee: PayrollEmployee): PayrollDraftEntry 
     companyId: employee.companyId,
     accountId: null,
     comment: "",
+    lines,
   };
 }
 
@@ -217,6 +272,7 @@ export function draftFromEntry(entry: PayrollEntry): PayrollDraftEntry {
     companyId: entry.companyId,
     accountId: entry.accountId,
     comment: entry.comment,
+    lines: entry.lines?.length ? entry.lines : [],
   };
 }
 
