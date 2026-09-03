@@ -63,6 +63,21 @@ test("monthly interest wording creates a monthly schedule without invented rows"
   assert.equal(result.schedule, undefined);
 });
 
+test("Dzyubin contract capitalizes three monthly interest payments every quarter", () => {
+  const result = recognizeLoanText(`Договор займа ИМ-ДА-01 от 15.07.2023. Заимодавец Дзюбин Александр Владимирович.
+    Сумма займа 5 000 000 рублей, 36 процентов годовых. Заимодавец ежеквартально вносит дополнительные суммы займа,
+    равные сумме процентов, выплаченных за квартал. Проценты выплачиваются ежемесячно не позднее 10-го числа.`);
+  assert.equal(result.creditorName, "Дзюбин Александр Владимирович");
+  assert.equal(result.annualRate, 36);
+  assert.equal(result.monthlyRate, 3);
+  assert.equal(result.schedule?.[0]?.date, "2023-08-10");
+  assert.equal(result.schedule?.[0]?.interest, 150_000);
+  assert.equal(result.schedule?.[3]?.interest, 163_500);
+  assert.equal(result.schedule?.at(-1)?.date, "2026-07-15");
+  assert.equal(result.schedule?.at(-1)?.principal, 14_063_323.91);
+  assert.equal(result.principalAmount, 14_063_323.91);
+});
+
 test("two monthly payment dates split interest and respect every dollar tranche", () => {
   const result = recognizeLoanText("Займ Евгений Я. 29.01.2026, взято 2000$, затем 15.04.2026 3000$, 29.04.2026 15000$, 10.05.2026 - 8000$, 01.06.2026 - 8250$, 5% от суммы займа в месяц, оплата 16 и 30 числа. 16 числа оплата с 31 или 1 числа по 15 число, 30 числа оплата за начисление с 16 по 29 число. тело в конце срока, займ до марта 2027");
   assert.equal(result.currency, "USD");
