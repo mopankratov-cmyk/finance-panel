@@ -1,5 +1,6 @@
 
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODEL } from "@/lib/ai/models";
 
 // ИИ-распознавание условий кредита по тексту, PDF или картинке. Перенесено из
 // роута /api/opiu/loan-recognize без изменения промпта и логики резерва.
@@ -110,7 +111,7 @@ async function recognizeWithAnthropic(body: AiRecognitionBody) {
   if (body.pdfBase64) content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: body.pdfBase64 } });
   if (body.imageBase64 && body.imageMediaType) content.push({ type: "image", source: { type: "base64", media_type: body.imageMediaType, data: body.imageBase64 } });
   content.push({ type: "text", text: promptFor(body) });
-  const response = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 6500, temperature: 0, system, messages: [{ role: "user", content }] });
+  const response = await client.messages.create({ model: ANTHROPIC_MODEL, max_tokens: 6500, temperature: 0, system, messages: [{ role: "user", content }] });
   return jsonFrom(response.content.filter((item) => item.type === "text").map((item) => item.text).join("\n"));
 }
 

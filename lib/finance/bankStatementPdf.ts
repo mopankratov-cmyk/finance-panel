@@ -2,6 +2,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
 import type { BankStatement } from "./bankStatementGrid";
+import { ANTHROPIC_MODEL } from "@/lib/ai/models";
 
 // Распознавание PDF-выписки ИИ. Перенесено из роута без изменения логики:
 // провайдеры запускаются одновременно, выбирается результат с наименьшим
@@ -210,8 +211,11 @@ export async function recognizeBankStatementPdf(pdf: Buffer, fileName: string): 
   const documentHash = createHash("sha256").update(pdf).digest("hex");
   const providers: Array<{ name: string; promise: Promise<RawStatement> }> = [];
   if (process.env.ANTHROPIC_API_KEY) {
-    const fastModel = process.env.BANK_STATEMENT_ANTHROPIC_MODEL || "claude-haiku-4-5";
-    const accurateModel = process.env.BANK_STATEMENT_ACCURATE_MODEL || "claude-sonnet-4-6";
+    // Раньше PDF гоняли на двух моделях (быстрая + точная) и выбирали лучшую.
+    // Теперь обе — одна и та же ANTHROPIC_MODEL, поэтому Anthropic вызывается один
+    // раз; переопределить можно прежними переменными окружения.
+    const fastModel = process.env.BANK_STATEMENT_ANTHROPIC_MODEL || ANTHROPIC_MODEL;
+    const accurateModel = process.env.BANK_STATEMENT_ACCURATE_MODEL || ANTHROPIC_MODEL;
     providers.push({ name: fastModel, promise: withAnthropic(pdf, fileName, fastModel) });
     if (accurateModel !== fastModel) providers.push({ name: accurateModel, promise: withAnthropic(pdf, fileName, accurateModel) });
   }

@@ -49,7 +49,8 @@
 
 | Переменная | Зачем |
 |---|---|
-| `ANTHROPIC_API_KEY` | разбор банковских выписок |
+| `ANTHROPIC_API_KEY` | все вызовы ИИ: договоры, PDF-выписки, ответы руководителя в Telegram, AI-агент |
+| `ANTHROPIC_MODEL` | модель для всех вызовов Anthropic; по умолчанию `claude-opus-5` (`lib/ai/models.ts`) |
 | `GOOGLE_SERVICE_ACCOUNT_B64` | выгрузки в Google Sheets |
 | `FINANCE_SPREADSHEET_ID` | адрес таблицы для выгрузок |
 

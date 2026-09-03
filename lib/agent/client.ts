@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODEL } from "@/lib/ai/models";
 
 /**
  * Создаёт Anthropic-клиент. На этой машине прямой доступ к api.anthropic.com
@@ -33,4 +34,4 @@ export async function createClaudeClient(): Promise<Anthropic | null> {
 }
 
 // Модель указана в ТЗ (раздел 5.7)
-export const CLAUDE_MODEL = "claude-sonnet-4-6";
+export const CLAUDE_MODEL = ANTHROPIC_MODEL;

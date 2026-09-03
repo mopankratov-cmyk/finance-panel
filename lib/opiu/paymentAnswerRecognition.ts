@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODEL } from "@/lib/ai/models";
 
 export interface PaymentAnswerContext {
   answer: string;
@@ -29,7 +30,7 @@ export async function recognizePaymentAnswer(context: PaymentAnswerContext): Pro
   if (!key) throw new Error("ANTHROPIC_API_KEY не настроен");
   const client = new Anthropic({ apiKey: key, timeout: 30_000, maxRetries: 0 });
   const response = await client.messages.create({
-    model: "claude-haiku-4-5",
+    model: ANTHROPIC_MODEL,
     max_tokens: 700,
     temperature: 0,
     system: `Ты классифицируешь ответ руководителя о банковском платеже. Не выдумывай.
