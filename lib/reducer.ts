@@ -42,27 +42,6 @@ export function financeReducer(
         payments: state.payments.filter((p) => p.id !== action.payload),
       };
 
-    case "MARK_PAYMENT_DONE": {
-      const payment = state.payments.find((p) => p.id === action.payload);
-      if (!payment || payment.status === "done") return state;
-
-      const updatedPayments = state.payments.map((p) =>
-        p.id === action.payload ? { ...p, status: "done" as const } : p,
-      );
-
-      const updatedAccounts = state.accounts.map((acc) =>
-        acc.id === payment.accountId
-          ? { ...acc, balance: acc.balance + payment.amount }
-          : acc,
-      );
-
-      return {
-        ...state,
-        payments: updatedPayments,
-        accounts: updatedAccounts,
-      };
-    }
-
     case "ADD_LOAN":
       return { ...state, loans: [...state.loans, action.payload] };
 

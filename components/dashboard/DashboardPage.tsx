@@ -20,8 +20,8 @@ import { formatDateShort, formatMoney, todayISO } from "@/lib/format";
 
 export function DashboardPage() {
   const { state } = useFinance();
-  const totalBalance = getTotalBalance(state.accounts);
-  const balancesByCurrency = getTotalBalanceByCurrency(state.accounts);
+  const totalBalance = getTotalBalance(state.accounts, state.payments);
+  const balancesByCurrency = getTotalBalanceByCurrency(state.accounts, state.payments);
   const upcomingPayments = getPaymentsForWeek(state.payments, todayISO());
   const recentTransactions = getRecentTransactions(state.payments, 8);
 
@@ -29,7 +29,7 @@ export function DashboardPage() {
   const alerts = getNegativeBalanceDays(
     now.getFullYear(),
     now.getMonth(),
-    totalBalance,
+    state.accounts,
     state.payments,
   );
 

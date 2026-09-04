@@ -3,11 +3,14 @@
 import { useMemo } from "react";
 import { getWeekSummary } from "@/lib/calculations";
 import { formatDayMonth, formatMoney } from "@/lib/format";
-import type { Payment } from "@/lib/types";
+import type { Account, Payment } from "@/lib/types";
 
 interface WeekSummaryCellProps {
   referenceDate: string;
-  totalBalance: number;
+  accounts: Account[];
+  /** Все платежи — для остатка на конец недели. */
+  allPayments: Payment[];
+  /** Видимый срез — для потока недели. */
   payments: Payment[];
 }
 
@@ -39,12 +42,13 @@ function Metric({ label, value, valueClass }: MetricProps) {
 
 export function WeekSummaryCell({
   referenceDate,
-  totalBalance,
+  accounts,
+  allPayments,
   payments,
 }: WeekSummaryCellProps) {
   const summary = useMemo(
-    () => getWeekSummary(referenceDate, totalBalance, payments),
-    [referenceDate, totalBalance, payments],
+    () => getWeekSummary(referenceDate, accounts, allPayments, payments),
+    [referenceDate, accounts, allPayments, payments],
   );
 
   const isPositiveWeek = summary.netFlow >= 0;

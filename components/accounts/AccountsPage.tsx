@@ -7,8 +7,9 @@ import { useFinance } from "@/components/providers/FinanceProvider";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { getTotalBalance, getTotalBalanceByCurrency } from "@/lib/calculations";
+import { accountBalance } from "@/lib/finance/balance";
 import { ACCOUNT_TYPE_LABELS } from "@/lib/constants";
-import { formatMoney, generateId } from "@/lib/format";
+import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Account } from "@/lib/types";
 
 export function AccountsPage() {
@@ -16,8 +17,9 @@ export function AccountsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
 
-  const totalBalance = getTotalBalance(state.accounts);
-  const byCurrency = getTotalBalanceByCurrency(state.accounts);
+  const today = todayISO();
+  const totalBalance = getTotalBalance(state.accounts, state.payments, today);
+  const byCurrency = getTotalBalanceByCurrency(state.accounts, state.payments, today);
 
   const openAdd = () => {
     setEditing(null);
@@ -68,7 +70,7 @@ export function AccountsPage() {
 
       <Card>
         <CardContent className="pt-5">
-          <p className="text-sm text-slate-500">Общий баланс</p>
+          <p className="text-sm text-slate-500">Общий остаток в рублях на сегодня</p>
           <p className="text-3xl font-bold text-slate-900 mt-1">
             {formatMoney(totalBalance)}
           </p>
@@ -114,7 +116,12 @@ export function AccountsPage() {
             </CardHeader>
             <CardContent className="pt-0">
               <p className="text-xl font-bold text-slate-900">
-                {formatMoney(account.balance, account.currency)}
+                {formatMoney(accountBalance(account, state.payments, today), account.currency)}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                {account.openingDate
+                  ? `Открытие ${formatDate(account.openingDate)}: ${formatMoney(account.openingBalance ?? 0, account.currency)} · дальше по платежам`
+                  : "Дата остатка не задана — показано ручное число"}
               </p>
             </CardContent>
           </Card>

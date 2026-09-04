@@ -133,8 +133,9 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
 
 export async function persistFinanceActionServer(
   action: FinanceAction,
-  prevState: FinanceState,
-  nextState: FinanceState,
+  // Снимки состояния больше не нужны (их читала мёртвая ветка MARK_PAYMENT_DONE); клиент их всё ещё шлёт.
+  _prevState: FinanceState,
+  _nextState: FinanceState,
 ) {
   const db = requireDb();
   let result: { error: { message: string } | null } | null = null;
@@ -158,15 +159,6 @@ export async function persistFinanceActionServer(
     case "DELETE_PAYMENT":
       result = await db.from("payments").delete().eq("id", action.payload);
       break;
-    case "MARK_PAYMENT_DONE": {
-      const payment = prevState.payments.find((candidate) => candidate.id === action.payload);
-      if (!payment) return;
-      const paymentResult = await db.from("payments").update({ status: "done" }).eq("id", action.payload);
-      if (paymentResult.error) throw paymentResult.error;
-      const account = nextState.accounts.find((candidate) => candidate.id === payment.accountId);
-      if (account) result = await db.from("accounts").update({ balance: account.balance }).eq("id", account.id);
-      break;
-    }
     case "ADD_LOAN":
       result = await db.from("loans").insert(loanToRow(action.payload));
       break;

@@ -2,6 +2,7 @@
 
 import type { Account, AccountType, Currency } from "@/lib/types";
 import { ACCOUNT_TYPE_LABELS } from "@/lib/constants";
+import { todayISO } from "@/lib/format";
 
 interface AccountFormProps {
   account?: Account;
@@ -13,11 +14,14 @@ export function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    const openingBalance = Number(fd.get("openingBalance"));
     onSubmit({
       name: fd.get("name") as string,
       type: fd.get("type") as AccountType,
       currency: fd.get("currency") as Currency,
-      balance: Number(fd.get("balance")),
+      balance: openingBalance,
+      openingBalance,
+      openingDate: (fd.get("openingDate") as string) || todayISO(),
     });
   };
 
@@ -69,18 +73,35 @@ export function AccountForm({ account, onSubmit, onCancel }: AccountFormProps) {
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">
-          Текущий баланс
-        </label>
-        <input
-          name="balance"
-          type="number"
-          step="0.01"
-          required
-          defaultValue={account?.balance ?? 0}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-        />
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            Остаток на дату
+          </label>
+          <input
+            name="openingBalance"
+            type="number"
+            step="0.01"
+            required
+            defaultValue={account?.openingBalance ?? account?.balance ?? 0}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            Дата остатка
+          </label>
+          <input
+            name="openingDate"
+            type="date"
+            required
+            defaultValue={account?.openingDate ?? todayISO()}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+          />
+        </div>
+        <p className="col-span-2 text-xs text-slate-400">
+          Дальше остаток считается по платежам: открытие плюс все фактические операции с этой даты. Корректировка — платежом, а не правкой числа.
+        </p>
       </div>
 
       <div className="flex justify-end gap-3 pt-2">

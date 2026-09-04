@@ -26,7 +26,6 @@ import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, upda
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import {
   getDailyBalancesForMonth,
-  getTotalBalance,
   type DayInfo,
 } from "@/lib/calculations";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
@@ -121,7 +120,6 @@ export function CalendarPage() {
   const month = currentDate.getMonth();
   const today = todayISO();
 
-  const totalBalance = getTotalBalance(state.accounts);
   useEffect(() => {
     let cancelled = false;
     Promise.all([loadDdsCompanies(), loadPaymentCompanyLinks()]).then(([loadedCompanies, links]) => {
@@ -280,8 +278,8 @@ export function CalendarPage() {
   }), [allVisibleCalendarPayments, today]);
 
   const dailyMap = useMemo(
-    () => getDailyBalancesForMonth(year, month, totalBalance, visibleCalendarPayments),
-    [year, month, totalBalance, visibleCalendarPayments],
+    () => getDailyBalancesForMonth(year, month, state.accounts, state.payments, visibleCalendarPayments),
+    [year, month, state.accounts, state.payments, visibleCalendarPayments],
   );
 
   const paymentsByDate = useMemo(() => {
@@ -752,7 +750,7 @@ export function CalendarPage() {
                     );
                   })}
                 </div>
-                <WeekSummaryCell referenceDate={week.referenceDate} totalBalance={totalBalance} payments={visibleCalendarPayments} />
+                <WeekSummaryCell referenceDate={week.referenceDate} accounts={state.accounts} allPayments={state.payments} payments={visibleCalendarPayments} />
               </section>
             ))}
           </div>

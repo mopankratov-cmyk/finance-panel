@@ -52,7 +52,6 @@ export type FinanceAction =
   | { type: "ADD_PAYMENT"; payload: Payment }
   | { type: "UPDATE_PAYMENT"; payload: Payment }
   | { type: "DELETE_PAYMENT"; payload: string }
-  | { type: "MARK_PAYMENT_DONE"; payload: string }
   | { type: "ADD_LOAN"; payload: Loan }
   | { type: "UPDATE_LOAN"; payload: Loan }
   | { type: "DELETE_LOAN"; payload: string };

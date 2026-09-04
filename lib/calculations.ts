@@ -1,16 +1,24 @@
 import type { Account, Loan, Payment } from "./types";
 import { todayISO } from "./format";
+import { accountBalance, projectedBalance, totalRubBalance } from "./finance/balance";
 
-export function getTotalBalance(accounts: Account[]): number {
-  return accounts.reduce((sum, acc) => sum + acc.balance, 0);
+// Остаток и прогноз считаются из lib/finance/balance.ts: остаток на дату
+// открытия плюс фактические платежи; планы — только вперёд от сегодня.
+// Раньше базой был ручной accounts.balance, который платежами не двигался.
+
+/** Текущий остаток рублёвых счетов (валютные — отдельно, см. getTotalBalanceByCurrency). */
+export function getTotalBalance(accounts: Account[], payments: Payment[] = [], today = todayISO()): number {
+  return totalRubBalance(accounts, payments, today);
 }
 
 export function getTotalBalanceByCurrency(
   accounts: Account[],
+  payments: Payment[] = [],
+  today = todayISO(),
 ): Record<string, number> {
   return accounts.reduce(
     (totals, acc) => {
-      totals[acc.currency] = (totals[acc.currency] || 0) + acc.balance;
+      totals[acc.currency] = (totals[acc.currency] || 0) + accountBalance(acc, payments, today);
       return totals;
     },
     {} as Record<string, number>,
@@ -66,35 +74,26 @@ export function getDaysInMonth(year: number, month: number): string[] {
   return days;
 }
 
+/**
+ * Остаток по дням месяца. Прогноз — по ВСЕМ платежам (`payments`), а список и
+ * поток дня — по `visible` (срез с фильтрами календаря), если он передан:
+ * иначе поиск и фильтры меняли бы сам прогноз остатка.
+ */
 export function getDailyBalancesForMonth(
   year: number,
   month: number,
-  totalBalance: number,
+  accounts: Account[],
   payments: Payment[],
+  visible: Payment[] = payments,
 ): Map<string, DayInfo> {
   const today = todayISO();
   const days = getDaysInMonth(year, month);
-  const activePayments = getActivePayments(payments);
+  const visiblePayments = getActivePayments(visible);
   const result = new Map<string, DayInfo>();
 
   for (const dayStr of days) {
-    let balance = totalBalance;
-
-    if (dayStr > today) {
-      for (const p of activePayments) {
-        if (p.date > today && p.date <= dayStr) {
-          balance += p.amount;
-        }
-      }
-    } else if (dayStr < today) {
-      for (const p of activePayments) {
-        if (p.date > dayStr && p.date <= today) {
-          balance -= p.amount;
-        }
-      }
-    }
-
-    const dayPayments = activePayments.filter((p) => p.date === dayStr);
+    const balance = projectedBalance(accounts, payments, today, dayStr);
+    const dayPayments = visiblePayments.filter((p) => p.date === dayStr);
     const netFlow = dayPayments.reduce((sum, p) => sum + p.amount, 0);
 
     let dayType: DayInfo["dayType"] = "neutral";
@@ -117,15 +116,10 @@ export function getDailyBalancesForMonth(
 export function getNegativeBalanceDays(
   year: number,
   month: number,
-  totalBalance: number,
+  accounts: Account[],
   payments: Payment[],
 ): DayInfo[] {
-  const dailyMap = getDailyBalancesForMonth(
-    year,
-    month,
-    totalBalance,
-    payments,
-  );
+  const dailyMap = getDailyBalancesForMonth(year, month, accounts, payments);
   const today = todayISO();
   return Array.from(dailyMap.values()).filter(
     (d) => d.isNegative && d.date >= today,
@@ -182,37 +176,20 @@ export function getWeekBounds(dateStr: string): {
 
 export function getBalanceAtDate(
   dateStr: string,
-  totalBalance: number,
+  accounts: Account[],
   payments: Payment[],
 ): number {
-  const today = todayISO();
-  const activePayments = getActivePayments(payments);
-  let balance = totalBalance;
-
-  if (dateStr > today) {
-    for (const p of activePayments) {
-      if (p.date > today && p.date <= dateStr) {
-        balance += p.amount;
-      }
-    }
-  } else if (dateStr < today) {
-    for (const p of activePayments) {
-      if (p.date > dateStr && p.date <= today) {
-        balance -= p.amount;
-      }
-    }
-  }
-
-  return balance;
+  return projectedBalance(accounts, payments, todayISO(), dateStr);
 }
 
 export function getWeekSummary(
   dateStr: string,
-  totalBalance: number,
+  accounts: Account[],
   payments: Payment[],
+  visible: Payment[] = payments,
 ): WeekSummary {
   const { startDate, endDate, weekNumber } = getWeekBounds(dateStr);
-  const activePayments = getActivePayments(payments);
+  const activePayments = getActivePayments(visible);
   const weekPayments = activePayments.filter(
     (p) => p.date >= startDate && p.date <= endDate,
   );
@@ -234,7 +211,7 @@ export function getWeekSummary(
     netFlow,
     totalIncome,
     totalExpense,
-    runningBalance: getBalanceAtDate(endDate, totalBalance, payments),
+    runningBalance: getBalanceAtDate(endDate, accounts, payments),
   };
 }
 

@@ -1,5 +1,6 @@
 import { isCalendarCashFlow } from "@/components/calendar/calendarPlan";
 import { getPaymentPriority } from "@/components/calendar/paymentPriority";
+import { totalRubBalance } from "@/lib/finance/balance";
 import type { Account, Payment } from "@/lib/types";
 
 export type FinancialAlertSeverity = "critical" | "warning" | "info";
@@ -89,7 +90,8 @@ export function analyzeFinances({
     });
   }
 
-  const currentBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+  // Только рублёвые счета, остаток — по платежам с даты открытия (без даты — ручное число).
+  const currentBalance = totalRubBalance(accounts, payments, today);
   // Тот же набор платежей, что и в сетке календаря (без технических переводов),
   // и ограниченный горизонт: графики кредитов на годы вперёд делали «разрыв»
   // вечным и не совпадали с плитками календаря.

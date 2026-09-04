@@ -32,7 +32,6 @@ const ACTION_LABELS: Record<FinanceAction["type"], string> = {
   ADD_PAYMENT: "добавление платежа",
   UPDATE_PAYMENT: "изменение платежа",
   DELETE_PAYMENT: "удаление платежа",
-  MARK_PAYMENT_DONE: "отметка платежа",
   ADD_LOAN: "добавление договора",
   UPDATE_LOAN: "изменение договора",
   DELETE_LOAN: "удаление договора",
