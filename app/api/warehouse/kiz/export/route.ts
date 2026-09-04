@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
-import { buildXlsx } from "@/lib/xlsx/write";
+import { assertSheetIsUsable, buildXlsx } from "@/lib/xlsx/write";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +61,27 @@ async function loadBatchRows(
  * Остальные колонки — справочные, чтобы спорную строку можно было найти в
  * кабинете WB, не поднимая исходные выгрузки.
  */
+/**
+ * Вернуть партию в очередь.
+ *
+ * Пометка «отправлено» ставится ДО сборки файла — иначе два одновременных
+ * нажатия получили бы один набор кодов в двух документах. Но если файл собрать
+ * не удалось, коды повисают: человеку их не отдали, а в очереди их уже нет, и
+ * «Собрать файл» их больше не увидит. Откат снимает ровно эту партию.
+ */
+async function releaseBatch(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  batchId: string,
+  entityId: string,
+): Promise<boolean> {
+  const { error } = await db
+    .from("kiz_withdrawals")
+    .update({ status: "sold", batch_id: null, sent_at: null, updated_at: new Date().toISOString() })
+    .eq("batch_id", batchId)
+    .eq("legal_entity_id", entityId);
+  return !error;
+}
+
 function sheetOf(rows: ExportRow[]): (string | number | null)[][] {
   return [
     ["КИЗ", "Цена реализации, ₽", "Артикул", "Номер задания", "Дата продажи", "Артикул WB"],
@@ -75,31 +96,6 @@ function sheetOf(rows: ExportRow[]): (string | number | null)[][] {
       row.nm_id === null || row.nm_id === undefined ? "" : Number(row.nm_id),
     ]),
   ];
-}
-
-/**
- * Документ не должен уезжать пустым — ни при каких обстоятельствах.
- *
- * Так уже было: файл собрался на девятнадцать кодов, весил девять килобайт, а
- * в Excel открывался пустым — разделитель GS внутри кода делал XML
- * недопустимым, и Excel «чинил» книгу, выбрасывая лист. Ошибки не было нигде:
- * ни в панели, ни в Excel. Поэтому проверяем не намерение, а результат: в
- * готовом файле должно лежать столько же строк с кодами, сколько мы собрали, и
- * ни одного управляющего символа.
- */
-function assertSheetIsUsable(file: Buffer, expectedRows: number) {
-  const xml = file.toString("utf8");
-  const start = xml.indexOf("<sheetData>");
-  const end = xml.indexOf("</sheetData>");
-  const body = start >= 0 && end > start ? xml.slice(start, end) : "";
-  const rowCount = (body.match(/<row\b/g) ?? []).length;
-  if (rowCount < expectedRows + 1) {
-    throw new Error(`В документе ${Math.max(0, rowCount - 1)} строк вместо ${expectedRows} — файл собрался неверно`);
-  }
-  // eslint-disable-next-line no-control-regex -- ровно эти символы и ломают книгу
-  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(xml)) {
-    throw new Error("В документе остались управляющие символы — Excel откроет его пустым");
-  }
 }
 
 function fileResponse(rows: ExportRow[], batchId: string | null, remaining: number) {
@@ -153,7 +149,14 @@ export async function GET(request: NextRequest) {
   }
   if (rows.length === 0) return fail("Партия не найдена — возможно, она собрана под другим юрлицом", 404);
 
-  return fileResponse(rows, batchId, 0);
+  try {
+    return fileResponse(rows, batchId, 0);
+  } catch (cause) {
+    // Без этого перехвата отказ сборки уходит в Next как необработанное
+    // исключение: браузер получает HTML вместо JSON, и экран показывает
+    // безликое «Не удалось собрать файл» вместо причины.
+    return fail(cause instanceof Error ? cause.message : "Не удалось собрать файл", 500);
+  }
 }
 
 /**
@@ -205,7 +208,11 @@ export async function POST(request: NextRequest) {
     }
     const rows = (preview.data ?? []) as ExportRow[];
     if (rows.length === 0) return fail(nothingToExport(scope.entity.name), 400);
-    return fileResponse(rows, null, 0);
+    try {
+      return fileResponse(rows, null, 0);
+    } catch (cause) {
+      return fail(cause instanceof Error ? cause.message : "Не удалось собрать файл", 500);
+    }
   }
 
   // Отбор и пометка — один оператор в базе. Здесь не может случиться ни
@@ -246,5 +253,23 @@ export async function POST(request: NextRequest) {
     .eq("status", "sold")
     .eq("legal_entity_id", entityId);
 
-  return fileResponse(claimed, batchId, rest.count ?? 0);
+  try {
+    return fileResponse(claimed, batchId, rest.count ?? 0);
+  } catch (cause) {
+    // Коды уже помечены отправленными, а файла нет: в очереди их больше не
+    // видно, и собрать заново нельзя. Возвращаем партию в очередь — человек
+    // повторит попытку, когда причина устранена.
+    const message = cause instanceof Error ? cause.message : "Не удалось собрать файл";
+    const released = await releaseBatch(db, batchId, entityId);
+    return NextResponse.json(
+      {
+        data: null,
+        error: released
+          ? `${message}. Коды возвращены в очередь.`
+          : `${message}. Партия захвачена — скачайте её заново по номеру.`,
+        ...(released ? {} : { batch: batchId }),
+      },
+      { status: 500 },
+    );
+  }
 }

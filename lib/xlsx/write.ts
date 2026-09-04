@@ -114,6 +114,35 @@ function colRef(i: number): string {
   return s;
 }
 
+/**
+ * Готовый файл пригоден к открытию.
+ *
+ * Проверяем результат, а не намерение: однажды документ на девятнадцать кодов
+ * весил девять килобайт и открывался в Excel ПУСТЫМ — разделитель GS внутри
+ * кода делал XML недопустимым, и Excel «чинил» книгу, выбрасывая лист. Ошибки
+ * не было нигде: ни в панели, ни в Excel.
+ *
+ * Смотреть можно ТОЛЬКО в лист. XLSX — это ZIP, и его собственные заголовки
+ * начинаются с байтов «PK\x03\x04»: проверка по всему файлу срабатывает на
+ * любом документе, всегда — и вместо редкой поломки книги получается отказ
+ * сборки на каждой выгрузке.
+ */
+export function assertSheetIsUsable(file: Buffer, expectedRows: number) {
+  const xml = file.toString("utf8");
+  const start = xml.indexOf("<sheetData>");
+  const end = xml.indexOf("</sheetData>");
+  if (start < 0 || end <= start) throw new Error("В документе нет листа — файл собрался неверно");
+  const body = xml.slice(start, end);
+  const rowCount = (body.match(/<row\b/g) ?? []).length;
+  if (rowCount < expectedRows + 1) {
+    throw new Error(`В документе ${Math.max(0, rowCount - 1)} строк вместо ${expectedRows} — файл собрался неверно`);
+  }
+  // eslint-disable-next-line no-control-regex -- ровно эти символы и ломают книгу
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body)) {
+    throw new Error("В документе остались управляющие символы — Excel откроет его пустым");
+  }
+}
+
 export function buildXlsx(sheetName: string, rows: Cell[][]): Buffer {
   const body = rows
     .map((row, r) => {
