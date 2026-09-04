@@ -101,7 +101,8 @@ export function derivedPaymentForRow(row: ScheduleRowRecord, input: DerivedPayme
     amount: -Math.abs(row.amountRub),
     category: CATEGORY_BY_KIND[row.kind],
     accountId: input.accountId,
-    status: row.status === "paid" ? "cancelled" : row.status === "cancelled" ? "cancelled" : "planned",
+    // Закрыта фактом ДДС → план отменён с [paid-by]; отмечена оплаченной без факта → сам план и есть факт.
+    status: row.status === "paid" ? (row.paidByPaymentId ? "cancelled" : "done") : row.status === "cancelled" ? "cancelled" : "planned",
     counterparty: input.creditorName,
     comment: [
       `[loan:${input.loanId}:schedule:${row.id}:${markerKind}]`,
@@ -119,17 +120,31 @@ export interface CloseRowCheck {
   reason?: string;
 }
 
-/** Можно ли закрыть строку фактом: факт существует, расход, никем не занят, сумма совпадает или подтверждено вручную (I1, I2). */
+/**
+ * Можно ли закрыть строки (все части одной даты) одним фактом: факт существует,
+ * расход, никем не занят, сумма совпадает с суммой частей или подтверждено (I1, I2).
+ */
+export function canCloseRowsWithFact(
+  rows: readonly ScheduleRowRecord[],
+  fact: Pick<Payment, "id" | "status" | "amount"> | undefined,
+  consumedFactIds: ReadonlySet<string>,
+  confirmed: boolean,
+): CloseRowCheck {
+  if (!rows.length) return { ok: false, reason: "Строки графика не выбраны" };
+  if (rows.some((row) => row.status !== "planned")) return { ok: false, reason: "Строка графика уже закрыта" };
+  if (!fact || fact.status !== "done" || fact.amount >= 0) return { ok: false, reason: "Факт не найден или это не расход" };
+  if (consumedFactIds.has(fact.id)) return { ok: false, reason: "Этот факт уже закрывает другое обязательство" };
+  const total = rows.reduce((sum, row) => sum + row.amountRub, 0);
+  const delta = Math.abs(Math.abs(fact.amount) - total);
+  if (delta > Math.max(0.01, total * 0.01) && !confirmed) return { ok: false, reason: "Сумма факта отличается от строки — нужно подтверждение" };
+  return { ok: true };
+}
+
 export function canCloseRowWithFact(
   row: ScheduleRowRecord,
   fact: Pick<Payment, "id" | "status" | "amount"> | undefined,
   consumedFactIds: ReadonlySet<string>,
   confirmed: boolean,
 ): CloseRowCheck {
-  if (row.status !== "planned") return { ok: false, reason: "Строка графика уже закрыта" };
-  if (!fact || fact.status !== "done" || fact.amount >= 0) return { ok: false, reason: "Факт не найден или это не расход" };
-  if (consumedFactIds.has(fact.id)) return { ok: false, reason: "Этот факт уже закрывает другое обязательство" };
-  const delta = Math.abs(Math.abs(fact.amount) - row.amountRub);
-  if (delta > Math.max(0.01, row.amountRub * 0.01) && !confirmed) return { ok: false, reason: "Сумма факта отличается от строки — нужно подтверждение" };
-  return { ok: true };
+  return canCloseRowsWithFact([row], fact, consumedFactIds, confirmed);
 }

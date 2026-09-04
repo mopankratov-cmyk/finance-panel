@@ -9,12 +9,13 @@ import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, upda
 import { downloadSimpleXlsx } from "@/components/payments/ddsExport";
 import { Card, CardContent } from "@/components/ui/Card";
 import { LOAN_CATEGORIES } from "@/lib/finance/categories";
-import { consumedFactIds, preservedLoanMarkers } from "@/lib/finance/factLinks";
+import { consumedFactIds } from "@/lib/finance/factLinks";
 import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Loan, Payment } from "@/lib/types";
 import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
-import { loadLoanScheduleRows } from "./scheduleStore";
+import { closeLoanScheduleRows, loadLoanScheduleRows, saveLoanScheduleRows } from "./scheduleStore";
+import { loadFinanceState } from "@/lib/db";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
 const marker = (loanId: string) => `[loan:${loanId}:`;
@@ -210,7 +211,38 @@ export function LoansPage() {
     const actualPayments = state.payments.filter((payment) => payment.status === "done" && payment.amount < 0 && !payment.comment?.includes("[loan:") && !consumed.has(payment.id));
     const usedActual = new Set<string>();
     let matched = 0;
+    let closedViaRows = 0;
     for (const loan of state.loans) {
+      const rowsOfLoan = scheduleRows.filter((row) => row.loanId === loan.id);
+      if (rowsOfLoan.length) {
+        // Строки графика: сверяем по датам, закрываем все части даты одним фактом через роут (I1, I2 — на сервере).
+        const expectedCompany = linkedRows(state.payments, loan.id).map((payment) => companyByPayment.get(payment.id)).find(Boolean) ?? null;
+        if (!expectedCompany) continue;
+        const byDate = new Map<string, typeof rowsOfLoan>();
+        for (const row of rowsOfLoan) if (row.status === "planned") byDate.set(row.dueDate, [...(byDate.get(row.dueDate) ?? []), row]);
+        for (const [dueDate, parts] of byDate) {
+          const total = parts.reduce((sum, row) => sum + row.amountRub, 0);
+          const candidates = actualPayments
+            .filter((payment) => !usedActual.has(payment.id) && paymentMatchesCreditor(payment, loan.creditorName))
+            .filter((payment) => companyByPayment.get(payment.id) === expectedCompany)
+            .map((payment) => ({ payment, delta: Math.abs(Math.abs(payment.amount) - total), days: daysBetween(payment.date, dueDate) }))
+            .filter((candidate) => candidate.days <= 14 && candidate.delta <= Math.max(1, total * 0.005))
+            .sort((a, b) => a.delta - b.delta || a.days - b.days);
+          const best = candidates[0];
+          const second = candidates[1];
+          const actual = best && (!second || best.delta !== second.delta || best.days !== second.days) ? best.payment : undefined;
+          if (!actual) continue;
+          try {
+            await closeLoanScheduleRows(parts.map((row) => row.id), actual.id);
+            usedActual.add(actual.id);
+            closedViaRows++;
+            matched++;
+          } catch (error) {
+            console.error("Не удалось закрыть строку графика фактом", error);
+          }
+        }
+        continue;
+      }
       const loanRows = scheduleFromPayments(state.payments, loan.id).filter((row) => row.status === "planned");
       for (const row of loanRows) {
         const total = row.principal + row.interest + row.penalty + row.fine;
@@ -247,8 +279,13 @@ export function LoansPage() {
         matched++;
       }
     }
+    if (closedViaRows) {
+      const [fresh, schedule] = await Promise.all([loadFinanceState(), loadLoanScheduleRows()]);
+      dispatch({ type: "LOAD", payload: fresh });
+      setScheduleRows(schedule.rows);
+    }
     if (showResult) alert(matched ? `Сверка завершена: ${matched} платежей по графикам найдены в ДДС и отмечены оплаченными.` : "Новых совпадений с фактическими платежами ДДС не найдено.");
-  }, [companyByPayment, dispatch, state.loans, state.payments]);
+  }, [companyByPayment, dispatch, scheduleRows, state.loans, state.payments]);
 
   useEffect(() => {
     if (reconciledRef.current || state.loans.length === 0 || state.payments.length === 0 || companyByPayment.size === 0) return;
@@ -270,7 +307,7 @@ export function LoansPage() {
   }, [dispatch, state.loans, state.payments]);
 
   const handleSubmit = async (result: LoanFormResult) => {
-    const loan: Loan = editing ? { ...editing, ...result.loan } : { id: generateId("loan"), ...result.loan };
+    const loan: Loan = editing ? { ...editing, ...result.loan, terms: result.terms ?? editing.terms } : { id: generateId("loan"), ...result.loan, terms: result.terms };
     if (result.contractFile) {
       await saveLoanDocument(loan.id, result.contractFile, result.companyId);
     }
@@ -279,11 +316,6 @@ export function LoansPage() {
     if (editing) dispatch({ type: "UPDATE_LOAN", payload: loan });
     else dispatch({ type: "ADD_LOAN", payload: loan });
     const existing = linkedRows(state.payments, loan.id);
-    const existingByMarker = new Map(existing.map((payment) => [payment.comment?.match(/\[loan:[^\]]+\]/)?.[0] ?? "", payment]));
-    const originalMeta = (amount: number, original: number | undefined) => {
-      const source = roundLoanMoney(result.currency === "RUB" ? amount : Number.isFinite(original) ? Number(original) : amount / (result.exchangeRate || 1));
-      return ` [amount-original:${source}] [amount-currency:${result.currency}]`;
-    };
     const desired: Payment[] = [{
       id: existing.find((payment) => payment.comment?.includes(receiptMarker(loan.id)))?.id ?? generateId("loan-receipt"),
       date: loan.startDate,
@@ -295,80 +327,8 @@ export function LoansPage() {
       counterparty: loan.creditorName,
       comment: `${receiptMarker(loan.id)}${currencyMeta}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
     }];
-    for (const row of result.schedule) {
-      if (row.principal > 0) {
-        const rowMarker = scheduleMarker(loan.id, row.id, "principal");
-        desired.push({
-          id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-principal"),
-          date: row.date,
-          name: `Погашение тела — ${loan.creditorName}`,
-          amount: -roundLoanMoney(Math.abs(row.principal)),
-          category: LOAN_CATEGORIES.principal,
-          accountId: result.accountId,
-          status: row.status,
-          counterparty: loan.creditorName,
-          comment: `${rowMarker}${currencyMeta}${originalMeta(row.principal, row.principalOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
-        });
-      }
-      if (row.interest > 0) {
-        const rowMarker = scheduleMarker(loan.id, row.id, "interest");
-        desired.push({
-          id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-interest"),
-          date: row.date,
-          name: `Проценты по кредиту — ${loan.creditorName}`,
-          amount: -roundLoanMoney(Math.abs(row.interest)),
-          category: LOAN_CATEGORIES.interest,
-          accountId: result.accountId,
-          status: row.status,
-          counterparty: loan.creditorName,
-          comment: `${rowMarker}${currencyMeta}${originalMeta(row.interest, row.interestOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
-        });
-      }
-      if (row.penalty > 0) {
-        const rowMarker = scheduleMarker(loan.id, row.id, "penalty");
-        desired.push({
-          id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-penalty"),
-          date: row.date,
-          name: `Пени и штрафы — ${loan.creditorName}`,
-          amount: -roundLoanMoney(Math.abs(row.penalty)),
-          category: LOAN_CATEGORIES.penalty,
-          accountId: result.accountId,
-          status: row.status,
-          counterparty: loan.creditorName,
-          comment: `${rowMarker}${currencyMeta}${originalMeta(row.penalty, row.penaltyOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
-        });
-      }
-      if (row.fine > 0) {
-        const rowMarker = scheduleMarker(loan.id, row.id, "fine");
-        desired.push({
-          id: existingByMarker.get(rowMarker)?.id ?? generateId("loan-fine"),
-          date: row.date,
-          name: `Штраф по кредиту — ${loan.creditorName}`,
-          amount: -roundLoanMoney(Math.abs(row.fine)),
-          category: LOAN_CATEGORIES.fine,
-          accountId: result.accountId,
-          status: row.status,
-          counterparty: loan.creditorName,
-          comment: `${rowMarker}${currencyMeta}${originalMeta(row.fine, row.fineOriginal)}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
-        });
-      }
-    }
-    // Строка, уже закрытая фактом ДДС ([paid-by:…]), при пересохранении договора
-    // оставалась бы с status из формы — «done» — и воскресала бы в реестре рядом
-    // с настоящим банковским платежом. Сохраняем её статус и служебные метки.
-    const existingById = new Map(existing.map((payment) => [payment.id, payment]));
-    for (const [index, payment] of desired.entries()) {
-      const prior = existingById.get(payment.id);
-      if (!prior) continue;
-      const markers = preservedLoanMarkers(prior.comment);
-      desired[index] = {
-        ...payment,
-        status: prior.comment?.includes("[paid-by:") ? "cancelled" : payment.status,
-        comment: markers ? `${payment.comment ?? ""} ${markers}`.trim() : payment.comment,
-      };
-    }
-    const desiredIds = new Set(desired.map((payment) => payment.id));
-    for (const payment of existing.filter((payment) => !desiredIds.has(payment.id))) dispatch({ type: "DELETE_PAYMENT", payload: payment.id });
+    // Приход кредита — обычный платёж; график — строки loan_schedule_rows,
+    // плановые платежи календаря сервер строит из них сам (PR-C по ТЗ).
     for (const payment of desired) {
       if (state.payments.some((item) => item.id === payment.id)) {
         dispatch({ type: "UPDATE_PAYMENT", payload: payment });
@@ -378,6 +338,29 @@ export function LoansPage() {
         dispatch({ type: "ADD_PAYMENT", payload: payment });
       }
       setCompanyByPayment((current) => new Map(current).set(payment.id, result.companyId));
+    }
+    const rate = result.exchangeRate || 1;
+    const originalOf = (rub: number, original: number | undefined) => result.currency === "RUB" ? rub : Number.isFinite(original) ? Number(original) : rub / rate;
+    const rowStatus = (status: LoanScheduleDraft["status"]) => status === "done" ? "paid" as const : status === "cancelled" ? "cancelled" as const : "planned" as const;
+    const rows = result.schedule.flatMap((row) => (["principal", "interest", "penalty", "fine"] as const).flatMap((kind) => row[kind] > 0 ? [{
+      dueDate: row.date, kind, amountRub: roundLoanMoney(Math.abs(row[kind])),
+      amountOriginal: roundLoanMoney(originalOf(row[kind], row[`${kind}Original` as "principalOriginal"])),
+      balanceBefore: row.balanceBefore ?? null, balanceAfter: row.balanceAfter ?? null, status: rowStatus(row.status),
+    }] : []));
+    try {
+      await saveLoanScheduleRows({
+        loanId: loan.id, accountId: result.accountId, companyId: result.companyId || null, currency: result.currency, exchangeRate: rate,
+        creditorName: loan.creditorName, contractFileName: result.contractFileName || undefined, rows,
+      });
+      // Старые плановые строки по меткам (до миграции) сервер не знает — убираем их сами.
+      for (const payment of existing.filter((payment) => payment.comment?.includes(":schedule:") && payment.status === "planned" && !payment.comment?.includes("[paid-by:"))) {
+        dispatch({ type: "DELETE_PAYMENT", payload: payment.id });
+      }
+      const [fresh, schedule] = await Promise.all([loadFinanceState(), loadLoanScheduleRows()]);
+      dispatch({ type: "LOAD", payload: fresh });
+      setScheduleRows(schedule.rows);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось сохранить график кредита");
     }
     setModalOpen(false);
     setEditing(null);
@@ -524,6 +507,7 @@ export function LoansPage() {
             monthlyRate={editing ? metadataNumber(state.payments, editing.id, "monthly-rate") : 0}
             disbursements={editing ? metadataDisbursements(state.payments, editing.id) : []}
             paymentDays={editing ? metadataPaymentDays(state.payments, editing.id) : undefined}
+            terms={editing?.terms}
             onSubmit={handleSubmit}
             onCancel={() => { setModalOpen(false); setEditing(null); }}
           />

@@ -31,7 +31,7 @@ export interface SaveScheduleInput {
   exchangeRate: number;
   creditorName: string;
   contractFileName?: string;
-  rows: Array<{ id?: string; dueDate: string; kind: "principal" | "interest" | "penalty" | "fine" | "fee"; amountRub: number; amountOriginal?: number | null; balanceBefore?: number | null; balanceAfter?: number | null }>;
+  rows: Array<{ id?: string; dueDate: string; kind: "principal" | "interest" | "penalty" | "fine" | "fee"; amountRub: number; amountOriginal?: number | null; balanceBefore?: number | null; balanceAfter?: number | null; status?: "planned" | "paid" | "cancelled" }>;
 }
 
 /** Заменить плановые строки графика; оплаченные и отменённые не трогаются. Возвращает строки и производные платежи. */
@@ -40,8 +40,8 @@ export async function saveLoanScheduleRows(input: SaveScheduleInput): Promise<{ 
     .then((response) => json<{ rows: ScheduleRowRecord[]; payments: Payment[] }>(response));
 }
 
-/** Закрыть строку фактом ДДС. confirmed=true — сумма отличается, человек подтвердил. */
-export async function closeLoanScheduleRow(rowId: string, factId: string, confirmed = false): Promise<ScheduleRowRecord> {
-  return fetch("/api/finance/loans/schedule", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rowId, factId, confirmed }) })
-    .then((response) => json<{ row: ScheduleRowRecord }>(response)).then((result) => result.row);
+/** Закрыть строки одной даты (тело + проценты…) одним фактом ДДС. confirmed=true — сумма отличается, человек подтвердил. */
+export async function closeLoanScheduleRows(rowIds: string[], factId: string, confirmed = false): Promise<ScheduleRowRecord[]> {
+  return fetch("/api/finance/loans/schedule", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rowIds, factId, confirmed }) })
+    .then((response) => json<{ rows: ScheduleRowRecord[] }>(response)).then((result) => result.rows);
 }

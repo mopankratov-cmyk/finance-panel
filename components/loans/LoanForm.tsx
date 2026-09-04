@@ -3,10 +3,12 @@
 import { AlertCircle, CheckCircle2, FileText, LoaderCircle, Plus, Sparkles, Trash2, Upload } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
-import type { Account, Loan, LoanStatus, PaymentStatus } from "@/lib/types";
+import type { Account, Loan, LoanStatus, LoanTermsStored, PaymentStatus } from "@/lib/types";
+import { buildLoanScheduleRows } from "./scheduleStore";
 import type { LoanCurrency, RecognizedLoan } from "./loanRecognition";
 import type { LoanDisbursement } from "./loanInterest";
 import { roundLoanMoney } from "@/lib/opiu/loanCurrency";
+import { formatRub } from "@/lib/analytics/format";
 import { emptyScheduleRow, normalizeScheduleMoney, type LoanScheduleDraft } from "@/lib/loans/schedule";
 import type { LoanCorrectionsOutcome, LoanRecognitionOutcome } from "@/lib/loans/recognizeLoan";
 import { needsDirectUpload, uploadViaStorage } from "@/components/payments/uploadViaStorage";
@@ -34,6 +36,8 @@ export interface LoanFormResult {
   disbursements: LoanDisbursement[];
   paymentDays?: [number, number];
   contractFile?: File;
+  /** Условия расчёта графика от остатка долга (lib/loans/scheduleModel.ts). */
+  terms?: LoanTermsStored;
 }
 
 interface LoanFormProps {
@@ -55,6 +59,7 @@ interface LoanFormProps {
   monthlyRate?: number;
   disbursements?: LoanDisbursement[];
   paymentDays?: [number, number];
+  terms?: LoanTermsStored;
   onSubmit: (result: LoanFormResult) => void | Promise<void>;
   onCancel: () => void;
 }
@@ -75,7 +80,9 @@ function scheduleSourceAmount(row: LoanScheduleDraft, kind: "principal" | "inter
   return Number.isFinite(original) ? Number(original) : Number(row[kind] || 0) / (rate || 1);
 }
 
-export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, interestFrequency, monthlyRate = 0, disbursements = [], paymentDays, onSubmit, onCancel }: LoanFormProps) {
+const DEFAULT_TERMS: LoanTermsStored = { annualRate: null, monthlyRate: null, interestFrequency: null, rateMode: "actual_days", dayCountBasis: 365, interestPayout: "paid", reinvestEveryPeriods: null, extraContributions: [], tranches: [] };
+
+export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, interestFrequency, monthlyRate = 0, disbursements = [], paymentDays, terms: initialTerms, onSubmit, onCancel }: LoanFormProps) {
   const editing = Boolean(loan);
   const [stage, setStage] = useState<"source" | "review">(editing ? "review" : "source");
   const [description, setDescription] = useState("");
@@ -106,6 +113,48 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
   const [message, setMessage] = useState("");
   const [correctionNotice, setCorrectionNotice] = useState("");
   const [correctionText, setCorrectionText] = useState("");
+  const [terms, setTerms] = useState<LoanTermsStored>(initialTerms ?? DEFAULT_TERMS);
+  const [showTerms, setShowTerms] = useState(Boolean(initialTerms));
+  const updateTerms = (patch: Partial<LoanTermsStored>) => setTerms((current) => ({ ...current, ...patch }));
+
+  // График от остатка долга по условиям договора (сервер, lib/loans/scheduleModel.ts):
+  // капитализация, реинвест процентов, допвзносы и транши — вместо ручного ввода строк.
+  const calculateFromTerms = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const rows = await buildLoanScheduleRows({
+        principal: data.principalAmount,
+        startDate: data.startDate,
+        dueDate: data.dueDate,
+        annualRate: data.annualRate,
+        monthlyRate: data.interestFrequency === "monthly" || data.interestFrequency === "semi_monthly" ? (Number(data.monthlyRate) || undefined) : undefined,
+        interestFrequency: data.interestFrequency === "quarterly" ? "quarterly" : data.interestFrequency === "at_maturity" ? "at_maturity" : "monthly",
+        rateMode: terms.rateMode,
+        dayCountBasis: terms.dayCountBasis,
+        interestPayout: terms.interestPayout,
+        reinvestEveryPeriods: terms.reinvestEveryPeriods ?? undefined,
+        extraContributions: terms.extraContributions,
+        tranches: (data.disbursements ?? []).filter((item) => item.date && item.amount > 0),
+      });
+      const byDate = new Map<string, LoanScheduleDraft>();
+      for (const row of rows) {
+        const current = byDate.get(row.dueDate) ?? { id: crypto.randomUUID(), date: row.dueDate, principal: 0, interest: 0, penalty: 0, fine: 0, principalOriginal: 0, interestOriginal: 0, penaltyOriginal: 0, fineOriginal: 0, status: "planned" as PaymentStatus, balanceBefore: row.balanceBefore, balanceAfter: row.balanceAfter };
+        current[row.kind] = roundLoanMoney(row.amount * exchangeRate);
+        current[`${row.kind}Original` as "principalOriginal" | "interestOriginal"] = roundLoanMoney(row.amount);
+        current.balanceAfter = row.balanceAfter;
+        byDate.set(row.dueDate, current);
+      }
+      const next = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+      setSchedule(next);
+      updateData({ dueDate: next.at(-1)?.date ?? data.dueDate });
+      setCorrectionNotice(`График рассчитан по условиям: ${next.length} дат, тело к возврату ${formatRub(next.at(-1)?.principal ?? 0)}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось рассчитать график");
+    } finally {
+      setBusy(false);
+    }
+  };
   const fileRef = useRef<HTMLInputElement>(null);
   const totals = useMemo(() => schedule.reduce((sum, row) => ({ principal: sum.principal + Number(row.principal || 0), interest: sum.interest + Number(row.interest || 0), penalty: sum.penalty + Number(row.penalty || 0), fine: sum.fine + Number(row.fine || 0) }), { principal: 0, interest: 0, penalty: 0, fine: 0 }), [schedule]);
   const originalTotals = useMemo(() => schedule.reduce((sum, row) => ({
@@ -297,6 +346,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         disbursements: (data.disbursements ?? []).map((item) => ({ ...item, amount: roundLoanMoney(item.amount) })),
         paymentDays: data.paymentDays,
         contractFile: file ?? undefined,
+        terms: { ...terms, annualRate: data.annualRate || null, monthlyRate: Number(data.monthlyRate) || null, interestFrequency: data.interestFrequency === "quarterly" ? "quarterly" : data.interestFrequency === "at_maturity" ? "at_maturity" : "monthly", tranches: (data.disbursements ?? []).filter((item) => item.date && item.amount > 0) },
       });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось сохранить договор");
@@ -346,6 +396,21 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         <label className="text-sm font-medium text-slate-700">Дата возврата тела<input required type="date" value={data.dueDate} onChange={(e) => updateData({ dueDate: e.target.value })} className={fieldClass} /></label>
         <label className="text-sm font-medium text-slate-700">Комиссия за выдачу, ₽<input type="number" min="0" step="0.01" value={data.originationFee || ""} onChange={(e) => updateData({ originationFee: roundLoanMoney(Number(e.target.value)) })} className={fieldClass} /><span className="mt-1 block text-xs text-slate-500">Попадает в ОПиУ частями, но не создаёт платёж в календаре.</span></label>
         <label className="text-sm font-medium text-slate-700">Распределить комиссию, месяцев<input type="number" min="1" max="120" value={data.feeAmortizationMonths} onChange={(e) => updateData({ feeAmortizationMonths: Number(e.target.value) })} className={fieldClass} /></label>
+      </section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <button type="button" onClick={() => setShowTerms((value) => !value)} className="flex w-full items-center justify-between text-left"><span className="font-bold text-slate-900">Условия расчёта графика</span><span className="text-xs text-violet-700">{showTerms ? "Скрыть" : "Показать"}</span></button>
+        {showTerms && <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium text-slate-700">Как считать проценты<select value={terms.rateMode} onChange={(e) => updateTerms({ rateMode: e.target.value as LoanTermsStored["rateMode"] })} className={fieldClass}><option value="actual_days">По дням: остаток × ставка × дни / базис</option><option value="flat_period">Фиксированная доля ставки за период (3% в месяц = 3%)</option></select></label>
+          <label className="text-sm font-medium text-slate-700">Проценты<select value={terms.interestPayout} onChange={(e) => updateTerms({ interestPayout: e.target.value as LoanTermsStored["interestPayout"] })} className={fieldClass}><option value="paid">Выплачиваются</option><option value="capitalized">Капитализируются (не платятся, растят долг)</option></select></label>
+          <label className="text-sm font-medium text-slate-700">Реинвест выплаченных процентов каждые N периодов<input type="number" min="1" max="12" value={terms.reinvestEveryPeriods ?? ""} onChange={(e) => updateTerms({ reinvestEveryPeriods: Number(e.target.value) || null })} className={fieldClass} placeholder="пусто — не реинвестируются" /></label>
+          <label className="text-sm font-medium text-slate-700">Базис дней<select value={terms.dayCountBasis} onChange={(e) => updateTerms({ dayCountBasis: Number(e.target.value) as LoanTermsStored["dayCountBasis"] })} className={fieldClass}><option value={365}>365</option><option value={366}>366</option><option value={360}>360</option></select></label>
+          <div className="md:col-span-2">
+            <p className="text-sm font-medium text-slate-700">Дополнительные взносы (увеличивают долг с даты)</p>
+            {terms.extraContributions.map((item, index) => <div key={index} className="mt-2 grid grid-cols-[1fr_1fr_44px] gap-2"><input type="date" value={item.date} onChange={(e) => updateTerms({ extraContributions: terms.extraContributions.map((c, i) => i === index ? { ...c, date: e.target.value } : c) })} className={fieldClass} /><input type="number" min="0" step="0.01" value={item.amount || ""} onChange={(e) => updateTerms({ extraContributions: terms.extraContributions.map((c, i) => i === index ? { ...c, amount: Number(e.target.value) } : c) })} className={fieldClass} placeholder="Сумма в валюте договора" /><button type="button" aria-label="Удалить взнос" onClick={() => updateTerms({ extraContributions: terms.extraContributions.filter((_, i) => i !== index) })} className="mt-1 flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div>)}
+            <button type="button" onClick={() => updateTerms({ extraContributions: [...terms.extraContributions, { date: "", amount: 0 }] })} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 px-3 text-sm font-semibold text-slate-700"><Plus className="h-4 w-4" /> Добавить взнос</button>
+          </div>
+          <div className="md:col-span-2"><button type="button" disabled={busy} onClick={() => void calculateFromTerms()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-semibold text-white hover:bg-violet-700 disabled:opacity-50"><Sparkles className="h-4 w-4" /> Рассчитать график по условиям</button><p className="mt-1 text-xs text-slate-500">Заменит строки графика ниже расчётом от остатка долга. Транши берутся из выдач договора.</p></div>
+        </div>}
       </section>
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold">График платежей {data.currency === "RUB" ? "в рублях" : `в ${data.currency} и рублях`}</h3><p className="text-xs text-slate-500">Все суммы автоматически округляются до копеек. Валютные плановые строки пересчитываются по свежему курсу; оплаченные фиксируются.</p></div><button type="button" onClick={() => setSchedule((rows) => [...rows, emptySchedule()])} className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-bold"><Plus className="h-4 w-4" />Добавить платёж</button></div>

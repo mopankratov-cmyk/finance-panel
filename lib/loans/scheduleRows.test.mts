@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canCloseRowWithFact, derivedPaymentForRow, scheduleDraftFromRows, scheduleRowFromDb, type ScheduleRowRecord } from "./scheduleRows.ts";
+import { canCloseRowsWithFact, canCloseRowWithFact, derivedPaymentForRow, scheduleDraftFromRows, scheduleRowFromDb, type ScheduleRowRecord } from "./scheduleRows.ts";
 
 const row = (over: Partial<ScheduleRowRecord>): ScheduleRowRecord => ({
   id: "r1", loanId: "L", dueDate: "2026-10-01", kind: "interest", amountRub: 20_000, amountOriginal: null, currency: "RUB",
@@ -31,6 +31,8 @@ test("производный платёж несёт прежнюю метку �
   const paid = derivedPaymentForRow(row({ status: "paid", paidByPaymentId: "f1" }), { loanId: "L", creditorName: "Банк", accountId: "a", currency: "RUB", exchangeRate: 1 });
   assert.equal(paid.status, "cancelled", "закрытая фактом строка — план отменён");
   assert.match(paid.comment ?? "", /\[paid-by:f1\]/);
+  const manual = derivedPaymentForRow(row({ status: "paid" }), { loanId: "L", creditorName: "Банк", accountId: "a", currency: "RUB", exchangeRate: 1 });
+  assert.equal(manual.status, "done", "оплачено без факта — план и есть факт");
 });
 
 test("закрытие фактом: занятый факт и расхождение суммы без подтверждения отклоняются", () => {
@@ -40,6 +42,9 @@ test("закрытие фактом: занятый факт и расхожде
   assert.equal(canCloseRowWithFact(row({}), { ...fact, amount: -15_000 }, new Set(), false).ok, false);
   assert.equal(canCloseRowWithFact(row({}), { ...fact, amount: -15_000 }, new Set(), true).ok, true, "с подтверждением — можно");
   assert.equal(canCloseRowWithFact(row({ status: "paid" }), fact, new Set(), true).ok, false);
+  const parts = [row({ id: "p", kind: "principal", amountRub: 100_000 }), row({ id: "i", kind: "interest", amountRub: 20_000 })];
+  assert.equal(canCloseRowsWithFact(parts, { id: "f", status: "done", amount: -120_000 }, new Set(), false).ok, true, "одна дата — тело+проценты — один факт");
+  assert.equal(canCloseRowsWithFact(parts, { id: "f", status: "done", amount: -100_000 }, new Set(), false).ok, false);
 });
 
 test("строка из базы читается с безопасными значениями", () => {

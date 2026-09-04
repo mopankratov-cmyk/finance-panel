@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { consumedFactIds } from "@/lib/finance/factLinks";
 import { buildLoanSchedule, type LoanTerms } from "@/lib/loans/scheduleModel";
-import { canCloseRowWithFact, derivedPaymentForRow, scheduleRowFromDb, type ScheduleRowKind, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
+import { canCloseRowsWithFact, derivedPaymentForRow, scheduleRowFromDb, type ScheduleRowKind, type ScheduleRowRecord, type ScheduleRowStatus } from "@/lib/loans/scheduleRows";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Payment } from "@/lib/types";
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
 
 type PutBody = {
   loanId?: string; accountId?: string; companyId?: string | null; currency?: string; exchangeRate?: number; creditorName?: string; contractFileName?: string;
-  rows?: Array<{ id?: string; dueDate?: string; kind?: string; amountRub?: number; amountOriginal?: number | null; balanceBefore?: number | null; balanceAfter?: number | null }>;
+  rows?: Array<{ id?: string; dueDate?: string; kind?: string; amountRub?: number; amountOriginal?: number | null; balanceBefore?: number | null; balanceAfter?: number | null; status?: string }>;
 };
 
 export async function PUT(request: Request) {
@@ -113,7 +113,9 @@ export async function PUT(request: Request) {
       id: reuse ? reuse.id : randomUUID(),
       loanId, dueDate, kind, amountRub,
       amountOriginal: row.amountOriginal == null ? null : Math.round(Number(row.amountOriginal) * 100) / 100,
-      currency, status: "planned",
+      currency,
+      // Из формы может прийти «оплачено» без факта (как раньше: план и есть факт) или «отменено».
+      status: (row.status === "paid" || row.status === "cancelled" ? row.status : "planned") as ScheduleRowStatus,
       paidByPaymentId: null,
       calendarPaymentId: reuse?.calendarPaymentId ?? null,
       originalDueDate: reuse?.originalDueDate ?? null,
@@ -162,30 +164,31 @@ export async function PATCH(request: Request) {
   if (denied) return denied;
   const client = db();
   if (!client) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
-  const body = await request.json().catch(() => null) as { rowId?: string; factId?: string; confirmed?: boolean } | null;
-  const rowId = text(body?.rowId, 80);
+  const body = await request.json().catch(() => null) as { rowId?: string; rowIds?: string[]; factId?: string; confirmed?: boolean } | null;
+  const rowIds = [...new Set([...(Array.isArray(body?.rowIds) ? body.rowIds : []), body?.rowId].map((value) => text(value, 80)).filter(Boolean))];
   const factId = text(body?.factId, 80);
-  if (!rowId || !factId) return NextResponse.json({ error: "Нужны строка графика и факт" }, { status: 400 });
-  const rowResult = await client.from("loan_schedule_rows").select("*").eq("id", rowId).maybeSingle();
-  if (rowResult.error) return NextResponse.json({ error: rowResult.error.message }, { status: 500 });
-  if (!rowResult.data) return NextResponse.json({ error: "Строка графика не найдена" }, { status: 404 });
-  const row = scheduleRowFromDb(rowResult.data);
+  if (!rowIds.length || rowIds.length > 20 || !factId) return NextResponse.json({ error: "Нужны строки графика и факт" }, { status: 400 });
+  const rowsResult = await client.from("loan_schedule_rows").select("*").in("id", rowIds);
+  if (rowsResult.error) return NextResponse.json({ error: rowsResult.error.message }, { status: 500 });
+  const rows = (rowsResult.data ?? []).map(scheduleRowFromDb);
+  if (rows.length !== rowIds.length) return NextResponse.json({ error: "Строка графика не найдена" }, { status: 404 });
   const [factResult, allPayments] = await Promise.all([
     client.from("payments").select("id,status,amount").eq("id", factId).maybeSingle(),
     loadAllSupabasePages<{ id: string; comment: string | null }>((from, to) => client.from("payments").select("id,comment").not("comment", "is", null).like("comment", "%[%").order("id", { ascending: true }).range(from, to), { label: "Занятые факты", maxPages: 60 }),
   ]);
   if (factResult.error) return NextResponse.json({ error: factResult.error.message }, { status: 500 });
   const fact = factResult.data ? { id: String(factResult.data.id), status: String(factResult.data.status) as Payment["status"], amount: Number(factResult.data.amount) } : undefined;
-  const check = canCloseRowWithFact(row, fact, consumedFactIds(allPayments), Boolean(body?.confirmed));
+  const check = canCloseRowsWithFact(rows, fact, consumedFactIds(allPayments), Boolean(body?.confirmed));
   if (!check.ok) return NextResponse.json({ error: check.reason }, { status: 409 });
   const now = new Date().toISOString();
-  const updated = await client.from("loan_schedule_rows").update({ status: "paid", paid_by_payment_id: factId, updated_at: now }).eq("id", rowId).eq("status", "planned").select("id").maybeSingle();
-  if (updated.error || !updated.data) return NextResponse.json({ error: updated.error?.message ?? "Строка уже закрыта" }, { status: 409 });
-  if (row.calendarPaymentId) {
+  const updated = await client.from("loan_schedule_rows").update({ status: "paid", paid_by_payment_id: factId, updated_at: now }).in("id", rowIds).eq("status", "planned").select("id");
+  if (updated.error || (updated.data ?? []).length !== rowIds.length) return NextResponse.json({ error: updated.error?.message ?? "Строка уже закрыта" }, { status: 409 });
+  for (const row of rows) {
+    if (!row.calendarPaymentId) continue;
     // План в календаре отменяется с меткой [paid-by:] — так его читают календарь и сверка.
     const planned = await client.from("payments").select("comment").eq("id", row.calendarPaymentId).maybeSingle();
     const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by:[^\]]+\]/g, "").trim()} [paid-by:${factId}]`.trim();
     await client.from("payments").update({ status: "cancelled", comment }).eq("id", row.calendarPaymentId);
   }
-  return NextResponse.json({ ok: true, row: { ...row, status: "paid", paidByPaymentId: factId } });
+  return NextResponse.json({ ok: true, rows: rows.map((row) => ({ ...row, status: "paid", paidByPaymentId: factId })) });
 }
