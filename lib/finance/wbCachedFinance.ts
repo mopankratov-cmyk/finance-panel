@@ -186,15 +186,17 @@ export async function loadWbCachedFinance(options: {
   for (const row of sales) {
     const amount = saleAmount(row);
     const pay = Math.abs(num(row.for_pay));
-    if (isReturn(row)) {
-      returns += amount;
-      payout -= pay;
-      continue;
-    }
-    revenueBeforeSpp += amount;
-    payout += pay;
-    units += 1;
     const cabinet = row.cabinet_id ?? "legacy";
+    // Возврат — со знаком минус в выручке и комиссиях, как в ОПиУ (metrics.ts,
+    // revenueRub): раньше он только копился в отдельном поле returns, а
+    // исходная продажа оставалась в выручке — прибыль была завышена на всю
+    // маржу возвращённого. Себестоимость, как и в ОПиУ, считается по продажам:
+    // товар вернулся на склад.
+    const sign = isReturn(row) ? -1 : 1;
+    if (sign < 0) returns += amount;
+    revenueBeforeSpp += sign * amount;
+    payout += sign * pay;
+    if (sign > 0) units += 1;
     const direct = ratesByNm.get(rateKey(row.cabinet_id, Number(row.nm_id)));
     const weighted = weightedByCabinet.get(cabinet);
     const fallback = weighted && weighted.rev > 0
@@ -208,9 +210,10 @@ export async function loadWbCachedFinance(options: {
     const acqPct = direct ? num(direct.acq_pct) : num(fallback?.acq_pct);
     const extraPct = direct ? num(direct.extra_pct) : num(fallback?.extra_pct);
     if (!direct && !fallback) missingRates.add(cabinet);
-    commission += amount * pct / 100;
-    acquiring += amount * acqPct / 100;
-    marketplaceOther += amount * (extraPct + num(overheadByCabinet.get(cabinet))) / 100;
+    commission += sign * amount * pct / 100;
+    acquiring += sign * amount * acqPct / 100;
+    marketplaceOther += sign * amount * (extraPct + num(overheadByCabinet.get(cabinet))) / 100;
+    if (sign < 0) continue;
 
     const article = articleByNm.get(Number(row.nm_id));
     const unitCost = article ? costByArticle.get(article) : undefined;

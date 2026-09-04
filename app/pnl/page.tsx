@@ -6,7 +6,7 @@ import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { FinanceTabs } from "@/components/FinanceTabs";
 
-type WB = { revenue_before_spp: number; coinvest: number | null; revenue: number; commission: number; logistics: number | null; storage: number | null; penalty: number | null; notComputed?: string[]; acquiring: number; ad: number; other: number; cogs: number; tax: number; profit: number; margin: number; error?: string };
+type WB = { revenue_before_spp: number; returns?: number; coinvest: number | null; revenue: number; commission: number; logistics: number | null; storage: number | null; penalty: number | null; notComputed?: string[]; acquiring: number; ad: number; other: number; cogs: number; tax: number; profit: number; margin: number; error?: string };
 type OZ = { revenue: number; commission: number; delivery: number; services: number; cogs: number; tax: number; profit: number; margin: number; error?: string; noCabinet?: boolean };
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -81,7 +81,8 @@ export default function PnlPage() {
             <div className="flex items-center justify-between bg-violet-600 px-4 py-2 text-white"><span className="font-bold">WB</span>{wb && !wb.error && <span className="text-sm">маржа {wb.margin}%</span>}</div>
             {!wb ? null : wb.error ? <div className="p-4 text-sm text-red-500">{wb.error}</div> : (
               <>
-                <Line label="Выручка до СПП" v={wb.revenue_before_spp} kind="head" />
+                <Line label="Выручка до СПП, за вычетом возвратов" v={wb.revenue_before_spp} kind="head" />
+                <Line label="в т.ч. возвраты (уже вычтены)" v={wb.returns} />
                 <Line label="+ Соинвест" v={wb.coinvest} />
                 <Line label="Себестоимость" v={wb.cogs} kind="minus" />
                 <Line label="Комиссия WB" v={wb.commission} kind="minus" />
