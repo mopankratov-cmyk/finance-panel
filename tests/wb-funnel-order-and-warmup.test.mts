@@ -65,3 +65,13 @@ test("ДРР за период без рекламы не выдаётся за 
   assert.match(seoRoute, /const drr = \(a: typeof w\) => \(a\.hasAd \? pct\(a\.spent, a\.os\) : null\)/);
   assert.doesNotMatch(seoRoute, /drr7 = pct\(w\.spent, w\.os\)/);
 });
+
+test("«Сначала рабочие» поднимает только то, по чему экран покажет CTR", () => {
+  const page = readFileSync(new URL("../components/wb/WbFunnelPage.tsx", import.meta.url), "utf8");
+  // Первая версия поднимала всё, где показов больше нуля. На боевом кабинете
+  // из 133 поднятых артикулов у 70 было от одного до десяти показов за день —
+  // колонка такие доли прячет, и наверху вставала стена прочерков.
+  assert.doesNotMatch(page, /\?\.views \?\? 0\) > 0/, "порог поднятия ниже порога достоверности CTR");
+  const uses = page.match(/\?\.views \?\? 0\) >= CTR_MIN_VIEWS/g) ?? [];
+  assert.equal(uses.length, 2, "порог применён не и к сортировке, и к счётчику на кнопке");
+});

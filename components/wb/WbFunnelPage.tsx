@@ -153,9 +153,16 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
 
   /**
    * «Сначала рабочие» — наверх поднимаются артикулы, по которым в последний
-   * день периода шла реклама. Ровно то, что просят, когда спрашивают «где
-   * только рабочие»: остальные строки при этом не прячутся, порядок между ними
-   * не меняется, и одним нажатием всё возвращается назад.
+   * день периода реклама РЕАЛЬНО шла. Остальные строки не прячутся, порядок
+   * между ними не меняется, и одним нажатием всё возвращается назад.
+   *
+   * Порог тот же, что у самой колонки CTR (CTR_MIN_VIEWS). Первая версия
+   * поднимала всё, где показов больше нуля, — и это оказалось бесполезно:
+   * на боевом кабинете из 133 поднятых артикулов у 70 было от одного до
+   * десяти показов за день. Колонка такие доли прячет (на десяти показах CTR
+   * ничего не значит), и наверху вставала стена прочерков — кнопка выглядела
+   * сломанной. «Рабочий» теперь значит то же, что «экран готов показать по
+   * нему цифру».
    *
    * Намеренно обычный useState, а не useDashboardFilter: остальные фильтры
    * экрана живут в адресе и переживают уход со страницы, а здесь просили
@@ -293,12 +300,13 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
       .filter((sku) => nmMatchesTags(tagIdsByNm, sku.nm, activeTagIds));
     const ordered = sortByCustomSkuOrder(base, (sku) => sku.nm, orderIndex);
     if (!workingFirst) return ordered;
-    // «Работал» — значит в последний день периода по артикулу были рекламные
-    // показы. Смотрим ровно клетку этого дня, а не итог за период: товар мог
-    // крутиться в начале недели и уже стоять. Пока посуточные не пришли,
-    // порядок не трогаем — двигать строки под пустые данные нельзя.
+    // «Работал» — значит в последний день периода реклама шла настолько, что
+    // экран готов показать по ней долю клика. Смотрим ровно клетку этого дня,
+    // а не итог за период: товар мог крутиться в начале недели и уже стоять.
+    // Пока посуточные не пришли, порядок не трогаем — двигать строки под
+    // пустые данные нельзя.
     if (!daily) return ordered;
-    const worked = (nm: number) => Number(daily.metrics[String(nm)]?.[period.to]?.views ?? 0) > 0;
+    const worked = (nm: number) => Number(daily.metrics[String(nm)]?.[period.to]?.views ?? 0) >= CTR_MIN_VIEWS;
     // Устойчивая сортировка: внутри каждой половины прежний порядок сохраняется.
     return [...ordered].sort((left, right) => Number(worked(right.nm)) - Number(worked(left.nm)));
   }, [activeTagIds, daily, orderIndex, period.to, query, skus?.skus, tagIdsByNm, workingFirst]);
@@ -306,7 +314,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   // Сколько строк поднимет кнопка: без числа непонятно, сработала ли она.
   const workingCount = useMemo(() => {
     if (!daily) return null;
-    return (skus?.skus ?? []).filter((sku) => Number(daily.metrics[String(sku.nm)]?.[period.to]?.views ?? 0) > 0).length;
+    return (skus?.skus ?? []).filter((sku) => Number(daily.metrics[String(sku.nm)]?.[period.to]?.views ?? 0) >= CTR_MIN_VIEWS).length;
   }, [daily, period.to, skus?.skus]);
 
   const tagCounts = useMemo(() => {
@@ -410,7 +418,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
             aria-pressed={workingFirst}
             disabled={!daily}
             title={daily
-              ? `Наверх — артикулы, по которым ${dayLabel(period.to)} шла реклама. Остальные остаются на месте, ниже. Нажмите ещё раз, чтобы вернуть обычный порядок.`
+              ? `Наверх — артикулы, по которым ${dayLabel(period.to)} реклама шла не меньше чем на ${CTR_MIN_VIEWS} показов: на меньшем объёме доля клика ничего не значит, и колонка её всё равно прячет. Остальные остаются на месте, ниже. Нажмите ещё раз, чтобы вернуть обычный порядок.`
               : "Ждём посуточные данные — без них неизвестно, кто работал"}
             className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold transition-colors disabled:opacity-40 sm:min-h-8 ${workingFirst ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
           >
