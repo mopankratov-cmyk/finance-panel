@@ -7,7 +7,13 @@ import type { Account, FinanceAction, FinanceState, Loan, Payment } from "@/lib/
 type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 type AccountRow = { id: string; name: string; type: string; currency: string; balance: number; opening_balance?: number | null; opening_date?: string | null; created_at?: string };
 type PaymentRow = { id: string; name: string; amount: number; type: string; category: string; account_id: string; company_id?: string | null; date: string; status: string; counterparty: string; comment: string | null; created_at?: string };
-type LoanRow = { id: string; creditor: string; principal: number; rate_per_day: number; start_date: string; due_date: string; status: string; created_at?: string };
+type LoanRow = { id: string; creditor: string; principal: number; rate_per_day: number; start_date: string; due_date: string; status: string; created_at?: string; annual_rate?: number | null; monthly_rate?: number | null; interest_frequency?: string | null; rate_mode?: string | null; day_count_basis?: number | null; interest_payout?: string | null; reinvest_every_periods?: number | null; extra_contributions?: unknown; tranches?: unknown };
+
+const datedAmounts = (value: unknown): Array<{ date: string; amount: number }> => Array.isArray(value)
+  ? value.flatMap((item) => item && typeof item === "object" && /^\d{4}-\d{2}-\d{2}$/.test(String((item as { date?: unknown }).date)) && Number.isFinite(Number((item as { amount?: unknown }).amount))
+    ? [{ date: String((item as { date: string }).date), amount: Number((item as { amount: number }).amount) }]
+    : [])
+  : [];
 
 // balance больше не пишется: остаток ведётся от opening_balance по платежам.
 const accountToRow = (account: Account) => ({
@@ -41,6 +47,18 @@ const loanToRow = (loan: Loan) => ({
   start_date: loan.startDate,
   due_date: loan.dueDate,
   status: loan.status,
+  // Условия договора — только если действие их несёт (до миграции колонок нет).
+  ...(loan.terms ? {
+    annual_rate: loan.terms.annualRate,
+    monthly_rate: loan.terms.monthlyRate,
+    interest_frequency: loan.terms.interestFrequency,
+    rate_mode: loan.terms.rateMode,
+    day_count_basis: loan.terms.dayCountBasis,
+    interest_payout: loan.terms.interestPayout,
+    reinvest_every_periods: loan.terms.reinvestEveryPeriods,
+    extra_contributions: loan.terms.extraContributions,
+    tranches: loan.terms.tranches,
+  } : {}),
 });
 
 function requireDb(): Db {
@@ -122,6 +140,17 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
       startDate: row.start_date,
       dueDate: row.due_date,
       status: row.status as Loan["status"],
+      terms: row.rate_mode ? {
+        annualRate: row.annual_rate == null ? null : Number(row.annual_rate),
+        monthlyRate: row.monthly_rate == null ? null : Number(row.monthly_rate),
+        interestFrequency: row.interest_frequency === "monthly" || row.interest_frequency === "quarterly" || row.interest_frequency === "at_maturity" ? row.interest_frequency : null,
+        rateMode: row.rate_mode === "flat_period" ? "flat_period" : "actual_days",
+        dayCountBasis: row.day_count_basis === 360 ? 360 : row.day_count_basis === 366 ? 366 : 365,
+        interestPayout: row.interest_payout === "capitalized" ? "capitalized" : "paid",
+        reinvestEveryPeriods: row.reinvest_every_periods == null ? null : Number(row.reinvest_every_periods),
+        extraContributions: datedAmounts(row.extra_contributions),
+        tranches: datedAmounts(row.tranches),
+      } : undefined,
     })),
   };
   if (!state.accounts.length && !state.payments.length && !state.loans.length) {

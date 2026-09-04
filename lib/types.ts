@@ -28,6 +28,19 @@ export interface Payment {
   comment?: string;
 }
 
+/** Условия договора для расчёта графика от остатка долга (lib/loans/scheduleModel.ts). */
+export interface LoanTermsStored {
+  annualRate: number | null;
+  monthlyRate: number | null;
+  interestFrequency: "monthly" | "quarterly" | "at_maturity" | null;
+  rateMode: "flat_period" | "actual_days";
+  dayCountBasis: 365 | 366 | 360;
+  interestPayout: "paid" | "capitalized";
+  reinvestEveryPeriods: number | null;
+  extraContributions: Array<{ date: string; amount: number }>;
+  tranches: Array<{ date: string; amount: number }>;
+}
+
 export interface Loan {
   id: string;
   creditorName: string;
@@ -36,6 +49,8 @@ export interface Loan {
   startDate: string;
   dueDate: string;
   status: LoanStatus;
+  /** Появляется после миграции loan_schedule_rows; до неё — undefined. */
+  terms?: LoanTermsStored;
 }
 
 export interface FinanceState {
