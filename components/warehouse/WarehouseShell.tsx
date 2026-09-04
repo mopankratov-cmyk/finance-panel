@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid3x3, LogOut } from "lucide-react";
+import { BarChart3, Grid3x3, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -85,12 +85,15 @@ export function WarehouseShell<T extends string>({
         </nav>
 
         <div className="space-y-1 border-t border-slate-100 p-3">
+          {/* Общая витрина модулей открыта нашим ролям. Внешнему селлеру она
+              закрыта, и ссылка «Все модули» уводила бы его на отказ: ему нужен
+              его же второй модуль — управление WB. */}
           <Link
-            href="/"
+            href={me?.role === "seller" ? "/wb/rnp" : "/"}
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
           >
-            <Grid3x3 className="h-4 w-4 shrink-0" />
-            Все модули
+            {me?.role === "seller" ? <BarChart3 className="h-4 w-4 shrink-0" /> : <Grid3x3 className="h-4 w-4 shrink-0" />}
+            {me?.role === "seller" ? "Управление WB" : "Все модули"}
           </Link>
           <div className="flex items-center gap-2 px-3 py-2">
             <div className="min-w-0 flex-1">

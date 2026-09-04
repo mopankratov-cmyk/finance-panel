@@ -102,3 +102,16 @@ test("агентская связь не открывает чужое юрли�
   assert.match(access, /link\.relation === "own"/, "агентская связь открывает юрлицо целиком");
   assert.match(access, /sellerCabinets\.has\(link\.cabinetId\)/, "чужие кабинеты юрлица видны");
 });
+
+test("внешний селлер переходит между своими модулями, не упираясь в отказ", () => {
+  // Общая витрина модулей роли закрыта, поэтому «Все модули» из склада увела бы
+  // его на отказ, а в меню WB не было пункта, ведущего в склад.
+  assert.equal(canAccess("seller", "/"), false, "витрина модулей открыта — тогда правка не нужна");
+
+  const wb = read("components/wb/WbShell.tsx");
+  const sellerNav = wb.slice(wb.indexOf("const SELLER_SYSTEM_NAV"), wb.indexOf("const SELLER_TEAM_NAV"));
+  assert.match(sellerNav, /href: "\/warehouse"/, "в меню WB нет пункта склада");
+
+  const shell = read("components/warehouse/WarehouseShell.tsx");
+  assert.match(shell, /me\?\.role === "seller" \? "\/wb\/rnp" : "\/"/, "из склада селлера уводит на закрытую витрину");
+});
