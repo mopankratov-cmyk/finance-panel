@@ -1,4 +1,6 @@
 import { buildSplitMonthlyInterestSchedule, type LoanDisbursement } from "./loanInterest";
+import { buildLoanSchedule } from "@/lib/loans/scheduleModel";
+import type { LoanTermsStored } from "@/lib/types";
 
 export type LoanCurrency = "RUB" | "USD" | "EUR" | "CNY";
 
@@ -8,6 +10,8 @@ export interface RecognizedScheduleRow {
   interest: number;
   penalty?: number;
   fine?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
 }
 
 export interface RecognizedLoan {
@@ -29,6 +33,7 @@ export interface RecognizedLoan {
   confidence: number;
   warnings: string[];
   schedule?: RecognizedScheduleRow[];
+  terms?: LoanTermsStored;
 }
 
 /** Банковские графики часто хранят тело, проценты и неустойку отдельными строками одной даты. */
@@ -42,11 +47,13 @@ export function aggregateRecognizedSchedule(rows: RecognizedScheduleRow[] | unde
     const fine = Number(row.fine || 0);
     if (!date || ![principal, interest, penalty, fine].every(Number.isFinite)) continue;
     if (principal + interest + penalty + fine <= 0) continue;
-    const current = byDate.get(date) ?? { date, principal: 0, interest: 0, penalty: 0, fine: 0 };
+    const current: RecognizedScheduleRow = byDate.get(date) ?? { date, principal: 0, interest: 0, penalty: 0, fine: 0 };
     current.principal += principal;
     current.interest += interest;
     current.penalty = Number(current.penalty || 0) + penalty;
     current.fine = Number(current.fine || 0) + fine;
+    if (Number.isFinite(row.balanceBefore) && !Number.isFinite(current.balanceBefore)) current.balanceBefore = row.balanceBefore;
+    if (Number.isFinite(row.balanceAfter)) current.balanceAfter = row.balanceAfter;
     byDate.set(date, current);
   }
   return [...byDate.values()]
@@ -56,6 +63,8 @@ export function aggregateRecognizedSchedule(rows: RecognizedScheduleRow[] | unde
       interest: Math.round(row.interest * 100) / 100,
       penalty: Math.round(Number(row.penalty || 0) * 100) / 100,
       fine: Math.round(Number(row.fine || 0) * 100) / 100,
+      ...(Number.isFinite(row.balanceBefore) ? { balanceBefore: Math.round(Number(row.balanceBefore) * 100) / 100 } : {}),
+      ...(Number.isFinite(row.balanceAfter) ? { balanceAfter: Math.round(Number(row.balanceAfter) * 100) / 100 } : {}),
     }))
     .sort((left, right) => left.date.localeCompare(right.date));
 }
@@ -122,35 +131,40 @@ function recognizeDisbursements(text: string): LoanDisbursement[] {
   return rows.sort((left, right) => left.date.localeCompare(right.date));
 }
 
-function addUtcMonths(date: Date, months: number, day: number): string {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, day)).toISOString().slice(0, 10);
-}
-
 /** Договор Дзюбина: проценты реинвестируются поквартально и увеличивают тело займа. */
 function recognizeQuarterlyCapitalizedLoan(text: string): RecognizedLoan | null {
   const normalized = text.toLowerCase().replace(/ё/g, "е");
   if (!/дзюбин/.test(normalized)
-    || !/ежеквартальн[^.]{0,180}дополнительн[^.]{0,80}сумм[^.]{0,80}займ/.test(normalized)
-    || !/(?:равн[^.]{0,100}сумм[^.]{0,80}процент|реинвест|капитализ)/.test(normalized)) return null;
+    || !/(?:ежеквартальн|каждые\s+три\s+месяца)/.test(normalized)
+    || !/(?:дополнительн.{0,160}сумм.{0,120}займ|реинвест|капитализ)/.test(normalized)
+    || !/(?:сумм.{0,120}процент|процент.{0,120}(?:увелич|добав|займ))/.test(normalized)) return null;
 
   const initialPrincipal = 5_000_000;
-  const monthlyRate = 0.03;
-  const start = new Date(Date.UTC(2023, 6, 15));
-  const schedule: RecognizedScheduleRow[] = [];
-  let principal = initialPrincipal;
-  for (let month = 1; month <= 36; month += 1) {
-    const interest = Math.round(principal * monthlyRate * 100) / 100;
-    schedule.push({ date: addUtcMonths(start, month, 10), principal: 0, interest, penalty: 0, fine: 0 });
-    if (month % 3 === 0) principal = Math.round((principal + interest * 3) * 100) / 100;
-  }
-  const finalPrincipal = principal;
-  schedule.push({ date: "2026-07-15", principal: finalPrincipal, interest: 0, penalty: 0, fine: 0 });
+  const monthlyRate = 3;
+  const terms: LoanTermsStored = {
+    annualRate: 36, monthlyRate: 3, interestFrequency: "monthly", rateMode: "flat_period", dayCountBasis: 365,
+    interestPayout: "paid", paymentDay: 10, reinvestEveryPeriods: 3, extraContributions: [], tranches: [],
+  };
+  const built = buildLoanSchedule({
+    principal: initialPrincipal, startDate: "2023-07-15", dueDate: "2026-07-15", annualRate: 36, monthlyRate,
+    interestFrequency: "monthly", paymentDay: 10, rateMode: "flat_period", dayCountBasis: 365, interestPayout: "paid", reinvestEveryPeriods: 3,
+  });
+  const schedule = built.map((row) => ({
+    date: row.dueDate,
+    principal: row.kind === "principal" ? row.amount : 0,
+    interest: row.kind === "interest" ? row.amount : 0,
+    penalty: 0,
+    fine: 0,
+    balanceBefore: row.balanceBefore,
+    balanceAfter: row.balanceAfter,
+  }));
+  const finalPrincipal = built.findLast((row) => row.kind === "principal")?.amount ?? initialPrincipal;
   return {
     contractNumber: "ИМ-ДА-01",
     creditorName: "Дзюбин Александр Владимирович",
     companyHint: "ИП Панкратов",
     accountHint: "",
-    principalAmount: finalPrincipal,
+    principalAmount: initialPrincipal,
     currency: "RUB",
     annualRate: 36,
     monthlyRate: 3,
@@ -165,6 +179,7 @@ function recognizeQuarterlyCapitalizedLoan(text: string): RecognizedLoan | null 
       "Каждые три месяца выплаченные проценты добавлены к телу займа; итоговое тело к возврату 14 063 323,91 ₽.",
     ],
     schedule: aggregateRecognizedSchedule(schedule),
+    terms,
   };
 }
 
@@ -176,7 +191,8 @@ export function recognizeLoanDocumentSchedule(text: string): RecognizedScheduleR
     const date = isoDate(match[1], new Date().getFullYear());
     const interest = spreadsheetAmount(match[3]);
     const principal = spreadsheetAmount(match[4]);
-    if (date && principal + interest > 0) rows.push({ date, principal, interest, penalty: 0, fine: 0 });
+    const balanceBefore = spreadsheetAmount(match[2]);
+    if (date && principal + interest > 0) rows.push({ date, principal, interest, penalty: 0, fine: 0, balanceBefore, balanceAfter: Math.max(0, balanceBefore - principal) });
   }
   return aggregateRecognizedSchedule(rows);
 }

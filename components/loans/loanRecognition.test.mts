@@ -50,8 +50,8 @@ test("Word contract schedule keeps exact principal and interest columns", () => 
     01.01.2025 9 599 217,13р. 175 985,65р. 205 918,88р. 381 904,53р.
   `);
   assert.deepEqual(schedule, [
-    { date: "2024-12-01", principal: 202_211.67, interest: 179_692.86, penalty: 0, fine: 0 },
-    { date: "2025-01-01", principal: 205_918.88, interest: 175_985.65, penalty: 0, fine: 0 },
+    { date: "2024-12-01", principal: 202_211.67, interest: 179_692.86, penalty: 0, fine: 0, balanceBefore: 9_801_428.8, balanceAfter: 9_599_217.13 },
+    { date: "2025-01-01", principal: 205_918.88, interest: 175_985.65, penalty: 0, fine: 0, balanceBefore: 9_599_217.13, balanceAfter: 9_393_298.25 },
   ]);
 });
 
@@ -75,7 +75,8 @@ test("Dzyubin contract capitalizes three monthly interest payments every quarter
   assert.equal(result.schedule?.[3]?.interest, 163_500);
   assert.equal(result.schedule?.at(-1)?.date, "2026-07-15");
   assert.equal(result.schedule?.at(-1)?.principal, 14_063_323.91);
-  assert.equal(result.principalAmount, 14_063_323.91);
+  assert.equal(result.principalAmount, 5_000_000, "сумма договора остаётся первоначальным телом");
+  assert.equal(result.terms?.paymentDay, 10);
 });
 
 test("two monthly payment dates split interest and respect every dollar tranche", () => {

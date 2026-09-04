@@ -42,6 +42,19 @@ test("PDF без ИИ — честная ошибка, а не пустой ре
   );
 });
 
+test("договор Дзюбина распознаётся локально при недоступном ИИ и сохраняет поквартальный рост тела", async () => {
+  const result = await recognizeLoanDocument({
+    description: "Договор займа ИМ-ДА-01 от 15.07.2023. Займодавец Дзюбин Александр Владимирович передает 5 000 000 рублей под 3% ежемесячно. Каждые три месяца дополнительная сумма займа равна сумме выплаченных процентов и увеличивает тело займа. Возврат 15.07.2026.",
+  }, deps);
+  assert.equal(result.recognized.principalAmount, 5_000_000, "сумма договора — первоначальное тело, не итог после реинвеста");
+  assert.equal(result.terms?.reinvestEveryPeriods, 3);
+  assert.equal(result.schedule[0].interest, 150_000);
+  assert.equal(result.schedule[0].balanceAfter, 5_000_000);
+  assert.equal(result.schedule[3].interest, 163_500);
+  assert.equal(result.schedule[3].balanceBefore, 5_450_000);
+  assert.equal(result.schedule.at(-1)?.principal, 14_063_323.91);
+});
+
 test("корректировка «перенести» применяется локальным парсером без ИИ", async () => {
   const base = await recognizeLoanDocument({ description: "Заем ООО Микрофинанс 100 000 рублей от 01.02.2026 до 01.05.2026 под 12% годовых. Проценты выплачиваются ежемесячно." }, deps);
   const result = await applyLoanCorrections({ existing: base.recognized, schedule: base.schedule, corrections: "перенести платёж с марта 2026 на июнь 2026", exchangeRate: 1 }, deps);

@@ -80,7 +80,7 @@ function scheduleSourceAmount(row: LoanScheduleDraft, kind: "principal" | "inter
   return Number.isFinite(original) ? Number(original) : Number(row[kind] || 0) / (rate || 1);
 }
 
-const DEFAULT_TERMS: LoanTermsStored = { annualRate: null, monthlyRate: null, interestFrequency: null, rateMode: "actual_days", dayCountBasis: 365, interestPayout: "paid", reinvestEveryPeriods: null, extraContributions: [], tranches: [] };
+const DEFAULT_TERMS: LoanTermsStored = { annualRate: null, monthlyRate: null, interestFrequency: null, rateMode: "actual_days", dayCountBasis: 365, interestPayout: "paid", paymentDay: null, reinvestEveryPeriods: null, extraContributions: [], tranches: [] };
 
 export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, interestFrequency, monthlyRate = 0, disbursements = [], paymentDays, terms: initialTerms, onSubmit, onCancel }: LoanFormProps) {
   const editing = Boolean(loan);
@@ -130,6 +130,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         annualRate: data.annualRate,
         monthlyRate: data.interestFrequency === "monthly" || data.interestFrequency === "semi_monthly" ? (Number(data.monthlyRate) || undefined) : undefined,
         interestFrequency: data.interestFrequency === "quarterly" ? "quarterly" : data.interestFrequency === "at_maturity" ? "at_maturity" : "monthly",
+        paymentDay: terms.paymentDay ?? undefined,
         rateMode: terms.rateMode,
         dayCountBasis: terms.dayCountBasis,
         interestPayout: terms.interestPayout,
@@ -220,6 +221,10 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       setExchangeRate(result.exchangeRate || 1);
       setRateDate(result.rateDate ?? "");
       setCorrectionNotice(result.actions.join(". "));
+      if (result.terms) {
+        setTerms(result.terms);
+        setShowTerms(true);
+      }
       if (result.suggestedCompanyId) setSelectedCompany(result.suggestedCompanyId);
       if (result.suggestedAccountId) setSelectedAccount(result.suggestedAccountId);
       setStage("review");
@@ -402,6 +407,7 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
         {showTerms && <div className="mt-3 grid gap-3 md:grid-cols-2">
           <label className="text-sm font-medium text-slate-700">Как считать проценты<select value={terms.rateMode} onChange={(e) => updateTerms({ rateMode: e.target.value as LoanTermsStored["rateMode"] })} className={fieldClass}><option value="actual_days">По дням: остаток × ставка × дни / базис</option><option value="flat_period">Фиксированная доля ставки за период (3% в месяц = 3%)</option></select></label>
           <label className="text-sm font-medium text-slate-700">Проценты<select value={terms.interestPayout} onChange={(e) => updateTerms({ interestPayout: e.target.value as LoanTermsStored["interestPayout"] })} className={fieldClass}><option value="paid">Выплачиваются</option><option value="capitalized">Капитализируются (не платятся, растят долг)</option></select></label>
+          <label className="text-sm font-medium text-slate-700">День платежа<input type="number" min="1" max="31" value={terms.paymentDay ?? ""} onChange={(e) => updateTerms({ paymentDay: Number(e.target.value) || null })} className={fieldClass} placeholder="как в дате выдачи" /></label>
           <label className="text-sm font-medium text-slate-700">Реинвест выплаченных процентов каждые N периодов<input type="number" min="1" max="12" value={terms.reinvestEveryPeriods ?? ""} onChange={(e) => updateTerms({ reinvestEveryPeriods: Number(e.target.value) || null })} className={fieldClass} placeholder="пусто — не реинвестируются" /></label>
           <label className="text-sm font-medium text-slate-700">Базис дней<select value={terms.dayCountBasis} onChange={(e) => updateTerms({ dayCountBasis: Number(e.target.value) as LoanTermsStored["dayCountBasis"] })} className={fieldClass}><option value={365}>365</option><option value={366}>366</option><option value={360}>360</option></select></label>
           <div className="md:col-span-2">

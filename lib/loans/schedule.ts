@@ -108,6 +108,8 @@ export function recognizedSchedule(rows: RecognizedScheduleRow[] | undefined, ra
     interestOriginal: roundLoanMoney(Number(row.interest || 0)),
     penaltyOriginal: roundLoanMoney(Number(row.penalty || 0)),
     fineOriginal: roundLoanMoney(Number(row.fine || 0)),
+    balanceBefore: Number.isFinite(row.balanceBefore) ? roundLoanMoney(Number(row.balanceBefore) * rate) : undefined,
+    balanceAfter: Number.isFinite(row.balanceAfter) ? roundLoanMoney(Number(row.balanceAfter) * rate) : undefined,
     status: "planned",
   }));
 }
