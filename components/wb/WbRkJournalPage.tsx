@@ -23,6 +23,7 @@ import { displaySkuArticle, displaySkuName, useWbSkuNames } from "./useWbSkuName
 import { WbRkNoteQuickPick } from "./WbRkNoteQuickPick";
 import { WbRkNotePopup } from "./WbRkNotePopup";
 import { rkNoteKey, rkNoteShort, rkNoteTone, type RkNote } from "@/lib/wb/rkNotes";
+import { canRunSyncManually } from "@/lib/sync/manualRunRoles";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 
@@ -191,7 +192,12 @@ function noteTitle(entry: RkNote): string {
 }
 
 export function WbRkJournalPage() {
-  const { cabinetId, hasExactCabinet, ready, canWrite } = useWbCabinet();
+  const { cabinetId, hasExactCabinet, ready, canWrite, user } = useWbCabinet();
+  // canWrite — право ОПИСЫВАТЬ (задачи, заметки): оно есть и у менеджера, и у
+  // селлера с уровнем. Прогон синхронизации гейтится не им, а ролью — тем же
+  // списком, что и на сервере (checkCronAuth). Пока кнопка висела на canWrite,
+  // она была активна у тех, кому роут отвечает 401.
+  const canRunSync = canRunSyncManually(user?.role);
   const [range, setRange] = useState(() => ({ ...rangeForPreset("5d"), preset: "5d" as string }));
   const [data, setData] = useState<JournalData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -632,15 +638,17 @@ export function WbRkJournalPage() {
               onApplyPreset={(value) => setRange({ ...rangeForPreset(value), preset: value })}
               onApplyRange={(from, to) => setRange({ from, to, preset: "custom" })}
             />
-            <button
-              type="button"
-              onClick={() => void runSync()}
-              disabled={!canWrite || syncing != null || loading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-900 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
-              Прогнать РК
-            </button>
+            {canRunSync ? (
+              <button
+                type="button"
+                onClick={() => void runSync()}
+                disabled={syncing != null || loading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-900 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                Прогнать РК
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={exportCsv}
