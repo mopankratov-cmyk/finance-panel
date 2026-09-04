@@ -3,6 +3,7 @@ const STORE_NAME = "documents";
 const API_PATH = "/api/opiu/loan-documents";
 
 interface StoredLoanDocument {
+  id: string;
   loanId: string;
   name: string;
   type: string;
@@ -10,13 +11,25 @@ interface StoredLoanDocument {
   savedAt: string;
 }
 
+export interface LoanDocumentInfo {
+  id: string;
+  loanId: string;
+  companyId: string | null;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  documentKind: string;
+  createdAt: string;
+  url: string;
+}
+
 function openDb() {
   return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
+    const request = indexedDB.open(DB_NAME, 2);
     request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME, { keyPath: "loanId" });
-      }
+      if (request.result.objectStoreNames.contains(STORE_NAME)) request.result.deleteObjectStore(STORE_NAME);
+      const store = request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
+      store.createIndex("loanId", "loanId", { unique: false });
     };
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
@@ -27,7 +40,8 @@ async function saveLocalLoanDocument(loanId: string, file: File) {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).put({
+    transaction.objectStore(STORE_NAME).add({
+      id: crypto.randomUUID(),
       loanId,
       name: file.name,
       type: file.type || "application/octet-stream",
@@ -41,13 +55,7 @@ async function saveLocalLoanDocument(loanId: string, file: File) {
 }
 
 async function openLocalLoanDocument(loanId: string) {
-  const db = await openDb();
-  const document = await new Promise<StoredLoanDocument | undefined>((resolve, reject) => {
-    const request = db.transaction(STORE_NAME).objectStore(STORE_NAME).get(loanId);
-    request.onsuccess = () => resolve(request.result as StoredLoanDocument | undefined);
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
+  const document = (await listLocalLoanDocuments(loanId))[0];
   if (!document) return false;
   const url = URL.createObjectURL(document.blob);
   window.open(url, "_blank", "noopener,noreferrer");
@@ -59,7 +67,14 @@ async function deleteLocalLoanDocument(loanId: string) {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).delete(loanId);
+    const index = transaction.objectStore(STORE_NAME).index("loanId");
+    const cursor = index.openCursor(IDBKeyRange.only(loanId));
+    cursor.onsuccess = () => {
+      const row = cursor.result;
+      if (!row) return;
+      row.delete();
+      row.continue();
+    };
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
   });
@@ -105,6 +120,60 @@ export async function openLoanDocument(loanId: string) {
     if (process.env.NODE_ENV !== "development") throw error;
     return openLocalLoanDocument(loanId);
   }
+}
+
+async function listLocalLoanDocuments(loanId: string): Promise<StoredLoanDocument[]> {
+  const db = await openDb();
+  const documents = await new Promise<StoredLoanDocument[]>((resolve, reject) => {
+    const request = db.transaction(STORE_NAME).objectStore(STORE_NAME).index("loanId").getAll(loanId);
+    request.onsuccess = () => resolve((request.result as StoredLoanDocument[]).sort((left, right) => right.savedAt.localeCompare(left.savedAt)));
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return documents;
+}
+
+async function localDocumentInfo(loanId: string): Promise<LoanDocumentInfo[]> {
+  return (await listLocalLoanDocuments(loanId)).map((document) => ({
+    id: document.id,
+    loanId: document.loanId,
+    companyId: null,
+    fileName: document.name,
+    mimeType: document.type,
+    sizeBytes: document.blob.size,
+    documentKind: "contract",
+    createdAt: document.savedAt,
+    url: URL.createObjectURL(document.blob),
+  }));
+}
+
+export async function listLoanDocuments(loanId: string): Promise<LoanDocumentInfo[]> {
+  try {
+    const response = await fetch(`${API_PATH}?loanId=${encodeURIComponent(loanId)}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (response.status === 404) return process.env.NODE_ENV === "development" ? localDocumentInfo(loanId) : [];
+    if (!response.ok) throw await apiError(response, "Не удалось загрузить документы договора");
+    const body = await response.json() as { documents?: LoanDocumentInfo[] };
+    return Array.isArray(body.documents) ? body.documents : [];
+  } catch (error) {
+    if (process.env.NODE_ENV !== "development") throw error;
+    console.warn("Серверный список документов недоступен в development", error);
+    return localDocumentInfo(loanId);
+  }
+}
+
+export function openListedLoanDocument(document: LoanDocumentInfo) {
+  window.open(document.url, "_blank", "noopener,noreferrer");
+}
+
+export function downloadLoanDocument(document: LoanDocumentInfo) {
+  const anchor = window.document.createElement("a");
+  anchor.href = document.url;
+  anchor.download = document.fileName;
+  anchor.rel = "noopener noreferrer";
+  anchor.click();
 }
 
 export async function deleteLoanDocument(loanId: string) {

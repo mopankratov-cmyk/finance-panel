@@ -3,7 +3,7 @@
 import { AlertTriangle, CalendarClock, ChevronRight, Download, ExternalLink, FileText, Pencil, Plus, RefreshCw, Sparkles, Trash2, WalletCards, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoanForm, type LoanFormResult, type LoanScheduleDraft } from "./LoanForm";
-import { deleteLoanDocument, openLoanDocument, saveLoanDocument } from "./loanDocuments";
+import { deleteLoanDocument, downloadLoanDocument, listLoanDocuments, openListedLoanDocument, saveLoanDocument, type LoanDocumentInfo } from "./loanDocuments";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
 import { downloadSimpleXlsx } from "@/components/payments/ddsExport";
@@ -527,28 +527,46 @@ export function LoansPage() {
 }
 
 function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { loan: Loan; company: string; schedule: LoanScheduleDraft[]; payments: Payment[]; onClose: () => void; onEdit: () => void }) {
+  const [documents, setDocuments] = useState<LoanDocumentInfo[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [documentsError, setDocumentsError] = useState("");
   const paidPrincipal = schedule.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal, 0);
   const fee = metadataNumber(payments, loan.id, "origination-fee");
   const feeMonths = metadataNumber(payments, loan.id, "fee-months", 36);
-  const fileName = contractName(payments, loan.id);
   const currency = commentValue(firstLoanComment(payments, loan.id), "currency") || "RUB";
   const balance = currency === "RUB"
     ? Math.max(0, loan.principalAmount - paidPrincipal)
     : schedule.filter((row) => row.status === "planned").reduce((sum, row) => sum + row.principal, 0);
   const originalPrincipal = Number(commentValue(firstLoanComment(payments, loan.id), "principal-original")) || loan.principalAmount;
-  const openSource = async () => {
-    try {
-      if (!await openLoanDocument(loan.id)) alert("Исходный файл не найден. Откройте редактирование и прикрепите его повторно.");
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "Не удалось открыть исходный файл");
-    }
-  };
+  useEffect(() => {
+    let active = true;
+    setDocumentsLoading(true);
+    setDocumentsError("");
+    listLoanDocuments(loan.id)
+      .then((items) => { if (active) setDocuments(items); })
+      .catch((error) => { if (active) setDocumentsError(error instanceof Error ? error.message : "Не удалось загрузить документы"); })
+      .finally(() => { if (active) setDocumentsLoading(false); });
+    return () => { active = false; };
+  }, [loan.id]);
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
     <button type="button" aria-label="Закрыть карточку" className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
     <div className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
       <header className="flex items-start justify-between gap-4 border-b p-5"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">{company}</p><h2 className="mt-1 text-xl font-bold text-slate-950">{loan.creditorName}</h2><p className="mt-1 text-sm text-slate-500">{contractNumber(payments, loan.id) ? `Договор № ${contractNumber(payments, loan.id)} от ` : "Договор от "}{formatDate(loan.startDate)} · срок до {formatDate(loan.dueDate)}</p></div><button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
       <div className="overflow-y-auto p-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={currency === "RUB" ? formatMoney(loan.principalAmount) : `${roundLoanMoney(originalPrincipal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency} · ${formatMoney(loan.principalAmount)}`} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
+        <section className="mt-5 rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div><h3 className="font-bold text-slate-950">Документы договора</h3><p className="mt-1 text-sm text-slate-500">Все загруженные договоры, графики и дополнения сохраняются в истории.</p></div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{documents.length}</span>
+          </div>
+          {documentsLoading && <p className="mt-4 text-sm text-slate-500">Загружаю документы…</p>}
+          {documentsError && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{documentsError}</p>}
+          {!documentsLoading && !documentsError && documents.length === 0 && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Файлы ещё не прикреплены. Добавьте документ через редактирование кредита или займа.</p>}
+          {documents.length > 0 && <div className="mt-4 space-y-2">{documents.map((document) => <div key={document.id} className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3"><FileText className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" /><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{document.fileName}</p><p className="mt-1 text-xs text-slate-500">{new Date(document.createdAt).toLocaleString("ru-RU")} · {(document.sizeBytes / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ</p></div></div>
+            <div className="flex shrink-0 gap-2"><button type="button" onClick={() => openListedLoanDocument(document)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 font-semibold text-violet-700"><ExternalLink className="h-4 w-4" />Открыть</button><button type="button" onClick={() => downloadLoanDocument(document)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 font-semibold text-slate-700"><Download className="h-4 w-4" />Скачать</button></div>
+          </div>)}</div>}
+        </section>
         <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th>{currency !== "RUB" && <th className="p-3 text-right">В валюте договора</th>}<th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
           const paidBefore = schedule.filter((item) => item.status === "done" && item.date <= row.date).reduce((sum, item) => sum + item.principal, 0);
           const overdue = row.status === "planned" && row.date < todayISO();
@@ -556,7 +574,7 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
           return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.balanceAfter ?? Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
         })}</tbody></table></div>
       </div>
-      <footer className="flex flex-wrap justify-between gap-3 border-t p-4"><button type="button" disabled={!fileName} onClick={() => void openSource()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-4 font-bold text-violet-700 disabled:opacity-40"><ExternalLink className="h-4 w-4" />Открыть исходный файл</button><div className="flex gap-2"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></div></footer>
+      <footer className="flex flex-wrap justify-end gap-2 border-t p-4"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></footer>
     </div>
   </div>;
 }

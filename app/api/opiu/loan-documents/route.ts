@@ -147,17 +147,6 @@ export async function POST(request: Request) {
     if (!DOCUMENT_KINDS.has(documentKind)) throw new DocumentStorageError("Некорректный тип документа", 400);
 
     const db = await database();
-    const { data: previousDocuments, error: previousError } = await db
-      .from("finance_loan_documents")
-      .select("id,object_path")
-      .eq("loan_id", loanId)
-      .eq("document_kind", documentKind);
-    if (previousError) {
-      if (storageSetupError(previousError.message)) {
-        throw new DocumentStorageError("Таблица документов кредитов не настроена в Supabase", 503);
-      }
-      throw new DocumentStorageError(`Не удалось проверить документы договора: ${previousError.message}`);
-    }
     await ensurePrivateBucket(db);
     const objectPath = `${loanId}/${randomUUID()}${extension(file.name)}`;
     const bytes = Buffer.from(await file.arrayBuffer());
@@ -189,18 +178,6 @@ export async function POST(request: Request) {
       }
       throw new DocumentStorageError(`Не удалось сохранить карточку документа: ${error.message}`);
     }
-    const previous = previousDocuments ?? [];
-    if (previous.length > 0) {
-      const { error: removeError } = await db.storage
-        .from(BUCKET)
-        .remove(previous.map((item) => item.object_path));
-      if (!removeError) {
-        await db
-          .from("finance_loan_documents")
-          .delete()
-          .in("id", previous.map((item) => item.id));
-      }
-    }
     return NextResponse.json({ ok: true, document: data }, { status: 201 });
   } catch (error) {
     return errorResponse(error);
@@ -214,40 +191,46 @@ export async function GET(request: Request) {
     const loanId = new URL(request.url).searchParams.get("loanId")?.trim() ?? "";
     if (!validLoanId(loanId)) throw new DocumentStorageError("Некорректный идентификатор договора", 400);
     const db = await database();
-    const { data, error } = await db
+    const documentId = new URL(request.url).searchParams.get("documentId")?.trim() ?? "";
+    const query = db
       .from("finance_loan_documents")
       .select("id,loan_id,company_id,file_name,object_path,mime_type,size_bytes,document_kind,created_at")
       .eq("loan_id", loanId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<LoanDocumentRow>();
+      .order("created_at", { ascending: false });
+    if (documentId) query.eq("id", documentId);
+    const { data, error } = await query.returns<LoanDocumentRow[]>();
     if (error) {
       if (storageSetupError(error.message)) {
         throw new DocumentStorageError("Таблица документов кредитов не настроена в Supabase", 503);
       }
       throw new DocumentStorageError(`Не удалось найти документ: ${error.message}`);
     }
-    if (!data) return NextResponse.json({ error: "Документ не найден" }, { status: 404 });
-    const { data: signed, error: signError } = await db.storage
-      .from(BUCKET)
-      .createSignedUrl(data.object_path, SIGNED_URL_TTL_SECONDS);
-    if (signError || !signed?.signedUrl) {
-      throw new DocumentStorageError(`Не удалось открыть документ: ${signError?.message ?? "signed URL не создан"}`);
-    }
+    if (!data?.length) return NextResponse.json({ error: "Документ не найден" }, { status: 404 });
+    const documents = await Promise.all(data.map(async (row) => {
+      const { data: signed, error: signError } = await db.storage
+        .from(BUCKET)
+        .createSignedUrl(row.object_path, SIGNED_URL_TTL_SECONDS);
+      if (signError || !signed?.signedUrl) {
+        throw new DocumentStorageError(`Не удалось открыть документ ${row.file_name}: ${signError?.message ?? "signed URL не создан"}`);
+      }
+      return {
+        id: row.id,
+        loanId: row.loan_id,
+        companyId: row.company_id,
+        fileName: row.file_name,
+        mimeType: row.mime_type,
+        sizeBytes: Number(row.size_bytes),
+        documentKind: row.document_kind,
+        createdAt: row.created_at,
+        url: signed.signedUrl,
+      };
+    }));
     return NextResponse.json(
       {
         ok: true,
-        document: {
-          id: data.id,
-          loanId: data.loan_id,
-          companyId: data.company_id,
-          fileName: data.file_name,
-          mimeType: data.mime_type,
-          sizeBytes: Number(data.size_bytes),
-          documentKind: data.document_kind,
-          createdAt: data.created_at,
-        },
-        url: signed.signedUrl,
+        documents,
+        document: documents[0],
+        url: documents[0].url,
         expiresIn: SIGNED_URL_TTL_SECONDS,
       },
       { headers: { "Cache-Control": "no-store" } },
