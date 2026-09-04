@@ -409,33 +409,39 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
       {!embedded ? <WbModuleHeader icon={Filter} title="Воронка" description={skus ? `${skus.metrics_period} · ${filtered.length} SKU · ${activeCabinet?.name ?? "все кабинеты"}` : "SKU × метрики × дни"} actions={periodPicker} /> : null}
 
       <div className="px-2 py-3 sm:px-6">
-        <div className="mb-2 flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center">
-          {embedded ? periodPicker : null}
-          <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
-          <button
-            type="button"
-            onClick={toggleWorkingFirst}
-            aria-pressed={workingFirst}
-            disabled={!daily}
-            title={daily
-              ? `Наверх — артикулы, по которым ${dayLabel(period.to)} реклама шла не меньше чем на ${CTR_MIN_VIEWS} показов: на меньшем объёме доля клика ничего не значит, и колонка её всё равно прячет. Остальные остаются на месте, ниже. Нажмите ещё раз, чтобы вернуть обычный порядок.`
-              : "Ждём посуточные данные — без них неизвестно, кто работал"}
-            className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold transition-colors disabled:opacity-40 sm:min-h-8 ${workingFirst ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
-          >
-            <ArrowUpNarrowWide className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span>Сначала рабочие</span>
-            {workingFirst && workingCount != null
-              ? <span className="rounded bg-white/20 px-1 tabular-nums">{workingCount}</span>
-              : null}
-          </button>
-          <WbTagFilterChips
-            tags={tags}
-            activeIds={activeTagIds}
-            counts={tagCounts}
-            onToggle={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])}
-            onClear={() => setActiveTagIds([])}
-          />
-          <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:w-72 lg:min-h-8"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="nm, артикул, название" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />{query ? <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}</label>
+        {/* Две строки, а не одна. Девять метрик с подписями вроде «CR
+            просмотр→корзина» просят 815 пикселей, и рядом с периодом, поиском и
+            кнопкой сортировки им доставалось 543: четыре вкладки уезжали за
+            край и выглядели потерянными. Своей строкой они помещаются целиком. */}
+        <div className="mb-2 flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center">
+            {embedded ? periodPicker : null}
+            <button
+              type="button"
+              onClick={toggleWorkingFirst}
+              aria-pressed={workingFirst}
+              disabled={!daily}
+              title={daily
+                ? `Наверх — артикулы, по которым ${dayLabel(period.to)} реклама шла не меньше чем на ${CTR_MIN_VIEWS} показов: на меньшем объёме доля клика ничего не значит, и колонка её всё равно прячет. Остальные остаются на месте, ниже. Нажмите ещё раз, чтобы вернуть обычный порядок.`
+                : "Ждём посуточные данные — без них неизвестно, кто работал"}
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold transition-colors disabled:opacity-40 sm:min-h-8 ${workingFirst ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+            >
+              <ArrowUpNarrowWide className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>Сначала рабочие</span>
+              {workingFirst && workingCount != null
+                ? <span className="rounded bg-white/20 px-1 tabular-nums">{workingCount}</span>
+                : null}
+            </button>
+            <WbTagFilterChips
+              tags={tags}
+              activeIds={activeTagIds}
+              counts={tagCounts}
+              onToggle={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])}
+              onClear={() => setActiveTagIds([])}
+            />
+            <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:ml-auto lg:w-72 lg:min-h-8"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="nm, артикул, название" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />{query ? <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}</label>
+          </div>
+          <div className="flex min-w-0 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
         </div>
 
         {ctrPopup && cabinetId ? (

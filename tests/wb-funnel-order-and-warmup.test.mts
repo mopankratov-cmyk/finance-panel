@@ -75,3 +75,14 @@ test("«Сначала рабочие» поднимает только то, п
   const uses = page.match(/\?\.views \?\? 0\) >= CTR_MIN_VIEWS/g) ?? [];
   assert.equal(uses.length, 2, "порог применён не и к сортировке, и к счётчику на кнопке");
 });
+
+test("вкладки метрик не делят строку с поиском и периодом", () => {
+  const page = readFileSync(new URL("../components/wb/WbFunnelPage.tsx", import.meta.url), "utf8");
+  // Девять метрик просят 815 пикселей. Пока они стояли в одной строке с
+  // периодом, поиском и кнопкой сортировки, им доставалось 543, и «CR
+  // корзина→заказ», «Заказы», «Реклама», «ДРР к заказам» уезжали за край.
+  // flex-1 на списке вкладок и был тем, что отдавало им остаток вместо
+  // собственной строки.
+  assert.doesNotMatch(page, /flex min-w-0 flex-1 gap-2 overflow-x-auto[^"]*" role="tablist"/, "список метрик снова делит строку и сжимается");
+  assert.match(page, /className="flex min-w-0 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist"/, "список метрик потерял свою строку");
+});
