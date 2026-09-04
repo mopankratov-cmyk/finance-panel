@@ -17,6 +17,9 @@ import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
 import { closeLoanScheduleRows, loadLoanScheduleRows, saveLoanScheduleRows } from "./scheduleStore";
 import { loadFinanceState } from "@/lib/db";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
+import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
+
+type SummaryKey = "outstanding" | "interest" | "next30" | "overdue" | "active";
 
 const marker = (loanId: string) => `[loan:${loanId}:`;
 const receiptMarker = (loanId: string) => `[loan:${loanId}:receipt]`;
@@ -144,6 +147,7 @@ export function LoansPage() {
   const [periodYear, setPeriodYear] = useState(todayISO().slice(0, 4));
   const [syncing, setSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedSummary, setExpandedSummary] = useState<SummaryKey | null>(null);
   // Строки графиков из loan_schedule_rows; пока их нет (до миграции или у старых
   // договоров) — график читается по меткам платежей, как раньше.
   const [scheduleRows, setScheduleRows] = useState<ScheduleRowRecord[]>([]);
@@ -179,13 +183,8 @@ export function LoansPage() {
     const rows = scheduleRows.filter((row) => row.loanId === loan.id);
     return [loan.id, rows.length ? scheduleDraftFromRows(rows) : scheduleFromPayments(state.payments, loan.id)];
   })), [state.loans, state.payments, scheduleRows]);
-  const outstanding = filteredLoans.reduce((sum, loan) => {
-    const schedule = schedules.get(loan.id) ?? [];
-    const currency = commentValue(firstLoanComment(state.payments, loan.id), "currency") || "RUB";
-    if (currency !== "RUB") return sum + schedule.filter((row) => row.status === "planned").reduce((value, row) => value + row.principal, 0);
-    const paidPrincipal = schedule.filter((row) => row.status === "done").reduce((value, row) => value + row.principal, 0);
-    return sum + Math.max(0, loan.principalAmount - paidPrincipal);
-  }, 0);
+  const loanBalances = new Map(filteredLoans.map((loan) => [loan.id, actualLoanBalance(loan.principalAmount, schedules.get(loan.id) ?? [], today)]));
+  const outstanding = [...loanBalances.values()].reduce((sum, value) => sum + value, 0);
   const next30 = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
     .filter(({ row }) => row.status === "planned" && row.date >= today && row.date <= next30Date);
   const overdue = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
@@ -202,6 +201,7 @@ export function LoansPage() {
     const months = metadataNumber(state.payments, loan.id, "fee-months", 36);
     return sum + (months ? fee / months * monthCountInPeriod(loan.startDate, months, periodStart, periodEnd) : 0);
   }, 0);
+  const monthlySummary = buildMonthlyLoanSummary(filteredLoans, schedules, periodStart, periodEnd);
   const rowsForExport = exportRows(filteredLoans, state.payments, companies, companyByPayment);
   const rowIdsForExport = exportRowIds(filteredLoans, state.payments);
 
@@ -312,7 +312,7 @@ export function LoansPage() {
       await saveLoanDocument(loan.id, result.contractFile, result.companyId);
     }
     const tranches = result.disbursements.map((item) => `${item.date}=${item.amount}`).join(";");
-    const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [interest-frequency:${result.interestFrequency}] [monthly-rate:${result.monthlyRate}]${result.paymentDays ? ` [payment-days:${result.paymentDays.join(",")}]` : ""}${tranches ? ` [tranches:${tranches}]` : ""} [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]${result.contractNumber ? ` [contract-number:${result.contractNumber.replace(/\]/g, "")}]` : ""}`;
+    const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [interest-frequency:${result.interestFrequency}] [monthly-rate:${result.monthlyRate}]${result.terms?.paymentDay ? ` [payment-day:${result.terms.paymentDay}]` : ""}${result.paymentDays ? ` [payment-days:${result.paymentDays.join(",")}]` : ""}${tranches ? ` [tranches:${tranches}]` : ""} [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]${result.contractNumber ? ` [contract-number:${result.contractNumber.replace(/\]/g, "")}]` : ""}`;
     if (editing) dispatch({ type: "UPDATE_LOAN", payload: loan });
     else dispatch({ type: "ADD_LOAN", payload: loan });
     const existing = linkedRows(state.payments, loan.id);
@@ -444,23 +444,38 @@ export function LoansPage() {
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Summary icon={WalletCards} label="Остаток основного долга" value={formatMoney(outstanding)} tone="slate" />
-        <Summary icon={FileText} label="Проценты + комиссии · ОПиУ" value={formatMoney(periodInterest + periodFees)} tone="red" />
-        <Summary icon={CalendarClock} label="К оплате за 30 дней" value={formatMoney(next30.reduce((sum, item) => sum + item.row.principal + item.row.interest + item.row.penalty + item.row.fine, 0))} tone="violet" />
-        <Summary icon={AlertTriangle} label="Просрочено платежей" value={String(overdue.length)} tone={overdue.length ? "red" : "green"} />
-        <Summary icon={FileText} label="Активных договоров" value={String(filteredLoans.filter((loan) => loan.status === "active").length)} tone="green" />
+        <Summary icon={WalletCards} label="Остаток основного долга" value={formatMoney(outstanding)} tone="slate" expanded={expandedSummary === "outstanding"} onClick={() => setExpandedSummary((value) => value === "outstanding" ? null : "outstanding")} />
+        <Summary icon={FileText} label="Проценты + комиссии · ОПиУ" value={formatMoney(periodInterest + periodFees)} tone="red" expanded={expandedSummary === "interest"} onClick={() => setExpandedSummary((value) => value === "interest" ? null : "interest")} />
+        <Summary icon={CalendarClock} label="К оплате за 30 дней" value={formatMoney(next30.reduce((sum, item) => sum + item.row.principal + item.row.interest + item.row.penalty + item.row.fine, 0))} tone="violet" expanded={expandedSummary === "next30"} onClick={() => setExpandedSummary((value) => value === "next30" ? null : "next30")} />
+        <Summary icon={AlertTriangle} label="Просрочено платежей" value={String(overdue.length)} tone={overdue.length ? "red" : "green"} expanded={expandedSummary === "overdue"} onClick={() => setExpandedSummary((value) => value === "overdue" ? null : "overdue")} />
+        <Summary icon={FileText} label="Активных договоров" value={String(filteredLoans.filter((loan) => loan.status === "active").length)} tone="green" expanded={expandedSummary === "active"} onClick={() => setExpandedSummary((value) => value === "active" ? null : "active")} />
       </section>
 
-      {overdue.length > 0 && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p className="font-bold">Требуют внимания: {overdue.length} просроченных платежей</p><p className="mt-1">Откройте договор, измените дату или отметьте строки графика оплаченными.</p></div>}
+      {expandedSummary && <SummaryBreakdown
+        kind={expandedSummary}
+        loans={filteredLoans}
+        schedules={schedules}
+        balances={loanBalances}
+        next30={next30}
+        overdue={overdue}
+        payments={state.payments}
+        periodStart={periodStart}
+        periodEnd={periodEnd}
+        onOpen={setDetails}
+        onClose={() => setExpandedSummary(null)}
+      />}
+
+      {overdue.length > 0 && <button type="button" aria-expanded={expandedSummary === "overdue"} onClick={() => setExpandedSummary((value) => value === "overdue" ? null : "overdue")} className="w-full cursor-pointer rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm text-red-800 transition hover:border-red-300 hover:bg-red-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"><span className="block font-bold">Требуют внимания: {overdue.length} просроченных платежей</span><span className="mt-1 block">Нажмите, чтобы увидеть договоры и суммы без поиска по разделу.</span></button>}
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-4 py-3"><h2 className="font-bold text-slate-950">Помесячный свод по кредитам</h2><p className="mt-1 text-xs text-slate-500">Начисления по графику, фактические выплаты и остаток тела на конец месяца.</p></div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Месяц</th><th className="p-3 text-right">Начислено процентов</th><th className="p-3 text-right">Остаток тела</th><th className="p-3 text-right">Начислено тело + проценты</th><th className="p-3 text-right">Выплачено по факту</th></tr></thead><tbody>{monthlySummary.map((row) => <tr key={row.month} className="border-t border-slate-100"><td className="p-3 font-semibold text-slate-900">{formatLoanMonth(row.month)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interestAccrued)}</td><td className="p-3 text-right font-semibold tabular-nums">{formatMoney(row.principalBalance)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.scheduledTotal)}</td><td className="p-3 text-right font-semibold tabular-nums text-emerald-700">{formatMoney(row.paidTotal)}</td></tr>)}</tbody></table></div>
+      </section>
 
       <section className="space-y-3">
         {filteredLoans.length === 0 ? <Card><CardContent className="py-14 text-center text-slate-500">Для выбранной компании договоров пока нет.</CardContent></Card> : filteredLoans.map((loan) => {
           const schedule = schedules.get(loan.id) ?? [];
-          const paidBody = schedule.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal, 0);
-          const currency = commentValue(firstLoanComment(state.payments, loan.id), "currency") || "RUB";
-          const balance = currency === "RUB"
-            ? Math.max(0, loan.principalAmount - paidBody)
-            : schedule.filter((row) => row.status === "planned").reduce((sum, row) => sum + row.principal, 0);
+          const balance = loanBalances.get(loan.id) ?? loan.principalAmount;
           const next = schedule.find((row) => row.status === "planned" && row.date >= today);
           const company = companies.find((item) => item.id === loanCompany(loan.id));
           const fee = metadataNumber(state.payments, loan.id, "origination-fee");
@@ -507,7 +522,7 @@ export function LoansPage() {
             monthlyRate={editing ? metadataNumber(state.payments, editing.id, "monthly-rate") : 0}
             disbursements={editing ? metadataDisbursements(state.payments, editing.id) : []}
             paymentDays={editing ? metadataPaymentDays(state.payments, editing.id) : undefined}
-            terms={editing?.terms}
+            terms={editing?.terms ? { ...editing.terms, paymentDay: metadataNumber(state.payments, editing.id, "payment-day") || editing.terms.paymentDay || null } : undefined}
             onSubmit={handleSubmit}
             onCancel={() => { setModalOpen(false); setEditing(null); }}
           />
@@ -534,9 +549,8 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
   const fee = metadataNumber(payments, loan.id, "origination-fee");
   const feeMonths = metadataNumber(payments, loan.id, "fee-months", 36);
   const currency = commentValue(firstLoanComment(payments, loan.id), "currency") || "RUB";
-  const balance = currency === "RUB"
-    ? Math.max(0, loan.principalAmount - paidPrincipal)
-    : schedule.filter((row) => row.status === "planned").reduce((sum, row) => sum + row.principal, 0);
+  const balance = actualLoanBalance(loan.principalAmount, schedule, todayISO());
+  const projectedBalances = new Map(projectedLoanBalances(loan.principalAmount, schedule).map((item) => [item.rowId, item.balanceAfter]));
   const originalPrincipal = Number(commentValue(firstLoanComment(payments, loan.id), "principal-original")) || loan.principalAmount;
   useEffect(() => {
     let active = true;
@@ -568,10 +582,9 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
           </div>)}</div>}
         </section>
         <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th>{currency !== "RUB" && <th className="p-3 text-right">В валюте договора</th>}<th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
-          const paidBefore = schedule.filter((item) => item.status === "done" && item.date <= row.date).reduce((sum, item) => sum + item.principal, 0);
           const overdue = row.status === "planned" && row.date < todayISO();
           const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);
-          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.balanceAfter ?? Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
+          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right font-semibold tabular-nums">{formatMoney(projectedBalances.get(row.id) ?? balance)}</td></tr>;
         })}</tbody></table></div>
       </div>
       <footer className="flex flex-wrap justify-end gap-2 border-t p-4"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></footer>
@@ -579,9 +592,53 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
   </div>;
 }
 
-function Summary({ icon: Icon, label, value, tone }: { icon: typeof WalletCards; label: string; value: string; tone: "slate" | "violet" | "red" | "green" }) {
+function formatLoanMonth(month: string) {
+  const [year, value] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" }).format(new Date(year, value - 1, 1));
+}
+
+function SummaryBreakdown({ kind, loans, schedules, balances, next30, overdue, payments, periodStart, periodEnd, onOpen, onClose }: {
+  kind: SummaryKey;
+  loans: Loan[];
+  schedules: ReadonlyMap<string, LoanScheduleDraft[]>;
+  balances: ReadonlyMap<string, number>;
+  next30: Array<{ loan: Loan; row: LoanScheduleDraft }>;
+  overdue: Array<{ loan: Loan; row: LoanScheduleDraft }>;
+  payments: Payment[];
+  periodStart: string;
+  periodEnd: string;
+  onOpen: (loan: Loan) => void;
+  onClose: () => void;
+}) {
+  const titles: Record<SummaryKey, string> = {
+    outstanding: "Основной долг по договорам",
+    interest: "Проценты и комиссии за выбранный период",
+    next30: "Платежи на ближайшие 30 дней",
+    overdue: "Просроченные платежи",
+    active: "Активные договоры",
+  };
+  const loanRows = kind === "interest" ? loans.map((loan) => {
+    const interest = (schedules.get(loan.id) ?? []).filter((row) => row.status !== "cancelled" && row.date >= periodStart && row.date <= periodEnd).reduce((sum, row) => sum + row.interest + row.penalty + row.fine, 0);
+    const fee = metadataNumber(payments, loan.id, "origination-fee");
+    const months = metadataNumber(payments, loan.id, "fee-months", 36);
+    return { loan, value: interest + (months ? fee / months * monthCountInPeriod(loan.startDate, months, periodStart, periodEnd) : 0) };
+  }).filter((item) => item.value > 0) : loans
+    .filter((loan) => kind !== "active" || loan.status === "active")
+    .map((loan) => ({ loan, value: balances.get(loan.id) ?? 0 }));
+  const paymentRows = kind === "next30" ? next30 : kind === "overdue" ? overdue : [];
+  return <section aria-live="polite" className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
+    <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3"><div><h2 className="font-bold text-slate-950">{titles[kind]}</h2><p className="mt-0.5 text-xs text-slate-500">Нажмите на строку, чтобы открыть договор и его график.</p></div><button type="button" aria-label="Свернуть детализацию" onClick={onClose} className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"><X className="h-5 w-5" /></button></div>
+    <div className="max-h-80 overflow-y-auto">
+      {paymentRows.length > 0 ? paymentRows.map(({ loan, row }) => <button type="button" key={`${loan.id}:${row.id}`} onClick={() => onOpen(loan)} className="grid min-h-14 w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500"><span><span className="block font-semibold text-slate-900">{loan.creditorName}</span><span className="block text-xs text-slate-500">{formatDate(row.date)} · тело {formatMoney(row.principal)} · проценты {formatMoney(row.interest + row.penalty + row.fine)}</span></span><span className="font-bold tabular-nums text-slate-950">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</span></button>)
+        : loanRows.length > 0 ? loanRows.map(({ loan, value }) => <button type="button" key={loan.id} onClick={() => onOpen(loan)} className="grid min-h-14 w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500"><span><span className="block font-semibold text-slate-900">{loan.creditorName}</span><span className="block text-xs text-slate-500">{contractNumber(payments, loan.id) ? `Договор № ${contractNumber(payments, loan.id)}` : `Договор от ${formatDate(loan.startDate)}`}</span></span><span className="font-bold tabular-nums text-slate-950">{kind === "active" ? `Остаток ${formatMoney(value)}` : formatMoney(value)}</span></button>)
+          : <p className="px-4 py-8 text-center text-sm text-slate-500">Для выбранных фильтров строк нет.</p>}
+    </div>
+  </section>;
+}
+
+function Summary({ icon: Icon, label, value, tone, expanded, onClick }: { icon: typeof WalletCards; label: string; value: string; tone: "slate" | "violet" | "red" | "green"; expanded: boolean; onClick: () => void }) {
   const colors = { slate: "bg-slate-100 text-slate-700", violet: "bg-violet-100 text-violet-700", red: "bg-red-100 text-red-700", green: "bg-emerald-100 text-emerald-700" };
-  return <Card><CardContent className="flex items-center gap-3 pt-5"><div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${colors[tone]}`}><Icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-1 truncate text-xl font-bold tabular-nums text-slate-950">{value}</p></div></CardContent></Card>;
+  return <Card><button type="button" aria-expanded={expanded} onClick={onClick} className={`min-h-[84px] w-full cursor-pointer rounded-xl text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 ${expanded ? "bg-violet-50/60" : ""}`}><span className="flex items-center gap-2 px-3 py-3"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors[tone]}`}><Icon className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-xs font-medium leading-4 text-slate-500">{label}</span><span className="mt-1 block whitespace-nowrap text-lg font-bold leading-none tracking-tight tabular-nums text-slate-950 2xl:text-xl">{value}</span></span></span></button></Card>;
 }
 
 function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {

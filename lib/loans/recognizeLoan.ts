@@ -36,6 +36,7 @@ export interface LoanRecognitionOutcome {
   rateDate: string;
   suggestedCompanyId: string | null;
   suggestedAccountId: string | null;
+  terms?: RecognizedLoan["terms"];
 }
 
 function imageMediaType(file: LoanUpload) {
@@ -142,6 +143,7 @@ export async function recognizeLoanDocument(
     rateDate,
     suggestedCompanyId: company?.id ?? null,
     suggestedAccountId: account?.id ?? null,
+    terms: recognized.terms,
   };
 }
 

@@ -36,6 +36,7 @@ export interface LoanTermsStored {
   rateMode: "flat_period" | "actual_days";
   dayCountBasis: 365 | 366 | 360;
   interestPayout: "paid" | "capitalized";
+  paymentDay?: number | null;
   reinvestEveryPeriods: number | null;
   extraContributions: Array<{ date: string; amount: number }>;
   tranches: Array<{ date: string; amount: number }>;
