@@ -9,10 +9,21 @@ export function isWarehouseOperator(role: Role | string | null | undefined): boo
   return role === "warehouse";
 }
 
-/** Кто ставит задания, правит приход и отменяет документы. Внешний селлер в
- *  модуль склада не ходит вовсе, поэтому ему тоже «нет». */
+/** Кто ставит задания, правит приход и отменяет документы.
+ *
+ *  Внешний селлер — ДА: в своём юрлице он хозяин товара, а не наёмный
+ *  исполнитель, и вести склад без этих действий невозможно. Границу держит не
+ *  роль, а юрлицо: resolveEntity отдаёт ему только его собственное, и любой
+ *  документ, товар или партия чужого юрлица отсекаются до записи. */
 export function canManageStock(role: Role | string | null | undefined): boolean {
-  return Boolean(role) && role !== "warehouse" && role !== "seller";
+  return Boolean(role) && role !== "warehouse";
+}
+
+/** Внешняя компания: ей видна только своя часть склада, а общие справочники и
+ *  чужие кабинеты закрыты. Отдельно от canManageStock, потому что это не про
+ *  «сколько прав», а про «чьи данные». */
+export function isExternalSeller(role: Role | string | null | undefined): boolean {
+  return role === "seller";
 }
 
 export const OPERATOR_FORBIDDEN = "Это действие доступно администратору и менеджеру; оператору склада — нет";

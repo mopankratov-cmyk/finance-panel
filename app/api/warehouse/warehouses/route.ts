@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { isExternalSeller } from "@/lib/warehouse/operatorScope";
 import { parseWarehouseKind, type WarehouseKind } from "@/lib/warehouse/warehouseKind";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ interface DbRow {
   is_active: boolean;
   position: number;
   note: string | null;
+  created_by?: string | null;
 }
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
@@ -59,11 +61,30 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await db
     .from("warehouses")
-    .select("id, name, kind, is_active, position, note")
+    .select("id, name, kind, is_active, position, note, created_by")
     .order("position", { ascending: true })
     .order("name", { ascending: true });
 
   if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
+
+  // Склад — общее место хранения, и для наших юрлиц список общий намеренно. Но
+  // внешней компании чужие склады знать незачем: ей видны те, где лежит её
+  // товар, и те, что она завела сама. Пока таких нет, список пуст — первый
+  // склад она создаёт кнопкой.
+  const session = await getServerSession();
+  let visible = (data ?? []) as DbRow[];
+  if (isExternalSeller(session?.role)) {
+    const own = new Set<string>();
+    if (list.rows.length > 0) {
+      const used = await db
+        .from("stock_moves")
+        .select("warehouse_id")
+        .in("legal_entity_id", list.rows.map((row) => row.id))
+        .limit(2000);
+      for (const row of used.data ?? []) own.add(String(row.warehouse_id));
+    }
+    visible = visible.filter((row) => own.has(String(row.id)) || String(row.created_by ?? "") === (session?.email ?? ""));
+  }
 
   // Настройки пары «юрлицо + склад» — своя дата доверия у каждого юрлица на
   // общем складе. Без выбранного юрлица настроек нет, и это не ошибка.
@@ -82,7 +103,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ data: (data ?? []).map((r) => toRow(r as DbRow, settings)), error: null });
+  return NextResponse.json({ data: visible.map((r) => toRow(r, settings)), error: null });
 }
 
 export async function POST(request: NextRequest) {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { isExternalSeller } from "@/lib/warehouse/operatorScope";
+import { getServerSession } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -57,12 +59,22 @@ export async function GET(request: NextRequest) {
   // Без указания товара отдаём весь справочник размеров с моделями: экраны,
   // где выбирают позицию «вообще», иначе тянули бы карточки по одной.
   if (!productId) {
-    const catalog = await db
+    // Тот же справочник, что и в products, только со стороны размеров: внешней
+    // компании он ограничивается её юрлицами, иначе чужие позиции видны в
+    // выпадающих списках возврата и списания.
+    const session = await getServerSession();
+    const ownEntities = isExternalSeller(session?.role) ? list.rows.map((row) => row.id) : null;
+    if (ownEntities !== null && ownEntities.length === 0) {
+      return NextResponse.json({ data: [], error: null });
+    }
+    let catalogQuery = db
       .from("product_variants")
-      .select(`${COLUMNS}, products!inner(article, name, nm_id, photo_url)`)
+      .select(`${COLUMNS}, products!inner(article, name, nm_id, photo_url, legal_entity_id)`)
       .eq("is_active", true)
       .order("position")
       .order("size_label");
+    if (ownEntities !== null) catalogQuery = catalogQuery.in("products.legal_entity_id", ownEntities);
+    const catalog = await catalogQuery;
     if (catalog.error) {
       const code = catalog.error.code;
       return fail(missingMigration(code) ? migrationHint : catalog.error.message, missingMigration(code) ? 503 : 500);

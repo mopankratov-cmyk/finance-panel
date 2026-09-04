@@ -103,6 +103,11 @@ function isWarehouseApiAllowed(pathname: string, method: string): boolean {
 }
 
 function isSellerApiAllowed(pathname: string, method: string): boolean {
+  // Модуль склада: внешний селлер ведёт в нём СВОЙ склад — приёмки, задания,
+  // отгрузки, брак. Граница здесь не в списке путей, а в юрлице: каждый роут
+  // проходит resolveEntity, а тот отдаёт селлеру только юрлица его организации.
+  // Контур маркировки — исключение: он ходит в Честный Знак нашими токенами.
+  if (pathname.startsWith("/api/warehouse/")) return !pathname.startsWith("/api/warehouse/kiz");
   if (pathname === "/api/cabinets/self-service") return method === "GET" || method === "POST";
   // «Полки» открыты селлеру целиком: он сам ведёт конкурентов своего кабинета.
   // Tenant-граница — hasCabinetAccess в роутах: чужой кабинет и агрегат all → 403.

@@ -4,6 +4,7 @@ import { getServerSession } from "@/lib/auth/server";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { isExternalSeller } from "@/lib/warehouse/operatorScope";
 import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
 import {
   PRODUCT_COLUMNS, PRODUCT_COLUMNS_LEGACY, isMissingColumn, toProductRow, type DbProduct, type ProductRow,
@@ -47,11 +48,21 @@ export async function GET(request: NextRequest) {
 
   const names = new Map(list.rows.map((row) => [row.id, row.name]));
 
+  // Внешней компании справочник отдаётся только по её юрлицам. Без этого запрос
+  // без параметра `entity` вернул бы ей все товары группы вместе с закупочной
+  // ценой — то, ради чего границу и проводили.
+  const session = await getServerSession();
+  const ownEntities = isExternalSeller(session?.role) ? list.rows.map((row) => row.id) : null;
+  if (ownEntities !== null && ownEntities.length === 0) {
+    return NextResponse.json({ data: [], error: null });
+  }
+
   // Список колонок здесь переменная, а не литерал, и разбор типов запроса в
   // supabase-js на нём сдаётся — форму строки задаём сами.
   const loadProducts = (columns: string) => loadAllSupabasePages<DbProduct>((from, to) => {
     let request = db.from("products_view").select(columns).order("article").range(from, to);
     if (entityId) request = request.eq("legal_entity_id", entityId);
+    else if (ownEntities !== null) request = request.in("legal_entity_id", ownEntities);
     if (query) request = request.or(`article.ilike.%${query}%,name.ilike.%${query}%,barcode.ilike.%${query}%`);
     return request as unknown as PromiseLike<{ data: DbProduct[] | null; error: { message: string } | null }>;
   });
