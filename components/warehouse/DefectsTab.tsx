@@ -333,7 +333,11 @@ export function DefectsTab({
                   <td className="px-4 py-2.5 text-slate-500">{stamp(row.occurredAt)}</td>
                   <td className="px-4 py-2.5 text-slate-600">{writeoffSource(row.docType)}</td>
                   <td className="max-w-xs truncate px-4 py-2.5 text-slate-500">{writeoffReason(row.reason)}</td>
-                  <td className={`px-4 py-2.5 text-right font-semibold ${row.reversed ? "text-slate-500" : "text-red-600"}`}>{formatNumber(row.qty)}</td>
+                  <td className={`px-4 py-2.5 text-right font-semibold ${
+                    row.restored ? "text-emerald-600" : row.reversed ? "text-slate-500" : "text-red-600"
+                  }`}>
+                    {row.restored ? "+" : ""}{formatNumber(row.qty)}
+                  </td>
                   <td className="px-4 py-2.5 text-right text-slate-700">{money(row.amount)}</td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-right">
                     {row.canRevert && canManage ? (

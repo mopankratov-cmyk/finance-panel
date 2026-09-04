@@ -24,6 +24,8 @@ export interface WriteoffRow {
   article: string;
   sizeLabel: string;
   qty: number;
+  /** Строка вернула товар в остаток (сторно), а не списала его. */
+  restored: boolean;
   amount: number;
   reason: string | null;
   /** Откуда списание: writeoff (руками), purchase_receipt (брак при приёмке),
@@ -133,6 +135,9 @@ export async function GET(request: NextRequest) {
       sizeLabel: sizes.get(String(row.variant_id)) ?? "",
       qty: Math.abs(Number(row.qty)),
       amount: Math.abs(Number(row.amount)),
+      // Сторно пишет ту же строку с плюсом: в журнале это возврат в остаток, и
+      // показывать его красным как потерю — врать про минус, которого не было.
+      restored: Number(row.qty) > 0,
       reason: row.note,
       docType,
       occurredAt: String(row.occurred_at),
