@@ -167,6 +167,23 @@ export async function savePayrollEmployee(employee: PayrollEmployee): Promise<vo
   if (privateResponse.status !== 403) await json<{ ok: boolean }>(privateResponse);
 }
 
+/** Штатный Excel → сервер. preview=true — только разбор, без записи. Реквизиты — отдельно (importPayrollStaffPrivateFile). */
+export async function importPayrollStaffFile(file: File, options: { preview: boolean }): Promise<{ preview: boolean; employees: PayrollEmployee[]; created: number; updated: number }> {
+  const body = new FormData();
+  body.append("action", "import_staff");
+  body.append("preview", options.preview ? "1" : "0");
+  body.append("file", file);
+  return fetch("/api/payroll", { method: "POST", body }).then((response) => json<{ preview: boolean; employees: PayrollEmployee[]; created: number; updated: number }>(response));
+}
+
+/** Реквизиты и контакты из того же файла — только директор. */
+export async function importPayrollStaffPrivateFile(file: File): Promise<{ updated: number; skipped: number }> {
+  const body = new FormData();
+  body.append("action", "import_staff_private");
+  body.append("file", file);
+  return fetch("/api/payroll/private", { method: "POST", body }).then((response) => json<{ updated: number; skipped: number }>(response));
+}
+
 export async function importPayrollEmployees(records: Array<Pick<PayrollEmployee, "fullName" | "employmentDetails" | "employmentType" | "hireDate" | "terminationDate" | "employerName" | "companyIds" | "companyId" | "position" | "project" | "city" | "monthlySalary" | "defaultPaymentMethod">>): Promise<number> {
   const result = await fetch("/api/payroll", {
     method: "POST",

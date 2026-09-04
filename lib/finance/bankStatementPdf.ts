@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
 import type { BankStatement } from "./bankStatementGrid";
 import { ANTHROPIC_MODEL } from "@/lib/ai/models";
+import { COMPANY_ALIAS_PROMPT_NOTE } from "@/lib/finance/companyAliases";
 
 // Распознавание PDF-выписки ИИ. Перенесено из роута без изменения логики:
 // провайдеры запускаются одновременно, выбирается результат с наименьшим
@@ -47,7 +48,7 @@ const system = `Ты распознаёшь российские банковс�
 - accountNumber — счёт владельца выписки, а не счёт контрагента.
 - declaredDebit и declaredCredit — положительные контрольные итоги расходов и поступлений. Если итогов нет, рассчитай их по операциям.
 - id сделай устойчивым: дата|время или номер документа|сумма|последние цифры карты/счёта.
-- ИП Филиппов и ИП Коровкин в панели считаются одним юридическим лицом, но owner верни как написано в документе.
+- ${COMPANY_ALIAS_PROMPT_NOTE}, но owner верни как написано в документе.
 - Ничего не выдумывай; неизвестные реквизиты оставляй пустыми.`;
 
 function extractJson(value: string): RawStatement {

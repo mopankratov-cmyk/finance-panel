@@ -9,7 +9,6 @@ import { consumedFactIds } from "@/lib/finance/factLinks";
 import { paymentIsPayrollCandidate } from "@/lib/payroll/model";
 import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "./ddsCompanies";
-import { readFirstSheetXlsx } from "./bankStatement";
 import {
   EMPLOYMENT_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -32,74 +31,10 @@ import {
   type PayrollAccrualLine,
   type PayrollPaymentMethod,
 } from "./payroll";
-import { allocatePayrollPayment, importPayrollEmployees, importPayrollRequisites, loadPayrollData, savePayrollDebt, savePayrollEmployee, savePayrollPeriod } from "./payrollStore";
+import { allocatePayrollPayment, importPayrollStaffFile, importPayrollStaffPrivateFile, loadPayrollData, savePayrollDebt, savePayrollEmployee, savePayrollPeriod } from "./payrollStore";
 
 const EMPTY_DATA: PayrollData = { employees: [], periods: [], entries: [], debts: [], allocations: [] };
-const ACTIVE_EMPLOYEE_SURNAMES = new Set(["ефремова", "заляева", "камалова", "митриченко", "тимошина", "шук", "лушникова"]);
-
-function spreadsheetMoney(value: string): number {
-  const match = String(value ?? "").replace(/\u00a0/g, " ").match(/\d[\d .]*(?:,\d+)?/);
-  if (!match) return 0;
-  const raw = match[0].trim();
-  if (/^\d{1,3}\.\d{3}$/.test(raw)) return Number(raw.replace(".", ""));
-  return Number(raw.replace(/\s/g, "").replace(",", ".")) || 0;
-}
-
-function spreadsheetDate(value: string): string | null {
-  const raw = String(value ?? "").trim();
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)?.slice(1);
-  if (iso) return `${iso[0]}-${iso[1]}-${iso[2]}`;
-  const ru = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
-  return ru ? `${ru[3]}-${ru[2].padStart(2, "0")}-${ru[1].padStart(2, "0")}` : null;
-}
-
-function splitSpreadsheetPaymentDetails(details: string) {
-  const isSettlementAccount = /р\/?с|расчетн|расчётн|бик|корр(?:еспондентский)?\s*сч/i.test(details);
-  return {
-    settlementAccountDetails: isSettlementAccount ? details : "",
-    cardTransferDetails: isSettlementAccount ? "" : details,
-  };
-}
-
-function companyIdsFromSpreadsheet(row: string[], companies: DdsCompany[]): string[] {
-  const source = [row[2], row[5], row[9], row[10], row[11]].filter(Boolean).join(" ").toLocaleLowerCase("ru-RU");
-  return companies.filter((company) => {
-    const name = company.name.toLocaleLowerCase("ru-RU").replace(/[^a-zа-я0-9 ]/gi, " ");
-    const terms = name.split(/\s+/).filter((term) => term.length >= 3 && !["ооо", "ип"].includes(term));
-    return terms.length > 0 && terms.every((term) => source.includes(term));
-  }).map((company) => company.id);
-}
-
-function employeesFromSpreadsheet(grid: string[][], companies: DdsCompany[] = []): PayrollEmployee[] {
-  return grid.slice(2).flatMap((row, index) => {
-    const fullName = String(row[1] ?? "").trim();
-    if (!fullName) return [];
-    const employment = String(row[2] ?? "").toLowerCase();
-    const surname = fullName.toLowerCase().split(" ")[0];
-    const employmentType: PayrollEmploymentType = /частич/.test(employment) ? "partial" : /самозан/.test(employment) ? "self_employed" : /индивидуаль|\bип\b/.test(employment) ? "individual_entrepreneur" : /официал/.test(employment) ? "official" : "unofficial";
-    const details = String(row[17] ?? "").trim();
-    const digits = details.replace(/\D/g, "");
-    const paymentOptions = splitSpreadsheetPaymentDetails(details);
-    const companyIds = companyIdsFromSpreadsheet(row, companies);
-    return [{
-      id: `00000000-0000-4001-8000-${String(index + 1).padStart(12, "0")}`,
-      fullName,
-      employmentStatus: ACTIVE_EMPLOYEE_SURNAMES.has(surname) ? "active" : "terminated",
-      employmentType,
-      employmentDetails: employment,
-      hireDate: spreadsheetDate(row[3] ?? ""),
-      terminationDate: surname === "камалова" ? "2026-09-05" : spreadsheetDate(row[6] ?? ""),
-      employerName: String(row[5] ?? "").trim(), companyIds, companyId: companyIds[0] ?? null,
-      position: String(row[8] ?? "").trim(), project: String(row[9] ?? "").trim(), city: String(row[12] ?? "").trim(),
-      workEmail: String(row[13] ?? "").trim(), birthDate: spreadsheetDate(row[23] ?? ""),
-      monthlySalary: spreadsheetMoney(row[14] ?? ""), taxRate: null,
-      defaultPaymentMethod: employmentType === "individual_entrepreneur" || employmentType === "self_employed" ? "bank_account" : "card",
-      bankName: String(row[18] ?? "").trim(), phone: String(row[24] ?? "").replace(/\.0$/, "").trim(), paymentDetails: details,
-      ...paymentOptions,
-      paymentDetailsMasked: digits.length >= 4 ? `•••• ${digits.slice(-4)}` : details, notes: [row[15], row[16]].filter(Boolean).join("; "),
-    }];
-  });
-}
+// Разбор штатного Excel — на сервере (lib/payroll/staffSheet.ts); форма только отправляет файл.
 
 export function PayrollRegister({ accounts, companies, payments, onCalendarUpdated }: { accounts: Account[]; companies: DdsCompany[]; payments: Payment[]; onCalendarUpdated: () => Promise<void> }) {
   const today = todayISO();
@@ -455,18 +390,21 @@ function StaffDirectory({ activeEmployees, formerEmployees, companies, preview, 
   const [message, setMessage] = useState("");
   const importFile = async (file: File) => {
     try {
-      const grid = await readFirstSheetXlsx(file);
-      const parsed = employeesFromSpreadsheet(grid, companies);
-      const records = parsed.map((employee) => ({ fullName: employee.fullName, paymentDetails: employee.paymentDetails, settlementAccountDetails: employee.settlementAccountDetails, cardTransferDetails: employee.cardTransferDetails, bankName: employee.bankName, phone: employee.phone, workEmail: employee.workEmail, birthDate: employee.birthDate }));
       if (preview) {
-        onPreviewLoaded(parsed);
-        setMessage(`Загружен предпросмотр: ${parsed.length} сотрудников со всеми контактами и реквизитами из файла.`);
+        const result = await importPayrollStaffFile(file, { preview: true });
+        onPreviewLoaded(result.employees);
+        setMessage(`Предпросмотр: ${result.employees.length} сотрудников из файла. Реквизиты и контакты загрузятся при сохранении.`);
         return;
       }
-      const [updated, privateUpdated] = await Promise.all([importPayrollEmployees(parsed), importPayrollRequisites(records)]);
-      setMessage(`Обновлены штатные данные: ${updated}; реквизиты и контакты: ${privateUpdated} сотрудников.`);
+      const staff = await importPayrollStaffFile(file, { preview: false });
+      let privateNote = "реквизиты грузит директор";
+      if (canViewPrivate) {
+        const priv = await importPayrollStaffPrivateFile(file);
+        privateNote = `реквизиты и контакты: ${priv.updated}`;
+      }
+      setMessage(`Штат обновлён: новых ${staff.created}, обновлено ${staff.updated}; ${privateNote}.`);
       await onImported();
-    } catch (caught) { setMessage(caught instanceof Error ? caught.message : "Не удалось импортировать реквизиты"); }
+    } catch (caught) { setMessage(caught instanceof Error ? caught.message : "Не удалось импортировать штат"); }
   };
   return <div className="space-y-4">
     <Card><div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center"><div className="flex min-w-0 flex-1 items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700"><UsersRound className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-slate-950">Штат</h2><p className="mt-1 text-sm text-slate-500">Должности, оформление, город и оклады. Платёжные реквизиты вынесены в отдельную вкладку.</p></div></div><div className="flex flex-wrap gap-2">{onAdd && <button type="button" onClick={onAdd} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-bold text-white hover:bg-violet-700"><Plus className="h-4 w-4" />Добавить сотрудника</button>}{canViewPrivate && <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-violet-300 px-4 text-sm font-semibold text-violet-700 hover:bg-violet-50"><FileSpreadsheet className="h-4 w-4" />{preview ? "Загрузить сотрудников из Excel" : "Обновить данные из Excel"}<input type="file" accept=".xlsx" className="hidden" onChange={(event) => event.target.files?.[0] && void importFile(event.target.files[0])} /></label>}</div></div>{message && <p className="mx-5 mb-5 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">{message}</p>}</Card>

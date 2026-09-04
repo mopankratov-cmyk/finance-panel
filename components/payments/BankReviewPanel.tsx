@@ -33,6 +33,7 @@ import { categoryMatchesDirection, requiresCounterparty } from "./bankAutoClassi
 import { suggestLoanSplits } from "./loanReviewSuggestion";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadFinanceState } from "@/lib/db";
+import { companyAliasKeys } from "@/lib/finance/companyAliases";
 
 // Статьи — из единого справочника (раньше свой список дублировал «Получение кредитов и займов»).
 const REVIEW_CATEGORIES = DDS_CATEGORIES;
@@ -47,9 +48,10 @@ function mentionedCompanyId(item: BankReviewItem, companies: DdsCompany[]) {
     return company.id !== item.companyId && Boolean(name) && answer.includes(name);
   });
   if (direct) return direct.id;
-  if (answer.includes("филиппов")) {
+  const aliasKeys = companyAliasKeys(answer);
+  if (aliasKeys.length) {
     return companies.find((company) => company.id !== item.companyId
-      && /филиппов|коровкин/.test(normalizeCompanyText(company.name)))?.id ?? null;
+      && aliasKeys.some((key) => normalizeCompanyText(company.name).includes(key)))?.id ?? null;
   }
   return null;
 }

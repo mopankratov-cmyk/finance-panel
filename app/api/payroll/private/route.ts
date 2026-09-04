@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { xlsxGrid } from "@/lib/finance/xlsxGrid";
+import { staffFromGrid } from "@/lib/payroll/staffSheet";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,40 @@ export async function POST(request: NextRequest) {
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  // Реквизиты и контакты из штатного Excel — тем же файлом, но только сюда и только директору.
+  if ((request.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+    const form = await request.formData();
+    if (text(form.get("action"), 40) !== "import_staff_private") return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: "Выберите файл «Сотрудники.xlsx»" }, { status: 400 });
+    if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "Файл больше 10 МБ" }, { status: 413 });
+    const parsed = staffFromGrid(xlsxGrid(Buffer.from(await file.arrayBuffer())));
+    if (!parsed.length) return NextResponse.json({ error: "В файле не найдено ни одного сотрудника" }, { status: 400 });
+    const employees = await db.from("payroll_employees").select("id,full_name").in("full_name", parsed.map((employee) => employee.fullName));
+    if (employees.error) return NextResponse.json({ error: employees.error.message }, { status: 500 });
+    const idByName = new Map((employees.data ?? []).map((row) => [String(row.full_name), String(row.id)]));
+    const rows = parsed.flatMap((employee) => {
+      const employeeId = idByName.get(employee.fullName);
+      if (!employeeId) return [];
+      return [{
+        employee_id: employeeId,
+        bank_name: text(employee.bankName, 120) || null,
+        phone: text(employee.phone, 120) || null,
+        work_email: text(employee.workEmail, 200) || null,
+        birth_date: employee.birthDate,
+        settlement_account_details: text(employee.settlementAccountDetails) || null,
+        card_transfer_details: text(employee.cardTransferDetails, 1000) || null,
+        payment_details: text(employee.paymentDetails, 1000) || null,
+        payment_details_masked: text(employee.paymentDetailsMasked, 200) || null,
+        updated_at: new Date().toISOString(),
+      }];
+    });
+    if (rows.length) {
+      const result = await db.from("payroll_employee_private").upsert(rows, { onConflict: "employee_id" });
+      if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
+    }
+    return NextResponse.json({ updated: rows.length, skipped: parsed.length - rows.length });
+  }
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "Некорректные данные" }, { status: 400 });
   const action = text(body.action, 40);

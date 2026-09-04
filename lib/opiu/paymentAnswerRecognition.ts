@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ANTHROPIC_MODEL } from "@/lib/ai/models";
+import { COMPANY_ALIAS_PROMPT_NOTE } from "@/lib/finance/companyAliases";
 
 export interface PaymentAnswerContext {
   answer: string;
@@ -37,7 +38,7 @@ export async function recognizePaymentAnswer(context: PaymentAnswerContext): Pro
 Верни только JSON: {"category":string|null,"companyId":string|null,"confidence":0..1,"clarification":string|null,"explanation":string}.
 category выбирай только из переданного списка. companyId — только из переданного списка компаний.
 Если неясна статья или компания, confidence должен быть ниже 0.85 и clarification должен содержать один короткий конкретный вопрос.
-ИП Филиппов и ИП Коровкин — одно юрлицо. «Сервис», программа, подписка, ЭЦП и ИИ обычно относятся к ПО, но при неоднозначности уточни назначение.`,
+${COMPANY_ALIAS_PROMPT_NOTE}. «Сервис», программа, подписка, ЭЦП и ИИ обычно относятся к ПО, но при неоднозначности уточни назначение.`,
     messages: [{ role: "user", content: JSON.stringify(context) }],
   });
   const text = response.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");

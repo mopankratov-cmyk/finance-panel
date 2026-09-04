@@ -1,6 +1,7 @@
 import type { BankStatement, BankStatementRow } from "./bankStatement";
 import type { DdsCompany } from "./ddsCompanies";
 import type { Account, Payment } from "@/lib/types";
+import { companyAliasKeys, sameCompanyAlias } from "@/lib/finance/companyAliases";
 
 export interface BankAccountMapping {
   bankAccountNumber: string;
@@ -123,14 +124,11 @@ function ownerCompany(statement: BankStatement, companies: DdsCompany[], mapping
   // `name.includes("")` было бы true для первой же компании, и вся выписка
   // уходила ей с уверенностью 0.94. Лучше «не знаю» и ручная проверка.
   if (!owner) return null;
-  if (owner.includes("филиппов")) {
-    const korovkin = companies.find((item) => normalize(item.name).includes("коровкин"));
-    if (korovkin) {
-      return {
-        companyId: korovkin.id,
-        confidence: 1,
-        reason: "ИП Филиппов учтён как ИП Коровкин",
-      };
+  const aliasKeys = companyAliasKeys(owner);
+  if (aliasKeys.length) {
+    const aliased = companies.filter((item) => aliasKeys.some((key) => normalize(item.name).includes(key)));
+    if (aliased.length === 1) {
+      return { companyId: aliased[0].id, confidence: 1, reason: `Владелец «${statement.owner}» учтён как ${aliased[0].name} (справочник алиасов)` };
     }
   }
   const matched = companies.filter((item) => {
@@ -167,7 +165,7 @@ function accountFromOwnerAndBank(statement: BankStatement, accounts: Account[]) 
     let score = 0;
     for (const word of ownerWords) if (name.includes(word)) score += 2;
     for (const word of bankWords) if (name.includes(word)) score += 3;
-    if (statement.owner.toLowerCase().includes("филиппов") && name.includes("коровкин")) score += 4;
+    if (sameCompanyAlias(statement.owner, name)) score += 4;
     return { account, score };
   }).sort((a, b) => b.score - a.score);
   if (!ranked[0] || ranked[0].score < 5 || ranked[0].score === ranked[1]?.score) return null;

@@ -6,6 +6,7 @@ import { roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { xlsxGrid } from "@/lib/finance/xlsxGrid";
 import { isImageMediaType, type AiRecognitionBody } from "./aiRecognition";
 import { monthlySchedule, normalizeScheduleMoney, recognizedSchedule, scheduleRow, type LoanScheduleDraft } from "./schedule";
+import { sameCompanyAlias } from "@/lib/finance/companyAliases";
 
 // Распознавание договора целиком на сервере: текст описания + файл (PDF,
 // картинка, DOCX, XLSX) → условия, график, курс, предложенные компания и
@@ -50,7 +51,7 @@ function imageMediaType(file: LoanUpload) {
 function companyMatchesHint(companyName: string, hint: string) {
   const company = companyName.toLowerCase();
   const recognized = hint.toLowerCase();
-  if (/филиппов|коровкин/.test(recognized)) return /филиппов|коровкин/.test(company);
+  if (sameCompanyAlias(recognized, company)) return true;
   return company.includes(recognized) || recognized.includes(company);
 }
 

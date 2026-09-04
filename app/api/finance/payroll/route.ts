@@ -11,6 +11,9 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { FinanceAction, FinanceState, Payment } from "@/lib/types";
 import { PAYROLL_PREVIEW_EMPLOYEES } from "@/components/payments/payrollPreview";
+import { xlsxGrid } from "@/lib/finance/xlsxGrid";
+import { publicStaffFields, staffFromGrid } from "@/lib/payroll/staffSheet";
+import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +94,51 @@ export async function POST(request: NextRequest) {
   const db = dbOrError();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   try {
+  // Штатный Excel разбирается на сервере (файл multipart), а не в браузере:
+  // у любого сотрудника по одному файлу получается один и тот же справочник.
+  // Здесь — только публичные поля; реквизиты и контакты грузит /api/payroll/private.
+  if ((request.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+    const form = await request.formData();
+    if (text(form.get("action"), 40) !== "import_staff") return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: "Выберите файл «Сотрудники.xlsx»" }, { status: 400 });
+    if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "Файл больше 10 МБ" }, { status: 413 });
+    const preview = text(form.get("preview"), 5) === "1";
+    const companies = await db.from("companies").select("id,name").eq("is_active", true);
+    if (companies.error) return NextResponse.json({ error: companies.error.message }, { status: 500 });
+    const parsed = staffFromGrid(xlsxGrid(Buffer.from(await file.arrayBuffer())), (companies.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })));
+    if (!parsed.length) return NextResponse.json({ error: "В файле не найдено ни одного сотрудника (ФИО во второй колонке, две строки шапки)" }, { status: 400 });
+    if (parsed.length > 500) return NextResponse.json({ error: "Слишком много строк" }, { status: 413 });
+    const publicEmployees = parsed.map(publicStaffFields);
+    if (preview) return NextResponse.json({ preview: true, employees: publicEmployees, created: 0, updated: 0 });
+    const known = await db.from("payroll_employees").select("id,full_name").in("full_name", parsed.map((employee) => employee.fullName));
+    if (known.error) return NextResponse.json({ error: known.error.message }, { status: 500 });
+    const idByName = new Map((known.data ?? []).map((row) => [String(row.full_name), String(row.id)]));
+    const now = new Date().toISOString();
+    const rows = parsed.map((employee) => ({
+      id: idByName.get(employee.fullName) ?? randomUUID(),
+      full_name: employee.fullName,
+      employment_status: employee.employmentStatus,
+      employment_type: employee.employmentType,
+      employment_details: employee.employmentDetails || null,
+      hire_date: employee.hireDate,
+      termination_date: employee.terminationDate,
+      employer_name: employee.employerName || null,
+      company_ids: employee.companyIds,
+      company_id: employee.companyId,
+      position: employee.position || null,
+      project: employee.project || null,
+      city: employee.city || null,
+      monthly_salary: Math.max(0, money(employee.monthlySalary)),
+      default_payment_method: employee.defaultPaymentMethod,
+      notes: employee.notes || null,
+      updated_at: now,
+    }));
+    const result = await db.from("payroll_employees").upsert(rows, { onConflict: "id" });
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
+    const created = rows.filter((row) => !idByName.has(row.full_name)).length;
+    return NextResponse.json({ preview: false, employees: publicEmployees, created, updated: rows.length - created });
+  }
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "Некорректные данные" }, { status: 400 });
   const action = text(body.action, 40);

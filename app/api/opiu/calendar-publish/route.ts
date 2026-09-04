@@ -75,7 +75,9 @@ export async function POST(request: Request) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   const [company, account] = await Promise.all([
     db.from("companies").select("id").eq("id", scope.companyId).eq("is_active", true).maybeSingle(),
-    db.from("finance_accounts").select("id").eq("id", scope.accountId).maybeSingle(),
+    // Счёт проверяется по источнику правды `accounts`, а не по зеркалу finance_accounts,
+    // которое наполняется только при открытии календаря (DDS-RULES §1).
+    db.from("accounts").select("id").eq("id", scope.accountId).maybeSingle(),
   ]);
   if (company.error || !company.data) return NextResponse.json({ error: "Компания не найдена или отключена" }, { status: 400 });
   if (account.error || !account.data) return NextResponse.json({ error: "Счёт получения не найден" }, { status: 400 });

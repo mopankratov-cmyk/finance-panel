@@ -1,5 +1,6 @@
 import type { BankReviewItem } from "./bankReviewStore";
 import type { DdsCompany } from "./ddsCompanies";
+import { companyAliasKeys } from "@/lib/finance/companyAliases";
 
 export const BANK_SPLIT_PREFIX = "__bank_split_v1:";
 
@@ -45,7 +46,7 @@ function categoryFor(description: string) {
 
 function companyFor(description: string, companies: DdsCompany[]) {
   const value = normalize(description);
-  const aliases = value.includes("филиппов") ? ["коровкин", "филиппов"] : [];
+  const aliases = companyAliasKeys(value);
   for (const company of companies) {
     const name = normalize(company.name).replace(/^ип |^ооо /, "");
     if ((name && value.includes(name)) || aliases.some((alias) => normalize(company.name).includes(alias))) return company.id;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { findCertainTransferPairs } from "@/lib/opiu/bankTransferMatching";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { transferCategories } from "@/lib/opiu/bankTransferClassification";
@@ -64,30 +65,41 @@ export async function GET(request: NextRequest) {
   }
 
   if (resource === "google-sync") {
-    const [items, payments] = await Promise.all([
-      db.from("bank_review_items")
-        .select("*")
-        .in("status", ACTIVE_STATUSES)
-        .order("date", { ascending: true })
-        .limit(5_000),
-      db.from("payments")
-        .select("id,import_source")
-        .like("import_source", "bank-review:%")
-        .limit(20_000),
-    ]);
-    if (items.error) return jsonError(items.error.message, 500);
-    if (payments.error) return jsonError(payments.error.message, 500);
-    return NextResponse.json({ items: items.data ?? [], payment_sources: payments.data ?? [] });
+    // Без листания PostgREST молча отдаёт первую тысячу — .limit(5000) не помогает.
+    try {
+      const [items, payments] = await Promise.all([
+        loadAllSupabasePages<Record<string, unknown>>((from, to) => db
+          .from("bank_review_items")
+          .select("*")
+          .in("status", ACTIVE_STATUSES)
+          .order("date", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to), { label: "Очередь выписок для Google" }),
+        loadAllSupabasePages<{ id: string; import_source: string | null }>((from, to) => db
+          .from("payments")
+          .select("id,import_source")
+          .like("import_source", "bank-review:%")
+          .order("id", { ascending: true })
+          .range(from, to), { label: "Платежи из выписок", maxPages: 60 }),
+      ]);
+      return NextResponse.json({ items, payment_sources: payments });
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "Не удалось прочитать очередь", 500);
+    }
   }
 
-  const { data, error } = await db
-    .from("bank_review_items")
-    .select("*")
-    .in("status", ACTIVE_STATUSES)
-    .order("date", { ascending: false })
-    .limit(5_000);
-  if (error) return jsonError(error.message, 500);
-  return NextResponse.json({ items: data ?? [] });
+  try {
+    const items = await loadAllSupabasePages<Record<string, unknown>>((from, to) => db
+      .from("bank_review_items")
+      .select("*")
+      .in("status", ACTIVE_STATUSES)
+      .order("date", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, to), { label: "Очередь выписок" });
+    return NextResponse.json({ items });
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Не удалось прочитать очередь", 500);
+  }
 }
 
 export async function POST(request: Request) {
@@ -184,13 +196,19 @@ export async function POST(request: Request) {
     })
     .select("id");
   if (error) return jsonError(error.message, 500);
-  const active = await db.from("bank_review_items")
+  type ActiveRow = { id: string; date: string; amount: number | string; bank_account_number: string | null; owner_inn: string | null; counterparty_inn: string | null; reasons: unknown; company_id: string | null; account_id: string | null; category: string | null; matched_transfer_id: string | null };
+  let activeRows: ActiveRow[];
+  try {
+    activeRows = await loadAllSupabasePages<ActiveRow>((from, to) => db.from("bank_review_items")
       .select("id,date,amount,bank_account_number,owner_inn,counterparty_inn,reasons,company_id,account_id,category,matched_transfer_id")
       .in("status", ACTIVE_STATUSES)
       .is("matched_transfer_id", null)
-      .limit(5_000);
-  if (active.error) return jsonError(active.error.message, 500);
-  const activeRows = active.data ?? [];
+      .order("date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to), { label: "Очередь выписок: встречные переводы" });
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Не удалось прочитать очередь", 500);
+  }
   const byId = new Map(activeRows.map((row) => [row.id, row]));
   const pairs = findCertainTransferPairs(activeRows.map((row) => ({
     id: row.id,
@@ -338,18 +356,21 @@ export async function DELETE() {
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return jsonError("Серверная база не настроена", 503);
-  const imported = await db.from("payments").select("id").like("import_source", "bank-review:%").limit(20_000);
-  if (imported.error) return jsonError(imported.error.message, 500);
-  const paymentIds = (imported.data ?? []).map((row) => row.id);
-  if (paymentIds.length) {
-    const deletedPayments = await db.from("payments").delete().in("id", paymentIds);
+  let paymentIds: string[];
+  let reviewIds: string[];
+  try {
+    paymentIds = (await loadAllSupabasePages<{ id: string }>((from, to) => db.from("payments").select("id").like("import_source", "bank-review:%").order("id", { ascending: true }).range(from, to), { label: "Платежи из выписок", maxPages: 60 })).map((row) => row.id);
+    reviewIds = (await loadAllSupabasePages<{ id: string }>((from, to) => db.from("bank_review_items").select("id").order("id", { ascending: true }).range(from, to), { label: "Очередь выписок", maxPages: 60 })).map((row) => row.id);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Не удалось прочитать очередь", 500);
+  }
+  // Удаляем пачками: .in() на тысячи id упирается в длину URL PostgREST.
+  for (let index = 0; index < paymentIds.length; index += 300) {
+    const deletedPayments = await db.from("payments").delete().in("id", paymentIds.slice(index, index + 300));
     if (deletedPayments.error) return jsonError(deletedPayments.error.message, 500);
   }
-  const reviewRows = await db.from("bank_review_items").select("id").limit(20_000);
-  if (reviewRows.error) return jsonError(reviewRows.error.message, 500);
-  const reviewIds = (reviewRows.data ?? []).map((row) => row.id);
-  if (reviewIds.length) {
-    const deletedReview = await db.from("bank_review_items").delete().in("id", reviewIds);
+  for (let index = 0; index < reviewIds.length; index += 300) {
+    const deletedReview = await db.from("bank_review_items").delete().in("id", reviewIds.slice(index, index + 300));
     if (deletedReview.error) return jsonError(deletedReview.error.message, 500);
   }
   return NextResponse.json({ reviewItemsDeleted: reviewIds.length, paymentsDeleted: paymentIds.length });

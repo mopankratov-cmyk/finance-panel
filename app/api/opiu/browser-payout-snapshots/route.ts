@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   }
   const [company, account] = await Promise.all([
     db.from("companies").select("id").eq("id", incoming.companyId).eq("is_active", true).maybeSingle(),
-    db.from("finance_accounts").select("id").eq("id", incoming.accountId).maybeSingle(),
+    db.from("accounts").select("id").eq("id", incoming.accountId).maybeSingle(),
   ]);
   if (company.error || !company.data || account.error || !account.data) {
     return NextResponse.json({ error: "Компания или счёт снимка не найдены" }, { status: 409 });
