@@ -14,12 +14,25 @@ import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Loan, Payment } from "@/lib/types";
 import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
-import { closeLoanScheduleRows, loadLoanScheduleRows, saveLoanScheduleRows } from "./scheduleStore";
+import { closeLoanScheduleRows, closeLoanScheduleRowWithWb, loadLoanScheduleRows, saveLoanScheduleRows } from "./scheduleStore";
 import { loadFinanceState } from "@/lib/db";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
 
 type SummaryKey = "outstanding" | "interest" | "next30" | "overdue" | "active";
+
+type MarketplaceFact = {
+  source: string; cabinetId: string; rrdId: string; date: string; amountRub: number; contractNumber: string | null;
+  kind: "principal" | "interest" | "penalty" | "fine" | "fee" | "unknown"; reason: string;
+  loanId: string | null; loanName: string | null; scheduleRowId: string | null; state: "recorded" | "ready" | "review" | "unassigned";
+};
+
+async function loadMarketplaceFacts(): Promise<MarketplaceFact[]> {
+  const response = await fetch("/api/finance/loans/marketplace-facts", { cache: "no-store" });
+  const body = await response.json().catch(() => ({})) as { facts?: MarketplaceFact[]; error?: string };
+  if (!response.ok) throw new Error(body.error || "Не удалось прочитать удержания WB");
+  return body.facts ?? [];
+}
 
 const marker = (loanId: string) => `[loan:${loanId}:`;
 const receiptMarker = (loanId: string) => `[loan:${loanId}:receipt]`;
@@ -151,6 +164,8 @@ export function LoansPage() {
   // Строки графиков из loan_schedule_rows; пока их нет (до миграции или у старых
   // договоров) — график читается по меткам платежей, как раньше.
   const [scheduleRows, setScheduleRows] = useState<ScheduleRowRecord[]>([]);
+  const [marketplaceFacts, setMarketplaceFacts] = useState<MarketplaceFact[]>([]);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(false);
   const reconciledRef = useRef(false);
   const contractNumberBackfillRef = useRef(false);
   const today = todayISO();
@@ -162,6 +177,7 @@ export function LoansPage() {
       setCompanyByPayment(new Map(links.map((link) => [link.paymentId, link.companyId])));
     });
     loadLoanScheduleRows().then((result) => setScheduleRows(result.rows)).catch(() => setScheduleRows([]));
+    loadMarketplaceFacts().then(setMarketplaceFacts).catch(() => setMarketplaceFacts([]));
   }, []);
 
   useDailyLoanCurrencyRefresh(state.payments, dispatch, (error) => {
@@ -287,6 +303,33 @@ export function LoansPage() {
     if (showResult) alert(matched ? `Сверка завершена: ${matched} платежей по графикам найдены в ДДС и отмечены оплаченными.` : "Новых совпадений с фактическими платежами ДДС не найдено.");
   }, [companyByPayment, dispatch, scheduleRows, state.loans, state.payments]);
 
+  const reconcileWithWb = useCallback(async () => {
+    setMarketplaceLoading(true);
+    try {
+      const facts = await loadMarketplaceFacts();
+      const ready = facts.filter((fact) => fact.state === "ready" && fact.scheduleRowId);
+      let closed = 0;
+      for (const fact of ready) {
+        try {
+          await closeLoanScheduleRowWithWb(fact.scheduleRowId!, fact.cabinetId, fact.rrdId);
+          closed++;
+        } catch (error) {
+          console.error("Не удалось закрыть строку удержанием WB", error);
+        }
+      }
+      const [freshFacts, fresh, schedule] = await Promise.all([loadMarketplaceFacts(), loadFinanceState(), loadLoanScheduleRows()]);
+      setMarketplaceFacts(freshFacts);
+      dispatch({ type: "LOAD", payload: fresh });
+      setScheduleRows(schedule.rows);
+      const review = freshFacts.filter((fact) => fact.state === "review" || fact.state === "unassigned").length;
+      alert(closed ? `WB: автоматически отмечено оплатой ${closed} строк графика.${review ? ` Ещё ${review} удержаний ждут проверки.` : ""}` : review ? `WB: точных совпадений нет. ${review} удержаний ждут проверки в очереди.` : "Новых удержаний WB по кредитам не найдено.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось сверить удержания WB");
+    } finally {
+      setMarketplaceLoading(false);
+    }
+  }, [dispatch]);
+
   useEffect(() => {
     if (reconciledRef.current || state.loans.length === 0 || state.payments.length === 0 || companyByPayment.size === 0) return;
     reconciledRef.current = true;
@@ -409,6 +452,7 @@ export function LoansPage() {
           <div><h1 className="text-2xl font-bold text-slate-950">Кредиты и займы</h1><p className="mt-1 text-sm text-slate-500">Договоры, графики, остаток долга и ближайшие оплаты</p></div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => void reconcileWithDds(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"><RefreshCw className="h-4 w-4" /> Сверить с ДДС</button>
+            <button onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-4 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${marketplaceLoading ? "animate-spin" : ""}`} /> Сверить удержания WB</button>
             <button onClick={() => downloadSimpleXlsx(rowsForExport, `Учёт_финансовой_деятельности_${today}.xlsx`, "Учёт кредитов займов от сторонн")} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> Excel</button>
             <button onClick={() => void syncGoogle()} disabled={syncing} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Google Таблица</button>
             <button onClick={() => { setEditing(null); setModalOpen(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> Новый договор</button>
@@ -466,6 +510,8 @@ export function LoansPage() {
       />}
 
       {overdue.length > 0 && <button type="button" aria-expanded={expandedSummary === "overdue"} onClick={() => setExpandedSummary((value) => value === "overdue" ? null : "overdue")} className="w-full cursor-pointer rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm text-red-800 transition hover:border-red-300 hover:bg-red-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"><span className="block font-bold">Требуют внимания: {overdue.length} просроченных платежей</span><span className="mt-1 block">Нажмите, чтобы увидеть договоры и суммы без поиска по разделу.</span></button>}
+
+      {marketplaceFacts.some((fact) => fact.state === "review" || fact.state === "unassigned") && <section className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/70 shadow-sm"><div className="flex flex-col gap-3 border-b border-amber-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-amber-950">Удержания WB ждут проверки</h2><p className="mt-1 text-sm text-amber-900">Точное совпадение закрывается автоматически. Здесь только строки, которые нельзя зачесть без риска.</p></div><button type="button" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50">Обновить сверку</button></div><div className="max-h-60 overflow-y-auto">{marketplaceFacts.filter((fact) => fact.state === "review" || fact.state === "unassigned").slice(0, 20).map((fact) => <div key={fact.source} className="grid grid-cols-[1fr_auto] gap-3 border-b border-amber-100 px-4 py-3 last:border-b-0"><div className="min-w-0"><p className="font-semibold text-slate-950">{fact.loanName ?? `Договор WB № ${fact.contractNumber ?? "не определён"}`}</p><p className="mt-1 truncate text-xs text-slate-600">{formatDate(fact.date)} · {fact.kind === "unknown" ? "вид платежа не определён" : fact.kind} · {fact.reason}</p></div><span className="self-center whitespace-nowrap font-bold tabular-nums text-slate-950">{formatMoney(fact.amountRub)}</span></div>)}</div><p className="px-4 py-3 text-xs text-amber-900">Если деньги перечислялись вручную, внесите платёж в ДДС и нажмите «Сверить с ДДС» — удержание WB при этом не создаёт второй расход.</p></section>}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3"><h2 className="font-bold text-slate-950">Помесячный свод по кредитам</h2><p className="mt-1 text-xs text-slate-500">Начисления по графику, фактические выплаты и остаток тела на конец месяца.</p></div>

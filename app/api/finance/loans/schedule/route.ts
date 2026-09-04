@@ -6,6 +6,7 @@ import { buildLoanSchedule, type LoanTerms } from "@/lib/loans/scheduleModel";
 import { canCloseRowsWithFact, derivedPaymentForRow, scheduleRowFromDb, type ScheduleRowKind, type ScheduleRowRecord, type ScheduleRowStatus } from "@/lib/loans/scheduleRows";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { wbLoanFactFromRow } from "@/lib/loans/marketplaceFacts";
 import type { Payment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -117,6 +118,7 @@ export async function PUT(request: Request) {
       // Из формы может прийти «оплачено» без факта (как раньше: план и есть факт) или «отменено».
       status: (row.status === "paid" || row.status === "cancelled" ? row.status : "planned") as ScheduleRowStatus,
       paidByPaymentId: null,
+      paidByMarketplaceSource: null,
       calendarPaymentId: reuse?.calendarPaymentId ?? null,
       originalDueDate: reuse?.originalDueDate ?? null,
       balanceBefore: row.balanceBefore == null ? null : Number(row.balanceBefore),
@@ -149,7 +151,7 @@ export async function PUT(request: Request) {
   }
   const scheduleRows = incoming.map((row) => ({
     id: row.id, loan_id: row.loanId, due_date: row.dueDate, kind: row.kind, amount_rub: row.amountRub, amount_original: row.amountOriginal, currency: row.currency,
-    status: row.status, paid_by_payment_id: null, calendar_payment_id: row.calendarPaymentId, original_due_date: row.originalDueDate,
+    status: row.status, paid_by_payment_id: null, paid_by_marketplace_source: null, calendar_payment_id: row.calendarPaymentId, original_due_date: row.originalDueDate,
     balance_before: row.balanceBefore, balance_after: row.balanceAfter, updated_at: new Date().toISOString(),
   }));
   if (scheduleRows.length) {
@@ -164,14 +166,39 @@ export async function PATCH(request: Request) {
   if (denied) return denied;
   const client = db();
   if (!client) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
-  const body = await request.json().catch(() => null) as { rowId?: string; rowIds?: string[]; factId?: string; confirmed?: boolean } | null;
+  const body = await request.json().catch(() => null) as { rowId?: string; rowIds?: string[]; factId?: string; marketplaceFact?: { cabinetId?: string; rrdId?: string }; confirmed?: boolean } | null;
   const rowIds = [...new Set([...(Array.isArray(body?.rowIds) ? body.rowIds : []), body?.rowId].map((value) => text(value, 80)).filter(Boolean))];
   const factId = text(body?.factId, 80);
-  if (!rowIds.length || rowIds.length > 20 || !factId) return NextResponse.json({ error: "Нужны строки графика и факт" }, { status: 400 });
+  const marketplaceFact = body?.marketplaceFact;
+  const cabinetId = text(marketplaceFact?.cabinetId, 80);
+  const rrdId = text(marketplaceFact?.rrdId, 80);
+  if (!rowIds.length || rowIds.length > 20 || (!factId && !(cabinetId && rrdId))) return NextResponse.json({ error: "Нужны строки графика и факт" }, { status: 400 });
   const rowsResult = await client.from("loan_schedule_rows").select("*").in("id", rowIds);
   if (rowsResult.error) return NextResponse.json({ error: rowsResult.error.message }, { status: 500 });
   const rows = (rowsResult.data ?? []).map(scheduleRowFromDb);
   if (rows.length !== rowIds.length) return NextResponse.json({ error: "Строка графика не найдена" }, { status: 404 });
+  if (cabinetId && rrdId) {
+    if (rows.some((row) => row.status !== "planned")) return NextResponse.json({ error: "Строка уже закрыта" }, { status: 409 });
+    const wbRow = await client.from("wb_report_rows")
+      .select("cabinet_id,rrd_id,rr_dt,deduction,bonus_type_name")
+      .eq("cabinet_id", cabinetId).eq("rrd_id", Number(rrdId)).maybeSingle();
+    if (wbRow.error) return NextResponse.json({ error: wbRow.error.message }, { status: 500 });
+    const source = wbRow.data ? wbLoanFactFromRow(wbRow.data) : null;
+    if (!source) return NextResponse.json({ error: "Удержание WB не найдено или не относится к кредиту" }, { status: 404 });
+    if (rows.length !== 1 || rows[0].kind !== source.kind || Math.abs(rows[0].amountRub - source.amountRub) > 0.01) {
+      return NextResponse.json({ error: "Удержание WB не совпадает с одной строкой графика" }, { status: 409 });
+    }
+    const now = new Date().toISOString();
+    const updated = await client.from("loan_schedule_rows").update({ status: "paid", paid_by_marketplace_source: source.source, updated_at: now })
+      .eq("id", rows[0].id).eq("status", "planned").select("id");
+    if (updated.error || (updated.data ?? []).length !== 1) return NextResponse.json({ error: updated.error?.message ?? "Строка уже закрыта" }, { status: 409 });
+    if (rows[0].calendarPaymentId) {
+      const planned = await client.from("payments").select("comment").eq("id", rows[0].calendarPaymentId).maybeSingle();
+      const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by-marketplace:[^\]]+\]/g, "").trim()} [paid-by-marketplace:${source.source}]`.trim();
+      await client.from("payments").update({ status: "cancelled", comment }).eq("id", rows[0].calendarPaymentId);
+    }
+    return NextResponse.json({ ok: true, rows: [{ ...rows[0], status: "paid", paidByMarketplaceSource: source.source }] });
+  }
   const [factResult, allPayments] = await Promise.all([
     client.from("payments").select("id,status,amount").eq("id", factId).maybeSingle(),
     loadAllSupabasePages<{ id: string; comment: string | null }>((from, to) => client.from("payments").select("id,comment").not("comment", "is", null).like("comment", "%[%").order("id", { ascending: true }).range(from, to), { label: "Занятые факты", maxPages: 60 }),

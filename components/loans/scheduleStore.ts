@@ -45,3 +45,9 @@ export async function closeLoanScheduleRows(rowIds: string[], factId: string, co
   return fetch("/api/finance/loans/schedule", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rowIds, factId, confirmed }) })
     .then((response) => json<{ rows: ScheduleRowRecord[] }>(response)).then((result) => result.rows);
 }
+
+/** Закрыть ровно одну строку подтверждённым удержанием из финотчёта WB. */
+export async function closeLoanScheduleRowWithWb(rowId: string, cabinetId: string, rrdId: string): Promise<ScheduleRowRecord[]> {
+  return fetch("/api/finance/loans/schedule", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rowId, marketplaceFact: { cabinetId, rrdId } }) })
+    .then((response) => json<{ rows: ScheduleRowRecord[] }>(response)).then((result) => result.rows);
+}

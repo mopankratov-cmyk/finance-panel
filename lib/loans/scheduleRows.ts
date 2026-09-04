@@ -20,6 +20,8 @@ export interface ScheduleRowRecord {
   currency: string;
   status: ScheduleRowStatus;
   paidByPaymentId: string | null;
+  /** Уникальный ключ удержания маркетплейса, если строка закрыта им. */
+  paidByMarketplaceSource?: string | null;
   calendarPaymentId: string | null;
   originalDueDate: string | null;
   balanceBefore: number | null;
@@ -39,6 +41,7 @@ export function scheduleRowFromDb(row: Record<string, unknown>): ScheduleRowReco
     currency: String(row.currency ?? "RUB"),
     status: (["planned", "paid", "cancelled"].includes(status) ? status : "planned") as ScheduleRowStatus,
     paidByPaymentId: row.paid_by_payment_id ? String(row.paid_by_payment_id) : null,
+    paidByMarketplaceSource: row.paid_by_marketplace_source ? String(row.paid_by_marketplace_source) : null,
     calendarPaymentId: row.calendar_payment_id ? String(row.calendar_payment_id) : null,
     originalDueDate: row.original_due_date ? String(row.original_due_date).slice(0, 10) : null,
     balanceBefore: row.balance_before == null ? null : Number(row.balance_before),
@@ -102,13 +105,13 @@ export function derivedPaymentForRow(row: ScheduleRowRecord, input: DerivedPayme
     category: CATEGORY_BY_KIND[row.kind],
     accountId: input.accountId,
     // Закрыта фактом ДДС → план отменён с [paid-by]; отмечена оплаченной без факта → сам план и есть факт.
-    status: row.status === "paid" ? (row.paidByPaymentId ? "cancelled" : "done") : row.status === "cancelled" ? "cancelled" : "planned",
+    status: row.status === "paid" ? (row.paidByPaymentId || row.paidByMarketplaceSource ? "cancelled" : "done") : row.status === "cancelled" ? "cancelled" : "planned",
     counterparty: input.creditorName,
     comment: [
       `[loan:${input.loanId}:schedule:${row.id}:${markerKind}]`,
       `[currency:${input.currency}]`, `[fx-rate:${input.exchangeRate}]`,
       `[amount-original:${Math.round(original * 100) / 100}]`, `[amount-currency:${input.currency}]`,
-      row.paidByPaymentId ? `[paid-by:${row.paidByPaymentId}]` : "",
+      row.paidByPaymentId ? `[paid-by:${row.paidByPaymentId}]` : row.paidByMarketplaceSource ? `[paid-by-marketplace:${row.paidByMarketplaceSource}]` : "",
       row.originalDueDate ? `[original-due:${row.originalDueDate}]` : "",
       input.contractFileName ? `[contract:${input.contractFileName}]` : "",
     ].filter(Boolean).join(" "),
