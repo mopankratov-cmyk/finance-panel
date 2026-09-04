@@ -6,6 +6,7 @@ import { aiConfigured, LoanAiUnavailableError, LoanRecognitionValidationError, r
 import { fetchCbrRate } from "@/lib/loans/exchangeRate";
 import { applyLoanCorrections, recognizeLoanDocument, type LoanRecognitionDeps } from "@/lib/loans/recognizeLoan";
 import type { LoanScheduleDraft } from "@/lib/loans/schedule";
+import { isUploadObjectPath, readUpload, removeUpload } from "@/lib/finance/uploadStorage";
 
 export const maxDuration = 120;
 
@@ -72,9 +73,26 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null) as
-    | { corrections?: string; existingRecognition?: RecognizedLoan; schedule?: LoanScheduleDraft[]; exchangeRate?: number; text?: string; pdfBase64?: string; imageBase64?: string; imageMediaType?: string; fileName?: string }
+    | { corrections?: string; existingRecognition?: RecognizedLoan; schedule?: LoanScheduleDraft[]; exchangeRate?: number; text?: string; pdfBase64?: string; imageBase64?: string; imageMediaType?: string; fileName?: string; storagePath?: string; description?: string; mimeType?: string }
     | null;
   if (!body) return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
+
+  // Большой файл пришёл через хранилище (см. lib/finance/uploadStorage.ts).
+  if (body.storagePath !== undefined) {
+    if (!isUploadObjectPath(body.storagePath)) return NextResponse.json({ error: "Некорректный путь файла" }, { status: 400 });
+    const db = getSupabaseAdmin();
+    if (!db) return NextResponse.json({ error: "Серверное хранилище не настроено" }, { status: 503 });
+    try {
+      const bytes = await readUpload(db, body.storagePath);
+      const name = String(body.fileName ?? body.storagePath.split("/").pop() ?? "document");
+      const result = await recognizeLoanDocument({ description: String(body.description ?? ""), file: { name, bytes, mimeType: String(body.mimeType ?? "") } }, await buildDeps());
+      return NextResponse.json(result);
+    } catch (error) {
+      return errorResponse(error, "Не удалось прочитать документ");
+    } finally {
+      void removeUpload(db, body.storagePath);
+    }
+  }
 
   if (body.corrections?.trim() && body.existingRecognition && Array.isArray(body.schedule)) {
     try {

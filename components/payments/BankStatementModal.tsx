@@ -6,6 +6,7 @@ import type { BankStatement } from "./bankStatement";
 import type { BankSuggestion } from "./bankAutoClassify";
 import type { DdsCompany } from "./ddsCompanies";
 import { rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
+import { needsDirectUpload, uploadViaStorage } from "./uploadViaStorage";
 import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
@@ -64,9 +65,15 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
     try {
       // Разбор и классификация — на сервере: у любого сотрудника по одному
       // файлу получается один и тот же результат.
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch("/api/opiu/bank-statement", { method: "POST", body });
+      let response: Response;
+      if (needsDirectUpload(file)) {
+        const storagePath = await uploadViaStorage(file);
+        response = await fetch("/api/opiu/bank-statement", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storagePath, fileName: file.name, mimeType: file.type }) });
+      } else {
+        const body = new FormData();
+        body.append("file", file);
+        response = await fetch("/api/opiu/bank-statement", { method: "POST", body });
+      }
       const data = await response.json().catch(() => null) as { statement?: BankStatement; suggestions?: BankSuggestion[]; error?: string } | null;
       if (!response.ok || !data?.statement || !data.suggestions) throw new Error(data?.error ?? "Не удалось распознать выписку");
       const parsed = data.statement;

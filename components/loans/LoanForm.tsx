@@ -9,6 +9,7 @@ import type { LoanDisbursement } from "./loanInterest";
 import { roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { emptyScheduleRow, normalizeScheduleMoney, type LoanScheduleDraft } from "@/lib/loans/schedule";
 import type { LoanCorrectionsOutcome, LoanRecognitionOutcome } from "@/lib/loans/recognizeLoan";
+import { needsDirectUpload, uploadViaStorage } from "@/components/payments/uploadViaStorage";
 
 // Распознавание и построение графика — на сервере (/api/opiu/loan-recognize).
 // Форма только отправляет файл с описанием и показывает результат: у любого
@@ -148,10 +149,21 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     setBusy(true);
     setMessage("");
     try {
-      const body = new FormData();
-      body.append("description", description.trim());
-      if (file) body.append("file", file);
-      const response = await fetch("/api/opiu/loan-recognize", { method: "POST", body });
+      // Файлы крупнее порога Vercel (4,5 МБ на тело запроса) уходят в хранилище напрямую.
+      let response: Response;
+      if (file && needsDirectUpload(file)) {
+        const storagePath = await uploadViaStorage(file);
+        response = await fetch("/api/opiu/loan-recognize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ storagePath, fileName: file.name, mimeType: file.type, description: description.trim() }),
+        });
+      } else {
+        const body = new FormData();
+        body.append("description", description.trim());
+        if (file) body.append("file", file);
+        response = await fetch("/api/opiu/loan-recognize", { method: "POST", body });
+      }
       const result = await response.json().catch(() => null) as (LoanRecognitionOutcome & { error?: string }) | null;
       if (!response.ok || !result?.recognized) throw new Error(result?.error || "Не удалось прочитать документ");
       setData(result.recognized);
