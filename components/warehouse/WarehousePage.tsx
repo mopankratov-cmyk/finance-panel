@@ -13,7 +13,7 @@ import { DefectsTab } from "@/components/warehouse/DefectsTab";
 import { ProductsTab } from "@/components/warehouse/ProductsTab";
 import { ShipmentTab } from "@/components/warehouse/ShipmentTab";
 import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
-import { TodoBar } from "@/components/warehouse/TodoBar";
+import { TodoBell } from "@/components/warehouse/TodoBell";
 import { WarehouseShell, type ShellTab } from "@/components/warehouse/WarehouseShell";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { canManageStock } from "@/lib/warehouse/operatorScope";
@@ -143,6 +143,10 @@ export function WarehousePage() {
     if (me?.role === "seller") return TABS.filter((item) => !SELLER_HIDDEN_TABS.has(item.key));
     return TABS;
   }, [me]);
+  // Куда человеку вообще можно уйти. Колокольчик отсекает по этому набору дела,
+  // ведущие на скрытую от роли вкладку: роут дел про роли не знает и считает
+  // всё по юрлицу, а нажатие на такое дело открывало экран, которого нет в меню.
+  const visibleTabs = useMemo(() => new Set(tabs.map((item) => item.key)), [tabs]);
   // Кто ставит задания, правит приход и возвращает брак в остаток. Пока роль не
   // прочитана — «нет»: спрятать кнопку на секунду безопаснее, чем показать чужую.
   const canManage = canManageStock(me?.role);
@@ -192,7 +196,12 @@ export function WarehousePage() {
   const refresh = () => setRefreshKey((key) => key + 1);
 
   const toolbar = (
-    <div className="ml-auto flex items-center gap-2">
+    // flex-wrap: в шапке теперь три элемента, а список юрлиц бывает длинным —
+    // на узком экране строка должна переноситься, а не уезжать за край.
+    <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+      {entityId && (
+        <TodoBell entityId={entityId} refreshKey={refreshKey} visibleTabs={visibleTabs} onGo={setTab} />
+      )}
       <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2">
         <Building2 className="h-4 w-4 text-slate-400" />
         <select
@@ -228,8 +237,6 @@ export function WarehousePage() {
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       )}
-
-      {entityId && <TodoBar entityId={entityId} refreshKey={refreshKey} onGo={setTab} />}
 
       {entitiesLoading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
