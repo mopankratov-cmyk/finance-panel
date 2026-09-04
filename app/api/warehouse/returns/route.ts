@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { recordStockDoc } from "@/lib/warehouse/stockDocs";
 
@@ -79,7 +80,27 @@ export async function POST(request: NextRequest) {
     actor: session?.email ?? null,
   });
 
-  const payload = doc ? { ...(data as Record<string, unknown>), docNumber: doc.number, docId: doc.id } : data;
+  // Хроника: из какого кабинета и на какой склад вернулось, и сколько из этого брак.
+  const warehouse = await db.from("warehouses").select("name").eq("id", body.warehouseId).maybeSingle();
+  const result = (data ?? {}) as Record<string, unknown>;
+  await recordWarehouseEvent(db, {
+    legalEntityId: scope.entity.id,
+    kind: "return_posted",
+    refType: "stock_doc",
+    refId: doc?.id ?? null,
+    number: doc?.number ?? null,
+    warehouseId: body.warehouseId,
+    actor: session?.email ?? null,
+    actorRole: session?.role ?? null,
+    payload: {
+      qty: result.qty ?? null,
+      defects: result.defects ?? null,
+      cabinetName: scope.entity.cabinets.find((link) => link.cabinetId === body.cabinetId)?.cabinetName ?? null,
+      warehouseName: warehouse.data?.name ? String(warehouse.data.name) : null,
+    },
+  });
+
+  const payload = doc ? { ...result, docNumber: doc.number, docId: doc.id } : data;
   await settleDocKey(db, docKey, payload);
   return NextResponse.json({ data: payload, error: null }, { status: 201 });
 }

@@ -3,12 +3,19 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { recordWarehouseEvent } from "@/lib/warehouse/events";
+import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
 
 export const dynamic = "force-dynamic";
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST202", "PGRST204", "PGRST205", "42883"].includes(code ?? "");
 const migrationHint = "Примените миграции 202608240021 и 202608240022";
+
+const num = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 /**
  * Сторнировать документ.
@@ -30,6 +37,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
   const session = await getServerSession();
+  // Сторно меняет историю — это администратор и менеджер, оператору ФФ нельзя
+  // (ТЗ команды: «вернуть в остаток» — не его кнопка).
+  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
 
   const docResult = await db
     .from("stock_docs")
@@ -45,6 +55,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   if (String(doc.legal_entity_id) !== scope.entity.id) return fail("Документ другого юрлица", 403);
   if (doc.status === "reversed" || doc.reversed_by) return fail("Документ уже сторнирован", 409);
   if (doc.status === "draft") return fail("Черновик сторнировать нечем — он ещё не проведён", 400);
+  if (doc.status === "cancelled") return fail("Задание отменено — сторнировать нечего", 400);
   if (!doc.movement_doc_id) return fail("У документа нет движений — сторнировать нечего", 400);
 
   // Номер сторно берём того же вида, что и исходный документ: так в журнале
@@ -115,8 +126,27 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     .update({ status: "reversed", reversed_by: created.data.id, updated_at: new Date().toISOString() })
     .eq("id", doc.id);
 
+  // Событие пишется ПОСЛЕ сторно и его не отменяет: движения уже в регистре.
+  const result = (data ?? {}) as Record<string, unknown>;
+  await recordWarehouseEvent(db, {
+    legalEntityId: scope.entity.id,
+    kind: "doc_reversed",
+    refType: "stock_doc",
+    refId: String(created.data.id),
+    number: String(created.data.number),
+    warehouseId: doc.warehouse_id ? String(doc.warehouse_id) : null,
+    actor: session?.email ?? null,
+    actorRole: session?.role ?? null,
+    payload: {
+      kind: doc.kind,
+      reversedNumber: String(doc.number),
+      qty: Math.abs(num(result.qty)),
+      amount: Math.abs(num(result.amount)),
+    },
+  });
+
   return NextResponse.json({
-    data: { number: String(created.data.number), reverses: String(doc.number), ...(data as Record<string, unknown>) },
+    data: { number: String(created.data.number), reverses: String(doc.number), ...result },
     error: null,
   }, { status: 201 });
 }

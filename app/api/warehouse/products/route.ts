@@ -4,7 +4,10 @@ import { getServerSession } from "@/lib/auth/server";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
-import { PRODUCT_COLUMNS, toProductRow, type DbProduct, type ProductRow } from "@/lib/warehouse/productRow";
+import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
+import {
+  PRODUCT_COLUMNS, PRODUCT_COLUMNS_LEGACY, isMissingColumn, toProductRow, type DbProduct, type ProductRow,
+} from "@/lib/warehouse/productRow";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +15,22 @@ const fail = (error: string, status: number) => NextResponse.json({ data: null, 
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграции 202608230006_products.sql и 202608230007_stock_functions_products.sql";
 
+/** loadAllSupabasePages отдаёт только текст ошибки, кода в нём нет: «колонки нет»
+ *  (42703 / PGRST204) узнаём по формулировке Postgres и PostgREST. */
+const isMissingColumnMessage = (error: unknown) =>
+  error instanceof Error && /column [^ ]+ does not exist|could not find the '[^']+' column/i.test(error.message);
+
+/** Ключи тела, которые появились с миграцией 202609040002. На старой базе
+ *  запись с ними падает 42703 — тогда пишем без них. */
+const NEW_COLUMNS = ["model", "color", "imt_id", "is_novelty"] as const;
+
 const number = (value: unknown): number | null => {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const text = (value: unknown): string | null => String(value ?? "").trim() || null;
 
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
@@ -34,14 +47,24 @@ export async function GET(request: NextRequest) {
 
   const names = new Map(list.rows.map((row) => [row.id, row.name]));
 
+  // Список колонок здесь переменная, а не литерал, и разбор типов запроса в
+  // supabase-js на нём сдаётся — форму строки задаём сами.
+  const loadProducts = (columns: string) => loadAllSupabasePages<DbProduct>((from, to) => {
+    let request = db.from("products_view").select(columns).order("article").range(from, to);
+    if (entityId) request = request.eq("legal_entity_id", entityId);
+    if (query) request = request.or(`article.ilike.%${query}%,name.ilike.%${query}%,barcode.ilike.%${query}%`);
+    return request as unknown as PromiseLike<{ data: DbProduct[] | null; error: { message: string } | null }>;
+  });
+
   let rows: DbProduct[];
   try {
-    rows = await loadAllSupabasePages<DbProduct>((from, to) => {
-      let request = db.from("products_view").select(PRODUCT_COLUMNS).order("article").range(from, to);
-      if (entityId) request = request.eq("legal_entity_id", entityId);
-      if (query) request = request.or(`article.ilike.%${query}%,name.ilike.%${query}%,barcode.ilike.%${query}%`);
-      return request;
-    });
+    try {
+      rows = await loadProducts(PRODUCT_COLUMNS);
+    } catch (error) {
+      // База без модели и цвета — вкладка «Товары» от этого ложиться не должна.
+      if (!isMissingColumnMessage(error)) throw error;
+      rows = await loadProducts(PRODUCT_COLUMNS_LEGACY);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить товары";
     return fail(message.includes("does not exist") ? `${message} · ${migrationHint}` : message, 500);
@@ -53,6 +76,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
+  const session = await getServerSession();
+  // Справочник — зона администратора и менеджера: оператор фулфилмента
+  // принимает и отгружает то, что в нём есть, но не заводит новое.
+  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -66,39 +93,50 @@ export async function POST(request: NextRequest) {
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
-  const session = await getServerSession();
 
-  const { data, error } = await db
-    .from("products")
-    .insert({
-      legal_entity_id: entityId,
-      article,
-      name: String(body.name ?? "").trim() || article,
-      barcode: String(body.barcode ?? "").trim() || null,
-      category: String(body.category ?? "").trim() || null,
-      brand: String(body.brand ?? "").trim() || null,
-      nm_id: number(body.nmId),
-      photo_url: String(body.photoUrl ?? "").trim() || null,
-      factory_price: number(body.factoryPrice),
-      factory_currency: ["CNY", "RUB", "USD"].includes(String(body.factoryCurrency)) ? String(body.factoryCurrency) : "RUB",
-      weight_kg: number(body.weightKg),
-      length_cm: number(body.lengthCm),
-      width_cm: number(body.widthCm),
-      height_cm: number(body.heightCm),
-      min_stock: number(body.minStock),
-      season: body.season === "summer" || body.season === "winter" ? body.season : null,
-      note: String(body.note ?? "").trim() || null,
-      created_by: session?.email ?? null,
-    })
-    .select("id")
-    .single();
+  const row: Record<string, unknown> = {
+    legal_entity_id: entityId,
+    article,
+    name: String(body.name ?? "").trim() || article,
+    barcode: text(body.barcode),
+    category: text(body.category),
+    brand: text(body.brand),
+    nm_id: number(body.nmId),
+    photo_url: text(body.photoUrl),
+    factory_price: number(body.factoryPrice),
+    factory_currency: ["CNY", "RUB", "USD"].includes(String(body.factoryCurrency)) ? String(body.factoryCurrency) : "RUB",
+    weight_kg: number(body.weightKg),
+    length_cm: number(body.lengthCm),
+    width_cm: number(body.widthCm),
+    height_cm: number(body.heightCm),
+    min_stock: number(body.minStock),
+    season: body.season === "summer" || body.season === "winter" ? body.season : null,
+    note: text(body.note),
+    created_by: session?.email ?? null,
+  };
+  // Новые поля кладём только когда их прислали: старый клиент на старой базе
+  // не должен платить повторной вставкой за колонки, о которых не просил.
+  if ("model" in body) row.model = text(body.model);
+  if ("color" in body) row.color = text(body.color);
+  if ("imtId" in body) row.imt_id = number(body.imtId);
+  if ("isNovelty" in body) row.is_novelty = Boolean(body.isNovelty);
 
+  let inserted = await db.from("products").insert(row).select("id").single();
+  if (inserted.error && isMissingColumn(inserted.error.code) && NEW_COLUMNS.some((key) => key in row)) {
+    for (const key of NEW_COLUMNS) delete row[key];
+    inserted = await db.from("products").insert(row).select("id").single();
+  }
+
+  const { data, error } = inserted;
   if (error) {
     if (error.code === "23505") return fail("Товар с таким артикулом уже есть", 409);
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 
-  const created = await db.from("products_view").select(PRODUCT_COLUMNS).eq("id", data.id).single();
+  let created = await db.from("products_view").select(PRODUCT_COLUMNS).eq("id", data.id).single();
+  if (created.error && isMissingColumn(created.error.code)) {
+    created = await db.from("products_view").select(PRODUCT_COLUMNS_LEGACY).eq("id", data.id).single();
+  }
   const names = new Map(list.rows.map((row) => [row.id, row.name]));
-  return NextResponse.json({ data: toProductRow(created.data as DbProduct, names), error: null }, { status: 201 });
+  return NextResponse.json({ data: toProductRow(created.data as DbProduct, names) satisfies ProductRow, error: null }, { status: 201 });
 }

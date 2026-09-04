@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { recordStockDoc } from "@/lib/warehouse/stockDocs";
 
@@ -73,7 +74,27 @@ export async function POST(request: NextRequest) {
     actor: session?.email ?? null,
   });
 
-  const payload = doc ? { ...(data as Record<string, unknown>), docNumber: doc.number, docId: doc.id } : data;
+  // Хроника: откуда и куда, чтобы «перемещение» в ленте читалось без перехода в документ.
+  const warehouses = await db.from("warehouses").select("id, name").in("id", [body.fromWarehouseId, body.toWarehouseId]);
+  const names = new Map((warehouses.data ?? []).map((row) => [String(row.id), String(row.name)]));
+  const result = (data ?? {}) as Record<string, unknown>;
+  await recordWarehouseEvent(db, {
+    legalEntityId: scope.entity.id,
+    kind: "transfer_posted",
+    refType: "stock_doc",
+    refId: doc?.id ?? null,
+    number: doc?.number ?? null,
+    warehouseId: body.fromWarehouseId,
+    actor: session?.email ?? null,
+    actorRole: session?.role ?? null,
+    payload: {
+      qty: result.qty ?? null,
+      from: names.get(body.fromWarehouseId) ?? null,
+      to: names.get(body.toWarehouseId) ?? null,
+    },
+  });
+
+  const payload = doc ? { ...result, docNumber: doc.number, docId: doc.id } : data;
   await settleDocKey(db, docKey, payload);
   return NextResponse.json({ data: payload, error: null }, { status: 201 });
 }

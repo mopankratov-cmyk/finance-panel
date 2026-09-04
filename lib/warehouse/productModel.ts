@@ -48,6 +48,18 @@ export function modelLabelForGroup(articles: string[]): string {
     prefix = prefix.slice(0, i);
     if (!prefix) break;
   }
+  // Посимвольный префикс режет посреди кода цвета: у NV-836-02 и NV-836-04
+  // общее «NV-836-0». Модель кончается на границе слова — там, где в каждом
+  // артикуле дальше идёт разделитель или конец строки. Если граница не там,
+  // откатываемся к последнему разделителю; артикулы без разделителей по
+  // префиксу не делятся вовсе.
+  const isSeparator = (char: string | undefined) => char === undefined || /[-_/ ]/.test(char);
+  const onBoundary = list.every((article) => isSeparator(article[prefix.length]));
+  if (!onBoundary) {
+    const lastSeparator = Math.max(...["-", "_", "/", " "].map((sep) => prefix.lastIndexOf(sep)));
+    if (lastSeparator < 0) return splitArticle(list[0]).model;
+    prefix = prefix.slice(0, lastSeparator);
+  }
   const trimmed = prefix.replace(/[-_/ ]+$/, "").trim();
   // Слишком короткий общий кусок («N») — не модель, а совпадение первой буквы.
   return trimmed.length >= 2 ? trimmed : splitArticle(list[0]).model;

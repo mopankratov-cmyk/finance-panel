@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { recordWarehouseEvent } from "@/lib/warehouse/events";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +24,23 @@ export interface ReceiptBatchRow {
   createdAt: string;
   createdBy: string | null;
   cost: { total: number; unit: number; basis: "exact" | "estimated"; note: string | null } | null;
+  /** Шапка партии (stock_receipt_batches). До миграции 202609040002 её нет — всё null. */
+  number: string | null;
+  supplier: string | null;
+  bagsCount: number | null;
+  /** Кто и когда нажал «Пересчитано». Пока null — партия не пересчитана. */
+  countedAt: string | null;
+  countedBy: string | null;
+  /** Недовоз и излишек по строкам. null, пока в партии есть непересчитанные строки:
+   *  сравнивать ожидаемое с непринятым — значит показывать расхождение там, где его ещё нет. */
+  discrepancy: { short: number; over: number } | null;
+  /** В партии есть товар с признаком «новинка». */
+  hasNovelty: boolean;
 }
 
 interface DbReceipt {
   batch_id: string;
+  product_id: string | null;
   nm_id: number;
   expected_qty: number;
   expected_at: string | null;
@@ -49,9 +64,21 @@ interface DbBatch {
   cost_note: string | null;
 }
 
+interface DbBatchHeader {
+  batch_id: string;
+  number: string | null;
+  supplier: string | null;
+  bags_count: number | null;
+  counted_at: string | null;
+  counted_by: string | null;
+}
+
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграции 202608230003_stock_ledger.sql и 202608230004_legal_entities.sql";
+
+/** Фильтр `in` едет в URL запроса: длинный список партий режем на куски. */
+const CHUNK = 200;
 
 export interface ReceiptLineRow {
   id: number;
@@ -68,6 +95,46 @@ export interface ReceiptLineRow {
   receivedQty: number | null;
   defectQty: number;
   status: "expected" | "received";
+  /** Когда строка встала на остаток; null — ещё не проведена. По ней коррекция
+   *  понимает, править ли числа напрямую или писать дельты в регистр. */
+  postedAt: string | null;
+}
+
+/** Шапки партий одним проходом. До миграции 202609040002 таблицы нет — партии
+ *  остаются без номера и поставщика, а список работает как раньше: любая ошибка
+ *  здесь означает «шапок нет», а не «список сломан». */
+async function loadBatchHeaders(db: SupabaseClient, batchIds: string[]): Promise<Map<string, DbBatchHeader>> {
+  const headers = new Map<string, DbBatchHeader>();
+  for (let i = 0; i < batchIds.length; i += CHUNK) {
+    const { data, error } = await db
+      .from("stock_receipt_batches")
+      .select("batch_id, number, supplier, bags_count, counted_at, counted_by")
+      .in("batch_id", batchIds.slice(i, i + CHUNK));
+    if (error) return headers;
+    for (const row of (data ?? []) as DbBatchHeader[]) headers.set(String(row.batch_id), row);
+  }
+  return headers;
+}
+
+/** Товары-новинки среди указанных. Колонки is_novelty до миграции нет — тогда новинок нет. */
+async function loadNoveltyProducts(db: SupabaseClient, productIds: string[]): Promise<Set<string>> {
+  const novelty = new Set<string>();
+  for (let i = 0; i < productIds.length; i += CHUNK) {
+    const { data, error } = await db
+      .from("products")
+      .select("id")
+      .in("id", productIds.slice(i, i + CHUNK))
+      .eq("is_novelty", true);
+    if (error) return novelty;
+    for (const row of data ?? []) novelty.add(String(row.id));
+  }
+  return novelty;
+}
+
+async function warehouseNameOf(db: SupabaseClient, warehouseId: string | null | undefined): Promise<string | null> {
+  if (!warehouseId) return null;
+  const { data } = await db.from("warehouses").select("name").eq("id", warehouseId).maybeSingle();
+  return data?.name ? String(data.name) : null;
 }
 
 export async function GET(request: NextRequest) {
@@ -85,7 +152,7 @@ export async function GET(request: NextRequest) {
   if (batchId) {
     const { data, error } = await db
       .from("purchase_receipts")
-      .select("id, product_id, variant_id, nm_id, article, expected_qty, received_qty, defect_qty, status")
+      .select("id, product_id, variant_id, nm_id, article, expected_qty, received_qty, defect_qty, status, posted_at")
       .eq("batch_id", batchId)
       .order("id");
     if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
@@ -122,6 +189,7 @@ export async function GET(request: NextRequest) {
         receivedQty: row.received_qty === null ? null : Number(row.received_qty),
         defectQty: Number(row.defect_qty ?? 0),
         status: row.status === "received" ? "received" : "expected",
+        postedAt: row.posted_at ? String(row.posted_at) : null,
       };
     });
     return NextResponse.json({ data: lines, error: null });
@@ -136,7 +204,7 @@ export async function GET(request: NextRequest) {
 
   const receiptsResult = await db
     .from("purchase_receipts")
-    .select("batch_id, nm_id, expected_qty, expected_at, warehouse, received_qty, defect_qty, status, note, posted_at, stock_batch_id, created_by, created_at")
+    .select("batch_id, product_id, nm_id, expected_qty, expected_at, warehouse, received_qty, defect_qty, status, note, posted_at, stock_batch_id, created_by, created_at")
     .in("cabinet_id", ownCabinets)
     .order("created_at", { ascending: false });
 
@@ -157,9 +225,21 @@ export async function GET(request: NextRequest) {
   const costs = new Map<string, DbBatch>();
   for (const row of (batchesResult.data ?? []) as DbBatch[]) costs.set(String(row.receipt_batch_id), row);
 
+  const receipts = (receiptsResult.data ?? []) as DbReceipt[];
+  const productIds = [...new Set(receipts.map((row) => row.product_id).filter(Boolean).map(String))];
+  const [headers, novelty] = await Promise.all([
+    loadBatchHeaders(db, [...new Set(receipts.map((row) => String(row.batch_id)))]),
+    loadNoveltyProducts(db, productIds),
+  ]);
+
+  // Расхождение копится по строкам, а не по итогам: недовоз одного размера и
+  // излишек другого в сумме дают ноль, хотя оба — повод для акта.
+  const gaps = new Map<string, { short: number; over: number; pending: boolean }>();
+
   const grouped = new Map<string, ReceiptBatchRow>();
-  for (const raw of (receiptsResult.data ?? []) as DbReceipt[]) {
+  for (const raw of receipts) {
     const key = String(raw.batch_id);
+    const header = headers.get(key);
     const current = grouped.get(key) ?? {
       batchId: key,
       expectedAt: raw.expected_at,
@@ -174,6 +254,13 @@ export async function GET(request: NextRequest) {
       createdAt: raw.created_at,
       createdBy: raw.created_by,
       cost: null,
+      number: header?.number ?? null,
+      supplier: header?.supplier ?? null,
+      bagsCount: header?.bags_count === null || header?.bags_count === undefined ? null : Number(header.bags_count),
+      countedAt: header?.counted_at ?? null,
+      countedBy: header?.counted_by ?? null,
+      discrepancy: null,
+      hasNovelty: false,
     };
 
     current.lineCount += 1;
@@ -182,6 +269,17 @@ export async function GET(request: NextRequest) {
     current.defectQty += Number(raw.defect_qty ?? 0);
     if (raw.created_at < current.createdAt) current.createdAt = raw.created_at;
     if (raw.posted_at && (!current.postedAt || raw.posted_at > current.postedAt)) current.postedAt = raw.posted_at;
+    if (raw.product_id && novelty.has(String(raw.product_id))) current.hasNovelty = true;
+
+    const gap = gaps.get(key) ?? { short: 0, over: 0, pending: false };
+    if (raw.status === "expected") {
+      gap.pending = true;
+    } else {
+      const diff = Number(raw.received_qty ?? 0) - Number(raw.expected_qty ?? 0);
+      if (diff < 0) gap.short += -diff;
+      if (diff > 0) gap.over += diff;
+    }
+    gaps.set(key, gap);
 
     // Состояние партии = состояние самой отстающей строки: пока хоть одна ждёт,
     // партия ждёт; пока хоть одна не проведена, партия не в остатке.
@@ -198,8 +296,10 @@ export async function GET(request: NextRequest) {
 
   const rows = [...grouped.values()].map((row) => {
     const cost = costs.get(row.batchId);
+    const gap = gaps.get(row.batchId);
     return {
       ...row,
+      discrepancy: gap && !gap.pending ? { short: gap.short, over: gap.over } : null,
       cost: cost
         ? {
           total: Number(cost.total_amount),
@@ -220,7 +320,8 @@ export async function PUT(request: NextRequest) {
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as
     | { entityId?: string; cabinetId?: string; expectedAt?: string; note?: string;
-        lines?: { productId: string; variantId?: string | null; qty: number }[] }
+        supplier?: string; bagsCount?: number | string | null; number?: string;
+        lines?: { productId: string; variantId?: string | null; qty: number; novelty?: boolean }[] }
     | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -243,6 +344,11 @@ export async function PUT(request: NextRequest) {
 
   const lines = (body.lines ?? []).filter((line) => Number(line.qty) > 0 && line.productId);
   if (lines.length === 0) return fail("Добавьте хотя бы одну позицию с количеством", 400);
+
+  const bagsRaw = body.bagsCount === null || body.bagsCount === undefined || body.bagsCount === "" ? null : Number(body.bagsCount);
+  if (bagsRaw !== null && (!Number.isFinite(bagsRaw) || bagsRaw < 0)) return fail("Число мешков не может быть отрицательным", 400);
+  const bagsCount = bagsRaw === null ? null : Math.round(bagsRaw);
+  const supplier = String(body.supplier ?? "").trim() || null;
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
@@ -299,7 +405,55 @@ export async function PUT(request: NextRequest) {
   const { error } = await db.from("purchase_receipts").insert(rows);
   if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
 
-  return NextResponse.json({ data: { batchId, lines: rows.length }, error: null }, { status: 201 });
+  // Шапка партии пишется ПОСЛЕ строк и их не отменяет: партия уже заведена, и
+  // отказ из-за шапки (таблицы ещё нет, номер занят) соврал бы про неудачу.
+  // Без шапки партия просто останется безымянной.
+  let number: string | null = String(body.number ?? "").trim() || null;
+  if (!number) {
+    const numberResult = await db.rpc("next_stock_doc_number", { p_kind: "receipt", p_at: new Date().toISOString() });
+    number = numberResult.error || !numberResult.data ? null : String(numberResult.data);
+  }
+  let headerError: string | null = null;
+  const header = await db.from("stock_receipt_batches").insert({
+    batch_id: batchId,
+    legal_entity_id: scope.entity.id,
+    number,
+    supplier,
+    bags_count: bagsCount,
+    created_by: session?.email ?? null,
+  });
+  if (header.error) {
+    // Занятый номер — единственная ошибка шапки, о которой человеку стоит знать:
+    // он его вводил руками. Остальное (таблицы нет до миграции) — молча.
+    if (header.error.code === "23505" && number) headerError = `Номер «${number}» уже занят — партия заведена без номера`;
+    number = null;
+  }
+
+  // Новинка — признак товара, а не строки: ставится один раз и остаётся.
+  // Колонки до миграции нет — тогда признак просто не запишется.
+  const noveltyProducts = [...new Set(lines.filter((line) => line.novelty).map((line) => line.productId))];
+  if (noveltyProducts.length > 0) {
+    await db.from("products").update({ is_novelty: true, updated_at: new Date().toISOString() }).in("id", noveltyProducts);
+  }
+
+  await recordWarehouseEvent(db, {
+    legalEntityId: scope.entity.id,
+    kind: "receipt_created",
+    refType: "receipt_batch",
+    refId: batchId,
+    number,
+    actor: session?.email ?? null,
+    actorRole: session?.role ?? null,
+    payload: {
+      supplier,
+      bagsCount,
+      qty: rows.reduce((sum, row) => sum + row.expected_qty, 0),
+      lines: rows.length,
+      novelty: noveltyProducts.map((id) => String(products.get(id)?.article ?? "")).filter(Boolean),
+    },
+  });
+
+  return NextResponse.json({ data: { batchId, lines: rows.length, number }, error: headerError }, { status: 201 });
 }
 
 /** Отметить факт приёмки по всей партии разом и, если попросили, сразу поставить
@@ -325,7 +479,8 @@ export async function PATCH(request: NextRequest) {
 
   const scope = await resolveEntity(body.entityId ?? null);
   if (!scope.ok) return fail(scope.error, scope.status);
-  if (!body.batchId) return fail("Не указана партия приёмки", 400);
+  const batchId = body.batchId;
+  if (!batchId) return fail("Не указана партия приёмки", 400);
   if (body.post && !body.warehouseId) return fail("Выберите склад, на который приходуем", 400);
 
   const db = getSupabaseAdmin();
@@ -337,14 +492,17 @@ export async function PATCH(request: NextRequest) {
 
   const existing = await db
     .from("purchase_receipts")
-    .select("id, cabinet_id, status")
-    .eq("batch_id", body.batchId);
+    .select("id, cabinet_id, status, expected_qty, received_qty, defect_qty, created_at")
+    .eq("batch_id", batchId);
   if (existing.error) {
     const code = existing.error.code;
     return fail(missingMigration(code) ? migrationHint : existing.error.message, missingMigration(code) ? 503 : 500);
   }
-  const known = new Map(((existing.data ?? []) as { id: number; cabinet_id: string; status: string }[])
-    .map((row) => [Number(row.id), row]));
+  type KnownLine = {
+    id: number; cabinet_id: string; status: string;
+    expected_qty: number; received_qty: number | null; defect_qty: number | null; created_at: string;
+  };
+  const known = new Map(((existing.data ?? []) as KnownLine[]).map((row) => [Number(row.id), row]));
   if (known.size === 0) return fail("Партия не найдена", 404);
   // Партия целиком принадлежит кабинету юрлица — проверяем до записи, а не по строке.
   for (const row of known.values()) {
@@ -379,18 +537,100 @@ export async function PATCH(request: NextRequest) {
     if (error) return fail(error.message, 500);
   }
 
+  // Отметка «пересчитано» — в шапке партии. Шапки может не быть (партия старше
+  // миграции или заведена без неё) — тогда заводим без номера. Таблицы нет
+  // вовсе — отметка теряется, приёмка от этого не ломается.
+  const counted = updates.length > 0;
+  if (counted) {
+    await db
+      .from("stock_receipt_batches")
+      .upsert(
+        { batch_id: batchId, legal_entity_id: scope.entity.id, counted_at: now, counted_by: session?.email ?? null, updated_at: now },
+        { onConflict: "batch_id" },
+      );
+  }
+
+  // Итоги партии после записи — для хроники. Ожидаемое считаем по всем строкам,
+  // принятое — по уже принятым и только что записанным; строка, которая всё ещё
+  // ждёт, делает вывод о расхождении преждевременным.
+  const updatedById = new Map(updates.map((line) => [line.id, line]));
+  const totals = { expected: 0, received: 0, defect: 0, short: 0, over: 0, pending: 0 };
+  let firstCreatedAt: string | null = null;
+  for (const row of known.values()) {
+    const expected = Number(row.expected_qty ?? 0);
+    totals.expected += expected;
+    const fresh = updatedById.get(Number(row.id));
+    let received: number | null = null;
+    if (fresh) {
+      received = fresh.received;
+      totals.defect += fresh.defect;
+    } else if (row.status === "received") {
+      received = Number(row.received_qty ?? 0);
+      totals.defect += Number(row.defect_qty ?? 0);
+    } else {
+      totals.pending += 1;
+    }
+    if (received !== null) {
+      totals.received += received;
+      if (received < expected) totals.short += expected - received;
+      if (received > expected) totals.over += received - expected;
+    }
+    if (!firstCreatedAt || row.created_at < firstCreatedAt) firstCreatedAt = row.created_at;
+  }
+
+  const [headers, warehouseName] = await Promise.all([
+    loadBatchHeaders(db, [batchId]),
+    warehouseNameOf(db, body.warehouseId),
+  ]);
+  const number = headers.get(batchId)?.number ?? null;
+  const eventBase = {
+    legalEntityId: scope.entity.id,
+    refType: "receipt_batch" as const,
+    refId: batchId,
+    number,
+    warehouseId: body.warehouseId ?? null,
+    actor: session?.email ?? null,
+    actorRole: session?.role ?? null,
+  };
+
+  // «Пересчитано» пишется и тогда, когда проводка следом не прошла: факт
+  // пересчёта уже состоялся. А вот «на остаток» в нём — только если правда встала.
+  const recordCount = async (posted: boolean) => {
+    if (!counted) return;
+    await recordWarehouseEvent(db, {
+      ...eventBase,
+      kind: "receipt_counted",
+      payload: {
+        expected: totals.expected, received: totals.received, defect: totals.defect,
+        warehouseName, posted, createdAt: firstCreatedAt,
+      },
+    });
+    if (totals.pending === 0 && totals.received !== totals.expected) {
+      await recordWarehouseEvent(db, {
+        ...eventBase,
+        kind: "receipt_discrepancy",
+        payload: { expected: totals.expected, received: totals.received, short: totals.short, over: totals.over },
+      });
+    }
+  };
+
   if (!body.post) {
+    await recordCount(false);
     return NextResponse.json({ data: { saved: updates.length, posted: null }, error: null });
   }
 
   const { data, error } = await db.rpc("post_receipt_batch", {
-    p_batch_id: body.batchId,
+    p_batch_id: batchId,
     p_warehouse_id: body.warehouseId,
     p_actor: session?.email ?? null,
   });
-  if (error) return fail(postError(error.message) ?? error.message, 400);
+  if (error) {
+    await recordCount(false);
+    return fail(postError(error.message) ?? error.message, 400);
+  }
 
-  const result = (data ?? {}) as { posted?: number };
+  const result = (data ?? {}) as { posted?: number; qty?: number; total?: number; costBasis?: string };
+  await recordCount(Boolean(result.posted));
   if (!result.posted) {
     // Факт приёмки уже записан — сообщаем именно про проводку, чтобы человек не
     // вводил количества заново.
@@ -399,6 +639,11 @@ export async function PATCH(request: NextRequest) {
       { status: 200 },
     );
   }
+  await recordWarehouseEvent(db, {
+    ...eventBase,
+    kind: "receipt_posted",
+    payload: { qty: result.qty ?? null, total: result.total ?? null, costBasis: result.costBasis ?? null, warehouseName },
+  });
   return NextResponse.json({ data: { saved: updates.length, posted: result, warehouseId: body.warehouseId }, error: null });
 }
 
@@ -423,7 +668,8 @@ export async function POST(request: NextRequest) {
 
   const scope = await resolveEntity(body.entityId ?? null);
   if (!scope.ok) return fail(scope.error, scope.status);
-  if (!body.batchId) return fail("Не указана партия приёмки", 400);
+  const batchId = body.batchId;
+  if (!batchId) return fail("Не указана партия приёмки", 400);
   if (!body.warehouseId) return fail("Выберите склад, на который приходуем", 400);
 
   const db = getSupabaseAdmin();
@@ -431,7 +677,7 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession();
 
   const { data, error } = await db.rpc("post_receipt_batch", {
-    p_batch_id: body.batchId,
+    p_batch_id: batchId,
     p_warehouse_id: body.warehouseId,
     p_actor: session?.email ?? null,
   });
@@ -442,13 +688,29 @@ export async function POST(request: NextRequest) {
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 
-  const result = (data ?? {}) as { posted?: number; reason?: string; costBasis?: string; costNote?: string | null };
+  const result = (data ?? {}) as { posted?: number; reason?: string; qty?: number; total?: number; costBasis?: string; costNote?: string | null };
   if (!result.posted) {
     const reason = result.reason === "zero_quantity"
       ? "В партии нет принятых количеств — отметьте факт приёмки"
       : "Проводить нечего: строки уже проведены или ещё не приняты";
     return fail(reason, 409);
   }
+
+  const [headers, warehouseName] = await Promise.all([
+    loadBatchHeaders(db, [batchId]),
+    warehouseNameOf(db, body.warehouseId),
+  ]);
+  await recordWarehouseEvent(db, {
+    legalEntityId: scope.entity.id,
+    kind: "receipt_posted",
+    refType: "receipt_batch",
+    refId: batchId,
+    number: headers.get(batchId)?.number ?? null,
+    warehouseId: body.warehouseId,
+    actor: session?.email ?? null,
+    actorRole: session?.role ?? null,
+    payload: { qty: result.qty ?? null, total: result.total ?? null, costBasis: result.costBasis ?? null, warehouseName },
+  });
 
   return NextResponse.json({ data: result, error: null }, { status: 201 });
 }

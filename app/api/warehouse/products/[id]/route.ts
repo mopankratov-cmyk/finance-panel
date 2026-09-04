@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
-import { PRODUCT_COLUMNS, toProductRow, type DbProduct } from "@/lib/warehouse/productRow";
+import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
+import { PRODUCT_COLUMNS, PRODUCT_COLUMNS_LEGACY, isMissingColumn, toProductRow, type DbProduct } from "@/lib/warehouse/productRow";
 
 export const dynamic = "force-dynamic";
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
+
+/** Колонки миграции 202609040002. На старой базе запись с ними падает 42703 —
+ *  тогда убираем их из правки и пишем остальное. */
+const NEW_COLUMNS = ["model", "color", "imt_id", "is_novelty"] as const;
 
 const number = (value: unknown): number | null => {
   if (value === null || value === undefined || value === "") return null;
@@ -17,6 +23,10 @@ const number = (value: unknown): number | null => {
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const gate = await requireApiSession();
   if (gate) return gate;
+  const session = await getServerSession();
+  // Справочник — зона администратора и менеджера: оператор фулфилмента
+  // работает с тем, что в нём есть, но не правит.
+  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
   const { id } = await ctx.params;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Некорректное тело запроса", 400);
@@ -58,15 +68,27 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if ("season" in body) patch.season = body.season === "summer" || body.season === "winter" ? body.season : null;
   if ("isActive" in body) patch.is_active = Boolean(body.isActive);
   if ("note" in body) patch.note = String(body.note ?? "").trim() || null;
+  // Модель, цвет и карточка WB правятся руками — импорт из карточки их не перетирает.
+  if ("model" in body) patch.model = String(body.model ?? "").trim() || null;
+  if ("color" in body) patch.color = String(body.color ?? "").trim() || null;
+  if ("imtId" in body) patch.imt_id = number(body.imtId);
+  if ("isNovelty" in body) patch.is_novelty = Boolean(body.isNovelty);
 
-  const { error } = await db.from("products").update(patch).eq("id", id);
-  if (error) {
-    if (error.code === "23505") return fail("Товар с таким артикулом уже есть", 409);
-    return fail(error.message, 500);
+  let updated = await db.from("products").update(patch).eq("id", id);
+  if (updated.error && isMissingColumn(updated.error.code) && NEW_COLUMNS.some((key) => key in patch)) {
+    for (const key of NEW_COLUMNS) delete patch[key];
+    updated = await db.from("products").update(patch).eq("id", id);
+  }
+  if (updated.error) {
+    if (updated.error.code === "23505") return fail("Товар с таким артикулом уже есть", 409);
+    return fail(updated.error.message, 500);
   }
 
-  const updated = await db.from("products_view").select(PRODUCT_COLUMNS).eq("id", id).maybeSingle();
-  if (updated.error || !updated.data) return fail(updated.error?.message ?? "Товар не найден", 404);
+  let fresh = await db.from("products_view").select(PRODUCT_COLUMNS).eq("id", id).maybeSingle();
+  if (fresh.error && isMissingColumn(fresh.error.code)) {
+    fresh = await db.from("products_view").select(PRODUCT_COLUMNS_LEGACY).eq("id", id).maybeSingle();
+  }
+  if (fresh.error || !fresh.data) return fail(fresh.error?.message ?? "Товар не найден", 404);
   const names = new Map(list.rows.map((row) => [row.id, row.name]));
-  return NextResponse.json({ data: toProductRow(updated.data as DbProduct, names), error: null });
+  return NextResponse.json({ data: toProductRow(fresh.data as DbProduct, names), error: null });
 }

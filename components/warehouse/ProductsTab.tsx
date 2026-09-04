@@ -31,6 +31,10 @@ const emptyDraft = (entityId: string | null) => ({
   minStock: "",
   season: "" as "" | "summer" | "winter",
   note: "",
+  // Модель и цвет — иерархия склада; источник — карточка WB, правится руками.
+  model: "",
+  color: "",
+  isNovelty: false,
 });
 
 type Draft = ReturnType<typeof emptyDraft>;
@@ -53,6 +57,9 @@ const fromRow = (row: ProductRow): Draft => ({
   minStock: row.minStock === null ? "" : String(row.minStock),
   season: row.season ?? "",
   note: row.note ?? "",
+  model: row.model ?? "",
+  color: row.color ?? "",
+  isNovelty: row.isNovelty,
 });
 
 export function ProductsTab({
@@ -167,6 +174,10 @@ export function ProductsTab({
       if (d.linkedByArticle > 0) parts.push(`связано с карточкой WB ${d.linkedByArticle}`);
       if (d.skippedNoProduct > 0) parts.push(`пропущено без товара ${d.skippedNoProduct}`);
       if (d.partial) parts.push("каталог WB отдан не полностью");
+      // Модель и цвет из карточки — поля добавляет тот же импорт; старый роут их не отдаёт.
+      if (typeof d.modelsFilled === "number" && typeof d.colorsFilled === "number") {
+        parts.push(`модель и цвет проставлены у ${d.modelsFilled}/${d.colorsFilled}`);
+      }
       // Кабинет, который не прочитался, раньше молчал: роут его отмечал, а экран
       // не показывал — и цифры выглядели полными, хотя половину не прочитали.
       const cold = (d.cabinets ?? []).filter((row: { cold: boolean }) => row.cold);
@@ -439,6 +450,8 @@ export function ProductsTab({
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {field("article", "Артикул", { placeholder: "NV-836-02" })}
             {field("name", "Название", { placeholder: "Куртка NV-836", wide: true })}
+            {field("model", "Модель", { placeholder: "из карточки WB или NV-836" })}
+            {field("color", "Цвет", { placeholder: "бежевый" })}
             {field("barcode", "Штрихкод")}
             {field("category", "Категория", { placeholder: "Куртки" })}
             {field("brand", "Бренд")}
@@ -497,6 +510,17 @@ export function ProductsTab({
                 <option value="summer">летний (март–июль)</option>
                 <option value="winter">зимний (август–февраль)</option>
               </select>
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={editing.draft.isNovelty}
+                onChange={(e) => setEditing((prev) => prev && ({
+                  ...prev, draft: { ...prev.draft, isNovelty: e.target.checked },
+                }))}
+              />
+              Новинка
+              <span className="text-xs text-slate-400">ещё не торговали</span>
             </label>
             {field("note", "Заметка", { wide: true })}
           </div>
@@ -600,7 +624,12 @@ export function ProductsTab({
                       className="h-10 w-10 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                     />
                   </td>
-                  <td className="px-4 py-2.5 font-medium text-slate-900">{row.article}</td>
+                  <td className="px-4 py-2.5 font-medium text-slate-900">
+                    {row.article}
+                    {row.isNovelty && (
+                      <span className="ml-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-normal text-violet-700">новинка</span>
+                    )}
+                  </td>
                   <td className="max-w-xs truncate px-4 py-2.5 text-slate-600">{row.name}</td>
                   <td className="px-4 py-2.5 text-slate-500">{row.category ?? "—"}</td>
                   <td className="px-4 py-2.5 text-slate-500">{row.legalEntityName ?? <span className="text-amber-600">не указано</span>}</td>

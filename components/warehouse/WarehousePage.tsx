@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, QrCode, PackageX, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, QrCode, PackageX, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BalancesTab } from "@/components/warehouse/BalancesTab";
 import { DocsTab } from "@/components/warehouse/DocsTab";
+import { EventsTab } from "@/components/warehouse/EventsTab";
 import { KizTab } from "@/components/warehouse/KizTab";
 import { MovementTab } from "@/components/warehouse/MovementTab";
 import { MovesTab } from "@/components/warehouse/MovesTab";
@@ -15,9 +16,10 @@ import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
 import { TodoBar } from "@/components/warehouse/TodoBar";
 import { WarehouseShell, type ShellTab } from "@/components/warehouse/WarehouseShell";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
+import { canManageStock } from "@/lib/warehouse/operatorScope";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 
-type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "products" | "kiz" | "docs" | "moves" | "warehouses";
+type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "events" | "products" | "kiz" | "docs" | "moves" | "warehouses";
 
 /** Порядок — рабочий день склада: сначала то, что делают руками, потом то, чем
  *  сверяются, и в конце то, что настраивают раз в месяц. */
@@ -27,6 +29,7 @@ const TABS: ShellTab<Tab>[] = [
   { key: "movement", label: "Перемещение", icon: ArrowLeftRight, group: "Работа" },
   { key: "defects", label: "Брак", icon: PackageX, group: "Работа" },
   { key: "balances", label: "Остатки", icon: Boxes, group: "Учёт" },
+  { key: "events", label: "События", icon: Activity, group: "Учёт" },
   { key: "kiz", label: "Маркировка", icon: QrCode, group: "Учёт" },
   { key: "docs", label: "Документы", icon: FileText, group: "Учёт" },
   { key: "moves", label: "Движения", icon: ScrollText, group: "Учёт" },
@@ -70,13 +73,19 @@ export function WarehousePage() {
   // Пока адрес не прочитан, писать в него нечего: иначе первый же рендер
   // затрёт `?tab=` значением по умолчанию.
   const addressRead = useRef(false);
+  // Склады уже читались хотя бы раз — дальше обновление идёт без заглушки.
+  const warehousesSeen = useRef(false);
 
   const entity = useMemo(() => entities.find((row) => row.id === entityId) ?? null, [entities, entityId]);
 
   const loadWarehouses = useCallback(async () => {
     // Склады общие, но настройки пары «юрлицо + склад» — нет: дату, с которой
     // продажи FBS списывают склад, каждое юрлицо выставляет себе само.
-    setLoading(true);
+    //
+    // Заглушка «Загружаю склады…» показывается только пока складов ещё нет:
+    // иначе каждое «Обновить» после проводки размонтировало бы вкладку, и
+    // зелёная панель «Отгружено …» пропадала бы, не успев прочитаться.
+    setLoading(!warehousesSeen.current);
     setError(null);
     try {
       const query = entityId ? `?entity=${encodeURIComponent(entityId)}` : "";
@@ -84,6 +93,7 @@ export function WarehousePage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось загрузить склады");
       setWarehouses(json.data ?? []);
+      warehousesSeen.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить склады");
       setWarehouses([]);
@@ -127,6 +137,9 @@ export function WarehousePage() {
     () => (me?.role === "warehouse" ? TABS.filter((item) => OPERATOR_TABS.has(item.key)) : TABS),
     [me],
   );
+  // Кто ставит задания, правит приход и возвращает брак в остаток. Пока роль не
+  // прочитана — «нет»: спрятать кнопку на секунду безопаснее, чем показать чужую.
+  const canManage = canManageStock(me?.role);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,7 +212,7 @@ export function WarehousePage() {
   return (
     <WarehouseShell
       title="Склад"
-      subtitle="Товары, приёмка, остатки"
+      subtitle="Приёмка, задания, остатки"
       tabs={tabs}
       active={tab}
       onSelect={setTab}
@@ -241,13 +254,15 @@ export function WarehousePage() {
       ) : tab === "balances" ? (
         <BalancesTab entityId={entityId} refreshKey={refreshKey} />
       ) : tab === "receipts" ? (
-        <ReceiptsTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onPosted={refresh} />
+        <ReceiptsTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onPosted={refresh} />
       ) : tab === "shipment" ? (
-        <ShipmentTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onShipped={refresh} />
+        <ShipmentTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onShipped={refresh} />
       ) : tab === "movement" ? (
         <MovementTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onChanged={refresh} />
       ) : tab === "defects" ? (
-        <DefectsTab entityId={entityId} warehouses={warehouses} refreshKey={refreshKey} onChanged={refresh} />
+        <DefectsTab entityId={entityId} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onChanged={refresh} />
+      ) : tab === "events" ? (
+        <EventsTab entityId={entityId} refreshKey={refreshKey} />
       ) : tab === "products" ? (
         <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} />
       ) : tab === "kiz" ? (

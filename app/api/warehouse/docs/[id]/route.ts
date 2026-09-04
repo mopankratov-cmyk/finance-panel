@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { isMissingColumn } from "@/lib/warehouse/productRow";
 import type { StockDocKind } from "@/lib/warehouse/stockDocs";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,8 @@ export interface StockDocDetail {
   id: string;
   number: string;
   kind: StockDocKind;
-  status: "draft" | "posted" | "reversed";
+  /** draft — задание ждёт фулфилмента; cancelled — задание отменено до отгрузки. */
+  status: "draft" | "posted" | "reversed" | "cancelled";
   entityName: string;
   entityInn: string | null;
   warehouseName: string | null;
@@ -32,6 +34,9 @@ export interface StockDocDetail {
   occurredAt: string;
   note: string | null;
   createdBy: string | null;
+  /** Кто и когда подтвердил отгрузку по заданию; у прямых проводок пусто. */
+  confirmedBy: string | null;
+  confirmedAt: string | null;
   reversedByNumber: string | null;
   reversesNumber: string | null;
   lines: StockDocLine[];
@@ -40,6 +45,13 @@ export interface StockDocDetail {
 }
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
+
+const COLUMNS_LEGACY = "id, number, kind, status, legal_entity_id, warehouse_id, target_warehouse_id, cabinet_id, occurred_at, note, movement_doc_id, created_by, reversed_by, reverses";
+// Колонки миграции 202609040002 — до неё их нет, и карточка читается без них.
+const COLUMNS = `${COLUMNS_LEGACY}, confirmed_at, confirmed_by`;
+
+const toStatus = (value: unknown): StockDocDetail["status"] =>
+  value === "draft" || value === "reversed" || value === "cancelled" ? value : "posted";
 
 /** Карточка документа со строками — из неё же печатается бумага для фулфилмента. */
 export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -53,13 +65,11 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
-  const docResult = await db
-    .from("stock_docs")
-    .select("id, number, kind, status, legal_entity_id, warehouse_id, target_warehouse_id, cabinet_id, occurred_at, note, movement_doc_id, created_by, reversed_by, reverses")
-    .eq("id", id)
-    .maybeSingle();
+  const query = (columns: string) => db.from("stock_docs").select(columns).eq("id", id).maybeSingle();
+  let docResult = await query(COLUMNS);
+  if (docResult.error && isMissingColumn(docResult.error.code)) docResult = await query(COLUMNS_LEGACY);
   if (docResult.error) return fail(docResult.error.message, 500);
-  const doc = docResult.data;
+  const doc = docResult.data as unknown as Record<string, unknown> | null;
   if (!doc) return fail("Документ не найден", 404);
 
   const entity = list.rows.find((row) => row.id === String(doc.legal_entity_id));
@@ -69,10 +79,55 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
   const names = new Map((warehousesResult.data ?? []).map((row) => [String(row.id), String(row.name)]));
   const cabinets = new Map(entity.cabinets.map((link) => [link.cabinetId, link.cabinetName]));
 
+  const sizesFor = async (variantIds: string[]) => {
+    const sizes = new Map<string, { size: string; barcode: string | null }>();
+    if (variantIds.length === 0) return sizes;
+    const variants = await db.from("product_variants").select("id, size_label, barcode").in("id", variantIds);
+    for (const row of variants.data ?? []) {
+      sizes.set(String(row.id), { size: String(row.size_label ?? ""), barcode: (row.barcode as string | null) ?? null });
+    }
+    return sizes;
+  };
+
   // Строки документа — это его движения в регистре: другого источника нет и не
   // должно быть, иначе бумага и учёт разойдутся.
   let lines: StockDocLine[] = [];
-  if (doc.movement_doc_id) {
+  if (doc.status === "draft") {
+    // Черновик — задание: движений ещё нет, строки живут в stock_doc_lines. Это
+    // единственное исключение: бумага для фулфилмента нужна ДО того, как товар
+    // уехал. Себестоимости у строки нет — задание её не знает.
+    const taskLines = await db
+      .from("stock_doc_lines")
+      .select("variant_id, product_id, qty")
+      .eq("doc_id", String(doc.id))
+      .order("id");
+    if (taskLines.error && !["42P01", "PGRST205"].includes(taskLines.error.code ?? "")) return fail(taskLines.error.message, 500);
+    const rows = (taskLines.data ?? []) as { variant_id: string; product_id: string; qty: number }[];
+
+    const sizes = await sizesFor([...new Set(rows.map((row) => String(row.variant_id)))]);
+    const productIds = [...new Set(rows.map((row) => String(row.product_id)).filter(Boolean))];
+    const products = new Map<string, { article: string; nmId: number | null }>();
+    if (productIds.length > 0) {
+      const result = await db.from("products").select("id, article, nm_id").in("id", productIds);
+      for (const row of result.data ?? []) {
+        products.set(String(row.id), { article: String(row.article ?? ""), nmId: row.nm_id === null ? null : Number(row.nm_id) });
+      }
+    }
+    const warehouseName = doc.warehouse_id ? names.get(String(doc.warehouse_id)) ?? "склад удалён" : "склад не указан";
+    const cabinetName = doc.cabinet_id ? cabinets.get(String(doc.cabinet_id)) ?? "кабинет" : null;
+    lines = rows.map((row) => ({
+      article: products.get(String(row.product_id))?.article ?? "",
+      sizeLabel: sizes.get(String(row.variant_id))?.size ?? "",
+      nmId: products.get(String(row.product_id))?.nmId ?? null,
+      barcode: sizes.get(String(row.variant_id))?.barcode ?? null,
+      qty: Number(row.qty),
+      amount: 0,
+      warehouseName,
+      cabinetName,
+      kind: "shipment",
+      note: null,
+    }));
+  } else if (doc.movement_doc_id) {
     // Одна проводка может держать несколько накладных — по одной на кабинет.
     // Документ показывает только свои строки, иначе бумага на Ozon перечислит
     // и то, что уехало на Wildberries.
@@ -84,15 +139,7 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
     const movesResult = await movesQuery.order("id");
     if (movesResult.error) return fail(movesResult.error.message, 500);
 
-    const variantIds = [...new Set((movesResult.data ?? []).map((row) => String(row.variant_id)).filter(Boolean))];
-    const sizes = new Map<string, { size: string; barcode: string | null }>();
-    if (variantIds.length > 0) {
-      const variants = await db.from("product_variants").select("id, size_label, barcode").in("id", variantIds);
-      for (const row of variants.data ?? []) {
-        sizes.set(String(row.id), { size: String(row.size_label ?? ""), barcode: (row.barcode as string | null) ?? null });
-      }
-    }
-
+    const sizes = await sizesFor([...new Set((movesResult.data ?? []).map((row) => String(row.variant_id)).filter(Boolean))]);
     lines = (movesResult.data ?? []).map((row) => ({
       article: String(row.article ?? ""),
       sizeLabel: sizes.get(String(row.variant_id))?.size ?? "",
@@ -118,15 +165,17 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
     id: String(doc.id),
     number: String(doc.number),
     kind: doc.kind as StockDocKind,
-    status: doc.status as StockDocDetail["status"],
+    status: toStatus(doc.status),
     entityName: entity.name,
     entityInn: entity.inn,
     warehouseName: doc.warehouse_id ? names.get(String(doc.warehouse_id)) ?? null : null,
     targetWarehouseName: doc.target_warehouse_id ? names.get(String(doc.target_warehouse_id)) ?? null : null,
     cabinetName: doc.cabinet_id ? cabinets.get(String(doc.cabinet_id)) ?? "кабинет" : null,
     occurredAt: String(doc.occurred_at),
-    note: doc.note,
-    createdBy: doc.created_by,
+    note: (doc.note as string | null) ?? null,
+    createdBy: (doc.created_by as string | null) ?? null,
+    confirmedBy: (doc.confirmed_by as string | null) ?? null,
+    confirmedAt: (doc.confirmed_at as string | null) ?? null,
     reversedByNumber: doc.reversed_by ? linkedNumbers.get(String(doc.reversed_by)) ?? null : null,
     reversesNumber: doc.reverses ? linkedNumbers.get(String(doc.reverses)) ?? null : null,
     lines,

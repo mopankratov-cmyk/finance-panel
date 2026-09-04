@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { noWildberriesSourceReason, wildberriesOwnCabinets } from "@/lib/warehouse/cabinetChannels";
+import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
+import { modelLabelForGroup, splitArticle } from "@/lib/warehouse/productModel";
+import { isMissingColumn } from "@/lib/warehouse/productRow";
 import { warmFbsBarcodeCatalog, type FbsBarcodeEntry } from "@/lib/wb/fbsBarcodeCatalog";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +25,24 @@ export interface VariantImportResult {
   skippedNoProduct: number;
   /** Товарам дописана связь с карточкой WB, найденная по артикулу. */
   linkedByArticle: number;
+  /** Товарам, у которых модель была пуста, подписана модель из карточки WB
+   *  (общий префикс артикулов одного imtID) или из разбора артикула. */
+  modelsFilled: number;
+  /** Товарам с пустым цветом записан цвет из характеристики карточки. */
+  colorsFilled: number;
+  /** Товарам без imtID дописан imtID карточки. */
+  imtFilled: number;
   /** Каталог WB отдан не полностью — часть карточек не обойдена. */
   partial: boolean;
   cabinets: { name: string; entries: number; cold: boolean }[];
+}
+
+interface ProductMeta {
+  article: string;
+  nmId: number | null;
+  imtId: number | null;
+  color: string | null;
+  model: string | null;
 }
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
@@ -35,6 +54,9 @@ const migrationHint = "Примените миграции 202608230014 и 20260
 export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
+  const session = await getServerSession();
+  // Импорт пишет в справочник — это зона администратора и менеджера.
+  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
   const body = (await request.json().catch(() => null)) as { entityId?: string } | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -82,20 +104,34 @@ export async function POST(request: NextRequest) {
   // Товар ищется сначала по карточке, потом по артикулу. Одного nmID мало:
   // товар мог быть заведён из другого кабинета или вовсе без карточки, а артикул
   // у нас и в WB (vendorCode) один и тот же — это он и связывает.
-  const productsResult = await db.from("products").select("id, nm_id, article");
+  //
+  // Модель, цвет и imtID — колонки миграции 202609040002. База без них отдаёт
+  // 42703: тогда читаем как раньше и модель с цветом не заполняем.
+  let legacyColumns = false;
+  let productsResult = await db.from("products").select("id, nm_id, article, imt_id, color, model");
+  if (productsResult.error && isMissingColumn(productsResult.error.code)) {
+    legacyColumns = true;
+    productsResult = await db.from("products").select("id, nm_id, article");
+  }
   if (productsResult.error) {
     const code = productsResult.error.code;
     return fail(missingMigration(code) ? migrationHint : productsResult.error.message, missingMigration(code) ? 503 : 500);
   }
   const productByNm = new Map<number, string>();
   const productByArticle = new Map<string, string>();
-  const nmByProduct = new Map<string, number | null>();
-  for (const row of productsResult.data ?? []) {
+  const productMeta = new Map<string, ProductMeta>();
+  for (const row of (productsResult.data ?? []) as Record<string, unknown>[]) {
     const id = String(row.id);
     if (row.nm_id !== null && row.nm_id !== undefined) productByNm.set(Number(row.nm_id), id);
     const article = String(row.article ?? "").trim().toLowerCase();
     if (article) productByArticle.set(article, id);
-    nmByProduct.set(id, row.nm_id === null || row.nm_id === undefined ? null : Number(row.nm_id));
+    productMeta.set(id, {
+      article: String(row.article ?? ""),
+      nmId: row.nm_id === null || row.nm_id === undefined ? null : Number(row.nm_id),
+      imtId: row.imt_id === null || row.imt_id === undefined ? null : Number(row.imt_id),
+      color: String(row.color ?? "").trim() || null,
+      model: String(row.model ?? "").trim() || null,
+    });
   }
 
   const resolveProduct = (entry: FbsBarcodeEntry): string | undefined =>
@@ -124,11 +160,21 @@ export async function POST(request: NextRequest) {
 
   // Карточка нашлась по артикулу, а nmID у товара пуст — дописываем связь заодно.
   const nmToFill = new Map<string, number>();
+  // Карточка каждого найденного товара — источник imtID и цвета; артикулы по
+  // imtID — из них складывается подпись модели.
+  const cardByProduct = new Map<string, FbsBarcodeEntry>();
+  const articlesByImt = new Map<number, Set<string>>();
 
   for (const entry of entries) {
+    if (entry.imtId) {
+      const group = articlesByImt.get(entry.imtId) ?? new Set<string>();
+      group.add(entry.article.trim());
+      articlesByImt.set(entry.imtId, group);
+    }
     const productId = resolveProduct(entry);
     if (!productId) { skippedNoProduct += 1; continue; }
-    if (!nmByProduct.get(productId) && entry.nmId) nmToFill.set(productId, entry.nmId);
+    if (!productMeta.get(productId)?.nmId && entry.nmId) nmToFill.set(productId, entry.nmId);
+    if (!cardByProduct.has(productId)) cardByProduct.set(productId, entry);
     // Безразмерная карточка WB («0» или пусто) — это наш базовый вариант, его не дублируем.
     const size = entry.size.trim();
     if (!size || size === "0") continue;
@@ -177,12 +223,49 @@ export async function POST(request: NextRequest) {
     if (!error) updated += 1;
   }
 
+  // Модель и цвет — из карточки WB (решение владельца 04.09): imtID объединяет
+  // цвета одной модели, цвет лежит в характеристике «Цвет». Заполняем только
+  // пустое: что человек записал руками, важнее карточки. Подпись модели — общий
+  // префикс артикулов группы imtID (NV-836-02, NV-836-04 → NV-836); у товара без
+  // карточки-группы — разбор артикула.
+  let modelsFilled = 0;
+  let colorsFilled = 0;
+  let imtFilled = 0;
+  if (!legacyColumns) {
+    for (const [productId, card] of cardByProduct) {
+      const product = productMeta.get(productId);
+      if (!product) continue;
+      const patch: Record<string, unknown> = {};
+      if (product.imtId === null && card.imtId) patch.imt_id = card.imtId;
+      const color = String(card.color ?? "").trim();
+      if (!product.color && color) patch.color = color;
+      if (!product.model) {
+        const group = card.imtId ? [...(articlesByImt.get(card.imtId) ?? [])] : [];
+        const model = group.length > 0 ? modelLabelForGroup(group) : splitArticle(product.article).model;
+        if (model) patch.model = model;
+      }
+      if (Object.keys(patch).length === 0) continue;
+      const { error } = await db.from("products").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", productId);
+      if (error) {
+        // Колонки всё-таки нет — дальше пробовать бессмысленно; размеры уже импортированы.
+        if (isMissingColumn(error.code)) break;
+        continue;
+      }
+      if (patch.model) modelsFilled += 1;
+      if (patch.color) colorsFilled += 1;
+      if (patch.imt_id) imtFilled += 1;
+    }
+  }
+
   const result: VariantImportResult = {
     created,
     updated,
     linkedByArticle: nmToFill.size,
     products: touchedProducts.size,
     skippedNoProduct,
+    modelsFilled,
+    colorsFilled,
+    imtFilled,
     partial,
     cabinets: cabinetStats,
   };

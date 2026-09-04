@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { recordStockDoc } from "@/lib/warehouse/stockDocs";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 200;
+/** Фильтр `in` едет в URL запроса: длинный список документов режем на куски. */
+const CHUNK = 200;
 
 export interface WriteoffRow {
   id: number;
@@ -22,9 +26,19 @@ export interface WriteoffRow {
   qty: number;
   amount: number;
   reason: string | null;
+  /** Откуда списание: writeoff (руками), purchase_receipt (брак при приёмке),
+   *  receipt_correction (коррекция прихода), return, reversal (сторно). */
   docType: string;
   occurredAt: string;
   createdBy: string | null;
+  /** Документ списания в stock_docs — им делается сторно. null у брака при
+   *  приёмке, коррекции и старых записей без документа. */
+  docId: string | null;
+  docNumber: string | null;
+  /** Документ уже сторнирован — товар вернулся в остаток. */
+  reversed: boolean;
+  /** Можно вернуть в остаток: есть документ, он не сторнирован и это ручное списание. */
+  canRevert: boolean;
 }
 
 export interface WriteoffsResponse {
@@ -34,9 +48,40 @@ export interface WriteoffsResponse {
   truncated: boolean;
 }
 
+interface DbWriteoffDoc {
+  id: string;
+  number: string;
+  status: string;
+  reversed_by: string | null;
+  movement_doc_id: string | null;
+}
+
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграцию 202608230012_defects_writeoffs.sql";
+
+/** Функции с такой сигнатурой нет: PostgREST не нашёл её в кэше схемы
+ *  (PGRST202) или Postgres не подобрал перегрузку (42883). */
+const isMissingFunction = (error: { code?: string; message: string }) =>
+  error.code === "PGRST202" || error.code === "42883" || /does not exist|could not find the function/i.test(error.message);
+
+/** Документы списаний по идентификаторам движений. Ошибка (таблицы ещё нет) —
+ *  просто документов нет, журнал от этого не ложится. */
+async function loadWriteoffDocs(db: SupabaseClient, movementIds: string[]): Promise<Map<string, DbWriteoffDoc>> {
+  const docs = new Map<string, DbWriteoffDoc>();
+  for (let i = 0; i < movementIds.length; i += CHUNK) {
+    const { data, error } = await db
+      .from("stock_docs")
+      .select("id, number, status, reversed_by, movement_doc_id")
+      .eq("kind", "writeoff")
+      .in("movement_doc_id", movementIds.slice(i, i + CHUNK));
+    if (error) return docs;
+    for (const row of (data ?? []) as DbWriteoffDoc[]) {
+      if (row.movement_doc_id) docs.set(String(row.movement_doc_id), row);
+    }
+  }
+  return docs;
+}
 
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
@@ -52,7 +97,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await db
     .from("stock_moves")
-    .select("id, warehouse_id, variant_id, product_id, nm_id, article, qty, amount, note, doc_type, occurred_at, created_by")
+    .select("id, warehouse_id, variant_id, product_id, nm_id, article, qty, amount, note, doc_type, doc_id, occurred_at, created_by")
     .eq("legal_entity_id", scope.entity.id)
     .eq("kind", "writeoff")
     .order("occurred_at", { ascending: false })
@@ -68,27 +113,44 @@ export async function GET(request: NextRequest) {
     for (const variant of variants.data ?? []) sizes.set(String(variant.id), String(variant.size_label ?? ""));
   }
 
-  const rows: WriteoffRow[] = (data ?? []).map((row) => ({
-    id: Number(row.id),
-    warehouseId: String(row.warehouse_id),
-    warehouseName: names.get(String(row.warehouse_id)) ?? "склад удалён",
-    variantId: String(row.variant_id),
-    productId: String(row.product_id),
-    nmId: row.nm_id === null ? null : Number(row.nm_id),
-    article: String(row.article ?? ""),
-    sizeLabel: sizes.get(String(row.variant_id)) ?? "",
-    qty: Math.abs(Number(row.qty)),
-    amount: Math.abs(Number(row.amount)),
-    reason: row.note,
-    docType: String(row.doc_type),
-    occurredAt: String(row.occurred_at),
-    createdBy: row.created_by,
-  }));
+  // Документ списания — по идентификатору движений: по нему кнопка «Вернуть в
+  // остаток» находит, что сторнировать, и по нему же видно, что уже сторнировано.
+  const movementIds = [...new Set((data ?? []).map((row) => (row.doc_id ? String(row.doc_id) : "")).filter(Boolean))];
+  const docs = await loadWriteoffDocs(db, movementIds);
+
+  const rows: WriteoffRow[] = (data ?? []).map((row) => {
+    const docType = String(row.doc_type);
+    const doc = row.doc_id ? docs.get(String(row.doc_id)) : undefined;
+    const reversed = doc ? doc.status === "reversed" || Boolean(doc.reversed_by) : false;
+    return {
+      id: Number(row.id),
+      warehouseId: String(row.warehouse_id),
+      warehouseName: names.get(String(row.warehouse_id)) ?? "склад удалён",
+      variantId: String(row.variant_id),
+      productId: String(row.product_id),
+      nmId: row.nm_id === null ? null : Number(row.nm_id),
+      article: String(row.article ?? ""),
+      sizeLabel: sizes.get(String(row.variant_id)) ?? "",
+      qty: Math.abs(Number(row.qty)),
+      amount: Math.abs(Number(row.amount)),
+      reason: row.note,
+      docType,
+      occurredAt: String(row.occurred_at),
+      createdBy: row.created_by,
+      docId: doc ? String(doc.id) : null,
+      docNumber: doc ? String(doc.number) : null,
+      reversed,
+      canRevert: Boolean(doc) && !reversed && docType === "writeoff",
+    };
+  });
 
   // Итог месяца считается ОТДЕЛЬНЫМ запросом по всем строкам месяца, а не по
   // выданной странице. Раньше он складывался из последних двухсот записей: пока
   // списаний мало, цифра совпадала, а на двести первой начинала молча занижать —
   // и это та самая сумма, которая заявлена как потери склада в ОПиУ.
+  //
+  // Складываем со знаком: сторно пишет те же строки с плюсом, и «вернули в
+  // остаток» должно вычитаться из потерь, а не удваивать их.
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -102,8 +164,8 @@ export async function GET(request: NextRequest) {
 
   const payload: WriteoffsResponse = {
     rows,
-    monthQty: (monthResult.data ?? []).reduce((sum, row) => sum + Math.abs(Number(row.qty)), 0),
-    monthAmount: (monthResult.data ?? []).reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0),
+    monthQty: Math.max(0, -(monthResult.data ?? []).reduce((sum, row) => sum + Number(row.qty), 0)),
+    monthAmount: Math.max(0, -(monthResult.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0)),
     truncated: rows.length === PAGE_SIZE,
   };
   return NextResponse.json({ data: payload, error: null });
@@ -114,7 +176,8 @@ export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as
-    | { entityId?: string; docKey?: string; warehouseId?: string; reason?: string; lines?: { variantId: string; qty: number }[] }
+    | { entityId?: string; docKey?: string; warehouseId?: string; reason?: string; occurredAt?: string;
+        lines?: { variantId: string; qty: number }[] }
     | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -123,6 +186,17 @@ export async function POST(request: NextRequest) {
   if (!body.warehouseId) return fail("Выберите склад", 400);
   const reason = String(body.reason ?? "").trim();
   if (!reason) return fail("Укажите причину списания — «просто пропало» не бывает", 400);
+
+  // Дата брака по ТЗ: найденное в апреле вносят в мае, а в журнале оно должно
+  // стоять апрелем. Пусто — сегодня, как раньше.
+  const occurredAtRaw = typeof body.occurredAt === "string" ? body.occurredAt.trim() : "";
+  let occurredAt: string | null = null;
+  if (occurredAtRaw) {
+    const parsed = new Date(occurredAtRaw);
+    if (Number.isNaN(parsed.getTime())) return fail("Некорректная дата списания", 400);
+    if (parsed.getTime() > Date.now() + 24 * 60 * 60 * 1000) return fail("Дата списания в будущем", 400);
+    occurredAt = parsed.toISOString();
+  }
 
   const lines = (body.lines ?? []).filter((line) => line.variantId && Number(line.qty) > 0);
   if (lines.length === 0) return fail("Добавьте хотя бы одну позицию", 400);
@@ -137,13 +211,25 @@ export async function POST(request: NextRequest) {
   if (claim.state === "done") return NextResponse.json({ data: claim.result, error: null }, { status: 200 });
   if (claim.state === "busy") return fail(BUSY_MESSAGE, 409);
 
-  const { data, error } = await db.rpc("post_writeoff", {
+  const args = {
     p_legal_entity_id: scope.entity.id,
     p_warehouse_id: body.warehouseId,
     p_lines: lines.map((line) => ({ variantId: line.variantId, qty: Math.round(line.qty) })),
     p_reason: reason,
     p_actor: session?.email ?? null,
-  });
+  };
+  let dateIgnored = false;
+  let { data, error } = occurredAt
+    ? await db.rpc("post_writeoff", { ...args, p_occurred_at: occurredAt })
+    : await db.rpc("post_writeoff", args);
+
+  // База без миграции 202609040003 знает только пятиаргументную функцию. Списание
+  // важнее даты: проводим сегодняшним числом и говорим об этом в ответе, а не
+  // отказываем человеку в работе.
+  if (error && occurredAt && isMissingFunction(error)) {
+    ({ data, error } = await db.rpc("post_writeoff", args));
+    dateIgnored = !error;
+  }
 
   if (error) await releaseDocKey(db, docKey);
   if (error) {
@@ -151,6 +237,10 @@ export async function POST(request: NextRequest) {
     if (shortage) return fail(`На складе не хватает «${shortage[1]}»: есть ${shortage[2]}, нужно ${shortage[3]}`, 409);
     if (error.message.includes("warehouse not found")) return fail("Склад не найден", 404);
     if (error.message.includes("warehouse is archived")) return fail("Склад в архиве", 400);
+    if (error.message.includes("variant not found")) return fail("Размер не найден", 404);
+    if (error.message.includes("reason required")) return fail("Укажите причину", 400);
+    if (error.message.includes("date in the future")) return fail("Дата списания в будущем", 400);
+    if (error.message.includes("quantity must be positive")) return fail("Количество должно быть больше нуля", 400);
     return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   }
 
@@ -161,12 +251,37 @@ export async function POST(request: NextRequest) {
     kind: "writeoff",
     legalEntityId: scope.entity.id,
     warehouseId: body.warehouseId, cabinetId: null, targetWarehouseId: null,
-    note: body.reason?.trim() || null,
+    occurredAt: dateIgnored ? null : occurredAt,
+    note: reason,
     result: data,
     actor: session?.email ?? null,
   });
 
-  const payload = doc ? { ...(data as Record<string, unknown>), docNumber: doc.number, docId: doc.id } : data;
+  const result = (data ?? {}) as Record<string, unknown>;
+  const warehouse = await db.from("warehouses").select("name").eq("id", body.warehouseId).maybeSingle();
+  await recordWarehouseEvent(db, {
+    legalEntityId: scope.entity.id,
+    kind: "writeoff_created",
+    refType: "stock_doc",
+    refId: doc?.id ?? null,
+    number: doc?.number ?? null,
+    warehouseId: body.warehouseId,
+    actor: session?.email ?? null,
+    actorRole: session?.role ?? null,
+    payload: {
+      warehouseName: warehouse.data?.name ? String(warehouse.data.name) : null,
+      reason,
+      qty: result.qty ?? null,
+      amount: result.amount ?? null,
+      date: dateIgnored || !occurredAt ? null : occurredAt.slice(0, 10),
+    },
+  });
+
+  const payload = {
+    ...result,
+    ...(doc ? { docNumber: doc.number, docId: doc.id } : {}),
+    ...(dateIgnored ? { dateIgnored: true } : {}),
+  };
   await settleDocKey(db, docKey, payload);
   return NextResponse.json({ data: payload, error: null }, { status: 201 });
 }

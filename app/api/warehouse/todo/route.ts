@@ -9,11 +9,11 @@ export const dynamic = "force-dynamic";
 
 /** Дело, которое склад должен закрыть. Не отчёт, а короткая строка «сходи сюда». */
 export interface WarehouseTodo {
-  key: "kizOverdue" | "kizPending" | "receiptsHanging" | "negative" | "belowMin";
+  key: "kizOverdue" | "kizPending" | "receiptsHanging" | "receiptsUncounted" | "tasksPending" | "negative" | "belowMin";
   tone: "danger" | "warn";
   count: number;
   label: string;
-  tab: "kiz" | "receipts" | "balances" | "products";
+  tab: "kiz" | "receipts" | "balances" | "products" | "shipment";
 }
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
@@ -41,26 +41,33 @@ export async function GET(request: NextRequest) {
   // этого «столько-то кодов просрочены» было одним числом для всех девяти.
   const overdueBefore = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
 
-  const [kizPending, kizOverdue, receipts, balances, products] = await Promise.all([
+  const [kizPending, kizOverdue, receipts, uncounted, tasks, balances, products] = await Promise.all([
     db.from("kiz_withdrawals").select("code", { count: "exact", head: true }).eq("status", "sold").eq("legal_entity_id", entityId),
     db.from("kiz_withdrawals").select("code", { count: "exact", head: true }).eq("status", "sold").eq("legal_entity_id", entityId).lt("sold_at", overdueBefore),
     ownCabinets.length === 0
       ? Promise.resolve({ data: [], error: null })
       : db.from("purchase_receipts").select("batch_id").in("cabinet_id", ownCabinets).eq("status", "received").is("posted_at", null),
+    ownCabinets.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : db.from("purchase_receipts").select("batch_id").in("cabinet_id", ownCabinets).eq("status", "expected"),
+    db.from("stock_docs").select("id", { count: "exact", head: true }).eq("legal_entity_id", entityId).eq("kind", "shipment").eq("status", "draft"),
     loadAllSupabasePages<{ product_id: string; qty: number }>((from, to) =>
       db.from("stock_balances").select("product_id, qty").eq("legal_entity_id", entityId).range(from, to),
     ).catch(() => [] as { product_id: string; qty: number }[]),
     db.from("products").select("id, min_stock").eq("legal_entity_id", entityId).eq("is_active", true).not("min_stock", "is", null),
   ]);
 
-  // Реестр кодов и справочник товаров могут быть не мигрированы — полоса дел не
-  // повод ронять весь модуль, просто одним делом меньше.
+  // Реестр кодов, документы и справочник товаров могут быть не мигрированы —
+  // полоса дел не повод ронять весь модуль, просто одним делом меньше.
   const pendingCount = kizPending.error ? 0 : (kizPending.count ?? 0);
   const overdueCount = kizOverdue.error ? 0 : (kizOverdue.count ?? 0);
+  const tasksPending = tasks.error ? 0 : (tasks.count ?? 0);
 
-  const hangingBatches = receipts.error
+  const distinctBatches = (result: { data: unknown; error: unknown }) => result.error
     ? 0
-    : new Set(((receipts.data ?? []) as { batch_id: string }[]).map((row) => String(row.batch_id))).size;
+    : new Set(((result.data ?? []) as { batch_id: string }[]).map((row) => String(row.batch_id))).size;
+  const hangingBatches = distinctBatches(receipts);
+  const uncountedBatches = distinctBatches(uncounted);
 
   const stock = new Map<string, number>();
   for (const row of balances) {
@@ -99,6 +106,27 @@ export async function GET(request: NextRequest) {
       count: negative,
       label: `${negative} ${plural(negative, "товар ушёл", "товара ушли", "товаров ушли")} в минус`,
       tab: "balances",
+    });
+  }
+  // Задание висит, пока фулфилмент не нажал «Отгружено»: товар размещён, но не
+  // уехал — это дело ФФ, и оно тревожное, потому что покупатель уже ждёт.
+  if (tasksPending > 0) {
+    items.push({
+      key: "tasksPending",
+      tone: "danger",
+      count: tasksPending,
+      label: `${tasksPending} ${plural(tasksPending, "задание ждёт", "задания ждут", "заданий ждут")} отгрузки`,
+      tab: "shipment",
+    });
+  }
+  // Партия заведена, но никто не пересчитал: ожидаемое ещё не стало фактом.
+  if (uncountedBatches > 0) {
+    items.push({
+      key: "receiptsUncounted",
+      tone: "danger",
+      count: uncountedBatches,
+      label: `${uncountedBatches} ${plural(uncountedBatches, "партия не пересчитана", "партии не пересчитаны", "партий не пересчитаны")}`,
+      tab: "receipts",
     });
   }
   if (hangingBatches > 0) {
