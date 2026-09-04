@@ -28,6 +28,8 @@ const DEFAULT_ACCOUNTS: Account[] = [
     type: "marketplace",
     currency: "RUB",
     balance: 450000,
+    openingBalance: 450000,
+    openingDate: getRelativeDate(0),
   },
   {
     id: "acc-2",
@@ -35,6 +37,8 @@ const DEFAULT_ACCOUNTS: Account[] = [
     type: "marketplace",
     currency: "RUB",
     balance: 320000,
+    openingBalance: 320000,
+    openingDate: getRelativeDate(0),
   },
   {
     id: "acc-3",
@@ -42,6 +46,8 @@ const DEFAULT_ACCOUNTS: Account[] = [
     type: "marketplace",
     currency: "RUB",
     balance: 180000,
+    openingBalance: 180000,
+    openingDate: getRelativeDate(0),
   },
   {
     id: "acc-4",
@@ -49,6 +55,8 @@ const DEFAULT_ACCOUNTS: Account[] = [
     type: "bank",
     currency: "RUB",
     balance: 1250000,
+    openingBalance: 1250000,
+    openingDate: getRelativeDate(0),
   },
   {
     id: "acc-5",
@@ -56,6 +64,8 @@ const DEFAULT_ACCOUNTS: Account[] = [
     type: "cash",
     currency: "RUB",
     balance: 50000,
+    openingBalance: 50000,
+    openingDate: getRelativeDate(0),
   },
 ];
 

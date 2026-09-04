@@ -8,7 +8,11 @@ export interface Account {
   name: string;
   type: AccountType;
   currency: Currency;
+  /** @deprecated Ручной остаток; после появления openingDate не пишется и служит только запасным значением. */
   balance: number;
+  /** Остаток на начало openingDate; текущий = openingBalance + факты с openingDate (lib/finance/balance.ts). */
+  openingBalance?: number;
+  openingDate?: string | null;
 }
 
 export interface Payment {

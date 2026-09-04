@@ -5,16 +5,18 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Account, FinanceAction, FinanceState, Loan, Payment } from "@/lib/types";
 
 type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
-type AccountRow = { id: string; name: string; type: string; currency: string; balance: number; created_at?: string };
+type AccountRow = { id: string; name: string; type: string; currency: string; balance: number; opening_balance?: number | null; opening_date?: string | null; created_at?: string };
 type PaymentRow = { id: string; name: string; amount: number; type: string; category: string; account_id: string; company_id?: string | null; date: string; status: string; counterparty: string; comment: string | null; created_at?: string };
 type LoanRow = { id: string; creditor: string; principal: number; rate_per_day: number; start_date: string; due_date: string; status: string; created_at?: string };
 
+// balance больше не пишется: остаток ведётся от opening_balance по платежам.
 const accountToRow = (account: Account) => ({
   id: account.id,
   name: account.name,
   type: account.type,
   currency: account.currency,
-  balance: account.balance,
+  opening_balance: account.openingBalance ?? account.balance ?? 0,
+  opening_date: account.openingDate ?? new Date().toISOString().slice(0, 10),
 });
 
 const paymentToRow = (payment: Payment) => ({
@@ -97,6 +99,8 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
       type: row.type as Account["type"],
       currency: row.currency as Account["currency"],
       balance: Number(row.balance),
+      openingBalance: row.opening_balance == null ? Number(row.balance) : Number(row.opening_balance),
+      openingDate: row.opening_date ? String(row.opening_date).slice(0, 10) : null,
     })),
     payments: ((paymentsResult.data ?? []) as PaymentRow[]).map((row) => ({
       id: row.id,
