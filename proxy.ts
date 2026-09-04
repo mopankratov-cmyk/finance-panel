@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
-import { canAccess, ROLE_HOME } from "@/lib/auth/roles";
+import { canAccess, roleHome } from "@/lib/auth/roles";
 
 // Защищаем всё, кроме /login, /privacy, /api/auth/*, статики и публичных шар-доков (/share/*).
 export const config = {
@@ -241,7 +241,7 @@ export async function proxy(req: NextRequest) {
 
   if (!canAccess(session.role, pathname)) {
     const url = req.nextUrl.clone();
-    url.pathname = ROLE_HOME[session.role] || "/";
+    url.pathname = roleHome(session);
     return NextResponse.redirect(url);
   }
 

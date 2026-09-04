@@ -10,6 +10,23 @@ export const ROLE_HOME: Record<Role, string> = {
   warehouse: "/warehouse",
 };
 
+/**
+ * Куда вести человека, если он попал не туда — с корня сайта, по логотипу или
+ * на закрытый ему путь.
+ *
+ * Для внешнего селлера ответ зависит от того, подключил ли он кабинет:
+ * пока не подключил, ему нужен экран подключения, а дальше там смотреть нечего
+ * — он уходит в аналитику. Раньше карта была статической, и селлер с уже
+ * подключённым кабинетом каждый раз упирался в «Подключение WB».
+ */
+export function roleHome(session: { role: Role; cabinet_ids?: string[] } | null | undefined): string {
+  if (!session) return "/login";
+  if (session.role === "seller") {
+    return (session.cabinet_ids?.length ?? 0) > 0 ? "/wb/rnp" : "/wb/connect";
+  }
+  return ROLE_HOME[session.role] || "/";
+}
+
 export const ROLE_LABEL: Record<Role, string> = {
   director: "Директор",
   finance: "Финотдел / аналитик",

@@ -115,3 +115,16 @@ test("внешний селлер переходит между своими м�
   const shell = read("components/warehouse/WarehouseShell.tsx");
   assert.match(shell, /me\?\.role === "seller" \? "\/wb\/rnp" : "\/"/, "из склада селлера уводит на закрытую витрину");
 });
+
+test("селлера с подключённым кабинетом ведёт в аналитику, а не на подключение", async () => {
+  const { roleHome } = await import("../lib/auth/roles.ts");
+  // Пока кабинета нет, экран подключения — единственное осмысленное место.
+  assert.equal(roleHome({ role: "seller", cabinet_ids: [] }), "/wb/connect");
+  assert.equal(roleHome({ role: "seller" }), "/wb/connect");
+  // Подключил — там смотреть нечего, ведём в аналитику.
+  assert.equal(roleHome({ role: "seller", cabinet_ids: ["705b2f54"] }), "/wb/rnp");
+  // Нашим ролям адрес не меняется.
+  assert.equal(roleHome({ role: "director", cabinet_ids: [] }), "/");
+  assert.equal(roleHome({ role: "warehouse", cabinet_ids: [] }), "/warehouse");
+  assert.equal(roleHome(null), "/login");
+});
