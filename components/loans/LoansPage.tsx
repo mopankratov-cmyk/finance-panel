@@ -14,6 +14,8 @@ import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Loan, Payment } from "@/lib/types";
 import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
+import { loadLoanScheduleRows } from "./scheduleStore";
+import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
 const marker = (loanId: string) => `[loan:${loanId}:`;
 const receiptMarker = (loanId: string) => `[loan:${loanId}:receipt]`;
@@ -141,6 +143,9 @@ export function LoansPage() {
   const [periodYear, setPeriodYear] = useState(todayISO().slice(0, 4));
   const [syncing, setSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // Строки графиков из loan_schedule_rows; пока их нет (до миграции или у старых
+  // договоров) — график читается по меткам платежей, как раньше.
+  const [scheduleRows, setScheduleRows] = useState<ScheduleRowRecord[]>([]);
   const reconciledRef = useRef(false);
   const contractNumberBackfillRef = useRef(false);
   const today = todayISO();
@@ -151,6 +156,7 @@ export function LoansPage() {
       setCompanies(loadedCompanies);
       setCompanyByPayment(new Map(links.map((link) => [link.paymentId, link.companyId])));
     });
+    loadLoanScheduleRows().then((result) => setScheduleRows(result.rows)).catch(() => setScheduleRows([]));
   }, []);
 
   useDailyLoanCurrencyRefresh(state.payments, dispatch, (error) => {
@@ -168,7 +174,10 @@ export function LoansPage() {
     const company = companies.find((item) => item.id === loanCompany(loan.id))?.name ?? "";
     return `${loan.creditorName} ${company} ${contractNumber(state.payments, loan.id)}`.toLowerCase().includes(normalizedSearch);
   });
-  const schedules = useMemo(() => new Map(state.loans.map((loan) => [loan.id, scheduleFromPayments(state.payments, loan.id)])), [state.loans, state.payments]);
+  const schedules = useMemo(() => new Map(state.loans.map((loan) => {
+    const rows = scheduleRows.filter((row) => row.loanId === loan.id);
+    return [loan.id, rows.length ? scheduleDraftFromRows(rows) : scheduleFromPayments(state.payments, loan.id)];
+  })), [state.loans, state.payments, scheduleRows]);
   const outstanding = filteredLoans.reduce((sum, loan) => {
     const schedule = schedules.get(loan.id) ?? [];
     const currency = commentValue(firstLoanComment(state.payments, loan.id), "currency") || "RUB";
@@ -560,7 +569,7 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
           const paidBefore = schedule.filter((item) => item.status === "done" && item.date <= row.date).reduce((sum, item) => sum + item.principal, 0);
           const overdue = row.status === "planned" && row.date < todayISO();
           const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);
-          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
+          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.balanceAfter ?? Math.max(0, loan.principalAmount - paidBefore))}</td></tr>;
         })}</tbody></table></div>
       </div>
       <footer className="flex flex-wrap justify-between gap-3 border-t p-4"><button type="button" disabled={!fileName} onClick={() => void openSource()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-4 font-bold text-violet-700 disabled:opacity-40"><ExternalLink className="h-4 w-4" />Открыть исходный файл</button><div className="flex gap-2"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></div></footer>

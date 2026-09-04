@@ -20,6 +20,9 @@ export interface LoanScheduleDraft {
   penaltyOriginal?: number;
   fineOriginal?: number;
   status: PaymentStatus;
+  /** Остаток долга до/после даты — есть у строк из loan_schedule_rows. */
+  balanceBefore?: number;
+  balanceAfter?: number;
 }
 
 export const emptyScheduleRow = (): LoanScheduleDraft => ({ id: crypto.randomUUID(), date: "", principal: 0, interest: 0, penalty: 0, fine: 0, principalOriginal: 0, interestOriginal: 0, penaltyOriginal: 0, fineOriginal: 0, status: "planned" });
