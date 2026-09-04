@@ -26,8 +26,12 @@ export function recalculatePlannedLoanPayment(
   payment: Payment,
   currentRate: number,
   rateDate: string,
+  today?: string,
 ): Payment | null {
   if (payment.status !== "planned" || !/\[loan:[^:\]]+:schedule:/.test(payment.comment ?? "")) return null;
+  // Просроченная строка — история: её сумма уже сравнивалась с фактами и не
+  // должна плавать вместе с курсом. Пересчитываем только сегодняшние и будущие.
+  if (today && payment.date < today) return null;
   const currency = loanCommentValue(payment.comment, "currency");
   if (!currency || currency === "RUB" || !Number.isFinite(currentRate) || currentRate <= 0) return null;
   const savedRate = Number(loanCommentValue(payment.comment, "fx-rate")) || 1;

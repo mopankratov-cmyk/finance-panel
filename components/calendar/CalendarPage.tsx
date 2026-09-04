@@ -6,14 +6,14 @@ import { BulkPaymentModal } from "./BulkPaymentModal";
 import { CalendarAgenda } from "./CalendarAgenda";
 import { CalendarDayCell } from "./CalendarDayCell";
 import { CashFlowSparkline } from "./CashFlowSparkline";
-import { calendarPaymentsWithoutMatchedPlans, findPlanFactMatches, isCalendarCashFlow, isMarketplaceOrLoanIncome } from "./calendarPlan";
+import { calendarPaymentsWithoutMatchedPlans, findPlanFactMatches, isCalendarCashFlow, isTechnicalTransfer } from "./calendarPlan";
 import { persistCalendarFactLink } from "./forecastPublication";
 import { DayDetailPanel } from "./DayDetailPanel";
 import { SalesForecastPanel } from "./SalesForecastPanel";
 import { OzonForecastPanel } from "./OzonForecastPanel";
 import { FinancialAlertsPanel } from "./FinancialAlertsPanel";
 import { FinanceTasksPanel } from "./FinanceTasksPanel";
-import { calendarExportRows, calendarTemplateSheets, downloadCalendarXlsx } from "./calendarExport";
+import { calendarTemplateSheets, downloadCalendarXlsx } from "./calendarExport";
 import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
 import { importedMonths, matchesReplaceScope, plannedPaymentsToReplace } from "./calendarReplace";
 import { OverdueLoanQueue } from "./OverdueLoanQueue";
@@ -154,12 +154,6 @@ export function CalendarPage() {
     () => scopedPayments.filter((payment) => !overdueLoanPaymentIds.has(payment.id)),
     [overdueLoanPaymentIds, scopedPayments],
   );
-  const calendarRows = useMemo(() => calendarExportRows({
-    payments: activeCalendarScopedPayments,
-    accountNames: new Map(state.accounts.map((account) => [account.id, account.name])),
-    companyNames: new Map(companies.map((company) => [company.id, company.name])),
-    companyByPayment,
-  }), [activeCalendarScopedPayments, state.accounts, companies, companyByPayment]);
   const calendarSheets = useMemo(() => calendarTemplateSheets({
     payments: activeCalendarScopedPayments,
     accountNames: new Map(state.accounts.map((account) => [account.id, account.name])),
@@ -191,13 +185,8 @@ export function CalendarPage() {
     googleSyncRef.current = promise;
     return promise;
   }, [calendarSheets]);
-  useEffect(() => {
-    if (isForecastView || calendarRows.length <= 1) return;
-    const timer = window.setTimeout(() => {
-      void syncCalendarToGoogle();
-    }, 3000);
-    return () => window.clearTimeout(timer);
-  }, [calendarRows, isForecastView, syncCalendarToGoogle]);
+  // Выгрузка в Google Таблицу — только по кнопке. Раньше эффект отправлял весь
+  // календарь наружу через 3 секунды после любой правки, без подтверждения.
   const allPlanFactMatching = useMemo(
     () => findPlanFactMatches(scopedPayments, companyByPayment),
     [scopedPayments, companyByPayment],
@@ -930,7 +919,7 @@ function FlowList({
   onCloseList: () => void;
 }) {
   const rows = payments
-    .filter((payment) => payment.status !== "cancelled" && (flow === "income" ? isMarketplaceOrLoanIncome(payment) : payment.amount < 0))
+    .filter((payment) => payment.status !== "cancelled" && !isTechnicalTransfer(payment) && (flow === "income" ? payment.amount > 0 : payment.amount < 0))
     .sort(chronologicalPaymentOrder);
   const accountNames = new Map(accounts.map((account) => [account.id, account.name]));
   const companyNames = new Map(companies.map((company) => [company.id, company.name]));

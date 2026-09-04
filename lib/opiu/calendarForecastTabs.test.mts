@@ -16,7 +16,8 @@ test("calendar-only mutation controls stay outside forecast views", () => {
   // Панель может быть обёрнута в скобки и перенесена на новую строку — сторожу важно условие, а не форматирование.
   assert.match(source, /\{view !== "forecast" && view !== "ozon-forecast" && \(?\s*<FinancialAlertsPanel/);
   assert.match(source, /\{!isForecastView && <FinanceTasksPanel \/>\}/);
-  assert.match(source, /if \(isForecastView \|\| calendarRows\.length <= 1\) return;/);
+  // Авто-выгрузка календаря в Google по таймеру убрана — только кнопка.
+  assert.doesNotMatch(source, /setTimeout\(\(\) => \{\s*void syncCalendarToGoogle\(\);/);
 });
 
 test("selecting a forecast tab closes open calendar editing surfaces", () => {

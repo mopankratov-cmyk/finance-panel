@@ -138,7 +138,10 @@ export function isMarketplaceOrLoanIncome(payment: Payment) {
   );
 }
 
+// Решение владельца 04.09.2026: в календаре и прогнозе остатка видны ВСЕ
+// поступления, кроме переводов между своими счетами. Раньше доходы фильтровались
+// (только МП и кредиты), а расходы считались все — прогноз был занижен.
 export function isCalendarCashFlow(payment: Payment) {
   if (payment.status === "cancelled" || isTechnicalTransfer(payment)) return false;
-  return payment.amount < 0 || isMarketplaceOrLoanIncome(payment);
+  return payment.amount !== 0;
 }

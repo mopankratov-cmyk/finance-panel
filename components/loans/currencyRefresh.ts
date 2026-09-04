@@ -19,7 +19,8 @@ export async function refreshPlannedLoanCurrencies(
     if (!response.ok || !result?.rate) throw new Error(result?.error || `Не удалось получить курс ${currency}`);
     for (const payment of payments) {
       if (loanCommentValue(payment.comment, "currency") !== currency) continue;
-      const next = recalculatePlannedLoanPayment(payment, result.rate, result.date ?? new Date().toISOString().slice(0, 10));
+      const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow" }).format(new Date());
+      const next = recalculatePlannedLoanPayment(payment, result.rate, result.date ?? today, today);
       if (!next || (next.amount === payment.amount && next.comment === payment.comment)) continue;
       dispatch({ type: "UPDATE_PAYMENT", payload: next });
       updated++;

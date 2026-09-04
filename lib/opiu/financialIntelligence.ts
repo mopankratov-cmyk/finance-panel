@@ -1,3 +1,4 @@
+import { isCalendarCashFlow } from "@/components/calendar/calendarPlan";
 import { getPaymentPriority } from "@/components/calendar/paymentPriority";
 import type { Account, Payment } from "@/lib/types";
 
@@ -28,6 +29,13 @@ export interface FinancialIntelligenceResult {
     criticalPayments: number;
     overdueCritical: number;
   };
+}
+
+export const FORECAST_HORIZON_DAYS = 90;
+
+function addDaysIso(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 }
 
 const dayDistance = (a: string, b: string) =>
@@ -82,8 +90,12 @@ export function analyzeFinances({
   }
 
   const currentBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+  // Тот же набор платежей, что и в сетке календаря (без технических переводов),
+  // и ограниченный горизонт: графики кредитов на годы вперёд делали «разрыв»
+  // вечным и не совпадали с плитками календаря.
+  const horizon = addDaysIso(today, FORECAST_HORIZON_DAYS);
   const future = active
-    .filter((payment) => payment.status === "planned" && payment.date >= today)
+    .filter((payment) => payment.status === "planned" && payment.date >= today && payment.date <= horizon && isCalendarCashFlow(payment))
     .sort((a, b) => a.date.localeCompare(b.date));
   let running = currentBalance;
   let lowestBalance = running;
