@@ -16,7 +16,7 @@ test("loan document API is authenticated and only returns a short-lived signed U
 
   assert.match(source, /requireApiSession\(\["director", "finance"\]\)/);
   assert.match(source, /public: false/);
-  assert.match(source, /createSignedUrl\(data\.object_path, SIGNED_URL_TTL_SECONDS\)/);
+  assert.match(source, /createSignedUrl\(row\.object_path, SIGNED_URL_TTL_SECONDS\)/);
   assert.match(source, /"Cache-Control": "no-store"/);
   assert.doesNotMatch(source, /getPublicUrl/);
 });
@@ -29,6 +29,16 @@ test("loan document API removes the uploaded object when metadata cannot be save
 
   assert.match(source, /if \(error\) \{\s*await db\.storage\.from\(BUCKET\)\.remove\(\[objectPath\]\);/);
   assert.match(source, /\.from\("finance_loan_documents"\)\s*\.delete\(\)/);
+});
+
+test("uploading a new loan document keeps earlier documents in the archive", () => {
+  const source = readFileSync(
+    new URL("../../app/api/opiu/loan-documents/route.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(source, /previousDocuments/);
+  assert.match(source, /documents = await Promise\.all\(data\.map/);
 });
 
 test("loan documents use the server API for save, open and delete", async () => {
