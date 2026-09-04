@@ -11,7 +11,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type DocKind = "shipment" | "writeoff" | "transfer" | "return" | "fbs_sale";
+export type DocKind = "shipment" | "writeoff" | "transfer" | "return" | "fbs_sale" | "task" | "task_ship" | "receipt_correction";
 
 export type ClaimResult =
   | { state: "claimed" }

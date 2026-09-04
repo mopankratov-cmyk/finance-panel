@@ -11,6 +11,7 @@ const TITLE: Record<StockDocDetail["kind"], string> = {
   writeoff: "Акт списания",
   return: "Акт приёмки возврата",
   receipt: "Акт приёмки",
+  adjustment: "Акт коррекции прихода",
 };
 
 const date = (value: string) => new Date(value).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });

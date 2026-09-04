@@ -22,6 +22,12 @@ export interface ProductRow {
   season: "summer" | "winter" | null;
   isActive: boolean;
   note: string | null;
+  /** Модель и цвет — иерархия склада по ТЗ; источник — карточка WB (imtId), правится руками. */
+  model: string | null;
+  color: string | null;
+  imtId: number | null;
+  /** Новинка: товар, которым раньше не торговали. Нужен процедуре запуска в РНП. */
+  isNovelty: boolean;
   /** Чего не хватает, чтобы товар считался готовым к планированию закупки. */
   missing: string[];
 }
@@ -47,6 +53,11 @@ export interface DbProduct {
   season: "summer" | "winter" | null;
   is_active: boolean;
   note: string | null;
+  // Колонки миграции 202609040002 — до её применения их нет, и поля остаются пустыми.
+  model?: string | null;
+  color?: string | null;
+  imt_id?: number | null;
+  is_novelty?: boolean | null;
 }
 
 const number = (value: unknown): number | null => {
@@ -85,9 +96,20 @@ export function toProductRow(row: DbProduct, entityNames: Map<string, string>): 
     season: row.season,
     isActive: Boolean(row.is_active),
     note: row.note,
+    model: row.model ?? null,
+    color: row.color ?? null,
+    imtId: row.imt_id === null || row.imt_id === undefined ? null : Number(row.imt_id),
+    isNovelty: Boolean(row.is_novelty),
     missing,
   };
 }
 
-export const PRODUCT_COLUMNS =
+/** Список колонок до миграции 202609040002: с ним роуты читают справочник,
+ *  когда база ещё старая, — вкладка «Товары» не должна ложиться из-за модели и цвета. */
+export const PRODUCT_COLUMNS_LEGACY =
   "id, legal_entity_id, article, name, barcode, category, brand, nm_id, photo_url, factory_price, factory_currency, weight_kg, length_cm, width_cm, height_cm, volume_liters, min_stock, season, is_active, note";
+
+export const PRODUCT_COLUMNS = `${PRODUCT_COLUMNS_LEGACY}, model, color, imt_id, is_novelty`;
+
+/** Код ошибки PostgREST/Postgres «такой колонки нет» — признак, что миграция не применена. */
+export const isMissingColumn = (code?: string | null) => code === "42703" || code === "PGRST204";
