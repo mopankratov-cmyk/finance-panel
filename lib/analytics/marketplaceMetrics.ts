@@ -19,7 +19,7 @@ export interface MarketplaceMetricDefinition {
 }
 
 export const MARKETPLACE_METRICS: Record<MarketplaceMetricId, MarketplaceMetricDefinition> = {
-  views: { label: "Показы", unit: "count", definition: "Показы карточки или рекламы за выбранный период." },
+  views: { label: "Показы", unit: "count", definition: "Рекламные показы за выбранный период. Показов карточки в органике WB не отдаёт — в воронке их нет ни в одной колонке." },
   ctr: { label: "CTR", unit: "percent", definition: "Клики / показы × 100%. Ниже 3% — внимание, от 10% — сильный результат." },
   cardToCartCr: { label: "CR просмотр→корзина", unit: "percent", definition: "Добавления в корзину / просмотры карточки × 100%. Рекламные показы и клики в знаменатель не входят." },
   cartToOrderCr: { label: "CR корзина→заказ", unit: "percent", definition: "Заказы, шт. / добавления в корзину × 100%. Ниже 3% — внимание, от 10% — сильный результат." },

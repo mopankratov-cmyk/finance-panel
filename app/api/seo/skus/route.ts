@@ -5,7 +5,7 @@ import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import { loadRnpDailySkuRows, loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
+import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
 import { funnelPeriodDates, percentRatio, resolveFunnelPeriod } from "@/lib/wb/funnelMetrics";
@@ -15,7 +15,8 @@ export const maxDuration = 60;
 
 interface FunnelRow { nm_id: number; date: string; open_card: number; add_to_cart: number; orders: number; orders_sum: number }
 interface AdRow { nm_id: number; date: string; views: number; clicks: number; spent: number }
-interface RpcTotal { nm_id: number; article: string; stock: number; cost: number | null }
+interface StockRow { nm_id: number; quantity: number | null }
+interface ScopeRow { nm_id: number; article: string | null }
 
 /**
  * Остатки склада продавца. В wb_stocks их нет: там только склады WB (FBO),
@@ -51,8 +52,43 @@ async function loadFbsStocks(cabinetId: string | null): Promise<Map<number, numb
   return new Map(data.map((row) => [Number(row.nm_id), Number(row.quantity ?? 0)]));
 }
 interface DailySkuRow { nm_id: number; d: string; orders_count: number; orders_sum: number }
-interface ProductCostRow { article: string; name: string | null }
+interface ProductCostRow { article: string; name: string | null; cost_rub: number | null }
 interface RatingRow { nm_id: number; rating: number }
+
+/**
+ * Средняя оценка по SKU. Отзывов у кабинета бывают десятки тысяч, и это
+ * вспомогательный слой: если чтение не укладывается в лимиты, экран честно
+ * покажет «—» вместо рейтинга, но останется живым. Раньше отзывы читались
+ * ПОСЛЕ основной пачки (нужен был список nm) и добавляли пять секунд ожидания
+ * в чистом виде — теперь фильтр по кабинету позволяет читать их параллельно.
+ */
+async function loadRatings(cabinetId: string | null, allowedNmIds: Set<number> | null): Promise<Map<number, { sum: number; count: number }> | null> {
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+  let rows: RatingRow[];
+  try {
+    rows = await loadAllSupabasePages<RatingRow>((from, to) => {
+      let query = db.from("wb_feedbacks")
+        .select("nm_id, rating")
+        .order("nm_id", { ascending: true })
+        .range(from, to);
+      if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+      if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+      return query;
+    }, { label: "SEO: отзывы WB", concurrency: 4, maxPages: 200 });
+  } catch {
+    return null;
+  }
+  const ratings = new Map<number, { sum: number; count: number }>();
+  for (const row of rows) {
+    const nm = Number(row.nm_id);
+    const entry = ratings.get(nm) ?? { sum: 0, count: 0 };
+    entry.sum += Number(row.rating ?? 0);
+    entry.count += 1;
+    ratings.set(nm, entry);
+  }
+  return ratings;
+}
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const pct = (num: number, den: number) => (den > 0 ? r2((num / den) * 100) : null);
@@ -113,9 +149,12 @@ export async function GET(request: NextRequest) {
     // Схема 5: в строке появились stock_fbo и stock_fbs. Версию обязательно
     // поднимать вместе с формой данных — иначе экран получает вчерашний снимок
     // без новых полей, а по коду кажется, что фича раскатана.
-    { cabinetId, start: period.start, end: period.end, days: periodDays, schema: 5 },
+    // Схема 6: в набор вернулись товары с переходами в карточку, но без рекламы,
+    // заказов и остатка — раньше фильтр выбрасывал их молча; и ДРР товара без
+    // рекламы перестал быть нулём.
+    { cabinetId, start: period.start, end: period.end, days: periodDays, schema: 6 },
     async () => {
-      const [funnel, ad, totals, fbsStocks, costs, dailySku] = await Promise.all([
+      const [funnel, ad, stocks, cards, scope, fbsStocks, costs, dailySku, ratingAgg] = await Promise.all([
         timed("funnel", loadAllSupabasePages<FunnelRow>((from, to) => {
           let query = db
             .from("wb_funnel_daily")
@@ -142,11 +181,53 @@ export async function GET(request: NextRequest) {
           if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
           return query;
         }, { label: "SEO: реклама WB", concurrency: 4 })),
-        timed("totals_rpc", loadRnpReportRows<RpcTotal>(db, cabinetId, { allowedNmIds, label: "SEO: товары WB" })),
+        // Остаток, артикул и себестоимость раньше приходили одним вызовом
+        // rnp_report. Тот считает вдобавок заказы и выкупы за сегодня, вчера,
+        // неделю и месяц — воронке они не нужны (она берёт заказы из
+        // rnp_daily_sku), а сканы wb_orders и wb_sales за тридцать дней стоили
+        // пятнадцать секунд из двадцати четырёх на холодном снимке. Читаем
+        // ровно три недостающих поля из своих таблиц по индексу кабинета.
+        timed("stocks", loadAllSupabasePages<StockRow>((from, to) => {
+          let query = db
+            .from("wb_stocks")
+            .select("nm_id, quantity")
+            .order("nm_id", { ascending: true })
+            .range(from, to);
+          if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+          return query;
+        }, { label: "SEO: остатки FBO", concurrency: 4, maxPages: 100 })),
+        // Артикул берём из карточек WB — это текущее состояние каталога, которое
+        // наполняет обход Content API. rnp_report предпочитал supplier_article
+        // из заказов за месяц, то есть у переименованного товара показывал
+        // СТАРЫЙ артикул, пока в окне оставались старые заказы.
+        timed("cards", loadAllSupabasePages<ScopeRow>((from, to) => {
+          let query = db
+            .from("wb_cards")
+            .select("nm_id, article")
+            .order("nm_id", { ascending: true })
+            .range(from, to);
+          if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+          return query;
+        }, { label: "SEO: карточки WB", concurrency: 4 })),
+        // Товарный контур — вторым слоем: он заполнен только у кабинетов с
+        // ограничением по бренду, но там перекрывает карточки, которые обход
+        // мог ещё не догнать. У кабинета без контура таблица просто пуста.
+        timed("scope", loadAllSupabasePages<ScopeRow>((from, to) => {
+          let query = db
+            .from("wb_cabinet_product_scope")
+            .select("nm_id, article")
+            .order("nm_id", { ascending: true })
+            .range(from, to);
+          if (cabinetId) query = query.eq("cabinet_id", cabinetId);
+          if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
+          return query;
+        }, { label: "SEO: товарный контур", concurrency: 4 })),
         timed("fbs_stocks", loadFbsStocks(cabinetId)),
         timed("costs", loadAllSupabasePages<ProductCostRow>((from, to) => db
           .from("product_costs")
-          .select("article, name")
+          .select("article, name, cost_rub")
           .order("article", { ascending: true })
           .range(from, to), { label: "SEO: себестоимость", concurrency: 4 })),
         timed("daily_sku", loadRnpDailySkuRows<DailySkuRow>(db, {
@@ -155,7 +236,9 @@ export async function GET(request: NextRequest) {
           cabinetId,
           allowedNmIds,
           label: "SEO: заказы WB",
+          concurrency: 4,
         })),
+        timed("feedbacks", loadRatings(cabinetId, allowedNmIds)),
       ]);
 
   // Заказы по nm/день для выручки ДО СПП — через server-side агрегат rnp_daily_sku
@@ -176,52 +259,75 @@ export async function GET(request: NextRequest) {
   const yest = period.end;
   const selected = new Set(dates.filter((d) => d >= period.start && d <= period.end));
 
-  const totalByNm = new Map<number, RpcTotal>();
-  for (const t of totals) totalByNm.set(t.nm_id, t);
-  const nameByArt = new Map<string, string>();
-  for (const c of costs) nameByArt.set(c.article, c.name ?? "");
-
-  const nmIds = [...new Set([...funnel.map((r) => r.nm_id), ...ad.map((r) => r.nm_id), ...totals.map((t) => t.nm_id)])];
-
-  // рейтинг/отзывы по SKU — уже наполненная wb_feedbacks (см. раздел /reviews), просто джойн
-  const fbRows = (await timed("feedbacks", Promise.all(
-    Array.from({ length: Math.ceil(Math.max(1, nmIds.length) / 100) }, (_, index) => {
-      const chunk = nmIds.length ? nmIds.slice(index * 100, index * 100 + 100) : [-1];
-      return loadAllSupabasePages<RatingRow>((from, to) => db
-        .from("wb_feedbacks")
-        .select("nm_id, rating")
-        .in("nm_id", chunk)
-        .order("nm_id", { ascending: true })
-        .range(from, to), { label: "SEO: отзывы WB", concurrency: 4 });
-    }),
-  ))).flat();
-  const ratingAgg = new Map<number, { sum: number; count: number }>();
-  for (const r of fbRows) {
-    const nm = r.nm_id;
-    const e = ratingAgg.get(nm) ?? { sum: 0, count: 0 };
-    e.sum += Number(r.rating ?? 0); e.count += 1;
-    ratingAgg.set(nm, e);
+  // Остаток FBO — сумма по складам WB, артикул — из каталога кабинета,
+  // себестоимость и название — из product_costs по артикулу.
+  const stockByNm = new Map<number, number>();
+  for (const row of stocks) {
+    const nm = Number(row.nm_id);
+    stockByNm.set(nm, (stockByNm.get(nm) ?? 0) + Number(row.quantity ?? 0));
   }
+  const articleByNm = new Map<number, string>();
+  for (const row of [...cards, ...scope]) {
+    const article = String(row.article ?? "").trim();
+    if (article) articleByNm.set(Number(row.nm_id), article);
+  }
+  const nameByArt = new Map<string, string>();
+  const costByArt = new Map<string, number>();
+  for (const c of costs) {
+    nameByArt.set(c.article, c.name ?? "");
+    if (c.cost_rub != null) costByArt.set(c.article, Number(c.cost_rub));
+  }
+
+  // Товары с переходами в карточку раньше в набор не попадали: универсум брался
+  // из рекламы и rnp_report, а туда товар без заказов, рекламы и остатка не
+  // входит. На проде так пропадало полсотни артикулов с живым трафиком.
+  const nmIds = [...new Set([
+    ...funnel.map((r) => Number(r.nm_id)),
+    ...ad.map((r) => Number(r.nm_id)),
+    ...dailySku.map((r) => Number(r.nm_id)),
+    ...stockByNm.keys(),
+  ])].filter((nm) => Number.isFinite(nm) && requestAllowsNm(allowedNmIds, nm));
+
+  // Раскладка фактов по nm ДО расчёта. Раньше agg() проходил по всем строкам
+  // воронки и рекламы для каждого товара — триста товаров на тридцати днях
+  // давали миллионы лишних сравнений на каждый холодный снимок.
+  const indexByNm = <Row extends { nm_id: number }>(rows: Row[]) => {
+    const map = new Map<number, Row[]>();
+    for (const row of rows) {
+      const nm = Number(row.nm_id);
+      const list = map.get(nm);
+      if (list) list.push(row); else map.set(nm, [row]);
+    }
+    return map;
+  };
+  const funnelByNm = indexByNm(funnel);
+  const adByNm = indexByNm(ad);
 
   const agg = (nm: number, days: Set<string> | "yest") => {
     let views = 0, clicks = 0, spent = 0, cart = 0, oc = 0, os = 0, open = 0;
     const has = (d: string) => (days === "yest" ? d === yest : days.has(d));
     // воронка (показы/корзина/открытия) — из аналитики WB
-    for (const f of funnel) if (f.nm_id === nm && has(String(f.date).slice(0, 10))) { cart += f.add_to_cart || 0; open += f.open_card || 0; }
-    for (const a of ad) if (a.nm_id === nm && has(String(a.date).slice(0, 10))) { views += a.views || 0; clicks += a.clicks || 0; spent += Number(a.spent || 0); }
+    for (const f of funnelByNm.get(nm) ?? []) if (has(String(f.date).slice(0, 10))) { cart += f.add_to_cart || 0; open += f.open_card || 0; }
+    for (const a of adByNm.get(nm) ?? []) if (has(String(a.date).slice(0, 10))) { views += a.views || 0; clicks += a.clicks || 0; spent += Number(a.spent || 0); }
     // заказы шт/₽ — из wb_orders ДО СПП
     const om = ordersByNm.get(nm);
     if (om) for (const [d, e] of om) if (has(d)) { oc += e.cnt; os += e.sum; }
-    return { views, clicks, spent, cart, oc, os, open };
+    // Была ли реклама в этом окне на самом деле. Строка в wb_advert_nm_daily
+    // сама по себе рекламой не является: у половины товаров она есть с нулями —
+    // кампания их включала, но не откручивала. Отличать «расход ноль» от
+    // «рекламы не было» обязательно: без этого ДРР товара, который вовсе не
+    // рекламировался, выходил уверенным нулём — самой приятной и самой ложной
+    // цифрой в таблице. На боевом кабинете так было у 84 товаров, включая тот,
+    // что принёс 766 тысяч заказов.
+    return { views, clicks, spent, cart, oc, os, open, hasAd: views > 0 || spent > 0 };
   };
 
   const skus = nmIds.map((nm) => {
-    const t = totalByNm.get(nm);
-    const art = t?.article || String(nm);
-    const cost = Number(t?.cost ?? 0);
+    const art = articleByNm.get(nm) || String(nm);
+    const cost = Number(costByArt.get(art) ?? 0);
     // FBO — склады WB (wb_stocks), FBS — склад продавца (собирается отдельно).
     // Складываем, а не подменяем: общий остаток должен видеть оба контура.
-    const stockFbo = Number(t?.stock ?? 0);
+    const stockFbo = stockByNm.get(nm) ?? 0;
     const stockFbs = fbsStocks ? (fbsStocks.get(nm) ?? 0) : null;
     const stock = stockFbo + (stockFbs ?? 0);
 
@@ -232,8 +338,9 @@ export async function GET(request: NextRequest) {
     const margin = (a: typeof w) => { const p = priceUnit(a); return p > 0 && cost > 0 ? r2(((p - cost) / p) * 100) : null; };
     const turn = w.oc > 0 ? Math.round(stock / (w.oc / periodDays)) : null;
 
-    const mb7 = margin(w), drr7 = pct(w.spent, w.os);
-    const mb4 = margin(y), drr4 = pct(y.spent, y.os);
+    const drr = (a: typeof w) => (a.hasAd ? pct(a.spent, a.os) : null);
+    const mb7 = margin(w), drr7 = drr(w);
+    const mb4 = margin(y), drr4 = drr(y);
 
     return {
       nm, art, shop: label || "Магазин", img_url: wbCardImageUrl(nm),
@@ -256,10 +363,14 @@ export async function GET(request: NextRequest) {
       // общие
       price_before_spp_unit: priceUnit(w) || priceUnit(y),
       stock, stock_fbo: stockFbo, stock_fbs: stockFbs, turnover_4d: turn,
-      rating: (() => { const fb = ratingAgg.get(nm); return fb ? Math.round((fb.sum / fb.count) * 10) / 10 : null; })(),
-      reviews: ratingAgg.get(nm)?.count ?? null,
+      rating: (() => { const fb = ratingAgg?.get(nm); return fb ? Math.round((fb.sum / fb.count) * 10) / 10 : null; })(),
+      reviews: ratingAgg?.get(nm)?.count ?? null,
     };
-  }).filter((s) => s.shows_7d > 0 || s.orders_count_7d > 0 || s.stock > 0)
+  })
+    // Товар с переходами в карточку, но без рекламы, заказов и остатка — это
+    // ровно тот случай, ради которого воронку и открывают: трафик есть,
+    // конверсии нет. Раньше такие строки экран не показывал вовсе.
+    .filter((s) => s.shows_7d > 0 || s.orders_count_7d > 0 || s.stock > 0 || s.open_card_window > 0 || s.cart_window > 0)
     .sort((a, b) => b.orders_sum_7d - a.orders_sum_7d);
 
       return { skus, metrics_period: period.label, window_days: periodDays, count: skus.length };

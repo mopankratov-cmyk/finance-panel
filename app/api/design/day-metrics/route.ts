@@ -36,6 +36,9 @@ export async function GET(req: NextRequest) {
     "wb-funnel-day-metrics",
     // Cache schema: 3 did not include cross-cabinet aggregation or card-to-cart CR.
     { cabinetId: p_cabinet, since, until, schema: 4 },
+    // Обе выборки листаются пачками по четыре страницы: тридцать дней на
+    // кабинет с сотнями товаров — это десятки тысяч строк, а каждый заход в
+    // базу стоит 100–300 мс. Последовательное листание складывало их в секунды.
     async () => {
       const [funnelRows, adRows] = await Promise.all([
         loadAllSupabasePages<FunnelRow>((from, to) => {
@@ -50,7 +53,7 @@ export async function GET(req: NextRequest) {
           if (p_cabinet) query = query.eq("cabinet_id", p_cabinet);
           if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
           return query;
-        }, { label: "Воронка WB" }),
+        }, { label: "Воронка WB", concurrency: 4 }),
         loadAllSupabasePages<AdRow>((from, to) => {
           let query = db
             .from("wb_advert_nm_daily")
@@ -63,7 +66,7 @@ export async function GET(req: NextRequest) {
           if (p_cabinet) query = query.eq("cabinet_id", p_cabinet);
           if (allowedNmIds) query = query.in("nm_id", allowedNmIds.size ? [...allowedNmIds] : [-1]);
           return query;
-        }, { label: "Реклама WB" }),
+        }, { label: "Реклама WB", concurrency: 4 }),
       ]);
 
   const scopedFunnelRows = funnelRows.filter((row) => requestAllowsNm(allowedNmIds, row.nm_id));

@@ -78,6 +78,13 @@ export async function loadRnpDailySkuRows<Row extends { d: string; nm_id: number
     allowedNmIds?: ReadonlySet<number> | readonly number[] | null;
     label?: string;
     maxPages?: number;
+    /**
+     * PostgREST пересчитывает функцию на КАЖДУЮ страницу, поэтому листание
+     * подряд складывает эти пересчёты в секунды: окно на 7 дней у кабинета с
+     * тремя сотнями товаров — три страницы по три секунды. Страницы независимы,
+     * и запрашивать их пачкой безопасно: порядок склеивает loadAllSupabasePages.
+     */
+    concurrency?: number;
   },
 ): Promise<Row[]> {
   const allowed = normalizeAllowedNmIds(input.allowedNmIds);
@@ -89,5 +96,5 @@ export async function loadRnpDailySkuRows<Row extends { d: string; nm_id: number
       .range(from, to);
     if (allowed) query = query.in("nm_id", allowed.length ? allowed : [-1]);
     return query;
-  }, { label: input.label ?? "RNP: заказы по SKU", maxPages: input.maxPages ?? 100 });
+  }, { label: input.label ?? "RNP: заказы по SKU", maxPages: input.maxPages ?? 100, concurrency: input.concurrency ?? 1 });
 }

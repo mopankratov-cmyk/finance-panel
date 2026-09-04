@@ -4,6 +4,7 @@ import { Loader2, MessageSquare, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CtrCampaignRow } from "@/app/api/wb/ctr-breakdown/route";
+import { CTR_NOTE_COLORS, ctrNoteColor, type CtrNoteColor } from "@/lib/wb/ctrNoteColors";
 
 interface Breakdown {
   meta: { minViews: number };
@@ -20,8 +21,10 @@ const pct = (value: number | null) => (value == null ? "—" : `${value.toFixed(
  * обычное дело. Когда CTR проседает, первый вопрос «какая кампания просела», и
  * до сих пор ответ искали руками в кабинете WB.
  *
- * Заметка живёт рядом с клеткой, к которой относится: через неделю никто не
- * помнит, почему 18-го числа было так.
+ * Пометка живёт рядом с клеткой, к которой относится: через неделю никто не
+ * помнит, почему 18-го числа было так. Пометка — это цвет, текст или и то и
+ * другое: цвет видно сразу всей сеткой, текст объясняет подробности. Что
+ * означает каждый цвет, решает сам продавец — панель значения не навязывает.
  */
 export function WbCtrDayPopup({
   cabinetId, nmId, date, article, cellViews, cellClicks, onClose, onNoteSaved,
@@ -35,12 +38,14 @@ export function WbCtrDayPopup({
   cellViews: number;
   cellClicks: number;
   onClose: () => void;
-  /** Сообщаем таблице, чтобы она обновила значок заметки без перезагрузки. */
-  onNoteSaved: (nmId: number, date: string, note: string) => void;
+  /** Сообщаем таблице, чтобы она обновила пометку без перезагрузки. */
+  onNoteSaved: (nmId: number, date: string, note: string, color: CtrNoteColor | null) => void;
 }) {
   const [data, setData] = useState<Breakdown | null>(null);
   const [note, setNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
+  const [color, setColor] = useState<CtrNoteColor | null>(null);
+  const [savedColor, setSavedColor] = useState<CtrNoteColor | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +72,8 @@ export function WbCtrDayPopup({
         const own = (notes.notes ?? []).find((row: { nmId: number }) => row.nmId === nmId);
         setNote(own?.note ?? "");
         setSavedNote(own?.note ?? "");
+        setColor(ctrNoteColor(own?.color));
+        setSavedColor(ctrNoteColor(own?.color));
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Ошибка загрузки");
@@ -97,20 +104,28 @@ export function WbCtrDayPopup({
       const response = await fetch("/api/wb/ctr-notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cabinetId, nmId, date, note }),
+        body: JSON.stringify({ cabinetId, nmId, date, note, color }),
       });
       const body = await response.json();
       if (!response.ok || !body?.ok) throw new Error(body?.error || "Не удалось сохранить");
+      const nextColor = ctrNoteColor(body.color);
       setSavedNote(body.note ?? "");
-      onNoteSaved(nmId, date, body.note ?? "");
+      setSavedColor(nextColor);
+      setColor(nextColor);
+      onNoteSaved(nmId, date, body.note ?? "", nextColor);
+      // Сервер принял текст, но не цвет: колонка ещё не заведена в базе.
+      // Говорим об этом прямо — иначе цвет «пропадёт» после перезагрузки.
+      if (body.colorSkipped) setError("Текст сохранён, а цвет пока не сохраняется: колонка цветов ещё не заведена в базе");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось сохранить");
     } finally {
       setSaving(false);
     }
-  }, [cabinetId, nmId, date, note, onNoteSaved]);
+  }, [cabinetId, nmId, date, note, color, onNoteSaved]);
 
-  const dirty = note.trim() !== savedNote.trim();
+  const dirty = note.trim() !== savedNote.trim() || color !== savedColor;
+  const empty = !note.trim() && !color;
+  const hasSaved = Boolean(savedNote.trim() || savedColor);
   const dayLabel = new Date(`${date}T00:00:00`).toLocaleDateString("ru-RU", { day: "2-digit", month: "long" });
 
   if (!mounted) return null;
@@ -203,8 +218,33 @@ export function WbCtrDayPopup({
 
             <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4">
               <label htmlFor="ctr-note" className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-600">
-                <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" /> Заметка к этому дню
+                <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" /> Пометка к этому дню
               </label>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Цвет пометки">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={color === null}
+                  onClick={() => setColor(null)}
+                  title="Без цвета"
+                  className={`grid h-7 w-7 place-items-center rounded-full border text-slate-400 transition-colors hover:border-slate-400 ${color === null ? "border-slate-800 ring-2 ring-slate-300" : "border-slate-200"}`}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+                {CTR_NOTE_COLORS.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={color === item.key}
+                    aria-label={item.label}
+                    title={item.label}
+                    onClick={() => setColor(item.key)}
+                    className={`h-7 w-7 rounded-full ${item.swatch} transition-transform hover:scale-110 ${color === item.key ? "ring-2 ring-slate-800 ring-offset-2" : ""}`}
+                  />
+                ))}
+                <span className="ml-1 text-[11px] text-slate-400">цветом размечают дни, смысл выбираете вы</span>
+              </div>
               <textarea
                 id="ctr-note"
                 value={note}
@@ -220,9 +260,9 @@ export function WbCtrDayPopup({
                   disabled={saving || !dirty}
                   className="rounded-lg bg-violet-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
                 >
-                  {saving ? "Сохраняем…" : savedNote && !note.trim() ? "Удалить заметку" : "Сохранить"}
+                  {saving ? "Сохраняем…" : hasSaved && empty ? "Удалить пометку" : "Сохранить"}
                 </button>
-                {!dirty && savedNote ? <span className="text-[11px] text-emerald-600">заметка сохранена</span> : null}
+                {!dirty && hasSaved ? <span className="text-[11px] text-emerald-600">пометка сохранена</span> : null}
                 <button type="button" onClick={onClose} className="ml-auto text-[12px] text-slate-500 hover:text-slate-700">Закрыть</button>
               </div>
             </div>

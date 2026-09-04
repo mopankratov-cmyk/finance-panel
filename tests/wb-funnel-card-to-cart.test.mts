@@ -66,3 +66,21 @@ test("routes и UI подключают production helper и новый конт
   assert.match(ui, />% в корзину</);
   assert.match(ui, /pct\(sku\.cv_cart_window\)/);
 });
+
+test("ДРР за день без рекламы не превращается в ноль", () => {
+  const metrics = buildWbFunnelDayMetrics(
+    [{ nm_id: 777, date: "2026-09-01", open_card: 400, add_to_cart: 40, orders: 8, orders_sum: 12_000 }],
+    [],
+  );
+  const cell = metrics[777]["2026-09-01"];
+  // Рекламы в этот день не было: ноль расхода означает «нет данных», а не
+  // «продали без затрат». Ключа в клетке быть не должно — экран нарисует «—».
+  assert.equal("drr" in cell, false);
+  assert.equal(cell.orders_sum, 12_000);
+
+  const withAd = buildWbFunnelDayMetrics(
+    [{ nm_id: 777, date: "2026-09-01", open_card: 400, add_to_cart: 40, orders: 8, orders_sum: 12_000 }],
+    [{ nm_id: 777, date: "2026-09-01", views: 5_000, clicks: 100, spent: 600 }],
+  );
+  assert.equal(withAd[777]["2026-09-01"].drr, 5);
+});

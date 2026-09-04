@@ -86,8 +86,15 @@ export function buildWbFunnelDayMetrics(
       cell.orders_sum = Math.round(value.ordersSum);
       cell.cart_cr = percentRatio(value.carts, value.openCard);
       cell.cr = percentRatio(value.orders, value.carts);
-      cell.drr = percentRatio(value.spent, value.ordersSum);
     }
+    // ДРР существует, только если в этот день реклама реально шла. Раньше он
+    // считался в ветке воронки: в дни без единой рекламной строки расход
+    // оставался нулём, и клетка уверенно показывала «0%» вместо «рекламы не
+    // было». Ноль ДРР — сильное утверждение (продажи без затрат), и выдавать
+    // его за отсутствие данных нельзя. Пустая рекламная строка (ноль показов,
+    // ноль расхода) тоже не реклама: кампания товар включала, но не крутила.
+    const advertised = value.views > 0 || value.spent > 0;
+    if (advertised && value.hasFunnel) cell.drr = percentRatio(value.spent, value.ordersSum);
     (metrics[nmId] ||= {})[iso] = cell;
   }
   return metrics;

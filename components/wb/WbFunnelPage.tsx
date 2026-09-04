@@ -1,8 +1,9 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Filter, MessageSquare, Package, Search, X } from "lucide-react";
+import { ArrowUpNarrowWide, ChevronDown, ChevronRight, Filter, MessageSquare, Package, Search, X } from "lucide-react";
 import { WbCtrDayPopup } from "./WbCtrDayPopup";
 import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
+import { ctrNoteCellClass, ctrNoteColor, ctrNoteColorLabel, type CtrNoteColor } from "@/lib/wb/ctrNoteColors";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
@@ -117,6 +118,10 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const [daily, setDaily] = useState<DayMetricsData | null>(null);
   const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
   const [loading, setLoading] = useState(true);
+  // Посуточная часть догружается отдельно и своим состоянием: таблица уже
+  // видна, поэтому её ожидание и её ошибка не должны прятать экран целиком.
+  const [dailyPending, setDailyPending] = useState(true);
+  const [dailyError, setDailyError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 18 });
@@ -142,24 +147,21 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
 
 
   const [ctrPopup, setCtrPopup] = useState<{ nm: number; date: string; article: string; views: number; clicks: number } | null>(null);
-  const [notes, setNotes] = useState<Map<string, string>>(new Map());
+  const [notes, setNotes] = useState<Map<string, { note: string; color: CtrNoteColor | null }>>(new Map());
   const noteKey = (nm: number, date: string) => `${nm}|${date}`;
 
-  // Заметки грузим окном сразу: значки должны стоять с первого показа.
-  useEffect(() => {
-    if (!cabinetId || cabinetId === "all") return;
-    const controller = new AbortController();
-    fetch(`/api/wb/ctr-notes?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
-      .then((response) => response.ok ? response.json() : { notes: [] })
-      .then((body) => {
-        if (controller.signal.aborted) return;
-        setNotes(new Map((body.notes ?? []).map((row: { nmId: number; date: string; note: string }) => [`${row.nmId}|${row.date}`, row.note])));
-      })
-      // Заметки — вспомогательный слой: без них таблица работает как раньше.
-      .catch(() => {});
-    return () => controller.abort();
-  }, [cabinetId]);
 
+  /**
+   * «Сначала рабочие» — наверх поднимаются артикулы, по которым в последний
+   * день периода шла реклама. Ровно то, что просят, когда спрашивают «где
+   * только рабочие»: остальные строки при этом не прячутся, порядок между ними
+   * не меняется, и одним нажатием всё возвращается назад.
+   *
+   * Намеренно обычный useState, а не useDashboardFilter: остальные фильтры
+   * экрана живут в адресе и переживают уход со страницы, а здесь просили
+   * обратное — «при выходе из воронки к сортировке по умолчанию».
+   */
+  const [workingFirst, setWorkingFirst] = useState(false);
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const requestId = useRef(0);
   const elapsed = useElapsedSeconds(loading);
@@ -174,6 +176,29 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
     return { from: preset[0], to: preset[preset.length - 1], custom: false };
   }, [customFrom, customTo, windowDays]);
   const lastClosedDay = closedMoscowDates(1)[0];
+  // Границы окна пометок — отдельными строками, а не полем объекта: иначе
+  // зависимость эффекта менялась бы на каждой отрисовке.
+  const notesFrom = period.from;
+  const notesTill = period.to;
+
+  // Пометки грузим окном сразу: цвета и значки должны стоять с первого показа.
+  // Запрашиваем ровно те дни, которые видно на экране: без границ роут отдавал
+  // всю историю кабинета и упирался в предел строк, теряя часть пометок.
+  useEffect(() => {
+    if (!cabinetId || cabinetId === "all") return;
+    const controller = new AbortController();
+    const range = `&from=${notesFrom}&till=${notesTill}`;
+    fetch(`/api/wb/ctr-notes?cabinet=${encodeURIComponent(cabinetId)}${range}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : { notes: [] })
+      .then((body) => {
+        if (controller.signal.aborted) return;
+        setNotes(new Map((body.notes ?? []).map((row: { nmId: number; date: string; note: string; color?: string | null }) =>
+          [`${row.nmId}|${row.date}`, { note: String(row.note ?? ""), color: ctrNoteColor(row.color) }])));
+      })
+      // Пометки — вспомогательный слой: без них таблица работает как раньше.
+      .catch(() => {});
+    return () => controller.abort();
+  }, [cabinetId, notesFrom, notesTill]);
 
   const applyPreset = (value: string) => {
     setPeriodClamped(false);
@@ -200,28 +225,57 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
     const current = ++requestId.current;
     setLoading(true);
     setError(null);
+    setDailyError(null);
     const cabinet = encodeURIComponent(cabinetId || "all");
     // Даты уезжают только при своём периоде: дефолтный заход остаётся тем же
     // запросом, что греет крон, и попадает в готовый снимок.
     const range = period.custom ? `&date_from=${period.from}&date_to=${period.to}` : "";
-    Promise.all([
-      fetch(`/api/seo/skus?window=${windowDays}&cabinet=${cabinet}${range}`, { cache: "no-store", signal: controller.signal }),
-      fetch(`/api/design/day-metrics?cabinet=${cabinet}${range}`, { cache: "no-store", signal: controller.signal }),
-    ]).then(async ([skuResponse, dailyResponse]) => {
-      const skuBody = (await skuResponse.json()) as SkusData;
-      const dailyBody = (await dailyResponse.json()) as DayMetricsData;
-      if (!skuResponse.ok) throw new Error(skuBody.error || `Ошибка ${skuResponse.status}`);
-      if (!dailyResponse.ok) throw new Error(dailyBody.error || `Ошибка ${dailyResponse.status}`);
-      return [skuBody, dailyBody] as const;
-    }).then(([skuBody, dailyBody]) => {
-      if (current !== requestId.current) return;
-      setSkus(skuBody);
-      setDaily(dailyBody);
-    }).catch((cause: unknown) => {
-      if (current === requestId.current && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Не удалось загрузить воронку");
-    }).finally(() => {
-      if (current === requestId.current) setLoading(false);
-    });
+    setDaily(null);
+    setDailyPending(true);
+
+    // Два запроса, но ждать обоих незачем. Список товаров и итоги за период
+    // приходят из первого, посуточные клетки — из второго, и он тяжелее. Раньше
+    // их связывал Promise.all: пока не отвечал медленный, на экране висел
+    // скелет, хотя половина таблицы уже была готова. Теперь таблица рисуется по
+    // первому ответу, а колонки дней дозаполняются на месте.
+    const skusLoaded = fetch(`/api/seo/skus?window=${windowDays}&cabinet=${cabinet}${range}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const body = (await response.json()) as SkusData;
+        if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
+        return body;
+      })
+      .then((body) => {
+        if (current !== requestId.current) return;
+        setSkus(body);
+      })
+      .catch((cause: unknown) => {
+        if (current === requestId.current && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Не удалось загрузить воронку");
+      })
+      .finally(() => {
+        if (current === requestId.current) setLoading(false);
+      });
+
+    fetch(`/api/design/day-metrics?cabinet=${cabinet}${range}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const body = (await response.json()) as DayMetricsData;
+        if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
+        return body;
+      })
+      .then((body) => {
+        if (current !== requestId.current) return;
+        setDaily(body);
+      })
+      // Посуточная часть не смогла — таблица остаётся с итогами за период, а в
+      // колонках дней стоят прочерки. Ошибку показываем, только если и список
+      // товаров не пришёл: одна беда лучше читается, чем две.
+      .catch(async (cause: unknown) => {
+        await skusLoaded;
+        if (current !== requestId.current || controller.signal.aborted) return;
+        setDailyError(cause instanceof Error ? cause.message : "Посуточные данные не загрузились");
+      })
+      .finally(() => {
+        if (current === requestId.current) setDailyPending(false);
+      });
     return () => controller.abort();
   }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, period.custom, period.from, period.to, ready, retryKey, windowDays]);
 
@@ -237,8 +291,23 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
     const base = (skus?.skus ?? [])
       .filter((sku) => !needle || `${sku.nm} ${sku.art} ${sku.name}`.toLocaleLowerCase("ru-RU").includes(needle))
       .filter((sku) => nmMatchesTags(tagIdsByNm, sku.nm, activeTagIds));
-    return sortByCustomSkuOrder(base, (sku) => sku.nm, orderIndex);
-  }, [activeTagIds, orderIndex, query, skus?.skus, tagIdsByNm]);
+    const ordered = sortByCustomSkuOrder(base, (sku) => sku.nm, orderIndex);
+    if (!workingFirst) return ordered;
+    // «Работал» — значит в последний день периода по артикулу были рекламные
+    // показы. Смотрим ровно клетку этого дня, а не итог за период: товар мог
+    // крутиться в начале недели и уже стоять. Пока посуточные не пришли,
+    // порядок не трогаем — двигать строки под пустые данные нельзя.
+    if (!daily) return ordered;
+    const worked = (nm: number) => Number(daily.metrics[String(nm)]?.[period.to]?.views ?? 0) > 0;
+    // Устойчивая сортировка: внутри каждой половины прежний порядок сохраняется.
+    return [...ordered].sort((left, right) => Number(worked(right.nm)) - Number(worked(left.nm)));
+  }, [activeTagIds, daily, orderIndex, period.to, query, skus?.skus, tagIdsByNm, workingFirst]);
+
+  // Сколько строк поднимет кнопка: без числа непонятно, сработала ли она.
+  const workingCount = useMemo(() => {
+    if (!daily) return null;
+    return (skus?.skus ?? []).filter((sku) => Number(daily.metrics[String(sku.nm)]?.[period.to]?.views ?? 0) > 0).length;
+  }, [daily, period.to, skus?.skus]);
 
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -261,8 +330,13 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
     const carts = sum((sku) => sku.cart_window);
     const ordersCount = sum((sku) => sku.orders_count_window);
     const ordersSum = sum((sku) => sku.orders_sum_window);
+    // Расход восстанавливаем из ДРР и суммы заказов — отдельного поля расхода в
+    // окне нет. У товара без заказов ДРР равен null, и его расход в сумму не
+    // попадает: тогда общий ДРР по ярлыку занижен, и честнее не показывать его
+    // вовсе, чем показывать красивое заниженное число.
     const advert = filtered.reduce((total, sku) =>
       total + (sku.drr_window != null ? (sku.drr_window * sku.orders_sum_window) / 100 : 0), 0);
+    const spendKnown = filtered.every((sku) => sku.drr_window != null || sku.shows_window === 0);
     const stockFbo = sum((sku) => sku.stock_fbo);
     // Если хоть по одному SKU остатки продавца не собирались, суммы по ярлыку
     // нет: сложить известное с неизвестным и выдать это за итог — обман.
@@ -278,13 +352,23 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
       cvCart: openCard > 0 ? (carts / openCard) * 100 : null,
       ordersCount,
       ordersSum,
-      drr: ordersSum > 0 ? (advert / ordersSum) * 100 : null,
+      drr: spendKnown && ordersSum > 0 ? (advert / ordersSum) * 100 : null,
     };
   }, [activeTagIds.length, filtered]);
 
   const dates = useMemo(() => funnelPeriodDates(period.from, period.to), [period.from, period.to]);
 
-  useEffect(() => setRowWindow({ start: 0, end: Math.min(18, filtered.length) }), [filtered.length, query]);
+  // Таблица виртуализирована: видимое окно строк считается от прокрутки. Смена
+  // порядка длину не меняет, поэтому сбросить окно по ней нельзя — добавляем в
+  // зависимости и сам режим сортировки, а прокрутку возвращаем наверх, иначе
+  // человек окажется в середине уже другого списка.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => setRowWindow({ start: 0, end: Math.min(18, filtered.length) }), [filtered.length, query, workingFirst]);
+
+  const toggleWorkingFirst = () => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setWorkingFirst((value) => !value);
+  };
 
   const updateWindow = (element: HTMLDivElement) => {
     const first = Math.floor(element.scrollTop / ROW_HEIGHT);
@@ -320,6 +404,22 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
         <div className="mb-2 flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center">
           {embedded ? periodPicker : null}
           <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
+          <button
+            type="button"
+            onClick={toggleWorkingFirst}
+            aria-pressed={workingFirst}
+            disabled={!daily}
+            title={daily
+              ? `Наверх — артикулы, по которым ${dayLabel(period.to)} шла реклама. Остальные остаются на месте, ниже. Нажмите ещё раз, чтобы вернуть обычный порядок.`
+              : "Ждём посуточные данные — без них неизвестно, кто работал"}
+            className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold transition-colors disabled:opacity-40 sm:min-h-8 ${workingFirst ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+          >
+            <ArrowUpNarrowWide className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>Сначала рабочие</span>
+            {workingFirst && workingCount != null
+              ? <span className="rounded bg-white/20 px-1 tabular-nums">{workingCount}</span>
+              : null}
+          </button>
           <WbTagFilterChips
             tags={tags}
             activeIds={activeTagIds}
@@ -339,15 +439,20 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
             cellViews={ctrPopup.views}
             cellClicks={ctrPopup.clicks}
             onClose={() => setCtrPopup(null)}
-            onNoteSaved={(nm, date, note) => setNotes((prev) => {
+            onNoteSaved={(nm, date, note, color) => setNotes((prev) => {
               const next = new Map(prev);
-              if (note) next.set(`${nm}|${date}`, note); else next.delete(`${nm}|${date}`);
+              if (note || color) next.set(`${nm}|${date}`, { note, color }); else next.delete(`${nm}|${date}`);
               return next;
             })}
           />
         ) : null}
-        {loading ? <><LoadingBanner seconds={elapsed} hint="Собираем посуточную воронку" /><div className="rounded-xl border border-slate-200 bg-white"><SkeletonTableRows rows={12} cols={8} /></div></> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : filtered.length === 0 ? <WbEmptyState>Нет SKU с данными за выбранный период.</WbEmptyState> : (
-          <div className="h-[calc(100vh-190px)] min-h-[470px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" onScroll={(event) => updateWindow(event.currentTarget)}>
+        {dailyError && !loading && !error ? (
+          <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            Колонки по дням не загрузились: {dailyError}. Итоги за период в таблице настоящие.
+          </div>
+        ) : null}
+        {loading ? <><LoadingBanner seconds={elapsed} hint="Собираем воронку" /><div className="rounded-xl border border-slate-200 bg-white"><SkeletonTableRows rows={12} cols={8} /></div></> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : filtered.length === 0 ? <WbEmptyState>Нет SKU с данными за выбранный период.</WbEmptyState> : (
+          <div ref={scrollRef} className="h-[calc(100vh-190px)] min-h-[470px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" onScroll={(event) => updateWindow(event.currentTarget)}>
             <table className="min-w-max border-separate border-spacing-0 text-[10px]">
               <thead className="sticky top-0 z-30 bg-slate-50 text-slate-500">
                 <tr className="h-6 text-[9px] uppercase tracking-wide text-slate-400">
@@ -356,7 +461,16 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                   <GroupHeader label="Товарная воронка" hidden={4} span={funnelCols} hint="переходы, корзины, % в корзину, заказы в штуках" isCollapsed={collapsed.funnel} onToggle={() => toggleGroup("funnel")} />
                   <GroupHeader label="Остатки" hidden={2} span={stockCols} hint="FBO и FBS по отдельности" isCollapsed={collapsed.stocks} onToggle={() => toggleGroup("stocks")} />
                   <th rowSpan={2} title={MARKETPLACE_METRICS.drrOrders.definition} className="min-w-[86px] border-b border-r border-slate-200 px-2 text-right">ДРР к заказам</th>
-                  {dates.map((date) => <th rowSpan={2} key={date} className="min-w-[76px] border-b border-slate-200 px-1 text-center font-semibold">{dayLabel(date)}</th>)}
+                  {dates.map((date) => (
+                    <th
+                      rowSpan={2}
+                      key={date}
+                      title={dailyPending ? "Посуточные данные ещё грузятся" : dailyError ?? undefined}
+                      className={`min-w-[76px] border-b border-slate-200 px-1 text-center font-semibold ${dailyPending ? "text-slate-300" : dailyError ? "text-amber-500" : ""}`}
+                    >
+                      {dayLabel(date)}
+                    </th>
+                  ))}
                 </tr>
                 <tr className="h-8">
                   <th title={MARKETPLACE_METRICS.views.definition} className={`min-w-[88px] border-b border-slate-200 px-2 text-right${collapsed.ads ? " border-r" : ""}`}>Рекл. показы</th>
@@ -411,7 +525,12 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                   const isCtr = metric === "ctr";
                   const views = cell?.views ?? 0;
                   const тонкийЗамер = isCtr && views < CTR_MIN_VIEWS;
-                  const hasNote = notes.has(noteKey(sku.nm, date));
+                  const mark = notes.get(noteKey(sku.nm, date));
+                  const hasNote = Boolean(mark?.note);
+                  // Цвет пометки перебивает служебную окраску по порогам: его
+                  // поставил человек руками, и он значит больше автоматики.
+                  const markClass = ctrNoteCellClass(mark?.color);
+                  const markLabel = ctrNoteColorLabel(mark?.color);
                   const shown = тонкийЗамер ? null : value;
                   return (
                     <td key={date} className="border-b border-slate-100 px-1 text-center">
@@ -419,8 +538,13 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                         <button
                           type="button"
                           onClick={() => setCtrPopup({ nm: sku.nm, date, article: sku.art, views: cell?.views ?? 0, clicks: cell?.clicks ?? 0 })}
-                          title={тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит. Нажмите, чтобы увидеть кампании` : "Разбор по кампаниям и заметка"}
-                          className={`inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 ${тонкийЗамер ? "text-slate-300" : cellTone(metric, shown)}`}
+                          title={[
+                            markLabel ? `Пометка: ${markLabel.toLowerCase()}` : null,
+                            mark?.note || null,
+                            тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит` : null,
+                            "Нажмите: разбор по кампаниям, заметка и цвет",
+                          ].filter(Boolean).join(" · ")}
+                          className={`inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 ${markClass ?? (тонкийЗамер ? "text-slate-300" : cellTone(metric, shown))}`}
                         >
                           {тонкийЗамер ? "—" : formatCell(shown)}
                           {hasNote ? <MessageSquare className="h-2.5 w-2.5 shrink-0 text-violet-500" aria-label="есть заметка" /> : null}
