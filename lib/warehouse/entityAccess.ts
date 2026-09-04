@@ -119,9 +119,13 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
     const canSee = (cabinetId: string | null) =>
       sessionHasCabinetAccess(session, cabinetId)
       && (sellerCabinets === null || (cabinetId !== null && sellerCabinets.has(cabinetId)));
+    // Внешней компании юрлицо открывает только СВОЯ связь: агентская означает
+    // «чужой товар продаётся через мой кабинет», и она не должна открывать
+    // чужое юрлицо целиком — со складом, себестоимостью и документами.
+    const opening = sellerCabinets === null ? cabinets : cabinets.filter((link) => link.relation === "own");
     const allowed = cabinets.length === 0
       ? canSee(null)
-      : cabinets.some((link) => canSee(link.cabinetId));
+      : opening.some((link) => canSee(link.cabinetId));
     if (!allowed) continue;
     rows.push({
       id: String(raw.id),
@@ -130,7 +134,10 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
       kind: raw.kind === "ooo" ? "ooo" : "ip",
       isActive: Boolean(raw.is_active),
       note: raw.note as string | null,
-      cabinets,
+      // В строке юрлица приезжают его кабинеты — их имена видны на экранах
+      // отгрузки и возврата. Внешней компании показываем только её собственные:
+      // остальные принадлежат другой организации.
+      cabinets: sellerCabinets === null ? cabinets : cabinets.filter((link) => sellerCabinets.has(link.cabinetId)),
     });
   }
 

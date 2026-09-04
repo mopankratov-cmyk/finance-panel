@@ -41,6 +41,11 @@ const TABS: ShellTab<Tab>[] = [
  *  вкладки, куда он что-то вводит, плюс остатки — чтобы знать, что на полке.
  *  Справочники, документы и вывод кодов из оборота — не его работа. */
 const OPERATOR_TABS = new Set<Tab>(["receipts", "shipment", "movement", "defects", "balances"]);
+
+/** Внешний селлер ведёт свой склад целиком, но контур маркировки не его: коды
+ *  Честного Знака мы заказываем и выводим своими токенами, и его юрлица там
+ *  нет. Вкладку прячем, иначе он увидит экран, который ответит отказом. */
+const SELLER_HIDDEN_TABS = new Set<Tab>(["kiz"]);
 const HOME_TAB: Record<string, Tab> = { warehouse: "receipts" };
 
 const STORAGE_KEY = "warehouse:entity";
@@ -133,10 +138,11 @@ export function WarehousePage() {
     return () => { cancelled = true; };
   }, []);
 
-  const tabs = useMemo(
-    () => (me?.role === "warehouse" ? TABS.filter((item) => OPERATOR_TABS.has(item.key)) : TABS),
-    [me],
-  );
+  const tabs = useMemo(() => {
+    if (me?.role === "warehouse") return TABS.filter((item) => OPERATOR_TABS.has(item.key));
+    if (me?.role === "seller") return TABS.filter((item) => !SELLER_HIDDEN_TABS.has(item.key));
+    return TABS;
+  }, [me]);
   // Кто ставит задания, правит приход и возвращает брак в остаток. Пока роль не
   // прочитана — «нет»: спрятать кнопку на секунду безопаснее, чем показать чужую.
   const canManage = canManageStock(me?.role);

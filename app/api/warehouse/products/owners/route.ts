@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { canManageStock, isExternalSeller, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
+import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
@@ -34,6 +36,10 @@ const fail = (error: string, status: number) => NextResponse.json({ data: null, 
 export async function POST() {
   const gate = await requireApiSession();
   if (gate) return gate;
+  const session = await getServerSession();
+  // Массовая работа со справочником — инструмент владельца панели: она читает и
+  // переписывает карточки всех юрлиц сразу, и внешней компании там делать нечего.
+  if (!canManageStock(session?.role) || isExternalSeller(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
   const list = await listAccessibleEntities();
   if (!list.ok) return fail(list.error, list.status);
 

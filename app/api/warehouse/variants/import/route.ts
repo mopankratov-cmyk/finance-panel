@@ -4,7 +4,7 @@ import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { noWildberriesSourceReason, wildberriesOwnCabinets } from "@/lib/warehouse/cabinetChannels";
-import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
+import { canManageStock, isExternalSeller, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
 import { modelLabelForGroup, splitArticle } from "@/lib/warehouse/productModel";
 import { isMissingColumn } from "@/lib/warehouse/productRow";
 import { warmFbsBarcodeCatalog, type FbsBarcodeEntry } from "@/lib/wb/fbsBarcodeCatalog";
@@ -56,7 +56,10 @@ export async function POST(request: NextRequest) {
   if (gate) return gate;
   const session = await getServerSession();
   // Импорт пишет в справочник — это зона администратора и менеджера.
-  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  // Импорт читает карточки кабинетов и пишет в справочник по совпадению
+  // артикула — то есть может тронуть карточку любого юрлица. Это инструмент
+  // владельца панели, внешней компании он закрыт.
+  if (!canManageStock(session?.role) || isExternalSeller(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
   const body = (await request.json().catch(() => null)) as { entityId?: string } | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 

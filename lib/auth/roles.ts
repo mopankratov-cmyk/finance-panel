@@ -30,7 +30,12 @@ const ACCESS: Record<Role, string[]> = {
   ozon_manager: ["/", "/ozon", "/warehouse"],
   // Внешний селлер работает только в собственном WB-контуре. Управляющие
   // инструменты (публикация контента, цены, системные настройки) не открываем.
-  seller: ["/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
+  //
+  // Склад ему открыт целиком, но это не дыра: модуль считает всё по юрлицу, а
+  // юрлица селлеру видны только те, чьи кабинеты принадлежат его организации
+  // (lib/warehouse/entityAccess.ts). Чужой склад он не увидит даже по прямой
+  // ссылке — юрлицо не пройдёт resolveEntity.
+  seller: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
   // Оператор фулфилмента работает только в модуле «Склад»: приёмка, отгрузка, брак.
   // Решение владельца: внутри модуля видит всё, включая себестоимость.
   warehouse: ["/warehouse"],
