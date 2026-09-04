@@ -188,6 +188,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ employee: result.data });
   }
 
+  if (action === "delete_employee") {
+    const employeeId = nullableId(body.employeeId);
+    if (!employeeId) return NextResponse.json({ error: "Не выбран сотрудник" }, { status: 400 });
+    const [entries, debts, allocations] = await Promise.all([
+      db.from("payroll_entries").select("id", { count: "exact", head: true }).eq("employee_id", employeeId),
+      db.from("payroll_debt_openings").select("id", { count: "exact", head: true }).eq("employee_id", employeeId),
+      db.from("payroll_payment_allocations").select("id", { count: "exact", head: true }).eq("employee_id", employeeId),
+    ]);
+    const historyError = entries.error ?? debts.error ?? allocations.error;
+    if (historyError) return NextResponse.json({ error: historyError.message }, { status: 500 });
+    if ((entries.count ?? 0) + (debts.count ?? 0) + (allocations.count ?? 0) > 0) {
+      return NextResponse.json({ error: "Сотрудника нельзя удалить: по нему уже есть начисления, долги или оплаты. Поставьте статус «Уволен», чтобы сохранить финансовую историю." }, { status: 409 });
+    }
+    const result = await db.from("payroll_employees").delete().eq("id", employeeId).select("id").maybeSingle();
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
+    if (!result.data) return NextResponse.json({ error: "Сотрудник не найден" }, { status: 404 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "import_employees") {
     const records = Array.isArray(body.records) ? body.records as Array<Record<string, unknown>> : [];
     if (!records.length || records.length > 500) return NextResponse.json({ error: "Файл не содержит сотрудников" }, { status: 400 });
