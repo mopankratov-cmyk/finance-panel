@@ -55,6 +55,42 @@ test("договор Дзюбина распознаётся локально п
   assert.equal(result.schedule.at(-1)?.principal, 14_063_323.91);
 });
 
+test("уточнение при первой загрузке продлевает договор Дзюбина и ИИ для него не вызывается", async () => {
+  let aiCalled = false;
+  const result = await recognizeLoanDocument({
+    description: "продли договор до декабря 2026 года по той же логике, с увеличением тела. Договор займа Дзюбина: 5 000 000 рублей, 3% ежемесячно; ежеквартально дополнительная сумма займа равна сумме выплаченных процентов и увеличивает тело.",
+  }, {
+    ...deps,
+    ai: async () => {
+      aiCalled = true;
+      throw new Error("Основной ИИ-сервис недоступен");
+    },
+  });
+  assert.equal(aiCalled, false);
+  assert.equal(result.recognized.dueDate, "2026-12-31");
+  assert.equal(result.schedule.at(-1)?.date, "2026-12-31");
+  assert.ok((result.schedule.at(-1)?.principal ?? 0) > 14_063_323.91);
+  assert.match(result.actions.join(" "), /срок продлён/i);
+});
+
+test("комментарий к файлу передаётся ИИ отдельно и с приоритетом", async () => {
+  let receivedInstructions = "";
+  await recognizeLoanDocument({
+    description: "продли до декабря 2026",
+    file: { name: "dogovor.pdf", bytes: Buffer.from("%PDF-1.4 %%EOF"), mimeType: "application/pdf" },
+  }, {
+    ...deps,
+    ai: async (body) => {
+      receivedInstructions = body.instructions ?? "";
+      return {
+        creditorName: "Банк", principalAmount: 100_000, currency: "RUB", annualRate: 12,
+        startDate: "2026-01-01", dueDate: "2026-12-31", interestFrequency: "at_maturity",
+      };
+    },
+  });
+  assert.equal(receivedInstructions, "продли до декабря 2026");
+});
+
 test("корректировка «перенести» применяется локальным парсером без ИИ", async () => {
   const base = await recognizeLoanDocument({ description: "Заем ООО Микрофинанс 100 000 рублей от 01.02.2026 до 01.05.2026 под 12% годовых. Проценты выплачиваются ежемесячно." }, deps);
   const result = await applyLoanCorrections({ existing: base.recognized, schedule: base.schedule, corrections: "перенести платёж с марта 2026 на июнь 2026", exchangeRate: 1 }, deps);

@@ -71,7 +71,8 @@ export async function recognizeLoanDocument(
 ): Promise<LoanRecognitionOutcome> {
   const file = input.file;
   if (!file && !input.description.trim()) throw new Error("Добавьте договор или опишите займ текстом.");
-  let extractedText = input.description.trim();
+  const instructions = input.description.trim();
+  let documentText = "";
   let pdfBase64 = "";
   let imageBase64 = "";
   let imageType: AiRecognitionBody["imageMediaType"] | "" = "";
@@ -82,15 +83,26 @@ export async function recognizeLoanDocument(
     else if ((imageType = imageMediaType(file))) imageBase64 = file.bytes.toString("base64");
     else {
       const officeFile = new File([new Uint8Array(file.bytes)], file.name);
-      extractedText = `${extractedText}\n${await extractOfficeText(officeFile)}`.trim();
+      documentText = (await extractOfficeText(officeFile)).trim();
       if (lower.endsWith(".xlsx")) spreadsheetRecognition = recognizeLoanSpreadsheet(xlsxGrid(file.bytes));
     }
   }
+  const extractedText = [instructions, documentText].filter(Boolean).join("\n");
   const local = mergeRecognition(recognizeLoanText(extractedText || file?.name || ""), spreadsheetRecognition);
   let remote: Partial<RecognizedLoan> | undefined;
-  if (deps.ai) {
+  // Договор Дзюбина распознаётся полностью локально. Не даём сбою внешнего ИИ
+  // сорвать загрузку или подменить поквартальный рост тела.
+  const completeLocalRecognition = Boolean(local.terms?.reinvestEveryPeriods && local.schedule?.length);
+  if (deps.ai && !completeLocalRecognition) {
     try {
-      remote = await deps.ai({ text: extractedText, pdfBase64, imageBase64, imageMediaType: imageType || undefined, fileName: file?.name });
+      remote = await deps.ai({
+        text: documentText || (!file ? instructions : ""),
+        instructions: file ? instructions : "",
+        pdfBase64,
+        imageBase64,
+        imageMediaType: imageType || undefined,
+        fileName: file?.name,
+      });
     } catch (error) {
       // Для PDF и картинок локального резерва нет — без ИИ читать нечем.
       if (pdfBase64 || imageBase64) throw error;
@@ -126,6 +138,7 @@ export async function recognizeLoanDocument(
   const exactSchedule = recognizedSchedule(recognized.schedule, rate);
   const baseSchedule = exactSchedule.length ? exactSchedule : monthlySchedule(recognized, rate);
   const localCorrection = applyLoanScheduleCorrections(baseSchedule, input.description, scheduleRow);
+  const recognitionActions = recognized.warnings.filter((warning) => warning.startsWith("Срок продлён по уточнению пользователя"));
   const correctedDueDate = localCorrection.schedule.at(-1)?.date ?? recognized.dueDate;
   const company = deps.companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));
   const account = deps.accounts.find((item) => recognized.accountHint && item.name.toLowerCase().includes(recognized.accountHint.toLowerCase()));
@@ -138,7 +151,7 @@ export async function recognizeLoanDocument(
       dueDate: correctedDueDate,
     },
     schedule: localCorrection.schedule.map(normalizeScheduleMoney),
-    actions: localCorrection.actions,
+    actions: [...recognitionActions, ...localCorrection.actions],
     exchangeRate: rate,
     rateDate,
     suggestedCompanyId: company?.id ?? null,

@@ -141,12 +141,16 @@ function recognizeQuarterlyCapitalizedLoan(text: string): RecognizedLoan | null 
 
   const initialPrincipal = 5_000_000;
   const monthlyRate = 3;
+  const requestedDueDate = /(?:продл|измен)[^.!?\n]{0,80}(?:срок|договор)?[^.!?\n]{0,40}до(?:\s|$)/i.test(normalized)
+    ? monthEndFromText(text)
+    : "";
+  const dueDate = requestedDueDate || "2026-07-15";
   const terms: LoanTermsStored = {
     annualRate: 36, monthlyRate: 3, interestFrequency: "monthly", rateMode: "flat_period", dayCountBasis: 365,
     interestPayout: "paid", paymentDay: 10, reinvestEveryPeriods: 3, extraContributions: [], tranches: [],
   };
   const built = buildLoanSchedule({
-    principal: initialPrincipal, startDate: "2023-07-15", dueDate: "2026-07-15", annualRate: 36, monthlyRate,
+    principal: initialPrincipal, startDate: "2023-07-15", dueDate, annualRate: 36, monthlyRate,
     interestFrequency: "monthly", paymentDay: 10, rateMode: "flat_period", dayCountBasis: 365, interestPayout: "paid", reinvestEveryPeriods: 3,
   });
   const schedule = built.map((row) => ({
@@ -171,12 +175,13 @@ function recognizeQuarterlyCapitalizedLoan(text: string): RecognizedLoan | null 
     originationFee: 0,
     feeAmortizationMonths: 36,
     startDate: "2023-07-15",
-    dueDate: "2026-07-15",
+    dueDate,
     interestFrequency: "monthly",
     confidence: 92,
     warnings: [
       "Дата фактической выдачи в договоре не указана: график построен от даты договора 15.07.2023 — подтвердите её.",
-      "Каждые три месяца выплаченные проценты добавлены к телу займа; итоговое тело к возврату 14 063 323,91 ₽.",
+      `Каждые три месяца выплаченные проценты добавлены к телу займа; итоговое тело к возврату ${finalPrincipal.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽.`,
+      ...(requestedDueDate ? [`Срок продлён по уточнению пользователя до ${requestedDueDate}.`] : []),
     ],
     schedule: aggregateRecognizedSchedule(schedule),
     terms,

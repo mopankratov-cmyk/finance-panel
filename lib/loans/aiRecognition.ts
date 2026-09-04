@@ -9,6 +9,8 @@ import { COMPANY_ALIAS_PROMPT_NOTE } from "@/lib/finance/companyAliases";
 export type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type AiRecognitionBody = {
   text?: string;
+  /** Уточнение пользователя к загруженному договору; имеет приоритет над текстом файла. */
+  instructions?: string;
   pdfBase64?: string;
   imageBase64?: string;
   imageMediaType?: ImageMediaType;
@@ -28,6 +30,7 @@ export class LoanRecognitionValidationError extends Error {
 }
 
 const system = `Ты финансовый ассистент. Извлеки условия кредита или займа.
+Уточнение пользователя имеет приоритет над условиями и датами из договора: если оно меняет срок, сумму или логику графика, верни уже исправленный результат.
 Верни ТОЛЬКО JSON без markdown:
 {"contractNumber":"","creditorName":"","companyHint":"","accountHint":"","principalAmount":0,"currency":"RUB","annualRate":0,"monthlyRate":0,"originationFee":0,"feeAmortizationMonths":36,"startDate":"YYYY-MM-DD","dueDate":"YYYY-MM-DD","interestFrequency":"weekly|monthly|semi_monthly|quarterly|at_maturity|unknown","paymentDays":[16,30],"disbursements":[{"date":"YYYY-MM-DD","amount":0}],"confidence":0,"warnings":[],"schedule":[{"date":"YYYY-MM-DD","principal":0,"interest":0,"penalty":0,"fine":0,"balanceBefore":0,"balanceAfter":0}]}
 Не выдумывай отсутствующие данные. ${COMPANY_ALIAS_PROMPT_NOTE}. Ставку возвращай в процентах годовых.
@@ -52,7 +55,11 @@ function promptFor(body: AiRecognitionBody) {
   if (body.corrections?.trim() && body.existingRecognition) {
     return `Текущие распознанные данные:\n${JSON.stringify(body.existingRecognition)}\n\nКорректировки пользователя:\n${body.corrections.trim()}\n\nВерни полный исправленный JSON. Сохрани все данные и строки графика, которых корректировка не касается.`;
   }
-  return `${body.fileName ? `Файл: ${body.fileName}\n` : ""}${body.text?.trim() || "Изучи приложенный договор или изображение графика платежей и извлеки все доступные условия."}`;
+  const sections = [body.fileName ? `Файл: ${body.fileName}` : ""];
+  if (body.instructions?.trim()) sections.push(`Уточнение пользователя (имеет приоритет над договором):\n${body.instructions.trim()}`);
+  if (body.text?.trim()) sections.push(`Текст договора:\n${body.text.trim()}`);
+  if (!body.instructions?.trim() && !body.text?.trim()) sections.push("Изучи приложенный договор или изображение графика платежей и извлеки все доступные условия.");
+  return sections.filter(Boolean).join("\n\n");
 }
 
 function decodeBase64(value: string, maxBytes: number, label: string): Buffer {
@@ -92,6 +99,7 @@ export function validateImage(image: Buffer, mediaType: ImageMediaType) {
 
 export function validateAiBody(body: AiRecognitionBody): AiRecognitionBody {
   if (typeof body.text === "string" && body.text.length > MAX_TEXT_LENGTH) throw new LoanRecognitionValidationError("Текст договора слишком большой", 413);
+  if (typeof body.instructions === "string" && body.instructions.length > 20_000) throw new LoanRecognitionValidationError("Уточнение пользователя слишком большое", 413);
   if (typeof body.corrections === "string" && body.corrections.length > 20_000) throw new LoanRecognitionValidationError("Текст корректировки слишком большой", 413);
   if (typeof body.fileName === "string" && body.fileName.length > 255) throw new LoanRecognitionValidationError("Слишком длинное имя файла", 400);
   let result = body;
