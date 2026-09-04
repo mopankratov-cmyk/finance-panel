@@ -167,6 +167,14 @@ export async function savePayrollEmployee(employee: PayrollEmployee): Promise<vo
   if (privateResponse.status !== 403) await json<{ ok: boolean }>(privateResponse);
 }
 
+export async function deletePayrollEmployee(employeeId: string): Promise<void> {
+  await fetch("/api/payroll", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete_employee", employeeId }),
+  }).then(json<{ ok: boolean }>);
+}
+
 /** Штатный Excel → сервер. preview=true — только разбор, без записи. Реквизиты — отдельно (importPayrollStaffPrivateFile). */
 export async function importPayrollStaffFile(file: File, options: { preview: boolean }): Promise<{ preview: boolean; employees: PayrollEmployee[]; created: number; updated: number }> {
   const body = new FormData();
