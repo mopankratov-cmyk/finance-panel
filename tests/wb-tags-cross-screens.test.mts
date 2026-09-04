@@ -11,7 +11,10 @@ test("ярлыки РНП работают в Воронке и Полках", (
   // Запрос владельца: ярлык на модели → все цвета модели одним фильтром.
   assert.match(funnel, /useRnpTags\(cabinetId\)/);
   assert.match(funnel, /nmMatchesTags\(tagIdsByNm, sku\.nm, activeTagIds\)/);
-  assert.match(shelf, /useRnpTags\(hasExactCabinet \? cabinetId : null\)/);
+  // На полках ярлыки берутся через shelfCabinet — null без точного кабинета
+  // и на вкладке «Конкуренты» (см. wb-shelf-view-isolation).
+  assert.match(shelf, /const shelfCabinet = view === "shelf" && hasExactCabinet \? cabinetId : null;/);
+  assert.match(shelf, /useRnpTags\(shelfCabinet\)/);
   assert.match(shelf, /nmMatchesTags\(tagIdsByNm, item\.watch\.nmId, activeTagIds\)/);
   // Смена кабинета сбрасывает фильтр: id ярлыков другого кабинета — другие.
   assert.match(funnel, /useEffect\(\(\) => setActiveTagIds\(\[\]\), \[cabinetId\]\)/);

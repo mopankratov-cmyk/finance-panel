@@ -25,7 +25,13 @@ function loadCategoryMap(): Promise<CategoryMap> {
   const now = Date.now();
   if (cached && now - cached.at < TTL_MS) return cached.promise;
   const promise = fetch("/api/costs/categories", { cache: "no-store" })
-    .then((response) => response.json())
+    .then((response) => {
+      // Отказ приходит валидным JSON — {"error": …}. Без этой проверки 403 по
+      // правам читался как «категорий нет» и кэшировался на пять минут: фильтр
+      // исчезал на всех экранах молча, без единой ошибки в консоли.
+      if (!response.ok) throw new Error(`Ошибка ${response.status}`);
+      return response.json();
+    })
     .then((data: Partial<CategoryMap>) => ({
       categories: data.categories ?? [],
       byArticle: data.byArticle ?? {},

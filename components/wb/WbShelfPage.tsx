@@ -384,6 +384,12 @@ export function WbShelfPage() {
   }, [message]);
 
   useEffect(() => {
+    // На вкладке «Конкуренты» полки не показываются — и грузить их незачем.
+    // Эффект не знал про вид: открытие вкладки и КАЖДОЕ переключение периода
+    // тянули /api/shelf/table (самый тяжёлый запрос раздела, ~4,5 с) вместе с
+    // /api/shelf/watch, а нужный запрос конкурентов стоял за ними в очереди
+    // браузера. Ровно это и ощущалось как «лагает».
+    if (view !== "shelf") { setLoading(false); return; }
     if (!ready || cabinetsLoading) return;
     if (cabinets.length === 0) {
       setLoading(false);
@@ -419,7 +425,7 @@ export function WbShelfPage() {
       })
       .finally(() => { if (current === requestId.current) setLoading(false); });
     return () => controller.abort();
-  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, days, ready, retryKey]);
+  }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, days, ready, retryKey, view]);
 
   const reload = (notice?: string) => {
     if (notice) setMessage(notice);
@@ -462,9 +468,12 @@ export function WbShelfPage() {
 
   const globalBrands = settings.find((row) => row.cabinet_id === cabinetId)?.global_excluded_brands ?? [];
   // Ручной порядок выдачи артикулов (настраивается в РНП) действует и здесь.
-  const { orderIndex } = useCabinetSkuOrder(hasExactCabinet ? cabinetId : null);
-  const { tags, tagIdsByNm } = useRnpTags(hasExactCabinet ? cabinetId : null);
-  const skuNames = useWbSkuNames(hasExactCabinet ? cabinetId : null);
+  // Порядок артикулов, ярлыки и названия нужны таблице полок — на вкладке
+  // конкурентов их никто не читает. Три лишних запроса на каждом её открытии.
+  const shelfCabinet = view === "shelf" && hasExactCabinet ? cabinetId : null;
+  const { orderIndex } = useCabinetSkuOrder(shelfCabinet);
+  const { tags, tagIdsByNm } = useRnpTags(shelfCabinet);
+  const skuNames = useWbSkuNames(shelfCabinet);
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   useEffect(() => setActiveTagIds([]), [cabinetId]);
   // Ярлык на модели = все её цвета одной группой: фильтр сужает и список,

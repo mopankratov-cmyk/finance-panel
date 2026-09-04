@@ -11,7 +11,10 @@ const identityCell = readFileSync(new URL("../components/wb/WbSkuIdentityCell.ts
 test("названия карточек WB видны в Полках, Воронке и РНП", () => {
   // Запрос владельца: в Полках — названия к артикулам, в Воронке и РНП —
   // чтобы имя не падало обратно в артикул у кабинетов без себестоимости.
-  assert.match(shelf, /useWbSkuNames\(hasExactCabinet \? cabinetId : null\)/);
+  // Полки зовут хук через shelfCabinet: он null и без точного кабинета, и на
+  // вкладке «Конкуренты», где справочник никто не читает.
+  assert.match(shelf, /const shelfCabinet = view === "shelf" && hasExactCabinet \? cabinetId : null;/);
+  assert.match(shelf, /useWbSkuNames\(shelfCabinet\)/);
   assert.match(shelf, /displaySkuName\(watch\.supplierArticle \?\? "", null, skuNames, watch\.nmId\)/);
   // Воронка рисует общую ячейку личности SKU — имя берётся тем же способом,
   // на шаг глубже.
