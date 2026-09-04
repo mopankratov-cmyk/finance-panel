@@ -10,8 +10,10 @@ import type { ReceiptLineRow } from "@/app/api/warehouse/receipts/route";
 
 interface Draft { received: string; defect: string }
 
-/** Приём партии: сколько пришло и сколько из этого брак — одной операцией, как
- *  оператор и сообщает это по факту разгрузки.
+/** Пересчёт партии фулфилментом: сколько пришло и сколько из этого брак —
+ *  одной операцией, как оператор и сообщает это по факту разгрузки. Колонка
+ *  «Ждём» только для чтения: первоначальное количество ФФ не меняет (п. 1 ТЗ),
+ *  его правит админ через коррекцию прихода.
  *
  *  Два способа считать, и они не смешиваются. По умолчанию количества
  *  подставлены из ожидаемых: расхождение — исключение, и правят его руками.
@@ -21,6 +23,7 @@ interface Draft { received: string; defect: string }
  *  сканом. */
 export function ReceiveModal({
   batchId,
+  number,
   entityId,
   warehouseId,
   warehouseName,
@@ -28,6 +31,8 @@ export function ReceiveModal({
   onDone,
 }: {
   batchId: string;
+  /** Номер партии из шапки (ПРМ-2026-…); до миграции его нет. */
+  number?: string | null;
   entityId: string;
   warehouseId: string;
   warehouseName: string;
@@ -49,7 +54,9 @@ export function ReceiveModal({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/warehouse/receipts?batch=${batchId}`, { cache: "no-store" });
+      // Роут проверяет доступ к юрлицу до того, как смотрит на партию: без
+      // entity он отвечает «Выберите юрлицо», и окно пересчёта пустое.
+      const res = await fetch(`/api/warehouse/receipts?entity=${encodeURIComponent(entityId)}&batch=${batchId}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось загрузить позиции");
       const rows: ReceiptLineRow[] = json.data ?? [];
@@ -65,7 +72,7 @@ export function ReceiveModal({
     } finally {
       setLoading(false);
     }
-  }, [batchId]);
+  }, [batchId, entityId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -177,7 +184,7 @@ export function ReceiveModal({
       <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div>
-            <p className="text-base font-bold text-slate-900">Приём партии</p>
+            <p className="text-base font-bold text-slate-900">Пересчёт партии{number ? ` ${number}` : ""}</p>
             <p className="text-xs text-slate-400">На склад «{warehouseName}»</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
@@ -194,7 +201,7 @@ export function ReceiveModal({
           <div className="p-10 text-center text-sm text-slate-400">Загружаю позиции…</div>
         ) : pending.length === 0 ? (
           <div className="p-10 text-center">
-            <p className="text-sm font-medium text-slate-700">Все позиции уже приняты</p>
+            <p className="text-sm font-medium text-slate-700">Все позиции уже пересчитаны</p>
             <p className="mt-1 text-sm text-slate-400">Осталось поставить партию на остаток.</p>
           </div>
         ) : (
@@ -332,7 +339,7 @@ export function ReceiveModal({
               className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
             >
               <Check className="h-4 w-4" />
-              {saving === "post" ? "Ставлю…" : "Принять и поставить на остаток"}
+              {saving === "post" ? "Ставлю…" : "Пересчитано — на остаток"}
             </button>
           </div>
         </div>

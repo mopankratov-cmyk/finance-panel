@@ -11,26 +11,51 @@ const TITLE: Record<StockDocDetail["kind"], string> = {
   writeoff: "Акт списания",
   return: "Акт приёмки возврата",
   receipt: "Акт приёмки",
+  adjustment: "Акт коррекции прихода",
 };
+
+/** Статусы с учётом заданий: `cancelled` и `confirmed*` добавляет API-1 в
+ *  `StockDocDetail`; здесь они читаются через расширение типа, чтобы форма
+ *  собиралась и до правки роута. */
+type DocStatus = "draft" | "posted" | "reversed" | "cancelled";
+type DocDetail = StockDocDetail & { confirmedBy?: string | null; confirmedAt?: string | null };
+// Через функцию, а не аннотацию: присваивание TypeScript сужает обратно к
+// старому типу, и сравнение с «cancelled» считается опечаткой.
+const docStatus = (value: string): DocStatus => value as DocStatus;
 
 const date = (value: string) => new Date(value).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
 
 /** Бумага для фулфилмента: со сторонним складом спор о недовозе выигрывается
  *  подписанным листом, а не строкой в базе. */
-export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
+export function PrintableDoc({ doc }: { doc: DocDetail }) {
+  const status = docStatus(doc.status);
+  // Задание на отгрузку — ещё не накладная: товар не списан, себестоимости у
+  // строк нет, а подписывают его «поставил» и «выполнил», а не «отпустил» и
+  // «принял». Отменённое задание печатается той же формой с плашкой.
+  const isTask = doc.kind === "shipment" && (status === "draft" || status === "cancelled");
+  const title = isTask ? "Задание на отгрузку" : TITLE[doc.kind];
   // В перемещении строки идут парами «минус там, плюс тут» — печатаем только
   // расходную половину, иначе в накладной каждая позиция задвоится.
   const lines = doc.kind === "transfer" ? doc.lines.filter((row) => row.qty < 0) : doc.lines;
   // Кабинет в строках нужен только там, где их несколько: у накладной на один
   // кабинет он уже стоит в шапке, и колонка с одним и тем же словом — шум.
   const showCabinetColumn = doc.kind === "shipment" && !doc.cabinetName;
+  // У задания суммы нет: оно ничего не списало, и печатать нули — путать ФФ.
+  const showAmount = !isTask;
+  const columns = 3 + (showCabinetColumn ? 1 : 0);
+  // Отгрузку по заданию проводит фулфилмент, а не тот, кто задание поставил.
+  const releasedBy = doc.confirmedBy ?? doc.createdBy;
 
   return (
     <div className="mx-auto max-w-[820px] bg-white p-8 text-slate-900 print:p-0">
       <style>{`@media print { .no-print { display: none !important; } @page { margin: 16mm; } }`}</style>
 
       <div className="no-print mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
-        <p className="text-sm text-slate-500">Печать документа. Проверьте состав и подпишите оба экземпляра.</p>
+        <p className="text-sm text-slate-500">
+          {isTask
+            ? "Печать задания. Фулфилмент отмечает выполнение в панели — кнопкой «Отгружено»."
+            : "Печать документа. Проверьте состав и подпишите оба экземпляра."}
+        </p>
         <button
           onClick={() => window.print()}
           className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
@@ -40,11 +65,21 @@ export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
       </div>
 
       <header className="mb-6">
-        <h1 className="text-xl font-bold">{TITLE[doc.kind]} № {doc.number}</h1>
+        <h1 className="text-xl font-bold">{title} № {doc.number}</h1>
         <p className="mt-1 text-sm text-slate-600">от {date(doc.occurredAt)}</p>
-        {doc.status === "reversed" && (
+        {status === "reversed" && (
           <p className="mt-2 inline-block rounded border border-red-300 px-2 py-1 text-sm font-medium text-red-700">
             Документ сторнирован{doc.reversedByNumber ? ` — ${doc.reversedByNumber}` : ""}
+          </p>
+        )}
+        {status === "cancelled" && (
+          <p className="mt-2 inline-block rounded border border-slate-400 bg-slate-100 px-2 py-1 text-sm font-medium text-slate-700">
+            Задание отменено — отгружать по нему нельзя
+          </p>
+        )}
+        {isTask && status === "draft" && (
+          <p className="mt-2 inline-block rounded border border-red-300 bg-red-50 px-2 py-1 text-sm font-medium text-red-700">
+            Ждёт отгрузки фулфилментом
           </p>
         )}
       </header>
@@ -81,7 +116,7 @@ export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
             <th className="py-2 text-left font-semibold">Штрихкод</th>
             {showCabinetColumn && <th className="py-2 text-left font-semibold">Кабинет</th>}
             <th className="py-2 text-right font-semibold">Кол-во</th>
-            <th className="py-2 text-right font-semibold">Сумма, ₽</th>
+            {showAmount && <th className="py-2 text-right font-semibold">Сумма, ₽</th>}
           </tr>
         </thead>
         <tbody>
@@ -95,34 +130,39 @@ export function PrintableDoc({ doc }: { doc: StockDocDetail }) {
               <td className="py-2 text-slate-500">{row.barcode ?? "—"}</td>
               {showCabinetColumn && <td className="py-2 text-slate-600">{row.cabinetName ?? "—"}</td>}
               <td className="py-2 text-right font-semibold tabular-nums">{formatNumber(Math.abs(row.qty))}</td>
-              <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(Math.abs(row.amount)))}</td>
+              {showAmount && <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(Math.abs(row.amount)))}</td>}
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-400 font-semibold">
-            <td className="py-2" colSpan={showCabinetColumn ? 4 : 3}>Итого</td>
+            <td className="py-2" colSpan={columns}>Итого</td>
             <td className="py-2 text-right tabular-nums">{formatNumber(doc.totalQty)}</td>
-            <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(doc.totalAmount))}</td>
+            {showAmount && <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(doc.totalAmount))}</td>}
           </tr>
         </tfoot>
       </table>
 
       <p className="mt-2 text-xs text-slate-500">
         Всего наименований {lines.length}, количество {formatNumber(doc.totalQty)} шт
-        {doc.totalAmount ? ` на сумму ${formatNumber(Math.round(doc.totalAmount))} ₽ по складской себестоимости` : ""}.
+        {showAmount && doc.totalAmount ? ` на сумму ${formatNumber(Math.round(doc.totalAmount))} ₽ по складской себестоимости` : ""}.
       </p>
 
       <div className="mt-12 grid grid-cols-2 gap-12 text-sm">
         <div>
-          <p className="text-slate-500">Отпустил</p>
+          <p className="text-slate-500">{isTask ? "Поставил" : "Отпустил"}</p>
           <div className="mt-8 border-b border-slate-400" />
-          <p className="mt-1 text-xs text-slate-400">подпись, расшифровка{doc.createdBy ? ` · провёл ${doc.createdBy}` : ""}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            подпись, расшифровка
+            {isTask
+              ? (doc.createdBy ? ` · ${doc.createdBy}` : "")
+              : (releasedBy ? ` · провёл ${releasedBy}` : "")}
+          </p>
         </div>
         <div>
-          <p className="text-slate-500">Принял</p>
+          <p className="text-slate-500">{isTask ? "Выполнил" : "Принял"}</p>
           <div className="mt-8 border-b border-slate-400" />
-          <p className="mt-1 text-xs text-slate-400">подпись, расшифровка</p>
+          <p className="mt-1 text-xs text-slate-400">подпись, расшифровка{isTask ? " · фулфилмент, дата" : ""}</p>
         </div>
       </div>
     </div>

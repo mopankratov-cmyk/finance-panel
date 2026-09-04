@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ClipboardList, Truck } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
-import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
+import type { StockBalanceRow, StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
@@ -10,8 +11,11 @@ import { WbProductImage } from "@/components/wb/WbProductImage";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
 import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
 import { newDocKey } from "@/lib/warehouse/docKey";
+import { plural } from "@/lib/warehouse/plural";
+import type { ShipmentTaskRow, TaskLineInput } from "@/lib/warehouse/tasks";
 import { useDraft } from "@/lib/warehouse/useDraft";
 import { DraftNotice } from "@/components/warehouse/DraftNotice";
+import { TaskList } from "@/components/warehouse/TaskList";
 
 interface CabinetOption {
   id: string;
@@ -20,34 +24,62 @@ interface CabinetOption {
   marketplace: "wb" | "ozon";
 }
 
+type Mode = "task" | "now";
+
+/** Резерв и доступное добавляет API-1 в /api/warehouse/balances; до этого
+ *  полей нет, и доступно = остаток. */
+type BalanceRow = StockBalanceRow & { reserved?: number; available?: number };
+const reservedOf = (row: BalanceRow) => Math.max(0, Number(row.reserved ?? 0) || 0);
+const availableOf = (row: BalanceRow) => (typeof row.available === "number" ? row.available : row.qty - reservedOf(row));
+
 /** Ключ ячейки ввода: одна позиция может уехать в несколько кабинетов сразу. */
 const cellKey = (variantId: string, cabinetId: string) => `${variantId}:${cabinetId}`;
 
-export function ShipmentTab({
-  entityId,
-  entity,
-  warehouses,
-  refreshKey,
-  onShipped,
-}: {
+interface ShipmentTabProps {
   entityId: string;
   entity: LegalEntityRow | null;
   warehouses: WarehouseRow[];
   refreshKey: number;
   onShipped: () => void;
-}) {
+  /** Кто смотрит: администратор и менеджер ставят задания и отгружают сами,
+   *  оператор фулфилмента только выполняет. Передаёт WarehousePage
+   *  (`canManageStock(me?.role)`); пока пропа нет — прав нет: спрятать форму
+   *  у администратора безопаснее, чем показать её оператору. */
+  canManage?: boolean;
+}
+
+export function ShipmentTab(props: ShipmentTabProps) {
+  if (props.canManage !== true) {
+    return <TaskList entityId={props.entityId} canManage={false} refreshKey={props.refreshKey} onShipped={props.onShipped} />;
+  }
+  return <ShipmentManager {...props} />;
+}
+
+/**
+ * Экран администратора: матрица «размер × кабинет» в двух режимах.
+ * «Задание для ФФ» (по умолчанию, ТЗ команды п. 4) — по документу на кабинет,
+ * товар резервируется, отгружает фулфилмент. «Отгрузить сейчас» — прежнее
+ * поведение, когда товар уже физически уехал (решение владельца 04.09).
+ */
+function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }: ShipmentTabProps) {
+  const [mode, setMode] = useState<Mode>("task");
   const [balances, setBalances] = useState<StockBalancesResponse | null>(null);
   const [cabinets, setCabinets] = useState<CabinetOption[]>([]);
-  const [warehouseId, setWarehouseId] = useState<string>(warehouses[0]?.id ?? "");
+  // Отгружают с реального склада, а не из «В пути»: транзит — место для
+  // перемещений, и его первое место в списке — случайность алфавита.
+  const firstRealWarehouse = (list: WarehouseRow[]) => (list.find((row) => row.kind !== "transit") ?? list[0])?.id ?? "";
+  const [warehouseId, setWarehouseId] = useState<string>(firstRealWarehouse(warehouses));
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // Создали задание — список ниже должен это увидеть, не дожидаясь «Обновить».
+  const [tasksKey, setTasksKey] = useState(0);
 
   useEffect(() => {
-    if (!warehouseId && warehouses.length > 0) setWarehouseId(warehouses[0].id);
+    if (!warehouseId && warehouses.length > 0) setWarehouseId(firstRealWarehouse(warehouses));
   }, [warehouses, warehouseId]);
 
   const load = useCallback(async () => {
@@ -75,9 +107,20 @@ export function ShipmentTab({
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
+  // Юрлицо сменилось — введённое к нему больше не относится. Ячейки чужих
+  // размеров в таблице не показываются, но продолжали бы считаться в итоге,
+  // держать кнопку включённой и уезжать в черновик нового юрлица.
+  useEffect(() => { setAmounts({}); setNote(""); }, [entityId, warehouseId]);
+
   // Ключ появляется, когда остатки уже пришли: до этого форма пустая не потому,
   // что её очистили, а потому что ей нечего показывать.
-  const draftKey = loading || !warehouseId ? null : `warehouse:ship:${entityId}:${warehouseId}`;
+  // Ключ появляется, когда остатки пришли ПЕРВЫЙ раз, и дальше не исчезает:
+  // на каждой перезагрузке `loading` снова становится true, а обнуление ключа
+  // заставляет useDraft перечитать localStorage — и вернуть в форму ячейки
+  // только что созданного задания. Повторное нажатие создало бы дубль.
+  const balancesSeen = useRef(false);
+  if (balances) balancesSeen.current = true;
+  const draftKey = !balancesSeen.current || !warehouseId ? null : `warehouse:ship:${entityId}:${warehouseId}`;
   const draftValue = useMemo(() => ({ amounts, note }), [amounts, note]);
   const { restoredAt, forget } = useDraft(
     draftKey,
@@ -93,35 +136,89 @@ export function ShipmentTab({
   const startOver = () => { setAmounts({}); setNote(""); forget(); };
 
   const rows = useMemo(
-    () => (balances?.rows ?? []).filter((row) => row.warehouseId === warehouseId && row.qty > 0),
+    () => ((balances?.rows ?? []) as BalanceRow[]).filter((row) => row.warehouseId === warehouseId && row.qty > 0),
     [balances, warehouseId],
   );
+
+  /** Введённое, разложенное по кабинетам — в режиме задания это и есть
+   *  будущие документы: по одному на кабинет. */
+  const byCabinet = useMemo(() => {
+    const map = new Map<string, TaskLineInput[]>();
+    for (const [key, raw] of Object.entries(amounts)) {
+      const qty = Number(raw);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const [variantId, cabinetId] = key.split(":");
+      const list = map.get(cabinetId) ?? [];
+      list.push({ variantId, qty });
+      map.set(cabinetId, list);
+    }
+    return map;
+  }, [amounts]);
 
   const totals = useMemo(() => {
     let qty = 0;
     let positions = 0;
-    for (const [key, raw] of Object.entries(amounts)) {
-      const value = Number(raw);
-      if (!Number.isFinite(value) || value <= 0) continue;
-      qty += value;
-      positions += 1;
-      void key;
+    for (const lines of byCabinet.values()) {
+      for (const line of lines) { qty += line.qty; positions += 1; }
     }
-    return { qty, positions };
-  }, [amounts]);
+    return { qty, positions, cabinets: byCabinet.size };
+  }, [byCabinet]);
 
+  // Проверка идёт по «доступно», а не по остатку: чужое задание уже держит
+  // свою часть, и отгрузить её второй раз нельзя.
   const overshoot = useMemo(() => {
     const used = new Map<string, number>();
-    for (const [key, raw] of Object.entries(amounts)) {
-      const value = Number(raw);
-      if (!Number.isFinite(value) || value <= 0) continue;
-      const variantId = key.split(":")[0];
-      used.set(variantId, (used.get(variantId) ?? 0) + value);
+    for (const lines of byCabinet.values()) {
+      for (const line of lines) used.set(line.variantId, (used.get(line.variantId) ?? 0) + line.qty);
     }
-    return rows.filter((row) => (used.get(row.variantId) ?? 0) > row.qty).map((row) => row.variantId);
-  }, [amounts, rows]);
+    return rows.filter((row) => (used.get(row.variantId) ?? 0) > availableOf(row)).map((row) => row.variantId);
+  }, [byCabinet, rows]);
 
-  const ship = async () => {
+  const cabinetName = (id: string) => cabinets.find((cabinet) => cabinet.id === id)?.name ?? "кабинет";
+
+  const createTasks = async () => {
+    if (byCabinet.size === 0) { setError("Укажите количества"); return; }
+    setSaving(true);
+    setError(null);
+    setDone(null);
+    const created: string[] = [];
+    try {
+      // Последовательно, а не разом: номера идут по порядку, а при ошибке на
+      // втором кабинете первый уже создан и не создастся повторно.
+      for (const [cabinetId, lines] of byCabinet) {
+        const res = await fetch("/api/warehouse/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entityId, warehouseId, cabinetId, note, lines, docKey: newDocKey() }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(`${cabinetName(cabinetId)}: ${json.error || "не удалось создать задание"}`);
+        const task = json.data as ShipmentTaskRow;
+        const qty = lines.reduce((sum, line) => sum + line.qty, 0);
+        created.push(`${task.number} → ${cabinetName(cabinetId)} (${formatNumber(qty)} шт)`);
+        // Ячейки этого кабинета очищаем сразу: если следующий кабинет упадёт,
+        // повторное нажатие не создаст это задание второй раз.
+        setAmounts((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => key.split(":")[1] !== cabinetId)));
+      }
+      setDone(
+        (created.length === 1 ? "Создано задание" : `Создано ${created.length} ${plural(created.length, "задание", "задания", "заданий")}`)
+        + `: ${created.join(", ")}. Фулфилмент увидит в списке ниже.`,
+      );
+      setNote("");
+      forget();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Не удалось создать задание";
+      setError(created.length > 0 ? `Создано: ${created.join(", ")}. Дальше не вышло — ${message}` : message);
+    } finally {
+      setSaving(false);
+      if (created.length > 0) {
+        setTasksKey((key) => key + 1);
+        await load();
+      }
+    }
+  };
+
+  const shipNow = async () => {
     const lines = Object.entries(amounts)
       .map(([key, raw]) => {
         const [variantId, cabinetId] = key.split(":");
@@ -145,7 +242,7 @@ export function ShipmentTab({
       // бумаг печатать и какая куда.
       const papers = (json.data.docs ?? []) as { number: string; cabinetId: string; qty: number }[];
       const named = papers
-        .map((doc) => `${doc.number} → ${cabinets.find((cabinet) => cabinet.id === doc.cabinetId)?.name ?? "кабинет"} (${formatNumber(doc.qty)} шт)`)
+        .map((doc) => `${doc.number} → ${cabinetName(doc.cabinetId)} (${formatNumber(doc.qty)} шт)`)
         .join(", ");
       setDone(
         `Отгружено ${formatNumber(json.data.qty)} шт на ${formatNumber(Math.round(json.data.amount))} ₽`
@@ -154,6 +251,7 @@ export function ShipmentTab({
       setAmounts({});
       setNote("");
       forget();
+      setTasksKey((key) => key + 1);
       await load();
       onShipped();
     } catch (e) {
@@ -163,16 +261,37 @@ export function ShipmentTab({
     }
   };
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю остатки…</div>;
+  const taskList = (
+    <TaskList
+      entityId={entityId}
+      canManage
+      refreshKey={`${refreshKey}:${tasksKey}`}
+      onShipped={() => { void load(); onShipped(); }}
+      onChanged={() => { void load(); }}
+    />
+  );
+
+  if (loading && !balances) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю остатки…</div>;
+  }
 
   if (cabinets.length === 0) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-        У юрлица «{entity?.name}» нет связанных кабинетов — отгружать некуда. Свяжите кабинет с юрлицом,
-        и он появится здесь колонкой.
+      <div className="space-y-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+          У юрлица «{entity?.name}» нет связанных кабинетов — отгружать некуда. Свяжите кабинет с юрлицом,
+          и он появится здесь колонкой.
+        </div>
+        {taskList}
       </div>
     );
   }
+
+  const submitLabel = mode === "task"
+    ? (saving
+      ? "Создаю…"
+      : totals.cabinets > 1 ? `Создать ${totals.cabinets} ${plural(totals.cabinets, "задание", "задания", "заданий")}` : "Создать задание")
+    : (saving ? "Отгружаю…" : "Отгрузить");
 
   return (
     <div className="space-y-4">
@@ -181,7 +300,24 @@ export function ShipmentTab({
       <DraftNotice at={restoredAt} onForget={startOver} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
-        <span className="text-sm text-slate-500">Отгружаем со склада</span>
+        <div className="flex w-fit gap-1 rounded-lg bg-slate-100 p-1">
+          {([["task", "Задание для ФФ", ClipboardList], ["now", "Отгрузить сейчас", Truck]] as const).map(([key, label, Icon]) => (
+            <button
+              key={key}
+              onClick={() => { setMode(key); setDone(null); setError(null); }}
+              title={key === "task"
+                ? "Товар резервируется; списывается, когда фулфилмент нажмёт «Отгружено»"
+                : "Списать сразу — товар уже физически уехал"}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+                mode === key ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="text-sm text-slate-500">со склада</span>
         <select
           value={warehouseId}
           onChange={(e) => { setWarehouseId(e.target.value); setAmounts({}); }}
@@ -196,7 +332,7 @@ export function ShipmentTab({
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Комментарий к отгрузке"
+          placeholder={mode === "task" ? "Комментарий для фулфилмента" : "Комментарий к отгрузке"}
           className="min-w-48 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-300"
         />
       </div>
@@ -214,6 +350,8 @@ export function ShipmentTab({
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
                   <th className="px-4 py-3 text-left font-medium">Артикул</th>
                   <th className="px-4 py-3 text-right font-medium">На складе</th>
+                  <th className="px-4 py-3 text-right font-medium text-red-600" title="Размещено в заданиях, которые ещё не отгружены">В заданиях</th>
+                  <th className="px-4 py-3 text-right font-medium" title="Остаток минус то, что держат задания">Доступно</th>
                   {cabinets.map((cabinet) => (
                     <th key={cabinet.id} className="px-4 py-3 text-right font-medium">
                       {cabinet.name}
@@ -232,6 +370,8 @@ export function ShipmentTab({
               <tbody>
                 {rows.map((row) => {
                   const tooMuch = overshoot.includes(row.variantId);
+                  const reserved = reservedOf(row);
+                  const available = availableOf(row);
                   return (
                     <tr key={row.variantId} className="border-b border-slate-100 last:border-0">
                       <td className="px-4 py-2.5">
@@ -240,16 +380,21 @@ export function ShipmentTab({
                             nm={row.nmId ?? undefined}
                             src={row.photoUrl ?? undefined}
                             alt={row.article}
+                            label={row.article}
                             className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                           />
                           <div>
-                        <div className="font-medium text-slate-900">{variantLabel(row.article, row.sizeLabel)}</div>
-                        <div className="text-xs text-slate-400">{row.unitCost.toFixed(2)} ₽/шт</div>
+                            <div className="font-medium text-slate-900">{variantLabel(row.article, row.sizeLabel)}</div>
+                            <div className="text-xs text-slate-400">{row.unitCost.toFixed(2)} ₽/шт</div>
                           </div>
                         </div>
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-semibold ${tooMuch ? "text-red-600" : "text-slate-900"}`}>
-                        {formatNumber(row.qty)}
+                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{formatNumber(row.qty)}</td>
+                      <td className={`px-4 py-2.5 text-right tabular-nums ${reserved > 0 ? "font-medium text-red-600" : "text-slate-300"}`}>
+                        {reserved > 0 ? formatNumber(reserved) : ""}
+                      </td>
+                      <td className={`px-4 py-2.5 text-right font-semibold tabular-nums ${tooMuch ? "text-red-600" : "text-slate-900"}`}>
+                        {formatNumber(available)}
                       </td>
                       {cabinets.map((cabinet) => (
                         <td key={cabinet.id} className="px-4 py-2.5 text-right">
@@ -277,21 +422,26 @@ export function ShipmentTab({
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
             <div className="text-sm text-slate-600">
               К отгрузке <b className="text-slate-900">{formatNumber(totals.qty)}</b> шт
-              <span className="text-slate-400"> · {totals.positions} строк</span>
+              <span className="text-slate-400"> · {totals.positions} {plural(totals.positions, "строка", "строки", "строк")}</span>
+              {mode === "task" && totals.cabinets > 1 && (
+                <span className="text-slate-400"> · {totals.cabinets} {plural(totals.cabinets, "задание", "задания", "заданий")}, по одному на кабинет</span>
+              )}
               {overshoot.length > 0 && (
-                <span className="ml-2 text-red-600">больше, чем есть на складе — исправьте выделенные</span>
+                <span className="ml-2 text-red-600">больше доступного — исправьте выделенное</span>
               )}
             </div>
             <button
-              onClick={() => void ship()}
+              onClick={() => void (mode === "task" ? createTasks() : shipNow())}
               disabled={saving || totals.qty === 0 || overshoot.length > 0}
               className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
             >
-              {saving ? "Отгружаю…" : "Отгрузить"}
+              {submitLabel}
             </button>
           </div>
         </>
       )}
+
+      {taskList}
     </div>
   );
 }

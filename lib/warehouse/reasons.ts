@@ -22,6 +22,24 @@ export function writeoffReason(value: string | null): string {
   return WRITEOFF_REASONS[value] ?? value;
 }
 
+/** Откуда взялось списание — `doc_type` движения. Коррекция прихода пишет брак
+ *  своим видом документа: в журнале брака он должен читаться не как «списание
+ *  руками», а как правка принятой партии. */
+export const WRITEOFF_SOURCE: Record<string, string> = {
+  purchase_receipt: "брак при приёмке",
+  writeoff: "списание",
+  receipt_correction: "коррекция прихода",
+  return: "брак в возврате",
+  // Сторно списания пишет те же строки с плюсом и тем же kind — в журнале брака
+  // оно видно как отдельная строка «вернули в остаток».
+  reversal: "сторно",
+};
+
+export function writeoffSource(docType: string | null): string {
+  if (!docType) return "—";
+  return WRITEOFF_SOURCE[docType] ?? docType;
+}
+
 /** Пояснение к расчётной себестоимости: список кодов через запятую. */
 export function costNote(value: string | null): string | null {
   if (!value) return null;

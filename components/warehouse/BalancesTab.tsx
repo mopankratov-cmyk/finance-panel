@@ -1,17 +1,24 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
-import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
-import { WbProductImage } from "@/components/wb/WbProductImage";
-import { variantLabel } from "@/lib/warehouse/variantLabel";
 import type { FbsSalesResult } from "@/app/api/warehouse/fbs-sales/route";
+import { buildStockMatrix, type StockMatrixResponse, type StockReceiptCell } from "@/lib/warehouse/stockMatrix";
+import { plural } from "@/lib/warehouse/plural";
+import { StockModelTree, warehouseBreakdown } from "@/components/warehouse/StockModelTree";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
+const shortDate = (value: string | null) =>
+  value ? new Date(value).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }) : "";
 
+/**
+ * Остатки по ТЗ команды: только иерархия «модель → цвет → размер» (решение
+ * владельца 04.09: плоской таблицы «строка на размер и склад» больше нет).
+ * Разбивка по складам, себестоимость и сумма живут внутри дерева.
+ */
 export function BalancesTab({ entityId, refreshKey }: { entityId: string; refreshKey: number }) {
-  const [data, setData] = useState<StockBalancesResponse | null>(null);
+  const [data, setData] = useState<StockMatrixResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -22,8 +29,9 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/warehouse/balances?entity=${entityId}`, { cache: "no-store" });
+      const res = await fetch(`/api/warehouse/stock?entity=${entityId}`, { cache: "no-store" });
       const json = await res.json();
+      // 503 до миграции приходит с подсказкой, какие файлы применить, — показываем как есть.
       if (!res.ok) throw new Error(json.error || "Не удалось загрузить остатки");
       setData(json.data);
     } catch (e) {
@@ -35,6 +43,29 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
   }, [entityId]);
 
   useEffect(() => { void load(); }, [load, refreshKey]);
+
+  const models = useMemo(() => (data ? buildStockMatrix(data.rows) : []), [data]);
+
+  // Остаток по складам для плитки: строки уже несут разбивку, складываем её.
+  const byWarehouse = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const row of data?.rows ?? []) {
+      for (const item of row.byWarehouse) totals[item.warehouseId] = (totals[item.warehouseId] ?? 0) + item.qty;
+    }
+    return totals;
+  }, [data]);
+
+  // Непересчитанные партии для плитки «Ожидается»: по одной на batch_id,
+  // свежие первыми — как в макете «ПРМ-0013 · 27.08».
+  const pendingBatches = useMemo(() => {
+    const map = new Map<string, StockReceiptCell>();
+    for (const row of data?.rows ?? []) {
+      for (const cell of row.receipts) {
+        if (cell.state !== "posted" && !map.has(cell.batchId)) map.set(cell.batchId, cell);
+      }
+    }
+    return [...map.values()].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+  }, [data]);
 
   // Продажи FBS — единственное движение, которое приходит не от человека, а от
   // маркетплейса: товар лежит на фулфилменте и уезжает оттуда покупателю без
@@ -87,6 +118,18 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
     </>
   );
 
+  const syncButton = (
+    <button
+      onClick={() => void syncSales()}
+      disabled={syncing}
+      title="Вычесть из остатка продажи со склада продавца. Включается по складу и дате на вкладке «Склады»."
+      className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+    >
+      <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+      {syncing ? "Списываю продажи…" : "Списать продажи FBS"}
+    </button>
+  );
+
   if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Считаю остаток по движениям…</div>;
   if (error) return <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!data) return null;
@@ -96,114 +139,65 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
       <div className="space-y-4">
         {salesPanel}
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
-          <p className="text-sm font-medium text-slate-700">Остатка пока нет</p>
-          <p className="mt-1 text-sm text-slate-400">Проведите приёмку, и товар появится здесь.</p>
-          <button
-            onClick={() => void syncSales()}
-            disabled={syncing}
-            className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {syncing ? "Списываю продажи…" : "Списать продажи FBS"}
-          </button>
+          <p className="text-sm font-medium text-slate-700">Остатка пока нет — проведите приёмку</p>
+          <p className="mt-1 text-sm text-slate-400">Товар появится здесь, как только партия встанет на остаток.</p>
+          <div className="mt-3 flex justify-center">{syncButton}</div>
         </div>
       </div>
     );
   }
 
+  const available = data.totals.qty - data.totals.reserved;
+  const breakdown = warehouseBreakdown(byWarehouse, data.warehouses);
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-
-        <button
-          onClick={() => void syncSales()}
-          disabled={syncing}
-          title="Вычесть из остатка продажи со склада продавца. Включается по складу и дате на вкладке «Склады»."
-          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Списываю продажи…" : "Списать продажи FBS"}
-        </button>
-      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">{syncButton}</div>
 
       {salesPanel}
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs text-slate-400">Всего в остатке</p>
           <p className="text-xl font-bold text-slate-900">{formatNumber(data.totals.qty)}</p>
-          <p className="mt-1 text-xs text-slate-400">{data.totals.skuCount} позиций · все склады, включая ФФ и «в пути»</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {data.totals.skuCount} {plural(data.totals.skuCount, "позиция", "позиции", "позиций")}
+            {breakdown ? ` · ${breakdown}` : ""}
+          </p>
+        </div>
+        <div
+          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+          title="Доступно = остаток − в заданиях. Задание держит товар на складе, пока фулфилмент не отгрузит."
+        >
+          <p className="text-xs text-slate-400">В заданиях на отгрузку</p>
+          <p className={`text-xl font-bold ${data.totals.reserved > 0 ? "text-red-600" : "text-slate-900"}`}>
+            {formatNumber(data.totals.reserved)}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">доступно {formatNumber(available)}</p>
+        </div>
+        <div
+          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+          title="Ждём приёмки или пересчитано, но ещё не поставлено на остаток"
+        >
+          <p className="text-xs text-slate-400">Ожидается, не пересчитано</p>
+          <p className={`text-xl font-bold ${data.totals.expected > 0 ? "text-red-600" : "text-slate-900"}`}>
+            {formatNumber(data.totals.expected)}
+          </p>
+          <p className="mt-1 truncate text-xs text-slate-400">
+            {pendingBatches.length === 0
+              ? "всё пересчитано"
+              : pendingBatches.slice(0, 3).map((cell) => [cell.number ?? "партия", shortDate(cell.date)].filter(Boolean).join(" · ")).join(", ")
+                + (pendingBatches.length > 3 ? ` и ещё ${pendingBatches.length - 3}` : "")}
+          </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs text-slate-400">Деньги в товаре</p>
           <p className="text-xl font-bold text-violet-700">{money(data.totals.amount)}</p>
           <p className="mt-1 text-xs text-slate-400">по себестоимости приёмок</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="mb-2 text-xs text-slate-400">По складам</p>
-          <div className="space-y-1">
-            {data.warehouses.filter((w) => w.qty !== 0).map((w) => (
-              <div key={w.id} className="flex justify-between text-sm">
-                <span className="truncate text-slate-600">{w.name}</span>
-                <span className="font-medium text-slate-900">{formatNumber(w.qty)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
-              <th className="px-4 py-3 text-left font-medium"></th>
-              <th className="px-4 py-3 text-left font-medium">Артикул</th>
-              <th className="px-4 py-3 text-left font-medium">Размер</th>
-              <th className="px-4 py-3 text-left font-medium">nmID</th>
-              <th className="px-4 py-3 text-left font-medium">Склад</th>
-              <th className="px-4 py-3 text-right font-medium">Остаток</th>
-              <th className="px-4 py-3 text-right font-medium">Себес., ₽/шт</th>
-              <th className="px-4 py-3 text-right font-medium">Сумма</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((row) => (
-              <tr key={`${row.warehouseId}-${row.variantId}`} className="border-b border-slate-100 last:border-0">
-                <td className="py-2 pl-4 pr-0">
-                  <WbProductImage
-                    nm={row.nmId ?? undefined}
-                    src={row.photoUrl ?? undefined}
-                    alt={row.article}
-                    className="h-10 w-10 rounded-lg border border-slate-100 bg-slate-50 object-cover"
-                  />
-                </td>
-                <td className="px-4 py-2.5 font-medium text-slate-900">{row.article || "—"}</td>
-                <td className="px-4 py-2.5 text-slate-600">
-                  {row.sizeLabel
-                    ? <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{row.sizeLabel}</span>
-                    : <span className="text-slate-300">—</span>}
-                </td>
-                <td className="px-4 py-2.5 text-slate-500">{row.nmId}</td>
-                <td className="px-4 py-2.5 text-slate-600">
-                  {row.warehouseName}
-                  {row.warehouseKind === "fulfillment" && (
-                    <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">ФФ</span>
-                  )}
-                  {row.warehouseKind === "transit" && (
-                    <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">в пути</span>
-                  )}
-                </td>
-                <td className={`px-4 py-2.5 text-right font-semibold ${row.qty < 0 ? "text-red-600" : "text-slate-900"}`}>
-                  {formatNumber(row.qty)}
-                </td>
-                <td className="px-4 py-2.5 text-right text-slate-600">
-                  {row.unitCost > 0 ? row.unitCost.toFixed(2) : <span className="text-slate-300">нет</span>}
-                </td>
-                <td className="px-4 py-2.5 text-right text-slate-700">{money(row.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <StockModelTree models={models} warehouses={data.warehouses} />
     </div>
   );
 }

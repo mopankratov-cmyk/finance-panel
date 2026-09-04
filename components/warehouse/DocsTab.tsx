@@ -11,7 +11,17 @@ const KIND_LABEL: Record<StockDocRow["kind"], string> = {
   writeoff: "Списание",
   return: "Возврат",
   receipt: "Приёмка",
+  adjustment: "Коррекция прихода",
 };
+
+/** Статусы документа с учётом заданий: `cancelled` и `confirmed*` добавляет
+ *  API-1 в тип `StockDocRow`; здесь они читаются через расширение типа, чтобы
+ *  экран собирался и до правки роута. */
+type DocStatus = "draft" | "posted" | "reversed" | "cancelled";
+type DocRow = StockDocRow & { confirmedBy?: string | null; confirmedAt?: string | null };
+// Через функцию, а не аннотацию: присваивание TypeScript сужает обратно к
+// старому типу, и сравнение с «cancelled» считается опечаткой.
+const docStatus = (value: string): DocStatus => value as DocStatus;
 
 const stamp = (value: string) =>
   new Date(value).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -95,8 +105,19 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
               </tr>
             </thead>
             <tbody>
-              {data.rows.map((row) => (
-                <tr key={row.id} className={`border-b border-slate-100 last:border-0 ${row.status === "reversed" ? "bg-slate-50/60" : ""}`}>
+              {data.rows.map((row: DocRow) => {
+                const status = docStatus(row.status);
+                // Задание: черновик отгрузки — резерв, а не движение; отменённое
+                // задание движений не оставило. Сторнировать нечего ни тому, ни другому.
+                const isTask = row.kind === "shipment" && (status === "draft" || status === "cancelled");
+                const who = status === "posted" && row.confirmedBy ? row.confirmedBy : row.createdBy;
+                return (
+                <tr
+                  key={row.id}
+                  className={`border-b border-slate-100 last:border-0 ${
+                    status === "reversed" || status === "cancelled" ? "bg-slate-50/60" : ""
+                  }`}
+                >
                   <td className="px-4 py-2.5 font-medium text-slate-900">
                     {row.number}
                     {row.reversesNumber && (
@@ -104,6 +125,14 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                     )}
                     {row.reversedByNumber && (
                       <span className="ml-1.5 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">отменён {row.reversedByNumber}</span>
+                    )}
+                    {status === "draft" && (
+                      <span className="ml-1.5 rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600">
+                        {isTask ? "задание, ждёт ФФ" : "черновик"}
+                      </span>
+                    )}
+                    {status === "cancelled" && (
+                      <span className="ml-1.5 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">отменено</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-slate-700">{KIND_LABEL[row.kind]}</td>
@@ -118,7 +147,12 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                   <td className="px-4 py-2.5 text-right text-slate-600">
                     {row.amount ? `${formatNumber(Math.round(row.amount))} ₽` : <span className="text-slate-300">—</span>}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-slate-400">{row.createdBy ?? "—"}</td>
+                  <td
+                    className="px-4 py-2.5 text-xs text-slate-400"
+                    title={who !== row.createdBy && row.createdBy ? `поставил ${row.createdBy}` : undefined}
+                  >
+                    {who ?? "—"}
+                  </td>
                   <td className="px-4 py-2.5 text-right">
                     <a
                       href={`/warehouse/print/${row.id}`}
@@ -129,7 +163,7 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                     >
                       <Printer className="h-3.5 w-3.5" /> Печать
                     </a>
-                    {row.status === "posted" && !row.reversedByNumber && (
+                    {status === "posted" && !row.reversedByNumber && (
                       <button
                         onClick={() => void reverse(row)}
                         disabled={busy === row.id}
@@ -142,7 +176,8 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { recordStockDoc } from "@/lib/warehouse/stockDocs";
 
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
   }
 
   const docs: { number: string; cabinetId: string; qty: number }[] = [];
+  let firstDocId: string | null = null;
   for (const [cabinetId, totals] of byCabinet) {
     const doc = await recordStockDoc(db, {
       kind: "shipment",
@@ -122,10 +124,34 @@ export async function POST(request: NextRequest) {
       result: { shipmentId: movementDocId, cabinetId: cabinetId || null, ...totals },
       actor: session?.email ?? null,
     });
-    if (doc) docs.push({ number: doc.number, cabinetId, qty: totals.qty });
+    if (doc) {
+      docs.push({ number: doc.number, cabinetId, qty: totals.qty });
+      firstDocId ??= doc.id;
+    }
   }
 
-  const payload = { ...(data as Record<string, unknown>), docs };
+  // Хроника — «отгружено сразу», в отличие от отгрузки по заданию. Номер — первой
+  // накладной: событие одно на проводку, накладных может быть несколько.
+  const cabinetNames = new Map(scope.entity.cabinets.map((link) => [link.cabinetId, link.cabinetName]));
+  const result = (data ?? {}) as Record<string, unknown>;
+  await recordWarehouseEvent(db, {
+    legalEntityId: scope.entity.id,
+    kind: "shipment_posted",
+    refType: "stock_doc",
+    refId: firstDocId,
+    number: docs[0]?.number ?? null,
+    warehouseId: body.warehouseId,
+    actor: session?.email ?? null,
+    actorRole: session?.role ?? null,
+    payload: {
+      qty: result.qty ?? null,
+      amount: result.amount ?? null,
+      lines: result.lines ?? null,
+      cabinets: [...byCabinet.keys()].map((cabinetId) => cabinetNames.get(cabinetId) ?? "кабинет"),
+    },
+  });
+
+  const payload = { ...result, docs };
   await settleDocKey(db, docKey, payload);
   return NextResponse.json({ data: payload as ShipmentResult, error: null }, { status: 201 });
 }

@@ -1,0 +1,342 @@
+"use client";
+
+import { Check, Printer } from "lucide-react";
+import { useState } from "react";
+import { formatNumber } from "@/lib/analytics/format";
+import { WbProductImage } from "@/components/wb/WbProductImage";
+import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
+import { newDocKey } from "@/lib/warehouse/docKey";
+import { plural } from "@/lib/warehouse/plural";
+import { TASK_STATUS_LABEL, type ShipmentTaskRow, type TaskLineInput } from "@/lib/warehouse/tasks";
+
+export const taskDate = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }) : "";
+
+/** Кабинет-адресат с меткой маркетплейса: у кабинетов бывают похожие имена,
+ *  а отгрузка не туда — это товар, уехавший не на ту площадку. */
+export function TaskCabinet({ task }: { task: ShipmentTaskRow }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="text-slate-700">{task.cabinetName ?? "кабинет"}</span>
+      {task.marketplace && (
+        <span className={`rounded px-1 py-0.5 text-[10px] ${
+          task.marketplace === "ozon" ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"
+        }`}>{MARKETPLACE_LABEL[task.marketplace]}</span>
+      )}
+    </span>
+  );
+}
+
+const STATUS_CLASS: Record<ShipmentTaskRow["status"], string> = {
+  draft: "bg-red-50 text-red-600",
+  posted: "bg-emerald-100 text-emerald-700",
+  cancelled: "bg-slate-200 text-slate-600",
+  reversed: "bg-amber-100 text-amber-700",
+};
+
+export function TaskStatusPill({ status }: { status: ShipmentTaskRow["status"] }) {
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_CLASS[status]}`}>
+      {TASK_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+const digitsOnly = (value: string) => value.replace(/[^\d]/g, "");
+const toQty = (raw: string | undefined) => Math.max(0, Number(raw ?? "") || 0);
+const initialQty = (task: ShipmentTaskRow) =>
+  Object.fromEntries(task.lines.map((line) => [line.variantId, String(line.qty)]));
+
+/**
+ * Карточка задания на отгрузку — то, что видит фулфилмент. Все поля из ТЗ:
+ * модель, размер, баркод, остаток на складе, количество. Отгрузить можно
+ * меньше задания (не нашли, брак) — разница попадёт в событие и в документ;
+ * больше — нельзя: задание и есть предел того, что админ разрешил увезти.
+ *
+ * Родитель перемонтирует карточку через key при изменении строк, поэтому
+ * начальные значения полей берутся из пропсов один раз.
+ */
+export function TaskCard({
+  task,
+  entityId,
+  canManage,
+  expanded,
+  onToggle,
+  onShipped,
+  onChanged,
+}: {
+  task: ShipmentTaskRow;
+  entityId: string;
+  canManage: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  /** Отгрузка подтверждена: сообщение для зелёной панели. */
+  onShipped: (message: string) => void;
+  /** Задание изменено или отменено: резерв поменялся, список перечитать. */
+  onChanged: (message: string) => void;
+}) {
+  const [shipQty, setShipQty] = useState<Record<string, string>>(() => initialQty(task));
+  const [editing, setEditing] = useState(false);
+  const [editQty, setEditQty] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<"ship" | "save" | "cancel" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const shipLines: TaskLineInput[] = task.lines.map((line) => ({ variantId: line.variantId, qty: toQty(shipQty[line.variantId]) }));
+  const shipTotal = shipLines.reduce((sum, line) => sum + line.qty, 0);
+  const overTask = task.lines.filter((line) => toQty(shipQty[line.variantId]) > line.qty);
+  const changed = task.lines.some((line) => toQty(shipQty[line.variantId]) !== line.qty);
+
+  const ship = async () => {
+    if (shipTotal === 0) {
+      setError("Нечего отгружать: все количества нули. Если задание не нужно, его отменяет администратор.");
+      return;
+    }
+    if (overTask.length > 0) { setError("Больше задания отгрузить нельзя — исправьте выделенные строки"); return; }
+    setBusy("ship");
+    setError(null);
+    try {
+      const res = await fetch(`/api/warehouse/tasks/${task.id}/ship`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Строки шлём только когда что-то изменили: без них сервер отгружает
+        // задание как есть, и в событии видно, что оно выполнено полностью.
+        body: JSON.stringify({ entityId, docKey: newDocKey(), ...(changed ? { lines: shipLines } : {}) }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось отгрузить");
+      const result = json.data as { number: string; qty: number };
+      onShipped(`Отгружено ${formatNumber(result.qty)} шт, накладная ${result.number}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось отгрузить");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const startEdit = () => {
+    setEditQty(initialQty(task));
+    setEditing(true);
+    setError(null);
+  };
+
+  const save = async () => {
+    const lines = task.lines
+      .map((line) => ({ variantId: line.variantId, qty: toQty(editQty[line.variantId]) }))
+      .filter((line) => line.qty > 0);
+    if (lines.length === 0) { setError("Чтобы убрать всё, отмените задание"); return; }
+    if (task.lines.every((line) => toQty(editQty[line.variantId]) === line.qty)) { setEditing(false); return; }
+    setBusy("save");
+    setError(null);
+    try {
+      const res = await fetch(`/api/warehouse/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityId, lines }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось изменить задание");
+      setEditing(false);
+      onChanged(`Задание ${task.number} изменено`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось изменить задание");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cancel = async () => {
+    if (!window.confirm(`Отменить задание ${task.number}? Резерв снимется, товар останется на складе.`)) return;
+    const reason = window.prompt("Причина отмены (можно оставить пустой)", "");
+    // «Отмена» в окне причины — человек передумал.
+    if (reason === null) return;
+    setBusy("cancel");
+    setError(null);
+    try {
+      const res = await fetch(`/api/warehouse/tasks/${task.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityId, reason: reason.trim() || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось отменить задание");
+      onChanged(`Задание ${task.number} отменено`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось отменить задание");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const lineCount = task.lines.length;
+
+  return (
+    <div className={`rounded-xl border bg-white ${expanded ? "border-slate-200" : "border-slate-200/80"}`}>
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+        <button onClick={onToggle} className="text-sm font-semibold text-slate-900 hover:text-violet-700">
+          {task.number}
+        </button>
+        <TaskCabinet task={task} />
+        <TaskStatusPill status={task.status} />
+        <span className="text-xs text-slate-400">
+          поставил {task.createdBy ?? "—"} {taskDate(task.createdAt)}
+          {task.warehouseName ? ` · со склада ${task.warehouseName}` : ""}
+        </span>
+        {!expanded && (
+          <span className="text-xs text-slate-400">
+            {lineCount} {plural(lineCount, "позиция", "позиции", "позиций")} · {formatNumber(task.qty)} шт
+          </span>
+        )}
+        <button
+          onClick={onToggle}
+          className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+        >
+          {expanded ? "Свернуть" : "Открыть"}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-slate-100">
+          {task.note && <p className="px-4 pt-3 text-xs text-slate-500">Комментарий: {task.note}</p>}
+          {error && <div className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
+                  <th className="px-4 py-2 text-left font-medium">Товар</th>
+                  <th className="px-4 py-2 text-left font-medium">Штрихкод</th>
+                  <th className="px-4 py-2 text-right font-medium">На складе</th>
+                  <th className="px-4 py-2 text-right font-medium">Задание</th>
+                  {!editing && <th className="px-4 py-2 text-right font-medium">Отгружаем</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {task.lines.map((line) => {
+                  const wanted = toQty(shipQty[line.variantId]);
+                  const tone = wanted > line.qty
+                    ? "border-red-300 bg-red-50"
+                    : wanted < line.qty ? "border-amber-300 bg-amber-50" : "border-slate-200";
+                  const short = line.onHand < line.qty;
+                  return (
+                    <tr key={line.id} className="border-b border-slate-100 last:border-0">
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2.5">
+                          <WbProductImage
+                            nm={line.nmId ?? undefined}
+                            src={line.photoUrl ?? undefined}
+                            alt={line.article}
+                            label={line.article}
+                            className="h-9 w-9 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover"
+                          />
+                          <span className="font-medium text-slate-900">{line.article}</span>
+                          {line.sizeLabel && (
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{line.sizeLabel}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-xs text-slate-400">{line.barcode ?? "—"}</td>
+                      <td
+                        className={`px-4 py-2 text-right tabular-nums ${short ? "font-medium text-red-600" : "text-slate-600"}`}
+                        title={short ? "На складе меньше, чем в задании" : undefined}
+                      >
+                        {formatNumber(line.onHand)}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {editing ? (
+                          <input
+                            inputMode="numeric"
+                            value={editQty[line.variantId] ?? ""}
+                            onChange={(e) => setEditQty((prev) => ({ ...prev, [line.variantId]: digitsOnly(e.target.value) }))}
+                            className={`w-20 rounded-lg border px-2 py-1 text-right text-sm ${
+                              toQty(editQty[line.variantId]) > line.onHand ? "border-red-300 bg-red-50" : "border-slate-200"
+                            }`}
+                          />
+                        ) : (
+                          <span className="font-semibold tabular-nums text-slate-900">{formatNumber(line.qty)}</span>
+                        )}
+                      </td>
+                      {!editing && (
+                        <td className="px-4 py-2 text-right">
+                          <input
+                            inputMode="numeric"
+                            value={shipQty[line.variantId] ?? ""}
+                            onChange={(e) => setShipQty((prev) => ({ ...prev, [line.variantId]: digitsOnly(e.target.value) }))}
+                            className={`w-20 rounded-lg border px-2 py-1 text-right text-sm ${tone}`}
+                          />
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3">
+            <a
+              href={`/warehouse/print/${task.id}`}
+              target="_blank"
+              rel="noreferrer"
+              title="Печатная форма задания"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              <Printer className="h-3.5 w-3.5" /> Печать
+            </a>
+            {editing ? (
+              <>
+                <span className="text-xs text-slate-400">Ноль убирает строку из задания</span>
+                <button
+                  onClick={() => setEditing(false)}
+                  disabled={busy !== null}
+                  className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={() => void save()}
+                  disabled={busy !== null}
+                  className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {busy === "save" ? "Сохраняю…" : "Сохранить"}
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-slate-600">
+                  Отгружаем <b className="text-slate-900">{formatNumber(shipTotal)}</b> из {formatNumber(task.qty)} шт
+                  {overTask.length > 0 && <span className="ml-2 text-red-600">больше задания нельзя</span>}
+                </span>
+                {canManage && (
+                  <>
+                    <button
+                      onClick={startEdit}
+                      disabled={busy !== null}
+                      className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      onClick={() => void cancel()}
+                      disabled={busy !== null}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:text-red-600 disabled:opacity-50"
+                    >
+                      {busy === "cancel" ? "Отменяю…" : "Отменить"}
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => void ship()}
+                  disabled={busy !== null || shipTotal === 0 || overTask.length > 0}
+                  className={`${canManage ? "" : "ml-auto "}inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50`}
+                >
+                  <Check className="h-4 w-4" />
+                  {busy === "ship" ? "Отгружаю…" : "Отгружено"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

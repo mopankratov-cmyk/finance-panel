@@ -26,6 +26,11 @@ export interface FbsBarcodeEntry {
   size: string;
   /** Характеристика размера в WB — ею адресуются цены и остатки конкретного размера. */
   chrtId: number | null;
+  /** Карточки одной модели в разных цветах объединены у WB общим imtID —
+   *  по нему склад собирает иерархию «модель → цвет». */
+  imtId: number | null;
+  /** Характеристика «Цвет» карточки, как её записал продавец. */
+  color: string | null;
 }
 
 export interface FbsBarcodeCatalog {
@@ -36,9 +41,18 @@ export interface FbsBarcodeCatalog {
 
 interface RawCatalogCard {
   nmID?: number;
+  imtID?: number;
   vendorCode?: string;
   brand?: string;
+  characteristics?: { name?: string; value?: string | string[] }[];
   sizes?: { chrtID?: number; techSize?: string; wbSize?: string; skus?: string[] }[];
+}
+
+function colorOf(card: RawCatalogCard): string | null {
+  const found = (card.characteristics ?? []).find((item) => /цвет/i.test(String(item.name ?? "")));
+  if (!found) return null;
+  const value = Array.isArray(found.value) ? found.value.join(", ") : String(found.value ?? "");
+  return value.trim() || null;
 }
 
 /** Потолок обхода: 100 карточек на страницу × 80 страниц = 8 000 карточек. */
@@ -63,6 +77,8 @@ async function fetchCatalog(cabinetId: string): Promise<FbsBarcodeCatalog> {
     if (!allowsProduct(scope, nmId, card.brand)) continue;
     const article = String(card.vendorCode ?? "").trim();
     const brand = String(card.brand ?? "").trim();
+    const imtId = Number.isFinite(Number(card.imtID)) && Number(card.imtID) > 0 ? Number(card.imtID) : null;
+    const color = colorOf(card);
     for (const size of card.sizes ?? []) {
       const label = String(size.wbSize ?? size.techSize ?? "").trim();
       for (const sku of size.skus ?? []) {
@@ -76,6 +92,8 @@ async function fetchCatalog(cabinetId: string): Promise<FbsBarcodeCatalog> {
           brand,
           size: label,
           chrtId: Number.isFinite(Number(size.chrtID)) ? Number(size.chrtID) : null,
+          imtId,
+          color,
         });
       }
     }
@@ -97,7 +115,7 @@ export class FbsBarcodeCatalogColdError extends Error {
 
 const CATALOG_NAMESPACE = "wb-fbs-barcodes";
 /** Ключ снимка обязан совпадать у читателя и у прогрева, иначе прогрев греет мимо. */
-const catalogIdentity = (cabinetId: string) => ({ cabinetId, schema: 2 });
+const catalogIdentity = (cabinetId: string) => ({ cabinetId, schema: 3 });
 
 export function loadFbsBarcodeCatalogHourly(
   cabinetId: string,
