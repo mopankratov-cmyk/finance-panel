@@ -92,7 +92,9 @@ export async function GET(request: NextRequest) {
 
   // У черновика итога проводки нет — его количество живёт в строках задания.
   // Таблицы строк может ещё не быть: тогда у черновика ноль, как и раньше.
-  const draftIds = docs.filter((row) => row.status === "draft").map((row) => String(row.id));
+  // Отменённое задание движений не имеет, но состав у него есть — в плане.
+  // Без этого в журнале «0 шт, — позиций», и непонятно, что отменили.
+  const draftIds = docs.filter((row) => row.status === "draft" || row.status === "cancelled").map((row) => String(row.id));
   const draftTotals = new Map<string, { qty: number; lines: number }>();
   if (draftIds.length > 0) {
     const lines = await db.from("stock_doc_lines").select("doc_id, qty").in("doc_id", draftIds);
@@ -116,8 +118,10 @@ export async function GET(request: NextRequest) {
       cabinetName: row.cabinet_id ? cabinets.get(String(row.cabinet_id)) ?? "кабинет" : null,
       occurredAt: String(row.occurred_at),
       note: (row.note as string | null) ?? null,
-      qty: draft ? draft.qty : num(row.result, "qty"),
-      amount: Math.abs(num(row.result, "amount")),
+      // У коррекции прихода нет «количества документа» — есть дельты, и
+      // именно они отвечают на вопрос «на сколько поправили».
+      qty: draft ? draft.qty : num(row.result, "qty") || num(row.result, "deltaQty"),
+      amount: Math.abs(num(row.result, "amount") || num(row.result, "deltaAmount")),
       lines: draft ? draft.lines : num(row.result, "lines") || num(row.result, "posted"),
       createdBy: (row.created_by as string | null) ?? null,
       confirmedBy: (row.confirmed_by as string | null) ?? null,

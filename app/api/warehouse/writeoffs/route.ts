@@ -192,7 +192,13 @@ export async function POST(request: NextRequest) {
   const occurredAtRaw = typeof body.occurredAt === "string" ? body.occurredAt.trim() : "";
   let occurredAt: string | null = null;
   if (occurredAtRaw) {
-    const parsed = new Date(occurredAtRaw);
+    // Форма отдаёт «2026-04-24» — это день, а не момент. Полночь тут опасна с
+    // обеих сторон: `new Date("2026-04-24")` даёт полночь UTC (в Москве это
+    // 03:00 того же дня — терпимо), а местная полночь на сервере в UTC
+    // превратилась бы в 23-е число. Берём середину дня: тогда дата читается
+    // одинаково в любом часовом поясе, где работают склад и панель.
+    const dayOnly = /^\d{4}-\d{2}-\d{2}$/.test(occurredAtRaw);
+    const parsed = new Date(dayOnly ? `${occurredAtRaw}T12:00:00Z` : occurredAtRaw);
     if (Number.isNaN(parsed.getTime())) return fail("Некорректная дата списания", 400);
     if (parsed.getTime() > Date.now() + 24 * 60 * 60 * 1000) return fail("Дата списания в будущем", 400);
     occurredAt = parsed.toISOString();

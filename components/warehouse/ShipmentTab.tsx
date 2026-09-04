@@ -1,7 +1,7 @@
 "use client";
 
 import { ClipboardList, Truck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { StockBalanceRow, StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
@@ -65,7 +65,10 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
   const [mode, setMode] = useState<Mode>("task");
   const [balances, setBalances] = useState<StockBalancesResponse | null>(null);
   const [cabinets, setCabinets] = useState<CabinetOption[]>([]);
-  const [warehouseId, setWarehouseId] = useState<string>(warehouses[0]?.id ?? "");
+  // Отгружают с реального склада, а не из «В пути»: транзит — место для
+  // перемещений, и его первое место в списке — случайность алфавита.
+  const firstRealWarehouse = (list: WarehouseRow[]) => (list.find((row) => row.kind !== "transit") ?? list[0])?.id ?? "";
+  const [warehouseId, setWarehouseId] = useState<string>(firstRealWarehouse(warehouses));
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
@@ -76,7 +79,7 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
   const [tasksKey, setTasksKey] = useState(0);
 
   useEffect(() => {
-    if (!warehouseId && warehouses.length > 0) setWarehouseId(warehouses[0].id);
+    if (!warehouseId && warehouses.length > 0) setWarehouseId(firstRealWarehouse(warehouses));
   }, [warehouses, warehouseId]);
 
   const load = useCallback(async () => {
@@ -104,9 +107,20 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
+  // Юрлицо сменилось — введённое к нему больше не относится. Ячейки чужих
+  // размеров в таблице не показываются, но продолжали бы считаться в итоге,
+  // держать кнопку включённой и уезжать в черновик нового юрлица.
+  useEffect(() => { setAmounts({}); setNote(""); }, [entityId, warehouseId]);
+
   // Ключ появляется, когда остатки уже пришли: до этого форма пустая не потому,
   // что её очистили, а потому что ей нечего показывать.
-  const draftKey = loading || !warehouseId ? null : `warehouse:ship:${entityId}:${warehouseId}`;
+  // Ключ появляется, когда остатки пришли ПЕРВЫЙ раз, и дальше не исчезает:
+  // на каждой перезагрузке `loading` снова становится true, а обнуление ключа
+  // заставляет useDraft перечитать localStorage — и вернуть в форму ячейки
+  // только что созданного задания. Повторное нажатие создало бы дубль.
+  const balancesSeen = useRef(false);
+  if (balances) balancesSeen.current = true;
+  const draftKey = !balancesSeen.current || !warehouseId ? null : `warehouse:ship:${entityId}:${warehouseId}`;
   const draftValue = useMemo(() => ({ amounts, note }), [amounts, note]);
   const { restoredAt, forget } = useDraft(
     draftKey,

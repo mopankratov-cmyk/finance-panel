@@ -54,7 +54,9 @@ export function ReceiveModal({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/warehouse/receipts?batch=${batchId}`, { cache: "no-store" });
+      // Роут проверяет доступ к юрлицу до того, как смотрит на партию: без
+      // entity он отвечает «Выберите юрлицо», и окно пересчёта пустое.
+      const res = await fetch(`/api/warehouse/receipts?entity=${encodeURIComponent(entityId)}&batch=${batchId}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось загрузить позиции");
       const rows: ReceiptLineRow[] = json.data ?? [];
@@ -70,7 +72,7 @@ export function ReceiveModal({
     } finally {
       setLoading(false);
     }
-  }, [batchId]);
+  }, [batchId, entityId]);
 
   useEffect(() => { void load(); }, [load]);
 

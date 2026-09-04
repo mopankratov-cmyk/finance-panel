@@ -79,7 +79,8 @@ export function DefectsTab({
   }, [entityId]);
 
   const openDraft = async () => {
-    setDraft({ warehouseId: warehouses[0]?.id ?? "", date: todayIso(), reason: "", lines: [{ variantId: "", qty: "" }] });
+    // Брак находят на реальном складе, не «В пути».
+    setDraft({ warehouseId: (warehouses.find((row) => row.kind !== "transit") ?? warehouses[0])?.id ?? "", date: todayIso(), reason: "", lines: [{ variantId: "", qty: "" }] });
     if (!stock) await loadStock();
   };
 

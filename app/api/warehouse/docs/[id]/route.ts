@@ -92,7 +92,7 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
   // Строки документа — это его движения в регистре: другого источника нет и не
   // должно быть, иначе бумага и учёт разойдутся.
   let lines: StockDocLine[] = [];
-  if (doc.status === "draft") {
+  if (doc.status === "draft" || doc.status === "cancelled") {
     // Черновик — задание: движений ещё нет, строки живут в stock_doc_lines. Это
     // единственное исключение: бумага для фулфилмента нужна ДО того, как товар
     // уехал. Себестоимости у строки нет — задание её не знает.

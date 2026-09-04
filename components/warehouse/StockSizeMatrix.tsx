@@ -41,7 +41,7 @@ export function StockSizeMatrix({ node }: { node: StockColorNode }) {
     <div className="rounded-lg border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2">
         <span className="text-sm font-medium text-slate-800">{title} · приходы и отгрузки по размерам</span>
-        <span className="ml-auto text-xs text-slate-400">красным — не пересчитано / не отгружено</span>
+        <span className="ml-auto text-xs text-slate-400">красным — ещё не в остатке / ещё не отгружено</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

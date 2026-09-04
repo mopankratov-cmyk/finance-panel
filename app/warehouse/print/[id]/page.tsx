@@ -55,7 +55,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   };
 
   let lines: StockDocLine[] = [];
-  if (doc.status === "draft") {
+  if (doc.status === "draft" || doc.status === "cancelled") {
     const taskLines = await db
       .from("stock_doc_lines")
       .select("variant_id, product_id, qty")

@@ -96,6 +96,8 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     if (shortage) return fail(`На складе не хватает «${shortage[1]}»: есть ${shortage[2]}, нужно ${shortage[3]}`, 409);
     if (error.message.includes("task is not a draft")) return fail("Задание уже выполнено или отменено", 409);
     if (error.message.includes("nothing to ship")) return fail("Нечего отгружать: все количества нулевые", 400);
+    // Задание — потолок: отгрузить сверх плана нельзя, это отдельная отгрузка.
+    if (error.message.includes("over plan")) return fail("Больше, чем в задании, отгрузить нельзя — исправьте количества или оформите отдельную отгрузку", 409);
     if (error.message.includes("task not found")) return fail("Задание не найдено", 404);
     if (error.message.includes("not a shipment task")) return fail("Это не задание на отгрузку", 400);
     if (error.message.includes("task has no warehouse")) return fail("У задания нет склада", 400);

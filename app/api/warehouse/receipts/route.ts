@@ -4,6 +4,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { canManageStock } from "@/lib/warehouse/operatorScope";
 import { recordWarehouseEvent } from "@/lib/warehouse/events";
 
 export const dynamic = "force-dynamic";
@@ -150,12 +151,19 @@ export async function GET(request: NextRequest) {
   // Строки одной партии — для формы приёма: оператор вводит принято/брак по позициям.
   const batchId = url.searchParams.get("batch");
   if (batchId) {
+    // Партия читается только своя: идентификатор приходит из адреса, и без
+    // этой проверки менеджер с доступом к одному юрлицу читал бы подбором id
+    // чужие приёмки — с ценами и количествами.
+    const own = scope.entity.cabinets.filter((link) => link.relation === "own").map((link) => link.cabinetId);
+    if (own.length === 0) return fail(`У юрлица «${scope.entity.name}» нет собственных кабинетов`, 403);
     const { data, error } = await db
       .from("purchase_receipts")
-      .select("id, product_id, variant_id, nm_id, article, expected_qty, received_qty, defect_qty, status, posted_at")
+      .select("id, cabinet_id, product_id, variant_id, nm_id, article, expected_qty, received_qty, defect_qty, status, posted_at")
       .eq("batch_id", batchId)
+      .in("cabinet_id", own)
       .order("id");
     if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
+    if ((data ?? []).length === 0) return fail("Партия не найдена", 404);
 
     // Размер и баркод — из справочника вариантов: в строке приёмки лежит только
     // ссылка, а сканеру нужен именно баркод, и он живёт на размере, не на модели.
@@ -356,13 +364,23 @@ export async function PUT(request: NextRequest) {
 
   const productsResult = await db
     .from("products")
-    .select("id, article, nm_id")
+    .select("id, article, nm_id, legal_entity_id")
     .in("id", lines.map((line) => line.productId));
   if (productsResult.error) {
     const code = productsResult.error.code;
     return fail(missingMigration(code) ? migrationHint : productsResult.error.message, missingMigration(code) ? 503 : 500);
   }
   const products = new Map((productsResult.data ?? []).map((row) => [String(row.id), row]));
+
+  // Товар приёмки — свой или ничей: идентификаторы приходят из тела запроса, и
+  // без проверки в партию юрлица попал бы чужой товар, а признак «новинка»
+  // проставился бы в чужой карточке.
+  for (const line of lines) {
+    const product = products.get(line.productId) as { legal_entity_id?: string | null } | undefined;
+    if (!product) return fail("Товар не найден", 404);
+    const owner = product.legal_entity_id ? String(product.legal_entity_id) : null;
+    if (owner && owner !== scope.entity.id) return fail("Товар принадлежит другому юрлицу", 403);
+  }
 
   // Размер проверяем по справочнику, а не по слову клиента: строка приёмки с
   // чужим вариантом развалила бы остаток тихо — не тем размером на складе.
@@ -431,7 +449,11 @@ export async function PUT(request: NextRequest) {
 
   // Новинка — признак товара, а не строки: ставится один раз и остаётся.
   // Колонки до миграции нет — тогда признак просто не запишется.
-  const noveltyProducts = [...new Set(lines.filter((line) => line.novelty).map((line) => line.productId))];
+  // Оператор фулфилмента приёмку заводит, но справочник не правит: флаг новинки
+  // от него не принимаем — по ТЗ это отметка администратора для запуска в РНП.
+  const noveltyProducts = canManageStock(session?.role)
+    ? [...new Set(lines.filter((line) => line.novelty).map((line) => line.productId))]
+    : [];
   if (noveltyProducts.length > 0) {
     await db.from("products").update({ is_novelty: true, updated_at: new Date().toISOString() }).in("id", noveltyProducts);
   }
@@ -675,6 +697,17 @@ export async function POST(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
   const session = await getServerSession();
+
+  // Та же проверка, что и при пересчёте: провести можно только партию своих
+  // кабинетов. Без неё чужая партия встала бы на наш склад по одному id.
+  const ownCabinets = scope.entity.cabinets.filter((link) => link.relation === "own").map((link) => link.cabinetId);
+  if (ownCabinets.length === 0) return fail(`У юрлица «${scope.entity.name}» нет собственных кабинетов`, 400);
+  const owner = await db.from("purchase_receipts").select("cabinet_id").eq("batch_id", batchId).limit(50);
+  if (owner.error) return fail(owner.error.message, 500);
+  if ((owner.data ?? []).length === 0) return fail("Партия не найдена", 404);
+  for (const row of owner.data ?? []) {
+    if (!ownCabinets.includes(String(row.cabinet_id))) return fail("Партия принадлежит другому юрлицу", 403);
+  }
 
   const { data, error } = await db.rpc("post_receipt_batch", {
     p_batch_id: batchId,

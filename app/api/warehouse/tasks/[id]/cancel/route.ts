@@ -52,16 +52,24 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   const lines = await loadTaskLines(db, [doc.id]);
   const qty = lines.error ? 0 : lines.rows.reduce((sum, line) => sum + Number(line.qty), 0);
 
+  // `.eq("status", "draft")` защищает от гонки с «Отгружено», но молча: если
+  // задание успели выполнить, update просто не находит строку. Спрашиваем, что
+  // именно затронуто, иначе роут ответил бы «отменено» на проведённый документ
+  // и записал бы об этом событие.
   const updated = await db
     .from("stock_docs")
     .update({ status: "cancelled", note: reason ?? doc.note ?? null, updated_at: new Date().toISOString() })
     .eq("id", doc.id)
-    .eq("status", "draft");
+    .eq("status", "draft")
+    .select("id");
   if (updated.error) {
     // 23514 — check-ограничение статуса ещё старое, без 'cancelled': значит,
     // схема не обновлена, и подсказка про миграцию точнее любого другого текста.
     if (updated.error.code === "23514") return fail(MIGRATION_HINT, 503);
     return dbFail(updated.error);
+  }
+  if ((updated.data ?? []).length === 0) {
+    return fail("Задание уже выполнено или отменено — обновите список", 409);
   }
 
   const cabinetName = scope.entity.cabinets.find((link) => link.cabinetId === String(doc.cabinet_id))?.cabinetName ?? null;

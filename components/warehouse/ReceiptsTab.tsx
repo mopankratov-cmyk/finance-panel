@@ -81,7 +81,10 @@ export function ReceiptsTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [target, setTarget] = useState<string>(warehouses[0]?.id ?? "");
+  // Приходуют на реальный склад, а не на «В пути»: транзит — место для
+  // перемещений, и приёмка туда по умолчанию — почти всегда ошибка выбора.
+  const defaultTarget = (list: WarehouseRow[]) => (list.find((row) => row.kind !== "transit") ?? list[0])?.id ?? "";
+  const [target, setTarget] = useState<string>(defaultTarget(warehouses));
   const [draft, setDraft] = useState<Draft | null>(null);
   const [products, setProducts] = useState<ProductRow[]>([]);
   // Размеры выбранных моделей. Тянем по одной карточке: справочник вариантов
@@ -90,9 +93,12 @@ export function ReceiptsTab({
   const [creating, setCreating] = useState(false);
   const [receiving, setReceiving] = useState<ReceiptBatchRow | null>(null);
   const [correcting, setCorrecting] = useState<ReceiptBatchRow | null>(null);
+  // Партия создана, но шапка легла не полностью (чаще всего занят номер).
+  // Роут отвечает успехом — строки записаны, — и кладёт причину в error.
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!target && warehouses.length > 0) setTarget(warehouses[0].id);
+    if (!target && warehouses.length > 0) setTarget(defaultTarget(warehouses));
   }, [warehouses, target]);
 
   const load = useCallback(async () => {
@@ -174,6 +180,7 @@ export function ReceiptsTab({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось создать приёмку");
+      setNotice(typeof json.error === "string" && json.error ? json.error : null);
       setDraft(null);
       await load();
     } catch (e) {
@@ -239,6 +246,7 @@ export function ReceiptsTab({
         />
       )}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+      {notice && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{notice}</div>}
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <span className="text-sm text-slate-500">Приходуем на склад</span>
@@ -260,7 +268,7 @@ export function ReceiptsTab({
         )}
         {pending.length > 0 && (
           <span className="text-sm text-amber-700">
-            {pending.length} {pending.length === 1 ? "партия ждёт" : "партий ждут"} проведения
+            {pending.length} {plural(pending.length, "партия ждёт", "партии ждут", "партий ждут")} проведения
           </span>
         )}
         <button
@@ -379,13 +387,17 @@ export function ReceiptsTab({
                     </span>
                   </div>
                 )}
-                <label
-                  title="Товар, которым ещё не торговали: флаг остаётся на карточке для запуска в РНП"
-                  className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${line.novelty ? "bg-violet-100 text-violet-700" : "text-slate-500"}`}
-                >
-                  <input type="checkbox" checked={line.novelty} onChange={(e) => updateLine(index, { novelty: e.target.checked })} />
-                  новинка
-                </label>
+                {/* Новинка — отметка для запуска в РНП, то есть правка справочника.
+                    Оператору фулфилмента она закрыта, и сервер её от него не примет. */}
+                {canManage && (
+                  <label
+                    title="Товар, которым ещё не торговали: флаг остаётся на карточке для запуска в РНП"
+                    className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${line.novelty ? "bg-violet-100 text-violet-700" : "text-slate-500"}`}
+                  >
+                    <input type="checkbox" checked={line.novelty} onChange={(e) => updateLine(index, { novelty: e.target.checked })} />
+                    новинка
+                  </label>
+                )}
                 {draft.lines.length > 1 && (
                   <button
                     onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_, i) => i !== index) })}
@@ -546,7 +558,7 @@ export function ReceiptsTab({
                             {busy === row.batchId ? "Ставлю…" : "Поставить на остаток"}
                           </button>
                         )}
-                        {counted && canManage && (
+                        {canManage && (
                           <button
                             onClick={() => setCorrecting(row)}
                             title="Поправить принятое, брак или ожидание; проведённые строки правятся разницей в регистре"

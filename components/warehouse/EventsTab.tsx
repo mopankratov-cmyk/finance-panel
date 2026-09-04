@@ -166,7 +166,7 @@ export function EventsTab({ entityId, refreshKey }: { entityId: string; refreshK
 
       {loading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю события…</div>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && !error ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
           <p className="text-sm font-medium text-slate-700">Событий пока нет</p>
           <p className="mt-1 text-sm text-slate-400">

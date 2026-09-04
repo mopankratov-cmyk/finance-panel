@@ -105,7 +105,7 @@ test("отгрузка сразу, перемещение, возврат", () =
 test("брак: склад, штуки, причина и дата задним числом", () => {
   assert.equal(
     describe("writeoff_created", { warehouseName: "ФФ", reason: "порвано", qty: 2, amount: 200, date: "2026-04-24" }),
-    "ФФ · 2 шт · порвано · дата 2026-04-24",
+    "ФФ · 2 шт · порвано · дата 24.04.2026",
   );
   assert.equal(describe("writeoff_created", { warehouseName: "ФФ", reason: "порвано", qty: 2 }), "ФФ · 2 шт · порвано");
 });

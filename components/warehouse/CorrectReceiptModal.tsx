@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { newDocKey } from "@/lib/warehouse/docKey";
+import { plural } from "@/lib/warehouse/plural";
 import type { ReceiptLineRow } from "@/app/api/warehouse/receipts/route";
 
 interface Draft { expected: string; received: string; defect: string }
@@ -183,7 +184,7 @@ export function CorrectReceiptModal({
                   />
                   <span className="font-medium text-slate-900">{group.article || group.nmId}</span>
                   <span className="ml-auto text-xs text-slate-400">
-                    {group.rows.length > 1 ? `${group.rows.length} размера` : ""}
+                    {group.rows.length > 1 ? `${group.rows.length} ${plural(group.rows.length, "размер", "размера", "размеров")}` : ""}
                   </span>
                 </div>
                 <table className="w-full text-sm">

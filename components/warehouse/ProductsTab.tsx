@@ -176,7 +176,7 @@ export function ProductsTab({
       if (d.partial) parts.push("каталог WB отдан не полностью");
       // Модель и цвет из карточки — поля добавляет тот же импорт; старый роут их не отдаёт.
       if (typeof d.modelsFilled === "number" && typeof d.colorsFilled === "number") {
-        parts.push(`модель и цвет проставлены у ${d.modelsFilled}/${d.colorsFilled}`);
+        parts.push(`проставлено моделей ${d.modelsFilled}, цветов ${d.colorsFilled}`);
       }
       // Кабинет, который не прочитался, раньше молчал: роут его отмечал, а экран
       // не показывал — и цифры выглядели полными, хотя половину не прочитали.

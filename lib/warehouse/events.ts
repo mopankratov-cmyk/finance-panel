@@ -179,6 +179,11 @@ const text = (value: unknown): string | null => {
   return raw ? raw : null;
 };
 const pcs = (value: number) => `${value.toLocaleString("ru-RU")} шт`;
+/** «2026-04-24» → «24.04.2026»: в ленте читают глазами, а не парсером. */
+const humanDate = (value: string) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
+};
 const positions = (value: number) => `${value} ${plural(value, "позиция", "позиции", "позиций")}`;
 const money = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 
@@ -300,7 +305,7 @@ export function describeEvent(row: Pick<WarehouseEventRow, "kind" | "payload" | 
       if (text(p.warehouseName)) parts.push(String(p.warehouseName));
       if (qty !== null) parts.push(pcs(qty));
       if (text(p.reason)) parts.push(String(p.reason));
-      if (text(p.date)) parts.push(`дата ${p.date}`);
+      if (text(p.date)) parts.push(`дата ${humanDate(String(p.date))}`);
       break;
     }
     case "doc_reversed": {

@@ -58,6 +58,19 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if (!doc || doc.kind !== "shipment") return fail("Задание не найдено", 404);
   if (String(doc.legal_entity_id) !== scope.entity.id) return fail("Задание другого юрлица", 403);
   if (doc.status !== "draft") return fail("Задание уже выполнено или отменено", 409);
+
+  // Строки правятся отдельными запросами, и между чтением статуса и записью
+  // фулфилмент может нажать «Отгружено». Столбим черновик отметкой времени с
+  // условием на статус: не затронуло строку — значит задание уже ушло, и
+  // править его строки нельзя.
+  const claimDraft = await db
+    .from("stock_docs")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", doc.id)
+    .eq("status", "draft")
+    .select("id");
+  if (claimDraft.error) return dbFail(claimDraft.error);
+  if ((claimDraft.data ?? []).length === 0) return fail("Задание уже выполнено или отменено", 409);
   if (!doc.warehouse_id) return fail("У задания нет склада", 400);
 
   const existing = await loadTaskLines(db, [doc.id]);
