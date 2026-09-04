@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
-import { canManageStock, isExternalSeller, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
+import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
@@ -52,9 +52,11 @@ export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const session = await getServerSession();
-  // Массовая работа со справочником — инструмент владельца панели: она читает и
-  // переписывает карточки всех юрлиц сразу, и внешней компании там делать нечего.
-  if (!canManageStock(session?.role) || isExternalSeller(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  // Оператору фулфилмента справочник не положен. Внешней компании — положен:
+  // читаются только её собственные кабинеты, а созданные товары получают её
+  // юрлицо (см. insert ниже). Существующие карточки импорт не трогает вовсе —
+  // он умеет только заводить недостающие.
+  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
   const body = (await request.json().catch(() => null)) as
     | { entityId?: string; brands?: string[]; includeStale?: boolean; apply?: boolean }
     | null;

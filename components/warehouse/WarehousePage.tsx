@@ -270,7 +270,7 @@ export function WarehousePage() {
       ) : tab === "events" ? (
         <EventsTab entityId={entityId} refreshKey={refreshKey} />
       ) : tab === "products" ? (
-        <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} />
+        <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} external={me?.role === "seller"} />
       ) : tab === "kiz" ? (
         <KizTab entityId={entityId} refreshKey={refreshKey} />
       ) : tab === "docs" ? (

@@ -66,10 +66,14 @@ export function ProductsTab({
   entityId,
   entities,
   refreshKey,
+  external = false,
 }: {
   entityId: string;
   entities: LegalEntityRow[];
   refreshKey: number;
+  /** Внешняя компания: справочник у неё свой, а инструменты, работающие сразу
+   *  по всем юрлицам, ей закрыты — и показывать их незачем. */
+  external?: boolean;
 }) {
   const [rows, setRows] = useState<ProductRow[]>([]);
   const [query, setQuery] = useState("");
@@ -364,14 +368,14 @@ export function ProductsTab({
         >
           <ListPlus className="h-4 w-4" /> {scanning ? "Читаю карточки…" : "Товары из карточек"}
         </button>
-        <button
+        {!external && <button
           onClick={() => void detectOwners()}
           disabled={owners}
           title="Прочитать карточки своих кабинетов и проставить товарам юрлицо владельца. Занимает несколько минут."
           className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
         >
           <Building2 className="h-4 w-4" /> {owners ? "Определяю…" : "Юрлица по карточкам"}
-        </button>
+        </button>}
         <button
           onClick={() => { setEditing({ id: null, draft: emptyDraft(entityId) }); setVariants([]); }}
           className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"

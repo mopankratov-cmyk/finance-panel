@@ -56,10 +56,7 @@ export async function POST(request: NextRequest) {
   if (gate) return gate;
   const session = await getServerSession();
   // Импорт пишет в справочник — это зона администратора и менеджера.
-  // Импорт читает карточки кабинетов и пишет в справочник по совпадению
-  // артикула — то есть может тронуть карточку любого юрлица. Это инструмент
-  // владельца панели, внешней компании он закрыт.
-  if (!canManageStock(session?.role) || isExternalSeller(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
   const body = (await request.json().catch(() => null)) as { entityId?: string } | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 
@@ -110,11 +107,18 @@ export async function POST(request: NextRequest) {
   //
   // Модель, цвет и imtID — колонки миграции 202609040002. База без них отдаёт
   // 42703: тогда читаем как раньше и модель с цветом не заполняем.
+  //
+  // Сопоставление идёт по артикулу, и артикул у нас глобально уникален: для
+  // своих это удобно — размеры лягут на карточку, кем бы она ни была заведена.
+  // Для внешней компании так нельзя: совпадение артикула дописало бы размеры и
+  // модель в чужой товар. Ей сопоставляем только её собственный справочник.
+  const own = isExternalSeller(session?.role) ? scope.entity.id : null;
+  const scoped = <T>(query: T): T => (own === null ? query : (query as { eq: (c: string, v: string) => T }).eq("legal_entity_id", own));
   let legacyColumns = false;
-  let productsResult = await db.from("products").select("id, nm_id, article, imt_id, color, model");
+  let productsResult = await scoped(db.from("products").select("id, nm_id, article, imt_id, color, model"));
   if (productsResult.error && isMissingColumn(productsResult.error.code)) {
     legacyColumns = true;
-    productsResult = await db.from("products").select("id, nm_id, article");
+    productsResult = await scoped(db.from("products").select("id, nm_id, article"));
   }
   if (productsResult.error) {
     const code = productsResult.error.code;

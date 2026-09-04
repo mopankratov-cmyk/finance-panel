@@ -81,11 +81,27 @@ test("проводки не называют чужой артикул в тек
   }
 });
 
-test("массовые инструменты справочника закрыты внешней компании", () => {
-  // Они читают и переписывают карточки всех юрлиц сразу.
-  for (const route of ["products/owners", "products/import", "variants/import"]) {
-    assert.match(read(`app/api/warehouse/${route}/route.ts`), /isExternalSeller\(session\?\.role\)/, `${route}: открыт внешней компании`);
-  }
+test("простановка владельцев по всему справочнику закрыта внешней компании", () => {
+  // Этот инструмент читает и переписывает карточки всех юрлиц сразу — он про
+  // разбор нашего общего справочника, а не про работу одной компании.
+  assert.match(read("app/api/warehouse/products/owners/route.ts"), /isExternalSeller\(session\?\.role\)/);
+  // И кнопки для неё в интерфейсе тоже нет: 403 по нажатию — плохой ответ.
+  assert.match(read("components/warehouse/ProductsTab.tsx"), /\{!external && <button/);
+});
+
+test("загрузка товаров из своего кабинета внешней компании открыта", () => {
+  // Импорт читает только её собственные кабинеты и заводит товары на её юрлицо.
+  const products = read("app/api/warehouse/products/import/route.ts");
+  assert.doesNotMatch(products, /isExternalSeller/, "импорт товаров закрыт внешней компании");
+  assert.match(products, /legal_entity_id: scope\.entity\.id/, "созданный товар не привязан к юрлицу запроса");
+  assert.match(products, /wildberriesOwnCabinets\(/, "читаются не только собственные кабинеты");
+
+  // Размеры сопоставляются по артикулу, поэтому внешней компании справочник
+  // сужается до её юрлица — иначе размеры лягут в чужую карточку.
+  const variants = read("app/api/warehouse/variants/import/route.ts");
+  assert.doesNotMatch(variants, /isExternalSeller\(session\?\.role\)\) return fail/, "импорт размеров закрыт внешней компании");
+  assert.match(variants, /const own = isExternalSeller\(session\?\.role\) \? scope\.entity\.id : null/, "справочник не сужен по юрлицу");
+  assert.match(variants, /eq\("legal_entity_id", own\)/, "сопоставление идёт по всему справочнику");
 });
 
 test("печатная форма требует сессию", () => {
