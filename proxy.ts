@@ -108,6 +108,13 @@ function isSellerApiAllowed(pathname: string, method: string): boolean {
   // Tenant-граница — hasCabinetAccess в роутах: чужой кабинет и агрегат all → 403.
   if (pathname === "/api/shelf/watch") return ["GET", "POST", "PATCH", "DELETE", "PUT"].includes(method);
   if (pathname === "/api/shelf/table") return method === "GET";
+  // Вторая вкладка тех же «Полок» — мониторинг конкурентов по цене. Селлер
+  // ведёт свой список артикулов сам: добавляет товар, привязывает конкурента,
+  // убирает лишнего. Роут для этого и написан — requireApiSession пускает
+  // seller, кабинет держит hasCabinetAccess, а cabinet_id стоит в каждом
+  // запросе к базе, — но путь сюда не попал, и живой экран отвечал «Внешнему
+  // селлеру доступна только WB-аналитика» под заголовком «WB не загрузились».
+  if (pathname === "/api/wb/competitors") return ["GET", "POST", "DELETE"].includes(method);
   // Свой порядок артикулов, план продаж и операционные пометки (теги/журнал) —
   // рабочие инструменты владельца кабинета, а не владельческие настройки:
   // селлер ведёт ими СВОЙ кабинет. Границу держит hasCabinetAccess в роутах.
