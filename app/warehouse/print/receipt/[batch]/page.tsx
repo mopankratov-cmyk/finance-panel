@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { getServerSession } from "@/lib/auth/server";
 import { PrintableDiscrepancy, type DiscrepancyLine } from "@/components/warehouse/PrintableDiscrepancy";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
@@ -14,6 +15,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function Page({ params }: { params: Promise<{ batch: string }> }) {
   const { batch } = await params;
+  // Без сессии listAccessibleEntities считает вызов машинным и отдаёт все
+  // юрлица: печатная форма по прямой ссылке показала бы чужой документ.
+  const session = await getServerSession();
+  if (!session) notFound();
   const list = await listAccessibleEntities();
   const db = getSupabaseAdmin();
   if (!list.ok || !db) notFound();

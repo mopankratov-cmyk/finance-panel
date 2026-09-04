@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { listAccessibleEntities, resolveEntity } from "@/lib/warehouse/entityAccess";
+import { assertVariantsInScope } from "@/lib/warehouse/ownership";
 import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { recordStockDoc } from "@/lib/warehouse/stockDocs";
@@ -58,6 +59,14 @@ export async function POST(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
   const session = await getServerSession();
+
+  // Размеры приходят идентификаторами из тела. Чужой размер надо отсечь до
+  // проводки: иначе функция вернёт ошибку с чужим артикулом, и по ней можно
+  // перебрать весь справочник.
+  const scopeList = await listAccessibleEntities();
+  if (!scopeList.ok) return fail(scopeList.error, scopeList.status);
+  const lineScope = await assertVariantsInScope(db, lines.map((line) => line.variantId), scopeList.rows.map((row) => row.id));
+  if (!lineScope.ok) return fail(lineScope.error, lineScope.status);
 
   // Ключ идемпотентности: второй клик по кнопке не должен давать второй документ.
   const docKey = typeof body.docKey === "string" ? body.docKey.trim() || null : null;

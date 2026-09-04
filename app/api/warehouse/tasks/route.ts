@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { assertVariantsInScope } from "@/lib/warehouse/ownership";
 import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
@@ -108,6 +109,11 @@ export async function POST(request: NextRequest) {
   if (!warehouseResult.data) return fail("Склад не найден", 404);
   if (warehouseResult.data.is_active === false) return fail("Склад в архиве", 400);
   const warehouseName = String(warehouseResult.data.name ?? "");
+
+  // Размер обязан быть своим: иначе ошибка нехватки остатка назовёт чужой
+  // артикул, и по ней перебирается весь справочник.
+  const lineScope = await assertVariantsInScope(db, lines.map((line) => line.variantId), [scope.entity.id]);
+  if (!lineScope.ok) return fail(lineScope.error, lineScope.status);
 
   // Размеры — по справочнику, а не со слов клиента: строка задания с чужим
   // вариантом развалила бы резерв тихо, не тем размером.

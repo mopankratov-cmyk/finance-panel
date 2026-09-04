@@ -4,6 +4,7 @@ import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { isExternalSeller } from "@/lib/warehouse/operatorScope";
+import { visibleWarehouseIds } from "@/lib/warehouse/ownership";
 import { parseWarehouseKind, type WarehouseKind } from "@/lib/warehouse/warehouseKind";
 
 export const dynamic = "force-dynamic";
@@ -72,19 +73,14 @@ export async function GET(request: NextRequest) {
   // товар, и те, что она завела сама. Пока таких нет, список пуст — первый
   // склад она создаёт кнопкой.
   const session = await getServerSession();
-  let visible = (data ?? []) as DbRow[];
-  if (isExternalSeller(session?.role)) {
-    const own = new Set<string>();
-    if (list.rows.length > 0) {
-      const used = await db
-        .from("stock_moves")
-        .select("warehouse_id")
-        .in("legal_entity_id", list.rows.map((row) => row.id))
-        .limit(2000);
-      for (const row of used.data ?? []) own.add(String(row.warehouse_id));
-    }
-    visible = visible.filter((row) => own.has(String(row.id)) || String(row.created_by ?? "") === (session?.email ?? ""));
-  }
+  const allowed = await visibleWarehouseIds(db, {
+    external: isExternalSeller(session?.role),
+    entityIds: list.rows.map((row) => row.id),
+    actor: session?.email ?? null,
+  });
+  const visible = allowed === null
+    ? ((data ?? []) as DbRow[])
+    : ((data ?? []) as DbRow[]).filter((row) => allowed.has(String(row.id)));
 
   // Настройки пары «юрлицо + склад» — своя дата доверия у каждого юрлица на
   // общем складе. Без выбранного юрлица настроек нет, и это не ошибка.

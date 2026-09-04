@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { isExternalSeller } from "@/lib/warehouse/operatorScope";
+import { assertProductsInScope, assertVariantsInScope } from "@/lib/warehouse/ownership";
 import { getServerSession } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +95,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: rows, error: null });
   }
 
+  // Размеры читаются по идентификатору товара из адреса: без проверки владельца
+  // чужая размерная сетка с баркодами отдавалась по одному запросу.
+  const readScope = await assertProductsInScope(db, [productId], list.rows.map((row) => row.id));
+  if (!readScope.ok) return fail(readScope.error, readScope.status);
+
   const { data, error } = await db
     .from("product_variants")
     .select(COLUMNS)
@@ -124,6 +130,11 @@ export async function POST(request: NextRequest) {
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+
+  // Размер вешается на товар из тела запроса: чужой идентификатор добавил бы
+  // строку в чужую карточку и занял бы глобально уникальный баркод.
+  const postScope = await assertProductsInScope(db, [String(body.productId)], list.rows.map((row) => row.id));
+  if (!postScope.ok) return fail(postScope.error, postScope.status);
 
   const { data, error } = await db
     .from("product_variants")
@@ -156,6 +167,11 @@ export async function PATCH(request: NextRequest) {
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+
+  // Правка размера идёт по его идентификатору — проверяем владельца модели,
+  // иначе чужой баркод переписывается одним запросом.
+  const patchScope = await assertVariantsInScope(db, [String(body.id)], list.rows.map((row) => row.id));
+  if (!patchScope.ok) return fail(patchScope.error, patchScope.status);
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if ("sizeLabel" in body) {

@@ -45,6 +45,10 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const entityId = url.searchParams.get("entity");
   const query = (url.searchParams.get("q") ?? "").trim();
+  // Юрлицо приходит из адреса, и раньше его не сверял никто: подставив чужой
+  // идентификатор, можно было получить каталог другой компании вместе с
+  // закупочной ценой. Проверяем так же, как это делает POST ниже.
+  if (entityId && !list.rows.some((row) => row.id === entityId)) return fail("Нет доступа к юрлицу", 403);
 
   const names = new Map(list.rows.map((row) => [row.id, row.name]));
 
@@ -99,8 +103,14 @@ export async function POST(request: NextRequest) {
 
   const list = await listAccessibleEntities();
   if (!list.ok) return fail(list.error, list.status);
-  const entityId = body.legalEntityId ? String(body.legalEntityId) : null;
+  let entityId = body.legalEntityId ? String(body.legalEntityId) : null;
   if (entityId && !list.rows.some((row) => row.id === entityId)) return fail("Нет доступа к юрлицу", 403);
+  // Товар без юрлица считается общим и виден всем. Внешней компании такой
+  // заводить нельзя: её карточка сразу оказалась бы в чужих справочниках.
+  if (isExternalSeller(session?.role)) {
+    entityId = entityId ?? list.rows[0]?.id ?? null;
+    if (!entityId) return fail("Нет доступного юрлица", 403);
+  }
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);

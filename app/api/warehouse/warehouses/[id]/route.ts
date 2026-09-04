@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { isExternalSeller } from "@/lib/warehouse/operatorScope";
+import { visibleWarehouseIds } from "@/lib/warehouse/ownership";
 import { parseWarehouseKind } from "@/lib/warehouse/warehouseKind";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +29,24 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+  const session = await getServerSession();
+
+  // Склад — общее место, и наши юрлица правят его сообща. Для внешней компании
+  // это не так: переименовать или отправить в архив она может только свой
+  // склад, иначе одним запросом ломается работа всех остальных.
+  if (isExternalSeller(session?.role)) {
+    const visible = await visibleWarehouseIds(db, {
+      external: true,
+      entityIds: list.rows.map((row) => row.id),
+      actor: session?.email ?? null,
+    });
+    if (visible && !visible.has(id)) return fail("Склад принадлежит другой компании", 403);
+    // Правка справочника, а не своей настройки: чужие склады остаются как есть.
+    if (("name" in body || "kind" in body || "isActive" in body || "note" in body)
+      && String((await db.from("warehouses").select("created_by").eq("id", id).maybeSingle()).data?.created_by ?? "") !== (session?.email ?? "")) {
+      return fail("Переименовать можно только свой склад", 403);
+    }
+  }
 
   // Дата списания продаж FBS — свойство пары «юрлицо + склад», а не склада:
   // склад общий, а доверять его остатку каждое юрлицо начинает со своей приёмки.

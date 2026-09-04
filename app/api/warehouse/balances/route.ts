@@ -3,6 +3,9 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { isExternalSeller } from "@/lib/warehouse/operatorScope";
+import { visibleWarehouseIds } from "@/lib/warehouse/ownership";
+import { getServerSession } from "@/lib/auth/server";
 import { reservationKey, reservedByVariant } from "@/lib/warehouse/tasks";
 import { parseWarehouseKind, type WarehouseKind } from "@/lib/warehouse/warehouseKind";
 
@@ -130,8 +133,18 @@ export async function GET(request: NextRequest) {
     })
     .sort((a, b) => b.qty - a.qty);
 
+  // Сводка по складам засеивается всеми складами, чтобы пустой склад был виден
+  // своим. Внешней компании чужие площадки знать незачем — ей остаются только
+  // те, где лежит её товар.
+  const session = await getServerSession();
+  const allowedWarehouses = await visibleWarehouseIds(db, {
+    external: isExternalSeller(session?.role),
+    entityIds: [entityId],
+    actor: session?.email ?? null,
+  });
   const byWarehouse = new Map<string, { id: string; name: string; kind: WarehouseKind; qty: number; amount: number }>();
   for (const [id, warehouse] of names) {
+    if (allowedWarehouses && !allowedWarehouses.has(id)) continue;
     byWarehouse.set(id, { id, name: warehouse.name, kind: warehouse.kind, qty: 0, amount: 0 });
   }
   for (const row of rows) {

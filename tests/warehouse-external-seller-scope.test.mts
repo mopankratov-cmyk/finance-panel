@@ -56,3 +56,49 @@ test("доступ к юрлицу селлера считается по его
   // Юрлицо без кабинетов не должно быть видно чужой компании.
   assert.match(access, /cabinets\.length === 0\s*\?\s*canSee\(null\)/, "юрлицо без кабинетов не проверяется");
 });
+
+test("товар и размер проверяются на владельца перед чтением и записью", () => {
+  // Идентификаторы приходят из адреса и тела: без проверки владельца чужую
+  // карточку можно было переписать и даже перевести на своё юрлицо.
+  const owner = read("lib/warehouse/ownership.ts");
+  assert.match(owner, /assertProductsInScope/);
+  assert.match(owner, /assertVariantsInScope/);
+  assert.match(owner, /visibleWarehouseIds/);
+
+  assert.match(read("app/api/warehouse/products/[id]/route.ts"), /assertProductsInScope\(/, "правка товара без проверки владельца");
+  const variants = read("app/api/warehouse/variants/route.ts");
+  assert.match(variants, /assertProductsInScope\(/, "чтение размеров без проверки владельца");
+  assert.match(variants, /assertVariantsInScope\(/, "правка размера без проверки владельца");
+  // Список справочника по чужому юрлицу должен отвечать отказом, а не пустотой.
+  assert.match(read("app/api/warehouse/products/route.ts"), /Нет доступа к юрлицу/);
+});
+
+test("проводки не называют чужой артикул в тексте ошибки", () => {
+  // Сообщение «на складе не хватает NV-836-04 · 42» по чужому размеру — это
+  // оракул для перебора справочника, поэтому размер проверяется до проводки.
+  for (const route of ["writeoffs", "shipments", "transfers", "returns", "tasks"]) {
+    assert.match(read(`app/api/warehouse/${route}/route.ts`), /assertVariantsInScope\(/, `${route}: размер не проверен на владельца`);
+  }
+});
+
+test("массовые инструменты справочника закрыты внешней компании", () => {
+  // Они читают и переписывают карточки всех юрлиц сразу.
+  for (const route of ["products/owners", "products/import", "variants/import"]) {
+    assert.match(read(`app/api/warehouse/${route}/route.ts`), /isExternalSeller\(session\?\.role\)/, `${route}: открыт внешней компании`);
+  }
+});
+
+test("печатная форма требует сессию", () => {
+  // Без сессии listAccessibleEntities считает вызов машинным и отдаёт все юрлица.
+  for (const page of ["app/warehouse/print/[id]/page.tsx", "app/warehouse/print/receipt/[batch]/page.tsx"]) {
+    const src = read(page);
+    assert.match(src, /getServerSession\(\)/, `${page}: не проверяет сессию`);
+    assert.match(src, /if \(!session\) notFound\(\)/, `${page}: пускает без сессии`);
+  }
+});
+
+test("агентская связь не открывает чужое юрлицо внешней компании", () => {
+  const access = read("lib/warehouse/entityAccess.ts");
+  assert.match(access, /link\.relation === "own"/, "агентская связь открывает юрлицо целиком");
+  assert.match(access, /sellerCabinets\.has\(link\.cabinetId\)/, "чужие кабинеты юрлица видны");
+});

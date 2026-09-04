@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
+import { assertProductsInScope } from "@/lib/warehouse/ownership";
 import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
 import { PRODUCT_COLUMNS, PRODUCT_COLUMNS_LEGACY, isMissingColumn, toProductRow, type DbProduct } from "@/lib/warehouse/productRow";
 
@@ -36,6 +37,12 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+
+  // Товар адресуется идентификатором из ссылки, и раньше он уходил в update как
+  // есть. Внешняя компания могла переписать чужую карточку — и даже перевести
+  // её на своё юрлицо, забрав товар вместе с историей.
+  const scope = await assertProductsInScope(db, [id], list.rows.map((row) => row.id));
+  if (!scope.ok) return fail(scope.error, scope.status);
 
   // Меняем только то, что прислали: пустое поле формы — это «очистить», а отсутствующее —
   // «не трогать», и путать их нельзя.

@@ -3,6 +3,9 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
+import { isExternalSeller } from "@/lib/warehouse/operatorScope";
+import { visibleWarehouseIds } from "@/lib/warehouse/ownership";
+import { getServerSession } from "@/lib/auth/server";
 import {
   compareSizeLabels,
   type StockMatrixResponse,
@@ -210,8 +213,17 @@ export async function GET(request: NextRequest) {
   if (warehousesResult.error) return dbFail(warehousesResult.error);
 
   const warehouses = (warehousesResult.data ?? []) as { id: string; name: string; kind: string | null; is_active: boolean | null }[];
+  // Список складов для колонок и разбивки: своим он общий, внешней компании —
+  // только её собственные, иначе чужие названия видны на первом же экране.
+  const session = await getServerSession();
+  const allowedWarehouses = await visibleWarehouseIds(db, {
+    external: isExternalSeller(session?.role),
+    entityIds: [entityId],
+    actor: session?.email ?? null,
+  });
   const activeWarehouses = warehouses
     .filter((row) => row.is_active !== false)
+    .filter((row) => !allowedWarehouses || allowedWarehouses.has(String(row.id)))
     .map((row) => ({ id: String(row.id), name: String(row.name), kind: parseWarehouseKind(row.kind) }));
 
   // Черновики заданий: их строки — резерв и колонка «размещено, не отгружено».
