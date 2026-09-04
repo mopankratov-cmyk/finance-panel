@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  Boxes,
   ClipboardList,
   CalendarRange,
   Calculator,
@@ -72,6 +73,9 @@ const INTERNAL_SYSTEM_NAV: NavItem[] = [
 ];
 
 const SELLER_SYSTEM_NAV: NavItem[] = [
+  // Склад — второй модуль внешнего селлера, и попасть в него можно только
+  // отсюда: общая витрина модулей ему закрыта, а адрес руками никто не набирает.
+  { label: "Склад", href: "/warehouse", icon: Boxes },
   { label: "Подключение WB", href: "/wb/connect", icon: KeyRound },
 ];
 
