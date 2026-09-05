@@ -21,6 +21,19 @@ const KIND_LABEL: Record<StockMoveRow["kind"], string> = {
  *  продажами FBS. */
 const kindLabel = (kind: string) => KIND_LABEL[kind as StockMoveRow["kind"]] ?? kind;
 
+/** Тип документа по-русски. Показываем его, только когда номера нет: код вроде
+ *  `purchase_receipt` в колонке «Документ» человеку ничего не говорит. */
+const DOC_TYPE_LABEL: Record<string, string> = {
+  purchase_receipt: "приёмка",
+  shipment: "отгрузка",
+  transfer: "перемещение",
+  writeoff: "списание",
+  return: "возврат",
+  adjustment: "корректировка",
+  sale: "продажа FBS",
+};
+const docLabel = (row: StockMoveRow) => row.docNumber ?? DOC_TYPE_LABEL[row.docType] ?? row.docType;
+
 const stamp = (value: string) =>
   new Date(value).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 
@@ -59,7 +72,7 @@ export function MovesTab({ entityId, refreshKey }: { entityId: string; refreshKe
     return rows.filter((row) => {
       if (kind !== "all" && row.kind !== kind) return false;
       if (!needle) return true;
-      return [row.article, row.warehouseName, row.docType, row.createdBy, row.note, String(row.nmId)]
+      return [row.article, row.warehouseName, row.docNumber, docLabel(row), row.createdBy, row.note, String(row.nmId)]
         .some((field) => String(field ?? "").toLowerCase().includes(needle));
     });
   }, [rows, query, kind]);
@@ -136,9 +149,9 @@ export function MovesTab({ entityId, refreshKey }: { entityId: string; refreshKe
                       бухгалтеру: приходилось идти на «Документы» и сверять по времени. */}
                   {row.docId ? (
                     <a href={`/warehouse/print/${row.docId}`} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-slate-900">
-                      {row.docType || "документ"}
+                      {docLabel(row)}
                     </a>
-                  ) : <span className="text-slate-300">—</span>}
+                  ) : <span className="text-slate-400">{docLabel(row)}</span>}
                   {row.note ? <span className="block text-[11px] text-slate-400">{row.note}</span> : null}
                 </td>
                 <td className="px-4 py-2.5 text-slate-500">{row.createdBy || <span className="text-slate-300">—</span>}</td>

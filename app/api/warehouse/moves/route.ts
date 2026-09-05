@@ -21,6 +21,9 @@ export interface StockMoveRow {
   kind: "receipt" | "shipment" | "writeoff" | "return" | "adjustment" | "transfer" | "sale";
   docType: string;
   docId: string | null;
+  /** Человеческий номер документа (ОТГ-2026-0012). null — движение записано
+   *  не документом склада, а внешним источником вроде продаж FBS. */
+  docNumber: string | null;
   occurredAt: string;
   note: string | null;
   createdBy: string | null;
@@ -81,6 +84,17 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
 
+  // Номера документов для страницы. Без них в журнале стоял технический код
+  // вроде `purchase_receipt` — человек ищет документ по номеру, а не по типу.
+  // Часть движений (продажи FBS) документом склада не оформлена: у них номера
+  // нет и не будет, и это честная пустота.
+  const docIds = [...new Set(((data ?? []) as DbMove[]).map((row) => row.doc_id).filter(Boolean).map(String))];
+  const docNumbers = new Map<string, string>();
+  if (docIds.length > 0) {
+    const numbered = await db.from("stock_docs").select("id, number").in("id", docIds);
+    for (const row of numbered.data ?? []) docNumbers.set(String(row.id), String(row.number));
+  }
+
   const rows: StockMoveRow[] = ((data ?? []) as DbMove[]).map((row) => ({
     id: Number(row.id),
     warehouseId: String(row.warehouse_id),
@@ -92,6 +106,7 @@ export async function GET(request: NextRequest) {
     kind: row.kind,
     docType: String(row.doc_type),
     docId: row.doc_id,
+    docNumber: row.doc_id ? docNumbers.get(String(row.doc_id)) ?? null : null,
     occurredAt: row.occurred_at,
     note: row.note,
     createdBy: row.created_by,

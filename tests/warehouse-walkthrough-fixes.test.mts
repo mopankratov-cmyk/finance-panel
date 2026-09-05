@@ -90,6 +90,16 @@ test("журнал движений даёт документ, автора и �
   }
 });
 
+/** В колонке «Документ» стоял технический код (`purchase_receipt`): человек
+ *  ищет документ по номеру, а тип ему ничего не говорит. */
+test("документ в журнале движений подписан номером, а не кодом", () => {
+  assert.match(read("../app/api/warehouse/moves/route.ts"), /docNumber: row\.doc_id \? docNumbers\.get/);
+  const source = read("../components/warehouse/MovesTab.tsx");
+  assert.match(source, /row\.docNumber \?\? DOC_TYPE_LABEL\[row\.docType\] \?\? row\.docType/);
+  assert.match(source, /purchase_receipt: "приёмка"/);
+  assert.doesNotMatch(source, /\{row\.docType \|\| "документ"\}/, "сырой код в колонке остался");
+});
+
 /** Приёмка получает номер из общей нумерации и объявляется документом в
  *  «Событиях», но журнал документов её не показывал. */
 test("приёмки попадают в журнал документов и печатаются своей формой", () => {
@@ -151,4 +161,33 @@ test("обновление остатков не схлопывает дерев
   assert.match(source, /if \(loading && !data\)/);
   assert.match(source, /lastFbsSaleAt/, "видно, насколько остаток отстал от факта");
   assert.match(source, /computedAt/);
+});
+
+/**
+ * Каждое переключение вкладки поднимало экран с нуля: 3–7 секунд «Загружаю…»
+ * и вместе с компонентом умирало состояние — раскрытые модели, фильтры,
+ * незаконченный ввод. Вкладку, где человек уже был, теперь прячем, а не
+ * размонтируем.
+ */
+test("посещённые вкладки склада не размонтируются", () => {
+  const source = read("../components/warehouse/WarehousePage.tsx");
+  assert.match(source, /const \[visited, setVisited\] = useState<Set<Tab>>/);
+  assert.match(source, /setVisited\(\(prev\) => \(prev\.has\(tab\) \? prev : new Set\(prev\)\.add\(tab\)\)\)/);
+  assert.match(source, /setVisited\(new Set<Tab>\(\[tab\]\)\)/, "смена юрлица обязана сбрасывать набор");
+  // Ни одна вкладка не должна остаться на старом «показываем только активную».
+  assert.doesNotMatch(source, /\) : tab === "receipts" \? \(/, "остался условный рендер вкладок");
+  for (const key of ["balances", "receipts", "shipment", "movement", "defects", "events", "products", "kiz", "docs", "moves", "warehouses"]) {
+    assert.ok(source.includes(`visited.has("${key}")`), key);
+    assert.ok(source.includes(`tab === "${key}" ? "" : "hidden"`), `${key}: скрытие`);
+  }
+});
+
+/** Распараллеливание сняло лишь треть ожидания — остаток надо мерить, а не
+ *  угадывать. */
+test("остаток отвечает по этапам на ?timings=1", () => {
+  const source = read("../app/api/warehouse/stock/route.ts");
+  assert.match(source, /url\.searchParams\.get\("timings"\) === "1"/);
+  for (const stage of ["gate", "resolveEntity", "queries", "assemble", "total"]) {
+    assert.ok(source.includes(`mark("${stage}")`), stage);
+  }
 });

@@ -75,6 +75,10 @@ export function WarehousePage() {
   // а просто ещё не знаем. Без него экран мигает пустым состоянием.
   const [entitiesLoading, setEntitiesLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Вкладки, на которых человек уже был: их держим смонтированными, чтобы
+  // возврат был мгновенным. Набор живёт при текущем юрлице — при смене
+  // сбрасывается, иначе на экране остались бы чужие остатки.
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>());
   // Пока адрес не прочитан, писать в него нечего: иначе первый же рендер
   // затрёт `?tab=` значением по умолчанию.
   const addressRead = useRef(false);
@@ -82,6 +86,10 @@ export function WarehousePage() {
   const warehousesSeen = useRef(false);
 
   const entity = useMemo(() => entities.find((row) => row.id === entityId) ?? null, [entities, entityId]);
+
+  useEffect(() => { setVisited((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab))); }, [tab]);
+  // Смена юрлица: всё, что висело смонтированным, относится к прошлому.
+  useEffect(() => { setVisited(new Set<Tab>([tab])); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entityId]);
 
   const loadWarehouses = useCallback(async () => {
     // Склады общие, но настройки пары «юрлицо + склад» — нет: дату, с которой
@@ -264,28 +272,77 @@ export function WarehousePage() {
             Перейти к складам
           </button>
         </div>
-      ) : tab === "balances" ? (
-        <BalancesTab entityId={entityId} refreshKey={refreshKey} />
-      ) : tab === "receipts" ? (
-        <ReceiptsTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onPosted={refresh} />
-      ) : tab === "shipment" ? (
-        <ShipmentTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onShipped={refresh} />
-      ) : tab === "movement" ? (
-        <MovementTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onChanged={refresh} />
-      ) : tab === "defects" ? (
-        <DefectsTab entityId={entityId} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onChanged={refresh} />
-      ) : tab === "events" ? (
-        <EventsTab entityId={entityId} refreshKey={refreshKey} />
-      ) : tab === "products" ? (
-        <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} external={me?.role === "seller"} />
-      ) : tab === "kiz" ? (
-        <KizTab entityId={entityId} refreshKey={refreshKey} />
-      ) : tab === "docs" ? (
-        <DocsTab entityId={entityId} refreshKey={refreshKey} onChanged={refresh} />
-      ) : tab === "moves" ? (
-        <MovesTab entityId={entityId} refreshKey={refreshKey} />
       ) : (
-        <WarehousesTab entityId={entityId} entity={entity} warehouses={warehouses} onChanged={refresh} />
+        /**
+         * Вкладку, на которой человек уже был, НЕ размонтируем — прячем.
+         *
+         * Раньше каждое переключение поднимало экран с нуля: 3–7 секунд
+         * «Загружаю…» на каждый заход, и вместе с компонентом умирало всё
+         * состояние — раскрытые модели в остатках, фильтры в журнале,
+         * незаконченный ввод. Вернулся на вкладку, где был минуту назад, —
+         * жди заново.
+         *
+         * Теперь первый заход стоит одну загрузку, а все следующие
+         * переключения мгновенны. Смена юрлица сбрасывает набор: данные
+         * принадлежат юрлицу, и показывать чужие остатки нельзя.
+         */
+        <>
+          {visited.has("balances") && (
+            <div className={tab === "balances" ? "" : "hidden"}>
+              <BalancesTab entityId={entityId} refreshKey={refreshKey} />
+            </div>
+          )}
+          {visited.has("receipts") && (
+            <div className={tab === "receipts" ? "" : "hidden"}>
+              <ReceiptsTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onPosted={refresh} />
+            </div>
+          )}
+          {visited.has("shipment") && (
+            <div className={tab === "shipment" ? "" : "hidden"}>
+              <ShipmentTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onShipped={refresh} />
+            </div>
+          )}
+          {visited.has("movement") && (
+            <div className={tab === "movement" ? "" : "hidden"}>
+              <MovementTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onChanged={refresh} />
+            </div>
+          )}
+          {visited.has("defects") && (
+            <div className={tab === "defects" ? "" : "hidden"}>
+              <DefectsTab entityId={entityId} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onChanged={refresh} />
+            </div>
+          )}
+          {visited.has("events") && (
+            <div className={tab === "events" ? "" : "hidden"}>
+              <EventsTab entityId={entityId} refreshKey={refreshKey} />
+            </div>
+          )}
+          {visited.has("products") && (
+            <div className={tab === "products" ? "" : "hidden"}>
+              <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} external={me?.role === "seller"} />
+            </div>
+          )}
+          {visited.has("kiz") && (
+            <div className={tab === "kiz" ? "" : "hidden"}>
+              <KizTab entityId={entityId} refreshKey={refreshKey} />
+            </div>
+          )}
+          {visited.has("docs") && (
+            <div className={tab === "docs" ? "" : "hidden"}>
+              <DocsTab entityId={entityId} refreshKey={refreshKey} onChanged={refresh} />
+            </div>
+          )}
+          {visited.has("moves") && (
+            <div className={tab === "moves" ? "" : "hidden"}>
+              <MovesTab entityId={entityId} refreshKey={refreshKey} />
+            </div>
+          )}
+          {visited.has("warehouses") && (
+            <div className={tab === "warehouses" ? "" : "hidden"}>
+              <WarehousesTab entityId={entityId} entity={entity} warehouses={warehouses} onChanged={refresh} />
+            </div>
+          )}
+        </>
       )}
     </WarehouseShell>
   );

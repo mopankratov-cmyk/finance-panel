@@ -164,7 +164,18 @@ async function chunked<Row>(
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
-  const scope = await resolveEntity(new URL(request.url).searchParams.get("entity"));
+  // Где именно уходит время. Замер снаружи показал 3–7 с на пустом складе, а
+  // распараллеливание запросов сняло только треть — значит под ними лежит
+  // что-то ещё. Гадать бесполезно: `?timings=1` отвечает по этапам, как это
+  // уже сделано в /api/shelf/table.
+  const startedAt = Date.now();
+  const timings: Record<string, number> = {};
+  const mark = (name: string) => { timings[name] = Date.now() - startedAt; };
+  mark("gate");
+
+  const url = new URL(request.url);
+  const scope = await resolveEntity(url.searchParams.get("entity"));
+  mark("resolveEntity");
   if (!scope.ok) return fail(scope.error, scope.status);
   const entityId = scope.entity.id;
 
@@ -236,6 +247,7 @@ export async function GET(request: NextRequest) {
   if (!loaded.ok) {
     return fail(loaded.error instanceof Error ? loaded.error.message : "Не удалось прочитать склад", 500);
   }
+  mark("queries");
   const [warehousesResult, balances, docs, moves, receipts] = loaded.value;
   if (warehousesResult.error) return dbFail(warehousesResult.error);
 
@@ -467,6 +479,7 @@ export async function GET(request: NextRequest) {
   }
   rows.sort((a, b) => a.article.localeCompare(b.article, "ru") || compareSizeLabels(a.sizeLabel, b.sizeLabel));
 
+  mark("assemble");
   const data: StockMatrixResponse = {
     rows,
     warehouses: activeWarehouses,
@@ -480,5 +493,8 @@ export async function GET(request: NextRequest) {
       skuCount: rows.filter((row) => row.qty > 0).length,
     },
   };
-  return NextResponse.json({ data, error: null });
+  mark("total");
+  return NextResponse.json(
+    url.searchParams.get("timings") === "1" ? { data, error: null, timings } : { data, error: null },
+  );
 }
