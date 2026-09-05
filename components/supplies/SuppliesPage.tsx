@@ -2,6 +2,7 @@
 
 import { RefreshCw, Warehouse } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { formatNumber } from "@/lib/analytics/format";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
@@ -35,6 +36,7 @@ export function SuppliesPage() {
   const [horizon, setHorizon] = useState<Horizon>(45);
   const [minBatch, setMinBatch] = useState<number>(0);
   const [cabId, setCabId, cabReady] = useActiveCabinet("wb");
+  const panel = useKeepAliveTabs<Tab>(tab, cabId);
   const elapsed = useElapsedSeconds(loading);
 
   const load = useCallback(async () => {
@@ -213,12 +215,21 @@ export function SuppliesPage() {
             emptyMessage="Дозаказывать нечего — остатков хватает на выбранный горизонт."
           />
         </>
-      ) : tab === "stock" ? (
-        <StockCatalogTab rows={catalog} />
-      ) : tab === "receiving" ? (
-        <ReceivingTab skus={skus} cabId={cabId} warehouses={warehouses} />
       ) : (
-        <MoySkladSourceTab cabinetId={cabId ?? ""} canWrite={Boolean(cabId && !cabId.startsWith("group:"))} />
+        // Приёмка и «Мой склад» грузят себя на монтировании и держат
+        // незаконченный ввод: уход на соседнюю вкладку и возврат стоили
+        // запроса и работы. Кабинет — то, при смене чего данные чужие.
+        <>
+          <TabPanel {...panel("stock")}>
+            <StockCatalogTab rows={catalog} />
+          </TabPanel>
+          <TabPanel {...panel("receiving")}>
+            <ReceivingTab skus={skus} cabId={cabId} warehouses={warehouses} />
+          </TabPanel>
+          <TabPanel {...panel("source")}>
+            <MoySkladSourceTab cabinetId={cabId ?? ""} canWrite={Boolean(cabId && !cabId.startsWith("group:"))} />
+          </TabPanel>
+        </>
       )}
 
       <Tour tourId="supplies" steps={tourSteps} />

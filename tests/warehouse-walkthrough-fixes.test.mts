@@ -182,14 +182,10 @@ test("обновление остатков не схлопывает дерев
  */
 test("посещённые вкладки склада не размонтируются", () => {
   const source = read("../components/warehouse/WarehousePage.tsx");
-  assert.match(source, /const \[visited, setVisited\] = useState<Set<Tab>>/);
-  assert.match(source, /setVisited\(\(prev\) => \(prev\.has\(tab\) \? prev : new Set\(prev\)\.add\(tab\)\)\)/);
-  assert.match(source, /setVisited\(new Set<Tab>\(\[tab\]\)\)/, "смена юрлица обязана сбрасывать набор");
-  // Ни одна вкладка не должна остаться на старом «показываем только активную».
+  assert.match(source, /useKeepAliveTabs<Tab>\(tab, entityId\)/, "юрлицо — то, при смене чего данные чужие");
   assert.doesNotMatch(source, /\) : tab === "receipts" \? \(/, "остался условный рендер вкладок");
   for (const key of ["balances", "receipts", "shipment", "movement", "defects", "events", "products", "kiz", "docs", "moves", "warehouses"]) {
-    assert.ok(source.includes(`visited.has("${key}")`), key);
-    assert.ok(source.includes(`tab === "${key}" ? "" : "hidden"`), `${key}: скрытие`);
+    assert.ok(source.includes(`panel("${key}")`), key);
   }
 });
 
