@@ -37,6 +37,10 @@ export interface StockBalancesResponse {
   rows: StockBalanceRow[];
   totals: { qty: number; amount: number; skuCount: number };
   warehouses: { id: string; name: string; kind: WarehouseKind; qty: number; amount: number }[];
+  /** Когда в последний раз списывали продажи FBS. null — не списывали ни разу. */
+  lastFbsSaleAt: string | null;
+  /** Момент расчёта: цифра на экране живёт своей жизнью, пока её не обновят. */
+  computedAt: string;
 }
 
 interface DbBalance {
@@ -59,6 +63,30 @@ const fail = (error: string, status: number) => NextResponse.json({ data: null, 
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграции 202608230003_stock_ledger.sql и 202608230004_legal_entities.sql";
 
+/**
+ * Когда в последний раз списывали продажи FBS.
+ *
+ * Остаток на фулфилменте уменьшается ТОЛЬКО этим списанием: товар уезжает
+ * покупателю без нашего участия, и пока продажи не списаны, панель показывает
+ * склад полнее, чем он есть. Человек, сверяющий цифру с полкой, обязан видеть,
+ * насколько она отстала, — иначе он поверит числу, которому неделя.
+ */
+async function lastFbsSaleAt(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  entityId: string,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("stock_moves")
+    .select("occurred_at")
+    .eq("legal_entity_id", entityId)
+    .eq("kind", "sale")
+    .order("occurred_at", { ascending: false })
+    .limit(1);
+  if (error) return null;
+  const row = (data ?? [])[0] as { occurred_at?: string } | undefined;
+  return row?.occurred_at ?? null;
+}
+
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
@@ -69,9 +97,39 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
-  const warehousesResult = await db
-    .from("warehouses")
-    .select("id, name, kind");
+  // Четыре независимых запроса — одним кругом, а не четырьмя подряд.
+  // Замер на живом стенде: экран остатков отвечал 6,1–6,8 с при ОДНОМ товаре,
+  // то есть время уходило не на данные, а на последовательные обращения.
+  let balances: DbBalance[];
+  let warehousesResult: Awaited<ReturnType<typeof db.from>> extends never ? never : { data: { id: string; name: string; kind: string }[] | null; error: { code?: string; message: string } | null };
+  let reserved: Map<string, number>;
+  let lastSaleAt: string | null;
+  try {
+    const [warehouses, loadedBalances, loadedReserved, lastSale] = await Promise.all([
+      db.from("warehouses").select("id, name, kind") as unknown as Promise<typeof warehousesResult>,
+      loadAllSupabasePages<DbBalance>((from, to) =>
+        db
+          .from("stock_balances")
+          .select("warehouse_id, variant_id, product_id, nm_id, photo_url, article, name, size_label, barcode, qty, amount, unit_cost, last_move_at")
+          .eq("legal_entity_id", entityId)
+          .order("article", { ascending: true })
+          .range(from, to),
+      ),
+      // Резерв — строки черновиков заданий на этом складе. До миграции таблицы
+      // строк ещё нет: тогда резерв нулевой, и вкладка работает как раньше.
+      loadReserved(db, entityId),
+      lastFbsSaleAt(db, entityId),
+    ]);
+    warehousesResult = warehouses;
+    balances = loadedBalances;
+    reserved = loadedReserved;
+    lastSaleAt = lastSale;
+  } catch (error) {
+    // Подсказку про миграцию добавляем к тексту ошибки, а не вместо него: подменённое
+    // сообщение уже один раз спрятало настоящую причину.
+    const message = error instanceof Error ? error.message : "Не удалось прочитать остатки";
+    return fail(message.includes("does not exist") ? `${message} · ${migrationHint}` : message, 500);
+  }
   if (warehousesResult.error) {
     const code = warehousesResult.error.code;
     return fail(missingMigration(code) ? migrationHint : warehousesResult.error.message, missingMigration(code) ? 503 : 500);
@@ -81,27 +139,6 @@ export async function GET(request: NextRequest) {
   for (const row of warehousesResult.data ?? []) {
     names.set(String(row.id), { name: String(row.name), kind: parseWarehouseKind(row.kind) });
   }
-
-  let balances: DbBalance[];
-  try {
-    balances = await loadAllSupabasePages<DbBalance>((from, to) =>
-      db
-        .from("stock_balances")
-        .select("warehouse_id, variant_id, product_id, nm_id, photo_url, article, name, size_label, barcode, qty, amount, unit_cost, last_move_at")
-        .eq("legal_entity_id", entityId)
-        .order("article", { ascending: true })
-        .range(from, to),
-    );
-  } catch (error) {
-    // Подсказку про миграцию добавляем к тексту ошибки, а не вместо него: подменённое
-    // сообщение уже один раз спрятало настоящую причину.
-    const message = error instanceof Error ? error.message : "Не удалось прочитать остатки";
-    return fail(message.includes("does not exist") ? `${message} · ${migrationHint}` : message, 500);
-  }
-
-  // Резерв — строки черновиков заданий на этом складе. До миграции таблицы
-  // строк ещё нет: тогда резерв нулевой, и вкладка работает как раньше.
-  const reserved = await loadReserved(db, entityId);
 
   // Позиции, обнулённые движениями, из остатков уходят: нулевая строка — это не остаток,
   // а история, и её место в журнале движений.
@@ -163,6 +200,8 @@ export async function GET(request: NextRequest) {
       skuCount: new Set(rows.map((row) => row.variantId)).size,
     },
     warehouses: [...byWarehouse.values()].sort((a, b) => b.qty - a.qty),
+    lastFbsSaleAt: lastSaleAt,
+    computedAt: new Date().toISOString(),
   };
 
   return NextResponse.json({ data, error: null });

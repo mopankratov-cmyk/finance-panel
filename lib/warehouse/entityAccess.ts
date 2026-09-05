@@ -37,11 +37,27 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "Supabase не настроен", status: 500 };
 
-  const entitiesResult = await db
-    .from("legal_entities")
-    .select("id, name, inn, kind, is_active, note")
-    .eq("is_active", true)
-    .order("name");
+  // Справочник юрлиц и их связи с кабинетами независимы — берём одним кругом.
+  // Это фиксированный налог КАЖДОГО запроса модуля «Склад»: resolveEntity зовут
+  // все роуты до того, как заняться своим делом. На живом замере пустой склад
+  // отвечал 3–7 с при одном товаре, то есть время уходило не на данные, а на
+  // круги к базе. Третий запрос (имена кабинетов) зависит от второго и остаётся
+  // после.
+  const [entitiesResult, linksResult] = await Promise.all([
+    db
+      .from("legal_entities")
+      .select("id, name, inn, kind, is_active, note")
+      .eq("is_active", true)
+      .order("name"),
+    // Порядок задаём явно: от него зависят умолчания в потребителях (какой
+    // кабинет подставится в приёмку), а порядок строк из базы ничем не
+    // гарантирован.
+    db
+      .from("legal_entity_cabinets")
+      .select("legal_entity_id, cabinet_id, relation")
+      .order("relation")
+      .order("cabinet_id"),
+  ]);
   if (entitiesResult.error) {
     const missing = ["42P01", "42703", "PGRST204", "PGRST205"].includes(entitiesResult.error.code ?? "");
     return {
@@ -51,13 +67,6 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
     };
   }
 
-  // Порядок задаём явно: от него зависят умолчания в потребителях (какой кабинет
-  // подставится в приёмку), а порядок строк из базы ничем не гарантирован.
-  const linksResult = await db
-    .from("legal_entity_cabinets")
-    .select("legal_entity_id, cabinet_id, relation")
-    .order("relation")
-    .order("cabinet_id");
   if (linksResult.error) return { ok: false, error: linksResult.error.message, status: 500 };
 
   // Имена кабинетов отдаются отсюда же: оператору склада незачем открывать

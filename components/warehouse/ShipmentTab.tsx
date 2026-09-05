@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { StockBalanceRow, StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
-import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
+import { operationalWarehouses, warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
@@ -323,7 +323,7 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
           onChange={(e) => { setWarehouseId(e.target.value); setAmounts({}); }}
           className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
         >
-          {warehouses.map((warehouse) => (
+          {operationalWarehouses(warehouses, warehouseId).map((warehouse) => (
             <option key={warehouse.id} value={warehouse.id}>
               {warehouse.name}{warehouseKindSuffix(warehouse.kind)}
             </option>

@@ -17,6 +17,10 @@ const shortDate = (value: string | null) =>
  * владельца 04.09: плоской таблицы «строка на размер и склад» больше нет).
  * Разбивка по складам, себестоимость и сумма живут внутри дерева.
  */
+/** Отметка времени по Москве: склад живёт по московскому дню, как и весь учёт. */
+const freshStamp = (value: string) =>
+  new Date(value).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
 export function BalancesTab({ entityId, refreshKey }: { entityId: string; refreshKey: number }) {
   const [data, setData] = useState<StockMatrixResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,7 +134,10 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
     </button>
   );
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Считаю остаток по движениям…</div>;
+  // Заглушка — только пока данных нет вовсе. Раньше она подменяла таблицу на
+  // КАЖДОЕ обновление, StockModelTree размонтировался, и раскрытые модели
+  // схлопывались: сравнил размеры, нажал «Обновить» — раскрывай заново.
+  if (loading && !data) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Считаю остаток по движениям…</div>;
   if (error) return <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
   if (!data) return null;
 
@@ -148,11 +155,31 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
   }
 
   const available = data.totals.qty - data.totals.reserved;
+  // Отставание считаем от последнего списания. null — на складах нет FBS, и
+  // подпись про продажи там только мешала бы.
+  const fbsLag = data.warehouses.some((warehouse) => warehouse.kind === "fulfillment")
+    ? (data.lastFbsSaleAt ? Math.floor((Date.now() - Date.parse(data.lastFbsSaleAt)) / 86_400_000) : 999)
+    : null;
   const breakdown = warehouseBreakdown(byWarehouse, data.warehouses);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">{syncButton}</div>
+    <div className={`space-y-4 ${loading ? "opacity-60 transition-opacity" : ""}`}>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Цифра на экране живёт своей жизнью, пока её не обновят, а остаток на
+            фулфилменте уменьшается ТОЛЬКО списанием продаж FBS. Человек,
+            сверяющий панель с полкой, обязан видеть, что именно он сравнивает. */}
+        <span className="mr-auto text-xs text-slate-400">
+          {loading ? "Обновляю…" : `Данные на ${freshStamp(data.computedAt)}`}
+          {fbsLag !== null && (
+            <span className={fbsLag > 1 ? "ml-2 rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-800" : "ml-2"}>
+              {data.lastFbsSaleAt
+                ? `продажи FBS списаны ${freshStamp(data.lastFbsSaleAt)}${fbsLag > 1 ? ` — ${fbsLag} ${plural(fbsLag, "день", "дня", "дней")} назад` : ""}`
+                : "продажи FBS ещё ни разу не списывали"}
+            </span>
+          )}
+        </span>
+        {syncButton}
+      </div>
 
       {salesPanel}
 

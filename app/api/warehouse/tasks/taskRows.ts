@@ -287,14 +287,21 @@ export async function buildTaskRows(
   return { rows, error: null };
 }
 
-/** Черновики первыми — свежие сверху; выполненные и отменённые — по дате документа. */
+/**
+ * Черновики первыми — СТАРЫЕ сверху; выполненные и отменённые — по дате документа.
+ *
+ * Раньше очередь была перевёрнута: свежие наверху, а `TaskList` раскрывает
+ * первый черновик — то есть кладовщик начинал смену с задания, поставленного
+ * пять минут назад, а трёхдневное лежало под ним. Очередь работ читается от
+ * старого к новому, иначе она не очередь.
+ */
 export function sortTaskRows(rows: ShipmentTaskRow[]): ShipmentTaskRow[] {
   return rows.slice().sort((a, b) => {
     const draftA = a.status === "draft" ? 0 : 1;
     const draftB = b.status === "draft" ? 0 : 1;
     if (draftA !== draftB) return draftA - draftB;
     return draftA === 0
-      ? b.createdAt.localeCompare(a.createdAt)
+      ? a.createdAt.localeCompare(b.createdAt)
       : b.occurredAt.localeCompare(a.occurredAt) || b.createdAt.localeCompare(a.createdAt);
   });
 }

@@ -138,6 +138,22 @@ async function warehouseNameOf(db: SupabaseClient, warehouseId: string | null | 
   return data?.name ? String(data.name) : null;
 }
 
+/**
+ * Кто и когда посчитал строку раньше нас.
+ *
+ * Отказ обязан назвать человека и время: «уже пересчитано» без имени звучит
+ * как сбой панели, а не как «вас опередила соседняя смена».
+ */
+function countedByWhom(who: string | null, at: string | null): string {
+  const when = at
+    ? new Date(String(at)).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : null;
+  if (who && when) return `Партию уже пересчитал(а) ${who} · ${when} МСК`;
+  if (who) return `Партию уже пересчитал(а) ${who}`;
+  if (when) return `Партию уже пересчитали ${when} МСК`;
+  return "Партию уже пересчитали";
+}
+
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
@@ -514,7 +530,7 @@ export async function PATCH(request: NextRequest) {
 
   const existing = await db
     .from("purchase_receipts")
-    .select("id, cabinet_id, status, expected_qty, received_qty, defect_qty, created_at")
+    .select("id, cabinet_id, status, expected_qty, received_qty, defect_qty, created_at, received_at")
     .eq("batch_id", batchId);
   if (existing.error) {
     const code = existing.error.code;
@@ -523,6 +539,7 @@ export async function PATCH(request: NextRequest) {
   type KnownLine = {
     id: number; cabinet_id: string; status: string;
     expected_qty: number; received_qty: number | null; defect_qty: number | null; created_at: string;
+    received_at?: string | null;
   };
   const known = new Map(((existing.data ?? []) as KnownLine[]).map((row) => [Number(row.id), row]));
   if (known.size === 0) return fail("Партия не найдена", 404);
@@ -533,15 +550,33 @@ export async function PATCH(request: NextRequest) {
 
   const now = new Date().toISOString();
   const updates: { id: number; received: number; defect: number }[] = [];
+  // Строки, которые кто-то посчитал раньше. Считаем их отдельно: молча
+  // пропустить чужой пересчёт — значит принять партию НЕ ТЕМИ цифрами и
+  // отчитаться человеку об успехе.
+  const alreadyCounted: KnownLine[] = [];
   for (const line of body.lines ?? []) {
     const row = known.get(Number(line.id));
     if (!row) return fail("В партии нет такой позиции", 400);
-    if (row.status !== "expected") continue; // уже принято — повторный ввод не трогаем
+    if (row.status !== "expected") { alreadyCounted.push(row); continue; }
     const received = Math.round(Number(line.receivedQty));
     const defect = Math.max(0, Math.round(Number(line.defectQty ?? 0)));
     if (!Number.isFinite(received) || received < 0) return fail("Некорректное количество", 400);
     if (defect > received) return fail("Брака больше, чем принято", 400);
     updates.push({ id: Number(line.id), received, defect });
+  }
+
+  // Пересчёт разошёлся с чужим. Отвечаем ОТКАЗОМ, а не тишиной: окно оставит
+  // введённое на экране и покажет причину. Раньше сервер отвечал
+  // `{saved: 0, error: null}`, окно считало это успехом, стирало черновик и
+  // закрывалось — человек уходил, уверенный, что его цифры записаны.
+  if (alreadyCounted.length > 0 && updates.length === 0) {
+    const header = (await loadBatchHeaders(db, [batchId])).get(batchId) ?? null;
+    const fallbackAt = alreadyCounted.map((row) => row.received_at).filter(Boolean).sort().pop() ?? null;
+    return fail(
+      `${countedByWhom(header?.counted_by ?? null, header?.counted_at ?? fallbackAt)} — ваши количества не сохранены.`
+      + " Если расходится, оформите коррекцию прихода",
+      409,
+    );
   }
 
   for (const line of updates) {
@@ -638,7 +673,7 @@ export async function PATCH(request: NextRequest) {
 
   if (!body.post) {
     await recordCount(false);
-    return NextResponse.json({ data: { saved: updates.length, posted: null }, error: null });
+    return NextResponse.json({ data: { saved: updates.length, skipped: alreadyCounted.length, posted: null }, error: null });
   }
 
   const { data, error } = await db.rpc("post_receipt_batch", {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Undo2, X } from "lucide-react";
+import { ArrowRight, Printer, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import { WbProductImage } from "@/components/wb/WbProductImage";
@@ -9,7 +9,7 @@ import type { CatalogVariantRow } from "@/app/api/warehouse/variants/route";
 import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
-import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
+import { operationalWarehouses, warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
 import { newDocKey } from "@/lib/warehouse/docKey";
 import { useDraft } from "@/lib/warehouse/useDraft";
@@ -42,6 +42,10 @@ export function MovementTab({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // Номер и id проведённого документа. Роут их возвращает, печатная форма
+  // существует — а оператор видел только «Перемещено 120 шт» и шёл искать
+  // накладную на вкладке «Документы».
+  const [doneDoc, setDoneDoc] = useState<{ number: string | null; id: string | null } | null>(null);
 
   const [fromWarehouse, setFromWarehouse] = useState("");
   const [toWarehouse, setToWarehouse] = useState("");
@@ -128,6 +132,7 @@ export function MovementTab({
     setSaving(true);
     setError(null);
     setDone(null);
+    setDoneDoc(null);
     try {
       const url = mode === "transfer" ? "/api/warehouse/transfers" : "/api/warehouse/returns";
       const docKey = newDocKey();
@@ -144,6 +149,7 @@ export function MovementTab({
       setDone(mode === "transfer"
         ? `Перемещено ${formatNumber(json.data.qty)} шт`
         : `Возвращено ${formatNumber(json.data.qty)} шт${json.data.defects ? `, из них брак ${json.data.defects}` : ""}`);
+      setDoneDoc({ number: json.data.docNumber ?? null, id: json.data.docId ?? null });
       reset();
       forget();
       await load();
@@ -160,7 +166,22 @@ export function MovementTab({
   return (
     <div className="space-y-4">
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-      {done && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{done}</div>}
+      {done && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          <span>{done}{doneDoc?.number ? `, накладная ${doneDoc.number}` : ""}</span>
+          {doneDoc?.id && (
+            <a
+              href={`/warehouse/print/${doneDoc.id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Печать
+            </a>
+          )}
+        </div>
+      )}
       <DraftNotice at={restoredAt} onForget={() => { reset(); forget(); }} />
 
       <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
@@ -200,7 +221,7 @@ export function MovementTab({
           }}
           className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
         >
-          {warehouses.map((warehouse) => (
+          {operationalWarehouses(warehouses, fromWarehouse).map((warehouse) => (
             <option key={warehouse.id} value={warehouse.id}>
               {warehouse.name}{warehouseKindSuffix(warehouse.kind)}
             </option>
@@ -215,7 +236,7 @@ export function MovementTab({
               onChange={(e) => setToWarehouse(e.target.value)}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
             >
-              {warehouses.filter((warehouse) => warehouse.id !== fromWarehouse).map((warehouse) => (
+              {operationalWarehouses(warehouses, toWarehouse).filter((warehouse) => warehouse.id !== fromWarehouse).map((warehouse) => (
                 <option key={warehouse.id} value={warehouse.id}>
                   {warehouse.name}{warehouseKindSuffix(warehouse.kind)}
                 </option>
@@ -272,6 +293,7 @@ export function MovementTab({
                   <WbProductImage
                     nm={chosen?.nmId ?? undefined}
                     alt=""
+                    label={chosen?.article ?? null}
                     className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 bg-white object-cover"
                   />
                   <select

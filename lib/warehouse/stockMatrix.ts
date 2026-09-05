@@ -66,6 +66,10 @@ export interface StockMatrixResponse {
   rows: StockVariantRow[];
   warehouses: { id: string; name: string; kind: WarehouseKind }[];
   totals: { qty: number; amount: number; reserved: number; expected: number; skuCount: number };
+  /** Когда в последний раз списывали продажи FBS. null — не списывали ни разу. */
+  lastFbsSaleAt: string | null;
+  /** Момент расчёта: цифра на экране живёт своей жизнью, пока её не обновят. */
+  computedAt: string;
 }
 
 export interface NodeTotals {

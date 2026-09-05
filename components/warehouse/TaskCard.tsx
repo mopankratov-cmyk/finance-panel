@@ -1,13 +1,16 @@
 "use client";
 
 import { Check, Printer } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
+import { DraftNotice } from "@/components/warehouse/DraftNotice";
+import { formatWaiting, TASK_STALE_MS } from "@/lib/warehouse/duration";
 import { newDocKey } from "@/lib/warehouse/docKey";
 import { plural } from "@/lib/warehouse/plural";
 import { TASK_STATUS_LABEL, type ShipmentTaskRow, type TaskLineInput } from "@/lib/warehouse/tasks";
+import { useDraft } from "@/lib/warehouse/useDraft";
 
 export const taskDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }) : "";
@@ -76,7 +79,41 @@ export function TaskCard({
   onChanged: (message: string) => void;
 }) {
   const [shipQty, setShipQty] = useState<Record<string, string>>(() => initialQty(task));
+
+  /**
+   * Сборка переживает заснувший телефон.
+   *
+   * Кладовщик ходит по складу с телефоном: вкладка выгружается, и колонка
+   * «Отгружаем» снова показывает ПОЛНОЕ задание — правдоподобно и неверно.
+   * Это опаснее пустых полей: «Отгружено» проведёт то, чего не отгружали.
+   *
+   * Черновик пуст, пока значения равны заданию: иначе синяя плашка висела бы
+   * на каждой нетронутой карточке. Возвращаем только те размеры, которые в
+   * задании ещё есть — админ мог его поправить, пока человек шёл до полки.
+   */
+  const draftValue = useMemo(() => shipQty, [shipQty]);
+  const { restoredAt, forget } = useDraft(
+    `warehouse:task:${task.id}`,
+    draftValue,
+    useCallback((value: Record<string, string>) =>
+      task.lines.every((line) => toQty(value[line.variantId]) === line.qty), [task.lines]),
+    useCallback((value: Record<string, string>) => {
+      setShipQty((prev) => {
+        const next = { ...prev };
+        for (const line of task.lines) {
+          const saved = value?.[line.variantId];
+          if (saved !== undefined) next[line.variantId] = saved;
+        }
+        return next;
+      });
+    }, [task.lines]),
+  );
   const [editing, setEditing] = useState(false);
+  // Время берём один раз при монтировании: вычислять его в теле рендера значит
+  // получить разную разметку на сервере и в браузере.
+  const [nowMs] = useState(() => Date.now());
+  const waiting = task.status === "draft" ? formatWaiting(task.createdAt, nowMs) : null;
+  const stale = waiting !== null && nowMs - Date.parse(task.createdAt) >= TASK_STALE_MS;
   const [editQty, setEditQty] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<"ship" | "save" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +142,9 @@ export function TaskCard({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось отгрузить");
       const result = json.data as { number: string; qty: number };
+      // Стираем черновик ДО коллбэка: после него карточка уходит из списка и
+      // размонтируется, и вызов «после» может не состояться.
+      forget();
       onShipped(`Отгружено ${formatNumber(result.qty)} шт, накладная ${result.number}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось отгрузить");
@@ -136,6 +176,7 @@ export function TaskCard({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Не удалось изменить задание");
       setEditing(false);
+      forget();
       onChanged(`Задание ${task.number} изменено`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось изменить задание");
@@ -181,6 +222,14 @@ export function TaskCard({
           поставил {task.createdBy ?? "—"} {taskDate(task.createdAt)}
           {task.warehouseName ? ` · со склада ${task.warehouseName}` : ""}
         </span>
+        {/* Возраст задания виден до открытия: очередь читается сверху вниз, и
+            «ждёт 3 дн» красным — единственный способ отличить залежавшееся от
+            поставленного пять минут назад. */}
+        {waiting && (
+          <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${stale ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-500"}`}>
+            {waiting}
+          </span>
+        )}
         {!expanded && (
           <span className="text-xs text-slate-400">
             {lineCount} {plural(lineCount, "позиция", "позиции", "позиций")} · {formatNumber(task.qty)} шт
@@ -197,6 +246,11 @@ export function TaskCard({
       {expanded && (
         <div className="border-t border-slate-100">
           {task.note && <p className="px-4 pt-3 text-xs text-slate-500">Комментарий: {task.note}</p>}
+          {restoredAt !== null && (
+            <div className="px-4 pt-3">
+              <DraftNotice at={restoredAt} onForget={() => { forget(); setShipQty(initialQty(task)); }} />
+            </div>
+          )}
           {error && <div className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
           <div className="overflow-x-auto">

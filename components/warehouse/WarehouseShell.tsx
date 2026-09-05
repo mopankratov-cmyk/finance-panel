@@ -108,7 +108,33 @@ export function WarehouseShell<T extends string>({
       </aside>
 
       <main className="min-w-0 flex-1 lg:ml-60">
-        {/* На узком экране разделы модуля едут в горизонтальную ленту — сайдбар там не помещается. */}
+        {/* На узком экране сайдбар скрыт целиком — а вместе с ним уезжали выход
+            из модуля и кнопка «Выйти». Кладовщик работает с телефона: у него не
+            было способа ни вернуться к другим модулям, ни разлогиниться. */}
+        <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 lg:hidden">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-slate-900">{title}</p>
+            <p className="truncate text-[11px] text-slate-400">{me?.email ?? "…"}</p>
+          </div>
+          <Link
+            href="/"
+            title="Все модули"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500"
+          >
+            <Grid3x3 className="h-4 w-4" />
+          </Link>
+          <button
+            onClick={() => void logout()}
+            title="Выйти"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Разделы модуля едут в горизонтальную ленту — сайдбар там не помещается.
+            Группы («Работа», «Учёт», «Справочники») на ленте не показать, но
+            порядок тот же, что в сайдбаре: ориентир сохраняется. */}
         <div className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 lg:hidden">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button

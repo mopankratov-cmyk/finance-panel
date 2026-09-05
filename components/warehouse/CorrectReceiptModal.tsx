@@ -180,6 +180,7 @@ export function CorrectReceiptModal({
                     nm={group.nmId ?? undefined}
                     src={group.photoUrl ?? undefined}
                     alt={group.article}
+                    label={group.article}
                     className="h-9 w-9 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                   />
                   <span className="font-medium text-slate-900">{group.article || group.nmId}</span>

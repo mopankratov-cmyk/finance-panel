@@ -15,7 +15,10 @@ export interface StockMoveRow {
   article: string;
   qty: number;
   amount: number;
-  kind: "receipt" | "shipment" | "writeoff" | "return" | "adjustment" | "transfer";
+  // 'sale' — списание продажи FBS: его пишет post_fbs_sales (миграция
+  // 202608240020). Пока вида не было в типе, такие строки приезжали на экран
+  // без подписи — пустая клетка вместо «продажа FBS».
+  kind: "receipt" | "shipment" | "writeoff" | "return" | "adjustment" | "transfer" | "sale";
   docType: string;
   docId: string | null;
   occurredAt: string;

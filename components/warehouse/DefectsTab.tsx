@@ -326,6 +326,7 @@ export function DefectsTab({
                     <WbProductImage
                       nm={row.nmId ?? undefined}
                       alt={row.article}
+                      label={row.article}
                       className="h-9 w-9 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                     />
                   </td>

@@ -31,6 +31,8 @@ export interface StockDocRow {
   /** Номер документа, которым это сторнировано, либо который сторнирует этот. */
   reversedByNumber: string | null;
   reversesNumber: string | null;
+  /** Партия приёмки: у неё своя печатная форма и свои строки. */
+  batchId?: string | null;
 }
 
 export interface StockDocsResponse {
@@ -77,7 +79,19 @@ export async function GET(request: NextRequest) {
   if (error) return fail(missingMigration(error.code) ? migrationHint : error.message, missingMigration(error.code) ? 503 : 500);
   const docs = (data ?? []) as unknown as Record<string, unknown>[];
 
-  const warehousesResult = await db.from("warehouses").select("id, name");
+  // Приёмки живут в отдельной таблице (stock_receipt_batches), а номер берут из
+  // ОБЩЕЙ нумерации документов и объявляются документом в «Событиях». В журнал
+  // они при этом не попадали: человек видел ПРМ-2026-0004 на экране приёмки и
+  // в ленте — и не находил его там, где документы обещаны все.
+  const [warehousesResult, receiptsResult] = await Promise.all([
+    db.from("warehouses").select("id, name"),
+    db
+      .from("stock_receipt_batches")
+      .select("batch_id, number, supplier, counted_at, counted_by, created_by, created_at")
+      .eq("legal_entity_id", scope.entity.id)
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE),
+  ]);
   const names = new Map((warehousesResult.data ?? []).map((row) => [String(row.id), String(row.name)]));
   const cabinets = new Map(scope.entity.cabinets.map((link) => [link.cabinetId, link.cabinetName]));
 
@@ -131,6 +145,35 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const payload: StockDocsResponse = { rows, truncated: rows.length === PAGE_SIZE };
+  // Партии приёмки в тот же журнал. Количества у них считаются по строкам
+  // приёмки — за ними лезть отдельным запросом дорого и незачем: в журнале
+  // важно НАЙТИ документ и открыть его печатную форму, а состав виден на
+  // вкладке «Приёмка» и в самой печати.
+  const receiptRows: StockDocRow[] = (receiptsResult.error ? [] : receiptsResult.data ?? []).map((row) => ({
+    id: String(row.batch_id),
+    batchId: String(row.batch_id),
+    number: String(row.number ?? "без номера"),
+    kind: "receipt" as StockDocKind,
+    status: row.counted_at ? ("posted" as const) : ("draft" as const),
+    warehouseName: null,
+    targetWarehouseName: null,
+    cabinetName: (row.supplier as string | null) ?? null,
+    occurredAt: String(row.counted_at ?? row.created_at),
+    note: row.supplier ? `Поставщик: ${row.supplier}` : null,
+    qty: 0,
+    amount: 0,
+    lines: 0,
+    createdBy: (row.counted_by as string | null) ?? (row.created_by as string | null) ?? null,
+    confirmedBy: (row.counted_by as string | null) ?? null,
+    confirmedAt: (row.counted_at as string | null) ?? null,
+    reversedByNumber: null,
+    reversesNumber: null,
+  }));
+
+  const merged = [...rows, ...receiptRows]
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.number.localeCompare(a.number))
+    .slice(0, PAGE_SIZE);
+
+  const payload: StockDocsResponse = { rows: merged, truncated: rows.length === PAGE_SIZE || merged.length === PAGE_SIZE };
   return NextResponse.json({ data: payload, error: null });
 }

@@ -155,7 +155,9 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <a
-                      href={`/warehouse/print/${row.id}`}
+                      // У партии приёмки своя печатная форма: она собирается по
+                      // строкам приёмки, а не по проводке в stock_docs.
+                      href={row.batchId ? `/warehouse/print/receipt/${row.batchId}` : `/warehouse/print/${row.id}`}
                       target="_blank"
                       rel="noreferrer"
                       title="Печатная форма: бумага под подпись для фулфилмента"
@@ -163,7 +165,9 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                     >
                       <Printer className="h-3.5 w-3.5" /> Печать
                     </a>
-                    {status === "posted" && !row.reversedByNumber && (
+                    {/* Приёмку сторнируют коррекцией прихода на своей вкладке,
+                        а не отменой документа: у неё другая механика. */}
+                    {status === "posted" && !row.batchId && !row.reversedByNumber && (
                       <button
                         onClick={() => void reverse(row)}
                         disabled={busy === row.id}

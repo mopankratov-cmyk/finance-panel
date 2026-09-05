@@ -102,6 +102,29 @@ interface Accumulator {
 }
 
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
+
+/**
+ * Когда в последний раз списывали продажи FBS.
+ *
+ * Остаток на фулфилменте уменьшается ТОЛЬКО этим списанием: товар уезжает
+ * покупателю без нашего участия. Пока продажи не списаны, панель показывает
+ * склад полнее, чем он есть, и человек, сверяющий цифру с полкой, обязан
+ * видеть, насколько она отстала.
+ */
+async function lastFbsSaleAt(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  entityId: string,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("stock_moves")
+    .select("occurred_at")
+    .eq("legal_entity_id", entityId)
+    .eq("kind", "sale")
+    .order("occurred_at", { ascending: false })
+    .limit(1);
+  if (error) return null;
+  return ((data ?? [])[0] as { occurred_at?: string } | undefined)?.occurred_at ?? null;
+}
 const isMissingMigration = (code?: string | null) =>
   ["42P01", "42703", "PGRST202", "PGRST204", "PGRST205", "42883"].includes(code ?? "");
 const MIGRATION_HINT = "Примените миграции 202609040002_warehouse_flow.sql и 202609040003_warehouse_flow_functions.sql";
@@ -152,6 +175,10 @@ export async function GET(request: NextRequest) {
   // кабинетам, как это делает вкладка приёмок. Агентские — чужой товар.
   const ownCabinets = scope.entity.cabinets.filter((link) => link.relation === "own").map((link) => link.cabinetId);
   const cabinetNames = new Map(scope.entity.cabinets.map((link) => [link.cabinetId, link.cabinetName]));
+
+  // Отставание остатка от факта. Запускаем ДО основной пачки и ждём после неё:
+  // запрос независимый, и своего круга он не стоит.
+  const lastSalePromise = lastFbsSaleAt(db, scope.entity.id);
 
   // Старые таблицы читаем постранично: у юрлица с историей движений больше
   // тысячи, и одна страница молча отдала бы часть. Независимое — параллельно.
@@ -443,6 +470,8 @@ export async function GET(request: NextRequest) {
   const data: StockMatrixResponse = {
     rows,
     warehouses: activeWarehouses,
+    lastFbsSaleAt: await lastSalePromise,
+    computedAt: new Date().toISOString(),
     totals: {
       qty: rows.reduce((sum, row) => sum + row.qty, 0),
       amount: round2(rows.reduce((sum, row) => sum + row.amount, 0)),

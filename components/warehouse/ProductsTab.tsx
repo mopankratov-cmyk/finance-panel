@@ -625,6 +625,7 @@ export function ProductsTab({
                       nm={row.nmId ?? undefined}
                       src={row.photoUrl ?? undefined}
                       alt={row.article}
+                      label={row.article}
                       className="h-10 w-10 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                     />
                   </td>

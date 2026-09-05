@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import type { ReceiptBatchRow } from "@/app/api/warehouse/receipts/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
-import { warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
+import { operationalWarehouses, warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import { WbProductImage } from "@/components/wb/WbProductImage";
@@ -255,7 +255,7 @@ export function ReceiptsTab({
           onChange={(e) => setTarget(e.target.value)}
           className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
         >
-          {warehouses.map((warehouse) => (
+          {operationalWarehouses(warehouses, target).map((warehouse) => (
             <option key={warehouse.id} value={warehouse.id}>
               {warehouse.name}{warehouseKindSuffix(warehouse.kind)}
             </option>
@@ -341,6 +341,7 @@ export function ReceiptsTab({
                   nm={products.find((p) => p.id === line.productId)?.nmId ?? undefined}
                   src={products.find((p) => p.id === line.productId)?.photoUrl ?? undefined}
                   alt=""
+                  label={products.find((p) => p.id === line.productId)?.article ?? null}
                   className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 bg-white object-cover"
                 />
                 <select

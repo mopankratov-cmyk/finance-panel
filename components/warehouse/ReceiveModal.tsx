@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { DraftNotice } from "@/components/warehouse/DraftNotice";
+import { plural } from "@/lib/warehouse/plural";
 import { useDraft } from "@/lib/warehouse/useDraft";
 import type { ReceiptLineRow } from "@/app/api/warehouse/receipts/route";
 
@@ -119,6 +120,13 @@ export function ReceiveModal({
 
   const startScanning = () => {
     // Счёт сканером идёт с нуля — иначе первый же товар добавится к ожиданию.
+    // Но обнулять молча нельзя: выход «Ввести руками» и возврат в сканирование —
+    // это два клика, и между ними человек успевает вбить половину партии. Раньше
+    // она исчезала без вопроса и через 400 мс затирала черновик.
+    const entered = pending.some((line) => Number(draft[line.id]?.received || 0) > 0);
+    if (entered && !window.confirm(
+      "Счёт сканером начинается с нуля — введённые количества обнулятся.\n\nПродолжить?",
+    )) return;
     setDraft(Object.fromEntries(pending.map((line) => [line.id, { received: "0", defect: draft[line.id]?.defect ?? "" }])));
     setScanning(true);
     setScanNote(null);
@@ -169,6 +177,17 @@ export function ReceiveModal({
       // Проводка могла не состояться при сохранённом факте — тогда сервер вернул
       // текст ошибки вместе с успехом, и глотать его нельзя.
       if (json.error) { setError(json.error); forget(); await load(); return; }
+      // Часть строк посчитал кто-то раньше. Сохранилось не всё, что человек
+      // вводил, — закрыть окно с видом успеха значит соврать. Оставляем его
+      // открытым с предупреждением и перечитываем партию.
+      const skipped = Number(json.data?.skipped ?? 0);
+      if (skipped > 0) {
+        setError(`${skipped} ${plural(skipped, "позицию", "позиции", "позиций")} уже посчитали до вас — ваши количества по ним не сохранены.`
+          + " Проверьте партию; при расхождении оформите коррекцию прихода.");
+        forget();
+        await load();
+        return;
+      }
       forget();
       onDone();
       onClose();
@@ -247,6 +266,7 @@ export function ReceiveModal({
                       nm={group.nmId ?? undefined}
                       src={group.photoUrl ?? undefined}
                       alt={group.article}
+                      label={group.article}
                       className="h-9 w-9 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                     />
                     <span className="font-medium text-slate-900">{group.article || group.nmId}</span>
