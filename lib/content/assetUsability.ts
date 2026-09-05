@@ -70,3 +70,20 @@ export function canPreviewAsset(url: string | null | undefined): boolean {
   const usability = assetUsability(url);
   return usability === "public" || usability === "panel-only";
 }
+
+/** Публичный бакет и префикс, куда панель кладёт загруженные человеком фото. */
+export const PANEL_UPLOAD_BUCKET = "factory-media";
+export const PANEL_UPLOAD_PREFIX = "panel-uploads";
+
+/**
+ * Наша ли это загрузка.
+ *
+ * Удалять из панели можно только то, что она сама и положила: кадры карточки
+ * живут в WB, съёмки — в каталоге завода, и «удалить» в интерфейсе должно
+ * означать одно и то же везде, а не «иногда уберёт, иногда откажет».
+ */
+export function isPanelUpload(url: string | null | undefined): boolean {
+  return String(url ?? "").includes(
+    `/storage/v1/object/public/${PANEL_UPLOAD_BUCKET}/${PANEL_UPLOAD_PREFIX}/`,
+  );
+}

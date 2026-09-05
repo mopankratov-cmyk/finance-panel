@@ -122,7 +122,9 @@ test("UI distinguishes campaign spend from comparable SKU spend and preserves DR
   assert.match(route, /spent_sku_7_closed:/);
   assert.match(route, /yesterday:\s*buildAdvertWorkingDaySummary/);
   assert.match(route, /today_open:\s*buildAdvertWorkingDaySummary/);
-  assert.match(page, /7 дн\. \{rub\(campaign\.spent_7_closed\)\}/, "расход кампании за закрытую неделю");
+  // Подпись ужата до «7д», чтобы правая колонка помещалась в свою ширину и не
+  // наезжала на название товара; смысл прежний — расход за закрытую неделю.
+  assert.match(page, /7д \{rub\(campaign\.spent_7_closed\)\}/, "расход кампании за закрытую неделю");
   // Расход по артикулу теперь показывается, только когда он ОТЛИЧАЕТСЯ от
   // расхода кампании: в кабинете из 46 кампаний с расходом 19 давали ровно те же
   // рубли, и второе число дублировало первое, отнимая место у имени кампании.
