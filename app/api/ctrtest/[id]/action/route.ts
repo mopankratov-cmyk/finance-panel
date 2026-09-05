@@ -87,7 +87,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (test.status === "running") {
       return fail("Тест уже идёт: остановите его, чтобы сменить способ ротации — иначе часть раундов будет ручной, часть машинной", 409);
     }
-    const enabled = body?.force === true;
+    const enabled = String(body?.explanation ?? "") === "on";
     const { error: flagError } = await db
       .from("ctr_tests")
       .update({ live_swap_enabled: enabled, auto_error: null, updated_at: new Date().toISOString() })

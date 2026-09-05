@@ -99,3 +99,20 @@ test("ключ контента вводится в модуле тестов и
   assert.match(panel, /type="password"/, "ключ не показываем на экране");
   assert.match(panel, /«Только на чтение» снять/, "сказано, какой именно ключ нужен");
 });
+
+/**
+ * Переключатель автоматики сначала не работал вовсе: экран не подставлял
+ * подтверждение (сервер отвечал «Нужно явное подтверждение действия»), а роут
+ * читал намерение из `force`, который означает совсем другое — закрыть тест при
+ * неравной открутке. То есть даже пройдя подтверждение, кнопка всегда бы
+ * ВЫКЛЮЧАЛА автоматику.
+ */
+test("переключатель автоматики подтверждается и различает вкл/выкл", () => {
+  const page = read("../components/wb/WbCtrPage.tsx");
+  assert.match(page, /actionName === "auto"\s*\?\s*"AUTO_ROTATE"/);
+  assert.match(page, /if \(actionName === "auto"\)/, "после смены режима список перечитывается");
+
+  const route = read("../app/api/ctrtest/[id]/action/route.ts");
+  assert.match(route, /const enabled = String\(body\?\.explanation \?\? ""\) === "on";/);
+  assert.doesNotMatch(route, /const enabled = body\?\.force === true;/, "force здесь про другое");
+});
