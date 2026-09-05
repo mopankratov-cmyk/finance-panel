@@ -104,6 +104,32 @@ interface Accumulator {
 const fail = (error: string, status: number) => NextResponse.json({ data: null, error }, { status });
 
 /**
+ * Сколько стоит один круг до базы и сколько из него — работа самой базы.
+ *
+ * Замер по этапам показал ровно 0,35 с на КАЖДЫЙ запрос независимо от его
+ * содержания. Такая ровность бывает у дороги, а не у вычисления: если база
+ * отвечает за десятки миллисекунд, остальное — расстояние между регионом
+ * панели и регионом базы, и никакой правкой кода оно не лечится.
+ */
+async function probeDatabaseHop(): Promise<{ roundMs: number; dbMs: number | null } | null> {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) return null;
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(`${base}/rest/v1/wb_cabinets?select=id&limit=1`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      cache: "no-store",
+    });
+    const upstream = response.headers.get("x-envoy-upstream-service-time");
+    await response.arrayBuffer();
+    return { roundMs: Date.now() - startedAt, dbMs: upstream === null ? null : Number(upstream) };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Когда в последний раз списывали продажи FBS.
  *
  * Остаток на фулфилменте уменьшается ТОЛЬКО этим списанием: товар уезжает
@@ -524,7 +550,12 @@ export async function GET(request: NextRequest) {
     },
   };
   mark("total");
+  // Диагностика только по запросу: один тривиальный вызов REST, чтобы отделить
+  // работу базы от дороги до неё. Supabase кладёт в ответ заголовок
+  // `x-envoy-upstream-service-time` — это чистое время сервера в миллисекундах.
+  // Разница между ним и полным кругом и есть сеть.
+  const probe = url.searchParams.get("timings") === "1" ? await probeDatabaseHop() : null;
   return NextResponse.json(
-    url.searchParams.get("timings") === "1" ? { data, error: null, timings } : { data, error: null },
+    url.searchParams.get("timings") === "1" ? { data, error: null, timings, probe } : { data, error: null },
   );
 }
