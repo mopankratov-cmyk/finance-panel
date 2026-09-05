@@ -44,6 +44,7 @@ function humanTransitionError(message: string): string {
   return message;
 }
 const confirmations: Record<string, string> = {
+  auto: "AUTO_ROTATE",
   start: "CONTENT_IS_SET",
   advance: "CONTENT_IS_SET",
   finish: "FINISH_TEST",
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!Number.isInteger(id) || id <= 0) return fail("Некорректный id теста", 400);
   const body = await request.json().catch(() => null) as { action?: string; variantId?: number; confirm?: string; explanation?: string; force?: boolean } | null;
   const action = String(body?.action ?? "");
-  if (!["start", "advance", "pause", "finish", "cancel", "winner"].includes(action)) return fail("Неизвестное действие", 400);
+  if (!["start", "advance", "pause", "finish", "cancel", "winner", "auto"].includes(action)) return fail("Неизвестное действие", 400);
   if (confirmations[action] && body?.confirm !== confirmations[action]) return fail("Нужно явное подтверждение действия", 400);
 
   const db = getSupabaseAdmin();
@@ -71,6 +72,31 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!(await hasCabinetAccess(cabinetId))) return fail("Нет доступа к кабинету", 403);
   const allowedNmIds = await requestAllowedNmIds(cabinetId);
   if (allowedNmIds !== null && !allowedNmIds.has(nmId)) return fail("SKU больше не входит в товарный контур кабинета", 403);
+
+  /**
+   * Включение и выключение автоматической ротации.
+   *
+   * Отдельно от переходов состояния: это не шаг теста, а смена того, КТО им
+   * управляет. Переключать можно только у неработающего теста — иначе часть
+   * раундов окажется человеческой, часть машинной, и сравнивать их будет не с
+   * чем. Требует директора: автоматика пишет в живую карточку без спроса.
+   */
+  if (action === "auto") {
+    const roleGate = await requireApiSession(["director"]);
+    if (roleGate) return roleGate;
+    if (test.status === "running") {
+      return fail("Тест уже идёт: остановите его, чтобы сменить способ ротации — иначе часть раундов будет ручной, часть машинной", 409);
+    }
+    const enabled = body?.force === true;
+    const { error: flagError } = await db
+      .from("ctr_tests")
+      .update({ live_swap_enabled: enabled, auto_error: null, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (flagError) {
+      return fail(missingMigration(flagError.code) ? "Примените миграции 202609050001 и 202609050002" : flagError.message, missingMigration(flagError.code) ? 503 : 500);
+    }
+    return NextResponse.json({ data: { autoRotate: enabled }, error: null });
+  }
 
   let snapshot: CtrMetricSnapshot;
   try { snapshot = await getCtrMetricSnapshot(cabinetId, nmId); }

@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
-  const { data: rawTests, error } = await db.from("ctr_tests").select("id, cabinet_id, nm_id, article, name, status, test_type, interval_min, impressions_per_round, target_impressions, spend_cap_rub, live_swap_enabled, round_num, current_variant_id, winner_variant_id, winner_explanation, source_test_id, started_at, finished_at, created_by, created_at, updated_at").eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
+  const { data: rawTests, error } = await db.from("ctr_tests").select("id, cabinet_id, nm_id, article, name, status, test_type, interval_min, impressions_per_round, target_impressions, spend_cap_rub, live_swap_enabled, auto_error, round_num, current_variant_id, winner_variant_id, winner_explanation, source_test_id, started_at, finished_at, created_by, created_at, updated_at").eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
   if (error) return fail(migrationMissing(error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : error.message, migrationMissing(error.code) ? 503 : 500);
   const ids = (rawTests ?? []).map((row) => Number(row.id));
   if (!ids.length) return NextResponse.json({ data: { tests: [] }, error: null });
@@ -120,6 +120,7 @@ export async function GET(request: NextRequest) {
       targetImpressions: Number(row.target_impressions),
       spendCapRub: Number(row.spend_cap_rub),
       liveSwapEnabled: Boolean(row.live_swap_enabled),
+      autoError: (row.auto_error as string | null) ?? null,
       roundNum: Number(row.round_num),
       currentVariantId: row.current_variant_id == null ? null : Number(row.current_variant_id),
       winnerVariantId: row.winner_variant_id == null ? null : Number(row.winner_variant_id),

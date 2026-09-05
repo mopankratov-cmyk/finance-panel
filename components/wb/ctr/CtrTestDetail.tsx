@@ -70,13 +70,40 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
             {test.status === "running" && next ? <button type="button" disabled={busy} onClick={() => trigger("advance", next)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" />Следующий: {next.label}</button> : null}
             {test.status === "running" ? <button type="button" disabled={busy} onClick={() => onAction("pause")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-200 px-3 text-[11px] font-semibold text-amber-700 disabled:opacity-50"><Pause className="h-3.5 w-3.5" />Пауза</button> : null}
             {test.status !== "done" && test.status !== "cancelled" ? <button type="button" disabled={busy} onClick={() => trigger("finish")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 disabled:opacity-50"><Square className="h-3.5 w-3.5" />Стоп с победителем</button> : null}
+            {/*
+              Способ ротации меняется только у остановленного теста: иначе часть
+              раундов окажется ручной, часть машинной, и сравнивать их не с чем.
+              Кнопка говорит, что произойдёт, а не как называется флаг.
+            */}
+            {test.status === "draft" || test.status === "paused" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  const on = !test.liveSwapEnabled;
+                  if (!window.confirm(on
+                    ? "Включить автоматическую смену?\n\nПанель будет сама менять главное фото карточки на витрине WB каждый раз, когда вариант наберёт норму показов. Запись в карточку необратима."
+                    : "Выключить автоматическую смену? Дальше варианты ставите и подтверждаете вы.")) return;
+                  onAction("auto", undefined, on ? "on" : "off");
+                }}
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-[11px] font-semibold disabled:opacity-50 ${test.liveSwapEnabled ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-600"}`}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {test.liveSwapEnabled ? "Меняет сама" : "Менять автоматически"}
+              </button>
+            ) : null}
             {test.status !== "done" && test.status !== "cancelled" ? <button type="button" disabled={busy} onClick={() => trigger("cancel")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-rose-200 px-3 text-[11px] font-semibold text-rose-600 disabled:opacity-50"><XCircle className="h-3.5 w-3.5" />Отменить</button> : null}
           </div>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-4">
-          {[['Раунд', test.roundNum], ['Интервал', `${test.intervalMin} мин`], ['Цель', `${number(test.targetImpressions)} показов`], ['Режим', 'ручная ротация']].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><div className="text-[9px] uppercase text-slate-400">{label}</div><div className="mt-1 text-xs font-bold text-slate-700">{value}</div></div>)}
+          {[['Раунд', test.roundNum], ['Интервал', `${test.intervalMin} мин`], ['Цель', `${number(test.targetImpressions)} показов`], ['Режим', test.liveSwapEnabled ? 'меняет сама' : 'ручная ротация']].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><div className="text-[9px] uppercase text-slate-400">{label}</div><div className="mt-1 text-xs font-bold text-slate-700">{value}</div></div>)}
         </div>
         <div className="mt-3"><div className="flex justify-between text-[10px] text-slate-500"><span>Расход теста</span><span>{number(spent)} / {number(test.spendCapRub)} ₽</span></div><div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${spentPct >= 100 ? "bg-rose-500" : "bg-violet-500"}`} style={{ width: `${spentPct}%` }} /></div></div>
+        {test.liveSwapEnabled && test.autoError ? (
+          <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-800">
+            Последняя попытка смены не прошла: {test.autoError}. Тест стоит на прежнем варианте — ротация повторит попытку.
+          </div>
+        ) : null}
         {current ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-[11px] text-violet-800"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /><span>Сейчас измеряется: <b>{current.label}</b></span><span className="text-violet-500">live +{number(Number(test.currentLive?.impressions ?? 0))} показов · +{number(Number(test.currentLive?.clicks ?? 0))} кликов</span><a href={current.imageUrl} target="_blank" rel="noreferrer" className="ml-auto inline-flex min-h-11 items-center gap-1 font-semibold hover:underline">Открыть контент <ExternalLink className="h-3.5 w-3.5" /></a></div> : null}
       </section>
 
