@@ -4,6 +4,7 @@
 import { Check, ImageOff, Loader2, Lock, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Hint } from "@/components/ui/Hint";
 import { isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
 import { plural } from "@/lib/warehouse/plural";
 import { itemsForTestType, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
@@ -175,10 +176,24 @@ export function ContentPicker({
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-xs font-bold text-slate-700">Контент товара</h3>
-        <span className="text-[10px] text-slate-400">
+        {/*
+          Почему часть плиток заперта — один значок на всю сетку, а не подсказка
+          на каждой: причин всего четыре, и они общие. Раньше это лежало в
+          `title` плитки и на телефоне не читалось никак — человек видел замок
+          без объяснения.
+        */}
+        <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
           {product
             ? `${items.filter((item) => item.usability === "public").length} из ${items.length} можно отдать в тест`
             : "Выберите товар выше — или посмотрите весь контент кабинета"}
+          {product ? (
+            <Hint label="Почему часть кадров с замком">
+              <b>можно в тест</b> — {USABILITY_HINT.public}
+              <br /><b>только просмотр</b> — {USABILITY_HINT["panel-only"]}
+              <br /><b>файл недоступен</b> — {USABILITY_HINT.unresolved}
+              <br /><b>нет ссылки</b> — {USABILITY_HINT.missing}
+            </Hint>
+          ) : null}
         </span>
         {/*
           Почему список короче, чем весь контент товара. Без этой строки
@@ -186,11 +201,11 @@ export function ContentPicker({
           потеряла.
         */}
         {testType === "ctr" && product ? (
-          <span
-            title="CTR решает обложка: остальные кадры карточки человек видит уже после клика — они влияют на конверсию, а не на кликабельность."
-            className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500"
-          >
+          <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
             только обложка и кандидаты в неё
+            <Hint label="Почему список короче, чем весь контент товара">
+              CTR решает обложка: остальные кадры карточки человек видит уже после клика — они влияют на конверсию, а не на кликабельность.
+            </Hint>
           </span>
         ) : null}
         {product ? (
@@ -215,6 +230,13 @@ export function ContentPicker({
               <Upload className="h-3 w-3" aria-hidden="true" />
               {busy === "upload" ? "Загружаю…" : "Загрузить фото"}
             </button>
+            {/*
+              Требования к файлу нужны именно на телефоне — оттуда и грузят, и
+              там же снимок по умолчанию в HEIC. В `title` их было не прочитать.
+            */}
+            <Hint label="Какие файлы подходят">
+              JPEG, PNG или WebP до 12 МБ. Файл попадёт в библиотеку этого артикула и сразу станет пригоден для теста.
+            </Hint>
           </div>
         ) : null}
         {!product && data?.products.length ? (

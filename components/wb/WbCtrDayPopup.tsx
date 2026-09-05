@@ -4,6 +4,7 @@ import { Loader2, MessageSquare, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CtrCampaignRow } from "@/app/api/wb/ctr-breakdown/route";
+import { Hint } from "@/components/ui/Hint";
 import { CTR_NOTE_COLORS, ctrNoteColor, type CtrNoteColor } from "@/lib/wb/ctrNoteColors";
 
 interface Breakdown {
@@ -170,7 +171,19 @@ export function WbCtrDayPopup({
                       <th className="pb-2 text-left font-semibold">Кампания</th>
                       <th className="pb-2 text-right font-semibold">Показы</th>
                       <th className="pb-2 text-right font-semibold">Клики</th>
-                      <th className="pb-2 text-right font-semibold">CTR</th>
+                      {/*
+                        Правило прочерка объясняем один раз в шапке столбца, а
+                        не подсказкой у каждого «—»: оно одно на весь столбец, и
+                        `title` на прочерке пальцем не открывался вовсе.
+                      */}
+                      <th className="pb-2 text-right font-semibold">
+                        <span className="inline-flex items-center gap-1">
+                          CTR
+                          <Hint label="Что такое CTR и почему бывает прочерк">
+                            CTR — клики, делённые на показы. Прочерк вместо числа стоит там, где показов меньше {data?.meta.minViews ?? 0}: на таком объёме доля клика ничего не значит.
+                          </Hint>
+                        </span>
+                      </th>
                       <th className="pb-2 text-right font-semibold">Расход</th>
                     </tr>
                   </thead>
@@ -178,7 +191,13 @@ export function WbCtrDayPopup({
                     {data.data.campaigns.map((row) => (
                       <tr key={row.advertId} className="border-t border-slate-100">
                         <td className="py-1.5 pr-3">
-                          <div className="truncate text-slate-700" title={row.name}>{row.name}</div>
+                          {/*
+                            Название кампании на узком экране переносится, а не
+                            обрезается: `title` с полным именем на телефоне не
+                            открыть, и от «Автоматическая кампания…» оставалось
+                            два слова. С планшета и шире — прежняя одна строка.
+                          */}
+                          <div className="break-anywhere line-clamp-2 text-slate-700 sm:line-clamp-none sm:truncate" title={row.name}>{row.name}</div>
                           <div className="text-[10px] tabular-nums text-slate-400">№ {row.advertId}</div>
                         </td>
                         <td className="py-1.5 text-right tabular-nums text-slate-600">{fmt(row.views)}</td>

@@ -3,6 +3,7 @@
 import { Printer, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
+import { Hint } from "@/components/ui/Hint";
 import type { StockDocRow, StockDocsResponse } from "@/app/api/warehouse/docs/route";
 
 const KIND_LABEL: Record<StockDocRow["kind"], string> = {
@@ -150,11 +151,19 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                   <td className="px-4 py-2.5 text-right text-slate-600">
                     {row.amount ? `${formatNumber(Math.round(row.amount))} ₽` : <span className="text-slate-300">—</span>}
                   </td>
+                  {/* Проводил документ один, а поставил другой — это видно
+                      только здесь, и на касании подсказка не всплывала. Значок
+                      появляется лишь в тех редких строках, где эти двое разные. */}
                   <td
                     className="px-4 py-2.5 text-xs text-slate-400"
                     title={who !== row.createdBy && row.createdBy ? `поставил ${row.createdBy}` : undefined}
                   >
-                    {who ?? "—"}
+                    <span className="inline-flex items-center gap-1">
+                      {who ?? "—"}
+                      {who !== row.createdBy && row.createdBy ? (
+                        <Hint label="Кто поставил документ">Поставил {row.createdBy}.</Hint>
+                      ) : null}
+                    </span>
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     {/* Печать и необратимое сторно стояли в 12 px друг от друга

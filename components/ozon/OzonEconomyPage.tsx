@@ -2,6 +2,7 @@
 
 import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { CabinetUnitSettings, type AppliedUnitSettings } from "@/components/unit/CabinetUnitSettings";
 import { sumOzonEconomyRows } from "@/lib/ozon/economyTotals";
 import { csvFileName, downloadCsv } from "@/lib/ozon/csvExport";
@@ -324,18 +325,22 @@ export function OzonEconomyPage() {
                                 className={`${index === 0 ? "sticky left-0 z-20 bg-slate-50 px-4 text-left" : "px-3 text-right"} py-3 md:py-2`}
                                 aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
                               >
-                                <button
-                                  type="button"
-                                  title={column.hint}
-                                  aria-label={column.hint ? `${column.label}. ${column.hint}` : undefined}
-                                  onClick={() => setSort((current) => current?.key === column.key
-                                    ? (current.dir === "desc" ? { key: column.key, dir: "asc" } : null)
-                                    : { key: column.key, dir: "desc" })}
-                                  className={`tap-hit inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${index === 0 ? "" : "flex-row-reverse"}`}
-                                >
-                                  {active ? (sort!.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-slate-300" />}
-                                  {column.label}
-                                </button>
+                                {/* Откуда взялась цифра — объяснение колонки, а не
+                                    ячейки: значок стоит один раз в шапке. В `title`
+                                    оно было доступно только мыши. */}
+                                <span className="inline-flex items-center gap-1 align-middle">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSort((current) => current?.key === column.key
+                                      ? (current.dir === "desc" ? { key: column.key, dir: "asc" } : null)
+                                      : { key: column.key, dir: "desc" })}
+                                    className={`tap-hit inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${index === 0 ? "" : "flex-row-reverse"}`}
+                                  >
+                                    {active ? (sort!.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-slate-300" />}
+                                    {column.label}
+                                  </button>
+                                  {column.hint ? <Hint label={`Про колонку «${column.label}»`} className="shrink-0">{column.hint}</Hint> : null}
+                                </span>
                               </th>
                             );
                           })}
@@ -439,7 +444,12 @@ export function OzonEconomyPage() {
                       return (
                         <div key={service.name}>
                           <div className="mb-1 flex justify-between gap-3 text-[11px]">
-                            <span className="truncate text-slate-600" title={service.name}>{service.name}</span>
+                            {/* Названия услуг Ozon длинные («Обработка отправления
+                                на складе...»), и обрезанный хвост на телефоне взять
+                                было негде: `title` там не показывается. На узком
+                                экране строка переносится, на широком остаётся
+                                обрезанной с подсказкой по наведению. */}
+                            <span className="min-w-0 break-anywhere text-slate-600 md:truncate" title={service.name}>{service.name}</span>
                             <span className="shrink-0 font-semibold tabular-nums">{formatMoney(service.value)}</span>
                           </div>
                           <div className="h-1.5 rounded-full bg-slate-100">

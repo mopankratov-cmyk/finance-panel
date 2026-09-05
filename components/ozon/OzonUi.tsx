@@ -3,6 +3,7 @@
 import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Database, Download, Info, PackageOpen } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Hint } from "@/components/ui/Hint";
 
 export const formatNumber = (value: number | null | undefined) => value == null ? "—" : Math.round(value).toLocaleString("ru-RU");
 export const formatMoney = (value: number | null | undefined) => value == null ? "—" : `${Math.round(value).toLocaleString("ru-RU")} ₽`;
@@ -161,20 +162,25 @@ export function SortableTh({ label, active, dir, onToggle, align = "right", hint
       className={`${align === "left" ? "px-4 text-left" : "px-3 text-right"} ${sticky ? "sticky left-0 z-20 bg-slate-50" : ""} py-3 md:py-2`}
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
     >
-      {/* tap-hit растягивает невидимую область нажатия до 44px, не раздувая
-          шапку: заголовки стоят впритык, и пальцем попадали в соседнюю колонку. */}
-      <button
-        type="button"
-        onClick={onToggle}
-        title={hint}
-        aria-label={hint ? `${label}. ${hint}` : undefined}
-        className={`tap-hit inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${align === "left" ? "" : "flex-row-reverse"}`}
-      >
-        {active
-          ? dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-          : <ArrowUpDown className="h-3 w-3 text-slate-300" />}
-        {label}
-      </button>
+      {/* Пояснение к колонке стоит отдельной кнопкой, а не в `title` кнопки
+          сортировки: на касании `title` не показывается вовсе, а нажатие по
+          заголовку — это уже сортировка. Значок объясняет весь столбец разом,
+          поэтому в самих строках его нет. */}
+      <span className="inline-flex items-center gap-1 align-middle">
+        {/* tap-hit растягивает невидимую область нажатия до 44px, не раздувая
+            шапку: заголовки стоят впритык, и пальцем попадали в соседнюю колонку. */}
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`tap-hit inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${align === "left" ? "" : "flex-row-reverse"}`}
+        >
+          {active
+            ? dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+            : <ArrowUpDown className="h-3 w-3 text-slate-300" />}
+          {label}
+        </button>
+        {hint ? <Hint label={`Про колонку «${label}»`} className="shrink-0">{hint}</Hint> : null}
+      </span>
     </th>
   );
 }

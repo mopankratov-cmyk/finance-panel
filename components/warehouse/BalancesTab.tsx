@@ -6,6 +6,7 @@ import { formatNumber } from "@/lib/analytics/format";
 import type { FbsSalesResult } from "@/app/api/warehouse/fbs-sales/route";
 import { buildStockMatrix, type StockMatrixResponse, type StockReceiptCell } from "@/lib/warehouse/stockMatrix";
 import { plural } from "@/lib/warehouse/plural";
+import { Hint } from "@/components/ui/Hint";
 import { StockModelTree, warehouseBreakdown } from "@/components/warehouse/StockModelTree";
 
 const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
@@ -122,16 +123,23 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
     </>
   );
 
+  // Что именно спишет кнопка и где это включается, знал только `title`, а под
+  // пальцем его не бывает: объяснение стоит рядом отдельным значком.
   const syncButton = (
-    <button
-      onClick={() => void syncSales()}
-      disabled={syncing}
-      title="Вычесть из остатка продажи со склада продавца. Включается по складу и дате на вкладке «Склады»."
-      className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-    >
-      <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-      {syncing ? "Списываю продажи…" : "Списать продажи FBS"}
-    </button>
+    <span className="inline-flex items-center gap-1.5">
+      <button
+        onClick={() => void syncSales()}
+        disabled={syncing}
+        title="Вычесть из остатка продажи со склада продавца. Включается по складу и дате на вкладке «Склады»."
+        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+      >
+        <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+        {syncing ? "Списываю продажи…" : "Списать продажи FBS"}
+      </button>
+      <Hint label="Что делает «Списать продажи FBS»">
+        Вычесть из остатка продажи со склада продавца. Включается по складу и дате на вкладке «Склады».
+      </Hint>
+    </span>
   );
 
   // Заглушка — только пока данных нет вовсе. Раньше она подменяла таблицу на

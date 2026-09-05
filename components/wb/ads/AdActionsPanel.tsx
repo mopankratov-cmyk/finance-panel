@@ -3,6 +3,7 @@
 import { PauseCircle, PlayCircle, Square, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Hint } from "@/components/ui/Hint";
 import type { BidRecommendation } from "@/app/api/adverts/cpm-reco/route";
 import { adGet, adPost, money, type AdCabinetConfig } from "./adControlApi";
 import type { ConfirmRequest } from "./ConfirmAction";
@@ -157,16 +158,25 @@ export function AdActionsPanel({
           {reco && reco.length > 0 ? (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               <span className="text-[9px] uppercase tracking-wide text-slate-400">WB советует</span>
+              {/*
+                Откуда взялась цифра — рядом со значком, а не в `title` кнопки.
+                «Конкурентная» и «Лидерская» отличаются только тем, как WB их
+                считает, и без этого пояснения выбор ставки превращается в
+                гадание; пальцем всплывающей подсказки не получить, а значок
+                внутрь кнопки не вложить — кнопка в кнопке недопустима.
+              */}
               {reco.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  title={item.hint}
-                  onClick={() => setBid(String(item.bidRub))}
-                  className="rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-100"
-                >
-                  {item.label} {money(item.bidRub, currency)}
-                </button>
+                <span key={item.label} className="inline-flex items-center gap-0.5 rounded-lg border border-violet-200 bg-violet-50 pr-1.5 text-violet-700">
+                  <button
+                    type="button"
+                    title={item.hint}
+                    onClick={() => setBid(String(item.bidRub))}
+                    className="rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors hover:bg-violet-100"
+                  >
+                    {item.label} {money(item.bidRub, currency)}
+                  </button>
+                  <Hint label={`Откуда ставка «${item.label}»`} className="text-violet-400 hover:text-violet-700">{item.hint}</Hint>
+                </span>
               ))}
             </div>
           ) : recoNote ? (

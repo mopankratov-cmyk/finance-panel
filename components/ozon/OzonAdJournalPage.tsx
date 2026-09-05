@@ -219,8 +219,12 @@ export function OzonAdJournalPage() {
                                 <td className="sticky left-0 z-10 bg-white px-4 py-2">
                                   {/* Закреплённая колонка на 320px забирала почти
                                       весь экран, и матрица по дням — то, ради
-                                      чего экран открывают, — не была видна. */}
-                                  <div className="max-w-[120px] truncate font-semibold text-slate-800 sm:max-w-[200px] lg:max-w-[280px]" title={row.name}>{row.name}</div>
+                                      чего экран открывают, — не была видна.
+                                      Поэтому колонка осталась узкой, но название
+                                      на телефоне переносится в две строки: там
+                                      `title` не показывается, и в 120px от имени
+                                      товара оставалась пара слов. */}
+                                  <div className="line-clamp-2 max-w-[120px] break-anywhere font-semibold text-slate-800 sm:max-w-[200px] lg:max-w-[280px] lg:line-clamp-none lg:truncate" title={row.name}>{row.name}</div>
                                   <div className="mt-0.5 text-[10px] text-slate-400">{row.offerId || `SKU ${row.sku}`}{data.scope.count > 1 ? ` · ${row.cabinet}` : ""}</div>
                                 </td>
                                 <td className="px-3 py-2 text-right font-bold tabular-nums">{formatMoney(row.total)}</td>

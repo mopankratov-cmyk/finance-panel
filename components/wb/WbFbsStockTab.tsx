@@ -161,7 +161,13 @@ export function WbFbsStockTab({ cabinetId, cabinetName }: { cabinetId: string; c
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="text-[11px] text-slate-500">Склад</div>
-              <div className="mt-1 truncate text-sm font-semibold text-slate-700" title={warehouseName}>{warehouseName || "—"}</div>
+              {/*
+                Название склада на телефоне переносится, а не обрезается: в
+                колонке шириной в пол-экрана от «Склад продавца Коледино…»
+                оставалось одно слово, а `title` пальцем не открыть. С планшета
+                и шире — прежняя одна строка.
+              */}
+              <div className="break-anywhere mt-1 line-clamp-2 text-sm font-semibold text-slate-700 sm:line-clamp-none sm:truncate" title={warehouseName}>{warehouseName || "—"}</div>
               <div className="mt-0.5 text-[11px] text-slate-400">складов в кабинете: {fmt(warehouses.length)}</div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-3">

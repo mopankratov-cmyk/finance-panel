@@ -3,6 +3,8 @@
 import { Loader2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { Hint } from "@/components/ui/Hint";
+
 /**
  * Команда кабинета — экран для главного пользователя организации.
  *
@@ -249,6 +251,17 @@ export default function TeamPage() {
                           <option value="manager">менеджер кабинета</option>
                           <option value="lead">админ кабинета</option>
                         </select>
+                        {/*
+                          Почему список серый у своей строки. На выключенном
+                          `select` подсказка не всплывала даже на мыши, а
+                          пальцем не открывалась и подавно — человек видел
+                          мёртвый список без причины.
+                        */}
+                        {self ? (
+                          <Hint label="Почему уровень не меняется">
+                            Свой уровень доступа изменить нельзя — это делает другой админ организации.
+                          </Hint>
+                        ) : null}
                       </div>
                     );
                   })}

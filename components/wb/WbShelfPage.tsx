@@ -2,6 +2,7 @@
 
 import { Ban, ChevronDown, Info, Loader2, Plus, RefreshCw, Rows3, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import type { ShelfMarkedRow, ShelfSliceResult } from "@/lib/shelf/slices";
@@ -180,7 +181,16 @@ function SliceTable({ latest, watch }: { latest: LatestView; watch: WatchView })
           <tr>
             <th className="px-3 py-2 text-left">Срез</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Цена, ₽</th>
-            <th className="whitespace-nowrap px-3 py-2 text-right" title="Плюс — конкуренты дороже нас">Отличие, %</th>
+            {/* Знак читается одинаково в обеих колонках, поэтому пояснение
+                стоит один раз — второй значок был бы шумом. */}
+            <th className="whitespace-nowrap px-3 py-2 text-right">
+              <span className="inline-flex items-center gap-1">
+                Отличие, %
+                <Hint label="Как читать знак отличия">
+                  Плюс — конкуренты дороже нас, наша цена конкурентна. Минус — мы дороже рынка. Колонка «Отличие, ₽» читается так же.
+                </Hint>
+              </span>
+            </th>
             <th className="whitespace-nowrap px-3 py-2 text-right" title="Плюс — конкуренты дороже нас">Отличие, ₽</th>
           </tr>
         </thead>
@@ -791,7 +801,7 @@ export function WbShelfPage() {
                           <div className="scroll-x">
                             <table className="w-full min-w-[560px] border-collapse text-[12px] sm:text-[10px]">
                               <thead className="bg-slate-50">
-                                <tr className="text-[9px] font-semibold uppercase tracking-wide text-slate-400"><th className="px-2 py-2 text-left">#</th><th className="px-2 py-2 text-left">Товар</th><th className="px-2 py-2 text-left">Бренд</th><th className="px-2 py-2 text-right">Цена</th><th className="px-2 py-2 text-right" title="Плюс — конкурент дороже нас">К нашей цене</th><th className="px-2 py-2 text-left" /></tr>
+                                <tr className="text-[9px] font-semibold uppercase tracking-wide text-slate-400"><th className="px-2 py-2 text-left">#</th><th className="px-2 py-2 text-left">Товар</th><th className="px-2 py-2 text-left">Бренд</th><th className="px-2 py-2 text-right">Цена</th><th className="px-2 py-2 text-right"><span className="inline-flex items-center gap-1">К нашей цене<Hint label="Как читать колонку «К нашей цене»">Плюс — конкурент дороже нас. Минус — мы дороже него.</Hint></span></th><th className="px-2 py-2 text-left" /></tr>
                               </thead>
                               <tbody>
                                 {visibleRows.map((row) => (

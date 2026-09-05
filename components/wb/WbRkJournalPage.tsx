@@ -2,6 +2,7 @@
 
 import { ChevronRight, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, useRef } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
 import { moscowToday } from "@/lib/ui/calendarGrid";
@@ -763,12 +764,19 @@ export function WbRkJournalPage() {
                 ряд на широком экране; на узких переносим по-прежнему. */}
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
               {blockSummary.map((summary) => (
-                <button
-                  key={summary.block}
+                <div key={summary.block} className="relative">
+                  {/* Почему вид пуст — объяснение висело на ОТКЛЮЧЁННОЙ кнопке:
+                      её `title` браузер не показывает даже мышью, а на касании
+                      подсказок нет вовсе. Значок стоит рядом, вне кнопки. */}
+                  {summary.empty ? (
+                    <Hint label={`Почему «${summary.label}» без данных`} className="absolute right-2 top-2 z-10">
+                      {emptyBlockHint(summary.existsInCabinet)}
+                    </Hint>
+                  ) : null}
+                  <button
                   type="button"
                   onClick={() => { if (!summary.empty) setBlockFilter(blockFilter === summary.block ? "all" : summary.block); }}
                   disabled={summary.empty}
-                  title={summary.empty ? emptyBlockHint(summary.existsInCabinet) : undefined}
                   className={
                     summary.empty
                       // Пустой вид показываем, но приглушённо и без наведения: это
@@ -811,7 +819,8 @@ export function WbRkJournalPage() {
                       </div>
                     ) : null}
                   </dl>}
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
 
@@ -867,7 +876,17 @@ export function WbRkJournalPage() {
                   <thead className="sticky top-0 z-30">
                     <tr className="bg-slate-50 text-slate-500 shadow-[0_1px_0_rgba(226,232,240,1)]">
                       <th className={`sticky left-0 z-40 bg-slate-50 px-3 py-2 text-left font-semibold ${STICKY_EDGE}`}>Артикул</th>
-                      <th className="bg-slate-50 px-2 py-2 text-left font-medium">Кампании</th>
+                      <th className="bg-slate-50 px-2 py-2 text-left font-medium">
+                        {/* Оговорка про вид размещения относилась ко всему
+                            столбцу и повторялась в каждой строке — один значок
+                            у заголовка объясняет его целиком. */}
+                        <span className="inline-flex items-center gap-1">
+                          Кампании
+                          <Hint label="Как читать вид размещения">
+                            Вид размещения по дням: за дни со снимком — как было тогда, за остальные — по нынешним настройкам кампании.
+                          </Hint>
+                        </span>
+                      </th>
                       {dates.map((date) => (
                         <th key={date} colSpan={dayCols} className="border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-700">
                           {dayLabel(date)}
@@ -876,11 +895,14 @@ export function WbRkJournalPage() {
                               и было причиной занижения: снимок 06:00 ловит
                               часть кабинета. Теперь «снят» — покрыт целиком,
                               «частично» — ставки из снимка, метрики из слоя. */}
+                          {/* Слово «снят»/«частично»/«live» — про ЭТОТ день, у
+                              соседнего оно другое, поэтому пояснение стоит в
+                              шапке каждого дня, а не одной общей легендой. */}
                           {data.snapshotDates.includes(date)
-                            ? <span className="ml-1 font-normal text-emerald-600" title="Снимок 06:00 МСК покрыл день целиком: и метрики, и ставки — из него">снят</span>
+                            ? <><span className="ml-1 font-normal text-emerald-600">снят</span><Hint className="ml-0.5" label={`Откуда данные за ${dayLabel(date)}`}>Снимок 06:00 МСК покрыл день целиком: и метрики, и ставки — из него.</Hint></>
                             : (data.partialDates ?? []).includes(date)
-                              ? <span className="ml-1 font-normal text-amber-600" title="Снимок за этот день неполный: метрики взяты из слоя кампаний, ставки — из снимка там, где он их запомнил">частично</span>
-                              : <span className="ml-1 font-normal text-slate-400" title="Снимка за этот день нет: считается на лету, ставка текущая">live</span>}
+                              ? <><span className="ml-1 font-normal text-amber-600">частично</span><Hint className="ml-0.5" label={`Откуда данные за ${dayLabel(date)}`}>Снимок за этот день неполный: метрики взяты из слоя кампаний, ставки — из снимка там, где он их запомнил.</Hint></>
+                              : <><span className="ml-1 font-normal text-slate-400">live</span><Hint className="ml-0.5" label={`Откуда данные за ${dayLabel(date)}`}>Снимка за этот день нет: считается на лету, ставка текущая.</Hint></>}
                         </th>
                       ))}
                     </tr>
@@ -948,7 +970,10 @@ export function WbRkJournalPage() {
                                     за краем экрана. */}
                                 <div className="w-[104px] sm:w-auto sm:min-w-0">
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="max-w-[104px] truncate text-[13px] font-bold tracking-[-0.01em] text-slate-800 sm:max-w-[150px]" title={article || `WB ${item.nm}`}>{article || `WB ${item.nm}`}</span>
+                                    {/* Обрезанный артикул на телефоне бесполезен ровно
+                                        так же, как обрезанный номер WB ниже: по нему
+                                        товар в кабинете не найти. До sm переносим. */}
+                                    <span className="break-anywhere max-w-[104px] text-[13px] font-bold tracking-[-0.01em] text-slate-800 sm:max-w-[150px] sm:truncate" title={article || `WB ${item.nm}`}>{article || `WB ${item.nm}`}</span>
                                     {canWrite && hasExactCabinet ? (
                                       <WbTagPicker
                                         tags={tags}
@@ -1024,15 +1049,14 @@ export function WbRkJournalPage() {
                                 ) : null}
                               </td>
                               <td
-                                className="whitespace-nowrap px-2 py-1 text-[11px]"
                                 // Стрелка — не всегда наблюдённое переключение:
                                 // вид дня берётся из снимка, а где снимка нет —
                                 // из нынешних настроек кампании. Обещать
                                 // историю площадок там, где её никто не
-                                // записывал, нельзя.
-                                title={campaign.blocks
-                                  ? "Вид размещения по дням: за дни со снимком — как было тогда, за остальные — по нынешним настройкам кампании"
-                                  : undefined}
+                                // записывал, нельзя. Оговорка переехала в
+                                // заголовок столбца: в строках она повторялась
+                                // слово в слово и на касании не открывалась.
+                                className="whitespace-nowrap px-2 py-1 text-[11px]"
                               >
                                 {campaignBlockLabel(campaign)}
                               </td>

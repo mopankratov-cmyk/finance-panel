@@ -89,7 +89,12 @@ function UploadCard({
       />
       {file ? (
         <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-          <span className="truncate text-slate-500" title={file.name}>{file.name}</span>
+          {/*
+            Имя выбранного файла переносим, а не обрезаем: убедиться, что взят
+            нужный XLSX, — единственный смысл этой строки, а на телефоне
+            обрезка отрезала как раз хвост с датой выгрузки.
+          */}
+          <span className="break-anywhere line-clamp-2 text-slate-500 sm:line-clamp-none sm:truncate" title={file.name}>{file.name}</span>
           <button
             type="button"
             className="tap shrink-0 font-semibold text-slate-400 hover:text-rose-600"

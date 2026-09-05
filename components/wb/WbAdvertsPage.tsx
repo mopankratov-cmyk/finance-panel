@@ -3,6 +3,7 @@
 import { Archive, ChevronLeft, ChevronRight, FlaskConical, KeyRound, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
@@ -798,8 +799,11 @@ export function WbAdvertsPage() {
             </span>
           ) : null}
           {loadedAt ? (
-            <span title="Данные подгружаются при смене кабинета и по кнопке «Обновить», сами не освежаются" className="rounded-lg px-2 py-1 font-medium text-slate-400">
+            <span className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-slate-400">
               загружено в {loadedAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+              <Hint label="Насколько свежие данные">
+                Данные подгружаются при смене кабинета и по кнопке «Обновить», сами не освежаются.
+              </Hint>
             </span>
           ) : null}
         </div>
@@ -824,6 +828,19 @@ export function WbAdvertsPage() {
             {item.label}
           </button>
         ))}
+        {/*
+          Почему половина разделов серая — одним значком на всю полосу, а не
+          подсказкой на каждой кнопке: причина у них общая, а `title` на
+          выключенной кнопке пальцем не открывается вовсе.
+        */}
+        {!singleCabinet ? (
+          <span className="inline-flex items-center self-center">
+            <Hint label="Почему разделы недоступны">
+              Всё, кроме «Кампаний», работает по одному кабинету: действие уходит в конкретный кабинет WB.
+              Выберите кабинет вверху — разделы включатся.
+            </Hint>
+          </span>
+        ) : null}
       </div>
 
       {view !== "campaigns" && singleCabinet ? (
@@ -904,7 +921,25 @@ export function WbAdvertsPage() {
               {([['all', 'Все'], ['cpc', 'CPC'], ['cpm', 'CPM'], ['unknown', 'Оплата неизвестна']] as const).map(([value, label]) => (
                 <button key={value} type="button" onClick={() => setKind(value)} className={`min-h-8 rounded-lg px-2.5 font-semibold transition-colors ${kind === value ? "bg-slate-800 text-white" : "bg-violet-50 text-violet-700 hover:bg-violet-100"}`}>{label}</button>
               ))}
-              <span className="ml-auto tabular-nums text-slate-400">{rows.length} из {baseRows.length} РК</span>
+              {/*
+                Легенда строки одним значком на весь список, а не подсказкой у
+                каждого бейджа. Пояснения к «замолчала», к модели оплаты, к
+                фиолетовой точке у расхода жили в `title` внутри строк: на мыши
+                читались, пальцем — никогда. Строка здесь фиксированной высоты и
+                виртуализована, значок в неё не поставить; смысл у бейджей общий
+                для всех строк, поэтому он и стоит над списком.
+              */}
+              <span className="ml-auto inline-flex items-center gap-1 tabular-nums text-slate-400">
+                {rows.length} из {baseRows.length} РК
+                <Hint label="Что значат пометки в строке">
+                  <b>замолчала</b> — вчера кампания тратила, сегодня расхода нет; что произошло, видно в разделе «Что мы меняли».
+                  <br /><b>CPC / CPM</b> — модель оплаты, <b>ставка</b> рядом с ней — тип ставки.
+                  <br /><b>правило</b> — ставку последним менял автопрогон правил.
+                  <br /><b>данные N ч.</b> — статистика кампании давно не обновлялась.
+                  <br /><b>ДРР 7д</b> — за 7 закрытых дней; вторым числом идёт безубыточный порог именно этой кампании.
+                  <br /><b>•</b> у расхода — по этому артикулу тратит не только эта кампания.
+                </Hint>
+              </span>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px]">
               <span className="mr-1 text-slate-400">статус:</span>

@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CTR_FORCE_HINT, type CtrTestType } from "@/lib/ctrtest/model";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
@@ -267,14 +268,20 @@ export function WbCtrPage() {
         actions={<div className="flex flex-wrap items-center gap-2">
           <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm lg:min-h-8">{[7, 14, 30].map((value) => <button key={value} type="button" onClick={() => setDays(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors lg:min-h-7 ${days === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{value} дней</button>)}</div>
           {canWrite ? (
-            <button
-              type="button"
-              onClick={() => setTokenOpen((open) => !open)}
-              title="Ключ WB с доступом «Контент»: без него панель не может менять фото карточки сама"
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50 lg:min-h-8"
-            >
-              <KeyRound className="h-3.5 w-3.5" />Ключ
-            </button>
+            <span className="inline-flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setTokenOpen((open) => !open)}
+                title="Ключ WB с доступом «Контент»: без него панель не может менять фото карточки сама"
+                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50 lg:min-h-8"
+              >
+                <KeyRound className="h-3.5 w-3.5" />Ключ
+              </button>
+              {/* Значок отдельно от кнопки: кнопку в кнопку вложить нельзя. */}
+              <Hint label="Какой ключ и зачем">
+                Ключ WB с доступом «Контент»: без него панель не может менять фото карточки сама.
+              </Hint>
+            </span>
           ) : null}
           <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} aria-label="Обновить тесты" className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:opacity-60 lg:h-8 lg:w-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}</button>
         </div>}
@@ -315,15 +322,25 @@ export function WbCtrPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-              <button
-                type="button"
-                disabled={!canWrite || !flywheelSource}
-                title="Взять победителя завершённого теста и запустить следующий раунд от него"
-                onClick={() => { const winner = flywheelSource?.variants.find((variant) => variant.id === flywheelSource.winnerVariantId || variant.isWinner); if (flywheelSource && winner) openFlywheelFor(flywheelSource, winner); }}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-40 lg:min-h-9"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />Маховик
-              </button>
+              {/*
+                «Маховик» само по себе не говорит ничего, а кнопка почти всегда
+                выключена — на выключенной кнопке `title` не всплывает даже на
+                мыши. Значок стоит рядом и открывается пальцем.
+              */}
+              <span className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={!canWrite || !flywheelSource}
+                  title="Взять победителя завершённого теста и запустить следующий раунд от него"
+                  onClick={() => { const winner = flywheelSource?.variants.find((variant) => variant.id === flywheelSource.winnerVariantId || variant.isWinner); if (flywheelSource && winner) openFlywheelFor(flywheelSource, winner); }}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-40 lg:min-h-9"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />Маховик
+                </button>
+                <Hint label="Что делает «Маховик»">
+                  Берёт победителя завершённого теста и запускает следующий раунд от него. Пока завершённого теста нет, кнопка выключена.
+                </Hint>
+              </span>
               <button
                 type="button"
                 disabled={!canWrite || loading}

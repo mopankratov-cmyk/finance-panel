@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionableError } from "@/components/ui/ActionableError";
+import { Hint } from "@/components/ui/Hint";
 import { Modal } from "@/components/ui/Modal";
 import {
   applySalesPlanSuggestion,
@@ -697,7 +698,10 @@ export function SalesPlanPage({
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                        {!readOnly ? <button type="button" onClick={openSuggestionPreview} disabled={catalogLoading || !hasDemandBasis} title={catalogLoading ? "Загружается основание плана" : !hasDemandBasis ? "Нет фактического спроса за период — предлагать план не от чего" : undefined} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-9 ${soft}`}><Wand2 className="h-4 w-4" /> Предложить план</button> : null}
+                        {/* Почему кнопка серая, объяснял только `title` — на касании
+                            его нет. Значок стоит внутри той же обёртки, что и кнопка:
+                            в колонку узкого экрана он иначе уезжал отдельной строкой. */}
+                        {!readOnly ? <span className="inline-flex items-center justify-center gap-1.5"><button type="button" onClick={openSuggestionPreview} disabled={catalogLoading || !hasDemandBasis} title={catalogLoading ? "Загружается основание плана" : !hasDemandBasis ? "Нет фактического спроса за период — предлагать план не от чего" : undefined} className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none lg:min-h-9 ${soft}`}><Wand2 className="h-4 w-4" /> Предложить план</button>{!catalogLoading && !hasDemandBasis ? <Hint label="Почему «Предложить план» недоступно">Нет фактического спроса за период — предлагать план не от чего.</Hint> : null}</span> : null}
                         {stockRisk ? <button type="button" aria-pressed={stockRiskOnly} onClick={() => setStockRiskOnly((value) => !value)} className={`inline-flex min-h-11 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition lg:min-h-9 ${stockRiskOnly ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>Покажет дефицит <span className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-[10px]">{stockRisk.shortageRows}</span></button> : null}
                         <label className="relative block min-w-[220px]"><span className="sr-only">Поиск в плане</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Артикул, цвет или ID" className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 lg:h-9" /></label>
                         {!readOnly ? <button type="button" onClick={() => setAddOpen(true)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 lg:min-h-9 ${soft}`}><PackagePlus className="h-4 w-4" /> Добавить SKU</button> : null}

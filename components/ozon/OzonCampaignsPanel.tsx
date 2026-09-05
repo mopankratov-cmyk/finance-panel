@@ -115,7 +115,12 @@ export function OzonCampaignsPanel() {
                 {visible.map((row) => (
                   <tr key={row.id} className="border-t border-slate-100 hover:bg-sky-50/40">
                     <td className="px-4 py-2">
-                      <div className="max-w-[320px] truncate font-semibold text-slate-800" title={row.title}>{row.title}</div>
+                      {/* Названия кампаний длинные и различаются хвостом
+                          («…Осень», «…Осень-2»), а обрезанный хвост на касании
+                          взять негде — `title` там не показывается. На узком
+                          экране имя переносится в две строки, на широком
+                          остаётся одной строкой с подсказкой по наведению. */}
+                      <div className="line-clamp-2 max-w-[200px] break-anywhere font-semibold text-slate-800 sm:max-w-[320px] md:line-clamp-none md:truncate" title={row.title}>{row.title}</div>
                       <div className="mt-0.5 text-[10px] text-slate-400">ID {row.id}{row.advObjectType ? ` · ${row.advObjectType}` : ""}</div>
                     </td>
                     {data.scope.count > 1 && <td className="px-3 py-2 text-slate-600">{row.cabinet}</td>}

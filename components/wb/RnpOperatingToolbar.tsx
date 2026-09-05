@@ -2,6 +2,7 @@
 
 import { AlertTriangle, ArrowDown, ArrowUp, BadgeCheck, CalendarDays, Check, ChevronDown, Download, Eye, Flame, GripVertical, Info, Pencil, Search, Settings2, SlidersHorizontal, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
 import {
   RNP_METRIC_FIELDS,
@@ -167,16 +168,20 @@ function shortDate(iso: string): string {
 }
 
 // Чип-переключатель как у референса: активный — фиолетовый с галкой.
-function FilterChip({ active, onClick, disabled, title, icon, label, badge }: {
+function FilterChip({ active, onClick, disabled, title, hint, icon, label, badge }: {
   active: boolean;
   onClick: () => void;
   disabled?: boolean;
   title?: string;
+  /** Пояснение, доступное и пальцем. Отключённая кнопка не показывает `title`
+   *  даже мышью, а на касании его не бывает вовсе — причина запрета иначе
+   *  просто пропадает. */
+  hint?: string | null;
   icon?: React.ReactNode;
   label: string;
   badge?: string | number | null;
 }) {
-  return (
+  const chip = (
     <button
       type="button"
       aria-pressed={active}
@@ -193,6 +198,13 @@ function FilterChip({ active, onClick, disabled, title, icon, label, badge }: {
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${active ? "bg-white/20" : "bg-violet-100 text-violet-700"}`}>{badge}</span>
       ) : null}
     </button>
+  );
+  if (!hint) return chip;
+  return (
+    <span className="inline-flex items-center gap-1">
+      {chip}
+      <Hint label={`Пояснение к фильтру «${label}»`}>{hint}</Hint>
+    </span>
   );
 }
 
@@ -355,6 +367,7 @@ export function RnpOperatingToolbar(props: Props) {
             onClick={() => props.onAnomalyModeChange(props.anomalyMode === "off" ? "all" : "off")}
             disabled={props.granularity === "week"}
             title={props.granularity === "week" ? "Аномалии считаются по дням — переключитесь на «День»" : "Резкие отклонения к прошлому периоду среди артикулов, дающих 80% оборота"}
+            hint={props.granularity === "week" ? "Аномалии считаются по дням — переключитесь на «День»." : null}
             icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
             label="Аномалии"
             badge={props.anomalyCount}
@@ -514,7 +527,6 @@ export function RnpOperatingToolbar(props: Props) {
             value={props.articleQuery}
             onChange={(event) => props.onArticleQueryChange(event.target.value)}
             placeholder="nmID / артикул — можно списком"
-            title="Один — быстрый поиск; список разделяйте пробелом, запятой или переносом строки"
             className={`${CONTROL_CLASS} w-full pl-9 pr-14`}
           />
           {props.articleQuery ? (
@@ -526,7 +538,14 @@ export function RnpOperatingToolbar(props: Props) {
             >
               {queryCount} <X className="h-3 w-3" />
             </button>
-          ) : null}
+          ) : (
+            // Правила списка жили в `title` поля: на касании их не было вовсе.
+            // Значок стоит там же, где потом появится счётчик с крестиком, —
+            // одно место, два взаимоисключающих состояния.
+            <Hint label="Как искать по артикулам" className="absolute right-3 top-1/2 -translate-y-1/2">
+              Один артикул или nmID — быстрый поиск. Список разделяйте пробелом, запятой или переносом строки.
+            </Hint>
+          )}
         </label>
 
         <label className={`${CONTROL_CLASS} inline-flex items-center gap-2`} title="Окно оборачиваемости остатков">
@@ -678,6 +697,7 @@ export function RnpOperatingToolbar(props: Props) {
             type="button"
             onClick={() => props.onMetricsOpenChange(!props.metricsOpen)}
             aria-expanded={props.metricsOpen}
+            aria-label="Видимость показателей"
             title="Видимость показателей"
             className={`${CONTROL_CLASS} inline-flex items-center gap-1.5 font-semibold text-slate-800`}
           >
@@ -768,8 +788,11 @@ export function RnpOperatingToolbar(props: Props) {
                 </div>
               </div>
               <div className="mt-3 border-t border-slate-100 pt-2">
-                <label className="flex items-center justify-between gap-2 text-[10px] font-medium text-slate-600" title="Ставка налога с выручки. Влияет только на чистую прибыль и чистую маржу.">
-                  Налог, %
+                <label className="flex items-center justify-between gap-2 text-[10px] font-medium text-slate-600">
+                  <span className="inline-flex items-center gap-1">
+                    Налог, %
+                    <Hint label="Что делает ставка налога">Ставка налога с выручки. Влияет только на чистую прибыль и чистую маржу.</Hint>
+                  </span>
                   <input
                     type="number"
                     min={0}

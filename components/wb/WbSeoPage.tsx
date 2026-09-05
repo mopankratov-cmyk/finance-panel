@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_TEXT_TONE, marketplaceMetricStatus, type MarketplaceMetricId } from "@/lib/analytics/marketplaceMetrics";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
@@ -269,7 +270,22 @@ export function WbSeoPage() {
                 ["Заказы, шт", fmt(selected.orders_count_window), null, selected.orders_count_window],
                 [MARKETPLACE_METRICS.drrOrders.label, pct(selected.drr_window), "drrOrders", selected.drr_window],
                 [MARKETPLACE_METRICS.marginBeforeAds.label, pct(selected.margin_before_drr_window), "marginBeforeAds", selected.margin_before_drr_window],
-              ] as Array<[string, string, MarketplaceMetricId | null, number | null]>).map(([label, value, metricId, numeric]) => <div key={label} title={metricId ? MARKETPLACE_METRICS[metricId].definition : undefined} className="rounded-lg border border-slate-200 bg-white p-2"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className={`mt-0.5 text-xs font-semibold tabular-nums ${metricId ? METRIC_TEXT_TONE[marketplaceMetricStatus(metricId, numeric)] : "text-slate-700"}`}>{value}</div></div>)}
+              ] as Array<[string, string, MarketplaceMetricId | null, number | null]>).map(([label, value, metricId, numeric]) => (
+                /*
+                  Определение показателя стоит значком у подписи, а не в `title`
+                  плитки: формула CTR и пороги ДРР — единственное место, где
+                  сказано, что считается и с какого числа тревога, а на телефоне
+                  всплывающей подсказки не бывает.
+                */
+                <div key={label} className="rounded-lg border border-slate-200 bg-white p-2">
+                  {/* min-h — плитки стоят сеткой, и значок не должен опускать число там, где он есть. */}
+                  <div className="flex min-h-3.5 items-center gap-0.5 text-[9px] uppercase tracking-wide text-slate-400">
+                    <span className="min-w-0 truncate">{label}</span>
+                    {metricId ? <Hint label={label}>{MARKETPLACE_METRICS[metricId].definition}</Hint> : null}
+                  </div>
+                  <div className={`mt-0.5 text-xs font-semibold tabular-nums ${metricId ? METRIC_TEXT_TONE[marketplaceMetricStatus(metricId, numeric)] : "text-slate-700"}`}>{value}</div>
+                </div>
+              ))}
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto p-3">

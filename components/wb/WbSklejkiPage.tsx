@@ -4,6 +4,7 @@ import { Copy, Link2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker, type PeriodPreset } from "@/components/ui/PeriodRangePicker";
+import { Hint } from "@/components/ui/Hint";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import {
   closedMoscowDates,
@@ -83,10 +84,16 @@ function CopyButton({ value, label }: { value: string | number; label: string })
   );
 }
 
-function Metric({ label, value, tone = "text-slate-900", title }: { label: string; value: string; tone?: string; title?: string }) {
+// Пояснение к показателю живёт в <Hint>, а не в `title`: наведения на телефоне
+// нет, и «Маржа» без расшифровки на маленьком экране означала бы что угодно.
+function Metric({ label, value, tone = "text-slate-900", hint }: { label: string; value: string; tone?: string; hint?: string }) {
   return (
     <div>
-      <div title={title} className="mb-0.5 text-[9px] uppercase leading-none tracking-wide text-slate-400">{label}</div>
+      {/* min-h — чтобы значок не сдвигал число вниз только у той ячейки, где он есть: в сетке метрики стоят рядом и должны быть на одной линии. */}
+      <div className="mb-0.5 flex min-h-3.5 items-center gap-0.5 text-[9px] uppercase leading-none tracking-wide text-slate-400">
+        <span className="min-w-0 truncate">{label}</span>
+        {hint ? <Hint label={label}>{hint}</Hint> : null}
+      </div>
       <div className={`whitespace-nowrap text-[15px] font-extrabold leading-none tabular-nums ${tone}`}>{value}</div>
     </div>
   );
@@ -128,7 +135,7 @@ function SkuCard({ group, sku, spendWindowDays, verdictVisible = true }: { group
         <Metric label="Заказы, ₽" value={sku.orders_sum_7d ? money(sku.orders_sum_7d) : "—"} />
         <Metric label="Расход" value={money(sku.adv_spend_7d)} tone={sku.adv_spend_7d > 0 && !sku.orders_sum_7d ? "text-red-600" : undefined} />
         <Metric label="ДРР" value={percent(sku.drr_7d)} tone={sku.drr_7d == null || sku.drr_7d > 10 ? "text-red-600" : undefined} />
-        <Metric label="Маржа" title="Маржа до ДРР" value={sku.margin_before_drr == null ? "—" : `${sku.margin_before_drr}%`} tone={sku.margin_before_drr != null && sku.margin_before_drr < 0 ? "text-red-600" : sku.margin_before_drr != null && sku.margin_before_drr < 15 ? "text-amber-600" : undefined} />
+        <Metric label="Маржа" hint="Маржа до ДРР: расход на рекламу в этом числе ещё не вычтен." value={sku.margin_before_drr == null ? "—" : `${sku.margin_before_drr}%`} tone={sku.margin_before_drr != null && sku.margin_before_drr < 0 ? "text-red-600" : sku.margin_before_drr != null && sku.margin_before_drr < 15 ? "text-amber-600" : undefined} />
         <Metric label="Остаток" value={fmt(sku.stock)} tone={sku.stock < 50 ? "text-red-600" : undefined} />
       </div>
 
@@ -258,7 +265,12 @@ export function WbSklejkiPage() {
               onApplyPreset={applyPreset}
               onApplyRange={(from, to) => { setDateFrom(from); setDateTo(to); }}
             />
-            <span title={`Показы, заказы, расход и ДРР берутся из РНП за выбранные закрытые дни, не длиннее ${SKLEJKI_MAX_PERIOD_DAYS} дней`} className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-medium text-violet-700">данные из РНП · показы/заказы/ДРР за {data?.period?.label ?? "период"}</span>
+            <span className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-medium text-violet-700">
+              данные из РНП · показы/заказы/ДРР за {data?.period?.label ?? "период"}
+              <Hint label="Откуда эти числа">
+                Показы, заказы, расход и ДРР берутся из РНП за выбранные закрытые дни, не длиннее {SKLEJKI_MAX_PERIOD_DAYS} дней.
+              </Hint>
+            </span>
             {shops.length > 1 ? (
               <div className="flex items-center gap-1 text-[10px]" aria-label="Фильтр кабинета">
                 <span className="text-slate-400">кабинет:</span>

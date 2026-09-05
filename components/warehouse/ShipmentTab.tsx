@@ -8,6 +8,7 @@ import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import { operationalWarehouses, warehouseKindSuffix } from "@/lib/warehouse/warehouseKind";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { Hint } from "@/components/ui/Hint";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
 import { MARKETPLACE_LABEL } from "@/lib/warehouse/cabinetChannels";
 import { newDocKey } from "@/lib/warehouse/docKey";
@@ -317,6 +318,14 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
             </button>
           ))}
         </div>
+        {/* Разница между режимами — резерв или списание прямо сейчас — жила в
+            `title` самих вкладок: на касании её не было, а цена ошибки — товар,
+            снятый с остатка раньше времени. Значок стоит рядом с переключателем
+            и объясняет оба режима разом. */}
+        <Hint label="Чем «Задание для ФФ» отличается от «Отгрузить сейчас»">
+          Задание для ФФ: товар резервируется, а списывается, когда фулфилмент нажмёт «Отгружено».
+          Отгрузить сейчас: списать сразу — товар уже физически уехал.
+        </Hint>
         <span className="text-sm text-slate-500">со склада</span>
         <select
           value={warehouseId}

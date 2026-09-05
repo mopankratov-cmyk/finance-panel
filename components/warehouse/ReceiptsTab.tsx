@@ -9,6 +9,7 @@ import { operationalWarehouses, warehouseKindSuffix } from "@/lib/warehouse/ware
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { Hint } from "@/components/ui/Hint";
 import { ReceiveModal } from "@/components/warehouse/ReceiveModal";
 import { CorrectReceiptModal } from "@/components/warehouse/CorrectReceiptModal";
 import { costNote } from "@/lib/warehouse/reasons";
@@ -405,6 +406,13 @@ export function ReceiptsTab({
                     новинка
                   </label>
                 )}
+                {/* Что значит «новинка», объясняет один значок у первой строки:
+                    флаг у всех строк один и тот же, а `title` под пальцем нем. */}
+                {canManage && index === 0 && (
+                  <Hint label="Что значит «новинка»">
+                    Товар, которым ещё не торговали: флаг остаётся на карточке для запуска в РНП.
+                  </Hint>
+                )}
                 {draft.lines.length > 1 && (
                   <button
                     onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_, i) => i !== index) })}
@@ -530,9 +538,15 @@ export function ReceiptsTab({
                         <>
                           <div className="font-medium text-slate-900">{formatNumber(Math.round(row.cost.total))} ₽</div>
                           <div className="text-xs text-slate-400">{row.cost.unit.toFixed(2)} ₽/шт</div>
+                          {/* Почему себестоимость расчётная, а не фактическая —
+                              причина у каждой партии своя, и жила она только в
+                              `title`. На касании её теперь видно нажатием. */}
                           {row.cost.basis === "estimated" && (
-                            <div className="mt-0.5 text-xs text-amber-600" title={costNote(row.cost.note) ?? undefined}>
+                            <div className="mt-0.5 flex items-center justify-end gap-1 text-xs text-amber-600" title={costNote(row.cost.note) ?? undefined}>
                               ≈ расчётная
+                              {costNote(row.cost.note) ? (
+                                <Hint label="Почему себестоимость расчётная">{costNote(row.cost.note)}</Hint>
+                              ) : null}
                             </div>
                           )}
                         </>

@@ -6,6 +6,7 @@ import { useDraft } from "@/lib/warehouse/useDraft";
 import { DraftNotice } from "@/components/warehouse/DraftNotice";
 import { formatNumber } from "@/lib/analytics/format";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { Hint } from "@/components/ui/Hint";
 import type { WriteoffRow, WriteoffsResponse } from "@/app/api/warehouse/writeoffs/route";
 import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
@@ -212,17 +213,24 @@ export function DefectsTab({
                 <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
               ))}
             </select>
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-slate-500">Дата</span>
-              <input
-                type="date"
-                value={draft.date}
-                max={todayIso()}
-                onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-                title="Когда брак обнаружен: журнал и итог месяца считаются по этой дате"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
-              />
-            </label>
+            {/* Значок стоит рядом с полем, а не внутри `label`: нажатие по
+                кнопке внутри подписи браузеры отдают самому полю. */}
+            <div className="flex items-center gap-1.5">
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-slate-500">Дата</span>
+                <input
+                  type="date"
+                  value={draft.date}
+                  max={todayIso()}
+                  onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                  title="Когда брак обнаружен: журнал и итог месяца считаются по этой дате"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
+                />
+              </label>
+              <Hint label="Что означает дата списания">
+                Когда брак обнаружен: журнал и итог месяца считаются по этой дате.
+              </Hint>
+            </div>
             <input
               value={draft.reason}
               onChange={(e) => setDraft({ ...draft, reason: e.target.value })}

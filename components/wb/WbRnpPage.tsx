@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowRight, BookOpen, CalendarDays, Check, ListOrdered, 
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ActionableError } from "@/components/ui/ActionableError";
+import { Hint } from "@/components/ui/Hint";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { Modal } from "@/components/ui/Modal";
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
@@ -1506,6 +1507,7 @@ export function WbRnpPage() {
             На узком экране кнопки уходят на свою строку и переносятся между
             собой; с sm возвращается прежний прижим вправо. */}
         <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap sm:shrink-0">
+          <span className="inline-flex items-center gap-1">
           <button
             type="button"
             disabled={!hasExactCabinet || !canManage}
@@ -1519,6 +1521,18 @@ export function WbRnpPage() {
           >
             <ListOrdered className="h-3.5 w-3.5" /> Порядок SKU{orderNmIds.length ? ` · ${orderNmIds.length}` : ""}
           </button>
+          {/* Отключённая кнопка не показывает `title` даже мышью, а на касании
+              его нет вовсе: причина запрета пропадала совсем. Значок появляется
+              только тогда, когда есть что объяснять. */}
+          {!hasExactCabinet || !canManage ? (
+            <Hint label="Почему «Порядок SKU» недоступен">
+              {!hasExactCabinet
+                ? "Порядок хранится у кабинета — выберите один кабинет, а не «все сразу»."
+                : "Менять порядок артикулов можно с правами на изменение в этом кабинете."}
+            </Hint>
+          ) : null}
+          </span>
+          <span className="inline-flex items-center gap-1">
           <button
             type="button"
             disabled={!canManage}
@@ -1530,6 +1544,14 @@ export function WbRnpPage() {
           >
             <Pencil className="h-3.5 w-3.5" /> Планирование
           </button>
+          {!canManage ? (
+            <Hint label="Почему «Планирование» недоступно">
+              {!hasExactCabinet
+                ? "План месяца хранится у кабинета — выберите один кабинет, а не «все сразу»."
+                : "Править план можно с правами на изменение в этом кабинете."}
+            </Hint>
+          ) : null}
+          </span>
           <button
             type="button"
             onClick={() => setRetryKey((key) => key + 1)}
@@ -2790,6 +2812,7 @@ function OptimaMetricRow({
             type="button"
             disabled={!canHide}
             onClick={onHide}
+            aria-label="Скрыть показатель"
             title="Скрыть показатель"
             className={`tap-hit h-4 w-7 shrink-0 rounded-full p-0.5 transition ${canHide ? "bg-[#7567e8]" : "bg-slate-200"}`}
           >
@@ -3086,7 +3109,10 @@ function ProductCell({
             ) : null}
           </div>
         </div>
-        <div className="truncate text-[10px] font-semibold text-violet-700" title={sku.art}>{sku.art}</div>
+        {/* Колонка шириной 112px обрезает длинный артикул, а обрезанный артикул
+            бесполезен: по нему товар в кабинете не найти. До lg переносим, на
+            плотном десктопе оставляем прежнюю однострочную карточку. */}
+        <div className="break-anywhere text-[10px] font-semibold text-violet-700 lg:truncate" title={sku.art}>{sku.art}</div>
         <div className="text-[9px] text-slate-400">{sku.nm}</div>
         <div className="line-clamp-2 text-[9px] leading-3 text-slate-500">{sku.name}</div>
         {tags.length ? (
@@ -3115,11 +3141,14 @@ function ProductCell({
               </span>
             ))}
             {anomalies.length > 3 ? (
-              <span
-                className="rounded bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold text-slate-600"
-                title={anomalies.slice(3).map(formatAnomalyBadge).join(", ")}
-              >
-                +{anomalies.length - 3}
+              // «+2» без списка не значит ничего, а список жил только в `title`.
+              <span className="inline-flex items-center gap-0.5">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold text-slate-600">
+                  +{anomalies.length - 3}
+                </span>
+                <Hint label="Остальные аномалии артикула">
+                  {anomalies.slice(3).map(formatAnomalyBadge).join(", ")}
+                </Hint>
               </span>
             ) : null}
           </div>
@@ -3190,8 +3219,16 @@ function MetricRow({
   return (
     <tr className="group hover:bg-violet-50/40">
       {firstCell}
-      <td className={`sticky left-28 z-10 ${rowHeight} w-[168px] min-w-[168px] border-b border-r border-slate-200 bg-white px-2 font-medium group-hover:bg-violet-50 ${groupBorder}`} title={metricHelp || undefined}>
-        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${qualityTone}`} />{metric.label}</span>
+      {/* Цветная точка качества — единственный намёк, что показатель неполный,
+          а причина («нет себестоимости», «источник устарел») жила в `title`
+          строки: на касании её не было. Пояснение относится именно к этой
+          строке, поэтому стоит в ней, а не у заголовка столбца. */}
+      <td className={`sticky left-28 z-10 ${rowHeight} w-[168px] min-w-[168px] border-b border-r border-slate-200 bg-white px-2 font-medium group-hover:bg-violet-50 ${groupBorder}`}>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${qualityTone}`} />
+          {metric.label}
+          {metricHelp ? <Hint label={`Откуда «${metric.label}»`}>{metricHelp}</Hint> : null}
+        </span>
       </td>
       <DataCell metric={metric} value={planDay} muted tall={showDeltas} heatmapEnabled={false} extraClass={groupBorder} />
       <td className={`relative ${rowHeight} w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-[#fbfcfd] px-1 text-right tabular-nums ${groupBorder}`}>

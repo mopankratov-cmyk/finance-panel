@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { Hint } from "@/components/ui/Hint";
 import type { VariantRow } from "@/app/api/warehouse/variants/route";
 import type { ProductImportResult, ProductImportPlanRow } from "@/app/api/warehouse/products/import/route";
 import { hasWildberriesSource, noWildberriesSourceReason } from "@/lib/warehouse/cabinetChannels";
@@ -370,22 +371,38 @@ export function ProductsTab({
           <input type="checkbox" checked={onlyEntity} onChange={(e) => setOnlyEntity(e.target.checked)} className="h-5 w-5 lg:h-4 lg:w-4" />
           только этого юрлица
         </label>
-        <button
-          onClick={() => void importFromWb()}
-          disabled={importing || !wbSource}
-          title={noWbReason ?? "Прочитать карточки Wildberries и заполнить размеры с баркодами. Занимает несколько минут."}
-          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-        >
-          <Download className="h-4 w-4" /> {importing ? "Читаю карточки WB…" : "Размеры из WB"}
-        </button>
-        <button
-          onClick={() => void scanCatalog(false)}
-          disabled={scanning || !wbSource}
-          title={noWbReason ?? "Найти в карточках кабинетов товары, которых нет в справочнике. Сначала покажет список."}
-          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-        >
-          <ListPlus className="h-4 w-4" /> {scanning ? "Читаю карточки…" : "Товары из карточек"}
-        </button>
+        {/* Три кнопки читают карточки маркетплейса и работают минутами — до
+            правки это знал только `title`, а на телефоне его не бывает. Кнопка
+            и значок держатся парой, чтобы при переносе не разъезжались. */}
+        <span className="inline-flex items-center gap-1.5">
+          <button
+            onClick={() => void importFromWb()}
+            disabled={importing || !wbSource}
+            title={noWbReason ?? "Прочитать карточки Wildberries и заполнить размеры с баркодами. Занимает несколько минут."}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" /> {importing ? "Читаю карточки WB…" : "Размеры из WB"}
+          </button>
+          <Hint label="Что делает «Размеры из WB»">
+            Прочитать карточки Wildberries и заполнить размеры с баркодами. Занимает несколько минут.
+          </Hint>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <button
+            onClick={() => void scanCatalog(false)}
+            disabled={scanning || !wbSource}
+            title={noWbReason ?? "Найти в карточках кабинетов товары, которых нет в справочнике. Сначала покажет список."}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <ListPlus className="h-4 w-4" /> {scanning ? "Читаю карточки…" : "Товары из карточек"}
+          </button>
+          <Hint label="Что делает «Товары из карточек»">
+            Найти в карточках кабинетов товары, которых нет в справочнике. Сначала покажет список.
+          </Hint>
+        </span>
+        {/* Кнопка и её пояснение закрыты внешней компании одним и тем же
+            условием — обёртки вокруг них нет намеренно: тест доступа читает
+            исходник и ищет здесь ровно `{!external && <button`. */}
         {!external && <button
           onClick={() => void detectOwners()}
           disabled={owners}
@@ -394,6 +411,9 @@ export function ProductsTab({
         >
           <Building2 className="h-4 w-4" /> {owners ? "Определяю…" : "Юрлица по карточкам"}
         </button>}
+        {!external && <Hint label="Что делает «Юрлица по карточкам»">
+          Прочитать карточки своих кабинетов и проставить товарам юрлицо владельца. Занимает несколько минут.
+        </Hint>}
         <button
           onClick={() => { setEditing({ id: null, draft: emptyDraft(entityId) }); setVariants([]); }}
           className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"

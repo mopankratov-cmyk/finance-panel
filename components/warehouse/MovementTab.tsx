@@ -4,6 +4,7 @@ import { ArrowRight, Printer, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { Hint } from "@/components/ui/Hint";
 import { variantLabel } from "@/lib/warehouse/variantLabel";
 import type { CatalogVariantRow } from "@/app/api/warehouse/variants/route";
 import type { StockBalancesResponse } from "@/app/api/warehouse/balances/route";
@@ -322,14 +323,24 @@ export function MovementTab({
                     }`}
                   />
                   {mode === "return" && (
-                    <input
-                      inputMode="numeric"
-                      value={line.defectQty}
-                      onChange={(e) => setLines(lines.map((item, i) => i === index ? { ...item, defectQty: e.target.value.replace(/[^\d]/g, "") } : item))}
-                      placeholder="брак"
-                      title="Сколько из вернувшегося непригодно — спишется сразу"
-                      className="min-h-11 w-24 rounded-lg border border-slate-200 px-3 text-right text-sm placeholder:text-slate-300 lg:min-h-0 lg:py-1.5"
-                    />
+                    <>
+                      <input
+                        inputMode="numeric"
+                        value={line.defectQty}
+                        onChange={(e) => setLines(lines.map((item, i) => i === index ? { ...item, defectQty: e.target.value.replace(/[^\d]/g, "") } : item))}
+                        placeholder="брак"
+                        title="Сколько из вернувшегося непригодно — спишется сразу"
+                        className="min-h-11 w-24 rounded-lg border border-slate-200 px-3 text-right text-sm placeholder:text-slate-300 lg:min-h-0 lg:py-1.5"
+                      />
+                      {/* Что «брак» списывается сразу, знал только `title` — на
+                          касании его нет. Объяснение относится ко всей графе,
+                          поэтому значок стоит один раз, у первой строки. */}
+                      {index === 0 && (
+                        <Hint label="Что такое «брак» в возврате">
+                          Сколько из вернувшегося непригодно — спишется сразу.
+                        </Hint>
+                      )}
+                    </>
                   )}
                   {lines.length > 1 && (
                     <button

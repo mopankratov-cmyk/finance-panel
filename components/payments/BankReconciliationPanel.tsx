@@ -2,6 +2,7 @@
 
 import { AlertCircle, Bot, CheckCircle2, Clock3, Eye, FileSpreadsheet, Link2, RefreshCw, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Hint } from "@/components/ui/Hint";
 import { formatMoney } from "@/lib/format";
 import type { Account } from "@/lib/types";
 
@@ -35,6 +36,11 @@ export function BankReconciliationPanel({
             <button disabled title="Станет доступно после подключения локального помощника банка" className="inline-flex min-h-11 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-400">
               <RefreshCw className="h-4 w-4" /> Сверить открытую вкладку
             </button>
+            {/* Почему кнопка серая, знал только `title`, а он не всплывает под
+                пальцем: причина отключения ставилась рядом отдельным значком. */}
+            <Hint label="Почему «Сверить открытую вкладку» недоступна">
+              Станет доступно после подключения локального помощника банка.
+            </Hint>
           </div>
         </div>
         <div className="scroll-x">

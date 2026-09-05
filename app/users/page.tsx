@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Users as UsersIcon, Plus, Trash2 } from "lucide-react";
+import { Hint } from "@/components/ui/Hint";
 
 interface U { id: string; email: string; role: string; cabinet_ids: string[]; access_cabinet_ids?: string[]; is_active: boolean }
 interface Cab { id: string; name: string; marketplace: string }
@@ -191,6 +192,9 @@ export default function UsersPage() {
                   >
                     {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
+                  {/* Почему у себя список ролей серый, объяснял только `title`;
+                      на телефоне это выглядело поломкой экрана. */}
+                  {u.id === me ? <Hint label="Почему роль нельзя изменить">Свою роль менять нельзя.</Hint> : null}
                   <button onClick={() => patch(u.id, { is_active: !u.is_active })} className="inline-flex min-h-11 items-center rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 lg:min-h-0 lg:px-2">{u.is_active ? "Выключить" : "Включить"}</button>
                   {accessCabs(u).length ? (
                     <button

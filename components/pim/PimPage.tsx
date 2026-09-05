@@ -10,6 +10,7 @@ import { useCategoryMap } from "@/lib/useCategoryMap";
 import { LoadingBanner, SkeletonKpiRow, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { formatTime } from "@/lib/analytics/format";
 import { CoverTestModal } from "@/components/pim/CoverTestModal";
+import { Hint } from "@/components/ui/Hint";
 import type { PimRow } from "@/lib/wb/cards";
 import type { CoverTestRow } from "@/app/api/cover-test/route";
 
@@ -99,8 +100,15 @@ export function PimPage() {
     { key: "coverTest", label: "", render: (r) => (
       r.photos.length >= 2 && r.cabinetId ? (
         r.hasVideo ? (
-          <span title="У карточки есть видео — тест обложки отключён (не проверено, сохраняет ли WB видео после смены фото)" className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-slate-300">
-            <Images className="h-3 w-3" /> Тест обложки
+          // Почему у этой карточки тест обложки серый, знал только `title`, а
+          // под пальцем его нет: причина стоит рядом отдельным значком.
+          <span className="inline-flex items-center gap-1">
+            <span title="У карточки есть видео — тест обложки отключён (не проверено, сохраняет ли WB видео после смены фото)" className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-slate-300">
+              <Images className="h-3 w-3" /> Тест обложки
+            </span>
+            <Hint label="Почему тест обложки отключён">
+              У карточки есть видео — тест обложки отключён: не проверено, сохраняет ли WB видео после смены фото.
+            </Hint>
           </span>
         ) : (
           <button onClick={() => setTestRow(r)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-600">
