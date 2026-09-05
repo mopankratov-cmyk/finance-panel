@@ -49,7 +49,21 @@ test("на запись уходит большой размер, а не вит
   // Писать big значило бы необратимо срезать галерею вдвое.
   assert.match(cards, /interface RawPhoto \{ hq\?: string;/);
   assert.match(cards, /photos: \(found\.photos \?\? \[\]\)\.map\(\(p\) => p\.hq \|\| p\.big \|\| ""\)\.filter\(Boolean\)/);
-  assert.match(cards, /const photosBig = \(c\.photos \|\| \[\]\)\.map\(\(p\) => p\.hq \|\| p\.big \|\| p\.c246x328 \|\| ""\)\.filter\(Boolean\);/);
+
+  // 05.09.2026 пути записи и чтения РАЗОШЛИСЬ, и это намеренно.
+  //
+  // Замер по двадцати карточкам: `hq` отдаёт 404 у девятнадцати, а тот же кадр
+  // через `/big/` открывается. Для ЧИТАЮЩЕГО пути (библиотека контента,
+  // варианты CTR-теста, генерация) это значило, что наружу уходит мёртвый
+  // адрес: миниатюры живут по третьему пути, поэтому на экране всё выглядело
+  // целым, а ломалось у того, кто пробовал скачать.
+  //
+  // Для ПИШУЩЕГО пути вывод обратный, и он выше строкой: media/save необратим,
+  // big там срезал бы галерею вдвое. Поэтому чтение берёт big, запись — hq, и
+  // сторож следит, чтобы их снова не свели к одному правилу.
+  assert.match(cards, /const photosBig = \(c\.photos \|\| \[\]\)\.map\(wbPhotoBig\)\.filter\(Boolean\);/);
+  const photoUrl = read("../lib/wb/photoUrl.ts");
+  assert.match(photoUrl, /return photo\.big \|\| photo\.hq/, "читающий путь предпочитает big");
   const modal = read("../components/pim/CoverTestModal.tsx");
   assert.match(modal, /photoIndex: picked,/);
   assert.match(modal, /photoName: row\.photos\[picked\]\?\.split\("\/"\)\.pop\(\)/);

@@ -1,6 +1,7 @@
 // Карточки товаров кабинета(ов) через WB Content API: article + nm_id + name + цвет + ниша(subject).
 import { getActiveWbCabinets, getWbCabinetSources } from "@/lib/wb/cabinetTokens";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { wbPhotoBig, wbPhotoThumb } from "@/lib/wb/photoUrl";
 import { allowsProduct } from "@/lib/wb/productScope";
 import type { ProductReadinessStatus } from "@/lib/wb/productReadiness";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
@@ -10,6 +11,9 @@ const CARDS_URL = "https://content-api.wildberries.ru/content/v2/get/cards/list"
 
 interface Characteristic { name?: string; value?: string | string[] }
 interface RawDimensions { length?: number; width?: number; height?: number; weightBrutto?: number }
+// WB отдаёт шесть размеров одного фото. Какой из них брать — не вопрос вкуса:
+// у hq на CDN чаще всего нет файла, см. lib/wb/photoUrl.ts.
+// Историческая заметка ниже оставлена, чтобы выбор не откатили обратно.
 // WB отдаёт шесть размеров одного фото. hq (1800×2400) вдвое больше big
 // (900×1200) — и именно hq обязан уходить в запись и в генерацию: media/save
 // заменяет набор целиком, а оригинала у WB нет вовсе.
@@ -101,8 +105,8 @@ export async function fetchCabinetPimRows(cabinetId: string | null): Promise<Pim
         if (!allowsProduct(src.productScope, c.nmID, c.brand)) continue;
         // Два массива, а не один: миниатюры для сетки превью и большие версии
         // для всего, что уходит наружу — генерации и записи на карточку.
-        const photos = (c.photos || []).map((p) => p.c246x328 || p.big || "").filter(Boolean);
-        const photosBig = (c.photos || []).map((p) => p.hq || p.big || p.c246x328 || "").filter(Boolean);
+        const photos = (c.photos || []).map(wbPhotoThumb).filter(Boolean);
+        const photosBig = (c.photos || []).map(wbPhotoBig).filter(Boolean);
         rows.push({
           nmId: c.nmID,
           imtId: Number.isFinite(c.imtID) ? Number(c.imtID) : c.nmID,
@@ -303,6 +307,12 @@ export async function fetchCardForWrite(token: string, nmId: number): Promise<Ca
       return {
         found: true,
         hasVideo: hasVideoOn(found),
+        // ЗДЕСЬ hq ОБЯЗАТЕЛЕН, в отличие от читающего пути выше.
+        // Этот массив уходит в media/save, а он заменяет набор медиа целиком и
+        // необратимо: записать big (900×1200) значило бы навсегда срезать
+        // галерею вдвое. То, что hq на CDN часто отсутствует, здесь работает
+        // предохранителем — WB не заберёт мёртвый адрес и запись не состоится.
+        // Отказ дороже неудобства, потому что откатить его нечем.
         photos: (found.photos ?? []).map((p) => p.hq || p.big || "").filter(Boolean),
       };
     }
