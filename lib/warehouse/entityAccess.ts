@@ -43,7 +43,7 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
   // отвечал 3–7 с при одном товаре, то есть время уходило не на данные, а на
   // круги к базе. Третий запрос (имена кабинетов) зависит от второго и остаётся
   // после.
-  const [entitiesResult, linksResult] = await Promise.all([
+  const [entitiesResult, linksResult, cabinetsResult] = await Promise.all([
     db
       .from("legal_entities")
       .select("id, name, inn, kind, is_active, note")
@@ -57,6 +57,11 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
       .select("legal_entity_id, cabinet_id, relation")
       .order("relation")
       .order("cabinet_id"),
+    // Имена кабинетов берём ЦЕЛИКОМ, а не выборкой по id из связей: выборка
+    // зависела бы от предыдущего запроса и стоила третьего круга к базе — а
+    // круг из fra1 это полсекунды на КАЖДОМ запросе склада. Кабинетов у нас
+    // единицы, и лишние строки дешевле лишнего ожидания.
+    db.from("wb_cabinets").select("id, name, marketplace"),
   ]);
   if (entitiesResult.error) {
     const missing = ["42P01", "42703", "PGRST204", "PGRST205"].includes(entitiesResult.error.code ?? "");
@@ -71,16 +76,12 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
 
   // Имена кабинетов отдаются отсюда же: оператору склада незачем открывать
   // кабинетный API, где живут маскированные токены.
-  const cabinetIds = [...new Set((linksResult.data ?? []).map((link) => String(link.cabinet_id)))];
   const cabinetInfo = new Map<string, { name: string; marketplace: "wb" | "ozon" }>();
-  if (cabinetIds.length > 0) {
-    const named = await db.from("wb_cabinets").select("id, name, marketplace").in("id", cabinetIds);
-    for (const row of named.data ?? []) {
-      cabinetInfo.set(String(row.id), {
-        name: String(row.name ?? ""),
-        marketplace: row.marketplace === "ozon" ? "ozon" : "wb",
-      });
-    }
+  for (const row of cabinetsResult.data ?? []) {
+    cabinetInfo.set(String(row.id), {
+      name: String(row.name ?? ""),
+      marketplace: row.marketplace === "ozon" ? "ozon" : "wb",
+    });
   }
 
   const byEntity = new Map<string, EntityCabinetLink[]>();

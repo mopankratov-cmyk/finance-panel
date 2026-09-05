@@ -127,11 +127,22 @@ test("на телефоне из модуля можно выйти и верн�
   assert.match(mobile, /href="\/"/, "ссылка на все модули");
 });
 
-/** resolveEntity зовут ВСЕ роуты склада до собственной работы: лишний
- *  последовательный круг здесь платят все экраны. */
-test("справочник юрлиц и связи читаются одним кругом", () => {
+/** resolveEntity зовут ВСЕ роуты склада до собственной работы: каждый лишний
+ *  последовательный круг здесь (≈0,5 с из fra1) платят все экраны. */
+test("юрлица, связи и имена кабинетов читаются одним кругом", () => {
   const source = read("../lib/warehouse/entityAccess.ts");
-  assert.match(source, /const \[entitiesResult, linksResult\] = await Promise\.all\(\[/);
+  assert.match(source, /const \[entitiesResult, linksResult, cabinetsResult\] = await Promise\.all\(\[/);
+  assert.doesNotMatch(source, /await db\.from\("wb_cabinets"\)/, "имена кабинетов не должны стоить второго круга");
+});
+
+/** Между «запросы» и «сборка» пряталось пять последовательных запросов —
+ *  1,0–2,3 с по замеру ?timings=1, больше всего остального экрана вместе. */
+test("вторая волна запросов остатка идёт одним кругом", () => {
+  const source = read("../app/api/warehouse/stock/route.ts");
+  assert.match(source, /const \[allowedWarehouses, draftLines, batches, defaults\] = await Promise\.all\(\[/);
+  assert.match(source, /mark\("wave2"\)/);
+  assert.doesNotMatch(source, /const draftLines = await chunked/, "остался последовательный запрос");
+  assert.doesNotMatch(source, /const batches = await chunked/, "остался последовательный запрос");
 });
 
 /** Пересчёт вторым человеком уходил в тишину: сервер отвечал saved:0 без

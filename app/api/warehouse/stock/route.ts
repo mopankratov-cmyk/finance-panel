@@ -252,46 +252,60 @@ export async function GET(request: NextRequest) {
   if (warehousesResult.error) return dbFail(warehousesResult.error);
 
   const warehouses = (warehousesResult.data ?? []) as { id: string; name: string; kind: string | null; is_active: boolean | null }[];
-  // Список складов для колонок и разбивки: своим он общий, внешней компании —
-  // только её собственные, иначе чужие названия видны на первом же экране.
+
+  // Черновики заданий: их строки — резерв и колонка «размещено, не отгружено».
+  const draftIds = docs.filter((doc) => doc.status === "draft").map((doc) => String(doc.id));
+
+  /**
+   * Вторая волна — ОДНИМ кругом.
+   *
+   * Эти четыре запроса зависят от первой пачки, но не друг от друга. Пока они
+   * шли подряд, замер `?timings=1` показывал 1,0–2,3 с между «запросы» и
+   * «сборка» — почти всё время экрана уходило туда, а не на данные. Круг до
+   * Supabase из fra1 стоит около полусекунды: пять последовательных — это
+   * две с половиной секунды ожидания на ровном месте.
+   *
+   * Список складов для колонок и разбивки: своим он общий, внешней компании —
+   * только её собственные, иначе чужие названия видны на первом же экране.
+   */
   const session = await getServerSession();
-  const allowedWarehouses = await visibleWarehouseIds(db, {
-    external: isExternalSeller(session?.role),
-    entityIds: [entityId],
-    actor: session?.email ?? null,
-  });
+  const [allowedWarehouses, draftLines, batches, defaults] = await Promise.all([
+    visibleWarehouseIds(db, {
+      external: isExternalSeller(session?.role),
+      entityIds: [entityId],
+      actor: session?.email ?? null,
+    }),
+    // До миграции таблиц заданий и шапок нет. Это не повод прятать остаток:
+    // вкладка обязана открываться на старой базе, просто без резерва и номеров.
+    chunked<DbDocLine>(
+      draftIds,
+      (chunk) => db.from("stock_doc_lines").select("doc_id, variant_id, product_id, qty").in("doc_id", chunk),
+      100,
+    ),
+    // Номера партий — из шапок; у партии без шапки номера нет, и это нормально.
+    chunked<{ batch_id: string; number: string | null }>(
+      receipts.map((row) => String(row.batch_id)),
+      (chunk) => db.from("stock_receipt_batches").select("batch_id, number").in("batch_id", chunk),
+    ),
+    // Строка приёмки без размера относится к базовому варианту товара — так же,
+    // как её проводит post_receipt_batch.
+    chunked<{ id: string; product_id: string }>(
+      receipts.filter((row) => !row.variant_id && row.product_id).map((row) => String(row.product_id)),
+      (chunk) => db.from("product_variants").select("id, product_id").in("product_id", chunk).eq("is_default", true),
+    ),
+  ]);
+  mark("wave2");
+  if (draftLines.error && !isMissingMigration(draftLines.error.code)) return dbFail(draftLines.error);
+  if (batches.error && !isMissingMigration(batches.error.code)) return dbFail(batches.error);
+  if (defaults.error) return dbFail(defaults.error);
+  const batchNumbers = new Map(batches.rows.map((row) => [String(row.batch_id), row.number ? String(row.number) : null]));
+  const defaultVariant = new Map(defaults.rows.map((row) => [String(row.product_id), String(row.id)]));
+
   const activeWarehouses = warehouses
     .filter((row) => row.is_active !== false)
     .filter((row) => !allowedWarehouses || allowedWarehouses.has(String(row.id)))
     .map((row) => ({ id: String(row.id), name: String(row.name), kind: parseWarehouseKind(row.kind) }));
 
-  // Черновики заданий: их строки — резерв и колонка «размещено, не отгружено».
-  const draftIds = docs.filter((doc) => doc.status === "draft").map((doc) => String(doc.id));
-  // До миграции таблиц заданий и шапок нет. Это не повод прятать остаток:
-  // вкладка обязана открываться на старой базе, просто без резерва и номеров.
-  const draftLines = await chunked<DbDocLine>(
-    draftIds,
-    (chunk) => db.from("stock_doc_lines").select("doc_id, variant_id, product_id, qty").in("doc_id", chunk),
-    100,
-  );
-  if (draftLines.error && !isMissingMigration(draftLines.error.code)) return dbFail(draftLines.error);
-
-  // Номера партий — из шапок; у партии без шапки номера нет, и это нормально.
-  const batches = await chunked<{ batch_id: string; number: string | null }>(
-    receipts.map((row) => String(row.batch_id)),
-    (chunk) => db.from("stock_receipt_batches").select("batch_id, number").in("batch_id", chunk),
-  );
-  if (batches.error && !isMissingMigration(batches.error.code)) return dbFail(batches.error);
-  const batchNumbers = new Map(batches.rows.map((row) => [String(row.batch_id), row.number ? String(row.number) : null]));
-
-  // Строка приёмки без размера относится к базовому варианту товара — так же,
-  // как её проводит post_receipt_batch.
-  const defaults = await chunked<{ id: string; product_id: string }>(
-    receipts.filter((row) => !row.variant_id && row.product_id).map((row) => String(row.product_id)),
-    (chunk) => db.from("product_variants").select("id, product_id").in("product_id", chunk).eq("is_default", true),
-  );
-  if (defaults.error) return dbFail(defaults.error);
-  const defaultVariant = new Map(defaults.rows.map((row) => [String(row.product_id), String(row.id)]));
 
   const acc = new Map<string, Accumulator>();
   const at = (variantId: string): Accumulator => {
