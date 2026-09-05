@@ -48,3 +48,24 @@ test("у каждого экрана задан ключ сброса", () => {
   assert.match(read("../components/wb/ads/WbAdControlPage.tsx"), /useKeepAliveTabs<TabId>\(tab, cabinetId\)/);
   assert.match(read("../components/supplies/SuppliesPage.tsx"), /useKeepAliveTabs<Tab>\(tab, cabId\)/);
 });
+
+/**
+ * Раз вкладки теперь остаются смонтированными, заглушка поверх уже показанных
+ * данных стала вреднее вдвойне: «Обновить» на одной вкладке гасило бы вид на
+ * всех. Показываем прежнее, пока едет новое.
+ */
+test("заглушка не подменяет уже показанные данные", () => {
+  const guards = {
+    "../components/warehouse/ReceiptsTab.tsx": "if (loading && rows.length === 0) return",
+    "../components/warehouse/MovesTab.tsx": "if (loading && rows.length === 0) return",
+    "../components/warehouse/MovementTab.tsx": "if (loading && !balances) return",
+    "../components/warehouse/KizTab.tsx": "if (loading && !summary) return",
+    "../components/warehouse/DocsTab.tsx": "if (loading && !data) return",
+    "../components/warehouse/BalancesTab.tsx": "if (loading && !data) return",
+  };
+  for (const [file, guard] of Object.entries(guards)) {
+    const source = read(file);
+    assert.ok(source.includes(guard), `${file}: ожидал «${guard}»`);
+    assert.doesNotMatch(source, /if \(loading\) return </, `${file}: осталась безусловная заглушка`);
+  }
+});
