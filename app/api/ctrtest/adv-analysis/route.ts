@@ -4,8 +4,8 @@ import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { requireApiSession } from "@/lib/auth/apiGuard";
-import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { loadCtrProductTotals } from "@/lib/ctrtest/productTotals";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -65,10 +65,11 @@ export async function GET(request: NextRequest) {
       .order("date", { ascending: true })
       .order("nm_id", { ascending: true })
       .range(from, to)), { label: "CTR-тест: воронка по дням", maxPages: 100 }),
-    loadRnpReportRows<RpcTotal>(db, cabinetId, {
-      allowedNmIds,
-      label: "CTR-тест: товары WB",
-    }),
+    // Артикул и остаток — прямыми выборками, а не агрегатом rnp_report: тот
+    // считал заказы и выкупы за четыре периода ради двух полей и на крупном
+    // кабинете падал по серверному statement timeout. Подробности и почему
+    // кэш здесь не лечит — в lib/ctrtest/productTotals.ts.
+    loadCtrProductTotals(db, cabinetId, allowedNmIds),
   ]);
 
   const acc = new Map<number, { views: number; clicks: number; spent: number; os: number }>();

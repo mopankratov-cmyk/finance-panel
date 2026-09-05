@@ -73,7 +73,6 @@ test("user-facing RNP consumers use paged loaders instead of direct RPC calls", 
   const critical = [
     "../app/api/trends/route.ts",
     "../app/api/adverts/list/route.ts",
-    "../app/api/ctrtest/adv-analysis/route.ts",
     "../app/api/abc/route.ts",
     "../app/api/design/prices/route.ts",
     "../app/api/lab/product-image/route.ts",
@@ -93,11 +92,30 @@ test("user-facing RNP consumers use paged loaders instead of direct RPC calls", 
     "../lib/agent/rules.ts",
   ];
 
+  // Роуты, которым агрегат РНП не нужен ВОВСЕ. Требовать от них загрузчик
+  // нельзя — они его не зовут; но запрет на голый `.rpc` остаётся в силе, иначе
+  // «дешёвый» источник однажды тихо вернётся к тяжёлому.
+  //
+  // `ctrtest/adv-analysis` попал сюда 05.09.2026: ему от rnp_report нужны были
+  // только артикул и остаток, а платил он полным агрегатом по четырём периодам
+  // и на кабинете «Оптима» отдавал 500 по серверному statement timeout
+  // (33,5 с). После перехода на прямые выборки — 200 за 3,6 с.
+  const rpcFree = [
+    "../app/api/ctrtest/adv-analysis/route.ts",
+  ];
+
   for (const path of critical) {
     const source = await readFile(new URL(path, import.meta.url), "utf8");
     assert.doesNotMatch(source, /\.rpc\("rnp_report"/, path);
     assert.doesNotMatch(source, /\.rpc\("rnp_daily_sku"/, path);
     assert.match(source, /loadRnp(?:Report|DailySku)Rows/, path);
+  }
+
+  for (const path of rpcFree) {
+    const source = await readFile(new URL(path, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /\.rpc\("rnp_report"/, path);
+    assert.doesNotMatch(source, /\.rpc\("rnp_daily_sku"/, path);
+    assert.doesNotMatch(source, /loadRnp(?:Report|DailySku)Rows/, path);
   }
 });
 
