@@ -132,3 +132,53 @@ test("замер включает авторизацию, а не начинае
   assert.ok(timer > 0 && gate > 0);
   assert.ok(timer < gate, "секундомер обязан стартовать до проверки сессии");
 });
+
+/**
+ * Колонки карточки кампании наезжали друг на друга: элементы верхней строки
+ * все `shrink-0`, а правая колонка была уже своего содержимого — при
+ * выравнивании по правому краю лишнее уходило ВЛЕВО, поверх названия товара.
+ */
+test("строка кампании не даёт колонкам наезжать", () => {
+  const source = read("../components/wb/WbAdvertsPage.tsx");
+  assert.match(source, /<div className="flex flex-wrap items-center gap-x-1\.5 gap-y-1">/, "бейджи переносятся");
+  assert.match(source, /w-\[148px\] shrink-0 overflow-hidden text-right/, "правая колонка не выливается за край");
+});
+
+/**
+ * Действия по кампании лежали ПОСЛЕ посуточной таблицы: чтобы нажать «Пауза»,
+ * человек пролистывал два экрана метрик и тридцать строк статистики.
+ */
+test("действия по кампании стоят под шапкой, а не в конце", () => {
+  const source = read("../components/wb/WbAdvertsPage.tsx");
+  const header = source.indexOf("Тесты CTR по этому артикулу");
+  const actions = source.indexOf("{singleCabinet && cabinetMoney ? (", header);
+  const table = source.indexOf('<table className="w-full min-w-[640px]', header);
+  assert.ok(header > 0 && actions > 0 && table > 0);
+  assert.ok(actions < table, "действия обязаны стоять выше посуточной таблицы");
+});
+
+/**
+ * В галерее CTR-теста целый ряд плиток был пустыми серыми прямоугольниками с
+ * замком: у этих записей каталога вместо адреса записан путь на Яндекс.Диске —
+ * ни показать, ни отдать в тест. Место занимали, не сообщая ничего.
+ */
+test("галерея контента не показывает то, что нечем нарисовать", () => {
+  const source = read("../components/wb/ctr/ContentPicker.tsx");
+  assert.match(source, /items\.filter\(\(item\) => item\.usability !== "unresolved" && item\.usability !== "missing"\)/);
+  assert.match(source, /Ещё \{hidden\}/, "скрытое считаем вслух, а не молча");
+  assert.match(source, /\{shown\.map\(\(item\) => \{/);
+});
+
+test("своё фото можно загрузить и убрать", () => {
+  const source = read("../components/wb/ctr/ContentPicker.tsx");
+  assert.match(source, /\/api\/content\/upload/);
+  assert.match(source, /isPanelUpload\(item\.url\)/, "корзина только на своих загрузках");
+  assert.match(source, /window\.confirm/, "удаление файла необратимо — спрашиваем");
+
+  const route = read("../app/api/content/upload/route.ts");
+  assert.match(route, /hasCabinetAccess\(cabinetId\)/, "чужой кабинет");
+  assert.match(route, /if \(!isPanelUpload\(target\)\)/, "чужие файлы удалять нельзя");
+  assert.match(route, /target\.includes\(`\/\$\{PREFIX\}\/\$\{cabinetId\}\/`\)/, "по чужой ссылке файл соседа не снести");
+  // Осиротевший файл в бакете безвреден, битая ссылка в библиотеке — нет.
+  assert.ok(route.indexOf('from("content_assets").delete()') < route.indexOf("storage.from(BUCKET).remove([path])", route.indexOf('from("content_assets").delete()')));
+});
