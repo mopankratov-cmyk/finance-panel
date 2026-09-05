@@ -26,6 +26,24 @@ export interface AdvertProfitInput {
    * там не появлялась никогда.
    */
   dataCadenceHours?: number;
+  /**
+   * Свежее окно — последние закрытые дни отдельно от основного расчёта.
+   *
+   * Основное окно расчёта — 14 дней, и внутри него выручка и расход ложатся в
+   * один котёл. Пока кампания работает ровно, это то, что нужно: короткое окно
+   * шумит. Но котёл умеет врать в одну конкретную сторону. Живой пример
+   * 05.09.2026, кампания 39112979: за 14 дней расход 2 059 ₽ и выручка
+   * 23 338 ₽ — ДРР 8,8% при пороге 25,4%, «можно поднять». А вся выручка
+   * пришла в два дня, которые стоили вместе 2 ₽; 96% расхода легло на дни с
+   * нулём. Закрытая неделя у этой же кампании — 2 022 ₽ расхода и ноль
+   * атрибутированной выручки, и панель честно рисовала «ДРР 7д ∞» красным в
+   * той же строке, где зелёным советовала поднять ставку.
+   *
+   * Поэтому свежее окно приходит сюда отдельно и работает как вето: оно не
+   * назначает действий, оно снимает совет «поднять», когда сегодняшняя правда
+   * ему противоречит. Пусто — расчёт идёт как раньше.
+   */
+  recent?: { days: number; spent: number; revenue: number };
 }
 
 export interface AdvertProfitGuardrail {
@@ -127,6 +145,11 @@ export function calculateAdvertProfitGuardrail(input: AdvertProfitInput): Advert
   const currentRoas = input.spent > 0 ? r1(input.revenue / input.spent) : null;
   const profitAfterAds = r0(input.revenue * contributionPct - input.spent);
 
+  // Свежее окно молчит про выручку, хотя деньги в нём тратились. Считаем один
+  // раз здесь: ниже это вето для «поднять», и только для него — на «снизить» и
+  // «остановить» оно не влияет, там свои основания.
+  const staleWin = Boolean(input.recent && input.recent.spent > 0 && input.recent.revenue <= 0);
+
   let action: AdvertRecommendationAction = "hold";
   let budgetChangePct = 0;
   let reason = "Текущий расход находится внутри безопасного диапазона маржи и остатка.";
@@ -147,7 +170,14 @@ export function calculateAdvertProfitGuardrail(input: AdvertProfitInput): Advert
   } else if (currentDrr != null && (currentDrr > breakEvenDrr * 1.1 || profitAfterAds < 0)) {
     action = "decrease";
     budgetChangePct = -20;
-    reason = `ДРР ${currentDrr}% выше безопасного ${breakEvenDrr}% или реклама уже съедает вклад в прибыль.`;
+    // Условие сработало по одной из двух причин, и называть надо ту, которая
+    // сработала. Прежний текст пересказывал само «или» — и на кампании, где
+    // ДРР упёрся в порог, а не превысил его, получалось «ДРР 26.7% выше
+    // безопасного 26.7%». Человек читает это как поломку панели, потому что
+    // это и есть поломка: утверждение, которое противоречит своим же числам.
+    reason = currentDrr > breakEvenDrr * 1.1
+      ? `ДРР ${currentDrr}% заметно выше безопасного ${breakEvenDrr}%.`
+      : `ДРР ${currentDrr}% вплотную к безубыточному ${breakEvenDrr}%: реклама съедает весь вклад в прибыль (${profitAfterAds.toLocaleString("ru-RU")} ₽ за период).`;
   } else if (
     currentDrr != null
     && currentDrr < breakEvenDrr * 0.65
@@ -157,9 +187,19 @@ export function calculateAdvertProfitGuardrail(input: AdvertProfitInput): Advert
     && confidence.label === "high"
     && input.spent > 0
   ) {
-    action = "increase";
-    budgetChangePct = 15;
-    reason = `ДРР заметно ниже break-even ${breakEvenDrr}%, запас позволяет аккуратный рост.`;
+    if (staleWin) {
+      // Все условия роста выполнены по большому окну, и все они посчитаны по
+      // выручке, которой в свежем окне нет. Отказываемся от совета, а не
+      // выдумываем встречный: «снизить» здесь было бы таким же выводом из
+      // ничего. Держим и говорим, почему.
+      action = "hold";
+      budgetChangePct = 0;
+      reason = `За последние ${input.recent!.days} закрытых дней кампания потратила ${r0(input.recent!.spent).toLocaleString("ru-RU")} ₽ без атрибутированной выручки. ДРР ${currentDrr}% за большое окно ниже порога ${breakEvenDrr}%, но держится на выручке прошлых дней — поднимать ставку не на чем.`;
+    } else {
+      action = "increase";
+      budgetChangePct = 15;
+      reason = `ДРР заметно ниже break-even ${breakEvenDrr}%, запас позволяет аккуратный рост.`;
+    }
   }
 
   const spendDelta = input.spent * Math.abs(budgetChangePct) / 100;

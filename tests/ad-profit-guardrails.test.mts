@@ -128,3 +128,98 @@ test("before and after comparison requires two days on each side", () => {
   assert.equal(comparison.after.drr, 8.5);
   assert.equal(comparison.drrDelta, -2.5);
 });
+
+/**
+ * Свежее окно как вето для «поднять».
+ *
+ * Числа взяты с живого кабинета 05.09.2026, кампания 39112979: за 14 дней
+ * расход 2 059 ₽ и выручка 23 338 ₽, но вся выручка пришла в два дня, стоившие
+ * вместе 2 ₽, а закрытая неделя — 2 022 ₽ расхода при нуле атрибутированной
+ * выручки. Строка списка показывала красное «ДРР 7д ∞» и зелёное «Можно
+ * поднять» одновременно.
+ */
+const staleWinCase = {
+  price: 1_000,
+  cost: 400,
+  revenue: 23_338,
+  spent: 2_059,
+  commissionPct: 20,
+  acquiringPct: 2,
+  extraPct: 3,
+  taxPct: 7,
+  stock: 100,
+  dailyUnits: 2,
+  attributionCompatible: true,
+  dataAgeHours: 1,
+};
+
+test("«поднять» снимается, если закрытая неделя — расход без выручки", () => {
+  const withoutRecent = calculateAdvertProfitGuardrail(staleWinCase);
+  assert.equal(withoutRecent.action, "increase", "без свежего окна расчёт прежний");
+
+  const withRecent = calculateAdvertProfitGuardrail({
+    ...staleWinCase,
+    recent: { days: 7, spent: 2_022, revenue: 0 },
+  });
+  assert.equal(withRecent.action, "hold");
+  assert.equal(withRecent.budgetChangePct, 0);
+  assert.match(withRecent.reason, /7 закрытых дней/);
+  assert.ok(withRecent.reason.includes(`${(2_022).toLocaleString("ru-RU")} ₽`), "сумма расхода читается как деньги, а не как год");
+});
+
+test("свежее окно с выручкой рост не отменяет", () => {
+  const result = calculateAdvertProfitGuardrail({
+    ...staleWinCase,
+    recent: { days: 7, spent: 1_000, revenue: 12_000 },
+  });
+  assert.equal(result.action, "increase");
+});
+
+test("вето не трогает «снизить» и «остановить»", () => {
+  const outOfStock = calculateAdvertProfitGuardrail({
+    ...staleWinCase,
+    stock: 0,
+    recent: { days: 7, spent: 2_022, revenue: 0 },
+  });
+  assert.equal(outOfStock.action, "pause", "кончившийся товар важнее любого окна");
+});
+
+test("причина у «снизить» называет сработавшую половину условия, а не обе", () => {
+  // ДРР упирается в порог, но не превышает его с запасом: раньше текст
+  // утверждал «ДРР 26.7% выше безопасного 26.7%» — числа спорили сами с собой.
+  const atBreakEven = calculateAdvertProfitGuardrail({
+    price: 1_000,
+    cost: 400,
+    revenue: 100_000,
+    spent: 28_100,
+    commissionPct: 20,
+    acquiringPct: 2,
+    extraPct: 3,
+    taxPct: 7,
+    stock: 100,
+    dailyUnits: 2,
+    attributionCompatible: true,
+    dataAgeHours: 1,
+  });
+  assert.equal(atBreakEven.action, "decrease");
+  assert.ok(atBreakEven.profitAfterAds != null && atBreakEven.profitAfterAds < 0);
+  assert.doesNotMatch(atBreakEven.reason, / или /, "«или» пересказывает условие вместо ответа");
+  assert.match(atBreakEven.reason, /вплотную/);
+
+  const wayAbove = calculateAdvertProfitGuardrail({
+    price: 1_000,
+    cost: 400,
+    revenue: 100_000,
+    spent: 50_000,
+    commissionPct: 20,
+    acquiringPct: 2,
+    extraPct: 3,
+    taxPct: 7,
+    stock: 100,
+    dailyUnits: 2,
+    attributionCompatible: true,
+    dataAgeHours: 1,
+  });
+  assert.equal(wayAbove.action, "decrease");
+  assert.match(wayAbove.reason, /заметно выше/);
+});

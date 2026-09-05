@@ -6,6 +6,7 @@ import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
 import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
+import { decideCampaignSelection } from "@/lib/adverts/campaignSelection";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
 import { withPlural } from "@/lib/ozon/plural";
 import { useCategoryMap } from "@/lib/useCategoryMap";
@@ -565,8 +566,16 @@ export function WbAdvertsPage() {
    * показывается отдельной строкой над списком.
    */
   useEffect(() => {
-    const known = baseRows.some(({ campaign }) => campaign.id === selectedId);
-    if (!known) setSelectedId(rows[0]?.campaign.id ?? null);
+    // Решение вынесено в lib/adverts/campaignSelection.ts — там же его тест:
+    // отличить «список ещё не приехал» от «такой кампании нет» глазами можно
+    // только на живом кабинете и только в первые двадцать секунд загрузки.
+    const decision = decideCampaignSelection({
+      allIds: baseRows.map(({ campaign }) => campaign.id),
+      visibleIds: rows.map(({ campaign }) => campaign.id),
+      selectedId,
+    });
+    if (decision.kind === "select") setSelectedId(decision.campaignId);
+    if (decision.kind === "clear") setSelectedId(null);
   }, [baseRows, rows, selectedId, setSelectedId]);
 
   /**
@@ -798,6 +807,35 @@ export function WbAdvertsPage() {
           {view === "phrases" ? <AdClustersTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} /> : null}
           {view === "rules" ? <AdRulesTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} /> : null}
           {view === "log" ? <AdJournalTab cabinetId={cabinetId as string} advertId={journalAdvertId} onClearAdvert={() => setJournalAdvertId(null)} /> : null}
+        </div>
+      ) : view !== "campaigns" ? (
+        /*
+          «Все кабинеты» + раздел, который работает по одному, — это была пустая
+          страница. Кнопки разделов в этом режиме заблокированы, но выбранный
+          раздел остаётся выбранным: достаточно переключить кабинет на «все»
+          или прийти по ссылке с ?view=rules, и модуль показывает белое поле без
+          единого слова. Пустой экран человек читает как поломку, а не как
+          ограничение, — и правильно делает, потому что отличить одно от другого
+          ему нечем.
+        */
+        <div className="px-2 py-3 sm:px-6">
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-6 text-center">
+            <div className="text-[13px] font-semibold text-slate-700">
+              Раздел «{MODULE_VIEWS.find((item) => item.value === view)?.label ?? "этот"}» работает по одному кабинету
+            </div>
+            <p className="mx-auto mt-1 max-w-[520px] text-[11px] leading-4 text-slate-500">
+              Фразы, автоправила и журнал действий привязаны к ключу Продвижения конкретного кабинета: у каждого свои
+              кампании, свои ставки и свой журнал. Выберите кабинет в переключателе сверху — или вернитесь к кампаниям,
+              они показываются и по всем сразу.
+            </p>
+            <button
+              type="button"
+              onClick={() => setView("campaigns")}
+              className="mt-3 min-h-8 rounded-lg bg-slate-800 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-slate-700"
+            >
+              К кампаниям
+            </button>
+          </div>
         </div>
       ) : null}
 

@@ -507,6 +507,11 @@ export async function GET(request: NextRequest) {
       attributionCompatible,
       dataAgeHours,
       dataCadenceHours: ADVERT_DATA_CADENCE_HOURS,
+      // Закрытая неделя уже посчитана строкой выше — ради бейджа «ДРР 7д».
+      // Отдаём её и расчёту: до сих пор строка списка могла показывать красное
+      // «ДРР 7д ∞» и зелёное «Можно поднять» одновременно, потому что вердикт
+      // видел только четырнадцатидневный котёл.
+      recent: { days: metricsPeriod7Closed.dates.length, spent: closed.spent, revenue: closed.attributedRevenue },
     });
     const latestChange = latestChangeByAdvert.get(Number(a.advert_id)) ?? null;
     const campaignDays = daysByAdv.get(a.advert_id) ?? [];
