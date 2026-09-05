@@ -424,37 +424,48 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Справочник: размеры — по идентификаторам из всех источников, а не по товару.
-  // У модели с десятком размеров выборка по товарам упёрлась бы в тысячу строк.
-  const variantsResult = await chunked<DbVariant>(
+  /**
+   * Справочник: размеры — по идентификаторам из всех источников, а не по
+   * товару. У модели с десятком размеров выборка по товарам упёрлась бы в
+   * тысячу строк.
+   *
+   * Товар подтягивается ТОЙ ЖЕ выборкой, вложением. Раньше это были два круга
+   * подряд: сначала размеры, потом товары по их product_id — и второй круг
+   * ждал первого просто потому, что список id рождался в нём. По замеру пара
+   * стоила около 0,7 с из 2,4 с всего ответа.
+   */
+  type VariantWithProduct = DbVariant & { products?: DbProduct | DbProduct[] | null };
+  const columns = (product: string) => `id, product_id, size_label, barcode, products(${product})`;
+  const FULL_PRODUCT = "id, article, name, nm_id, photo_url, model, color, imt_id, is_novelty";
+  let variantsResult = await chunked<VariantWithProduct>(
     [...acc.keys()],
-    (chunk) => db.from("product_variants").select("id, product_id, size_label, barcode").in("id", chunk),
-  );
-  if (variantsResult.error) return dbFail(variantsResult.error);
-  const variants = new Map(variantsResult.rows.map((row) => [String(row.id), row]));
-
-  const productIds = variantsResult.rows.map((row) => String(row.product_id));
-  let productsResult = await chunked<DbProduct>(
-    productIds,
     (chunk) => db
-      .from("products")
-      .select("id, article, name, nm_id, photo_url, model, color, imt_id, is_novelty")
-      .in("id", chunk),
+      .from("product_variants")
+      .select(columns(FULL_PRODUCT))
+      .in("id", chunk)
+      .then((result) => ({ data: (result.data ?? null) as unknown as VariantWithProduct[] | null, error: result.error })),
   );
   // Колонок модели и цвета на старой базе нет — иерархия тогда строится по
   // артикулу, а не падает целиком.
-  if (productsResult.error && isMissingMigration(productsResult.error.code)) {
-    productsResult = await chunked<DbProduct>(
-      productIds,
+  if (variantsResult.error && isMissingMigration(variantsResult.error.code)) {
+    variantsResult = await chunked<VariantWithProduct>(
+      [...acc.keys()],
       (chunk) => db
-        .from("products")
-        .select("id, article, name, nm_id, photo_url")
+        .from("product_variants")
+        .select(columns("id, article, name, nm_id, photo_url"))
         .in("id", chunk)
-        .then((result) => ({ data: (result.data ?? null) as DbProduct[] | null, error: result.error })),
+        .then((result) => ({ data: (result.data ?? null) as unknown as VariantWithProduct[] | null, error: result.error })),
     );
   }
-  if (productsResult.error) return dbFail(productsResult.error);
-  const products = new Map(productsResult.rows.map((row) => [String(row.id), row]));
+  if (variantsResult.error) return dbFail(variantsResult.error);
+  const variants = new Map(variantsResult.rows.map((row) => [String(row.id), row as DbVariant]));
+  const products = new Map<string, DbProduct>();
+  for (const row of variantsResult.rows) {
+    // PostgREST отдаёт вложение объектом или массивом — зависит от того, как
+    // объявлена связь. Принимаем оба вида, иначе справочник молча опустеет.
+    const linked = Array.isArray(row.products) ? row.products[0] : row.products;
+    if (linked?.id) products.set(String(linked.id), linked);
+  }
 
   const rows: StockVariantRow[] = [];
   for (const item of acc.values()) {

@@ -202,3 +202,16 @@ test("остаток отвечает по этапам на ?timings=1", () => 
     assert.ok(source.includes(`mark("${stage}")`), stage);
   }
 });
+
+/**
+ * Размеры и товары читались двумя кругами подряд: второй ждал первого только
+ * потому, что список product_id рождался в нём. По замеру пара стоила ~0,7 с
+ * из 2,4 с всего ответа.
+ */
+test("товар приезжает вместе с размером, а не вторым кругом", () => {
+  const source = read("../app/api/warehouse/stock/route.ts");
+  assert.match(source, /products\(\$\{product\}\)/, "товар вложен в выборку размеров");
+  assert.doesNotMatch(source, /let productsResult = await chunked/, "остался отдельный круг за товарами");
+  // PostgREST отдаёт вложение объектом или массивом — принимаем оба вида.
+  assert.match(source, /Array\.isArray\(row\.products\) \? row\.products\[0\] : row\.products/);
+});
