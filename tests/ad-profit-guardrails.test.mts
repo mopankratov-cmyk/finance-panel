@@ -233,9 +233,12 @@ test("причина у «снизить» называет сработавшу
  * ошибки — суточный держит общий объём за день, разовый не даёт одним нажатием
  * увести сумму, которую человек не собирался вводить.
  */
-test("суточный потолок пополнений поднят, разовый — нет", async () => {
+test("потолки пополнения: разовый ниже суточного и ловит описку", async () => {
   const { depositMaxPerDay, depositMaxPerOperation } = await import("../lib/adverts/depositLimits");
   assert.equal(depositMaxPerDay(), 100_000);
-  assert.equal(depositMaxPerOperation(), 10_000);
+  assert.equal(depositMaxPerOperation(), 25_000);
+  // Отношение важнее самих чисел: разовый ловит описку, суточный — объём.
+  // Сравнявшись, они перестают быть двумя разными предохранителями.
   assert.ok(depositMaxPerOperation() < depositMaxPerDay(), "разовый потолок обязан быть ниже суточного");
+  assert.ok(depositMaxPerOperation() <= depositMaxPerDay() / 3, "одно нажатие не должно уносить дневной лимит");
 });
