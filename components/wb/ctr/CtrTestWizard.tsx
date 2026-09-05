@@ -5,7 +5,9 @@ import { AlertTriangle, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react
 import { useMemo, useState } from "react";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import type { CtrTestType } from "@/lib/ctrtest/model";
+import type { ContentItem } from "@/lib/content/productLibrary";
 import type { CtrCandidate, CtrWizardSeed } from "./types";
+import { ContentPicker } from "./ContentPicker";
 
 interface VariantDraft { label: string; imageUrl: string; source: string }
 
@@ -60,6 +62,43 @@ export function CtrTestWizard({ cabinetId, type, candidates, seed, onClose, onCr
     setVariants((current) => current.map((variant, position) => position === index ? { ...variant, [field]: value } : variant));
   };
 
+  /**
+   * Клик по кадру библиотеки.
+   *
+   * Первым делом заполняется пустой вариант — их в мастере изначально два, и
+   * человек, ткнувший в две картинки, ожидает получить тест из них двух, а не
+   * тест из одной и пустую рамку. Свободных нет — добавляем новый, пока не
+   * упрёмся в шесть: столько же принимает форма ниже.
+   *
+   * Повторный клик по выбранному снимает выбор. Без этого промах исправлялся
+   * бы только через поле со ссылкой, то есть ровно тем способом, от которого
+   * библиотека и избавляет.
+   */
+  const pickFromLibrary = (item: ContentItem) => {
+    setVariants((current) => {
+      const already = current.findIndex((variant) => variant.imageUrl === item.url);
+      if (already >= 0) {
+        // Первый вариант — базовый, его не удаляем: тест без базы бессмыслен.
+        if (already === 0) return current.map((variant, index) => index === 0 ? { ...variant, imageUrl: "" } : variant);
+        return current.length > 2
+          ? current.filter((_, index) => index !== already)
+          : current.map((variant, index) => index === already ? { ...variant, imageUrl: "" } : variant);
+      }
+      const free = current.findIndex((variant) => !variant.imageUrl.trim());
+      if (free >= 0) {
+        return current.map((variant, index) => index === free
+          ? { ...variant, imageUrl: item.url, source: item.origin === "card" ? "current" : "library", label: variant.label }
+          : variant);
+      }
+      if (current.length >= 6) return current;
+      return [...current, {
+        label: `Вариант ${String.fromCharCode(65 + current.length)}`,
+        imageUrl: item.url,
+        source: item.origin === "card" ? "current" : "library",
+      }];
+    });
+  };
+
   const create = async () => {
     if (!selected) { setError("Выберите товар из данных этого кабинета"); return; }
     setBusy(true); setError(null);
@@ -105,6 +144,21 @@ export function CtrTestWizard({ cabinetId, type, candidates, seed, onClose, onCr
         <label className="text-[11px] font-medium text-slate-600">Показов за раунд<input type="number" min={10} step={10} value={impressionsPerRound} onChange={(event) => setImpressionsPerRound(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
         <label className="text-[11px] font-medium text-slate-600">Интервал, минут<input type="number" min={5} step={5} value={intervalMin} onChange={(event) => setIntervalMin(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
         <label className="text-[11px] font-medium text-slate-600">Лимит расходов, ₽<input type="number" min={100} step={100} value={spendCapRub} onChange={(event) => setSpendCapRub(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
+      </div>
+
+      {/*
+        Библиотека стоит НАД полями вариантов, а не под ними: выбрать из своего
+        контента — обычный путь, вставить ссылку руками — исключение. Порядок на
+        экране должен повторять этот порядок, иначе поле со ссылкой снова
+        читается как единственный способ.
+      */}
+      <div className="mt-4">
+        <ContentPicker
+          cabinetId={cabinetId}
+          nmId={selected?.nm ?? 0}
+          selectedUrls={variants.map((variant) => variant.imageUrl)}
+          onPick={pickFromLibrary}
+        />
       </div>
 
       <div className="mt-4 flex gap-3 overflow-x-auto pb-2">

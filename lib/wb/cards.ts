@@ -153,6 +153,14 @@ async function persistCards(rows: PimRow[]): Promise<void> {
     brand: row.brand || null,
     subject: row.subject || null,
     shop: row.shop || null,
+    // Галерея карточки. Обход её уже собрал строкой выше — не записывать её
+    // значило считать заново при каждом вопросе «какие фото есть у товара».
+    // Пустой массив от отсутствия галереи отличаем null'ом: у карточки без
+    // фото список пуст, а у карточки, обойдённой до этой правки, его нет.
+    photos: row.photos ?? null,
+    photos_big: row.photosBig ?? null,
+    photos_count: row.photosCount ?? null,
+    has_video: row.hasVideo ?? null,
     updated_at: new Date().toISOString(),
   }));
   for (let index = 0; index < payload.length; index += 500) {
