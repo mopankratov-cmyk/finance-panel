@@ -14,6 +14,7 @@ import { ProductsTab } from "@/components/warehouse/ProductsTab";
 import { ShipmentTab } from "@/components/warehouse/ShipmentTab";
 import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
 import { TodoBell } from "@/components/warehouse/TodoBell";
+import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { WarehouseShell, type ShellTab } from "@/components/warehouse/WarehouseShell";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { canManageStock } from "@/lib/warehouse/operatorScope";
@@ -75,10 +76,6 @@ export function WarehousePage() {
   // а просто ещё не знаем. Без него экран мигает пустым состоянием.
   const [entitiesLoading, setEntitiesLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  // Вкладки, на которых человек уже был: их держим смонтированными, чтобы
-  // возврат был мгновенным. Набор живёт при текущем юрлице — при смене
-  // сбрасывается, иначе на экране остались бы чужие остатки.
-  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>());
   // Пока адрес не прочитан, писать в него нечего: иначе первый же рендер
   // затрёт `?tab=` значением по умолчанию.
   const addressRead = useRef(false);
@@ -87,9 +84,10 @@ export function WarehousePage() {
 
   const entity = useMemo(() => entities.find((row) => row.id === entityId) ?? null, [entities, entityId]);
 
-  useEffect(() => { setVisited((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab))); }, [tab]);
-  // Смена юрлица: всё, что висело смонтированным, относится к прошлому.
-  useEffect(() => { setVisited(new Set<Tab>([tab])); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entityId]);
+  // Вкладки, на которых человек уже был, не размонтируем. Юрлицо — то, при
+  // смене чего показанное перестаёт быть правдой: чужие остатки на соседней
+  // вкладке недопустимы.
+  const panel = useKeepAliveTabs<Tab>(tab, entityId);
 
   const loadWarehouses = useCallback(async () => {
     // Склады общие, но настройки пары «юрлицо + склад» — нет: дату, с которой
@@ -287,61 +285,39 @@ export function WarehousePage() {
          * принадлежат юрлицу, и показывать чужие остатки нельзя.
          */
         <>
-          {visited.has("balances") && (
-            <div className={tab === "balances" ? "" : "hidden"}>
+          <TabPanel {...panel("balances")}>
               <BalancesTab entityId={entityId} refreshKey={refreshKey} />
-            </div>
-          )}
-          {visited.has("receipts") && (
-            <div className={tab === "receipts" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("receipts")}>
               <ReceiptsTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onPosted={refresh} />
-            </div>
-          )}
-          {visited.has("shipment") && (
-            <div className={tab === "shipment" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("shipment")}>
               <ShipmentTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onShipped={refresh} />
-            </div>
-          )}
-          {visited.has("movement") && (
-            <div className={tab === "movement" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("movement")}>
               <MovementTab entityId={entityId} entity={entity} warehouses={warehouses} refreshKey={refreshKey} onChanged={refresh} />
-            </div>
-          )}
-          {visited.has("defects") && (
-            <div className={tab === "defects" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("defects")}>
               <DefectsTab entityId={entityId} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onChanged={refresh} />
-            </div>
-          )}
-          {visited.has("events") && (
-            <div className={tab === "events" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("events")}>
               <EventsTab entityId={entityId} refreshKey={refreshKey} />
-            </div>
-          )}
-          {visited.has("products") && (
-            <div className={tab === "products" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("products")}>
               <ProductsTab entityId={entityId} entities={entities} refreshKey={refreshKey} external={me?.role === "seller"} />
-            </div>
-          )}
-          {visited.has("kiz") && (
-            <div className={tab === "kiz" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("kiz")}>
               <KizTab entityId={entityId} refreshKey={refreshKey} />
-            </div>
-          )}
-          {visited.has("docs") && (
-            <div className={tab === "docs" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("docs")}>
               <DocsTab entityId={entityId} refreshKey={refreshKey} onChanged={refresh} />
-            </div>
-          )}
-          {visited.has("moves") && (
-            <div className={tab === "moves" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("moves")}>
               <MovesTab entityId={entityId} refreshKey={refreshKey} />
-            </div>
-          )}
-          {visited.has("warehouses") && (
-            <div className={tab === "warehouses" ? "" : "hidden"}>
+            </TabPanel>
+          <TabPanel {...panel("warehouses")}>
               <WarehousesTab entityId={entityId} entity={entity} warehouses={warehouses} onChanged={refresh} />
-            </div>
-          )}
+            </TabPanel>
         </>
       )}
     </WarehouseShell>

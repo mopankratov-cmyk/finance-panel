@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
 import { readApiResponse } from "@/lib/http/readApiResponse";
+import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "@/components/wb/WbModuleHeader";
 import { useWbCabinet } from "@/components/wb/WbCabinetContext";
 import { adPost, money, type AdCabinetConfig } from "./adControlApi";
@@ -80,6 +81,7 @@ function statusTone(status: number): string {
 export function WbAdControlPage() {
   const { cabinetId } = useWbCabinet();
   const [tab, setTab] = useState<TabId>("campaigns");
+  const panel = useKeepAliveTabs<TabId>(tab, cabinetId);
   const [config, setConfig] = useState<AdCabinetConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const [rows, setRows] = useState<CampaignRow[]>([]);
@@ -340,10 +342,21 @@ export function WbAdControlPage() {
           )
         ) : null}
 
-        {tab === "clusters" ? <AdClustersTab cabinetId={cabinetId} rows={rows} currency={currency} onAsk={setConfirmRequest} /> : null}
-        {tab === "create" ? <AdCreateTab cabinetId={cabinetId} onAsk={setConfirmRequest} onCreated={reload} /> : null}
-        {tab === "rules" ? <AdRulesTab cabinetId={cabinetId} rows={rows} currency={currency} onAsk={setConfirmRequest} /> : null}
-        {tab === "journal" ? <AdJournalTab cabinetId={cabinetId} /> : null}
+        {/* «Автоправила» и журнал грузят себя на монтировании, «Фразы» держат
+            раскрытую кампанию, а «Создать» — заполненную форму: размонтирование
+            стоило запроса и потерянной работы. */}
+        <TabPanel {...panel("clusters")}>
+          <AdClustersTab cabinetId={cabinetId} rows={rows} currency={currency} onAsk={setConfirmRequest} />
+        </TabPanel>
+        <TabPanel {...panel("create")}>
+          <AdCreateTab cabinetId={cabinetId} onAsk={setConfirmRequest} onCreated={reload} />
+        </TabPanel>
+        <TabPanel {...panel("rules")}>
+          <AdRulesTab cabinetId={cabinetId} rows={rows} currency={currency} onAsk={setConfirmRequest} />
+        </TabPanel>
+        <TabPanel {...panel("journal")}>
+          <AdJournalTab cabinetId={cabinetId} />
+        </TabPanel>
       </div>
 
       <ConfirmAction request={confirmRequest} onClose={() => setConfirmRequest(null)} />

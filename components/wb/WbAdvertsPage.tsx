@@ -3,6 +3,7 @@
 import { Archive, ChevronRight, FlaskConical, KeyRound, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
 import { compareAdvertCampaigns } from "@/lib/adverts/campaignSort";
@@ -450,6 +451,7 @@ export function WbAdvertsPage() {
   const requestId = useRef(0);
   const dataKeyRef = useRef<string | null>(null);
   const elapsed = useElapsedSeconds(loading);
+  const adPanel = useKeepAliveTabs<ModuleView>(view, cabinetId || "all");
   const currentDataKey = cabinetId || "all";
   const activeData = dataKey === currentDataKey ? data : null;
 
@@ -805,9 +807,19 @@ export function WbAdvertsPage() {
 
       {view !== "campaigns" && singleCabinet ? (
         <div className="px-2 py-3 sm:px-6">
-          {view === "phrases" ? <AdClustersTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} /> : null}
-          {view === "rules" ? <AdRulesTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} /> : null}
-          {view === "log" ? <AdJournalTab cabinetId={cabinetId as string} advertId={journalAdvertId} onClearAdvert={() => setJournalAdvertId(null)} /> : null}
+          {/* Вкладки не размонтируем: «Автоправила» и «Что мы меняли» грузят себя
+              на монтировании, а «Фразы» держат раскрытую кампанию. Раньше уход
+              и возврат стоили запроса и потерянного места. Кабинет — то, при
+              смене чего показанное перестаёт быть правдой. */}
+          <TabPanel {...adPanel("phrases")}>
+            <AdClustersTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} />
+          </TabPanel>
+          <TabPanel {...adPanel("rules")}>
+            <AdRulesTab cabinetId={cabinetId as string} rows={adRows} currency={currency} onAsk={setConfirmRequest} />
+          </TabPanel>
+          <TabPanel {...adPanel("log")}>
+            <AdJournalTab cabinetId={cabinetId as string} advertId={journalAdvertId} onClearAdvert={() => setJournalAdvertId(null)} />
+          </TabPanel>
         </div>
       ) : view !== "campaigns" ? (
         /*
