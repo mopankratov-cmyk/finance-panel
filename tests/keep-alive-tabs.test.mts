@@ -238,5 +238,8 @@ test("нижняя плашка говорит по-человечески, а �
   const source = read("../components/wb/WbCtrPage.tsx");
   assert.doesNotMatch(source, /live_swap_enabled/, "имя флага в коде — не текст для человека");
   assert.doesNotMatch(source, /proxy «заказы \/ открытия»/);
-  assert.match(source, /Панель ничего не меняет в карточке сама/);
+  // Обещание изменилось вместе с продуктом: автоматическая смена появилась,
+  // и плашка обязана называть, КТО меняет фото, а не отрицать саму смену.
+  assert.match(source, /<b className="text-slate-700">Кто меняет фото\.<\/b>/);
+  assert.match(source, /Запись в карточку необратима/);
 });

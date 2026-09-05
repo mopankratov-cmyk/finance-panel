@@ -67,6 +67,8 @@ export interface CtrTestView {
   targetImpressions: number;
   spendCapRub: number;
   liveSwapEnabled: boolean;
+  /** Почему последняя попытка автоматической смены не прошла. null — прошла. */
+  autoError: string | null;
   roundNum: number;
   currentVariantId: number | null;
   winnerVariantId: number | null;
