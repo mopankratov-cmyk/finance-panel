@@ -1108,7 +1108,12 @@ export function WbAdvertsPage() {
                       страховка: перекрытие соседней колонки недопустимо даже
                       при неожиданно длинном числе.
                     */}
-                    <div className="w-[136px] shrink-0 overflow-hidden text-right">
+                    {/* На 320px правая колонка в 136px оставляла артикулу и
+                        вердикту около 50px — оба обрезались до многоточия. Здесь
+                        лежат два коротких числа (ДРР и порог), им хватает 104px;
+                        с sm ширина прежняя. Высоту строки не трогаем: список
+                        виртуализован по ROW_HEIGHT. */}
+                    <div className="w-[104px] shrink-0 overflow-hidden text-right sm:w-[136px]">
                       <div title={closedDrrTitle(campaign) + ` · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`inline-block rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР 7д {closedDrrLabel(campaign)}</div>
                       {/*
                         Порог ЭТОЙ кампании вторым числом, а не другим цветом.
