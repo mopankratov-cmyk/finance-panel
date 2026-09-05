@@ -2,6 +2,7 @@
 
 import {
   FlaskConical,
+  KeyRound,
   Loader2,
   Plus,
   RefreshCw,
@@ -21,6 +22,7 @@ import { CtrTestDetail } from "./ctr/CtrTestDetail";
 import { CtrTestWizard } from "./ctr/CtrTestWizard";
 import type { CtrCandidate, CtrTestView, CtrVariantView, CtrWizardSeed } from "./ctr/types";
 import { useWbCabinet } from "./WbCabinetContext";
+import { CtrTokenPanel } from "./ctr/CtrTokenPanel";
 import { plural } from "@/lib/warehouse/plural";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 
@@ -74,6 +76,7 @@ export function WbCtrPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [tokenOpen, setTokenOpen] = useState(false);
   /**
    * Артикул, ради которого сюда пришли.
    *
@@ -259,11 +262,22 @@ export function WbCtrPage() {
         description={`${typeTabs.find((tab) => tab.value === type)?.note ?? ""} · реальные метрики выбранного кабинета`}
         actions={<div className="flex items-center gap-2">
           <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">{[7, 14, 30].map((value) => <button key={value} type="button" onClick={() => setDays(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${days === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{value} дней</button>)}</div>
+          {canWrite ? (
+            <button
+              type="button"
+              onClick={() => setTokenOpen((open) => !open)}
+              title="Ключ WB с доступом «Контент»: без него панель не может менять фото карточки сама"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50 sm:min-h-8"
+            >
+              <KeyRound className="h-3.5 w-3.5" />Ключ
+            </button>
+          ) : null}
           <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} aria-label="Обновить тесты" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:opacity-60 sm:h-8 sm:w-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}</button>
         </div>}
       />
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
+        {tokenOpen && canWrite ? <CtrTokenPanel cabinetId={cabinetId} onClose={() => setTokenOpen(false)} /> : null}
 
         {!canWrite ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">Для создания и управления тестами выберите один реальный кабинет. В режиме «Все кабинеты» доступна только сводная аналитика кандидатов.</div> : null}
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}

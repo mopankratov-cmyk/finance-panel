@@ -72,3 +72,30 @@ test("ротация запускается по расписанию", () => {
   assert.ok(cron, "без крона автоматика не автоматика");
   assert.equal(cron?.schedule, "*/5 * * * *");
 });
+
+/**
+ * Все пять ключей кабинетов выпущены «только на чтение»: WB отвечает 403 и
+ * прямым текстом `read-only token cannot perform non-readonly requests`.
+ * Автоматическая смена на таком ключе не заработает никогда, и человек обязан
+ * узнать это ДО запуска теста, а не из ошибки крона.
+ */
+test("право записи спрашивают у WB, а не выводят из токена", () => {
+  const media = read("../lib/wb/media.ts");
+  assert.match(media, /export async function probeContentWriteAbility/);
+  assert.match(media, /read-only token/i, "узнаём отказ по ответу WB");
+  assert.match(media, /const PROBE_NM_ID = 1;/, "проба по несуществующей карточке ничего не меняет");
+  // Разбор битовой маски JWT здесь ненадёжен — WB её официально не раскрывает.
+  assert.doesNotMatch(media, /decodeWbToken/);
+});
+
+test("ключ контента вводится в модуле тестов и не возвращается наружу", () => {
+  const route = read("../app/api/ctrtest/token/route.ts");
+  assert.match(route, /requireApiSession\(\["director"\]\)/);
+  assert.match(route, /hasCabinetAccess\(cabinetId\)/);
+  assert.match(route, /`••••\$\{token\.trim\(\)\.slice\(-4\)\}`/, "наружу только маска");
+  assert.match(route, /verdict\.canWrite\)/, "ключ на чтение сохранять незачем");
+
+  const panel = read("../components/wb/ctr/CtrTokenPanel.tsx");
+  assert.match(panel, /type="password"/, "ключ не показываем на экране");
+  assert.match(panel, /«Только на чтение» снять/, "сказано, какой именно ключ нужен");
+});
