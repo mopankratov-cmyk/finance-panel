@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CTR_FORCE_HINT, type CtrTestType } from "@/lib/ctrtest/model";
+import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { CtrCampaignBridge } from "./ctr/CtrCampaignBridge";
 import { CtrTestDetail } from "./ctr/CtrTestDetail";
@@ -63,7 +64,19 @@ export function WbCtrPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [query, setQuery] = useState("");
+  /**
+   * Артикул, ради которого сюда пришли.
+   *
+   * Из карточки кампании в «Рекламе» есть ссылка сюда — обратная той, что ведёт
+   * из теста к кампаниям. Без параметра она приводила бы на общий список: у
+   * кабинета сотня тестов и тысяча кандидатов, и человек, пришедший с вопросом
+   * «а тестировали ли мы эту картинку», начинал бы с поиска того, что панель
+   * и так знает.
+   */
+  const [focusNm, setFocusNm] = useDashboardFilter<string>("nm", "");
+  // Поиск по кандидатам стартует с этого же артикула: таблица кандидатов —
+  // то место, где тест заводят, и ради него сюда чаще всего и приходят.
+  const [query, setQuery] = useState(() => focusNm);
   const [category, setCategory] = useState("");
   const [type, setType] = useState<CtrTestType>("ctr");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -121,7 +134,21 @@ export function WbCtrPage() {
       return !needle || `${item.nm} ${item.art}`.toLocaleLowerCase("ru-RU").includes(needle);
     });
   }, [byArticle, category, data?.items, query]);
-  const visibleTests = useMemo(() => tests.filter((test) => test.testType === type), [tests, type]);
+  // Тесты по этому артикулу — по ВСЕМ типам, а не только по открытой вкладке.
+  // Иначе «тестов нет» означало бы «нет тестов выбранного типа», и человек
+  // уходил бы заводить второй тест поверх существующего.
+  const testsForFocus = useMemo(
+    () => focusNm ? tests.filter((test) => String(test.nmId) === focusNm) : [],
+    [focusNm, tests],
+  );
+  const visibleTests = useMemo(
+    () => tests.filter((test) => test.testType === type && (!focusNm || String(test.nmId) === focusNm)),
+    [focusNm, tests, type],
+  );
+  const focusOtherTypes = useMemo(
+    () => [...new Set(testsForFocus.filter((test) => test.testType !== type).map((test) => test.testType))],
+    [testsForFocus, type],
+  );
   const selectedTest = tests.find((test) => test.id === selectedId) ?? null;
   const eligibleCount = candidates.filter((item) => item.views >= 1000 && (item.ctr ?? 0) < 3).length;
 
@@ -245,6 +272,31 @@ export function WbCtrPage() {
             <button type="button" disabled={!canWrite || loading} onClick={() => setWizard(null)} className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"><Plus className="h-3.5 w-3.5" />создать тест</button>
           </section>
 
+          {focusNm ? (
+            /*
+              Пришли по ссылке из карточки кампании. Сказать об этом надо прямо:
+              отфильтрованный список, который выглядит как полный, — это способ
+              заставить человека поверить, что тестов у кабинета всего один.
+              Рядом выход одним нажатием.
+            */
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] text-violet-900">
+              <span>
+                Показан один артикул — <b>nm {focusNm}</b>
+                {testsForFocus.length === 0
+                  ? ": тестов по нему ещё не заводили."
+                  : ` · тестов по нему ${testsForFocus.length}.`}
+                {focusOtherTypes.length ? ` Есть тесты другого типа: ${focusOtherTypes.map((value) => typeTabs.find((tab) => tab.value === value)?.label ?? value).join(", ")}.` : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => { setFocusNm(""); setQuery(""); }}
+                className="ml-auto min-h-8 rounded-lg bg-white px-2.5 font-semibold text-violet-700 shadow-sm transition-colors hover:bg-violet-100"
+              >
+                Показать все
+              </button>
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="flex flex-wrap gap-2" role="tablist" aria-label="Тип теста">{typeTabs.map((tab) => <button key={tab.value} type="button" role="tab" aria-selected={type === tab.value} onClick={() => setType(tab.value)} className={`inline-flex min-h-11 items-center rounded-lg px-3 text-[11px] font-semibold transition ${type === tab.value ? tab.tone : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>{tab.label}</button>)}</div>
           </div>
@@ -254,7 +306,7 @@ export function WbCtrPage() {
               <thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-3 text-left">Товар</th><th className="px-3 py-3 text-left">Статус</th><th className="px-3 py-3 text-left">Результат</th><th className="px-3 py-3 text-center">Варианты</th><th className="px-3 py-3 text-center">Раунд</th><th className="px-3 py-3 text-center">Интервал</th><th className="px-3 py-3 text-left">Создан</th><th className="w-14 px-3 py-3" /></tr></thead>
               <tbody>{visibleTests.map((test) => <tr key={test.id} onClick={() => setSelectedId(test.id)} className="cursor-pointer border-t border-slate-100 hover:bg-violet-50/40"><td className="px-3 py-3"><div className="font-semibold text-violet-700">{test.article}</div><div className="text-[9px] text-slate-400">nm {test.nmId} · тест #{test.id}</div></td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${statusTone[test.status]}`}>{statusLabel[test.status]}</span></td><td className="px-3 py-3 font-medium text-slate-600">{testResult(test)}</td><td className="px-3 py-3 text-center tabular-nums">{test.variants.length}</td><td className="px-3 py-3 text-center tabular-nums">{test.roundNum}</td><td className="px-3 py-3 text-center tabular-nums">{test.intervalMin} мин</td><td className="px-3 py-3 text-slate-500">{new Date(test.createdAt).toLocaleDateString("ru-RU")}</td><td className="px-3 py-3">{test.status === "draft" ? <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void removeDraft(test); }} aria-label={`Удалить черновик ${test.id}`} className="grid h-11 w-11 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button> : null}</td></tr>)}</tbody>
             </table>
-          </div> : canWrite ? <WbEmptyState>Для этого типа тестов пока нет запусков. Создайте первый черновик.</WbEmptyState> : null}
+          </div> : canWrite ? <WbEmptyState>{focusNm ? `По артикулу nm ${focusNm} тестов этого типа не заводили — заведите первый в таблице кандидатов ниже.` : "Для этого типа тестов пока нет запусков. Создайте первый черновик."}</WbEmptyState> : null}
 
           <section className="space-y-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div><h2 className="text-xs font-bold text-slate-700">Кандидаты по рекламе</h2><p className="text-[10px] text-slate-400">Реальные данные выбранного периода; клик по SKU можно использовать при создании теста.</p></div><div className="flex min-w-0 flex-1 flex-col gap-2 sm:ml-auto sm:max-w-xl sm:flex-row">{categories.length ? <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400"><option value="">Все категории</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__none">Без категории</option></select> : null}<label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 focus-within:border-violet-400"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SKU или nm" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label></div></div>

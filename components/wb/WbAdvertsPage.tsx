@@ -1,6 +1,7 @@
 "use client";
 
-import { Archive, ChevronRight, KeyRound, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
+import { Archive, ChevronRight, FlaskConical, KeyRound, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_BADGE_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
@@ -1033,7 +1034,31 @@ export function WbAdvertsPage() {
             <div className="p-3 sm:p-5">
               <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
                 <WbProductImage nm={selected.article.nm} src={selected.article.photo} loading="eager" className="h-14 w-14 shrink-0 rounded-xl border border-slate-100 bg-slate-50 object-cover" />
-                <div className="min-w-0"><div className="text-sm font-bold text-slate-800">{selected.campaign.name}</div><div className="mt-1 text-[11px] text-slate-400">{selected.article.art} · nm {selected.article.nm} · РК #{selected.campaign.id}</div></div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-slate-800">{selected.campaign.name}</div>
+                  <div className="mt-1 text-[11px] text-slate-400">{selected.article.art} · nm {selected.article.nm} · РК #{selected.campaign.id}</div>
+                  {/*
+                    Обратная сторона моста из CTR-тестов.
+                    Оттуда сюда пройти можно давно — ссылкой на кампанию,
+                    которая жжёт бюджет теста. Обратно нельзя было никак: чтобы
+                    узнать, тестировали ли мы картинку этого артикула, надо было
+                    уйти в другой пункт меню и искать его среди сотни тестов
+                    руками. Ссылка несёт nm, поэтому экран тестов открывается
+                    сразу на этом артикуле.
+
+                    Обещаний тут нет намеренно: сколько тестов у артикула,
+                    рекламный роут не знает, а спрашивать ради подписи к ссылке
+                    у экрана, который и так грузится двадцать секунд, — платить
+                    запросом за слово. Ответ показывает сам экран тестов.
+                  */}
+                  <Link
+                    href={`/wb/ctr?cabinet=${encodeURIComponent(cabinetId || "")}&nm=${selected.article.nm}`}
+                    className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-violet-600 transition-colors hover:text-violet-800"
+                  >
+                    <FlaskConical className="h-3 w-3" aria-hidden="true" />
+                    Тесты CTR по этому артикулу
+                  </Link>
+                </div>
                 <div className="ml-auto flex flex-col items-end gap-1">{selectedStatus ? <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ${selectedStatus.tone}`}><SelectedStatusIcon className="h-3 w-3" />{selectedStatus.label}</span> : null}{selected.campaign.stats_stale ? <span className="rounded bg-rose-50 px-2 py-1 text-[9px] font-semibold text-rose-700">статистика устарела</span> : null}</div>
               </div>
 
