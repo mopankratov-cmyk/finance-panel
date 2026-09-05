@@ -5,6 +5,7 @@ import {
   employeeBelongsToPeriod,
   isEmployeeActiveOn,
   payrollEntryTotal,
+  payrollDebtByYear,
   payrollLineTaxIsPayable,
   payrollPeriodForDate,
   payrollSalaryAmount,
@@ -12,6 +13,7 @@ import {
   type PayrollDraftEntry,
   type PayrollEmployee,
   type PayrollEntry,
+  type PayrollData,
   type PayrollPeriod,
 } from "./payroll.ts";
 
@@ -130,4 +132,24 @@ test("DDS payment reduces debt only after an explicit allocation", () => {
     debt: 5_900,
     matchedPaymentIds: ["salary-fact"],
   });
+});
+
+test("долг в своде разделяется по году ведомости и году начального долга", () => {
+  const periods: PayrollPeriod[] = [
+    { id: "period-2025", payDate: "2025-12-20", periodStart: "2025-12-01", periodEnd: "2025-12-15", status: "paid" },
+    { id: "period-2026", payDate: "2026-01-05", periodStart: "2025-12-16", periodEnd: "2025-12-31", status: "paid" },
+  ];
+  const entries: PayrollEntry[] = [
+    { id: "entry-2025", periodId: "period-2025", salaryPaymentId: null, taxPaymentId: null, ...draft },
+    { id: "entry-2026", periodId: "period-2026", salaryPaymentId: null, taxPaymentId: null, ...draft },
+  ];
+  const data: PayrollData = {
+    employees: [employee], periods, entries,
+    debts: [{ id: "opening-2026", employeeId: employee.id, debtYear: 2026, amount: 20_000, comment: "" }],
+    allocations: [
+      { id: "entry-payment", paymentId: "payment-1", employeeId: employee.id, entryId: "entry-2025", payrollLineId: null, debtOpeningId: null, amount: 5_900, allocationKind: "prior_year_debt", comment: "", confirmedBy: "", confirmedAt: "2026-01-01T00:00:00Z" },
+      { id: "opening-payment", paymentId: "payment-2", employeeId: employee.id, entryId: null, payrollLineId: null, debtOpeningId: "opening-2026", amount: 2_000, allocationKind: "current_year_debt", comment: "", confirmedBy: "", confirmedAt: "2026-01-01T00:00:00Z" },
+    ],
+  };
+  assert.deepEqual([...payrollDebtByYear(data)], [[2025, 10_000], [2026, 33_900]]);
 });

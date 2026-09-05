@@ -126,6 +126,26 @@ export function allocatedToDebt(debtId: string, allocations: PayrollPaymentAlloc
   return roundMoney(allocations.filter((item) => item.debtOpeningId === debtId).reduce((sum, item) => sum + item.amount, 0));
 }
 
+/** Остаток долга в разрезе года возникновения: ведомость берёт год выплаты, начальный долг — debtYear. */
+export function payrollDebtByYear(data: Pick<PayrollData, "employees" | "periods" | "entries" | "debts" | "allocations">): Map<number, number> {
+  const totals = new Map<number, number>();
+  const employees = new Map(data.employees.map((employee) => [employee.id, employee]));
+  const periods = new Map(data.periods.map((period) => [period.id, period]));
+  const add = (year: number, amount: number) => {
+    if (!Number.isInteger(year)) return;
+    totals.set(year, roundMoney((totals.get(year) ?? 0) + Math.max(0, amount)));
+  };
+
+  for (const entry of data.entries) {
+    const employee = employees.get(entry.employeeId);
+    const period = periods.get(entry.periodId);
+    if (!employee || !period) continue;
+    add(Number(period.payDate.slice(0, 4)), payrollEntryTotal(employee, draftFromEntry(entry)) - allocatedToEntry(entry.id, data.allocations));
+  }
+  for (const debt of data.debts) add(debt.debtYear, debt.amount - allocatedToDebt(debt.id, data.allocations));
+  return totals;
+}
+
 export function settlementFromAllocations(
   employee: PayrollEmployee,
   entry: PayrollEntry,

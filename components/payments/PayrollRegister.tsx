@@ -19,6 +19,7 @@ import {
   isEmployeeActiveOn,
   nextPayrollDate,
   payrollEntryTotal,
+  payrollDebtByYear,
   payrollPeriodForDate,
   payrollLineTaxIsPayable,
   payrollSalaryAmount,
@@ -104,6 +105,7 @@ export function PayrollRegister({ accounts, companies, payments, onCalendarUpdat
     }
     return totals;
   }, [data.allocations, data.debts, data.entries, settlementByEntry]);
+  const debtByYear = useMemo(() => payrollDebtByYear(data), [data]);
 
   const payrollCandidates = useMemo(() => {
     const allocated = new Map<string, number>();
@@ -189,7 +191,7 @@ export function PayrollRegister({ accounts, companies, payments, onCalendarUpdat
       </div>
 
       <div className={activeView === "summary" ? "space-y-5" : "hidden"} role="tabpanel">
-        <PayrollSummary data={data} debtByEmployee={debtByEmployee} />
+        <PayrollSummary data={data} debtByEmployee={debtByEmployee} debtByYear={debtByYear} />
         <PaymentAllocationQueue
           payments={payrollCandidates}
           data={data}
@@ -304,15 +306,16 @@ function PayrollTab({ active, icon, label, description, onClick }: { active: boo
   </button>;
 }
 
-function PayrollSummary({ data, debtByEmployee }: { data: PayrollData; debtByEmployee: Map<string, number> }) {
+function PayrollSummary({ data, debtByEmployee, debtByYear }: { data: PayrollData; debtByEmployee: Map<string, number>; debtByYear: Map<number, number> }) {
   const accrued = data.entries.reduce((total, entry) => {
     const employee = data.employees.find((item) => item.id === entry.employeeId);
     return total + (employee ? payrollEntryTotal(employee, draftFromEntry(entry)) : 0);
   }, 0);
   const paid = data.allocations.reduce((total, allocation) => total + allocation.amount, 0);
   const debt = [...debtByEmployee.values()].reduce((total, amount) => total + amount, 0);
+  const debtYears = [...debtByYear.keys()].sort((left, right) => left - right);
   const nextDate = nextPayrollDate(todayISO());
-  return <Card><div className="p-5"><div className="flex items-center gap-2"><LayoutDashboard className="h-5 w-5 text-violet-700" /><div><h2 className="text-lg font-bold text-slate-950">Свод по зарплате</h2><p className="text-sm text-slate-500">Короткая картина начислений, оплат и задолженности.</p></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Всего начислено" value={formatMoney(accrued)} tone="violet" /><Metric label="Подтверждено оплат" value={formatMoney(paid)} tone="green" /><Metric label="Подтверждённый долг" value={formatMoney(debt)} tone={debt > 0 ? "rose" : "green"} /><Metric label="Ближайшая выплата" value={formatDate(nextDate)} /></div></div></Card>;
+  return <Card><div className="p-5"><div className="flex items-center gap-2"><LayoutDashboard className="h-5 w-5 text-violet-700" /><div><h2 className="text-lg font-bold text-slate-950">Свод по зарплате</h2><p className="text-sm text-slate-500">Короткая картина начислений, оплат и задолженности.</p></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><Metric label="Всего начислено" value={formatMoney(accrued)} tone="violet" /><Metric label="Подтверждено оплат" value={formatMoney(paid)} tone="green" />{debtYears.map((year) => { const amount = debtByYear.get(year) ?? 0; return <Metric key={year} label={`Долг за ${year} год`} value={formatMoney(amount)} tone={amount > 0 ? "rose" : "green"} />; })}<Metric label="Всего долг" value={formatMoney(debt)} tone={debt > 0 ? "rose" : "green"} /><Metric label="Ближайшая выплата" value={formatDate(nextDate)} /></div></div></Card>;
 }
 
 function SummaryEmployeeSection({ title, employees, data, payments, debtByEmployee, onEdit, defaultOpen = false }: { title: string; employees: PayrollEmployee[]; data: PayrollData; payments: Payment[]; debtByEmployee: Map<string, number>; onEdit: (employee: PayrollEmployee) => void; defaultOpen?: boolean }) {
