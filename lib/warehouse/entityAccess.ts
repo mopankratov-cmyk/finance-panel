@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -33,7 +34,19 @@ export type EntityResult =
   | { ok: true; entity: LegalEntityRow }
   | { ok: false; error: string; status: number };
 
-export async function listAccessibleEntities(): Promise<EntityListResult> {
+/**
+ * Справочник юрлиц с их кабинетами и правами.
+ *
+ * Обёрнут в cache() из React — как getServerSession по той же причине.
+ * Функцию зовут ВСЕ роуты модуля до собственной работы, а некоторые дважды за
+ * один запрос: `app/api/warehouse/kiz/route.ts` вызывает resolveEntity (внутри
+ * которого она же) и следом listAccessibleEntities напрямую. Каждый такой
+ * повтор — два круга к базе по 0,35 с на ровном месте.
+ *
+ * cache() помнит результат ровно на время одного HTTP-запроса: смена прав
+ * применяется со следующего запроса, как и раньше.
+ */
+export const listAccessibleEntities = cache(async function listAccessibleEntities(): Promise<EntityListResult> {
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "Supabase не настроен", status: 500 };
 
@@ -152,7 +165,7 @@ export async function listAccessibleEntities(): Promise<EntityListResult> {
   }
 
   return { ok: true, rows };
-}
+});
 
 /** Проверка доступа к одному юрлицу + его кабинеты (нужны, чтобы собрать приёмки). */
 export async function resolveEntity(entityId: string | null): Promise<EntityResult> {

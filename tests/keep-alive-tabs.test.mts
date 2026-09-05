@@ -69,3 +69,16 @@ test("заглушка не подменяет уже показанные да�
     assert.doesNotMatch(source, /if \(loading\) return </, `${file}: осталась безусловная заглушка`);
   }
 });
+
+/**
+ * listAccessibleEntities зовут ВСЕ роуты склада до собственной работы, а
+ * некоторые дважды за один запрос (kiz: resolveEntity + прямой вызов). Каждый
+ * повтор — два круга к базе по 0,35 с на ровном месте.
+ */
+test("справочник юрлиц считается один раз на запрос", () => {
+  const source = read("../lib/warehouse/entityAccess.ts");
+  assert.match(source, /^import \{ cache \} from "react";/m);
+  assert.match(source, /export const listAccessibleEntities = cache\(async function listAccessibleEntities/);
+  // Тот же приём и по той же причине уже применён к сессии.
+  assert.match(read("../lib/auth/server.ts"), /export const getServerSession = cache\(/);
+});
