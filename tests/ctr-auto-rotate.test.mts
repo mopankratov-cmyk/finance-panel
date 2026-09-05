@@ -48,15 +48,18 @@ test("неудача автоматики не молчит", () => {
 });
 
 /** У ротации ровно один хозяин: либо человек, либо крон. */
-test("гейт разворачивает запрет в обе стороны", () => {
-  const sql = read("../supabase/migrations/202609050001_ctr_auto_rotate.sql");
-  assert.match(sql, /if v_live and not p_auto then/, "человек не двигает тест, которым правит крон");
+test("запрет узкий: автоматика не забирает у человека весь тест", () => {
+  // Первая версия накрывала любое действие: тест с автоматикой нельзя было ни
+  // запустить, ни остановить, ни отменить — владелец терял возможность
+  // прервать то, что панель делает с витриной.
+  const sql = read("../supabase/migrations/202609050003_ctr_auto_gate_narrow.sql");
   assert.match(sql, /if p_auto and not v_live then/, "крон не трогает тест с выключенной автоматикой");
-  const transition = read("../supabase/migrations/202609050002_ctr_transition_auto.sql");
-  assert.match(transition, /perform public\.ctr_auto_gate/);
-  // Фраза остаётся в шапке-объяснении файла — смотрим на тело функции.
-  const body = transition.slice(transition.indexOf("create or replace function"));
-  assert.doesNotMatch(body, /raise exception 'live swap must remain disabled'/, "прежний безусловный запрет снят");
+  assert.doesNotMatch(sql, /if v_live and not p_auto then/, "человеку весь тест не запрещаем");
+
+  // Вторая половина правила — в роуте, и только для переключения раундов.
+  const action = read("../app/api/ctrtest/[id]/action/route.ts");
+  assert.match(action, /if \(action === "advance"\) \{[\s\S]*?live_swap_enabled/);
+  assert.match(action, /Раунды переключает автоматика/);
 });
 
 test("переключать способ ротации можно только у остановленного теста", () => {
@@ -115,4 +118,36 @@ test("переключатель автоматики подтверждаетс
   const route = read("../app/api/ctrtest/[id]/action/route.ts");
   assert.match(route, /const enabled = String\(body\?\.explanation \?\? ""\) === "on";/);
   assert.doesNotMatch(route, /const enabled = body\?\.force === true;/, "force здесь про другое");
+});
+
+/** Экран не должен предлагать то, что гейт отклонит. */
+test("у автоматического теста нет кнопки ручного перехода", () => {
+  const detail = read("../components/wb/ctr/CtrTestDetail.tsx");
+  assert.match(detail, /test\.status === "running" && next && !test\.liveSwapEnabled \? <button/);
+  // И запуск не просит поставить руками то, что уже стоит на карточке.
+  assert.match(detail, /if \(action === "start" && auto\)/);
+  assert.match(detail, /фото, которое сейчас стоит на карточке/);
+});
+
+/**
+ * Ссылка на «Текущее фото» собиралась формулой баскета, а она протухает при
+ * каждой разрезке у WB: на живом тесте HT-83-26 формула дала basket-48, а
+ * карточка лежит на basket-47 — в базу лёг мёртвый адрес. Для показа это
+ * битая картинка; для АВТОМАТИКИ — адрес, который уйдёт в запись на карточку.
+ */
+test("адрес обложки проверяется у WB, а не вычисляется формулой", () => {
+  const helper = read("../lib/wb/cardImage.ts");
+  assert.match(helper, /export async function resolveWbCardCoverUrl/);
+  assert.match(helper, /return null;/, "неподтверждённый адрес не выдаётся за проверенный");
+
+  const route = read("../app/api/ctrtest/list/route.ts");
+  assert.match(route, /const baseIndex = normalized\.value\.variants\.findIndex\(\(variant\) => variant\.source === "current"\)/);
+  assert.match(route, /await resolveWbCardCoverUrl\(normalized\.value\.nmId/, "чиним на сервере, не доверяя клиенту");
+});
+
+test("битая картинка варианта не превращает экран в набор поломанных иконок", () => {
+  const detail = read("../components/wb/ctr/CtrTestDetail.tsx");
+  assert.match(detail, /function VariantImage/);
+  assert.match(detail, /onError=\{\(\) => setBroken\(true\)\}/);
+  assert.match(detail, /фото не открылось/, "подпись честнее пустого прямоугольника");
 });

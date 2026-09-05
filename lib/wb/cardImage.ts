@@ -259,3 +259,31 @@ export async function getWbCardImage(nmId: number): Promise<string | null> {
   }
   return null;
 }
+
+/**
+ * Настоящий адрес обложки карточки — с проверкой у WB, а не по формуле.
+ *
+ * `wbCardImageUrl` вычисляет баскет таблицей диапазонов, и таблица протухает
+ * при каждой новой разрезке: на карточке 1455520538 формула дала basket-48, а
+ * фото лежит на basket-47 — по вычисленному адресу приходит 404. Для показа
+ * это битая картинка, для ЗАПИСИ на карточку — мёртвый адрес, который уйдёт в
+ * media/save.
+ *
+ * Возвращает null, если не удалось подтвердить ни одного кандидата: пусть
+ * вызывающий оставит что было, но не считает выдумку проверенной.
+ */
+export async function resolveWbCardCoverUrl(nmId: number, fallback?: string): Promise<string | null> {
+  const size = (fallback?.match(/\/images\/([^/]+)\//)?.[1]) || "big";
+  const basket = await resolveWbBasketForVol(nmId).catch(() => 0);
+  const vol = Math.floor(nmId / 100000);
+  const part = Math.floor(nmId / 1000);
+  if (basket) {
+    const url = `https://basket-${String(basket).padStart(2, "0")}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/${size}/1.webp`;
+    if (await exists(url)) return url;
+  }
+  // Баскет не подтвердился — перебираем соседей тем же списком, что и показ.
+  for (const url of wbCardImageUrlCandidates(nmId, size)) {
+    if (await exists(url)) return url;
+  }
+  return null;
+}

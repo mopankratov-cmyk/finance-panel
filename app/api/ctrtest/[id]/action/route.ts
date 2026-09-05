@@ -98,6 +98,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return NextResponse.json({ data: { autoRotate: enabled }, error: null });
   }
 
+  /**
+   * Раунды у автоматического теста переключает крон, а не человек.
+   *
+   * Раньше это стояло в SQL и там же ломало всё остальное: запрет накрывал и
+   * запуск, и паузу, и отмену — владелец не мог прервать то, что панель делает
+   * с витриной. Теперь запрет узкий и стоит здесь, потому что гейт в базе
+   * действия не знает. Слабее, чем в SQL, и держится на том, что у ручного
+   * пути ровно один вызывающий — этот роут. Крона база останавливает сама.
+   */
+  if (action === "advance") {
+    const { data: mode } = await db.from("ctr_tests").select("live_swap_enabled").eq("id", id).maybeSingle();
+    if (mode?.live_swap_enabled) {
+      return fail("Раунды переключает автоматика. Чтобы вести тест руками, выключите автоматическую смену", 409);
+    }
+  }
+
   let snapshot: CtrMetricSnapshot;
   try { snapshot = await getCtrMetricSnapshot(cabinetId, nmId); }
   catch (cause) { return fail(cause instanceof Error ? cause.message : "Не удалось снять метрики", 502); }

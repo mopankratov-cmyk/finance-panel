@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveWbCardCoverUrl } from "@/lib/wb/cardImage";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
@@ -160,6 +161,25 @@ export async function POST(request: NextRequest) {
     const { data: source } = await db.from("ctr_tests").select("id").eq("id", normalized.value.sourceTestId).eq("cabinet_id", cabinetId).maybeSingle();
     if (!source) return fail("Исходный тест маховика не найден в этом кабинете", 400);
   }
+  /**
+   * Ссылку на текущее фото карточки чиним ЗДЕСЬ, а не доверяем клиенту.
+   *
+   * Мастер собирает её формулой `estimateBasket`, которая протухает при каждой
+   * новой разрезке баскетов у WB: на живом тесте HT-83-26 формула дала
+   * basket-48, а карточка лежит на basket-47 — в базу лёг мёртвый адрес, и
+   * «Текущее фото» рисовалось битой картинкой. Это не косметика: при
+   * автоматической ротации этот же адрес уходит в запись на карточку, и WB
+   * либо откажет, либо заберёт пустоту.
+   *
+   * Спрашиваем настоящий баскет у WB один раз при создании — дальше ссылка
+   * лежит верная.
+   */
+  const baseIndex = normalized.value.variants.findIndex((variant) => variant.source === "current");
+  if (baseIndex >= 0 && normalized.value.variants[baseIndex].imageUrl) {
+    const real = await resolveWbCardCoverUrl(normalized.value.nmId, normalized.value.variants[baseIndex].imageUrl);
+    if (real) normalized.value.variants[baseIndex] = { ...normalized.value.variants[baseIndex], imageUrl: real };
+  }
+
   const session = await getServerSession();
   const { data: id, error } = await db.rpc("create_ctr_test", {
     p_test: { ...normalized.value, liveSwapEnabled: false },
