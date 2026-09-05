@@ -171,7 +171,7 @@ export function TaskList({
                 target="_blank"
                 rel="noreferrer"
                 title="Печатная форма накладной"
-                className="ml-auto inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-600"
+                className="ml-auto inline-flex min-h-11 items-center gap-1 text-xs text-slate-500 hover:text-violet-600 lg:min-h-0"
               >
                 <Printer className="h-3.5 w-3.5" /> Печать
               </a>

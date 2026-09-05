@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, HelpCircle, Loader2, RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DdsCompany } from "./ddsCompanies";
 import type { DdsDraft, DdsParseResult } from "./ddsCsv";
 import { commitImport, planImport } from "./ddsImport";
@@ -26,6 +26,7 @@ import {
   type BankInstructionSplit,
 } from "./bankInstructionSplits";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Account } from "@/lib/types";
@@ -73,6 +74,9 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
   const [queueFilter, setQueueFilter] = useState<"review" | "waiting" | "answered">("review");
   const [askItem, setAskItem] = useState<BankReviewItem | null>(null);
   const [askText, setAskText] = useState("");
+  // Стабильная: общее окно держит на ней Escape и ловушку фокуса, а
+  // пересоздание на каждую букву в поле вопроса возвращало бы фокус в шапку.
+  const closeAsk = useCallback(() => setAskItem(null), []);
 
   const companyById = useMemo(() => new Map(companies.map((company) => [company.id, company.name])), [companies]);
   const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account.name])), [accounts]);
@@ -361,7 +365,7 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
             <Card key={item.id} className={item.status === "waiting_manager" ? "border-amber-300" : ""}>
               <CardContent className="space-y-3 pt-4">
                 <div className="flex items-start gap-3">
-                  <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} className="mt-1 h-4 w-4" />
+                  <label className="tap-hit mt-1 inline-flex shrink-0 cursor-pointer"><input type="checkbox" aria-label={`Выбрать операцию от ${formatDate(item.date)} на ${formatMoney(item.amount)}`} checked={selected.has(item.id)} onChange={() => toggle(item.id)} className="h-4 w-4" /></label>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="font-medium text-slate-900">{formatDate(item.date)}</span>
@@ -443,23 +447,23 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                         </span>
                       </div>
                       {splits.map((split, index) => (
-                        <div key={split.id} className="grid gap-2 rounded-lg bg-white p-2 lg:grid-cols-[115px_125px_1fr_190px_210px_210px_auto]">
-                          <input type="number" min="0" step="0.01" value={split.amount} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, amount: Number(event.target.value) } : part))} className="min-h-10 rounded border border-slate-300 px-2" />
-                          <select value={split.flow ?? (item.amount < 0 ? "expense" : "income")} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, flow: event.target.value as "income" | "expense" } : part))} className="min-h-10 rounded border border-slate-300 px-2 disabled:opacity-50"><option value="expense">Расход</option><option value="income">Поступление</option></select>
-                          <input value={split.description} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, description: event.target.value } : part))} className="min-h-10 rounded border border-slate-300 px-2" />
-                          <select value={split.companyId ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, companyId: event.target.value || null } : part))} className="min-h-10 rounded border border-slate-300 px-2 disabled:opacity-50">
+                        <div key={split.id} className="grid gap-2 rounded-lg bg-white p-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,7rem)_minmax(0,7.5rem)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]">
+                          <input type="number" min="0" step="0.01" aria-label="Сумма части" placeholder="Сумма" value={split.amount} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, amount: Number(event.target.value) } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2" />
+                          <select value={split.flow ?? (item.amount < 0 ? "expense" : "income")} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, flow: event.target.value as "income" | "expense" } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50"><option value="expense">Расход</option><option value="income">Поступление</option></select>
+                          <input aria-label="Назначение части" placeholder="Назначение части" value={split.description} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, description: event.target.value } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2" />
+                          <select value={split.companyId ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, companyId: event.target.value || null } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Компания не определена</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                           </select>
-                          <select value={splitAccountId(item, split) ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, accountId: event.target.value || null } : part))} className="min-h-10 rounded border border-slate-300 px-2 disabled:opacity-50">
+                          <select value={splitAccountId(item, split) ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, accountId: event.target.value || null } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Кошелёк не определён</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
                           </select>
-                          <select value={split.category ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, category: event.target.value || null, needsClarification: false } : part))} className="min-h-10 rounded border border-slate-300 px-2 disabled:opacity-50">
+                          <select value={split.category ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, category: event.target.value || null, needsClarification: false } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                           </select>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-3">
                             <span className={`rounded px-1.5 py-0.5 text-[10px] ${split.countsTowardBank === false ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"}`}>{split.countsTowardBank === false ? "связано" : "банк"}</span>
-                            <label className="flex items-center gap-1 whitespace-nowrap text-xs"><input type="checkbox" checked={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, excluded: event.target.checked } : part))} /> Не в ДДС</label>
-                            <button type="button" onClick={() => updateSplitsLocal(item.id, splits.filter((_, partIndex) => partIndex !== index))} className="text-red-500">×</button>
+                            <label className="tap flex items-center gap-1.5 whitespace-nowrap text-xs"><input type="checkbox" checked={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, excluded: event.target.checked } : part))} /> Не в ДДС</label>
+                            <button type="button" aria-label={`Удалить часть ${index + 1}`} onClick={() => updateSplitsLocal(item.id, splits.filter((_, partIndex) => partIndex !== index))} className="tap rounded-lg text-xl leading-none text-red-500 hover:bg-red-50">×</button>
                           </div>
                         </div>
                       ))}
@@ -491,31 +495,37 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
           ))}
         </div>
       )}
-      {askItem && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div><h3 className="text-lg font-semibold text-slate-900">Вопрос руководителю</h3><p className="text-sm text-slate-500">В Telegram уйдёт вся известная информация о платеже.</p></div>
-              <button onClick={() => setAskItem(null)} className="text-2xl text-slate-400">×</button>
-            </div>
+      {/* Общее окно вместо самодельного: Escape, ловушка фокуса, неподвижный
+          фон и кнопки, которые не уезжают под экранную клавиатуру. */}
+      <Modal
+        open={Boolean(askItem)}
+        onClose={closeAsk}
+        title="Вопрос руководителю"
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button onClick={closeAsk} className="min-h-11 rounded-lg border border-slate-300 px-4">Отмена</button>
+            <button onClick={() => void askManager()} disabled={saving || !askText.trim()} className="min-h-11 rounded-lg bg-violet-600 px-4 font-medium text-white disabled:opacity-50">Отправить в Telegram</button>
+          </div>
+        }
+      >
+        {askItem && (
+          <>
+            <p className="text-sm text-slate-500">В Telegram уйдёт вся известная информация о платеже.</p>
             <dl className="mt-4 grid gap-2 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
               <div><dt className="text-xs text-slate-400">Дата и сумма</dt><dd className="font-medium">{formatDate(askItem.date)} · {formatMoney(askItem.amount)}</dd></div>
               <div><dt className="text-xs text-slate-400">Юрлицо</dt><dd>{askItem.companyId ? companyById.get(askItem.companyId) ?? "Неизвестное юрлицо" : "Ещё не определено"}</dd></div>
               <div><dt className="text-xs text-slate-400">Банк / кошелёк</dt><dd>{askItem.accountId ? accountById.get(askItem.accountId) ?? "Неизвестный кошелёк" : "Ещё не определён"}</dd></div>
-              <div><dt className="text-xs text-slate-400">Расчётный счёт</dt><dd>{askItem.bankAccountNumber || "Не указан"}</dd></div>
-              <div className="sm:col-span-2"><dt className="text-xs text-slate-400">Файл выписки</dt><dd>{askItem.sourceFileName}</dd></div>
+              <div><dt className="text-xs text-slate-400">Расчётный счёт</dt><dd className="break-anywhere">{askItem.bankAccountNumber || "Не указан"}</dd></div>
+              <div className="sm:col-span-2"><dt className="text-xs text-slate-400">Файл выписки</dt><dd className="break-anywhere">{askItem.sourceFileName}</dd></div>
               <div className="sm:col-span-2"><dt className="text-xs text-slate-400">Контрагент</dt><dd>{askItem.counterparty || "Не указан"}{askItem.counterpartyInn ? ` · ИНН ${askItem.counterpartyInn}` : ""}</dd></div>
               <div className="sm:col-span-2"><dt className="text-xs text-slate-400">Комментарий банка</dt><dd className="whitespace-pre-wrap">{askItem.purpose || "Не указан"}</dd></div>
             </dl>
             <label className="mt-4 block text-sm font-medium text-slate-700">Что спросить</label>
             <textarea value={askText} onChange={(event) => setAskText(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-300 p-3" />
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setAskItem(null)} className="rounded-lg border border-slate-300 px-4 py-2">Отмена</button>
-              <button onClick={() => void askManager()} disabled={saving || !askText.trim()} className="rounded-lg bg-violet-600 px-4 py-2 font-medium text-white disabled:opacity-50">Отправить в Telegram</button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -115,10 +115,10 @@ export function ModulesHome() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-gray-900">
+    <div className="min-h-[100dvh] bg-[#F8FAFC] text-gray-900">
       {/* Шапка */}
       <header className="border-b border-gray-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3.5">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 pl-[calc(1rem+var(--safe-l))] pr-[calc(1rem+var(--safe-r))] sm:pl-[calc(1.5rem+var(--safe-l))] sm:pr-[calc(1.5rem+var(--safe-r))] py-3.5">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-sm font-extrabold text-white shadow-sm">MP</div>
             <div>
@@ -127,13 +127,21 @@ export function ModulesHome() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden items-center gap-1.5 text-xs text-gray-500 sm:flex"><span className="h-2 w-2 rounded-full bg-emerald-400" /> система работает</span>
+            {/* Ниже sm от индикатора остаётся точка: сам признак «система
+                работает» на телефоне нужен не меньше, чем на десктопе. */}
+            <span className="flex items-center gap-1.5 text-xs text-gray-500" title="Система работает"><span className="h-2 w-2 rounded-full bg-emerald-400" /> <span className="hidden sm:inline">система работает</span></span>
             <TourReplayButton tourId="dashboard" />
             {me && (
-              <div data-tour="user" className="flex items-center gap-2 rounded-full border border-gray-200 bg-white py-1 pl-1 pr-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{me.email.slice(0, 2).toUpperCase()}</span>
-                <div className="hidden leading-tight sm:block"><div className="text-xs font-semibold">{me.email.split("@")[0]}</div><div className="text-[10px] text-gray-400">{ROLE_LABEL[me.role]}</div></div>
-                <button onClick={logout} title="Выйти" className="ml-1 text-gray-400 hover:text-gray-700"><LogOut className="h-4 w-4" /></button>
+              <div data-tour="user" className="flex min-w-0 items-center gap-2 rounded-full border border-gray-200 bg-white py-1 pl-1 pr-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{me.email.slice(0, 2).toUpperCase()}</span>
+                {/* Роль определяет, какие модули человек вообще видит, и на
+                    лаунчере её больше негде посмотреть — на телефоне она
+                    остаётся, скрывается только имя. */}
+                <div className="min-w-0 leading-tight"><div className="hidden truncate text-xs font-semibold sm:block">{me.email.split("@")[0]}</div><div className="text-[10px] text-gray-400">{ROLE_LABEL[me.role]}</div></div>
+                {/* Настоящие 44px, а не растянутая невидимая область: рядом
+                    стоит кнопка тура, и перекрывающиеся зоны нажатия означали
+                    бы, что промах по туру выкидывает из панели. */}
+                <button onClick={logout} title="Выйти" aria-label="Выйти" className="ml-1 inline-flex shrink-0 items-center justify-center rounded-full p-1 text-gray-400 hover:text-gray-700 max-lg:h-11 max-lg:w-11"><LogOut className="h-4 w-4" /></button>
               </div>
             )}
           </div>
@@ -142,13 +150,13 @@ export function ModulesHome() {
 
       {/* Hero */}
       <div className="border-b border-gray-200 bg-gradient-to-br from-blue-600 to-indigo-700">
-        <div className="mx-auto max-w-6xl px-6 py-8 text-white">
+        <div className="mx-auto max-w-6xl pl-[calc(1rem+var(--safe-l))] pr-[calc(1rem+var(--safe-r))] sm:pl-[calc(1.5rem+var(--safe-l))] sm:pr-[calc(1.5rem+var(--safe-r))] py-8 text-white">
           <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Добро пожаловать{me ? `, ${me.email.split("@")[0]}` : ""}</h1>
           <p className="mt-1 text-sm text-blue-100">Выберите модуль. Все цифры — на цене до СПП, с реальной комиссией и удержаниями.</p>
         </div>
       </div>
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl pl-[calc(1rem+var(--safe-l))] pr-[calc(1rem+var(--safe-r))] sm:pl-[calc(1.5rem+var(--safe-l))] sm:pr-[calc(1.5rem+var(--safe-r))] py-8">
         {attention.length > 0 && (
           <details
             data-tour="attention"
@@ -198,7 +206,7 @@ export function ModulesHome() {
         </div>
       </main>
 
-      <footer className="mx-auto max-w-6xl border-t border-gray-200 px-6 py-6 text-xs text-gray-400">
+      <footer className="mx-auto max-w-6xl border-t border-gray-200 pl-[calc(1rem+var(--safe-l))] pr-[calc(1rem+var(--safe-r))] sm:pl-[calc(1.5rem+var(--safe-l))] sm:pr-[calc(1.5rem+var(--safe-r))] py-6 text-xs text-gray-400">
         Финансы МП · WB + Ozon · команда AI-агентов
       </footer>
 

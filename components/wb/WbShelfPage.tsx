@@ -122,26 +122,47 @@ const SLICE_COLORS: Record<number, string> = { 3: "#ef4444", 6: "#f97316", 12: "
 const SLICE_ORDER = [3, 6, 12, 30] as const;
 // Вертикальные линии между колонками — те же отступы обязаны быть и в шапке,
 // иначе подписи съедут относительно чисел (в шапке граница прозрачная).
-const SLICE_DIVIDER_CLASS = "sm:border-l sm:border-slate-200 sm:pl-5";
-const SLICE_HEAD_DIVIDER_CLASS = "sm:border-l sm:border-transparent sm:pl-5";
+const SLICE_DIVIDER_CLASS = "lg:border-l lg:border-slate-200 lg:pl-5";
+const SLICE_HEAD_DIVIDER_CLASS = "lg:border-l lg:border-transparent lg:pl-5";
 // Одна сетка на шапку списка и на строки — иначе колонки разъезжаются.
-const SLICE_GRID_CLASS = "grid flex-1 grid-cols-2 items-baseline gap-x-4 gap-y-1.5 sm:flex-none sm:grid-cols-[minmax(104px,auto)_repeat(4,minmax(132px,auto))] sm:gap-x-7";
+//
+// Пять колонок просят ≥744px и со стрелкой не помещались нигде между 640 и
+// ~1100px: iPad в портрете и любое узкое окно уносило вбок всю страницу.
+// Поэтому пятиколоночная раскладка включается там, где реально помещается —
+// с lg и в ужатом виде, а на xl возвращается прежняя, просторная.
+const SLICE_GRID_CLASS = "grid flex-1 grid-cols-2 items-baseline gap-x-4 gap-y-1.5 lg:flex-none lg:grid-cols-[minmax(88px,auto)_repeat(4,minmax(104px,auto))] lg:gap-x-4 xl:grid-cols-[minmax(104px,auto)_repeat(4,minmax(132px,auto))] xl:gap-x-7";
 const rub = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 
 // Колонка среза в свёрнутой строке: средняя цена среза и наша дельта к ней.
 // Пустые срезы показывают причину («только свои товары»), а не прочерк.
-function SliceCell({ slice }: { slice: ShelfSliceResult | undefined }) {
-  if (!slice) return <div className={`text-right text-[11px] text-slate-300 ${SLICE_DIVIDER_CLASS}`}>—</div>;
+//
+// До lg шапка колонок скрыта, а цены стоят в две колонки — без подписи это
+// пять чисел, про которые не сказано, к какому срезу они относятся. Поэтому
+// подпись живёт в самой ячейке и гаснет там, где появляется шапка.
+function SliceCell({ n, slice }: { n: number; slice: ShelfSliceResult | undefined }) {
+  const label = (
+    <span className="shrink-0 text-[11px] font-semibold lg:hidden" style={{ color: SLICE_COLORS[n] }}>Топ-{n}</span>
+  );
+  if (!slice) {
+    return (
+      <div className={`flex items-baseline gap-2 ${SLICE_DIVIDER_CLASS}`}>
+        {label}
+        <span className="ml-auto text-right text-[11px] text-slate-300">—</span>
+      </div>
+    );
+  }
   if (slice.avgPrice == null) {
     return (
-      <div className={`truncate text-right text-[10px] font-semibold text-amber-600 ${SLICE_DIVIDER_CLASS}`} title={slice.note ?? undefined}>
-        {slice.note ?? "нет данных"}
+      <div className={`flex min-w-0 items-baseline gap-2 ${SLICE_DIVIDER_CLASS}`} title={slice.note ?? undefined}>
+        {label}
+        <span className="ml-auto truncate text-right text-[12px] font-semibold text-amber-600 lg:text-[10px]">{slice.note ?? "нет данных"}</span>
       </div>
     );
   }
   return (
-    <div className={`flex items-baseline justify-end gap-2 whitespace-nowrap ${SLICE_DIVIDER_CLASS}`}>
-      <span className="text-[15px] font-semibold tabular-nums text-slate-700">{price(slice.avgPrice)}</span>
+    <div className={`flex items-baseline gap-2 whitespace-nowrap ${SLICE_DIVIDER_CLASS}`}>
+      {label}
+      <span className="ml-auto text-[15px] font-semibold tabular-nums text-slate-700">{price(slice.avgPrice)}</span>
       <span className={`text-[13px] font-bold tabular-nums ${diffTextTone(slice.diffPct)}`}>{slice.diffPct == null ? "—" : pct(slice.diffPct)}</span>
     </div>
   );
@@ -153,8 +174,8 @@ const signedRub = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""
 // раздела, сознательно развёрнутая относительно макета-референса.
 function SliceTable({ latest, watch }: { latest: LatestView; watch: WatchView }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200">
-      <table className="w-full min-w-[420px] border-collapse text-[11px]">
+    <div className="scroll-x rounded-xl border border-slate-200">
+      <table className="w-full min-w-[420px] border-collapse text-[13px] sm:text-[11px]">
         <thead className="bg-slate-50 text-slate-500">
           <tr>
             <th className="px-3 py-2 text-left">Срез</th>
@@ -257,16 +278,19 @@ function PriceHistoryChart({ history, watch }: { history: HistoryPoint[]; watch:
   return (
     <div className="rounded-xl border border-slate-200 p-3">
       <div className="mb-1 text-[11px] font-bold text-slate-700">Динамика цен</div>
-      <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${W} ${H}`} className="min-w-[480px] w-full" role="img" aria-label="Динамика нашей цены и средних по срезам">
+      <div className="scroll-x">
+        {/* Размер подписей — классом с брейкпоинтом, а не атрибутом fontSize:
+            атрибут действует на всех ширинах, и график на десктопе становился
+            крупнозернистее прежнего. */}
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px] sm:min-w-[480px]" role="img" aria-label="Динамика нашей цены и средних по срезам">
           {yTicks.map((tick) => (
             <g key={tick}>
               <line x1={L} x2={W - R} y1={y(tick)} y2={y(tick)} stroke="#e2e8f0" strokeWidth="1" />
-              <text x={L - 6} y={y(tick) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">{Math.round(tick).toLocaleString("ru-RU")} ₽</text>
+              <text x={L - 6} y={y(tick) + 3} textAnchor="end" className="text-[11px] sm:text-[9px]" fill="#94a3b8">{Math.round(tick).toLocaleString("ru-RU")} ₽</text>
             </g>
           ))}
           {shownTicks.map((index) => (
-            <text key={index} x={x(index)} y={H - 8} textAnchor="middle" fontSize="9" fill="#94a3b8">{points[index].day}</text>
+            <text key={index} x={x(index)} y={H - 8} textAnchor="middle" className="text-[11px] sm:text-[9px]" fill="#94a3b8">{points[index].day}</text>
           ))}
           {seriesList.map((series) => (
             <path key={series.key} d={path(series.get)} fill="none" stroke={series.color} strokeWidth={series.key === "our" ? 2.2 : 1.6} />
@@ -277,7 +301,7 @@ function PriceHistoryChart({ history, watch }: { history: HistoryPoint[]; watch:
           }))}
         </svg>
       </div>
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-slate-500">
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 sm:text-[9px]">
         {seriesList.map((series) => (
           <span key={series.key}><span className="mr-1 inline-block h-[3px] w-4 rounded align-middle" style={{ backgroundColor: series.color }} />{series.label}</span>
         ))}
@@ -498,14 +522,14 @@ export function WbShelfPage() {
   const totalActive = taggedItems.filter((item) => item.watch.active).length;
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={view === "shelf" ? Rows3 : Users}
         title={view === "shelf" ? "Полки — цены конкурентов" : "Мониторинг конкурентов"}
         description={view === "shelf"
           ? "Блок «Смотрите также» на карточках WB: гость, Москва, снимки 10:00 / 18:00 / 22:00 МСК"
           : "Свой список артикулов против каждого товара — и разница в цене"}
-        actions={<div className="flex items-center gap-2">
+        actions={<div className="flex min-w-0 flex-wrap items-center gap-2">
           <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">
             {([["shelf", "Полки"], ["competitors", "Конкуренты"]] as const).map(([value, label]) => (
               <button key={value} type="button" onClick={() => switchView(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${view === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{label}</button>
@@ -524,7 +548,11 @@ export function WbShelfPage() {
               <Info className="h-3.5 w-3.5" />
             </button>
             {infoOpen ? (
-              <div className="absolute right-0 top-full z-50 mt-1 w-[320px] rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-4 text-slate-600 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+              // Поповер шириной 320px, привязанный к правому краю кнопки, на
+              // телефоне уезжал за левый край экрана вместе со страницей: кнопка
+              // после переноса строки стоит уже не у края. До sm это лист во всю
+              // ширину окна под шапкой — уехать ему некуда.
+              <div className="fixed left-3 right-3 top-[calc(54px+var(--safe-t)+8px)] z-50 max-h-[70dvh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-[12px] leading-5 text-slate-600 shadow-[0_18px_55px_rgba(15,23,42,0.18)] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:max-h-none sm:w-[320px] sm:text-[10px] sm:leading-4">
                 <b className="text-slate-800">Как это устроено.</b> Цены снимает внешний сборщик (Playwright + реальный Chrome на Mac — антибот WB не пропускает серверный скрейпинг), панель принимает снимки и считает срезы. Средние Топ-3/6/12/30 — по порядку показа среди неисключённых конкурентов с ценой; нехватка подписывается «доступно X из N», срез из одних своих карточек — «только свои товары». «+» в разнице = конкурент дороже нас. Цена — «с WB Кошельком». Новые артикулы сборщик подбирает в течение ~15 минут, плановые сборы — 10:00 / 18:00 / 22:00 МСК.
               </div>
             ) : null}
@@ -583,7 +611,7 @@ export function WbShelfPage() {
                       value={globalDraft ?? globalBrands.join(", ")}
                       onChange={(event) => setGlobalDraft(event.target.value)}
                       placeholder="Бренды через запятую"
-                      className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-9"
+                      className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-9"
                     />
                     <button
                       type="button"
@@ -594,7 +622,7 @@ export function WbShelfPage() {
                         setExclOpen(false);
                         void mutate("/api/shelf/watch", { method: "PUT", body: JSON.stringify({ cabinetId, globalExcludedBrands: brands }) }, "Глобальные исключения сохранены");
                       }}
-                      className="min-h-10 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40 sm:min-h-9"
+                      className="min-h-11 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40 sm:min-h-9"
                     >сохранить</button>
                   </div>
                 ) : <div className="mt-2 text-xs text-slate-500">{globalBrands.length ? globalBrands.join(", ") : "не заданы"}</div>}
@@ -656,10 +684,13 @@ export function WbShelfPage() {
             })()}
             {/* Шапка колонок — подписи один раз над списком, как в таблице.
                 Цветные точки совпадают с линиями графика в раскрытой карточке.
-                Прилипает под верхней панелью (54px), чтобы при прокрутке длинного
-                реестра было видно, где чей срез. Отрицательные поля растягивают
-                фон на всю ширину контента — иначе карточки просвечивают по краям. */}
-            <div className="sticky top-[54px] z-20 -mx-2 hidden border-b border-slate-200 bg-[#f6f7f9]/95 px-5 py-2 backdrop-blur-sm sm:-mx-6 sm:flex sm:items-end sm:px-10">
+                Прилипает под верхней панелью (54px плюс вырез), чтобы при
+                прокрутке длинного реестра было видно, где чей срез. Отрицательные
+                поля растягивают фон на всю ширину контента — иначе карточки
+                просвечивают по краям; фон сплошной, чтобы цифры под ним не
+                читались сквозь шапку. Появляется с lg — там же, где строки
+                переходят на пятиколоночную раскладку. */}
+            <div className="sticky top-[calc(54px+var(--safe-t))] z-20 -mx-6 hidden border-b border-slate-200 bg-[#f6f7f9] px-10 py-2 lg:flex lg:items-end">
               <div className="min-w-0 flex-1" />
               <div className="flex items-center gap-3">
                 <div className={SLICE_GRID_CLASS}>
@@ -696,7 +727,13 @@ export function WbShelfPage() {
                         <span className="truncate text-[17px] font-bold tracking-[-0.01em] text-slate-800">{displaySkuArticle(watch.supplierArticle, skuNames, watch.nmId) || `WB ${watch.nmId}`}</span>
                         {watch.ourBrand ? <span className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">{watch.ourBrand}</span> : null}
                       </div>
-                      <div className="truncate text-[11px] font-normal tabular-nums text-slate-400">WB {watch.nmId}</div>
+                      {/* Бренд — то, по чему здесь исключают конкурентов.
+                          Бейджу рядом с артикулом на телефоне места нет, но и
+                          прятать его нельзя: приписываем к номеру WB. */}
+                      <div className="truncate text-[11px] font-normal tabular-nums text-slate-400">
+                        WB {watch.nmId}
+                        {watch.ourBrand ? <span className="uppercase sm:hidden"> · {watch.ourBrand}</span> : null}
+                      </div>
                       {displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId) ? <div className="truncate text-[11px] font-normal text-slate-500">{displaySkuName(watch.supplierArticle ?? "", null, skuNames, watch.nmId)}</div> : null}
                       {/* Номер WB стоит строкой выше — здесь только состояние
                           сбора. Раньше строка начиналась с «nm 1224062420», и
@@ -716,15 +753,16 @@ export function WbShelfPage() {
                         </div>
                       ) : null}
                     </div>
-                    <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
+                    <div className="flex w-full items-center gap-3 lg:ml-auto lg:w-auto">
                       {latest ? (
                         <div className={SLICE_GRID_CLASS}>
-                          <div className="flex items-baseline justify-end gap-2">
+                          <div className="flex items-baseline gap-2">
+                            <span className="shrink-0 text-[11px] font-semibold text-slate-400 lg:hidden">наша</span>
                             <PriceSparkline history={history} />
-                            <span className="text-[17px] font-bold tabular-nums text-slate-800">{price(latest.ourPrice)}</span>
+                            <span className="ml-auto text-[17px] font-bold tabular-nums text-slate-800">{price(latest.ourPrice)}</span>
                           </div>
                           {SLICE_ORDER.map((n) => (
-                            <SliceCell key={n} slice={latest.slices.find((slice) => slice.n === n)} />
+                            <SliceCell key={n} n={n} slice={latest.slices.find((slice) => slice.n === n)} />
                           ))}
                         </div>
                       ) : <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500">сборов ещё не было</span>}
@@ -745,13 +783,13 @@ export function WbShelfPage() {
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Конкуренты последнего сбора</span>
                             {excludedCount > 0 ? (
-                              <button type="button" onClick={() => setShowExcluded((value) => !value)} className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500 hover:bg-slate-200">
+                              <button type="button" onClick={() => setShowExcluded((value) => !value)} className="inline-flex min-h-11 items-center rounded-full bg-slate-100 px-3 text-[11px] font-semibold text-slate-500 hover:bg-slate-200 sm:min-h-0 sm:px-2 sm:py-1 sm:text-[9px]">
                                 {showExcluded ? "скрыть исключённых" : `показать исключённых (${excludedCount})`}
                               </button>
                             ) : null}
                           </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full min-w-[560px] border-collapse text-[10px]">
+                          <div className="scroll-x">
+                            <table className="w-full min-w-[560px] border-collapse text-[12px] sm:text-[10px]">
                               <thead className="bg-slate-50">
                                 <tr className="text-[9px] font-semibold uppercase tracking-wide text-slate-400"><th className="px-2 py-2 text-left">#</th><th className="px-2 py-2 text-left">Товар</th><th className="px-2 py-2 text-left">Бренд</th><th className="px-2 py-2 text-right">Цена</th><th className="px-2 py-2 text-right" title="Плюс — конкурент дороже нас">К нашей цене</th><th className="px-2 py-2 text-left" /></tr>
                               </thead>
@@ -809,7 +847,7 @@ export function WbShelfPage() {
                               value={brandsDraft[watch.id] ?? watch.extraExcludedBrands.join(", ")}
                               onChange={(event) => setBrandsDraft((draft) => ({ ...draft, [watch.id]: event.target.value }))}
                               placeholder="Бренды через запятую"
-                              className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-xs font-normal outline-none focus:border-violet-400 sm:min-h-8"
+                              className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-xs font-normal outline-none focus:border-violet-400 sm:min-h-8"
                             />
                           </label>
                           <button
@@ -820,13 +858,13 @@ export function WbShelfPage() {
                               setBrandsDraft((draft) => { const next = { ...draft }; delete next[watch.id]; return next; });
                               void mutate("/api/shelf/watch", { method: "PATCH", body: JSON.stringify({ id: watch.id, extraExcludedBrands: brands }) }, "Исключения артикула сохранены");
                             }}
-                            className="min-h-10 rounded-lg bg-slate-800 px-3 text-[11px] font-semibold text-white disabled:opacity-40 sm:min-h-8"
+                            className="min-h-11 rounded-lg bg-slate-800 px-3 text-[11px] font-semibold text-white disabled:opacity-40 sm:min-h-8"
                           >сохранить</button>
                           <button
                             type="button"
                             disabled={busy}
                             onClick={() => void mutate("/api/shelf/watch", { method: "PATCH", body: JSON.stringify({ id: watch.id, active: !watch.active }) }, watch.active ? "Сбор по артикулу выключен" : "Сбор по артикулу включён")}
-                            className="min-h-10 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 sm:min-h-8"
+                            className="min-h-11 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 sm:min-h-8"
                           >{watch.active ? "выключить сбор" : "включить сбор"}</button>
                           <button
                             type="button"
@@ -835,7 +873,7 @@ export function WbShelfPage() {
                               if (!window.confirm(`Удалить артикул ${watch.nmId} ВМЕСТЕ со всей историей снимков? Отключить сбор без потери истории можно кнопкой «выключить сбор».`)) return;
                               void mutate("/api/shelf/watch", { method: "DELETE", body: JSON.stringify({ id: watch.id, confirm: "DELETE_WATCH_WITH_HISTORY" }) }, "Артикул и история удалены");
                             }}
-                            className="grid h-10 w-10 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8"
+                            className="grid h-11 w-11 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8"
                             aria-label="Удалить артикул с историей"
                           ><Trash2 className="h-4 w-4" /></button>
                         </div>

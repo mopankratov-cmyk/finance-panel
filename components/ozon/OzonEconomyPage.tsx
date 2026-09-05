@@ -272,7 +272,7 @@ export function OzonEconomyPage() {
                     <input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Поиск товара, артикула, кабинета"
+                      type="search" enterKeyHint="search" placeholder="Поиск товара, артикула, кабинета"
                       className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8"
                     />
                   </label>
@@ -308,25 +308,30 @@ export function OzonEconomyPage() {
                   // Вертикальная прокрутка живёт здесь же — иначе sticky-шапка
                   // прилипает к контейнеру, который никуда не едет, и при
                   // длинной таблице заголовки колонок просто уезжают вверх.
-                  <div className="max-h-[68vh] overflow-auto">
+                  // svh, а не vh: в мобильном браузере 100vh считается по
+                  // свёрнутой адресной строке, и закреплённый итог оказывался
+                  // ниже видимой области. overscroll-contain не даёт жесту,
+                  // дошедшему до края таблицы, утянуть за собой страницу.
+                  <div className="max-h-[68svh] overflow-auto overscroll-contain">
                     <table className="w-full min-w-[1480px] text-xs">
-                      <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                      <thead className="sticky top-0 z-30 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                         <tr>
                           {COLUMNS.map((column, index) => {
                             const active = sort?.key === column.key;
                             return (
                               <th
                                 key={column.key}
-                                className={`${index === 0 ? "px-4 text-left" : "px-3 text-right"} py-2`}
+                                className={`${index === 0 ? "sticky left-0 z-20 bg-slate-50 px-4 text-left" : "px-3 text-right"} py-3 md:py-2`}
                                 aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
                               >
                                 <button
                                   type="button"
                                   title={column.hint}
+                                  aria-label={column.hint ? `${column.label}. ${column.hint}` : undefined}
                                   onClick={() => setSort((current) => current?.key === column.key
                                     ? (current.dir === "desc" ? { key: column.key, dir: "asc" } : null)
                                     : { key: column.key, dir: "desc" })}
-                                  className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${index === 0 ? "" : "flex-row-reverse"}`}
+                                  className={`tap-hit inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${index === 0 ? "" : "flex-row-reverse"}`}
                                 >
                                   {active ? (sort!.dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-slate-300" />}
                                   {column.label}
@@ -341,9 +346,16 @@ export function OzonEconomyPage() {
                         {rows.map((row) => (
                           <tr
                             key={row.key}
-                            className={`border-t border-slate-100 hover:bg-sky-50/40 ${row.profit !== null && row.profit < 0 ? "bg-red-50/30" : ""}`}
+                            className={`group border-t border-slate-100 hover:bg-sky-50/40 ${row.profit !== null && row.profit < 0 ? "bg-red-50/30" : ""}`}
                           >
-                            <td className="px-4 py-2">
+                            {/* Колонка товара закреплена: 1480px без неё означают,
+                                что после первой же прокрутки вбок цифры прибыли
+                                не с чем соотнести. Фон обязан быть непрозрачным —
+                                сквозь полупрозрачный читались бы проезжающие
+                                колонки, — поэтому здесь стоят не сами bg-red-50/30
+                                и bg-sky-50/40 строки, а их точные непрозрачные
+                                эквиваленты поверх белого. */}
+                            <td className={`sticky left-0 z-10 px-4 py-2 group-hover:bg-[#f9fdff] ${row.profit !== null && row.profit < 0 ? "bg-[#fffbfb]" : "bg-white"}`}>
                               <ProductCell
                                 image={row.image}
                                 name={row.name}
@@ -381,20 +393,16 @@ export function OzonEconomyPage() {
                       {/* Итог — по обороту, а не по колонкам «на штуку»: расход
                           и прибыль умножены на проданные единицы. Прибыль и
                           маржа считаются только по строкам с себестоимостью. */}
-                      <tfoot className="sticky bottom-0 z-10 border-t-2 border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-700">
+                      <tfoot className="sticky bottom-0 z-20 border-t-2 border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-700">
                         <tr>
-                          <td className="px-4 py-2.5">
+                          <td className="sticky left-0 z-20 bg-slate-50 px-4 py-2.5">
                             Итого · {formatNumber(totals.rows)} SKU
                             <span className="ml-2 font-normal text-slate-400">
                               выручка {formatMoney(totals.revenue)}
                             </span>
                           </td>
                           <td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(totals.units)}</td>
-                          <td colSpan={8} className="px-3 py-2.5 text-right font-normal text-[10px] text-slate-400">
-                            {totals.revenueCoverage == null
-                              ? "Себестоимость не известна ни по одной строке"
-                              : `Себестоимость известна по ${formatPercent(totals.revenueCoverage)} оборота`}
-                          </td>
+                          <td colSpan={8} />
                           <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(totals.ad)}</td>
                           <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(totals.tax)}</td>
                           <td className={`px-3 py-2.5 text-right tabular-nums ${totals.profit < 0 ? "text-red-600" : "text-emerald-700"}`}>{formatMoney(totals.profit)}</td>
@@ -405,6 +413,18 @@ export function OzonEconomyPage() {
                     </table>
                   </div>
                 )}
+                {/* Фраза относится ко всей таблице, а не к колонкам 3–10: внутри
+                    итоговой строки она уезжала вместе с прокруткой вбок и
+                    всплывала посреди чужих цифр. При пустой выборке молчит —
+                    иначе рядом с «Товары не найдены» она отчитывалась о
+                    себестоимости строк, которых на экране нет. */}
+                {rows.length > 0 ? (
+                  <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400 md:text-[10px]">
+                    {totals.revenueCoverage == null
+                      ? "Себестоимость не известна ни по одной строке"
+                      : `Себестоимость известна по ${formatPercent(totals.revenueCoverage)} оборота`}
+                  </p>
+                ) : null}
               </section>
 
               <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -435,7 +455,7 @@ export function OzonEconomyPage() {
               </section>
             </div>
 
-            <p className="rounded-lg bg-slate-100 px-3 py-2 text-[10px] text-slate-500">
+            <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-500 md:text-[10px]">
               {data.note} Налог берётся с цены покупателя: Ozon добивает часть цены за него, и с этой доли налога нет.
               Скидка известна по {formatNumber(discountCoverage.known)} из {formatNumber(discountCoverage.total)} SKU — по остальным базой остаётся цена продавца.
               Статус «Расчёт» означает оценку, а не бухгалтерский факт.

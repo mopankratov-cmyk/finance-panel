@@ -2,12 +2,13 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { AlertTriangle, CheckCircle2, ExternalLink, FolderOpen, History, ImageOff, Loader2, MessageSquare, PackageSearch, RefreshCw, Save, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { formatTime } from "@/lib/analytics/format";
 import { readApiResponse } from "@/lib/http/readApiResponse";
+import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import type { PimRow } from "@/lib/wb/cards";
 import { productReadiness, PRODUCT_READINESS_STATUSES, readinessStatusLabel, type ProductReadinessStatus } from "@/lib/wb/productReadiness";
@@ -65,7 +66,6 @@ export function WbProductPage() {
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 18 });
   const requestId = useRef(0);
   const drawerRef = useRef<HTMLElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
   const elapsed = useElapsedSeconds(loading);
   const { categories, byArticle } = useCategoryMap();
   const drawerOpen = selected !== null;
@@ -95,25 +95,10 @@ export function WbProductPage() {
     return () => controller.abort();
   }, [cabinetId, cabinets.length, cabinetsError, cabinetsLoading, ready, retryKey]);
 
-  useEffect(() => {
-    if (!drawerOpen) return;
-    previouslyFocused.current = document.activeElement as HTMLElement;
-    const focusables = drawerRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])");
-    focusables?.[0]?.focus();
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setSelected(null); return; }
-      if (event.key !== "Tab" || !focusables?.length) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    window.addEventListener("keydown", close);
-    return () => {
-      window.removeEventListener("keydown", close);
-      previouslyFocused.current?.focus({ preventScroll: true });
-    };
-  }, [drawerOpen]);
+  // Свои Escape и ловушка фокуса тут были, а блокировки фона — нет: свайп по
+  // длинной шторке уводил страницу за её спиной. Общий хук держит всё три.
+  const closeDrawer = useCallback(() => setSelected(null), []);
+  useDialogBehavior(drawerOpen, closeDrawer, drawerRef);
 
   useEffect(() => {
     if (!noteMessage?.ok) return;
@@ -213,12 +198,12 @@ export function WbProductPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={PackageSearch}
         title="Товары / SKU"
         description={rows.length ? `${rows.length} карточек · мастер-данные Content API` : "Медиа, размеры, материалы и готовность карточек"}
-        actions={<button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60 sm:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить</button>}
+        actions={<button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60 lg:min-h-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить</button>}
       />
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
@@ -230,15 +215,15 @@ export function WbProductPage() {
         {!selected && noteMessage ? <div role="status" aria-live="polite" className={`rounded-xl border p-3 text-xs ${noteMessage.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>{noteMessage.text}</div> : null}
 
         <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-center">
-          {categories.length ? <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400 sm:min-h-9"><option value="">Все категории</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__none">Без категории</option></select> : null}
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Статус готовности" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400 sm:min-h-9"><option value="">Все статусы</option>{PRODUCT_READINESS_STATUSES.map((status) => <option key={status} value={status}>{readinessStatusLabel(status)}</option>)}</select>
-          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 sm:min-h-9"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="артикул, nm, название, бренд" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label>
-          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs text-slate-600 sm:min-h-9"><input type="checkbox" checked={onlyIncomplete} onChange={(event) => setOnlyIncomplete(event.target.checked)} className="accent-violet-600" /> Только незаполненные</label>
+          {categories.length ? <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400 lg:min-h-9"><option value="">Все категории</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__none">Без категории</option></select> : null}
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Статус готовности" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400 lg:min-h-9"><option value="">Все статусы</option>{PRODUCT_READINESS_STATUSES.map((status) => <option key={status} value={status}>{readinessStatusLabel(status)}</option>)}</select>
+          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:min-h-9"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="артикул, nm, название, бренд" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs text-slate-600 lg:min-h-9"><input type="checkbox" checked={onlyIncomplete} onChange={(event) => setOnlyIncomplete(event.target.checked)} className="accent-violet-600" /> Только незаполненные</label>
           <span className="px-1 text-xs tabular-nums text-slate-400">{ordered.length} SKU</span>
         </div>
 
         {loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`товары · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={10} cols={11} /></div> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : ordered.length === 0 ? <WbEmptyState>По выбранным фильтрам карточек нет.</WbEmptyState> : (
-          <div className="h-[calc(100vh-300px)] min-h-[420px] overflow-auto rounded-xl border border-slate-200 bg-white" onScroll={(event) => updateWindow(event.currentTarget)}>
+          <div className="h-[68svh] min-h-[320px] overflow-auto rounded-xl border border-slate-200 bg-white md:h-[calc(100dvh-300px)] md:min-h-[420px]" onScroll={(event) => updateWindow(event.currentTarget)}>
             <table className="min-w-[1380px] w-full border-collapse text-[10px]">
               <thead className="sticky top-0 z-20 bg-slate-50"><tr className="h-9 border-b border-slate-200 text-slate-500"><th className="sticky left-0 z-30 min-w-[270px] border-r border-slate-200 bg-slate-50 px-3 text-left">Товар</th><th className="px-3 text-left">Статус</th><th className="px-3 text-left">Комментарий</th><th className="px-3 text-left">Кабинет</th><th className="px-3 text-left">Бренд</th><th className="px-3 text-left">Ниша</th><th className="px-3 text-right">Размеры, см</th><th className="px-3 text-right">Вес, кг</th><th className="px-3 text-left">Материалы</th><th className="px-3 text-right">Фото</th><th className="px-3 text-right">Content</th></tr></thead>
               <tbody>
@@ -248,7 +233,7 @@ export function WbProductPage() {
                   const status = row.readinessStatus ?? "pending";
                   const rowBusy = saving === `${row.cabinetId}:${row.nmId}`;
                   const editable = notesReady && canWrite && row.cabinetId === cabinetId;
-                  return <tr key={`${row.cabinetId}-${row.nmId}`} onClick={() => openRow(row)} tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openRow(row); } }} className="h-[50px] cursor-pointer border-b border-slate-100 outline-none transition-colors hover:bg-violet-50/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500"><td className="sticky left-0 z-10 border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2">{row.photos[0] ? <WbProductImage nm={row.nmId} src={row.photos[0]} className="h-9 w-9 shrink-0 rounded-lg border border-slate-100 bg-slate-100 object-cover" /> : <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-300"><ImageOff className="h-4 w-4" /></span>}<div className="min-w-0"><div className="font-semibold text-violet-700">{row.article}</div><div className="max-w-[190px] truncate text-[9px] text-slate-400">{row.name || `nm ${row.nmId}`}</div></div></div></td><td className="px-3"><select aria-label={`Статус готовности ${row.article}`} value={status} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onChange={(event) => { event.stopPropagation(); void updateNote(row, { status: event.target.value as ProductReadinessStatus }); }} disabled={!editable || rowBusy} className={`min-h-11 rounded-lg border px-2 text-[10px] font-semibold outline-none focus:ring-2 focus:ring-violet-400 disabled:cursor-not-allowed disabled:opacity-70 sm:min-h-9 ${statusTone(status)}`}>{PRODUCT_READINESS_STATUSES.map((item) => <option key={item} value={item}>{readinessStatusLabel(item)}</option>)}</select></td><td className="max-w-[220px] px-3"><div className="flex items-center gap-1.5"><MessageSquare className={`h-3.5 w-3.5 shrink-0 ${row.comment ? "text-blue-500" : "text-slate-300"}`} /><span className="truncate text-slate-500">{row.comment || "Добавить в карточке"}</span></div>{row.noteUpdatedAt ? <div className="mt-0.5 truncate text-[9px] text-slate-300">{row.noteUpdatedBy || "—"} · {formatTime(row.noteUpdatedAt)}</div> : null}</td><td className="px-3 text-slate-500">{row.shop || "WB"}</td><td className="max-w-32 truncate px-3">{row.brand || "—"}</td><td className="max-w-40 truncate px-3">{row.subject || "—"}</td><td className="px-3 text-right tabular-nums">{row.length && row.width && row.height ? `${row.length}×${row.width}×${row.height}` : "—"}</td><td className="px-3 text-right tabular-nums">{row.weightBrutto ?? "—"}</td><td className="max-w-48 truncate px-3">{row.materials || <span className="text-amber-600">не указано</span>}</td><td className={`px-3 text-right font-semibold tabular-nums ${row.photosCount === 0 ? "text-rose-600" : row.photosCount < 3 ? "text-amber-600" : "text-emerald-700"}`}>{row.photosCount}</td><td className="px-3 text-right"><span className={`rounded-full px-2 py-1 font-semibold tabular-nums ${completeTone(score)}`}>{score}%</span></td></tr>;
+                  return <tr key={`${row.cabinetId}-${row.nmId}`} onClick={() => openRow(row)} tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openRow(row); } }} className="h-[50px] cursor-pointer border-b border-slate-100 outline-none transition-colors hover:bg-violet-50/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500"><td className="sticky left-0 z-10 border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2">{row.photos[0] ? <WbProductImage nm={row.nmId} src={row.photos[0]} className="h-9 w-9 shrink-0 rounded-lg border border-slate-100 bg-slate-100 object-cover" /> : <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-300"><ImageOff className="h-4 w-4" /></span>}<div className="min-w-0"><div className="font-semibold text-violet-700">{row.article}</div><div className="max-w-[190px] truncate text-[9px] text-slate-400">{row.name || `nm ${row.nmId}`}</div></div></div></td><td className="px-3"><select aria-label={`Статус готовности ${row.article}`} value={status} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onChange={(event) => { event.stopPropagation(); void updateNote(row, { status: event.target.value as ProductReadinessStatus }); }} disabled={!editable || rowBusy} className={`min-h-11 rounded-lg border px-2 text-[10px] font-semibold outline-none focus:ring-2 focus:ring-violet-400 disabled:cursor-not-allowed disabled:opacity-70 lg:min-h-9 ${statusTone(status)}`}>{PRODUCT_READINESS_STATUSES.map((item) => <option key={item} value={item}>{readinessStatusLabel(item)}</option>)}</select></td><td className="max-w-[220px] px-3"><div className="flex items-center gap-1.5"><MessageSquare className={`h-3.5 w-3.5 shrink-0 ${row.comment ? "text-blue-500" : "text-slate-300"}`} /><span className="truncate text-slate-500">{row.comment || "Добавить в карточке"}</span></div>{row.noteUpdatedAt ? <div className="mt-0.5 truncate text-[9px] text-slate-300">{row.noteUpdatedBy || "—"} · {formatTime(row.noteUpdatedAt)}</div> : null}</td><td className="px-3 text-slate-500">{row.shop || "WB"}</td><td className="max-w-32 truncate px-3">{row.brand || "—"}</td><td className="max-w-40 truncate px-3">{row.subject || "—"}</td><td className="px-3 text-right tabular-nums">{row.length && row.width && row.height ? `${row.length}×${row.width}×${row.height}` : "—"}</td><td className="px-3 text-right tabular-nums">{row.weightBrutto ?? "—"}</td><td className="max-w-48 truncate px-3">{row.materials || <span className="text-amber-600">не указано</span>}</td><td className={`px-3 text-right font-semibold tabular-nums ${row.photosCount === 0 ? "text-rose-600" : row.photosCount < 3 ? "text-amber-600" : "text-emerald-700"}`}>{row.photosCount}</td><td className="px-3 text-right"><span className={`rounded-full px-2 py-1 font-semibold tabular-nums ${completeTone(score)}`}>{score}%</span></td></tr>;
                 })}
                 {rowWindow.end < ordered.length ? <tr aria-hidden="true"><td colSpan={11} style={{ height: (ordered.length - rowWindow.end) * ROW_HEIGHT }} /></tr> : null}
               </tbody>
@@ -259,10 +244,10 @@ export function WbProductPage() {
 
       {selected && selectedReadiness ? <>
         <button type="button" aria-label="Закрыть карточку товара" onClick={() => setSelected(null)} className="fixed inset-0 z-[79] bg-slate-950/40" />
-        <aside ref={drawerRef} role="dialog" aria-modal="true" aria-label={`Товар ${selected.article}`} className="fixed bottom-0 right-0 top-[54px] z-[80] flex w-full max-w-[620px] flex-col border-l border-slate-200 bg-[#f6f7f9] shadow-2xl">
+        <aside ref={drawerRef} role="dialog" aria-modal="true" aria-label={`Товар ${selected.article}`} className="fixed bottom-0 right-0 top-[calc(54px+var(--safe-t))] z-[80] flex w-full max-w-[620px] flex-col border-l border-slate-200 bg-[#f6f7f9] pb-safe shadow-2xl">
           <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
             <div className="min-w-0"><div className="truncate text-sm font-bold text-slate-800">{selected.article}</div><div className="truncate text-[11px] text-slate-400">{selected.name || `nm ${selected.nmId}`}</div></div>
-            <div className="ml-auto hidden items-center gap-2 sm:flex">{selected.driveUrl ? <a href={selected.driveUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-blue-200 px-3 text-[10px] font-semibold text-blue-700 hover:bg-blue-50"><FolderOpen className="h-3.5 w-3.5" /> Drive</a> : null}<a href={selected.wbUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-violet-700 hover:bg-violet-50">WB <ExternalLink className="h-3.5 w-3.5" /></a></div>
+            <div className="chip-row ml-auto max-w-[45%] items-center sm:max-w-none">{selected.driveUrl ? <a href={selected.driveUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-blue-200 px-3 text-[10px] font-semibold text-blue-700 hover:bg-blue-50"><FolderOpen className="h-3.5 w-3.5" /> Drive</a> : null}<a href={selected.wbUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-violet-700 hover:bg-violet-50">WB <ExternalLink className="h-3.5 w-3.5" /></a></div>
             <button type="button" onClick={() => setSelected(null)} aria-label="Закрыть" className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
           </div>
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 sm:p-4">

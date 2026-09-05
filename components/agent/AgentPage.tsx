@@ -131,14 +131,14 @@ export function AgentPage() {
               <div className="flex gap-1 rounded-md bg-slate-100 p-0.5">
                 {([["", "Все"], ["critical", SEVERITY_LABEL.critical], ["warning", SEVERITY_LABEL.warning], ["info", SEVERITY_LABEL.info]] as const).map(([v, label]) => (
                   <button key={v} onClick={() => setSeverityFilter(v)}
-                    className={`rounded px-2.5 py-1 text-xs font-semibold ${severityFilter === v ? "bg-white text-violet-700 shadow" : "text-slate-500"}`}>
+                    className={`tap-row inline-flex items-center rounded px-3 py-1 text-xs font-semibold sm:px-2.5 ${severityFilter === v ? "bg-white text-violet-700 shadow" : "text-slate-500"}`}>
                     {label}
                   </button>
                 ))}
               </div>
               {modules.length > 1 && (
                 <select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}
-                  className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600">
+                  className="tap-row rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600">
                   <option value="">Все модули</option>
                   {modules.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
@@ -175,7 +175,10 @@ export function AgentPage() {
         {/* Чат */}
         <div className="flex flex-col rounded-xl border border-slate-200 bg-white">
           <h2 className="border-b border-slate-100 p-4 text-lg font-semibold text-slate-900">Чат с агентом</h2>
-          <div className="flex-1 space-y-3 overflow-y-auto p-4" style={{ minHeight: 280, maxHeight: 480 }}>
+          {/* Высота окна чата — в долях экрана, а не в жёстких пикселях: 480px
+              на iPhone SE забирали весь экран, и поднятая клавиатура оставляла
+              от переписки полосу в пару строк. */}
+          <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 min-h-[40dvh] max-h-[50dvh] lg:min-h-[280px] lg:max-h-[480px]">
             {chat.length === 0 && (
               <p className="text-sm text-slate-400">
                 Спросите, например: «Где растёт ДРР?» или «Что срочно дозаказать?»
@@ -196,18 +199,22 @@ export function AgentPage() {
             {chatting && <div className="text-sm text-slate-400">Агент думает...</div>}
             <div ref={chatEnd} />
           </div>
-          <div className="flex gap-2 border-t border-slate-100 p-3">
+          {/* action-bar отступает и на системный индикатор, и на клавиатуру —
+              иначе поле ввода уезжает под неё вместе с потоком страницы. */}
+          <div className="action-bar flex gap-2 rounded-b-xl border-t border-slate-100 p-3">
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && ask()}
               placeholder="Вопрос по данным..."
-              className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              enterKeyHint="send"
+              className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
             <button
               onClick={ask}
               disabled={chatting || !question.trim()}
-              className="flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-2 text-sm text-white hover:bg-violet-700 disabled:opacity-50"
+              aria-label="Отправить вопрос"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg bg-violet-600 px-3 py-2 text-sm text-white hover:bg-violet-700 disabled:opacity-50"
             >
               <Send className="h-4 w-4" />
             </button>

@@ -48,16 +48,32 @@ export function dateRangeDays(from: string, to: string): string[] {
   return days;
 }
 
-export function exportCsv(filename: string, headers: string[], rows: string[][]) {
-  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  const csv = [headers.map(escape).join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+/**
+ * Сохранение файла из браузера.
+ *
+ * Две ловушки, из-за которых выгрузка молча не срабатывала в Safari на iOS —
+ * то есть кнопка «CSV» нажималась, и не происходило вообще ничего:
+ *   — якорь обязан лежать в документе, иначе клик по нему игнорируется;
+ *   — адрес blob нельзя отзывать сразу после click(): скачивание к этому
+ *     моменту ещё не началось, и отзыв обрывает его на старте.
+ */
+export function downloadBlob(blob: Blob, filename: string) {
+  if (typeof window === "undefined") return;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+export function exportCsv(filename: string, headers: string[], rows: string[][]) {
+  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const csv = [headers.map(escape).join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");
+  downloadBlob(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }), filename);
 }
 
 export function formatTime(iso: string): string {

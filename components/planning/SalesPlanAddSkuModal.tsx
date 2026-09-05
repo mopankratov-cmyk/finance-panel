@@ -2,6 +2,8 @@
 
 import { Check, Loader2, PackagePlus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDialogBehavior } from "@/hooks/useDialogBehavior";
+import { useIsTouch } from "@/hooks/useMediaQuery";
 import {
   emptySalesPlanOpeningStocks,
   emptySalesPlanMonths,
@@ -93,6 +95,11 @@ export function SalesPlanAddSkuModal({
     adPct: "12",
   });
   const searchRef = useRef<HTMLInputElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const touch = useIsTouch();
+  // Escape, ловушка фокуса и неподвижный фон — общим хуком: без него список
+  // каталога тянулся вместе со страницей под окном.
+  useDialogBehavior(true, onClose, panel);
   const existing = useMemo(
     () => new Set(existingVariants.map((value) => value.toLocaleLowerCase("ru-RU"))),
     [existingVariants],
@@ -104,12 +111,11 @@ export function SalesPlanAddSkuModal({
       .slice(0, 200);
   }, [catalog, query]);
 
+  // Фокус в поиск ставим только на мыши: на касании он мгновенно поднимает
+  // клавиатуру поверх списка, который человек ещё не увидел.
   useEffect(() => {
-    searchRef.current?.focus();
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", escape);
-    return () => document.removeEventListener("keydown", escape);
-  }, [onClose]);
+    if (!touch) searchRef.current?.focus();
+  }, [touch]);
 
   const accent = marketplace === "wb";
   const primary = accent
@@ -167,15 +173,19 @@ export function SalesPlanAddSkuModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="sales-plan-add-title">
+    /* На телефоне это лист во всю ширину от низа экрана, а не уменьшенная
+       карточка с полями по краям: в 320px рамка съедает восьмую часть места.
+       Высота в dvh — vh в мобильном Safari считается без адресной строки, и
+       нижний ряд кнопок оказывался за краем экрана. */
+    <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="sales-plan-add-title">
       <button type="button" aria-label="Закрыть окно добавления SKU" className="absolute inset-0 bg-slate-950/50" onClick={onClose} />
-      <div className="relative flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div ref={panel} className="relative flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl sm:max-h-[88dvh] sm:rounded-2xl">
         <div className="flex items-start justify-between border-b border-slate-200 px-4 py-4 sm:px-6">
           <div>
             <h2 id="sales-plan-add-title" className="text-lg font-bold text-slate-900">Добавить SKU в план</h2>
             <p className="mt-1 text-xs text-slate-500">Каждый цвет добавляется отдельной строкой. Размеры внутри цвета суммируются.</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Закрыть" className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 sm:h-9 sm:w-9">
+          <button type="button" onClick={onClose} aria-label="Закрыть" className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:h-9 lg:w-9">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -247,7 +257,7 @@ export function SalesPlanAddSkuModal({
           )}
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 pb-[calc(0.75rem+var(--safe-b))] sm:flex-row sm:items-center sm:justify-end sm:px-6 sm:pb-3">
           <button type="button" onClick={onClose} className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">Отмена</button>
           <button
             type="button"

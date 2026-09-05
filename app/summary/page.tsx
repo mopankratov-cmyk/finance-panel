@@ -34,10 +34,17 @@ function MpCard({ title, color, data }: { title: string; color: string; data: Lo
               {data.items.slice(0, 5).map((it) => {
                 const max = data.items[0]?.rub || 1;
                 return (
-                  <div key={it.key} className="flex items-center gap-2 text-xs">
-                    <span className="w-40 shrink-0 truncate text-gray-600">{it.label}</span>
+                  // На 320px под всю строку остаётся ~240px, а жёсткие 160
+                  // под подпись и 80 под сумму требуют 256 ещё до полосы: сумма
+                  // обрезалась ровно там, где она и есть смысл строки. Поэтому
+                  // до sm подпись и сумма стоят в один ряд, а полоса уходит
+                  // отдельной строкой под ними — ничего не теряется.
+                  <div key={it.key} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:gap-2">
+                    <div className="flex min-w-0 items-baseline justify-between gap-2 sm:contents">
+                      <span className="min-w-0 flex-1 truncate text-gray-600 sm:w-40 sm:flex-none">{it.label}</span>
+                      <span className="shrink-0 text-right font-medium tabular-nums sm:order-last sm:w-20">{fmt(it.rub)}</span>
+                    </div>
                     <div className="h-3 flex-1 overflow-hidden rounded bg-gray-100"><div className={color} style={{ width: `${Math.max(3, (it.rub / max) * 100)}%`, height: "100%" }} /></div>
-                    <span className="w-20 shrink-0 text-right tabular-nums font-medium">{fmt(it.rub)}</span>
                   </div>
                 );
               })}

@@ -209,7 +209,7 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
 
       <div className="flex items-baseline justify-between">
         <p className="text-sm font-medium text-slate-700">Вывод из оборота</p>
-        <button onClick={() => setHowOpen(!howOpen)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600">
+        <button onClick={() => setHowOpen(!howOpen)} className="flex min-h-11 items-center gap-1 text-xs text-slate-400 hover:text-slate-600 lg:min-h-0">
           Как это работает <ChevronDown className={`h-3 w-3 transition-transform ${howOpen ? "rotate-180" : ""}`} />
         </button>
       </div>
@@ -263,7 +263,7 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
           <button
             onClick={() => void refresh()}
             disabled={busy !== null}
-            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50"
+            className="flex min-h-11 items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50 lg:min-h-0"
           >
             <RefreshCw className={`h-4 w-4 ${busy === "refresh" ? "animate-spin" : ""}`} />
             {busy === "refresh" ? "Обновляю…" : "Обновить"}
@@ -325,7 +325,7 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
           {" · "}
           <a
             href={`/api/warehouse/kiz/export?batch=${encodeURIComponent(summary.lastBatch.id)}&entity=${encodeURIComponent(entityId)}`}
-            className="underline underline-offset-2 hover:text-slate-600"
+            className="inline-flex min-h-11 items-center underline underline-offset-2 hover:text-slate-600 lg:min-h-0"
           >
             скачать заново
           </a>

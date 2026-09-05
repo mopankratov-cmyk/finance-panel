@@ -67,21 +67,45 @@ export function NewReceiptModal({ open, onClose, onCreated, cabinetId, skus, war
     }
   };
 
+  // Кнопки уходят в футер модалки, а не в её содержимое: после десятка
+  // добавленных позиций «Создать поставку» уезжала вниз вместе с прокруткой, а
+  // при открытой клавиатуре её не было видно вовсе — закрепление и учёт
+  // клавиатуры живут только в футере.
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button
+        type="button"
+        onClick={() => { reset(); onClose(); }}
+        className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 px-3 text-sm text-slate-600 hover:bg-slate-50 lg:min-h-0 lg:py-1.5"
+      >
+        Отмена
+      </button>
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!valid || saving}
+        className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-3 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
+      >
+        {saving ? "Создаём..." : "Создать поставку"}
+      </button>
+    </div>
+  );
+
   return (
-    <Modal open={open} onClose={() => { reset(); onClose(); }} title="Новая поставка">
+    <Modal open={open} onClose={() => { reset(); onClose(); }} title="Новая поставка" footer={footer}>
       <div className="space-y-4">
         {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="text-sm text-slate-600">
             Ожидаемая дата
             <input type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm" />
+              className="mt-1 min-h-11 w-full rounded border border-slate-300 px-2 text-sm lg:min-h-0 lg:py-1.5" />
           </label>
           <label className="text-sm text-slate-600">
             Склад / направление
             <input list="wh-list" value={warehouse} onChange={(e) => setWarehouse(e.target.value)}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm" placeholder="Коледино" />
+              className="mt-1 min-h-11 w-full rounded border border-slate-300 px-2 text-sm lg:min-h-0 lg:py-1.5" placeholder="Коледино" />
             <datalist id="wh-list">
               {warehouses.map((w) => <option key={w.warehouse} value={w.warehouse} />)}
             </datalist>
@@ -97,34 +121,27 @@ export function NewReceiptModal({ open, onClose, onCreated, cabinetId, skus, war
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <span className="text-sm font-medium text-slate-700">Позиции</span>
-            <button type="button" onClick={fillFromNeed} className="text-xs font-medium text-violet-700 hover:underline">
+            <button type="button" onClick={fillFromNeed} className="inline-flex min-h-11 items-center text-xs font-medium text-violet-700 hover:underline lg:min-h-0">
               Заполнить из «К поставке»
             </button>
           </div>
+          {/* Артикулу в строке из трёх полей и крестика оставалось ~70 px:
+              на телефоне поля встают в столбик, с 640 px возвращаются в ряд. */}
           <div className="space-y-1.5">
             {lines.map((l, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <input value={l.nmId} onChange={(e) => updateLine(i, { nmId: e.target.value })} placeholder="nmId"
-                  className="w-24 rounded border border-slate-300 px-2 py-1 text-xs" />
+              <div key={i} className="flex flex-wrap items-center gap-1.5">
+                <input inputMode="numeric" value={l.nmId} onChange={(e) => updateLine(i, { nmId: e.target.value })} placeholder="nmId"
+                  className="min-h-11 w-full rounded border border-slate-300 px-2 text-xs sm:w-24 lg:min-h-0 lg:py-1" />
                 <input value={l.article} onChange={(e) => updateLine(i, { article: e.target.value })} placeholder="артикул"
-                  className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs" />
-                <input value={l.expectedQty} onChange={(e) => updateLine(i, { expectedQty: e.target.value })} placeholder="кол-во"
-                  className="w-20 rounded border border-slate-300 px-2 py-1 text-xs" />
-                <button type="button" onClick={() => removeLine(i)} className="px-1.5 text-slate-400 hover:text-red-600">×</button>
+                  className="min-h-11 w-full min-w-0 rounded border border-slate-300 px-2 text-xs sm:flex-1 lg:min-h-0 lg:py-1" />
+                <input inputMode="numeric" value={l.expectedQty} onChange={(e) => updateLine(i, { expectedQty: e.target.value })} placeholder="кол-во"
+                  className="min-h-11 min-w-0 flex-1 rounded border border-slate-300 px-2 text-xs sm:w-20 sm:flex-none lg:min-h-0 lg:py-1" />
+                <button type="button" onClick={() => removeLine(i)} aria-label="Убрать строку"
+                  className="tap-hit px-1.5 text-slate-400 hover:text-red-600">×</button>
               </div>
             ))}
           </div>
-          <button type="button" onClick={addLine} className="mt-2 text-xs font-medium text-slate-500 hover:text-slate-700">+ Строка</button>
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-          <button type="button" onClick={() => { reset(); onClose(); }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
-            Отмена
-          </button>
-          <button type="button" onClick={submit} disabled={!valid || saving}
-            className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
-            {saving ? "Создаём..." : "Создать поставку"}
-          </button>
+          <button type="button" onClick={addLine} className="mt-2 inline-flex min-h-11 items-center text-xs font-medium text-slate-500 hover:text-slate-700 lg:min-h-0">+ Строка</button>
         </div>
       </div>
     </Modal>

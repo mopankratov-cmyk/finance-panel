@@ -152,7 +152,7 @@ export function WbSuppliesListTab({ cabinetId, cabinetName }: { cabinetId: strin
           <button
             type="button"
             onClick={() => setOnlyLive((value) => !value)}
-            className={`ml-auto rounded-lg border px-3 py-1 text-[12px] font-semibold ${onlyLive ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-600 hover:border-violet-300"}`}
+            className={`ml-auto min-h-11 rounded-lg border px-3 text-[12px] font-semibold lg:min-h-0 lg:py-1 ${onlyLive ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-600 hover:border-violet-300"}`}
           >
             {onlyLive ? "Показаны едущие" : "Только едущие"}
           </button>

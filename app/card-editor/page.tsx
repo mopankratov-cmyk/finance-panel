@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Type, Download, ImagePlus, Trash2 } from "lucide-react";
+import { downloadBlob } from "@/lib/analytics/format";
 
 interface Layer {
   id: number; text: string; x: number; y: number; // x,y относительные 0..1 (центр текста)
@@ -82,43 +83,57 @@ function Editor() {
   const upd = (id: number, patch: Partial<Layer>) => setLayers((p) => p.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const del = (id: number) => { setLayers((p) => p.filter((l) => l.id !== id)); if (sel === id) setSel(null); };
 
-  const evtRel = (e: React.MouseEvent) => {
+  // Указательные события вместо мышиных: на касании iOS присылает по тапу
+  // синтетические mousedown/mouseup, но mousemove при протяжке пальцем — нет,
+  // поэтому слой выбирался и дальше не двигался ни на телефоне, ни на iPad.
+  const evtRel = (e: React.PointerEvent) => {
     const cv = canvasRef.current!; const r = cv.getBoundingClientRect();
     return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
   };
-  const onDown = (e: React.MouseEvent) => {
+  const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const { x, y } = evtRel(e);
-    // выбрать ближайший слой по близости центра
-    let best: Layer | null = null, bd = 0.08;
+    // выбрать ближайший слой по близости центра; пальцем целятся грубее мыши
+    let best: Layer | null = null, bd = e.pointerType === "mouse" ? 0.08 : 0.12;
     for (const l of layers) { const d = Math.hypot(l.x - x, l.y - y); if (d < bd) { bd = d; best = l; } }
-    if (best) { setSel(best.id); drag.current = { id: best.id, dx: best.x - x, dy: best.y - y }; }
-    else setSel(null);
+    if (best) {
+      setSel(best.id);
+      drag.current = { id: best.id, dx: best.x - x, dy: best.y - y };
+      // Захват указателя: палец легко уходит за край холста, а без захвата
+      // перетаскивание там обрывается.
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } else setSel(null);
   };
-  const onMove = (e: React.MouseEvent) => { if (!drag.current) return; const { x, y } = evtRel(e); upd(drag.current.id, { x: Math.max(0, Math.min(1, x + drag.current.dx)), y: Math.max(0, Math.min(1, y + drag.current.dy)) }); };
+  const onMove = (e: React.PointerEvent) => { if (!drag.current) return; const { x, y } = evtRel(e); upd(drag.current.id, { x: Math.max(0, Math.min(1, x + drag.current.dx)), y: Math.max(0, Math.min(1, y + drag.current.dy)) }); };
   const onUp = () => { drag.current = null; };
 
-  const download = () => { const cv = canvasRef.current; if (!cv) return; const a = document.createElement("a"); a.download = "card.png"; a.href = cv.toDataURL("image/png"); a.click(); };
+  const download = () => {
+    const cv = canvasRef.current;
+    if (!cv) return;
+    // Через blob и общий загрузчик: якорь с data-URL, не вставленный в
+    // документ, в Safari на iOS не скачивает ничего и молча.
+    cv.toBlob((blob) => { if (blob) downloadBlob(blob, "card.png"); }, "image/png");
+  };
   const onUpload = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) loadImage(URL.createObjectURL(f)); };
 
   const cur = layers.find((l) => l.id === sel) || null;
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="min-h-dvh bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-pink-100 text-pink-700"><Type className="h-5 w-5" /></div>
           <div><h1 className="text-lg font-extrabold tracking-tight">Текст на карточку</h1><p className="text-xs text-gray-500">Наложение заголовков, выгод и цены · экспорт PNG</p></div>
-          <div className="ml-auto flex gap-2">
-            <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"><ImagePlus className="h-4 w-4" />Своё фото<input type="file" accept="image/*" className="hidden" onChange={onUpload} /></label>
-            <button onClick={download} disabled={!ready} className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:bg-gray-300"><Download className="h-4 w-4" />Скачать PNG</button>
+          <div className="ml-auto flex w-full gap-2 sm:w-auto">
+            <label className="tap-row flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 sm:flex-none"><ImagePlus className="h-4 w-4" />Своё фото<input type="file" accept="image/*" className="hidden" onChange={onUpload} /></label>
+            <button onClick={download} disabled={!ready} className="tap-row flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:bg-gray-300 sm:flex-none"><Download className="h-4 w-4" />Скачать PNG</button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-6 py-6 lg:grid-cols-[1fr_320px]">
+      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_320px]">
         <div className="flex items-start justify-center rounded-xl border border-gray-200 bg-white p-4">
           {ready ? (
-            <canvas ref={canvasRef} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} className="max-h-[75vh] w-auto cursor-move rounded shadow" style={{ maxWidth: "100%" }} />
+            <canvas ref={canvasRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} className="max-h-[75dvh] w-auto cursor-move touch-none rounded shadow" style={{ maxWidth: "100%" }} />
           ) : (
             <div className="py-24 text-center text-sm text-gray-400">{initial ? "Загружаю изображение…" : "Загрузи фото или открой из лаборатории (?img=…)"}</div>
           )}
@@ -134,7 +149,7 @@ function Editor() {
 
           {cur && (
             <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
-              <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-gray-400">Слой</span><button onClick={() => del(cur.id)} className="text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div>
+              <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-gray-400">Слой</span><button onClick={() => del(cur.id)} aria-label="Удалить слой" className="tap-hit -m-1 p-1 text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div>
               <input value={cur.text} onChange={(e) => upd(cur.id, { text: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               <label className="block text-xs text-gray-500">Размер<input type="range" min={0.02} max={0.16} step={0.005} value={cur.size} onChange={(e) => upd(cur.id, { size: Number(e.target.value) })} className="w-full" /></label>
               <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -143,9 +158,9 @@ function Editor() {
                 {cur.pill && <label className="flex items-center gap-1.5">Цвет<input type="color" value={cur.pillColor.startsWith("#") ? cur.pillColor : "#111827"} onChange={(e) => upd(cur.id, { pillColor: e.target.value })} /></label>}
               </div>
               <div className="flex gap-1">
-                {[600, 700, 800].map((w) => <button key={w} onClick={() => upd(cur.id, { weight: w })} className={`flex-1 rounded px-2 py-1 text-xs ${cur.weight === w ? "bg-violet-600 text-white" : "bg-gray-100"}`}>{w === 600 ? "обычный" : w === 700 ? "жирный" : "чёрный"}</button>)}
+                {[600, 700, 800].map((w) => <button key={w} onClick={() => upd(cur.id, { weight: w })} className={`tap-row flex-1 rounded px-2 py-1 text-xs ${cur.weight === w ? "bg-violet-600 text-white" : "bg-gray-100"}`}>{w === 600 ? "обычный" : w === 700 ? "жирный" : "чёрный"}</button>)}
               </div>
-              <p className="text-[11px] text-gray-400">Перетаскивай текст прямо на холсте.</p>
+              <p className="text-xs text-gray-400">Перетаскивай текст прямо на холсте — мышью или пальцем.</p>
             </div>
           )}
           {!cur && ready && <p className="px-1 text-xs text-gray-400">Добавь текст пресетом и кликни по нему на холсте, чтобы редактировать.</p>}

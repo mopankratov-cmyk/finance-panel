@@ -98,7 +98,10 @@ export function WarehousesTab({
           Складов пока нет
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        // Реестр складов читают строкой за строкой, а не сравнивают колонки:
+        // на телефоне он рассыпается в карточки, и поле «списывать с» с
+        // кнопками перестаёт жить за правым краем экрана.
+        <div className="table-cards scroll-x md:rounded-xl md:border md:border-slate-200 md:bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
@@ -114,22 +117,22 @@ export function WarehousesTab({
                 const isEditing = editing?.id === warehouse.id;
                 return (
                   <tr key={warehouse.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-2.5 font-medium text-slate-900">
+                    <td data-cell="title" className="px-4 py-2.5 font-medium text-slate-900">
                       {isEditing ? (
                         <input
                           value={editing.name}
                           onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                           onKeyDown={(e) => { if (e.key === "Enter") void patch(warehouse.id, { name: editing.name, kind: editing.kind }); }}
-                          className="w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                          className="min-h-11 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm lg:min-h-0"
                         />
                       ) : warehouse.name}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-600">
+                    <td data-label="Тип" className="px-4 py-2.5 text-slate-600">
                       {isEditing ? (
                         <select
                           value={editing.kind}
                           onChange={(e) => setEditing({ ...editing, kind: parseWarehouseKind(e.target.value) })}
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                          className="min-h-11 rounded-lg border border-slate-200 px-2 py-1 text-sm lg:min-h-0"
                         >
                           <option value="own">свой склад</option>
                           <option value="fulfillment">фулфилмент</option>
@@ -137,12 +140,12 @@ export function WarehousesTab({
                         </select>
                       ) : warehouseKindLabel(warehouse.kind)}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td data-label="Состояние" className="px-4 py-2.5">
                       {warehouse.isActive
                         ? <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">активен</span>
                         : <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">в архиве</span>}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td data-label="Продажи FBS списывать с" className="px-4 py-2.5">
                       {/* Дата — обещание, что остатку склада с этого дня можно верить.
                           Пока её нет, продажи не вычитаются: иначе остаток ушёл бы
                           в минус на всю историю торговли. */}
@@ -153,7 +156,7 @@ export function WarehousesTab({
                           entityId,
                           fbsSalesSince: e.target.value ? new Date(`${e.target.value}T00:00:00`).toISOString() : null,
                         })}
-                        className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                        className="min-h-11 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 lg:min-h-0"
                       />
                       {warehouse.fbsSyncedAt && (
                         <span className="ml-2 text-[10px] text-slate-400">
@@ -161,28 +164,30 @@ export function WarehousesTab({
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td data-cell="actions" className="px-4 py-2.5 text-right">
                       {isEditing ? (
-                        <div className="flex justify-end gap-2">
+                        <div className="flex flex-wrap justify-end gap-2">
                           <button
                             onClick={() => void patch(warehouse.id, { name: editing.name, kind: editing.kind })}
-                            className="rounded-lg bg-violet-600 px-3 py-1 text-xs font-medium text-white"
+                            className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-3 text-xs font-medium text-white lg:min-h-0 lg:py-1"
                           >
                             Сохранить
                           </button>
-                          <button onClick={() => setEditing(null)} className="text-xs text-slate-500">Отмена</button>
+                          <button onClick={() => setEditing(null)} className="inline-flex min-h-11 items-center px-2 text-xs text-slate-500 lg:min-h-0 lg:px-0">
+                            Отмена
+                          </button>
                         </div>
                       ) : (
-                        <div className="flex justify-end gap-3">
+                        <div className="flex flex-wrap justify-end gap-3">
                           <button
                             onClick={() => setEditing({ id: warehouse.id, name: warehouse.name, kind: warehouse.kind })}
-                            className="text-xs text-violet-600 hover:underline"
+                            className="inline-flex min-h-11 items-center px-2 text-xs text-violet-600 hover:underline lg:min-h-0 lg:px-0"
                           >
                             Изменить
                           </button>
                           <button
                             onClick={() => void patch(warehouse.id, { isActive: !warehouse.isActive })}
-                            className="text-xs text-slate-500 hover:underline"
+                            className="inline-flex min-h-11 items-center px-2 text-xs text-slate-500 hover:underline lg:min-h-0 lg:px-0"
                           >
                             {warehouse.isActive ? "В архив" : "Вернуть"}
                           </button>

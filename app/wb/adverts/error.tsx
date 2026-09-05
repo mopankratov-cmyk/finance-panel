@@ -46,7 +46,7 @@ export default function WbAdvertsError({
   };
 
   return (
-    <div className="grid min-h-[calc(100vh-54px)] place-items-center bg-[#f6f7f9] px-4 py-10">
+    <div className="grid min-h-[calc(100dvh-54px)] items-start justify-center bg-[#f6f7f9] px-4 py-6 sm:place-items-center sm:py-10">
       <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
         <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-amber-50 text-amber-600">
           {autoRecovering ? <RefreshCw className="h-6 w-6 animate-spin motion-reduce:animate-none" /> : <AlertTriangle className="h-6 w-6" />}
@@ -61,10 +61,10 @@ export default function WbAdvertsError({
         </p>
         {!autoRecovering ? (
           <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <button type="button" onClick={hardReload} className="min-h-10 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">
+            <button type="button" onClick={hardReload} className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">
               Попробовать снова
             </button>
-            <button type="button" onClick={reset} className="min-h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <button type="button" onClick={reset} className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Повторить без перезагрузки
             </button>
           </div>

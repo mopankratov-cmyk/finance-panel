@@ -187,17 +187,17 @@ export function WbFbsOrdersTab({ cabinetId, cabinetName }: { cabinetId: string; 
                 key={value}
                 type="button"
                 onClick={() => setDays(value)}
-                className={`min-h-10 rounded-md px-3 text-[10px] font-semibold sm:min-h-8 ${days === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
+                className={`min-h-10 rounded-md px-3 text-[10px] font-semibold lg:min-h-8 ${days === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
               >
                 {value} дн
               </button>
             ))}
           </div>
-          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 sm:max-w-sm sm:min-h-9">
+          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 sm:max-w-sm lg:min-h-9">
             <Search className="h-3.5 w-3.5 text-slate-400" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="задание, артикул или баркод" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />
           </label>
-          <label className="flex min-h-11 items-center gap-2 text-[11px] font-semibold text-slate-600 sm:min-h-9">
+          <label className="flex min-h-11 items-center gap-2 text-[11px] font-semibold text-slate-600 lg:min-h-9">
             <input type="checkbox" checked={onlyMissingKiz} onChange={(event) => setOnlyMissingKiz(event.target.checked)} className="h-3.5 w-3.5 accent-rose-600" />
             только без кода маркировки
           </label>

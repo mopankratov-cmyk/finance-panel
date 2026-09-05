@@ -52,21 +52,29 @@ export function CabinetSwitcher({ mp, accent = "sky", onChange }: { mp: "ozon" |
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)}
-        title="Кабинет (юрлицо) — переключи, чтобы вся аналитика показала его срез"
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold ${ring} ${active || activeGroup ? (accent === "violet" ? "border-violet-300 bg-violet-50" : "border-sky-300 bg-sky-50") : "border-gray-300 bg-white"} hover:bg-gray-50`}>
+        aria-label="Выбрать кабинет"
+        aria-expanded={open}
+        className={`inline-flex min-h-11 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold lg:min-h-0 ${ring} ${active || activeGroup ? (accent === "violet" ? "border-violet-300 bg-violet-50" : "border-sky-300 bg-sky-50") : "border-gray-300 bg-white"} hover:bg-gray-50`}>
         {activeGroup ? <Layers3 className="h-3.5 w-3.5" /> : <Building2 className="h-3.5 w-3.5" />} <span className="max-w-[140px] truncate">{label}</span> <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-1 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-          <button onClick={() => pick("")} className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 ${!id ? "font-semibold text-gray-900" : "text-gray-600"}`}>Все кабинеты</button>
+        <div className="absolute right-0 z-50 mt-1 max-h-[70svh] w-64 overflow-y-auto overscroll-contain rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          {/* Объяснение, что такое кабинет, раньше жило в атрибуте title на
+              кнопке — то есть на телефоне и iPad его не было вовсе. Теперь оно
+              видно тому, кто открыл список, а значит как раз тому, кто и не
+              понимает, что выбирает. */}
+          <p className="border-b border-gray-100 px-3 pb-2 pt-1 text-[11px] leading-4 text-gray-500">
+            Кабинет — это юрлицо. Выбор переключает срез всей аналитики.
+          </p>
+          <button onClick={() => pick("")} className={`block min-h-11 w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 lg:min-h-0 ${!id ? "font-semibold text-gray-900" : "text-gray-600"}`}>Все кабинеты</button>
           {cabs.map((c) => (
-            <button key={c.id} onClick={() => pick(c.id)} className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 ${id === c.id ? "font-semibold text-gray-900" : "text-gray-600"}`}>{c.name}</button>
+            <button key={c.id} onClick={() => pick(c.id)} className={`block min-h-11 w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 lg:min-h-0 ${id === c.id ? "font-semibold text-gray-900" : "text-gray-600"}`}>{c.name}</button>
           ))}
           {groups.length > 0 && (
             <>
               <div className="mt-1 border-t border-gray-100 px-3 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Группы</div>
               {groups.map((g) => (
-                <button key={g.id} onClick={() => pick(`group:${g.id}`)} className={`flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm hover:bg-gray-50 ${id === `group:${g.id}` ? "font-semibold text-gray-900" : "text-gray-600"}`}>
+                <button key={g.id} onClick={() => pick(`group:${g.id}`)} className={`flex min-h-11 w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm hover:bg-gray-50 lg:min-h-0 ${id === `group:${g.id}` ? "font-semibold text-gray-900" : "text-gray-600"}`}>
                   <Layers3 className="h-3 w-3 shrink-0 text-gray-400" /> {g.name}
                 </button>
               ))}

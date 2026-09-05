@@ -12,6 +12,15 @@ const RECEIPT_STATE_TITLE: Record<StockColorNode["columns"]["receipts"][number][
   posted: "Партия в остатке",
 };
 
+/** Состояние партии в шапке колонки — словом, а не только цветом и подсказкой
+ *  по наведению: на касании подсказки нет, а красная цифра без объяснения
+ *  читается как ошибка. У проведённой партии добавлять нечего: она в остатке. */
+const RECEIPT_STATE_MARK: Record<StockColorNode["columns"]["receipts"][number]["state"], string | null> = {
+  expected: "не пересчитана",
+  received: "не в остатке",
+  posted: null,
+};
+
 const SHIPMENT_STATUS_TITLE: Record<StockColorNode["columns"]["shipments"][number]["status"], string> = {
   draft: "Задание на отгрузку — товар размещён, но ещё не отгружен",
   posted: "Отгружено",
@@ -43,7 +52,7 @@ export function StockSizeMatrix({ node }: { node: StockColorNode }) {
         <span className="text-sm font-medium text-slate-800">{title} · приходы и отгрузки по размерам</span>
         <span className="ml-auto text-xs text-slate-400">красным — ещё не в остатке / ещё не отгружено</span>
       </div>
-      <div className="overflow-x-auto">
+      <div className="scroll-x">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-xs text-slate-400">
@@ -57,6 +66,9 @@ export function StockSizeMatrix({ node }: { node: StockColorNode }) {
                 >
                   <div>{column.number ?? "партия"}</div>
                   <div className="font-normal">{shortDate(column.date)}</div>
+                  {RECEIPT_STATE_MARK[column.state] && (
+                    <div className="font-normal normal-case">{RECEIPT_STATE_MARK[column.state]}</div>
+                  )}
                 </th>
               ))}
               <th className="px-3 py-2 text-right font-medium uppercase tracking-wide">Получено</th>

@@ -16,6 +16,7 @@ import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurren
 import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
 import { closeLoanScheduleRows, closeLoanScheduleRowWithWb, loadLoanScheduleRows, saveLoanScheduleRows } from "./scheduleStore";
 import { loadFinanceState } from "@/lib/db";
+import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
 
@@ -166,6 +167,9 @@ export function LoansPage() {
   const [scheduleRows, setScheduleRows] = useState<ScheduleRowRecord[]>([]);
   const [marketplaceFacts, setMarketplaceFacts] = useState<MarketplaceFact[]>([]);
   const [marketplaceLoading, setMarketplaceLoading] = useState(false);
+  const formPanel = useRef<HTMLDivElement>(null);
+  const closeForm = useCallback(() => { setModalOpen(false); setEditing(null); }, []);
+  useDialogBehavior(modalOpen, closeForm, formPanel);
   const reconciledRef = useRef(false);
   const contractNumberBackfillRef = useRef(false);
   const today = todayISO();
@@ -536,19 +540,19 @@ export function LoansPage() {
               <Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} />
               <Metric label="Следующий платёж" value={next ? `${formatDate(next.date)} · ${formatMoney(next.principal + next.interest + next.penalty + next.fine)}` : "Нет"} />
             </div>
-            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500"><span>Строк графика: {schedule.length}</span><span>Оплачено: {schedule.filter((row) => row.status === "done").length}</span>{fee > 0 && <span>Комиссия в ОПиУ: {formatMoney(fee)} / {metadataNumber(state.payments, loan.id, "fee-months", 36)} мес.</span>}<span className="font-medium text-violet-700">В календаре только реальные платежи</span>{contractName(state.payments, loan.id) && <span>Файл: {contractName(state.payments, loan.id)}</span>}</div>
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500"><span>Строк графика: {schedule.length}</span><span>Оплачено: {schedule.filter((row) => row.status === "done").length}</span>{fee > 0 && <span>Комиссия в ОПиУ: {formatMoney(fee)} / {metadataNumber(state.payments, loan.id, "fee-months", 36)} мес.</span>}<span className="font-medium text-violet-700">В календаре только реальные платежи</span>{contractName(state.payments, loan.id) && <span className="break-anywhere min-w-0">Файл: {contractName(state.payments, loan.id)}</span>}</div>
           </article>;
         })}
       </section>
 
-      {modalOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
-        <button type="button" aria-label="Закрыть форму" className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => { setModalOpen(false); setEditing(null); }} />
-        <div className="relative flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <div><h2 className="text-lg font-bold text-slate-950">{editing ? "Редактировать договор и график" : "Новый кредит или займ"}</h2><p className="text-xs text-slate-500">Все поля и даты можно изменить позже</p></div>
-            <button type="button" onClick={() => { setModalOpen(false); setEditing(null); }} className="min-h-11 rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">Закрыть</button>
+      {modalOpen && <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
+        <button type="button" aria-label="Закрыть форму" className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={closeForm} />
+        <div ref={formPanel} role="dialog" aria-modal="true" aria-label={editing ? "Редактировать договор и график" : "Новый кредит или займ"} className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-2xl">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3.5 sm:px-5 sm:py-4">
+            <div className="min-w-0"><h2 className="text-base font-bold text-slate-950 sm:text-lg">{editing ? "Редактировать договор и график" : "Новый кредит или займ"}</h2><p className="text-xs text-slate-500">Все поля и даты можно изменить позже</p></div>
+            <button type="button" onClick={closeForm} className="min-h-11 shrink-0 rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">Закрыть</button>
           </div>
-          <div className="overflow-y-auto p-4 sm:p-6">
+          <div className="overflow-y-auto overscroll-contain p-4 pb-safe-4 sm:p-6">
           <LoanForm
             loan={editing ?? undefined}
             accounts={state.accounts}
@@ -570,7 +574,7 @@ export function LoansPage() {
             paymentDays={editing ? metadataPaymentDays(state.payments, editing.id) : undefined}
             terms={editing?.terms ? { ...editing.terms, paymentDay: metadataNumber(state.payments, editing.id, "payment-day") || editing.terms.paymentDay || null } : undefined}
             onSubmit={handleSubmit}
-            onCancel={() => { setModalOpen(false); setEditing(null); }}
+            onCancel={closeForm}
           />
           </div>
         </div>
@@ -588,6 +592,8 @@ export function LoansPage() {
 }
 
 function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { loan: Loan; company: string; schedule: LoanScheduleDraft[]; payments: Payment[]; onClose: () => void; onEdit: () => void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useDialogBehavior(true, onClose, panel);
   const [documents, setDocuments] = useState<LoanDocumentInfo[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useState("");
@@ -608,9 +614,9 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
       .finally(() => { if (active) setDocumentsLoading(false); });
     return () => { active = false; };
   }, [loan.id]);
-  return <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+  return <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
     <button type="button" aria-label="Закрыть карточку" className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
-    <div className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div ref={panel} role="dialog" aria-modal="true" aria-label={`Договор ${loan.creditorName}`} className="relative flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-2xl">
       <header className="flex items-start justify-between gap-4 border-b p-5"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">{company}</p><h2 className="mt-1 text-xl font-bold text-slate-950">{loan.creditorName}</h2><p className="mt-1 text-sm text-slate-500">{contractNumber(payments, loan.id) ? `Договор № ${contractNumber(payments, loan.id)} от ` : "Договор от "}{formatDate(loan.startDate)} · срок до {formatDate(loan.dueDate)}</p></div><button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
       <div className="overflow-y-auto p-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={currency === "RUB" ? formatMoney(loan.principalAmount) : `${roundLoanMoney(originalPrincipal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency} · ${formatMoney(loan.principalAmount)}`} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
@@ -627,7 +633,7 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
             <div className="flex shrink-0 gap-2"><button type="button" onClick={() => openListedLoanDocument(document)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 font-semibold text-violet-700"><ExternalLink className="h-4 w-4" />Открыть</button><button type="button" onClick={() => downloadLoanDocument(document)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 font-semibold text-slate-700"><Download className="h-4 w-4" />Скачать</button></div>
           </div>)}</div>}
         </section>
-        <div className="mt-5 overflow-x-auto rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th>{currency !== "RUB" && <th className="p-3 text-right">В валюте договора</th>}<th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
+        <div className="scroll-x mt-5 rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th>{currency !== "RUB" && <th className="p-3 text-right">В валюте договора</th>}<th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
           const overdue = row.status === "planned" && row.date < todayISO();
           const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);
           return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right font-semibold tabular-nums">{formatMoney(projectedBalances.get(row.id) ?? balance)}</td></tr>;
@@ -684,7 +690,7 @@ function SummaryBreakdown({ kind, loans, schedules, balances, next30, overdue, p
 
 function Summary({ icon: Icon, label, value, tone, expanded, onClick }: { icon: typeof WalletCards; label: string; value: string; tone: "slate" | "violet" | "red" | "green"; expanded: boolean; onClick: () => void }) {
   const colors = { slate: "bg-slate-100 text-slate-700", violet: "bg-violet-100 text-violet-700", red: "bg-red-100 text-red-700", green: "bg-emerald-100 text-emerald-700" };
-  return <Card><button type="button" aria-expanded={expanded} onClick={onClick} className={`min-h-[84px] w-full cursor-pointer rounded-xl text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 ${expanded ? "bg-violet-50/60" : ""}`}><span className="flex items-center gap-2 px-3 py-3"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors[tone]}`}><Icon className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-xs font-medium leading-4 text-slate-500">{label}</span><span className="mt-1 block whitespace-nowrap text-lg font-bold leading-none tracking-tight tabular-nums text-slate-950 2xl:text-xl">{value}</span></span></span></button></Card>;
+  return <Card><button type="button" aria-expanded={expanded} onClick={onClick} className={`min-h-[84px] w-full cursor-pointer rounded-xl text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 ${expanded ? "bg-violet-50/60" : ""}`}><span className="flex items-center gap-2 px-3 py-3"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors[tone]}`}><Icon className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-xs font-medium leading-4 text-slate-500">{label}</span><span className="break-anywhere mt-1 block text-lg font-bold leading-tight tracking-tight tabular-nums text-slate-950 2xl:text-xl">{value}</span></span></span></button></Card>;
 }
 
 function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {

@@ -9,6 +9,7 @@ import { NewReceiptModal } from "@/components/supplies/NewReceiptModal";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import type { SupplyRow, WarehouseSummary } from "@/app/api/supplies/route";
 import type { PurchaseReceiptRow } from "@/app/api/supplies/receipts/route";
+import { useIsTouch } from "@/hooks/useMediaQuery";
 
 function waitDaysColor(d: number): string {
   if (d <= 7) return "text-slate-500";
@@ -28,6 +29,10 @@ export function ReceivingTab({ skus, cabId, warehouses }: { skus: SupplyRow[]; c
   const [receivedInputs, setReceivedInputs] = useState<Record<number, string>>({});
   const [now, setNow] = useState(Date.now);
   const elapsed = useElapsedSeconds(loading);
+  // Подтверждение удаления — только там, где промахиваются пальцем. На мыши
+  // строка удаляется в один клик, как и до адаптации: диалог всем подряд был
+  // бы правкой поведения, а не вёрстки.
+  const touch = useIsTouch();
 
   useEffect(() => {
     fetch("/api/cabinets", { cache: "no-store" }).then((r) => r.json())
@@ -113,21 +118,39 @@ export function ReceivingTab({ skus, cabId, warehouses }: { skus: SupplyRow[]; c
       const d = Math.floor((now - new Date(r.createdAt).getTime()) / 86400000);
       return <span className={waitDaysColor(d)}>{d}</span>;
     }, csv: (r) => String(Math.floor((now - new Date(r.createdAt).getTime()) / 86400000)) },
+    // Факт приёмки вбивают стоя у коробок, пальцем: поле и кнопка держат 44px
+    // по высоте, а на мыши схлопываются обратно в плотную строку журнала.
     { key: "receive", label: "Принято (факт)", align: "right", render: (r) => (
       <div className="flex items-center justify-end gap-1.5">
-        <input type="number" min={0} value={receivedInputs[r.id] ?? String(r.expectedQty)}
+        <input type="number" inputMode="numeric" min={0} value={receivedInputs[r.id] ?? String(r.expectedQty)}
           onChange={(e) => setReceivedInputs((s) => ({ ...s, [r.id]: e.target.value }))}
-          className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-xs text-right" />
+          className="min-h-11 w-20 rounded border border-slate-300 px-2 text-right text-xs lg:min-h-0 lg:w-16 lg:px-1.5 lg:py-0.5" />
         <button onClick={() => markReceived(r.id, Number(receivedInputs[r.id] ?? r.expectedQty))}
-          className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-emerald-700">
+          className="inline-flex min-h-11 items-center rounded bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 lg:min-h-0 lg:px-2 lg:py-0.5">
           Принять
         </button>
       </div>
     ), csv: () => "" },
+    // Удаление строки безвозвратно и стоит рядом с безобидным «Закрыть
+    // поставку»: на касании они сливались в одну зону, поэтому цели разведены
+    // по 44px, а на грубом указателе удаление ещё и переспрашивает.
     { key: "actions", label: "Действия", render: (r) => (
-      <div className="flex items-center justify-end gap-2 text-xs">
-        <button onClick={() => closeBatch(r.batchId)} className="text-slate-500 hover:text-slate-700">Закрыть поставку</button>
-        <button onClick={() => removeLine(r.id)} className="text-red-500 hover:text-red-700">Удалить</button>
+      <div className="flex items-center justify-end gap-3 text-xs">
+        <button
+          onClick={() => closeBatch(r.batchId)}
+          className="inline-flex min-h-11 items-center text-slate-500 hover:text-slate-700 lg:min-h-0"
+        >
+          Закрыть поставку
+        </button>
+        <button
+          onClick={() => {
+            if (touch && !window.confirm(`Удалить строку поставки ${r.article || r.nmId}? Действие необратимо.`)) return;
+            removeLine(r.id);
+          }}
+          className="inline-flex min-h-11 items-center text-red-500 hover:text-red-700 lg:min-h-0"
+        >
+          Удалить
+        </button>
       </div>
     ), align: "right", csv: () => "" },
   ];
@@ -190,18 +213,21 @@ export function ReceivingTab({ skus, cabId, warehouses }: { skus: SupplyRow[]; c
       </div>
 
       <button onClick={() => setModalOpen(true)}
-        className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700">
+        className="flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-sm font-medium text-white hover:bg-violet-700 lg:min-h-0 lg:py-2">
         <Plus className="h-4 w-4" /> Новая поставка
       </button>
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-slate-700">Ожидаем поставку</h3>
-        <AnalyticsTable columns={expectedColumns} data={expected} filename="receiving-expected.csv" emptyMessage="Нет ожидаемых поставок." />
+        {/* Реестр читают строкой за строкой и в нём же вводят факт: на телефоне
+            он рассыпается в карточки, иначе поле ввода и обе кнопки строки
+            живут за правым краем экрана. */}
+        <AnalyticsTable cards columns={expectedColumns} data={expected} filename="receiving-expected.csv" emptyMessage="Нет ожидаемых поставок." />
       </div>
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-slate-700">История приёмки</h3>
-        <AnalyticsTable columns={receivedColumns} data={received} filename="receiving-history.csv" emptyMessage="Ещё ничего не принято." />
+        <AnalyticsTable cards columns={receivedColumns} data={received} filename="receiving-history.csv" emptyMessage="Ещё ничего не принято." />
       </div>
 
       <NewReceiptModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={load}

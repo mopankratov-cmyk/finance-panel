@@ -307,12 +307,12 @@ export function AdRulesTab({
                   {rule.goal === "drr" ? "%" : ` ${currency}`} · окно {rule.windowDays} дн. · шаг {rule.stepPercent}% · ставка{" "}
                   {rule.minBid}–{rule.maxBid} {currency} · порог {rule.minOrders} заказов
                 </span>
-                <div className="ml-auto flex gap-1">
+                <div className="ml-auto flex gap-2">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => toggle(rule)}
-                    className="min-h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                    className="min-h-11 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 lg:min-h-8 lg:px-2"
                   >
                     {rule.enabled ? "Выключить" : "Включить"}
                   </button>
@@ -320,7 +320,7 @@ export function AdRulesTab({
                     type="button"
                     disabled={busy}
                     onClick={() => remove(rule)}
-                    className="min-h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-40"
+                    className="min-h-11 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-40 lg:min-h-8 lg:px-2"
                   >
                     Удалить
                   </button>

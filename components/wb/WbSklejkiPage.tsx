@@ -74,7 +74,7 @@ function CopyButton({ value, label }: { value: string | number; label: string })
     <button
       type="button"
       onClick={() => copyValue(value)}
-      className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-white hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+      className="tap-hit grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-white hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
       aria-label={label}
       title={label}
     >
@@ -103,12 +103,12 @@ function SkuCard({ group, sku, spendWindowDays, verdictVisible = true }: { group
           <WbProductImage nm={sku.nm} src={sku.img_url} className="h-10 w-10 rounded bg-slate-100 object-cover" />
         </a>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-2">
             <a href={wbUrl} target="_blank" rel="noopener noreferrer" className="truncate text-xs font-medium text-violet-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">{sku.art || sku.nm}</a>
             <CopyButton value={sku.art || sku.nm} label="Скопировать артикул" />
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-            <button type="button" onClick={() => copyValue(sku.nm)} className="hover:text-violet-600">{sku.nm}</button>
+            <button type="button" onClick={() => copyValue(sku.nm)} className="tap-hit hover:text-violet-600">{sku.nm}</button>
             {sku.nm_feedbacks != null ? (
               <span className={sku.nm_feedbacks === 0 ? "font-semibold text-orange-600" : undefined}>
                 <span className="text-amber-500">★</span> {sku.nm_rating || 0} ({sku.nm_feedbacks})
@@ -141,13 +141,13 @@ function GroupCard({ group, spendWindowDays }: { group: SklejkiGroup; spendWindo
   const totals = glueTotals(group);
   const summary = glueSummary(group);
   return (
-    <article className="w-[380px] max-w-[calc(100vw-2rem)] shrink-0 rounded-lg border border-purple-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+    <article className="w-[380px] max-w-[calc(100vw-3.5rem)] shrink-0 rounded-lg border border-purple-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-base font-bold text-slate-900">{group.shop_label || "—"}</span>
         {group.category_label ? <><span className="text-base font-bold text-slate-900">·</span><span className="min-w-0 truncate text-base font-bold text-slate-900">{group.category_label}</span></> : null}
         <span className="rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-700">{group.skus.length} карточек</span>
         {summary.carry ? <span className="rounded bg-emerald-600 px-1.5 py-0 text-[10px] font-semibold text-white">🟢 несущих {summary.carry}</span> : null}
-        <button type="button" onClick={() => copyValue(group.imt_id)} className="text-[10px] text-slate-400 hover:text-violet-600 hover:underline" title="Скопировать imtID">imt {group.imt_id}</button>
+        <button type="button" onClick={() => copyValue(group.imt_id)} className="tap-hit text-[10px] text-slate-400 hover:text-violet-600 hover:underline" title="Скопировать imtID">imt {group.imt_id}</button>
         {group.feedback_count && !group.hide_group_rating ? <span className="ml-auto text-xs"><span className="text-amber-500">★</span> <b>{group.valuation}</b> <span className="text-slate-500">({group.feedback_count} общих)</span></span> : null}
       </div>
 
@@ -242,7 +242,7 @@ export function WbSklejkiPage() {
   const spendWindowDays = data?.period?.spend_window_days ?? 14;
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Link2}
         title="Склейки"
@@ -263,11 +263,11 @@ export function WbSklejkiPage() {
               <div className="flex items-center gap-1 text-[10px]" aria-label="Фильтр кабинета">
                 <span className="text-slate-400">кабинет:</span>
                 {["", ...shops].map((value) => (
-                  <button key={value || "all"} type="button" onClick={() => setShop(value)} className={`min-h-11 rounded-lg px-2 font-semibold transition-colors sm:min-h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${shop === value ? "bg-violet-600 text-white" : value ? shopBadge(value) : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{value || "Все"}</button>
+                  <button key={value || "all"} type="button" onClick={() => setShop(value)} className={`min-h-11 rounded-lg px-2 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8 ${shop === value ? "bg-violet-600 text-white" : value ? shopBadge(value) : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{value || "Все"}</button>
                 ))}
               </div>
             ) : null}
-            <button type="button" onClick={() => { forceRefreshRef.current = true; setReloadKey((value) => value + 1); }} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-slate-500 sm:min-h-8 hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> Обновить</button>
+            <button type="button" onClick={() => { forceRefreshRef.current = true; setReloadKey((value) => value + 1); }} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-slate-500 lg:min-h-8 hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> Обновить</button>
           </>
         }
       />
@@ -285,7 +285,7 @@ export function WbSklejkiPage() {
         ) : (
           <>
             <h2 className="mb-2 mt-4 first:mt-0 text-sm font-bold text-slate-700">Склейки с несколькими SKU ({multi.length})</h2>
-            {multi.length ? <div className="flex snap-x snap-mandatory items-start gap-3 overflow-x-auto pb-3">{multi.map((group) => <div key={`${group.shop_label}-${group.imt_id}`} className="snap-start"><GroupCard group={group} spendWindowDays={spendWindowDays} /></div>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет склеек с несколькими SKU.</div>}
+            {multi.length ? <div className="scroll-x flex snap-x snap-mandatory items-start gap-3 pb-3">{multi.map((group) => <div key={`${group.shop_label}-${group.imt_id}`} className="snap-start"><GroupCard group={group} spendWindowDays={spendWindowDays} /></div>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет склеек с несколькими SKU.</div>}
 
             <h2 className="mb-2 mt-4 first:mt-0 text-sm font-bold text-slate-700">Одиночные SKU ({solo.length})</h2>
             {solo.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">{solo.map((group) => <SoloCard key={`${group.shop_label}-${group.imt_id}`} group={group} spendWindowDays={spendWindowDays} />)}</div> : <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">Для выбранного кабинета нет одиночных SKU.</div>}

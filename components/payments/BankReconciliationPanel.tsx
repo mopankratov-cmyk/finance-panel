@@ -37,9 +37,11 @@ export function BankReconciliationPanel({
             </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full min-w-[860px] text-sm">
-            <thead className="bg-slate-50/80 text-left text-xs uppercase tracking-wide text-slate-500">
+            {/* Фон шапки непрозрачный: как только она станет липкой, строки
+                начнут просвечивать сквозь неё. */}
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3 font-medium">Кошелёк</th>
                 <th className="px-5 py-3 text-right font-medium">Баланс панели</th>

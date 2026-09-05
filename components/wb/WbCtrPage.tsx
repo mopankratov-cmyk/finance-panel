@@ -259,24 +259,24 @@ export function WbCtrPage() {
   const flywheelSource = tests.find((test) => test.status === "done" && test.variants.some((variant) => variant.id === test.winnerVariantId || variant.isWinner)) ?? null;
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={FlaskConical}
         title="Тесты контента"
         description={`${typeTabs.find((tab) => tab.value === type)?.note ?? ""} · реальные метрики выбранного кабинета`}
-        actions={<div className="flex items-center gap-2">
-          <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">{[7, 14, 30].map((value) => <button key={value} type="button" onClick={() => setDays(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${days === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{value} дней</button>)}</div>
+        actions={<div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm lg:min-h-8">{[7, 14, 30].map((value) => <button key={value} type="button" onClick={() => setDays(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors lg:min-h-7 ${days === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{value} дней</button>)}</div>
           {canWrite ? (
             <button
               type="button"
               onClick={() => setTokenOpen((open) => !open)}
               title="Ключ WB с доступом «Контент»: без него панель не может менять фото карточки сама"
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50 sm:min-h-8"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50 lg:min-h-8"
             >
               <KeyRound className="h-3.5 w-3.5" />Ключ
             </button>
           ) : null}
-          <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} aria-label="Обновить тесты" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:opacity-60 sm:h-8 sm:w-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}</button>
+          <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} aria-label="Обновить тесты" className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:opacity-60 lg:h-8 lg:w-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}</button>
         </div>}
       />
 
@@ -298,7 +298,7 @@ export function WbCtrPage() {
             один акцентный цвет на весь экран — у создания теста.
           */}
           <section className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-9" role="tablist" aria-label="Тип теста">
+            <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm lg:min-h-9" role="tablist" aria-label="Тип теста">
               {typeTabs.map((tab) => (
                 <button
                   key={tab.value}
@@ -307,7 +307,7 @@ export function WbCtrPage() {
                   aria-selected={type === tab.value}
                   title={tab.note}
                   onClick={() => setType(tab.value)}
-                  className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-8 ${type === tab.value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                  className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors lg:min-h-8 ${type === tab.value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
                 >
                   {tab.label}
                 </button>
@@ -320,7 +320,7 @@ export function WbCtrPage() {
                 disabled={!canWrite || !flywheelSource}
                 title="Взять победителя завершённого теста и запустить следующий раунд от него"
                 onClick={() => { const winner = flywheelSource?.variants.find((variant) => variant.id === flywheelSource.winnerVariantId || variant.isWinner); if (flywheelSource && winner) openFlywheelFor(flywheelSource, winner); }}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-40 sm:min-h-9"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-40 lg:min-h-9"
               >
                 <RotateCcw className="h-3.5 w-3.5" />Маховик
               </button>
@@ -328,7 +328,7 @@ export function WbCtrPage() {
                 type="button"
                 disabled={!canWrite || loading}
                 onClick={() => setWizard(null)}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-40 sm:min-h-9"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-40 lg:min-h-9"
               >
                 <Plus className="h-3.5 w-3.5" />Создать тест
               </button>
@@ -361,7 +361,7 @@ export function WbCtrPage() {
           ) : null}
 
 
-          {loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`тесты · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={5} cols={8} /></div> : canWrite && visibleTests.length ? <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          {loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`тесты · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={5} cols={8} /></div> : canWrite && visibleTests.length ? <div className="scroll-x rounded-xl border border-slate-200 bg-white">
             <table className="min-w-[920px] w-full border-collapse text-[10px]">
               <thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-3 text-left">Товар</th><th className="px-3 py-3 text-left">Статус</th><th className="px-3 py-3 text-left">Результат</th><th className="px-3 py-3 text-center">Варианты</th><th className="px-3 py-3 text-center">Раунд</th><th className="px-3 py-3 text-center">Интервал</th><th className="px-3 py-3 text-left">Создан</th><th className="w-14 px-3 py-3" /></tr></thead>
               <tbody>{visibleTests.map((test) => <tr key={test.id} onClick={() => setSelectedId(test.id)} className="cursor-pointer border-t border-slate-100 hover:bg-violet-50/40"><td className="px-3 py-3"><div className="font-semibold text-violet-700">{test.article}</div><div className="text-[9px] text-slate-400">nm {test.nmId} · тест #{test.id}</div></td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${statusTone[test.status]}`}>{statusLabel[test.status]}</span></td><td className="px-3 py-3 font-medium text-slate-600">{testResult(test)}</td><td className="px-3 py-3 text-center tabular-nums">{test.variants.length}</td><td className="px-3 py-3 text-center tabular-nums">{test.roundNum}</td><td className="px-3 py-3 text-center tabular-nums">{test.intervalMin} мин</td><td className="px-3 py-3 text-slate-500">{new Date(test.createdAt).toLocaleDateString("ru-RU")}</td><td className="px-3 py-3">{test.status === "draft" ? <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void removeDraft(test); }} aria-label={`Удалить черновик ${test.id}`} className="grid h-11 w-11 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button> : null}</td></tr>)}</tbody>
@@ -375,7 +375,7 @@ export function WbCtrPage() {
                     ? ` Кандидат — от 1 000 показов и CTR ниже 3%: ${eligibleCount} ${plural(eligibleCount, "товар подходит", "товара подходят", "товаров подходят")}.`
                     : " Кандидат — от 1 000 показов и CTR ниже 3%: сейчас таких нет."}
                 </p></div><div className="flex min-w-0 flex-1 flex-col gap-2 sm:ml-auto sm:max-w-xl sm:flex-row">{categories.length ? <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400"><option value="">Все категории</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__none">Без категории</option></select> : null}<label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 focus-within:border-violet-400"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SKU или nm" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label></div></div>
-            {loading ? null : candidates.length === 0 ? <WbEmptyState>Нет рекламных данных по выбранному периоду и фильтрам.</WbEmptyState> : <div className="h-[360px] overflow-auto rounded-xl border border-slate-200 bg-white" onScroll={(event) => updateWindow(event.currentTarget)}><table className="min-w-[860px] w-full border-collapse text-[10px]"><thead className="sticky top-0 z-20 bg-slate-50"><tr className="h-9 border-b border-slate-200 text-slate-500"><th className="sticky left-0 z-30 min-w-[220px] border-r border-slate-200 bg-slate-50 px-3 text-left">Товар</th><th className="px-3 text-left">Статус</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">CTR</th><th className="px-3 text-right">CPC</th><th className="px-3 text-right">ДРР</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Остаток</th></tr></thead><tbody>
+            {loading ? null : candidates.length === 0 ? <WbEmptyState>Нет рекламных данных по выбранному периоду и фильтрам.</WbEmptyState> : <div className="h-[52svh] max-h-[360px] min-h-[240px] overflow-auto rounded-xl border border-slate-200 bg-white md:h-[360px] md:max-h-none" onScroll={(event) => updateWindow(event.currentTarget)}><table className="min-w-[860px] w-full border-collapse text-[10px]"><thead className="sticky top-0 z-20 bg-slate-50"><tr className="h-9 border-b border-slate-200 text-slate-500"><th className="sticky left-0 z-30 min-w-[220px] border-r border-slate-200 bg-slate-50 px-3 text-left">Товар</th><th className="px-3 text-left">Статус</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">CTR</th><th className="px-3 text-right">CPC</th><th className="px-3 text-right">ДРР</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Остаток</th></tr></thead><tbody>
               {rowWindow.start > 0 ? <tr aria-hidden="true"><td colSpan={8} style={{ height: rowWindow.start * ROW_HEIGHT }} /></tr> : null}
               {candidates.slice(rowWindow.start, rowWindow.end).map((item) => { const eligible = item.views >= 1000 && (item.ctr ?? 0) < 3; return <tr key={item.nm} onClick={() => { if (canWrite) setWizard({ candidate: item }); }} className={`h-11 border-b border-slate-100 ${canWrite ? "cursor-pointer hover:bg-violet-50/30" : ""}`}><td className="sticky left-0 z-10 border-r border-slate-100 bg-white px-3"><div className="font-semibold text-violet-700">{item.art}</div><div className="text-[9px] text-slate-400">nm {item.nm}</div></td><td className="px-3"><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${eligible ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{eligible ? "кандидат" : "наблюдение"}</span></td><td className="px-3 text-right tabular-nums">{number(item.views)}</td><td className={`px-3 text-right tabular-nums ${(item.ctr ?? 0) < 3 ? "font-semibold text-rose-600" : "text-emerald-700"}`}>{percent(item.ctr)}</td><td className="px-3 text-right tabular-nums">{number(item.cpc)} ₽</td><td className="px-3 text-right tabular-nums">{percent(item.drr)}</td><td className="px-3 text-right tabular-nums">{number(item.spend)} ₽</td><td className="px-3 text-right tabular-nums">{number(item.stock)}</td></tr>; })}
               {rowWindow.end < candidates.length ? <tr aria-hidden="true"><td colSpan={8} style={{ height: (candidates.length - rowWindow.end) * ROW_HEIGHT }} /></tr> : null}

@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, FileUp, Loader2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createDdsCompany, type DdsCompany } from "./ddsCompanies";
 import { parseDdsCsv, type DdsParseResult } from "./ddsCsv";
 import {
@@ -56,7 +56,9 @@ export function ImportDdsModal({
   const [newCompanyGroup, setNewCompanyGroup] = useState("");
   const [savingCompany, setSavingCompany] = useState(false);
 
-  const reset = () => {
+  // Единственное место сброса состояния окна. Оно стабильно (сеттеры useState
+  // не меняются), поэтому close остаётся стабильным вместе с ним.
+  const reset = useCallback(() => {
     setResult(null);
     setFileName("");
     setPlan(null);
@@ -68,7 +70,7 @@ export function ImportDdsModal({
     setAddingCompany(false);
     setNewCompanyName("");
     setNewCompanyGroup("");
-  };
+  }, []);
 
   const handleFile = async (file: File) => {
     setParsing(true);
@@ -171,10 +173,13 @@ export function ImportDdsModal({
     });
   };
 
-  const close = () => {
+  // Функция закрытия обязана быть стабильной: общее окно держит на ней Escape
+  // и ловушку фокуса, и пересоздание на каждый ввод возвращало бы фокус в
+  // начало окна прямо во время работы со списком дублей.
+  const close = useCallback(() => {
     reset();
     onClose();
-  };
+  }, [reset, onClose]);
 
   const nothingNew = preview
     ? preview.newPaymentRows.length === 0 &&
@@ -210,10 +215,13 @@ export function ImportDdsModal({
           <div className="flex items-center justify-between text-xs text-slate-500">
             <span>Под вопросом: {plan.suspectedRows.length} · отмечено: {accepted.size}</span>
             <div className="flex gap-2">
-              <button onClick={() => setAccepted(new Set(plan.suspectedRows.map((s) => s.row.id)))} className="text-violet-600 hover:underline">
+              {/* Единственный способ разом принять или снять дубли: строчка в
+                  16px пальцем не нажимается, поэтому область нажатия расширена
+                  без изменения внешнего размера. */}
+              <button onClick={() => setAccepted(new Set(plan.suspectedRows.map((s) => s.row.id)))} className="tap-hit text-violet-600 hover:underline">
                 Отметить все
               </button>
-              <button onClick={() => setAccepted(new Set())} className="text-slate-500 hover:underline">
+              <button onClick={() => setAccepted(new Set())} className="tap-hit text-slate-500 hover:underline">
                 Снять все
               </button>
             </div>

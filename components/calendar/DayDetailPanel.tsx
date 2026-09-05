@@ -66,21 +66,27 @@ function PaymentRow({ row, companyName, onEdit }: PaymentRowProps) {
       className="group relative border-b border-slate-200/80"
       style={rowStyle}
     >
-      <div className="grid min-h-[52px] grid-cols-[110px_170px_minmax(220px,1fr)_150px_110px] items-center gap-3 px-4 py-2">
+      {/* Пяти колонкам нужно 840px, а на телефоне панель шириной с экран.
+          Раньше строка уезжала вбок вместе со списком, а шапка колонок лежит
+          вне прокрутки и оставалась на месте — подписи и значения разъезжались.
+          Ниже lg те же пять значений выложены карточкой: статья и сумма первой
+          строкой, назначение второй, компания и накопленный остаток третьей.
+          С lg работает прежняя сетка — десктоп не меняется. */}
+      <div className="min-h-[52px] px-4 py-2 lg:grid lg:grid-cols-[110px_170px_minmax(220px,1fr)_150px_110px] lg:items-center lg:gap-3">
         <button
           type="button"
           onClick={onEdit}
-          className="contents text-left"
+          className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 text-left lg:contents"
         >
           <span
-            className={`text-right text-sm font-bold tabular-nums ${amountClass}`}
+            className={`col-start-2 row-start-1 text-right text-base font-bold tabular-nums lg:col-auto lg:row-auto lg:text-sm ${amountClass}`}
           >
             {formatMoney(payment.amount)}
           </span>
-          <span className={`flex min-w-0 items-center gap-2 truncate text-sm font-semibold ${isCancelled ? "text-slate-400 line-through" : "text-slate-900"}`}><span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span><span className="truncate">{payment.category}</span></span>
-          <span className={`truncate text-sm ${isCancelled ? "text-slate-400 line-through" : "text-slate-600"}`} title={payment.name}>{payment.name}{originalDueDate && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">перенесён с {originalDueDate}</span>}</span>
-          <span className={`truncate text-sm ${companyName === "Не назначена" ? "text-slate-400" : "text-slate-700"}`}>{companyName}</span>
-          <span className={`text-right text-sm font-semibold tabular-nums ${runningBalance < 0 ? "text-red-600" : "text-slate-700"}`}>{formatMoney(runningBalance)}</span>
+          <span className={`col-start-1 row-start-1 flex min-w-0 items-center gap-2 text-sm font-semibold lg:col-auto lg:row-auto lg:truncate ${isCancelled ? "text-slate-400 line-through" : "text-slate-900"}`}><span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span><span className="break-anywhere lg:truncate">{payment.category}</span></span>
+          <span className={`col-[1/-1] row-start-2 break-anywhere text-sm lg:col-auto lg:row-auto lg:truncate ${isCancelled ? "text-slate-400 line-through" : "text-slate-600"}`} title={payment.name}>{payment.name}{originalDueDate && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">перенесён с {originalDueDate}</span>}</span>
+          <span className={`col-start-1 row-start-3 break-anywhere text-xs lg:col-auto lg:row-auto lg:truncate lg:text-sm ${companyName === "Не назначена" ? "text-slate-400" : "text-slate-700"}`}><span className="text-slate-400 lg:hidden">Компания: </span>{companyName}</span>
+          <span className={`col-start-2 row-start-3 text-right text-xs font-semibold tabular-nums lg:col-auto lg:row-auto lg:text-sm ${runningBalance < 0 ? "text-red-600" : "text-slate-700"}`}><span className="font-normal text-slate-400 lg:hidden">Остаток: </span>{formatMoney(runningBalance)}</span>
         </button>
       </div>
     </li>
@@ -227,13 +233,13 @@ export function DayDetailPanel({
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 pr-12">
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-slate-500">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">
               {formatDateLong(dayInfo.date).split(",")[0]}
             </p>
             <p className="text-4xl font-bold leading-none text-slate-900">{dayNum}</p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-slate-500">Сальдо за день</p>
+            <p className="text-[11px] text-slate-500">Сальдо за день</p>
             <p className={`text-lg font-bold tabular-nums sm:text-xl ${netClass}`}>
               {signedMoney(dayTotals.net, true)}
             </p>
@@ -262,14 +268,14 @@ export function DayDetailPanel({
               <button
                 type="button"
                 onClick={openIncomeForm}
-                className="rounded-lg border border-emerald-200 bg-white px-2 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                className="min-h-11 rounded-lg border border-emerald-200 bg-white px-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
               >
                 + Поступление
               </button>
               <button
                 type="button"
                 onClick={openExpenseForm}
-                className="rounded-lg border border-red-200 bg-white px-2 py-2 text-xs font-medium text-red-700 hover:bg-red-50"
+                className="min-h-11 rounded-lg border border-red-200 bg-white px-2 text-sm font-medium text-red-700 hover:bg-red-50"
               >
                 + Списание
               </button>
@@ -277,7 +283,10 @@ export function DayDetailPanel({
           </div>
         )}
 
-        <div className="grid grid-cols-[110px_170px_minmax(220px,1fr)_150px_110px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        {/* Шапка колонок нужна только сетке: в карточке подпись стоит рядом
+            со значением, а сама шапка лежит вне прокручиваемого списка и на
+            узком экране обрезалась бы краем панели. */}
+        <div className="hidden grid-cols-[110px_170px_minmax(220px,1fr)_150px_110px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 lg:grid">
           <span className="text-right">Сумма</span>
           <span>Название</span>
           <span>Назначение платежа</span>
@@ -356,28 +365,28 @@ export function DayDetailPanel({
           )}
         </ul>
 
-        <div className="mt-auto space-y-2 border-t border-slate-200 bg-slate-50 p-3">
-          {!showIncomeForm && !showExpenseForm && !editingPayment && (
-            <>
-              <button
-                type="button"
-                onClick={openIncomeForm}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-50 sm:text-sm"
-              >
-                <Plus className="h-4 w-4" />
-                Добавить поступление
-              </button>
-              <button
-                type="button"
-                onClick={openExpenseForm}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 sm:text-sm"
-              >
-                <Plus className="h-4 w-4" />
-                Добавить списание
-              </button>
-            </>
-          )}
-        </div>
+        {/* Полоса рисуется только вместе с кнопками: пока открыта форма, она
+            оставалась пустой рамкой и съедала высоту у списка платежей. */}
+        {!showIncomeForm && !showExpenseForm && !editingPayment && (
+          <div className="mt-auto space-y-2 border-t border-slate-200 bg-slate-50 p-3">
+            <button
+              type="button"
+              onClick={openIncomeForm}
+              className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-50"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить поступление
+            </button>
+            <button
+              type="button"
+              onClick={openExpenseForm}
+              className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить списание
+            </button>
+          </div>
+        )}
       </div>
     </SlidePanel>
   );

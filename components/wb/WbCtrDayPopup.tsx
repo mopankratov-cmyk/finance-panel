@@ -142,14 +142,14 @@ export function WbCtrDayPopup({
         aria-label={`CTR ${article} за ${dayLabel}`}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-2xl border border-slate-200 bg-white shadow-xl focus:outline-none"
+        className="max-h-[calc(100dvh-2rem-var(--kb-inset))] w-full max-w-2xl overflow-auto overscroll-contain rounded-2xl border border-slate-200 bg-white shadow-xl focus:outline-none"
       >
         <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
           <div className="min-w-0">
             <div className="truncate text-[15px] font-semibold text-slate-800">{article}</div>
             <div className="text-[12px] text-slate-400">CTR за {dayLabel} · nm {nmId}</div>
           </div>
-          <button type="button" onClick={onClose} aria-label="Закрыть" className="ml-auto rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+          <button type="button" onClick={onClose} aria-label="Закрыть" className="tap ml-auto rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
             <X className="h-4 w-4" />
           </button>
         </div>

@@ -150,8 +150,8 @@ function Uniquizer() {
                   <video src={d.url} controls className="w-full" style={{ aspectRatio: "9/16" }} />
                   <div className="px-2 py-1">
                     <div className="text-[11px] font-medium">Копия {d.idx}</div>
-                    <div className="text-[10px] text-gray-400 truncate">{d.recipe}</div>
-                    <a href={d.url} download={`unique-${d.idx}.webm`} className="text-[10px] text-rose-600">скачать</a>
+                    <div className="break-anywhere text-[11px] text-gray-400">{d.recipe}</div>
+                    <a href={d.url} download={`unique-${d.idx}.webm`} className="inline-flex min-h-11 items-center text-sm font-medium text-rose-600 lg:min-h-0 lg:text-[10px]">скачать</a>
                   </div>
                 </div>
               ))}

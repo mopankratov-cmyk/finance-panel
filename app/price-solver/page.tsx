@@ -65,8 +65,12 @@ export default function PriceSolverPage() {
           Нет данных. Нужны себестоимость (модуль «Себестоимость») и заказы по SKU.
         </div>
       ) : (
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.8 }}>
+        // Таблицу читают ради сравнения «текущая цена → под 15/25/35%», поэтому
+        // на узком экране она едет вбок внутри своего блока, а не рассыпается
+        // на карточки. До этого блок был overflow:hidden — целевые цены,
+        // единственное, ради чего сюда заходят, просто обрезались.
+        <div className="scroll-x" style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+          <table style={{ width: "100%", minWidth: 620, borderCollapse: "collapse", fontSize: 12.8 }}>
             <thead>
               <tr style={{ background: C.subtle2, color: C.textMuted }}>
                 <th style={{ padding: "9px 12px", fontWeight: 600, textAlign: "left", whiteSpace: "nowrap" }}>Артикул</th>

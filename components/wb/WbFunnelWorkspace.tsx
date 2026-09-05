@@ -28,19 +28,19 @@ export function WbFunnelWorkspace() {
   const cabinetLabel = activeCabinet?.name ?? (cabinetId === "all" ? "все кабинеты" : "WB");
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Icon}
         title={sellerReadOnly ? "Воронка" : "Воронка / Репрайсер"}
         description={`${cabinetLabel} · ${sellerReadOnly ? "показы, переходы, корзины и заказы" : "единый контур метрик и решений цены"}`}
         actions={sellerReadOnly ? undefined : (
-          <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8" role="tablist" aria-label="Раздел воронки">
+          <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm lg:min-h-8" role="tablist" aria-label="Раздел воронки">
             <button
               type="button"
               role="tab"
               aria-selected={view === "funnel"}
               onClick={() => selectView("funnel")}
-              className={`inline-flex min-h-10 items-center gap-1.5 rounded-md px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-7 ${view === "funnel" ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              className={`inline-flex min-h-10 items-center gap-1.5 rounded-md px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-7 ${view === "funnel" ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
             >
               <Filter className="h-3.5 w-3.5" aria-hidden="true" />
               Воронка
@@ -50,7 +50,7 @@ export function WbFunnelWorkspace() {
               role="tab"
               aria-selected={view === "repricer"}
               onClick={() => selectView("repricer")}
-              className={`inline-flex min-h-10 items-center gap-1.5 rounded-md px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-7 ${view === "repricer" ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              className={`inline-flex min-h-10 items-center gap-1.5 rounded-md px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-7 ${view === "repricer" ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
             >
               <Tag className="h-3.5 w-3.5" aria-hidden="true" />
               Репрайсер

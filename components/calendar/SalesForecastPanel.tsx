@@ -245,7 +245,9 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
       <CardContent className="space-y-4 pt-5">
         <p className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950">Сначала проверьте кабинет, компанию, счёт и суммы. Календарь изменится только после отдельного подтверждения.</p>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex min-w-64 flex-col gap-1 text-sm text-slate-600">
+          {/* min-width не давал метке сжаться: на 320px она была шире карточки и
+              вбок ехала вся страница. На телефоне селект во всю ширину. */}
+          <label className="flex w-full flex-col gap-1 text-sm text-slate-600 sm:w-auto sm:min-w-64">
             Кабинет WB
             <select
               value={cabinetId}
@@ -314,7 +316,7 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                     setPayoutStatus(result);
                   } catch (statusError) { setPayoutError(statusError instanceof Error ? statusError.message : "Не удалось получить финансовый статус WB"); }
                   finally { setPayoutLoading(false); }
-                }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-sky-300 bg-white px-4 text-sm font-semibold text-sky-900 disabled:opacity-50">
+                }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-sky-300 bg-white px-4 text-sm font-semibold text-sky-900 disabled:opacity-50 lg:min-h-10">
                   {payoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Обновить данные WB
                 </button>
               </div>
@@ -383,7 +385,7 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                 <p className="mt-1 text-xs text-slate-500">
                   Это <b>расчётные</b> даты, а не подтверждённые. Подтверждённая дата появится из финансового отчёта или кабинета маркетплейса, фактическая — после поступления в ДДС.
                 </p>
-                <div className="mt-3 overflow-x-auto">
+                <div className="scroll-x mt-3">
                   <table className="w-full min-w-[320px] text-sm">
                     <thead className="bg-slate-50 text-xs text-slate-500"><tr>
                       <th className="px-3 py-2 text-left">Дата поступления</th>
@@ -456,7 +458,7 @@ export function SalesForecastPanel({ year, month, accounts, companies, payments,
                 <button
                   type="button"
                   onClick={() => setForceRecalc(true)}
-                  className="mt-2 inline-flex min-h-9 items-center rounded-lg border border-amber-300 bg-white px-3 font-medium text-amber-900 hover:bg-amber-100"
+                  className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-amber-300 bg-white px-3 font-medium text-amber-900 hover:bg-amber-100 lg:min-h-9"
                 >
                   Пересчитать сейчас по фактическому темпу
                 </button>

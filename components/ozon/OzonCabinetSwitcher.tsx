@@ -10,14 +10,17 @@ export function OzonCabinetSwitcher() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const close = (event: MouseEvent) => {
+    // pointerdown, а не mousedown: касание по неинтерактивному месту страницы в
+    // Safari синтетический mousedown не порождает, и список кабинетов на
+    // телефоне оставался открытым поверх содержимого.
+    const close = (event: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     };
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", close);
+    document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", escape);
     return () => {
-      document.removeEventListener("mousedown", close);
+      document.removeEventListener("pointerdown", close);
       document.removeEventListener("keydown", escape);
     };
   }, []);
@@ -46,7 +49,10 @@ export function OzonCabinetSwitcher() {
       </button>
 
       {open && (
-        <div role="listbox" aria-label="Кабинет Ozon" className="absolute right-0 z-[80] mt-1.5 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.16)]">
+        // Ниже sm список привязан к краям экрана, а не к кнопке: жёсткие 288px
+        // от правого края кнопки уходили левым краем за пределы 320px-экрана, и
+        // колонка значков с началом названий срезалась.
+        <div role="listbox" aria-label="Кабинет Ozon" className="fixed inset-x-2 top-[calc(58px+var(--safe-t))] z-[80] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.16)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-1.5 sm:w-72">
           <div className="border-b border-slate-100 px-3 py-2">
             <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Кабинет данных</div>
             <div className="mt-0.5 text-[11px] text-slate-500">Меняет срез на всех экранах Ozon</div>

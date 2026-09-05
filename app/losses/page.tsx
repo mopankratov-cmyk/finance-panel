@@ -50,28 +50,33 @@ export default function LossesPage() {
   const dedPct = data && data.retail > 0 ? Math.round((data.totalDeductions / data.retail) * 100) : 0;
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
       <FinanceTabs />
-      <div className="mb-6 flex items-center gap-3">
+      {/* Управление (кабинет, маркетплейс, глубина) уезжало за правый край телефона:
+          ряд не переносился. Теперь оно отдельным блоком, который на узком экране
+          встаёт под заголовок, а с sm снова садится в одну строку с ним. */}
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 text-red-600">
           <TrendingDown className="h-5 w-5" />
         </div>
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-gray-900">Где теряем деньги</h1>
           <p className="text-sm text-gray-500">{mp === "ozon" ? "Удержания Ozon (finance/transaction)" : "Удержания WB из финотчёта-детализации (reportDetailByPeriod)"}</p>
         </div>
-        <CabinetSwitcher mp={mp} accent={mp === "wb" ? "violet" : "sky"} onChange={mp === "wb" ? setWbCab : setOzonCab} />
-        <div className="mr-2 flex gap-1 rounded-lg bg-gray-100 p-0.5">
-          <button onClick={() => setMp("wb")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "wb" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>WB</button>
-          <button onClick={() => setMp("ozon")} className={`rounded px-3 py-1 text-xs font-semibold ${mp === "ozon" ? "bg-white text-sky-700 shadow" : "text-gray-500"}`}>Ozon</button>
-        </div>
-        <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
-          {[2, 4, 8].map((w) => (
-            <button key={w} onClick={() => setWeeks(w)}
-              className={`rounded px-3 py-1 text-xs font-semibold ${weeks === w ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>
-              {w} нед
-            </button>
-          ))}
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+          <CabinetSwitcher mp={mp} accent={mp === "wb" ? "violet" : "sky"} onChange={mp === "wb" ? setWbCab : setOzonCab} />
+          <div className="mr-2 flex gap-1 rounded-lg bg-gray-100 p-0.5">
+            <button onClick={() => setMp("wb")} className={`tap-hit rounded px-3 py-1 text-xs font-semibold ${mp === "wb" ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>WB</button>
+            <button onClick={() => setMp("ozon")} className={`tap-hit rounded px-3 py-1 text-xs font-semibold ${mp === "ozon" ? "bg-white text-sky-700 shadow" : "text-gray-500"}`}>Ozon</button>
+          </div>
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
+            {[2, 4, 8].map((w) => (
+              <button key={w} onClick={() => setWeeks(w)}
+                className={`tap-hit rounded px-3 py-1 text-xs font-semibold ${weeks === w ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>
+                {w} нед
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -87,38 +92,49 @@ export default function LossesPage() {
         <div className="py-16 text-center text-gray-400">Нет данных</div>
       ) : (
         <>
-          {/* Сводка */}
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* Сводка. Суммы приходят с неразрывными пробелами и не переносятся:
+              две колонки держим только там, где 9-значное число целиком влезает
+              в плитку, ниже 400px — одна. Четыре в ряд возвращаем на десктопе. */}
+          <div className="mb-5 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="text-[11px] uppercase tracking-wide text-gray-400">Выручка</div>
-              <div className="text-xl font-bold text-gray-900">{fmt(data.retail)} ₽</div>
+              <div className="text-xl font-bold tabular-nums text-gray-900">{fmt(data.retail)} ₽</div>
             </div>
             <div className="rounded-xl border border-red-200 bg-red-50/50 p-4">
               <div className="text-[11px] uppercase tracking-wide text-gray-400">Удержано WB</div>
-              <div className="text-xl font-bold text-red-600">{fmt(data.totalDeductions)} ₽</div>
+              <div className="text-xl font-bold tabular-nums text-red-600">{fmt(data.totalDeductions)} ₽</div>
               <div className="text-[11px] text-red-400">{dedPct}% от выручки</div>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="text-[11px] uppercase tracking-wide text-gray-400">К перечислению</div>
-              <div className="text-xl font-bold text-emerald-700">{fmt(data.payout)} ₽</div>
+              <div className="text-xl font-bold tabular-nums text-emerald-700">{fmt(data.payout)} ₽</div>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="text-[11px] uppercase tracking-wide text-gray-400">Возвраты</div>
-              <div className="text-xl font-bold text-gray-700">{fmt(data.returns)} ₽</div>
+              <div className="text-xl font-bold tabular-nums text-gray-700">{fmt(data.returns)} ₽</div>
             </div>
           </div>
 
           {/* Разбивка удержаний */}
-          <div className="mb-5 rounded-xl border border-gray-200 bg-white p-5">
+          <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
             <div className="mb-3 text-sm font-semibold text-gray-700">Куда ушли деньги — {data.period.from} → {data.period.to}</div>
-            <div className="space-y-2.5">
+            <div className="space-y-3 sm:space-y-2.5">
+              {/* Узкий экран: подпись и сумма в первой строке, полоса — во второй
+                  (иначе на 320px полосе не остаётся ширины вовсе). С sm порядок
+                  прежний: подпись — полоса — сумма. Порядок задаём числами, а не
+                  order-last: расшифровка тоже переносится и без явного номера
+                  вклинивалась между полосой и суммой, оставляя сумму одну
+                  на третьей строке (это было видно на iPad в портрете). */}
               {data.items.map((it, i) => (
-                <div key={it.key} className="flex items-center gap-3" title={it.tip}>
-                  <div className="w-56 shrink-0 text-sm text-gray-700">{it.label}</div>
-                  <div className="h-5 flex-1 overflow-hidden rounded bg-gray-100">
+                <div key={it.key} className="flex flex-wrap items-center gap-x-3 gap-y-1.5" title={it.tip}>
+                  <div className="min-w-0 flex-1 text-sm text-gray-700 sm:w-56 sm:flex-none">{it.label}</div>
+                  <div className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums text-gray-900 sm:order-2">{fmt(it.rub)} ₽</div>
+                  <div className="h-5 grow basis-full overflow-hidden rounded bg-gray-100 sm:order-1 sm:basis-0">
                     <div className={`h-full ${COLORS[i % COLORS.length]}`} style={{ width: `${Math.max(2, (it.rub / max) * 100)}%` }} />
                   </div>
-                  <div className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums text-gray-900">{fmt(it.rub)} ₽</div>
+                  {/* На касании подсказки-по-наведению не существует, поэтому
+                      расшифровку статьи показываем текстом. Мышь её видит в title. */}
+                  <div className="basis-full text-[11px] leading-snug text-gray-400 sm:order-3 lg:hidden">{it.tip}</div>
                 </div>
               ))}
             </div>

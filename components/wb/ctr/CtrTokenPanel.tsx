@@ -62,7 +62,7 @@ export function CtrTokenPanel({ cabinetId, onClose }: { cabinetId: string; onClo
         <KeyRound className="h-4 w-4 text-slate-500" aria-hidden="true" />
         <h3 className="text-sm font-bold text-slate-800">Ключ контента</h3>
         <p className="text-[11px] text-slate-500">Нужен, чтобы панель могла менять фото карточки сама</p>
-        <button type="button" onClick={onClose} aria-label="Закрыть" className="ml-auto grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700">
+        <button type="button" onClick={onClose} aria-label="Закрыть" className="tap ml-auto rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700">
           <X className="h-4 w-4" />
         </button>
       </div>

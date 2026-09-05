@@ -153,7 +153,7 @@ export function OzonAdJournalPage() {
                         <input
                           value={query}
                           onChange={(event) => setQuery(event.target.value)}
-                          placeholder="Товар, артикул, SKU"
+                          type="search" enterKeyHint="search" placeholder="Товар, артикул, SKU"
                           className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8"
                         />
                       </label>
@@ -172,8 +172,8 @@ export function OzonAdJournalPage() {
                               Ozon отдаёт сумму за день сразу, а разбивку по товарам — отчётами, по очереди.
                               Итоги по дням ниже верные; строки товаров появятся по мере сбора.
                             </p>
-                            <div className="mt-3 overflow-x-auto">
-                              <table className="w-full text-xs">
+                            <div className="scroll-x mt-3">
+                              <table className="w-full min-w-[640px] text-xs">
                                 <thead className="text-[10px] uppercase tracking-wide text-sky-700">
                                   <tr>{data.days.map((day) => <th key={day} className="px-2 py-1 text-right">{dayLabel(day)}</th>)}</tr>
                                 </thead>
@@ -197,8 +197,11 @@ export function OzonAdJournalPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="max-h-[68vh] overflow-auto">
-                        <table className="w-full text-xs">
+                      // svh вместо vh: при развёрнутой адресной строке 68vh выше
+                      // видимой области, и закреплённая строка «Итого по дням»
+                      // оказывалась за нижней кромкой экрана.
+                      <div className="max-h-[68svh] overflow-auto overscroll-contain">
+                        <table className="w-full min-w-[640px] text-xs">
                           <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                             <tr>
                               <th className="sticky left-0 z-20 bg-slate-50 px-4 py-2 text-left">Товар</th>
@@ -214,7 +217,10 @@ export function OzonAdJournalPage() {
                             {rows.map((row) => (
                               <tr key={row.key} className="border-t border-slate-100 hover:bg-sky-50/40">
                                 <td className="sticky left-0 z-10 bg-white px-4 py-2">
-                                  <div className="max-w-[280px] truncate font-semibold text-slate-800" title={row.name}>{row.name}</div>
+                                  {/* Закреплённая колонка на 320px забирала почти
+                                      весь экран, и матрица по дням — то, ради
+                                      чего экран открывают, — не была видна. */}
+                                  <div className="max-w-[120px] truncate font-semibold text-slate-800 sm:max-w-[200px] lg:max-w-[280px]" title={row.name}>{row.name}</div>
                                   <div className="mt-0.5 text-[10px] text-slate-400">{row.offerId || `SKU ${row.sku}`}{data.scope.count > 1 ? ` · ${row.cabinet}` : ""}</div>
                                 </td>
                                 <td className="px-3 py-2 text-right font-bold tabular-nums">{formatMoney(row.total)}</td>
@@ -248,7 +254,7 @@ export function OzonAdJournalPage() {
                     )}
                   </section>
 
-                  <p className="rounded-lg bg-slate-100 px-3 py-2 text-[10px] text-slate-500">
+                  <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-500 md:text-[10px]">
                     Расход за сегодня Ozon отдаёт на следующий день — последний столбец наполняется с задержкой.
                     Прочерк означает «в этот день трат по товару не было», пустой период — что история ещё собирается.
                   </p>

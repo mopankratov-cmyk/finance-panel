@@ -97,6 +97,15 @@ export function PaymentsPage() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [paymentsWithCompany, dateFrom, dateTo, filterCategory, filterAccount, filterCompany]);
 
+  const activeFilters = [dateFrom, dateTo, filterCategory, filterAccount, filterCompany].filter(Boolean).length;
+  const resetFilters = () => {
+    setDateFrom("");
+    setDateTo("");
+    setFilterCategory("");
+    setFilterAccount("");
+    setFilterCompany("");
+  };
+
   // В фильтре должны быть и статьи вне справочника (старые выгрузки) — иначе их не отобрать.
   const filterCategories = useMemo(() => {
     const known = new Set(DDS_CATEGORIES);
@@ -345,7 +354,7 @@ export function PaymentsPage() {
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               />
             </div>
             <div>
@@ -354,7 +363,7 @@ export function PaymentsPage() {
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               />
             </div>
             <div>
@@ -364,7 +373,7 @@ export function PaymentsPage() {
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               >
                 <option value="">Все</option>
                 {filterCategories.map((cat) => (
@@ -379,7 +388,7 @@ export function PaymentsPage() {
               <select
                 value={filterAccount}
                 onChange={(e) => setFilterAccount(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               >
                 <option value="">Все</option>
                 {state.accounts.map((acc) => (
@@ -404,24 +413,43 @@ export function PaymentsPage() {
               </select>
             </div>
           </div>
+          {/* На телефоне пять полей занимают экран целиком, и список платежей
+              уезжает за нижний край: без этой строки человек видит пустой
+              реестр и не понимает, что его отфильтровали. */}
+          {activeFilters > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-sm">
+              <span className="text-slate-500">Фильтров включено: <b className="text-slate-800">{activeFilters}</b> · записей в списке: {filtered.length}</span>
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Сбросить фильтры
+              </button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
+      {/* До 1024px реестр читают записями, а не колонками, поэтому строка
+          разворачивается в карточку (table-cards-lg). Раньше здесь вместо этого
+          прятались три колонки — компания, контрагент и назначение платежа
+          были недоступны с телефона и с планшета в портрете вовсе. */}
       <Card>
-        <div className="overflow-x-auto">
+        <div className="table-cards-lg overflow-x-auto p-3 lg:p-0">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-500">
                 <th className="px-5 py-3 font-medium">Дата</th>
                 <th className="px-5 py-3 font-medium text-right">Сумма</th>
                 <th className="px-5 py-3 font-medium">Кошелек</th>
-                <th className="px-5 py-3 font-medium hidden lg:table-cell">
+                <th className="px-5 py-3 font-medium">
                   Направление бизнеса
                 </th>
-                <th className="px-5 py-3 font-medium hidden lg:table-cell">
+                <th className="px-5 py-3 font-medium">
                   Контрагент
                 </th>
-                <th className="px-5 py-3 font-medium hidden md:table-cell">
+                <th className="px-5 py-3 font-medium">
                   Назначение платежа
                 </th>
                 <th className="px-5 py-3 font-medium">Название</th>
@@ -441,44 +469,49 @@ export function PaymentsPage() {
               ) : (
                 filtered.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50/50">
-                    <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
+                    <td data-label="Дата" className="px-5 py-3 text-slate-600 whitespace-nowrap">
                       {formatDate(p.date)}
                     </td>
                     <td
+                      data-label="Сумма"
                       className={`px-5 py-3 text-right font-semibold whitespace-nowrap ${
                         p.amount >= 0 ? "text-emerald-600" : "text-red-600"
                       }`}
                     >
                       {formatMoney(p.amount)}
                     </td>
-                    <td className="px-5 py-3 text-slate-600">
+                    <td data-label="Кошелек" className="px-5 py-3 text-slate-600">
                       {getAccountName(p.accountId)}
                     </td>
-                    <td className="px-5 py-3 hidden lg:table-cell">
+                    <td data-label="Направление бизнеса" className="px-5 py-3">
                       <span className={p.companyId ? "text-slate-700" : "text-slate-400"}>
                         {p.companyId ? companyNameById.get(p.companyId) ?? "Неизвестная компания" : "Общее по группе"}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-slate-600 hidden lg:table-cell">
+                    <td data-label="Контрагент" className="px-5 py-3 text-slate-600 break-anywhere">
                       {p.counterparty || "—"}
                     </td>
-                    <td className="px-5 py-3 text-slate-500 hidden md:table-cell max-w-xs truncate">
+                    {/* Назначение обрезано только на десктопе: в карточке оно
+                        переносится целиком — подсказки по наведению на касании нет. */}
+                    <td data-label="Назначение платежа" className="px-5 py-3 text-slate-500 break-anywhere lg:max-w-xs lg:truncate">
                       {p.name}
                     </td>
-                    <td className="px-5 py-3 font-medium text-slate-900">
+                    <td data-label="Название" className="px-5 py-3 font-medium text-slate-900">
                       {p.category}
                     </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center justify-end gap-1">
+                    <td data-cell="actions" className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => openEdit(p)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          aria-label="Редактировать платёж"
+                          className="tap rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(p.id)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          aria-label="Удалить платёж"
+                          className="tap rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

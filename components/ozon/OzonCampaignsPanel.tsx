@@ -99,7 +99,7 @@ export function OzonCampaignsPanel() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full min-w-[720px] text-xs">
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                 <tr>

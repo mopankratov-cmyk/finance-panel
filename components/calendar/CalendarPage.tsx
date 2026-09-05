@@ -104,6 +104,31 @@ export function CalendarPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFlow, setBulkFlow] = useState<"expense" | "income">("expense");
   const [calendarLayout, setCalendarLayout] = useState<"agenda" | "grid">("grid");
+
+  // Сетка месяца на телефоне даёт колонку в 34px: в неё не помещается ни
+  // сумма, ни число операций — ячейка превращается в вертикальную полоску с
+  // обрезанным текстом. Список по дням показывает те же данные и те же
+  // действия, поэтому на узком экране он и открывается первым.
+  //
+  // Выбор ставится ОДИН раз при первом заходе и запоминается: переключатель
+  // никуда не делся, и если человек сознательно выбрал сетку, поворот экрана
+  // или следующий заход её не отменят.
+  // localStorage бросает SecurityError, когда браузеру запрещено хранить данные
+  // для сайта («Блокировать все cookie», корпоративная политика, часть режимов
+  // приватного просмотра). Без перехвата исключение в эффекте монтирования
+  // оставляло вместо календаря пустой экран, а в обработчике переключателя
+  // роняло клик. Не запомнили выбор — не беда, календарь работать обязан.
+  useEffect(() => {
+    let saved: string | null = null;
+    try { saved = window.localStorage.getItem("calendar-layout"); } catch { saved = null; }
+    if (saved === "agenda" || saved === "grid") { setCalendarLayout(saved); return; }
+    if (window.matchMedia("(max-width: 767px)").matches) setCalendarLayout("agenda");
+  }, []);
+
+  const chooseLayout = (next: "agenda" | "grid") => {
+    setCalendarLayout(next);
+    try { window.localStorage.setItem("calendar-layout", next); } catch { /* хранилище запрещено — выбор просто не переживёт перезагрузку */ }
+  };
   const [replaceCalendarOpen, setReplaceCalendarOpen] = useState(false);
   const [priorityScope, setPriorityScope] = useState<PaymentPriorityScope>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -455,9 +480,11 @@ export function CalendarPage() {
             </div>
           </div>
           <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 p-1">
-            <button aria-label="Предыдущий месяц" onClick={prevMonth} className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm"><ChevronLeft className="h-5 w-5" /></button>
-            <h2 className="min-w-40 text-center font-semibold text-slate-900">{MONTHS[month]} {year}</h2>
-            <button aria-label="Следующий месяц" onClick={nextMonth} className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm"><ChevronRight className="h-5 w-5" /></button>
+            <button aria-label="Предыдущий месяц" onClick={prevMonth} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm"><ChevronLeft className="h-5 w-5" /></button>
+            {/* Заголовок укладывается в ~110px, а min-w-40 отбирал у стрелок
+                половину их ширины на узком экране — они сжимались до 32px. */}
+            <h2 className="text-center font-semibold text-slate-900 sm:min-w-40">{MONTHS[month]} {year}</h2>
+            <button aria-label="Следующий месяц" onClick={nextMonth} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm"><ChevronRight className="h-5 w-5" /></button>
           </div>
         </div>
       </div>
@@ -495,7 +522,7 @@ export function CalendarPage() {
           </CardHeader>
           <CardContent>
             {planFactMatches.length > 0 && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <div className="scroll-x rounded-xl border border-slate-200">
                 <table className="w-full min-w-[820px] text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                     <tr><th className="px-4 py-3">Плановая дата</th><th className="px-4 py-3">Фактическая дата</th><th className="px-4 py-3">Поступление</th><th className="px-4 py-3">Кошелёк</th><th className="px-4 py-3 text-right">План</th><th className="px-4 py-3 text-right">Факт</th><th className="px-4 py-3 text-right">Отклонение</th></tr>
@@ -658,8 +685,8 @@ export function CalendarPage() {
             <div className="flex flex-wrap items-center gap-2">
             <button type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)} className={`inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${hasCalendarFilters ? "border-violet-300 bg-violet-50 text-violet-800" : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}><SlidersHorizontal className="h-4 w-4" /> Фильтры{activeCalendarFilterCount > 0 && <span className="rounded-full bg-violet-600 px-2 py-0.5 text-xs text-white">{activeCalendarFilterCount}</span>}<ChevronDown className={`h-4 w-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`} /></button>
             <div className="flex rounded-lg bg-slate-100 p-1">
-              <button onClick={() => setCalendarLayout("grid")} className={`inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold ${calendarLayout === "grid" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}`}><LayoutGrid className="h-4 w-4" /> Календарь</button>
-              <button onClick={() => setCalendarLayout("agenda")} className={`inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold ${calendarLayout === "agenda" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}`}><List className="h-4 w-4" /> Список</button>
+              <button onClick={() => chooseLayout("grid")} className={`inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold ${calendarLayout === "grid" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}`}><LayoutGrid className="h-4 w-4" /> Календарь</button>
+              <button onClick={() => chooseLayout("agenda")} className={`inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold ${calendarLayout === "agenda" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}`}><List className="h-4 w-4" /> Список</button>
             </div>
             </div>
           </div>
@@ -713,8 +740,11 @@ export function CalendarPage() {
               onQuickAdd={handleQuickAdd}
             />
           ) : <>
-          <div className="w-full pb-2">
-          <div className="w-full">
+          {/* Ниже 900px семь колонок перестают вмещать содержимое ячейки,
+              поэтому сетка едет вбок ВНУТРИ своего блока, а не сжимается.
+              Страница при этом вбок не едет. */}
+          <div className="scroll-x w-full pb-2">
+          <div className="w-full min-w-[860px] md:min-w-0">
           <div className="grid grid-cols-7 gap-2">
             {WEEKDAYS.map((d) => (
               <div
@@ -936,7 +966,7 @@ function FlowList({
             {priorityScope !== "all" && " · список отфильтрован"}
           </p>
           </div>
-          <button onClick={onCloseList} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900">
+          <button onClick={onCloseList} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 lg:min-h-10">
             <ArrowLeft className="h-4 w-4" />
             К календарю
           </button>
@@ -958,8 +988,13 @@ function FlowList({
           </div>
         </div>
       </div>
-      <div className="w-full overflow-hidden">
-        <table className="w-full table-fixed text-xs xl:text-sm">
+      {/* Реестр читают записью за записью, поэтому ниже 768px таблица
+          рассыпается в карточки (`.table-cards`): подпись колонки берётся из
+          data-label, и десять значений перестают наползать друг на друга.
+          На планшете колонок всё ещё десять — там таблица едет вбок внутри
+          своего блока вместо того, чтобы обрезаться, как было. */}
+      <div className="table-cards scroll-x px-3 pb-3 md:px-0 md:pb-0">
+        <table className="w-full table-fixed text-xs md:min-w-[900px] lg:min-w-0 xl:text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr>
             <th className="w-[6%] px-2 py-3 font-medium">Приор.</th><th className="w-[8%] px-2 py-3 font-medium">Дата</th><th className="w-[10%] px-2 py-3 text-right font-medium">Сумма</th><th className="w-[13%] px-2 py-3 font-medium">Название</th><th className="w-[19%] px-2 py-3 font-medium">Назначение платежа</th><th className="w-[13%] px-2 py-3 font-medium">Комментарий</th><th className="w-[10%] px-2 py-3 font-medium">Компания</th><th className="w-[9%] px-2 py-3 font-medium">Кошелёк</th><th className="w-[7%] px-2 py-3 font-medium">Статус</th><th className="w-[5%] px-1 py-3 text-center font-medium"></th>
           </tr></thead>
@@ -968,16 +1003,16 @@ function FlowList({
               const companyId = companyByPayment.get(payment.id);
               const priority = getPaymentPriority(payment);
               return <tr key={payment.id} onClick={() => onEdit(payment)} className="cursor-pointer hover:bg-slate-50">
-                <td className="px-2 py-3"><span className={`inline-flex rounded-md border px-1.5 py-1 text-xs font-bold ${PRIORITY_META[priority].badge}`}>{priority}</span></td>
-                <td className="px-2 py-3">{formatDate(payment.date)}</td>
-                <td className={`px-2 py-3 text-right font-semibold tabular-nums ${flow === "income" ? "text-emerald-700" : "text-rose-700"}`}>{formatMoney(payment.amount)}</td>
-                <td className="break-words px-2 py-3 font-medium text-slate-900">{payment.category}</td>
-                <td className="break-words px-2 py-3 text-slate-700">{payment.name}</td>
-                <td className="break-words px-2 py-3 text-slate-500">{displayPaymentComment(payment.comment) || "—"}</td>
-                <td className="break-words px-2 py-3 text-slate-600">{companyId ? companyNames.get(companyId) ?? "Неизвестная" : "Не назначена"}</td>
-                <td className="break-words px-2 py-3 text-slate-600">{accountNames.get(payment.accountId) ?? "—"}</td>
-                <td className="px-2 py-3"><span className={`inline-flex rounded-full px-1.5 py-1 text-[10px] font-medium ${payment.status === "done" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{payment.status === "done" ? "Факт" : "План"}</span></td>
-                <td className="px-1 py-3 text-center"><button aria-label="Изменить платёж" title="Изменить" onClick={(event) => { event.stopPropagation(); onEdit(payment); }} className="min-h-9 rounded-lg px-2 text-lg font-semibold text-violet-700 hover:bg-violet-50">⋯</button></td>
+                <td data-label="Приоритет" className="px-2 py-3"><span className={`inline-flex rounded-md border px-1.5 py-1 text-xs font-bold ${PRIORITY_META[priority].badge}`}>{priority}</span></td>
+                <td data-label="Дата" className="px-2 py-3">{formatDate(payment.date)}</td>
+                <td data-label="Сумма" className={`px-2 py-3 text-right font-semibold tabular-nums ${flow === "income" ? "text-emerald-700" : "text-rose-700"}`}>{formatMoney(payment.amount)}</td>
+                <td data-cell="title" className="break-words px-2 py-3 font-medium text-slate-900">{payment.category}</td>
+                <td data-label="Назначение платежа" className="break-words px-2 py-3 text-slate-700">{payment.name}</td>
+                <td data-label="Комментарий" className="break-words px-2 py-3 text-slate-500">{displayPaymentComment(payment.comment) || "—"}</td>
+                <td data-label="Компания" className="break-words px-2 py-3 text-slate-600">{companyId ? companyNames.get(companyId) ?? "Неизвестная" : "Не назначена"}</td>
+                <td data-label="Кошелёк" className="break-words px-2 py-3 text-slate-600">{accountNames.get(payment.accountId) ?? "—"}</td>
+                <td data-label="Статус" className="px-2 py-3"><span className={`inline-flex rounded-full px-1.5 py-1 text-[10px] font-medium ${payment.status === "done" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{payment.status === "done" ? "Факт" : "План"}</span></td>
+                <td data-cell="actions" className="px-1 py-3 text-center"><button aria-label="Изменить платёж" title="Изменить" onClick={(event) => { event.stopPropagation(); onEdit(payment); }} className="tap-hit min-h-11 min-w-11 rounded-lg px-2 text-lg font-semibold text-violet-700 hover:bg-violet-50 md:min-h-9 md:min-w-0">⋯</button></td>
               </tr>;
             })}
           </tbody>

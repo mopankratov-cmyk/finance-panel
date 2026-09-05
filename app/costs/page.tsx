@@ -124,7 +124,7 @@ export default function CostsPage() {
   const ffFilled = rows.filter((r) => r.fulfillment_rub > 0).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-[100dvh] bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-0 w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
@@ -138,7 +138,7 @@ export default function CostsPage() {
               </p>
             </div>
           </div>
-          <div className="grid gap-2 text-sm sm:grid-cols-4 lg:min-w-[520px]">
+          <div className="grid grid-cols-2 gap-2 text-sm lg:min-w-[520px] lg:grid-cols-4">
             <div className="rounded-xl bg-slate-50 px-4 py-3">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Всего SKU</div>
               <div className="mt-1 text-xl font-bold tabular-nums text-slate-900">{loading ? "—" : rows.length}</div>
@@ -235,11 +235,13 @@ export default function CostsPage() {
           {loading ? <div className="py-12 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
           : (
             <>
-            <div className="overflow-x-auto">
+            <div className="table-cards-lg scroll-x p-3 lg:p-0">
               {/* Колонок стало восемь, а вширь таблица не выросла: фиксированные
                   ширины ужаты, название тянется само. До правки последняя графа
-                  обрывалась за краем экрана уже на шести. */}
-              <table className="w-full min-w-[1000px] table-fixed text-sm">
+                  обрывалась за краем экрана уже на шести. Ширину в 1000px
+                  требует только настоящая таблица — в карточках она бы её и
+                  распёрла, поэтому min-w живёт на брейкпоинте. */}
+              <table className="w-full table-fixed text-sm lg:min-w-[1000px]">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-[132px] px-3 py-3 text-left">Артикул</th>
@@ -264,32 +266,34 @@ export default function CostsPage() {
                     const total = (Number(val) || 0) + (Number(ffVal) || 0);
                     return (
                       <tr key={r.article} className="border-t border-slate-100 hover:bg-amber-50/30">
-                        <td className="px-3 py-3 align-middle font-semibold text-slate-800">
-                          <div className="truncate" title={r.article}>{r.article}</div>
+                        <td data-cell="title" className="px-3 py-3 align-middle font-semibold text-slate-800">
+                          <div className="break-anywhere lg:truncate" title={r.article}>{r.article}</div>
                         </td>
-                        <td className="px-3 py-3 align-middle text-slate-500">
-                          <div className="truncate" title={r.name}>{r.name}</div>
+                        <td data-label="Название" className="px-3 py-3 align-middle text-slate-500">
+                          {/* Подсказка по наведению на касании недоступна, поэтому
+                              до десктопа название переносится целиком. */}
+                          <div className="break-anywhere lg:truncate" title={r.name}>{r.name}</div>
                         </td>
-                        <td className="px-2 py-3 align-middle text-xs font-medium text-slate-500">
-                          <div className="truncate" title={r.inherited_from ? `${r.source} · ${r.inherited_from}` : r.source}>
+                        <td data-label="Источник" className="px-2 py-3 align-middle text-xs font-medium text-slate-500">
+                          <div className="break-anywhere lg:truncate" title={r.inherited_from ? `${r.source} · ${r.inherited_from}` : r.source}>
                             {r.source}
                           </div>
                         </td>
-                        <td className="px-3 py-3 align-middle">
+                        <td data-label="Категория" className="px-3 py-3 align-middle">
                           <input value={catVal} onChange={(e) => setCatEdits((s) => ({ ...s, [r.article]: e.target.value }))}
                             onKeyDown={(e) => { if (e.key === "Enter") save(r.article, patch); }}
                             list="cost-categories" placeholder="без категории"
                             aria-label={`Категория для ${r.article}`}
                             className="min-h-10 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100" />
                         </td>
-                        <td className="px-2 py-3 align-middle text-right">
+                        <td data-label="Себес ₽" className="px-2 py-3 align-middle text-right">
                           <input value={val} onChange={(e) => setEdits((s) => ({ ...s, [r.article]: e.target.value }))}
                             onKeyDown={(e) => { if (e.key === "Enter") save(r.article, patch); }}
                             aria-label={`Себестоимость для ${r.article}`}
                             type="number" min="0"
                             className={`min-h-10 w-full rounded-lg border px-2 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-100 ${r.cost_rub > 0 ? "border-slate-200 text-slate-900" : "border-amber-300 bg-amber-50 text-amber-900"}`} />
                         </td>
-                        <td className="px-2 py-3 align-middle text-right">
+                        <td data-label="Фулфилмент ₽" className="px-2 py-3 align-middle text-right">
                           {/* Пустой фулфилмент подсвечен мягче себеса: он бывает
                               честным нулём (свой склад), а себес нулевым не бывает. */}
                           <input value={ffVal} onChange={(e) => setFfEdits((s) => ({ ...s, [r.article]: e.target.value }))}
@@ -298,11 +302,11 @@ export default function CostsPage() {
                             type="number" min="0"
                             className={`min-h-10 w-full rounded-lg border px-2 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-sky-100 ${r.fulfillment_rub > 0 ? "border-slate-200 text-slate-900" : "border-slate-200 bg-slate-50 text-slate-400"}`} />
                         </td>
-                        <td className="px-3 py-3 align-middle text-right font-semibold tabular-nums text-slate-900"
+                        <td data-label="Итого ₽" className="px-3 py-3 align-middle text-right font-semibold tabular-nums text-slate-900"
                           title="Себес + фулфилмент — столько уходит в маржу WB, Ozon и ОПиУ">
                           {total > 0 ? rub(total) : "—"}
                         </td>
-                        <td className="px-2 py-3 text-center align-middle">
+                        <td data-cell="actions" className="px-2 py-3 text-center align-middle">
                           {saving === r.article ? <Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" />
                             : dirty ? <button onClick={() => save(r.article, patch)} aria-label={`Сохранить ${r.article}`} className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-amber-600 hover:bg-amber-100 hover:text-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-200"><Check className="h-4 w-4" /></button>
                             : savedAt[r.article] ? <Check className="mx-auto h-5 w-5 text-emerald-500" /> : null}

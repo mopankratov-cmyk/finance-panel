@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import type { PimRow } from "@/lib/wb/cards";
 
@@ -48,13 +48,22 @@ export function CoverTestModal({ row, onClose, onDone }: { row: PimRow; onClose:
           <span>Это реально меняет главное фото карточки на WB — его увидят все покупатели. Выбранное фото станет первым в галерее и на месте текущей даты фиксируется точка отсчёта для сравнения конверсии до/после.</span>
         </div>
 
-        <div className="grid grid-cols-4 gap-2">
+        {/* Плитка по две в ряд на телефоне: при четырёх колонках фото выходило
+            54×72px — на таком размере не разглядеть, что выбираешь, и не
+            попасть пальцем, а подтверждение меняет обложку для всех покупателей.
+            Выбранное отмечено галочкой: рамка на мелкой плитке не читается. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 md:gap-2">
           {row.photos.map((url, i) => (
-            <button key={url} onClick={() => setPicked(i)}
+            <button key={url} onClick={() => setPicked(i)} aria-pressed={picked === i}
               className={`relative overflow-hidden rounded-lg border-2 ${picked === i ? "border-violet-600" : "border-transparent"}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt="" className="aspect-[3/4] w-full object-cover" />
               {i === 0 && <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-white">сейчас главное</span>}
+              {picked === i && (
+                <span className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-violet-600 text-white shadow">
+                  <Check className="h-4 w-4" />
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -62,9 +71,9 @@ export function CoverTestModal({ row, onClose, onDone }: { row: PimRow; onClose:
         {error && <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
 
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-          <button onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">Отмена</button>
+          <button onClick={onClose} className="tap-row rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">Отмена</button>
           <button onClick={submit} disabled={busy || picked === 0}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
+            className="tap-row inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             {busy ? "Отправляю на WB…" : "Сделать главным на WB"}
           </button>

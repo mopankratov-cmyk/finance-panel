@@ -118,7 +118,7 @@ export function SuppliesPage() {
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 lg:min-h-0 lg:py-2"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Обновить
@@ -130,13 +130,15 @@ export function SuppliesPage() {
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       )}
 
-      {/* Таб-бар */}
-      <div data-tour="supplies-tabs" className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
+      {/* Таб-бар. w-fit = fit-content, а уже min-content он стать не может:
+          четыре вкладки при 320 px выпирали за экран и тянули страницу вбок.
+          Теперь ряд едет вбок сам, а с 640 px снова сжимается по содержимому. */}
+      <div data-tour="supplies-tabs" className="flex gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-slate-100 p-1 sm:w-fit">
         {([["reorder", "К поставке"], ["stock", "Остатки"], ["receiving", "Приёмка"], ["source", "Источник"]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+            className={`min-h-11 shrink-0 whitespace-nowrap rounded-md px-3 text-sm transition-colors lg:min-h-0 lg:py-1.5 ${
               tab === key ? "bg-white text-slate-900 shadow-sm font-medium" : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -168,7 +170,10 @@ export function SuppliesPage() {
               <p className="text-xl font-bold text-violet-700">{formatNumber(totalNeed)}</p>
               <p className="text-xs text-slate-400 mt-1">{rows.length} SKU нужно дозаказать</p>
             </div>
-            <div className="col-span-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            {/* col-span-2 без брейкпоинта заставлял одноколоночную сетку
+                телефона вырасти до двух колонок — все KPI вставали попарно по
+                136 px. Растягиваем карточку только там, где колонок и правда две. */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:col-span-2">
               <p className="mb-2 flex items-center gap-1.5 text-xs text-slate-400">
                 <Warehouse className="h-3.5 w-3.5" /> Топ складов
               </p>
@@ -186,12 +191,12 @@ export function SuppliesPage() {
 
           {/* Управление */}
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
+            <div className="flex gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-slate-100 p-1 sm:w-fit">
               {([30, 45, 60] as const).map((h) => (
                 <button
                   key={h}
                   onClick={() => setHorizon(h)}
-                  className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                  className={`min-h-11 shrink-0 whitespace-nowrap rounded-md px-3 text-sm transition-colors lg:min-h-0 lg:py-1.5 ${
                     horizon === h ? "bg-white text-slate-900 shadow-sm font-medium" : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
@@ -206,7 +211,7 @@ export function SuppliesPage() {
                 min={0}
                 value={minBatch}
                 onChange={(e) => setMinBatch(Number(e.target.value))}
-                className="w-20 rounded border border-slate-200 px-2 py-1 text-sm"
+                className="min-h-11 w-20 rounded border border-slate-200 px-2 text-sm lg:min-h-0 lg:py-1"
               />
             </label>
           </div>

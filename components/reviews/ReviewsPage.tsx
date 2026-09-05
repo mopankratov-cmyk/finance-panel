@@ -87,13 +87,13 @@ export function ReviewsPage() {
   return (
     <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><MessageSquare className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">Отзывы</h1>
             <p className="text-xs text-gray-500">покупательские отзывы WB</p>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="ml-auto flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
             <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
           </div>
@@ -136,11 +136,14 @@ export function ReviewsPage() {
               </div>
             </div>
 
+            {/* Пилюли фильтров были около 26px в высоту и стояли впритык:
+                «4★» и «3★» в паре пикселей друг от друга, а это основной способ
+                добраться до критичных отзывов. Ниже lg цель — 44px. */}
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
                 {([null, 5, 4, 3, 2, 1] as const).map((v) => (
                   <button key={v ?? "all"} onClick={() => setRating(v)}
-                    className={`rounded px-2.5 py-1 text-xs font-semibold ${rating === v ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>
+                    className={`tap-row inline-flex items-center rounded px-3 py-1 text-xs font-semibold sm:px-2.5 ${rating === v ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>
                     {v == null ? "Все" : `${v}★`}
                   </button>
                 ))}
@@ -148,7 +151,7 @@ export function ReviewsPage() {
               <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
                 {([["", "Все"], ["unanswered", "Без ответа"], ["answered", "Отвечено"]] as const).map(([v, label]) => (
                   <button key={v} onClick={() => setAnswered(v)}
-                    className={`rounded px-2.5 py-1 text-xs font-semibold ${answered === v ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>
+                    className={`tap-row inline-flex items-center rounded px-3 py-1 text-xs font-semibold sm:px-2.5 ${answered === v ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>
                     {label}
                   </button>
                 ))}
@@ -156,7 +159,7 @@ export function ReviewsPage() {
               <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
                 {([7, 30, 90] as const).map((d) => (
                   <button key={d} onClick={() => setDays(d)}
-                    className={`rounded px-2.5 py-1 text-xs font-semibold ${days === d ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>
+                    className={`tap-row inline-flex items-center rounded px-3 py-1 text-xs font-semibold sm:px-2.5 ${days === d ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>
                     {d}д
                   </button>
                 ))}

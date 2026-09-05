@@ -171,11 +171,11 @@ export function WbRepricerPage() {
   return (
     <div className="px-2 py-3 sm:px-6">
       <div className="mb-2 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:flex-row xl:items-center">
-        <div className="flex min-w-0 gap-1 overflow-x-auto pb-1 xl:pb-0" role="tablist" aria-label="Фильтр решений">
+        <div className="scroll-x flex min-w-0 gap-1 pb-1 xl:pb-0" role="tablist" aria-label="Фильтр решений">
           {([[
             "all", `Все ${decisions.length}`,
           ], ["proposed", `Предложения ${proposedCount}`], ["skipped", `Без изменений ${decisions.length - proposedCount}`]] as Array<[DecisionFilter, string]>).map(([value, label]) => (
-            <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${filter === value ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{label}</button>
+            <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8 ${filter === value ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{label}</button>
           ))}
         </div>
 
@@ -187,14 +187,14 @@ export function WbRepricerPage() {
         </label>
 
         <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
-          <button type="button" onClick={run} disabled={!canWrite || running} title={canWrite ? "Сформировать предложения" : "Выберите один кабинет"} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-9">
+          <button type="button" onClick={run} disabled={!canWrite || running} title={canWrite ? "Сформировать предложения" : "Выберите один кабинет"} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-9">
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Play className="h-3.5 w-3.5" aria-hidden="true" />}
             {running ? "Считаем…" : "Прогнать сейчас"}
           </button>
           {exportHref ? (
-            <a href={exportHref} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-9"><Download className="h-3.5 w-3.5" aria-hidden="true" />Скачать XLSX</a>
+            <a href={exportHref} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-9"><Download className="h-3.5 w-3.5" aria-hidden="true" />Скачать XLSX</a>
           ) : (
-            <button type="button" disabled title={canWrite ? "Нет предложений для экспорта" : "Выберите один кабинет"} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-400 opacity-60 sm:min-h-9"><Download className="h-3.5 w-3.5" aria-hidden="true" />Скачать XLSX</button>
+            <button type="button" disabled title={canWrite ? "Нет предложений для экспорта" : "Выберите один кабинет"} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-400 opacity-60 lg:min-h-9"><Download className="h-3.5 w-3.5" aria-hidden="true" />Скачать XLSX</button>
           )}
         </div>
       </div>
@@ -206,7 +206,7 @@ export function WbRepricerPage() {
       </div>
 
       {strategies.length > 0 ? (
-        <div className="mb-2 flex gap-x-4 gap-y-2 overflow-x-auto rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+        <div className="scroll-x mb-2 flex gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
           {strategies.map((strategy) => (
             <span key={strategy.id} className={`inline-flex shrink-0 items-center gap-2 text-[10px] ${strategy.enabled ? "text-slate-600" : "text-slate-300"}`}>
               <span className={`h-2 w-2 rounded-full ${STRATEGY_TONE[strategy.name] ?? "bg-slate-400"}`} aria-hidden="true" />
@@ -218,7 +218,7 @@ export function WbRepricerPage() {
       ) : null}
 
       {loading ? <><LoadingBanner seconds={elapsed} hint="Загружаем стратегии, решения и сигналы" /><div className="rounded-xl border border-slate-200 bg-white"><SkeletonTableRows rows={12} cols={10} /></div></> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : strategies.length === 0 ? <WbEmptyState>Стратегии репрайсера не настроены. Проверьте миграцию и сид-стратегии.</WbEmptyState> : filtered.length === 0 ? <WbEmptyState>{decisions.length ? "Нет решений по текущему фильтру." : "За сегодня прогонов нет. Выберите один кабинет и нажмите «Прогнать сейчас»."}</WbEmptyState> : (
-        <div className="h-[calc(100vh-292px)] min-h-[430px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="h-[68svh] min-h-[300px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:h-[calc(100dvh-292px)] md:min-h-[430px]">
           <table className="min-w-max w-full border-separate border-spacing-0 text-[10px]">
             <thead className="sticky top-0 z-20 bg-slate-50 text-slate-500"><tr className="h-10">
               <th className="sticky left-0 z-30 min-w-[190px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left font-semibold">SKU</th>

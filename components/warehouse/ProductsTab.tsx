@@ -293,14 +293,23 @@ export function ProductsTab({
     }
   };
 
-  const field = (key: keyof Draft, label: string, extra?: { placeholder?: string; wide?: boolean }) => (
-    <label className={extra?.wide ? "col-span-2" : ""}>
+  /** `wide` растягивает поле на две колонки — но только там, где их и правда
+   *  две: без брейкпоинта span 2 заставлял одноколоночную сетку телефона
+   *  вырасти до двух столбцов по ~150 px, и подписи ломались в три строки.
+   *  `mode` открывает цифровую клавиатуру там, где вводят числа. */
+  const field = (
+    key: keyof Draft,
+    label: string,
+    extra?: { placeholder?: string; wide?: boolean; mode?: "numeric" | "decimal" },
+  ) => (
+    <label className={extra?.wide ? "sm:col-span-2" : ""}>
       <span className="text-xs text-slate-500">{label}</span>
       <input
+        inputMode={extra?.mode}
         value={String(editing?.draft[key] ?? "")}
         onChange={(e) => setEditing((prev) => prev && ({ ...prev, draft: { ...prev.draft, [key]: e.target.value } }))}
         placeholder={extra?.placeholder}
-        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-300"
+        className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-300 lg:min-h-0 lg:py-2"
       />
     </label>
   );
@@ -357,8 +366,8 @@ export function ProductsTab({
             className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-300"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={onlyEntity} onChange={(e) => setOnlyEntity(e.target.checked)} />
+        <label className="flex min-h-11 items-center gap-2 text-sm text-slate-600 lg:min-h-0">
+          <input type="checkbox" checked={onlyEntity} onChange={(e) => setOnlyEntity(e.target.checked)} className="h-5 w-5 lg:h-4 lg:w-4" />
           только этого юрлица
         </label>
         <button
@@ -406,10 +415,10 @@ export function ProductsTab({
               <p className="text-sm font-medium text-slate-700">Есть в карточках, нет в справочнике — отметьте, что заводить:</p>
               <div className="mt-2 space-y-1">
                 {importPlan.plan.map((row: ProductImportPlanRow) => (
-                  <label key={row.brand} className="flex items-start gap-2 text-sm text-slate-600">
+                  <label key={row.brand} className="flex min-h-11 items-start gap-2 py-1 text-sm text-slate-600 lg:min-h-0 lg:py-0">
                     <input
                       type="checkbox"
-                      className="mt-1"
+                      className="mt-1 h-5 w-5 lg:h-4 lg:w-4"
                       checked={pickedBrands.includes(row.brand)}
                       onChange={(e) => setPickedBrands(e.target.checked
                         ? [...pickedBrands, row.brand]
@@ -423,8 +432,8 @@ export function ProductsTab({
                 ))}
               </div>
               {importPlan.stale.length > 0 && (
-                <label className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-800">
-                  <input type="checkbox" className="mt-1" checked={withStale} onChange={(e) => { setWithStale(e.target.checked); void scanCatalog(false); }} />
+                <label className="mt-3 flex min-h-11 items-start gap-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-800 lg:min-h-0">
+                  <input type="checkbox" className="mt-1 h-5 w-5 lg:h-4 lg:w-4" checked={withStale} onChange={(e) => { setWithStale(e.target.checked); void scanCatalog(false); }} />
                   <span>
                     Ещё {importPlan.stale.reduce((sum, row) => sum + row.cards.length, 0)} карточек старше полугода без единого заказа —
                     по умолчанию не заводим, чтобы справочник не зарастал мёртвыми позициями.
@@ -455,12 +464,12 @@ export function ProductsTab({
             <p className="text-sm font-medium text-slate-900">
               {editing.id ? `Товар ${editing.draft.article}` : "Новый товар"}
             </p>
-            <button onClick={() => setEditing(null)} className="text-slate-400 hover:text-slate-600">
+            <button onClick={() => setEditing(null)} aria-label="Закрыть карточку" className="tap-hit -mr-1 text-slate-400 hover:text-slate-600">
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {field("article", "Артикул", { placeholder: "NV-836-02" })}
             {field("name", "Название", { placeholder: "Куртка NV-836", wide: true })}
             {field("model", "Модель", { placeholder: "из карточки WB или NV-836" })}
@@ -468,7 +477,7 @@ export function ProductsTab({
             {field("barcode", "Штрихкод")}
             {field("category", "Категория", { placeholder: "Куртки" })}
             {field("brand", "Бренд")}
-            {field("nmId", "nmID карточки WB", { placeholder: "если карточка уже есть" })}
+            {field("nmId", "nmID карточки WB", { placeholder: "если карточка уже есть", mode: "numeric" })}
             {field("photoUrl", "Фото: ссылка", { placeholder: "если карточки WB ещё нет", wide: true })}
             <label>
               <span className="text-xs text-slate-500">Юрлицо</span>
@@ -488,11 +497,12 @@ export function ProductsTab({
               <span className="text-xs text-slate-500">Себестоимость единицы</span>
               <div className="mt-1 flex gap-1">
                 <input
+                  inputMode="decimal"
                   value={editing.draft.factoryPrice}
                   onChange={(e) => setEditing((prev) => prev && ({
                     ...prev, draft: { ...prev.draft, factoryPrice: e.target.value },
                   }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                  className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-700 lg:min-h-0 lg:py-2"
                 />
                 <select
                   value={editing.draft.factoryCurrency}
@@ -505,11 +515,11 @@ export function ProductsTab({
                 </select>
               </div>
             </label>
-            {field("weightKg", "Вес единицы, кг")}
-            {field("lengthCm", "Упаковка: длина, см")}
-            {field("widthCm", "Упаковка: ширина, см")}
-            {field("heightCm", "Упаковка: высота, см")}
-            {field("minStock", "Неснижаемый остаток")}
+            {field("weightKg", "Вес единицы, кг", { mode: "decimal" })}
+            {field("lengthCm", "Упаковка: длина, см", { mode: "decimal" })}
+            {field("widthCm", "Упаковка: ширина, см", { mode: "decimal" })}
+            {field("heightCm", "Упаковка: высота, см", { mode: "decimal" })}
+            {field("minStock", "Неснижаемый остаток", { mode: "numeric" })}
             <label>
               <span className="text-xs text-slate-500">Сезон</span>
               <select
@@ -524,9 +534,10 @@ export function ProductsTab({
                 <option value="winter">зимний (август–февраль)</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-700">
+            <label className="flex min-h-11 items-center gap-2 self-end pb-2 text-sm text-slate-700 lg:min-h-0">
               <input
                 type="checkbox"
+                className="h-5 w-5 lg:h-4 lg:w-4"
                 checked={editing.draft.isNovelty}
                 onChange={(e) => setEditing((prev) => prev && ({
                   ...prev, draft: { ...prev.draft, isNovelty: e.target.checked },
@@ -608,7 +619,7 @@ export function ProductsTab({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div className="scroll-x rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">

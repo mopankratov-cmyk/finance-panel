@@ -120,7 +120,7 @@ export function CabinetUnitSettings({ cabinetId, cabinetName, canWrite, applied,
           onChange={(event) => onChange(event.target.value)}
           placeholder="—"
           aria-label={label}
-          className={`h-10 w-28 rounded-lg border border-slate-200 bg-white pl-2.5 pr-7 text-xs tabular-nums outline-none ring-0 transition focus:ring-2 disabled:bg-slate-50 disabled:text-slate-400 ${accent.ring}`}
+          className={`h-11 w-28 rounded-lg border border-slate-200 bg-white pl-2.5 pr-7 text-xs tabular-nums outline-none ring-0 transition focus:ring-2 disabled:bg-slate-50 disabled:text-slate-400 sm:h-10 ${accent.ring}`}
         />
         <Percent className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
       </span>
@@ -142,13 +142,13 @@ export function CabinetUnitSettings({ cabinetId, cabinetName, canWrite, applied,
             type="button"
             onClick={save}
             disabled={saving || !loaded}
-            className={`mt-[18px] inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-[11px] font-semibold text-white shadow-sm transition-colors disabled:cursor-wait disabled:opacity-60 ${accent.button}`}
+            className={`inline-flex h-11 items-center gap-1.5 self-end rounded-lg px-3 text-[11px] font-semibold text-white shadow-sm transition-colors disabled:cursor-wait disabled:opacity-60 sm:h-10 ${accent.button}`}
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
             {saved ? "Сохранено" : "Сохранить"}
           </button>
         ) : (
-          <span className="mt-[26px] text-[10px] text-slate-400">Менять ставки может финансовая роль</span>
+          <span className="self-end pb-2 text-[10px] text-slate-400">Менять ставки может финансовая роль</span>
         )}
         {applied ? (
           <div className="ml-auto flex flex-col items-end gap-0.5 text-[10px] text-slate-500">

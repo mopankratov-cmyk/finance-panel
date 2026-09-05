@@ -76,7 +76,7 @@ export function FinancialAlertsPanel({
             {serverSynced !== null && <p className={`mt-1 text-xs ${serverSynced ? "text-emerald-700" : "text-amber-700"}`}>{serverSynced ? "Telegram получает актуальные данные" : "Серверная синхронизация ожидает настройки владельца"}</p>}
           </div>
         </div>
-        <button onClick={() => void refresh()} disabled={loading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+        <button onClick={() => void refresh()} disabled={loading} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 lg:min-h-10">
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Пересчитать
         </button>
       </div>

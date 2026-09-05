@@ -138,8 +138,26 @@ const UNITS: Partial<Record<RnpMetricField, string>> = {
   turnover: "дн.",
 };
 
+// Высота полей: 44px пальцем, 36px мышью. Порог lg, а не md, — планшет в
+// портрете держат в руках, там нужен палец, а не курсор.
+//
+// Кегль 11px оставлен только с 1024px. Глобальное правило «поле не мельче
+// 16px» написано селектором `select` (специфичность 0,0,1) и проигрывает
+// любому классу размера, поэтому селекты Бренд/Категория/Сортировка с
+// `text-[11px]` продолжали бы масштабировать страницу в iOS Safari при
+// фокусе — а обратно он её не уменьшает.
 const CONTROL_CLASS =
-  "h-9 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100";
+  "h-11 rounded-lg border border-slate-200 bg-white px-3 font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 lg:h-9 lg:text-[11px]";
+
+// Поповер, привязанный к своей кнопке, на узком экране уезжает за край
+// гарантированно: кнопки шапки стоят в переносящемся ряду, левый край у них
+// непредсказуем, а сами блоки шириной 240–360px шире половины телефона.
+// Поэтому до 1024px это лист у нижнего края — на телефоне над нижней
+// навигацией оболочки, на планшете просто у края. С 1024px, где ширины
+// хватает всем, поповер остаётся поповером у своей кнопки.
+const POPOVER_SHEET_BASE =
+  "fixed inset-x-3 bottom-[calc(4rem+var(--safe-b))] z-50 mx-auto max-h-[62svh] max-w-md overflow-y-auto md:bottom-4 lg:absolute lg:inset-x-auto lg:bottom-auto lg:mx-0 lg:max-w-none";
+const POPOVER_SHEET = `${POPOVER_SHEET_BASE} lg:max-h-none lg:overflow-visible`;
 
 const SECTION_LABEL_CLASS = "text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400";
 
@@ -165,7 +183,7 @@ function FilterChip({ active, onClick, disabled, title, icon, label, badge }: {
       disabled={disabled}
       title={title}
       onClick={onClick}
-      className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 lg:min-h-9 ${
         active ? "border-violet-600 bg-violet-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
       }`}
     >
@@ -299,12 +317,12 @@ export function RnpOperatingToolbar(props: Props) {
             onClick={() => { const open = infoOpen; closePopovers(); setInfoOpen(!open); }}
             aria-label="Как считаются данные"
             aria-expanded={infoOpen}
-            className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 lg:h-9 lg:w-9"
           >
             <Info className="h-4 w-4" />
           </button>
           {infoOpen ? (
-            <div className="absolute left-0 top-11 z-50 w-[300px] rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-4 text-slate-600 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+            <div className={`${POPOVER_SHEET} rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-4 text-slate-600 shadow-[0_18px_55px_rgba(15,23,42,0.18)] lg:left-0 lg:top-11 lg:w-[300px]`}>
               <b className="text-slate-800">Как считаются данные.</b> Часовые снимки WB; остатки — актуальные WB.
               «Без сгоревших» скрывает артикулы без заказов и без остатка за период.
               «Потери» — минусовая прибыль, реклама без заказов или обнулившийся остаток при спросе.
@@ -316,7 +334,7 @@ export function RnpOperatingToolbar(props: Props) {
           ) : null}
         </div>
 
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-2 lg:gap-1.5">
           <FilterChip
             active={props.burnedOnly}
             onClick={() => props.onBurnedOnlyChange(!props.burnedOnly)}
@@ -357,10 +375,10 @@ export function RnpOperatingToolbar(props: Props) {
           <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
       {tagsOpen ? (
-        <div className="absolute left-0 top-full z-50 mt-1 w-[360px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+        <div className={`${POPOVER_SHEET} rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)] lg:left-0 lg:top-full lg:mt-1 lg:w-[360px]`}>
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-slate-800">Фильтр по тегам</span>
-            <button type="button" onClick={() => setTagsOpen(false)} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-slate-100" aria-label="Закрыть теги">
+            <button type="button" onClick={() => setTagsOpen(false)} className="grid h-11 w-11 place-items-center rounded-md text-slate-400 hover:bg-slate-100 lg:h-7 lg:w-7" aria-label="Закрыть теги">
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -369,7 +387,7 @@ export function RnpOperatingToolbar(props: Props) {
               const active = props.activeTagIds.includes(tag.id);
               if (editingTagId === tag.id) {
                 return (
-                  <span key={tag.id} className="inline-flex h-8 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-1.5">
+                  <span key={tag.id} className="inline-flex min-h-11 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-1.5 lg:min-h-8">
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
                     <input
                       autoFocus
@@ -384,7 +402,7 @@ export function RnpOperatingToolbar(props: Props) {
                         }
                       }}
                       aria-label={`Новое название тега ${tag.name}`}
-                      className="h-6 w-24 bg-transparent text-[9px] font-semibold text-slate-800 outline-none"
+                      className="h-9 w-24 bg-transparent font-semibold text-slate-800 outline-none lg:h-6 lg:text-[9px]"
                     />
                     <button
                       type="button"
@@ -392,7 +410,7 @@ export function RnpOperatingToolbar(props: Props) {
                         const name = editingName.trim();
                         if (name) void props.onRenameTag(tag.id, name).then((ok) => { if (ok) setEditingTagId(null); });
                       }}
-                      className="grid h-6 w-6 place-items-center rounded-full text-violet-700 hover:bg-violet-100"
+                      className="grid h-9 w-9 place-items-center rounded-full text-violet-700 hover:bg-violet-100 lg:h-6 lg:w-6"
                       aria-label="Сохранить название"
                     >
                       ✓
@@ -401,7 +419,7 @@ export function RnpOperatingToolbar(props: Props) {
                 );
               }
               return (
-                <span key={tag.id} className={`inline-flex h-8 items-center rounded-full border pl-2.5 ${
+                <span key={tag.id} className={`inline-flex min-h-11 items-center rounded-full border pl-2.5 lg:min-h-8 ${
                   active ? "border-slate-400 bg-slate-50" : "border-slate-200"
                 }`}>
                   <button
@@ -418,7 +436,7 @@ export function RnpOperatingToolbar(props: Props) {
                       <button
                         type="button"
                         onClick={() => { setEditingTagId(tag.id); setEditingName(tag.name); }}
-                        className="grid h-6 w-6 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        className="grid h-9 w-9 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 lg:h-6 lg:w-6"
                         aria-label={`Переименовать тег ${tag.name}`}
                         title="Переименовать"
                       >
@@ -429,7 +447,7 @@ export function RnpOperatingToolbar(props: Props) {
                         onClick={() => {
                           if (confirm(`Удалить тег «${tag.name}»? Он снимется со всех товаров кабинета.`)) void props.onDeleteTag(tag.id);
                         }}
-                        className="grid h-6 w-6 place-items-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        className="grid h-9 w-9 place-items-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600 lg:h-6 lg:w-6"
                         aria-label={`Удалить тег ${tag.name}`}
                         title="Удалить"
                       >
@@ -444,7 +462,7 @@ export function RnpOperatingToolbar(props: Props) {
           </div>
           {props.operationsAvailable ? (
             <>
-              <button type="button" onClick={() => setTagComposerOpen((open) => !open)} className="mt-3 h-8 rounded-lg border border-dashed border-violet-300 px-3 text-[9px] font-semibold text-violet-700 hover:bg-violet-50">
+              <button type="button" onClick={() => setTagComposerOpen((open) => !open)} className="mt-3 min-h-11 rounded-lg border border-dashed border-violet-300 px-3 text-[9px] font-semibold text-violet-700 hover:bg-violet-50 lg:min-h-8">
                 + Новый тег
               </button>
               {tagComposerOpen ? (
@@ -459,9 +477,9 @@ export function RnpOperatingToolbar(props: Props) {
                       if (event.key === "Escape") setTagComposerOpen(false);
                     }}
                     placeholder="Название тега"
-                    className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] outline-none focus:border-violet-300"
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-2.5 outline-none focus:border-violet-300 lg:h-8 lg:text-[10px]"
                   />
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2 lg:gap-1.5">
                     {["#7567e8", "#2563eb", "#0891b2", "#059669", "#d97706", "#e11d48", "#64748b"].map((color) => (
                       <button
                         key={color}
@@ -469,7 +487,7 @@ export function RnpOperatingToolbar(props: Props) {
                         aria-label={`Цвет ${color}`}
                         aria-pressed={tagColor === color}
                         onClick={() => setTagColor(color)}
-                        className={`h-5 w-5 rounded-full border-2 ${tagColor === color ? "border-slate-800" : "border-white"}`}
+                        className={`h-9 w-9 rounded-full border-2 lg:h-5 lg:w-5 ${tagColor === color ? "border-slate-800" : "border-white"}`}
                         style={{ backgroundColor: color }}
                       />
                     ))}
@@ -477,7 +495,7 @@ export function RnpOperatingToolbar(props: Props) {
                       type="button"
                       disabled={!tagName.trim() || props.busy}
                       onClick={() => void createTag()}
-                      className="ml-auto h-8 rounded-lg bg-violet-600 px-3 text-[9px] font-bold text-white disabled:opacity-40"
+                      className="ml-auto min-h-11 rounded-lg bg-violet-600 px-3 text-[9px] font-bold text-white disabled:opacity-40 lg:min-h-8"
                     >
                       Создать
                     </button>
@@ -503,7 +521,7 @@ export function RnpOperatingToolbar(props: Props) {
             <button
               type="button"
               onClick={() => props.onArticleQueryChange("")}
-              className="absolute right-2 top-1/2 inline-flex h-6 -translate-y-1/2 items-center gap-1 rounded-md px-1.5 text-[9px] font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              className="tap-hit absolute right-2 top-1/2 inline-flex h-6 -translate-y-1/2 items-center gap-1 rounded-md px-1.5 text-[9px] font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               aria-label="Очистить список артикулов"
             >
               {queryCount} <X className="h-3 w-3" />
@@ -538,7 +556,7 @@ export function RnpOperatingToolbar(props: Props) {
               key={value}
               type="button"
               onClick={() => props.onAnomalyModeChange(value)}
-              className={`h-7 rounded-md border px-2 text-[9px] font-semibold ${
+              className={`min-h-11 rounded-md border px-2 text-[9px] font-semibold lg:min-h-7 ${
                 props.anomalyMode === value ? "border-violet-300 bg-white text-violet-700" : "border-transparent text-slate-500"
               }`}
             >
@@ -554,7 +572,7 @@ export function RnpOperatingToolbar(props: Props) {
               step={5}
               value={props.anomalyThreshold}
               onChange={(event) => props.onAnomalyThresholdChange(Math.max(10, Math.min(100, Number(event.target.value) || 30)))}
-              className="h-7 w-14 rounded-md border border-violet-100 bg-white px-2 text-right font-semibold tabular-nums text-slate-700 outline-none"
+              className="h-11 w-20 rounded-md border border-violet-100 bg-white px-2 text-right font-semibold tabular-nums text-slate-700 outline-none lg:h-7 lg:w-14 lg:text-[9px]"
             />
             %
           </label>
@@ -564,7 +582,7 @@ export function RnpOperatingToolbar(props: Props) {
       {/* ===== ПОКАЗ ===== */}
       <div className={`mt-3 border-t border-slate-100 pt-2.5 ${SECTION_LABEL_CLASS}`}>Показ</div>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        <div className="inline-flex h-9 rounded-lg bg-slate-100 p-0.5" aria-label="Гранулярность колонок">
+        <div className="inline-flex h-11 rounded-lg bg-slate-100 p-0.5 lg:h-9" aria-label="Гранулярность колонок">
           <button
             type="button"
             onClick={() => props.onGranularityChange("day")}
@@ -589,7 +607,7 @@ export function RnpOperatingToolbar(props: Props) {
 
         {/* Одно состояние — один контрол: «выкл / % / ± цифры». Раньше режим был
             размазан по чипу со скачущим значком и отдельной кнопке — неочевидно. */}
-        <div className="inline-flex h-9 items-center rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Дельты к прошлому периоду">
+        <div className="inline-flex h-11 items-center rounded-lg bg-slate-100 p-0.5 lg:h-9" role="group" aria-label="Дельты к прошлому периоду">
           <span className="px-2 text-[10px] font-semibold text-slate-500">Дельты</span>
           {([
             ["off", "выкл"],
@@ -610,10 +628,9 @@ export function RnpOperatingToolbar(props: Props) {
                   props.onShowDeltasChange(true);
                   props.onDeltaModeChange(value);
                 }}
-                className={`min-w-9 rounded-md px-2.5 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                className={`h-[38px] min-w-11 rounded-md px-2.5 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:h-[30px] lg:min-w-9 ${
                   active ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
                 }`}
-                style={{ height: "30px" }}
               >
                 {label}
               </button>
@@ -622,11 +639,14 @@ export function RnpOperatingToolbar(props: Props) {
         </div>
 
         <label className="relative inline-flex items-center">
-          <span className="pointer-events-none absolute left-3 text-[11px] font-medium text-slate-400">Сортировка:</span>
+          {/* Подпись внутри поля съедает 84px из 196. На узком экране, где
+              кегль поднят до 16px, после неё остаётся место на пять букв —
+              там смысл несёт aria-label, а не надпись. */}
+          <span className="pointer-events-none absolute left-3 hidden text-[11px] font-medium text-slate-400 lg:block">Сортировка:</span>
           <select
             value={props.sortField}
             onChange={(event) => props.onSortFieldChange(event.target.value)}
-            className={`${CONTROL_CLASS} w-[196px] appearance-none pl-[84px] pr-7`}
+            className={`${CONTROL_CLASS} w-[196px] appearance-none pl-3 pr-7 lg:pl-[84px]`}
             aria-label="Сортировка артикулов"
           >
             {props.sortOptions.map((sort) => <option key={sort.field} value={sort.field}>{sort.label}</option>)}
@@ -636,13 +656,13 @@ export function RnpOperatingToolbar(props: Props) {
         <button
           type="button"
           onClick={() => props.onSortDirectionChange(props.sortDirection === -1 ? 1 : -1)}
-          className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700"
+          className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700 lg:h-9 lg:w-9"
           aria-label={props.sortDirection === -1 ? "По убыванию" : "По возрастанию"}
         >
           {props.sortDirection === -1 ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}
         </button>
 
-        <div className="relative ml-auto flex flex-wrap items-center gap-1.5">
+        <div className="relative ml-auto flex flex-wrap items-center gap-2 lg:gap-1.5">
           <button
             type="button"
             onClick={() => { const open = viewOpen; closePopovers(); setViewOpen(!open); }}
@@ -670,7 +690,7 @@ export function RnpOperatingToolbar(props: Props) {
             onClick={() => { const open = settingsOpen; closePopovers(); setSettingsOpen(!open); }}
             aria-label="Настройки отображения"
             aria-expanded={settingsOpen}
-            className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700"
+            className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700 lg:h-9 lg:w-9"
           >
             <Settings2 className="h-4 w-4" />
           </button>
@@ -681,13 +701,13 @@ export function RnpOperatingToolbar(props: Props) {
             disabled={props.downloadDisabled}
             aria-label="Скачать таблицу CSV"
             title="Скачать таблицу CSV"
-            className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700 disabled:opacity-40"
+            className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-violet-700 disabled:opacity-40 lg:h-9 lg:w-9"
           >
             <Download className="h-4 w-4" />
           </button>
 
           {viewOpen ? (
-            <div className="absolute right-0 top-11 z-50 w-[270px] rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+            <div className={`${POPOVER_SHEET} rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_55px_rgba(15,23,42,0.18)] lg:right-0 lg:top-11 lg:w-[270px]`}>
               <div className={`px-2 pb-1.5 pt-1 ${SECTION_LABEL_CLASS}`}>Готовые представления</div>
               {RNP_VIEW_PRESETS.map((view) => (
                 <button
@@ -697,7 +717,7 @@ export function RnpOperatingToolbar(props: Props) {
                     props.onViewChange(view.id);
                     setViewOpen(false);
                   }}
-                  className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-violet-50"
+                  className="flex min-h-11 w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-violet-50 lg:min-h-0"
                 >
                   <span className={`mt-0.5 grid h-4 w-4 place-items-center rounded-full border ${
                     props.viewId === view.id ? "border-violet-600 bg-violet-600 text-white" : "border-slate-300 text-transparent"
@@ -714,7 +734,7 @@ export function RnpOperatingToolbar(props: Props) {
           ) : null}
 
           {settingsOpen ? (
-            <div className="absolute right-0 top-11 z-50 w-[240px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)]">
+            <div className={`${POPOVER_SHEET} rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.18)] lg:right-0 lg:top-11 lg:w-[240px]`}>
               <div className={SECTION_LABEL_CLASS}>Настройки отображения</div>
               <div className="mt-2 space-y-1">
                 <ViewCheck
@@ -734,14 +754,14 @@ export function RnpOperatingToolbar(props: Props) {
                   <button
                     type="button"
                     onClick={() => props.onCompactNumbersChange(false)}
-                    className={`h-8 rounded-md text-[10px] font-semibold ${!props.compactNumbers ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
+                    className={`min-h-11 rounded-md text-[10px] font-semibold lg:min-h-8 ${!props.compactNumbers ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
                   >
                     Полный
                   </button>
                   <button
                     type="button"
                     onClick={() => props.onCompactNumbersChange(true)}
-                    className={`h-8 rounded-md text-[10px] font-semibold ${props.compactNumbers ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
+                    className={`min-h-11 rounded-md text-[10px] font-semibold lg:min-h-8 ${props.compactNumbers ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
                   >
                     Короткий
                   </button>
@@ -757,7 +777,7 @@ export function RnpOperatingToolbar(props: Props) {
                     step={0.5}
                     value={props.taxPct}
                     onChange={(event) => props.onTaxPctChange(Math.max(0, Math.min(50, Number(event.target.value) || 0)))}
-                    className="h-8 w-16 rounded-md border border-slate-200 bg-white px-2 text-right font-semibold tabular-nums text-slate-700 outline-none focus:border-violet-300"
+                    className="h-11 w-20 rounded-md border border-slate-200 bg-white px-2 text-right font-semibold tabular-nums text-slate-700 outline-none focus:border-violet-300 lg:h-8 lg:w-16"
                   />
                 </label>
                 <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1.5 text-center text-[9px] font-semibold text-violet-700" title="Используются актуальные остатки WB">
@@ -767,16 +787,16 @@ export function RnpOperatingToolbar(props: Props) {
             </div>
           ) : null}
       {props.metricsOpen ? (
-        <div className="absolute right-0 top-11 z-50 max-h-[min(70vh,560px)] w-[270px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.2)]">
+        <div className={`${POPOVER_SHEET_BASE} rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.2)] lg:right-0 lg:top-11 lg:max-h-[min(70svh,560px)] lg:w-[270px]`}>
           <div className="sticky top-0 z-10 -mx-1 -mt-1 flex items-start justify-between bg-white px-1 pb-2 pt-1">
             <div>
               <h3 className="text-[10px] font-bold text-slate-800">Показатели · тяните ⠿ для порядка</h3>
               <p className="mt-0.5 text-[9px] text-slate-400">Выбрано {props.metricFields.length} из {RNP_METRIC_FIELDS.length}</p>
             </div>
             <div className="flex gap-1">
-              <button type="button" onClick={() => props.onMetricFieldsChange([...RNP_METRIC_FIELDS])} className="h-6 rounded px-1.5 text-[9px] font-semibold text-slate-500 hover:bg-slate-100">все</button>
-              <button type="button" onClick={() => props.onViewChange("main")} className="h-6 rounded px-1.5 text-[9px] font-semibold text-slate-500 hover:bg-slate-100">сброс</button>
-              <button type="button" onClick={() => props.onMetricsOpenChange(false)} className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-slate-100" aria-label="Закрыть показатели"><X className="h-3.5 w-3.5" /></button>
+              <button type="button" onClick={() => props.onMetricFieldsChange([...RNP_METRIC_FIELDS])} className="h-9 rounded px-2 text-[9px] font-semibold text-slate-500 hover:bg-slate-100 lg:h-6 lg:px-1.5">все</button>
+              <button type="button" onClick={() => props.onViewChange("main")} className="h-9 rounded px-2 text-[9px] font-semibold text-slate-500 hover:bg-slate-100 lg:h-6 lg:px-1.5">сброс</button>
+              <button type="button" onClick={() => props.onMetricsOpenChange(false)} className="grid h-9 w-9 place-items-center rounded text-slate-400 hover:bg-slate-100 lg:h-6 lg:w-6" aria-label="Закрыть показатели"><X className="h-3.5 w-3.5" /></button>
             </div>
           </div>
           <div className="space-y-2">
@@ -795,17 +815,17 @@ export function RnpOperatingToolbar(props: Props) {
                       const selected = selectedSet.has(field);
                       const index = props.metricFields.indexOf(field);
                       return (
-                        <div key={field} className="group flex h-8 items-center gap-1 rounded-md px-1 hover:bg-slate-50">
+                        <div key={field} className="group flex h-11 items-center gap-1 rounded-md px-1 hover:bg-slate-50 lg:h-8">
                           <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300" />
                           <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                            <input type="checkbox" checked={selected} onChange={() => toggleMetric(field)} className="h-3.5 w-3.5 accent-violet-600" />
+                            <input type="checkbox" checked={selected} onChange={() => toggleMetric(field)} className="h-5 w-5 accent-violet-600 lg:h-3.5 lg:w-3.5" />
                             <span className={`truncate text-[10px] ${selected ? "font-medium text-slate-700" : "text-slate-500"}`}>{metric.label.replace(/, (₽|%|дней|шт)$/u, "")}</span>
                             <span className="ml-auto shrink-0 text-[9px] text-slate-400">{UNITS[field] ?? "шт."}</span>
                           </label>
                           {selected ? (
-                            <span className="hidden gap-0.5 group-hover:flex">
-                              <button type="button" disabled={index <= 0} onClick={() => moveMetric(field, -1)} className="grid h-5 w-5 place-items-center rounded text-slate-400 hover:bg-white disabled:opacity-20" aria-label={`Поднять ${metric.label}`}><ArrowUp className="h-2.5 w-2.5" /></button>
-                              <button type="button" disabled={index >= props.metricFields.length - 1} onClick={() => moveMetric(field, 1)} className="grid h-5 w-5 place-items-center rounded text-slate-400 hover:bg-white disabled:opacity-20" aria-label={`Опустить ${metric.label}`}><ArrowDown className="h-2.5 w-2.5" /></button>
+                            <span className="hidden shrink-0 gap-0.5 group-focus-within:flex group-hover:flex max-lg:flex pointer-coarse:flex">
+                              <button type="button" disabled={index <= 0} onClick={() => moveMetric(field, -1)} className="grid h-9 w-9 place-items-center rounded text-slate-400 hover:bg-white disabled:opacity-20 lg:h-5 lg:w-5" aria-label={`Поднять ${metric.label}`}><ArrowUp className="h-4 w-4 lg:h-2.5 lg:w-2.5" /></button>
+                              <button type="button" disabled={index >= props.metricFields.length - 1} onClick={() => moveMetric(field, 1)} className="grid h-9 w-9 place-items-center rounded text-slate-400 hover:bg-white disabled:opacity-20 lg:h-5 lg:w-5" aria-label={`Опустить ${metric.label}`}><ArrowDown className="h-4 w-4 lg:h-2.5 lg:w-2.5" /></button>
                             </span>
                           ) : null}
                         </div>
@@ -833,13 +853,13 @@ export function RnpOperatingToolbar(props: Props) {
 
 
       {props.selectedCount > 0 ? (
-        <div className="fixed bottom-4 left-1/2 z-[70] flex w-[min(680px,calc(100vw-32px))] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_18px_55px_rgba(15,23,42,0.22)]">
+        <div className="fixed bottom-[calc(max(4rem+var(--safe-b),var(--kb-inset))+0.5rem)] left-1/2 z-40 flex w-[min(680px,calc(100vw-32px))] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_18px_55px_rgba(15,23,42,0.22)] md:bottom-[calc(var(--kb-inset)+1rem)]">
           <span className="mr-auto text-[10px] font-semibold text-slate-700">Выбрано: {props.selectedCount}</span>
           <select
             value={bulkTagId}
             disabled={props.busy || !props.tags.length}
             onChange={(event) => setBulkTagId(event.target.value)}
-            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[9px] font-semibold text-slate-600 outline-none disabled:opacity-50"
+            className="h-11 rounded-lg border border-slate-200 bg-white px-2.5 font-semibold text-slate-600 outline-none disabled:opacity-50 lg:h-8 lg:text-[9px]"
             aria-label="Назначить тег выбранным товарам"
           >
             <option value="">Выберите тег…</option>
@@ -853,11 +873,11 @@ export function RnpOperatingToolbar(props: Props) {
               props.onBulkTag(bulkTagId);
               setBulkTagId("");
             }}
-            className="h-8 rounded-lg bg-violet-600 px-3 text-[9px] font-bold text-white disabled:opacity-40"
+            className="min-h-11 rounded-lg bg-violet-600 px-3 text-[9px] font-bold text-white disabled:opacity-40 lg:min-h-8"
           >
             Повесить тег
           </button>
-          <button type="button" onClick={props.onClearSelection} className="h-8 rounded-lg px-2 text-[9px] font-semibold text-slate-500 hover:bg-slate-100">Снять выбор</button>
+          <button type="button" onClick={props.onClearSelection} className="min-h-11 rounded-lg px-2 text-[9px] font-semibold text-slate-500 hover:bg-slate-100 lg:min-h-8">Снять выбор</button>
         </div>
       ) : null}
     </div>
@@ -869,7 +889,7 @@ function ViewCheck({ label, checked, onChange }: { label: string; checked: boole
     <button
       type="button"
       onClick={onChange}
-      className="flex h-8 w-full items-center justify-between rounded-md px-1.5 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
+      className="flex min-h-11 w-full items-center justify-between rounded-md px-1.5 text-[10px] font-medium text-slate-600 hover:bg-slate-50 lg:min-h-8"
     >
       {label}
       <span className={`grid h-4 w-4 place-items-center rounded border ${checked ? "border-violet-600 bg-violet-600 text-white" : "border-slate-300 bg-white text-transparent"}`}>

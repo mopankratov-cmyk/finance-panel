@@ -104,7 +104,9 @@ export function PeriodRangePicker({
 
       {open ? (
         <div
-          className={`absolute top-full z-50 mt-1 w-[min(640px,calc(100vw-32px))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.18)] ${align === "right" ? "right-0" : "left-0"}`}
+          className={`fixed inset-x-2 bottom-2 z-50 max-h-[85dvh] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.18)] pb-[calc(0.25rem+var(--safe-b))]
+            sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:mt-1 sm:max-h-none sm:w-[min(640px,calc(100vw-32px))] sm:overflow-hidden sm:pb-0
+            ${align === "right" ? "sm:right-0" : "sm:left-0"}`}
         >
           <div className="flex flex-col sm:flex-row">
             <div className="flex shrink-0 flex-wrap gap-1 border-b border-slate-100 p-2 sm:w-[150px] sm:flex-col sm:flex-nowrap sm:border-b-0 sm:border-r">
@@ -116,7 +118,7 @@ export function PeriodRangePicker({
                     onApplyPreset(preset.value);
                     setOpen(false);
                   }}
-                  className={`h-9 rounded-lg px-3 text-left text-[11px] font-medium transition ${
+                  className={`preset-btn h-9 rounded-lg px-3 text-left text-[11px] font-medium transition ${
                     activePreset === preset.value
                       ? "bg-violet-50 text-violet-700"
                       : "text-slate-600 hover:bg-slate-50"
@@ -133,7 +135,7 @@ export function PeriodRangePicker({
                   type="button"
                   onClick={() => shiftAnchor(-1)}
                   aria-label="Предыдущий месяц"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  className="tap grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 sm:min-h-8 sm:min-w-8"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -144,7 +146,7 @@ export function PeriodRangePicker({
                   type="button"
                   onClick={() => shiftAnchor(1)}
                   aria-label="Следующий месяц"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  className="tap grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 sm:min-h-8 sm:min-w-8"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
@@ -153,7 +155,7 @@ export function PeriodRangePicker({
               <div className="grid gap-4 sm:grid-cols-2">
                 {months.map((month) => (
                   <div key={month.title}>
-                    <div className="mb-1 grid grid-cols-7 text-center text-[9px] font-semibold uppercase text-slate-400">
+                    <div className="mb-1 grid grid-cols-7 text-center text-[10px] font-semibold uppercase text-slate-400 sm:text-[9px]">
                       {WEEKDAY_TITLES.map((weekday) => <span key={weekday}>{weekday}</span>)}
                     </div>
                     <div className="space-y-0.5">
@@ -169,7 +171,7 @@ export function PeriodRangePicker({
                                 type="button"
                                 disabled={beyond}
                                 onClick={() => setDraft((current) => applyDayClick(current, cell.iso))}
-                                className={`h-8 text-[11px] tabular-nums transition disabled:cursor-not-allowed disabled:text-slate-200 ${
+                                className={`day-cell h-8 text-[11px] tabular-nums transition disabled:cursor-not-allowed disabled:text-slate-200 ${
                                   edge
                                     ? "rounded-md bg-violet-600 font-bold text-white"
                                     : selected

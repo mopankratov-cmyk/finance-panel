@@ -40,11 +40,15 @@ export function LoadingBanner({ seconds, hint }: { seconds: number; hint?: strin
 
 export function SkeletonKpiRow({ count = 4 }: { count?: number }) {
   return (
-    <div className="mb-5 grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(count, 6)}, minmax(0,1fr))` }}>
+    // Колонки задаются через auto-fit, а не через `repeat(count, …)`: инлайновый
+    // стиль сильнее любого класса, брейкпоинт в него не вставить, и ряд из
+    // шести плиток на телефоне распирал страницу вбок — причём в первые же
+    // секунды каждого экрана, до появления данных.
+    <div className="mb-5 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(9rem, 100%), 1fr))" }}>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="h-3 w-16 animate-pulse rounded bg-gray-200 motion-reduce:animate-none" />
-          <div className="mt-2 h-6 w-20 animate-pulse rounded bg-gray-200 motion-reduce:animate-none" />
+        <div key={i} className="min-w-0 rounded-xl border border-gray-200 bg-white p-4">
+          <div className="h-3 w-2/3 animate-pulse rounded bg-gray-200 motion-reduce:animate-none" />
+          <div className="mt-2 h-6 w-1/2 animate-pulse rounded bg-gray-200 motion-reduce:animate-none" />
         </div>
       ))}
     </div>
@@ -58,9 +62,14 @@ export function SkeletonTableRows({ rows = 8, cols = 6 }: { rows?: number; cols?
         <div key={r} className={`flex items-center gap-3 px-3 py-2.5 ${r > 0 ? "border-t border-gray-100" : ""}`}>
           <div className="h-8 w-8 shrink-0 animate-pulse rounded bg-gray-100 motion-reduce:animate-none" />
           <div className="h-3 w-24 shrink-0 animate-pulse rounded bg-gray-100 motion-reduce:animate-none" />
+          {/* Полоски-«колонки» скрываются по одной, начиная с четвёртой: на 320px
+              шесть штук по 40px не помещаются и режутся у края блока. */}
           <div className="ml-auto flex gap-3">
             {Array.from({ length: cols }).map((_, c) => (
-              <div key={c} className="h-3 w-10 animate-pulse rounded bg-gray-100 motion-reduce:animate-none" />
+              <div
+                key={c}
+                className={`h-3 w-10 animate-pulse rounded bg-gray-100 motion-reduce:animate-none ${c >= 4 ? "hidden md:block" : c >= 3 ? "hidden sm:block" : ""}`}
+              />
             ))}
           </div>
         </div>

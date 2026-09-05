@@ -26,5 +26,5 @@ export function OzonHealthPage() {
 function Check({ label, status, detail }: { label: string; status: "ok" | "warning" | "error"; detail: string }) {
   const tone = status === "ok" ? "border-emerald-100 bg-emerald-50/60" : status === "error" ? "border-red-100 bg-red-50/60" : "border-amber-100 bg-amber-50/60";
   const icon = status === "ok" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Clock3 className={`h-3.5 w-3.5 ${status === "error" ? "text-red-600" : "text-amber-600"}`} />;
-  return <div className={`rounded-lg border p-2.5 ${tone}`}><div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-700">{icon}{label}</div><div className="mt-1 text-[10px] text-slate-500">{detail}</div></div>;
+  return <div className={`rounded-lg border p-2.5 ${tone}`}><div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 md:text-[10px]">{icon}{label}</div><div className="mt-1 text-xs text-slate-500 md:text-[10px]">{detail}</div></div>;
 }

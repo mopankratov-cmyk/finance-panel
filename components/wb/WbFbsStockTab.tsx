@@ -113,7 +113,7 @@ export function WbFbsStockTab({ cabinetId, cabinetName }: { cabinetId: string; c
           WB отдаёт остаток склада продавца только по списку баркодов — баркоды берутся из карточек кабинета. Позиции с нулём в таблицу не попадают.
         </div>
         <div className="mt-2 flex flex-col gap-2 xl:flex-row xl:items-center">
-          <label className="flex min-h-11 items-center gap-2 text-[11px] text-slate-500 sm:min-h-9">
+          <label className="flex min-h-11 items-center gap-2 text-[11px] text-slate-500 lg:min-h-9">
             Склад
             {/* Показываем склад, который реально ответил WB, а не локальный выбор:
                 при неизвестном id роут берёт первый склад и говорит об этом
@@ -128,7 +128,7 @@ export function WbFbsStockTab({ cabinetId, cabinetName }: { cabinetId: string; c
               ))}
             </select>
           </label>
-          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 sm:max-w-sm sm:min-h-9">
+          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 sm:max-w-sm lg:min-h-9">
             <Search className="h-3.5 w-3.5 text-slate-400" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="баркод, артикул или бренд" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />
           </label>

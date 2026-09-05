@@ -55,14 +55,14 @@ export function CtrCampaignBridge({ cabinetId, nmId }: { cabinetId: string; nmId
         Вчерашняя разбивка расхода по артикулу. Тест на паузе по лимиту останавливать надо именно здесь — панель кампании WB
         не трогает сама.
       </p>
-      <div className="mt-2 space-y-1">
+      <div className="mt-2 space-y-2">
         {rows.map((row) => (
           <Link
             key={row.advertId}
             href={`/wb/adverts?cabinet=${encodeURIComponent(cabinetId)}&campaign=${row.advertId}&status=all`}
-            className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px] transition-colors hover:bg-violet-50"
+            className="tap-row flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px] transition-colors hover:bg-violet-50"
           >
-            <span className="min-w-0 flex-1 truncate font-medium text-slate-700">{row.name}</span>
+            <span className="min-w-0 flex-1 basis-full truncate font-medium text-slate-700 sm:basis-auto">{row.name}</span>
             <span className="shrink-0 tabular-nums text-slate-500">{Math.round(row.spent).toLocaleString("ru-RU")} ₽</span>
             <span className="shrink-0 tabular-nums text-slate-400">CTR {row.ctr == null ? "—" : `${row.ctr.toFixed(2)}%`}</span>
             <ExternalLink className="h-3.5 w-3.5 shrink-0 text-violet-500" aria-hidden="true" />

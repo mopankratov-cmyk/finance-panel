@@ -76,7 +76,7 @@ export function AdTokenPanel({ cabinetId, onClose, onSaved }: { cabinetId: strin
             «Продвижение». Проверка ниже спрашивает у WB напрямую и ничего в кабинете не трогает.
           </p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Закрыть" className="rounded-lg p-1 text-slate-400 hover:bg-slate-50">
+        <button type="button" onClick={onClose} aria-label="Закрыть" className="tap rounded-lg text-slate-400 hover:bg-slate-50">
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
@@ -128,7 +128,7 @@ export function AdTokenPanel({ cabinetId, onClose, onSaved }: { cabinetId: strin
       ) : null}
 
       <details className="mt-3 text-[11px] text-slate-500">
-        <summary className="cursor-pointer font-semibold text-slate-600">Где взять ключ</summary>
+        <summary className="tap-row flex cursor-pointer list-none items-center font-semibold text-slate-600">Где взять ключ</summary>
         <p className="mt-1.5 leading-4">
           Личный кабинет WB → Настройки → Доступ к API → создать токен. Отметьте категорию «Продвижение» и{" "}
           <b>не ставьте</b> «Только на чтение». Ключ показывается один раз — скопируйте сразу.

@@ -58,18 +58,18 @@ export function CalendarDayCell({
             {day}
           </span>
           {paymentCount > 0 && (
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">{paymentCount} опер.</span>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[12px] font-medium text-slate-600 lg:text-[11px]">{paymentCount} опер.</span>
           )}
         </div>
 
         {(income > 0 || expense > 0) && (
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div className="rounded-lg bg-emerald-50 px-2 py-2">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-emerald-700">Поступления</p>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700 lg:text-[10px]">Поступления</p>
               <p className="mt-0.5 truncate text-sm font-bold tabular-nums text-emerald-800">+{compactMoney(income)}</p>
             </div>
             <div className="rounded-lg bg-rose-50 px-2 py-2">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-rose-700">Расходы</p>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-rose-700 lg:text-[10px]">Расходы</p>
               <p className="mt-0.5 truncate text-sm font-bold tabular-nums text-rose-800">−{compactMoney(expense)}</p>
             </div>
           </div>
@@ -77,16 +77,16 @@ export function CalendarDayCell({
 
         {expenseRows.length > 0 && (
           <div className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Расходы за день</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 lg:text-[10px]">Расходы за день</p>
             {expenseRows.map((payment) => (
-              <div key={payment.id} title={compactLabel(payment)} className="flex min-w-0 items-center gap-1.5 text-[11px] leading-tight text-slate-700">
+              <div key={payment.id} title={compactLabel(payment)} className="flex min-w-0 items-center gap-1.5 text-xs leading-tight text-slate-700 lg:text-[11px]">
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${payment.status === "done" ? "bg-emerald-500" : "bg-amber-500"}`} />
-                <span className={`shrink-0 rounded border px-1 text-[9px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span>
+                <span className={`shrink-0 rounded border px-1 text-[10px] font-bold lg:text-[9px] ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span>
                 <span className="min-w-0 flex-1 truncate font-medium">{compactLabel(payment)}</span>
                 <span className="shrink-0 font-semibold tabular-nums">−{compactMoney(payment.amount)}</span>
               </div>
             ))}
-            {hiddenExpenses > 0 && <p className="text-[10px] text-slate-400">Ещё расходов: {hiddenExpenses}</p>}
+            {hiddenExpenses > 0 && <p className="text-[11px] text-slate-400 lg:text-[10px]">Ещё расходов: {hiddenExpenses}</p>}
           </div>
         )}
 
@@ -97,13 +97,17 @@ export function CalendarDayCell({
         )}
       </button>
 
+      {/* Пальцем наведения не бывает: без `.hover-actions` кнопка так и осталась
+          бы невидимой, и добавить платёж в день с телефона можно было бы только
+          через панель дня. `.tap-hit` растягивает область нажатия до 44px, не
+          раздувая сам кружок — на мыши вид и размер прежние. */}
       <button
         type="button"
         onClick={(e) => {
           e.stopPropagation();
           onQuickAdd();
         }}
-        className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-violet-700 focus:opacity-100"
+        className="hover-actions tap-hit absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-violet-700 focus:opacity-100"
         aria-label={`Быстро добавить платёж на ${dateStr}`}
       >
         <Plus className="h-4 w-4" />

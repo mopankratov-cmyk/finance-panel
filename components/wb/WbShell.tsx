@@ -27,12 +27,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   WB_MOBILE_NAVIGATION,
   WB_NAVIGATION_ITEMS,
   isWbNavigationItemActive,
 } from "@/lib/wb/navigation";
+import { useDialogBehavior } from "@/hooks/useDialogBehavior";
+import { useIsBelowTablet } from "@/hooks/useMediaQuery";
 import { WbCabinetSwitcher } from "./WbCabinetSwitcher";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -94,16 +96,19 @@ function RailLink({ item, active, cabinetId, expanded, onNavigate }: { item: Nav
       aria-current={active ? "page" : undefined}
       title={item.label}
       onClick={onNavigate}
-      className={`group relative mx-2 flex h-11 items-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 md:h-9 ${expanded ? "gap-3 px-3" : "justify-center"} ${
+      className={`group relative mx-2 flex h-11 items-center rounded-[9px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 md:h-9 ${expanded ? "gap-3 px-3" : "justify-center max-lg:flex-col max-lg:gap-0.5"} ${
         active ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
       }`}
     >
       {active && <span className="absolute -left-2 h-6 w-[3px] rounded-r bg-violet-600" />}
       <Icon className="h-[17px] w-[17px] shrink-0" />
       {expanded ? <span className="truncate text-xs font-medium">{item.label}</span> : (
-        <span className="pointer-events-none absolute left-[43px] z-[90] hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
-          {item.label}
-        </span>
+        <>
+          <span className="pointer-events-none absolute left-[43px] z-[90] hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+            {item.label}
+          </span>
+          <span aria-hidden="true" className="w-full truncate px-0.5 text-center text-[8px] font-medium leading-none lg:hidden">{item.label}</span>
+        </>
       )}
     </Link>
   );
@@ -136,6 +141,23 @@ export function WbShell({ children }: { children: React.ReactNode }) {
     : MOBILE_NAV;
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const menuRef = useRef<HTMLElement | null>(null);
+
+  // Выдвижное меню — полноценный диалог: Escape, замкнутый Tab и неподвижный
+  // фон. Без последнего страница под затемнением продолжала ехать пальцем, и,
+  // закрыв меню, человек оказывался не там, откуда его открыл.
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useDialogBehavior(menuOpen, closeMenu, menuRef);
+
+  // Шторка и её подложка живут только до md (`md:hidden`), а блокировка фона —
+  // в состоянии. Поворот телефона в ландшафт (≈844px) или растягивание окна
+  // через 768px с открытым меню прятали и шторку, и подложку, но фон оставался
+  // прикреплённым: страница не прокручивалась, и закрыть было нечем. Уходит
+  // разметка — уходит и состояние.
+  const belowTablet = useIsBelowTablet();
+  useEffect(() => {
+    if (!belowTablet) setMenuOpen(false);
+  }, [belowTablet]);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -184,7 +206,7 @@ export function WbShell({ children }: { children: React.ReactNode }) {
           type="button"
           onClick={mobile ? () => setMenuOpen(false) : toggleSidebar}
           aria-label={mobile ? "Закрыть навигацию" : expanded ? "Свернуть навигацию" : "Развернуть навигацию"}
-          className="grid h-11 w-11 md:h-8 md:w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+          className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700 lg:h-8 lg:w-8"
         >
           {expanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
@@ -232,11 +254,11 @@ export function WbShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] text-slate-800">
+    <div className="min-h-dvh bg-[#f6f7f9] text-slate-800">
       <a href="#wb-main-content" className="fixed left-3 top-2 z-[100] -translate-y-20 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-transform focus:translate-y-0">
         Перейти к содержимому
       </a>
-      <aside className={`fixed inset-y-0 left-0 z-[70] hidden flex-col border-r border-slate-200 bg-white transition-[width] duration-200 md:flex ${sidebarExpanded ? "w-[216px]" : "w-[55px]"}`}>
+      <aside className={`fixed inset-y-0 left-0 z-[70] hidden flex-col border-r border-slate-200 bg-white px-safe pt-safe transition-[width] duration-200 md:flex ${sidebarExpanded ? "w-[216px]" : "w-[55px]"}`}>
         {renderNav(sidebarExpanded)}
       </aside>
 
@@ -248,13 +270,16 @@ export function WbShell({ children }: { children: React.ReactNode }) {
             className="fixed inset-0 z-[69] bg-slate-950/25 md:hidden"
             onClick={() => setMenuOpen(false)}
           />
-          <aside className="fixed inset-y-0 left-0 z-[70] flex w-[216px] flex-col border-r border-slate-200 bg-white md:hidden">
+          <aside ref={menuRef} role="dialog" aria-modal="true" aria-label="Навигация Wildberries" className="fixed inset-y-0 left-0 z-[70] flex w-[216px] flex-col border-r border-slate-200 bg-white px-safe pt-safe md:hidden">
             {renderNav(true, true)}
           </aside>
         </>
       )}
 
-      <header className={`fixed left-0 right-0 top-0 z-[60] flex h-[54px] items-center border-b border-slate-200 bg-white px-3 transition-[left] duration-200 md:px-5 ${sidebarExpanded ? "md:left-[216px]" : "md:left-[55px]"}`}>
+      {/* pt-safe: в горизонтальной ориентации iPhone и в установленном на
+          домашний экран приложении под шапкой оказывается вырез, и первая
+          строка кнопок уезжает под него. */}
+      <header className={`fixed left-0 right-0 top-0 z-[60] flex h-[calc(54px+var(--safe-t))] items-center border-b border-slate-200 bg-white pl-[calc(0.75rem+var(--safe-l))] pr-[calc(0.75rem+var(--safe-r))] pt-safe transition-[left] duration-200 md:pl-[calc(1.25rem+var(--safe-l))] md:pr-[calc(1.25rem+var(--safe-r))] ${sidebarExpanded ? "md:left-[216px]" : "md:left-[55px]"}`}>
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
@@ -283,24 +308,42 @@ export function WbShell({ children }: { children: React.ReactNode }) {
             onClick={logout}
             title="Выйти"
             aria-label="Выйти"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700 sm:h-8 sm:w-8"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700 lg:h-8 lg:w-8"
           >
             <LogOut className="h-3.5 w-3.5" />
           </button>
         </div>
       </header>
 
-      <main id="wb-main-content" tabIndex={-1} className={`min-h-screen pt-[54px] transition-[margin] duration-200 ${sidebarExpanded ? "md:ml-[216px]" : "md:ml-[55px]"}`}>{children}</main>
+      {/* Запас снизу под нижнюю навигацию и системный индикатор: без него
+          последняя строка любой таблицы навсегда оставалась под панелью, и
+          добраться до неё было нечем. На планшете и шире панели нет — запас
+          снимается. */}
+      <main
+        id="wb-main-content"
+        tabIndex={-1}
+        className={`min-h-dvh pb-[calc(3.5rem+var(--safe-b))] pt-[calc(54px+var(--safe-t))] transition-[margin] duration-200 md:pb-0 ${sidebarExpanded ? "md:ml-[216px]" : "md:ml-[55px]"}`}
+      >
+        {children}
+      </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-14 items-center justify-around border-t border-slate-200 bg-white md:hidden" aria-label="Быстрая навигация">
+      {/* z-40, а не z-50: панель нарисована после <main>, и при равном слое с
+          Modal и SlidePanel (оба z-50) она ложилась поверх открытого диалога —
+          ровно на нижний ряд кнопок «Сохранить/Отмена». */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(3.5rem+var(--safe-b))] items-start justify-around border-t border-slate-200 bg-white pb-safe md:hidden" aria-label="Быстрая навигация">
         {mobileNav.map((item) => {
           const Icon = item.icon;
           const href = item.target ? `${item.href}?cabinet=${encodeURIComponent(cabinetId || "all")}` : item.href;
           const active = isWbNavigationItemActive(pathname, item.href);
           return (
-            <Link key={item.label} href={href} aria-current={active ? "page" : undefined} className={`flex h-full min-w-14 flex-col items-center justify-center gap-0.5 text-[9px] ${active ? "text-violet-700" : "text-slate-400"}`}>
-              <Icon className="h-4 w-4" />
-              {item.label}
+            <Link
+              key={item.label}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={`flex h-14 min-w-14 flex-1 flex-col items-center justify-center gap-1 px-1 text-[10px] leading-tight ${active ? "font-semibold text-violet-700" : "text-slate-500"}`}
+            >
+              <Icon className="h-[18px] w-[18px]" />
+              <span className="max-w-full truncate">{item.label}</span>
             </Link>
           );
         })}

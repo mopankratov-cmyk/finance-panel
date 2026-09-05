@@ -269,7 +269,10 @@ export function WbRkJournalPage() {
       onClick={open}
       title={entry ? noteTitle(entry) : emptyHint}
       aria-label={entry ? `${entry.source === "auto" ? "Предложение алгоритма" : "Задача"}: ${entry.note}` : emptyHint}
-      className={`inline-flex items-center justify-center gap-1 rounded-full py-[3px] text-[10px] font-semibold leading-4 transition-colors ${
+      // Главная операция экрана — поставить задачу на день. Клетка высотой в
+      // 22px пальцем не берётся, а соседние клетки дней стоят вплотную: до sm
+      // растягиваем цель до 44px, на мыши плотность остаётся прежней.
+      className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-full py-[3px] text-[11px] font-semibold leading-4 transition-colors sm:min-h-0 sm:text-[10px] ${
         entry
           // Предложение алгоритма и решение человека не должны выглядеть
           // одинаково: иначе непонятно, что уже решено, а с чем можно спорить.
@@ -277,7 +280,7 @@ export function WbRkJournalPage() {
           ? entry.source === "auto"
             ? `w-[80px] border border-dashed border-violet-300 bg-violet-50/60 px-2 text-violet-700${entry.done ? " opacity-60" : ""}`
             : `w-[80px] px-2 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-60" : ""}`
-          : "border border-dashed border-slate-200 px-1 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600"
+          : "min-w-11 border border-dashed border-slate-200 px-1 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 sm:min-w-0"
       }`}
     >
       {entry
@@ -651,7 +654,7 @@ export function WbRkJournalPage() {
                 type="button"
                 onClick={() => void runSync()}
                 disabled={syncing != null || loading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-900 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-900 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50 sm:min-h-0"
               >
                 {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
                 Прогнать РК
@@ -661,7 +664,7 @@ export function WbRkJournalPage() {
               type="button"
               onClick={exportCsv}
               disabled={!data || !visibleItems.length}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 sm:min-h-0"
             >
               <Download className="h-3.5 w-3.5" />
               CSV
@@ -670,7 +673,7 @@ export function WbRkJournalPage() {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 sm:min-h-0"
             >
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Обновить
@@ -732,7 +735,7 @@ export function WbRkJournalPage() {
             <button
               type="button"
               onClick={() => setBlockFilter("all")}
-              className="inline-flex items-center gap-1 rounded-full border border-violet-300 bg-white px-2.5 py-1 text-[12px] font-semibold text-violet-700 hover:bg-violet-50"
+              className="inline-flex min-h-11 items-center gap-1 rounded-full border border-violet-300 bg-white px-2.5 py-1 text-[12px] font-semibold text-violet-700 hover:bg-violet-50 sm:min-h-0"
             >
               Показаны только «{WB_RK_BLOCK_LABELS[blockFilter as WbRkBlock] ?? blockFilter}» · сбросить ✕
             </button>
@@ -741,7 +744,7 @@ export function WbRkJournalPage() {
             type="button"
             onClick={() => setShowNotes((value) => !value)}
             aria-pressed={showNotes}
-            className={`ml-auto rounded-lg border px-2.5 py-1 text-[12px] font-semibold ${showNotes ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
+            className={`ml-auto inline-flex min-h-11 items-center rounded-lg border px-2.5 py-1 text-[12px] font-semibold sm:min-h-0 ${showNotes ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
           >
             {showNotes ? "Скрыть столбец задач" : "Показать столбец задач"}
           </button>
@@ -851,7 +854,11 @@ export function WbRkJournalPage() {
                   const next = event.currentTarget.scrollLeft > 0;
                   setScrolledAside((prev) => (prev === next ? prev : next));
                 }}
-                className="max-h-[calc(100vh-320px)] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                // Высота считается в dvh: в мобильном браузере vh меряется по
+                // развёрнутой адресной строке, и низ таблицы вместе с «Итого»
+                // оказывался под панелью браузера. Нижняя граница в 360px нужна
+                // телефону в ландшафте — там 100dvh−320px это полторы строки.
+                className="max-h-[max(360px,calc(100dvh-320px))] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
               >
                 <table className="min-w-full border-collapse text-xs">
                   {/* Шапка липнет к верху контейнера, первая колонка — к левому
@@ -919,21 +926,29 @@ export function WbRkJournalPage() {
                             {/* Фон закреплённой колонки только сплошной: под ней проезжают колонки
                                 дней, и через полупрозрачный фон их цифры просвечивали прямо
                                 поверх артикула — выглядело как наложение строк. */}
-                            <td className={`sticky left-0 z-20 px-3 py-2 ${STICKY_EDGE} ${open ? "bg-violet-100" : "bg-white group-hover/row:bg-violet-50"}`}>
-                              <div className="flex items-center gap-2.5">
+                            <td className={`sticky left-0 z-20 px-2 py-2 sm:px-3 ${STICKY_EDGE} ${open ? "bg-violet-100" : "bg-white group-hover/row:bg-violet-50"}`}>
+                              <div className="flex items-center gap-1.5 sm:gap-2.5">
                                 <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
                                 {/* Картинка WB лежит на одном из нескольких «баскетов», и по
                                     номеру он только угадывается. Одна ссылка промахивалась —
                                     у части артикулов вместо фото была заглушка. Компонент
-                                    перебирает варианты, как в Воронке и Полках. */}
-                                <WbProductImage
-                                  nm={item.nm}
-                                  label={article}
-                                  className="h-11 w-9 shrink-0 rounded-md bg-slate-100 object-cover ring-1 ring-slate-200/60"
-                                />
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="max-w-[150px] truncate text-[13px] font-bold tracking-[-0.01em] text-slate-800" title={article || `WB ${item.nm}`}>{article || `WB ${item.nm}`}</span>
+                                    перебирает варианты, как в Воронке и Полках.
+                                    На телефоне фото уходит: закреплённая колонка съедала
+                                    260px из 320, и на цифры дня не оставалось ничего.
+                                    Товар опознаётся артикулом и номером — они остаются. */}
+                                <span className="hidden shrink-0 sm:block">
+                                  <WbProductImage
+                                    nm={item.nm}
+                                    label={article}
+                                    className="h-11 w-9 rounded-md bg-slate-100 object-cover ring-1 ring-slate-200/60"
+                                  />
+                                </span>
+                                {/* Ширина колонки на телефоне задана жёстко: иначе её
+                                    растягивает самый длинный артикул, и таблица начинается
+                                    за краем экрана. */}
+                                <div className="w-[104px] sm:w-auto sm:min-w-0">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="max-w-[104px] truncate text-[13px] font-bold tracking-[-0.01em] text-slate-800 sm:max-w-[150px]" title={article || `WB ${item.nm}`}>{article || `WB ${item.nm}`}</span>
                                     {canWrite && hasExactCabinet ? (
                                       <WbTagPicker
                                         tags={tags}
@@ -947,8 +962,11 @@ export function WbRkJournalPage() {
                                       />
                                     ) : null}
                                   </div>
-                                  <div className="max-w-[168px] truncate text-[11px] font-normal tabular-nums text-slate-400">WB {item.nm}</div>
-                                  {name ? <div className="max-w-[168px] truncate text-[11px] font-normal text-slate-500" title={name}>{name}</div> : null}
+                                  {/* Номер WB на телефоне переносится, а не обрезается:
+                                      обрезанный номер бесполезен — по нему товар в
+                                      кабинете не найти. */}
+                                  <div className="break-anywhere max-w-[104px] text-[11px] font-normal tabular-nums text-slate-400 sm:max-w-[168px] sm:truncate">WB {item.nm}</div>
+                                  {name ? <div className="max-w-[104px] truncate text-[11px] font-normal text-slate-500 sm:max-w-[168px]" title={name}>{name}</div> : null}
                                 </div>
                               </div>
                             </td>
@@ -992,8 +1010,10 @@ export function WbRkJournalPage() {
                           </tr>
                           {open ? shown.map((campaign) => (
                             <tr key={`${item.nm}-${campaign.advertId ?? campaign.block}`} className="bg-slate-50/60 text-slate-600 transition-colors hover:bg-violet-50/30">
-                              <td className={`sticky left-0 z-20 bg-slate-50 py-1.5 pl-[68px] pr-3 ${STICKY_EDGE}`}>
-                                <div className={`max-w-[196px] truncate text-[11px] ${campaign.block === WB_RK_BLOCK_ATTRIBUTED ? "italic text-slate-400" : ""}`} title={campaign.name ?? undefined}>
+                              {/* Отступ повторяет ширину фото и стрелки в строке
+                                  артикула — на телефоне фото нет, и он короче. */}
+                              <td className={`sticky left-0 z-20 bg-slate-50 py-1.5 pl-7 pr-2 sm:pl-[68px] sm:pr-3 ${STICKY_EDGE}`}>
+                                <div className={`max-w-[112px] truncate text-[11px] sm:max-w-[196px] ${campaign.block === WB_RK_BLOCK_ATTRIBUTED ? "italic text-slate-400" : ""}`} title={campaign.name ?? undefined}>
                                   {campaign.block === WB_RK_BLOCK_ATTRIBUTED
                                     ? WB_RK_BLOCK_ATTRIBUTED_LABEL
                                     : campaign.name ?? (campaign.advertId ? `Кампания ${campaign.advertId}` : "—")}

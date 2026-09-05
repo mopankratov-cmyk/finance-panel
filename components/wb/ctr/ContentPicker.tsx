@@ -210,7 +210,7 @@ export function ContentPicker({
               onClick={() => fileRef.current?.click()}
               disabled={busy !== null}
               title="JPEG, PNG или WebP до 12 МБ. Файл попадёт в библиотеку этого артикула и сразу станет пригоден для теста."
-              className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-2.5 text-[10px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[10px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-50 lg:min-h-8 lg:px-2.5"
             >
               <Upload className="h-3 w-3" aria-hidden="true" />
               {busy === "upload" ? "Загружаю…" : "Загрузить фото"}
@@ -221,7 +221,7 @@ export function ContentPicker({
           <button
             type="button"
             onClick={() => setShowAll((value) => !value)}
-            className="ml-auto min-h-8 rounded-lg bg-slate-100 px-2.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200"
+            className="ml-auto min-h-11 rounded-lg bg-slate-100 px-3 text-[10px] font-semibold text-slate-600 hover:bg-slate-200 lg:min-h-8 lg:px-2.5"
           >
             {showAll ? "Свернуть" : "Показать весь контент кабинета"}
           </button>
@@ -310,6 +310,8 @@ export function ContentPicker({
               {/*
                 Удаление рядом с плиткой, а не внутри неё: кнопка внутри кнопки
                 недопустима, а клик по корзине не должен заодно выбирать вариант.
+                `hover-actions` — потому что на касании hover не наступает вовсе:
+                до этого свой загруженный файл с телефона удалить было нечем.
                 Показываем только на своих загрузках — кадр карточки живёт в WB,
                 съёмка в каталоге завода, и панель ими не распоряжается.
               */}
@@ -320,7 +322,7 @@ export function ContentPicker({
                   disabled={busy !== null}
                   title="Убрать из библиотеки и удалить файл"
                   aria-label={`Удалить ${item.label}`}
-                  className="absolute right-1 bottom-1 grid h-5 w-5 place-items-center rounded bg-slate-900/70 text-white opacity-0 transition-opacity hover:bg-red-600 focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                  className="hover-actions tap-hit absolute right-1 bottom-1 grid h-7 w-7 place-items-center rounded bg-slate-900/80 text-white opacity-0 transition-opacity hover:bg-red-600 focus-visible:opacity-100 group-hover:opacity-100 disabled:bg-slate-500 lg:h-5 lg:w-5"
                 >
                   <Trash2 className="h-3 w-3" aria-hidden="true" />
                 </button>

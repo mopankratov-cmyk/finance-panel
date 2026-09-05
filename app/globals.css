@@ -27,3 +27,405 @@ select,
 textarea {
   color-scheme: light;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Мобильная база: телефон и iPad Pro 11"
+
+   Всё, что ниже, — фундамент адаптации. Правила подобраны так, чтобы на
+   большом экране ничего не поехало: они либо ограничены шириной до 1023px и
+   грубым указателем, либо добавляют новые классы, либо трогают то, что на
+   мыши и так не работало.
+
+   Про `pointer: coarse`: живая проверка показала, что одному этому признаку
+   доверять нельзя — часть браузеров и эмуляция отвечают на него не так, как
+   ожидаешь, и правило молча не применяется. Поэтому везде, где от правила
+   зависит возможность работать пальцем, рядом стоит `max-width: 1023px`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Безопасные зоны ──────────────────────────────────────────────────────
+   Вырез сверху и системный индикатор снизу. Значения приходят от браузера
+   ТОЛЬКО при `viewport-fit=cover` (задан в app/layout.tsx). Держим их в
+   переменных, чтобы в разметке не появлялись голые env() — их легко забыть
+   при копировании блока.                                                    */
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}
+
+.pt-safe { padding-top: var(--safe-t); }
+.pb-safe { padding-bottom: var(--safe-b); }
+.px-safe { padding-left: var(--safe-l); padding-right: var(--safe-r); }
+.top-safe { top: var(--safe-t); }
+.bottom-safe { bottom: var(--safe-b); }
+
+/* Отступ «свой плюс системный»: закреплённая панель действий должна отстоять
+   от края на свои 12px И на высоту индикатора, иначе кнопка окажется под ним. */
+.pb-safe-3 { padding-bottom: calc(0.75rem + var(--safe-b)); }
+.pb-safe-4 { padding-bottom: calc(1rem + var(--safe-b)); }
+.pt-safe-3 { padding-top: calc(0.75rem + var(--safe-t)); }
+
+/* ── Поля ввода на касании ────────────────────────────────────────────────
+   iOS Safari принудительно увеличивает страницу, если поле в фокусе мельче
+   16px, и обратно уже не уменьшает — человек остаётся на «зумнутой» странице
+   и доскрелливает форму вбок. Лечится единственным способом: не давать полю
+   быть мельче 16px на устройствах с грубым указателем. Десктоп не затронут. */
+@media (pointer: coarse), (max-width: 1023px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    /* `!important` здесь не лень, а необходимость, и вот почему.
+       Селектор `select` весит 0,0,1, а любой класс кегля — `text-xs`,
+       `text-[11px]` — весит 0,1,0 и молча перебивает правило. То есть без
+       усиления защита работала бы только там, где кегль полю НЕ задан
+       классом, — а задан он почти везде. Обнаружилось при разборе: поля
+       выглядели защищёнными, а iOS всё равно увеличивал страницу.
+       Правило действует только до 1023px и только на размер шрифта: это
+       жёсткая граница доступности, а не оформление, и переопределять её
+       компонентам незачем. Нужен мелкий кегль на большом экране — ставьте
+       его под `lg:`. */
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/* ── Горизонтальная прокрутка внутри блока ────────────────────────────────
+   Широкие таблицы прокручиваются САМИ, страница — нет. `overscroll-behavior`
+   не даёт жесту, дошедшему до края таблицы, утянуть за собой всю страницу
+   (на iOS это иначе выглядит как «страница дёргается вбок»).                */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Полоса прокрутки на касании не видна, и понять, что блок ездит вбок,
+   человеку неоткуда. Тонкая всегда-видимая полоса — дешёвая подсказка. */
+@media (pointer: coarse), (max-width: 1023px) {
+  .scroll-x { scrollbar-width: thin; }
+  .scroll-x::-webkit-scrollbar { height: 4px; }
+  .scroll-x::-webkit-scrollbar-thumb {
+    background: rgb(148 163 184 / 0.5);
+    border-radius: 9999px;
+  }
+}
+
+/* ── Цель нажатия ─────────────────────────────────────────────────────────
+   44×44 CSS px — минимум, ниже которого палец начинает промахиваться.
+   Класс расширяет ОБЛАСТЬ НАЖАТИЯ, не раздувая саму иконку.                */
+/* ВАЖНО про все классы этого файла: они объявлены ВНЕ `@layer`, а неслоёные
+   авторские стили по правилам каскада безусловно сильнее слоёных — то есть
+   сильнее ЛЮБОЙ утилиты Tailwind, включая `hidden` и любые `lg:`-варианты, и
+   независимо от порядка классов в разметке. Отсюда два правила для всего, что
+   тут написано:
+     — свойство, которое утилиты тоже задают (display, position, размеры),
+       либо ограничиваем шириной, либо закрываем `:not(...)`;
+     — «сделать под палец» никогда не значит «сделать так везде»: на большом
+       экране плотность обязана остаться прежней.
+   Пренебрежение этим стоило ветке двух десятков регрессий десктопа и трёх
+   мест, где кнопка появлялась там, где её скрыли. */
+
+/* Раскладку навязываем только там, где автор не выбрал свою: иначе `.tap` на
+   элементе с `hidden` или `lg:hidden` показал бы то, что скрыто. Второе
+   условие — `[class*=":hidden"]` — ловит именно брейкпоинтные варианты:
+   `md:hidden` это ОТДЕЛЬНЫЙ класс, и `:not(.hidden)` его не видит. На этом
+   попались крестик закрытия меню (висел на десктопе мёртвой кнопкой) и лента
+   разделов склада (дублировала боковую панель на большом экране). */
+.tap:not(.hidden):not([class*=":hidden"]):not(.flex):not(.inline-flex):not(.grid):not(.inline-grid):not(.block):not(.inline-block):not(.inline) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* А размер — только там, где тыкают пальцем. На десктопе иконки в плотных
+   строках таблиц и в шапках должны остаться прежними. */
+@media (pointer: coarse), (max-width: 1023px) {
+  .tap {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}
+
+/* Иконка в плотном ряду (шапка таблицы, строка списка), где 44px разорвали бы
+   вёрстку: сохраняем внешний размер, растягивая невидимую область нажатия. */
+@media (pointer: coarse), (max-width: 1023px) {
+  /* `position: relative` — только если элемент не позиционирован сам. Класс
+     часто вешают на кнопку, уже стоящую `absolute` внутри поля (крестик
+     очистки, кнопка на карточке): перехватив позиционирование, мы выбрасываем
+     её из своего угла в поток — на телефоне и на iPad она уезжала под поле. */
+  .tap-hit:not(.absolute):not(.fixed):not(.sticky) { position: relative; }
+  .tap-hit::after {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: 2.75rem;
+    height: 2.75rem;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* ── Действия, спрятанные под наведение ───────────────────────────────────
+   Кнопки строки, проявляющиеся по hover, на касании недоступны в принципе:
+   первое касание — уже нажатие. Там, где разметка помечена `.hover-actions`,
+   на устройствах без наведения они видны всегда.                            */
+@media (hover: none), (max-width: 1023px) {
+  .hover-actions { opacity: 1 !important; }
+}
+
+/* ── Мелочи, заметные только на телефоне ──────────────────────────────────  */
+
+/* Длинные артикулы, почты и названия товаров не должны распирать страницу. */
+.break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
+
+/* Ряд «чипсов» фильтров прокручивается вбок, а не переносится на пять строк. */
+.chip-row:not(.hidden):not([class*=":hidden"]) {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.chip-row::-webkit-scrollbar { display: none; }
+.chip-row > * { flex: 0 0 auto; }
+
+/* Анимации выключаются, если человек попросил об этом в системе. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Печатные формы склада печатают с планшета: убираем всё экранное. */
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Таблицы на узком экране: два разных механизма под два разных сценария
+
+   Сводить всё к карточкам нельзя. Аналитическая таблица существует ради
+   СРАВНЕНИЯ колонок — рассыпав её на карточки, мы отнимаем смысл, ради
+   которого её открыли. Реестр же (платежи, товары, задания) читают строку
+   за строкой, и там карточка удобнее прокрутки вбок.
+
+   Поэтому механизма два, и выбирается он вручную для каждой таблицы:
+
+     .scroll-x     — таблица едет вбок ВНУТРИ своего блока (сравнение колонок);
+     .table-cards  — таблица превращается в карточки (чтение по одной записи).
+
+   Оба работают только на CSS. Это принципиально: разметка одна, второго
+   дерева DOM нет, при повороте экрана ничего не перемонтируется — а значит
+   не теряются ни выделенные строки, ни открытые подробности, ни введённое
+   в поля. Замена на JS по ширине окна всё это роняла бы при каждом повороте.
+
+   Разметка для карточек: каждой ячейке — `data-label` с заголовком колонки;
+   ячейке-заголовку записи — `data-cell="title"`, ячейке с кнопками —
+   `data-cell="actions"`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 767px) {
+  .table-cards > table { display: block; width: 100%; }
+  .table-cards thead { display: none; }
+  .table-cards tbody { display: block; }
+
+  .table-cards tbody tr {
+    display: block;
+    margin-bottom: 0.5rem;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 0.75rem;
+    background: #fff;
+    padding: 0.5rem 0.75rem;
+  }
+  .table-cards tbody tr:last-child { margin-bottom: 0; }
+
+  .table-cards tbody td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.375rem 0;
+    text-align: right;
+    white-space: normal;
+    border: 0;
+    /* Закрепление колонок в режиме карточек бессмысленно и ломает поток. */
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  .table-cards tbody td + td { border-top: 1px dashed rgb(241 245 249); }
+
+  .table-cards tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    max-width: 55%;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: rgb(100 116 139);
+  }
+  .table-cards tbody td:not([data-label])::before { content: none; }
+
+  /* Заголовок записи — крупно, во всю ширину, без подписи слева. */
+  .table-cards tbody td[data-cell="title"] {
+    justify-content: flex-start;
+    padding-bottom: 0.5rem;
+    text-align: left;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .table-cards tbody td[data-cell="title"]::before { content: none; }
+
+  /* Кнопки записи — отдельной строкой снизу, крупные, с местом между ними. */
+  .table-cards tbody td[data-cell="actions"] {
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding-top: 0.625rem;
+  }
+  .table-cards tbody td[data-cell="actions"]::before { content: none; }
+
+  /* Строка «ничего не найдено» и итоги на всю ширину — без подписи и выключки. */
+  .table-cards tbody td[colspan] {
+    justify-content: center;
+    text-align: center;
+  }
+  .table-cards tbody td[colspan]::before { content: none; }
+
+  /* Итоговая строка таблицы остаётся отличимой от обычных записей. */
+  .table-cards tfoot { display: block; }
+  .table-cards tfoot tr {
+    display: block;
+    border: 1px solid rgb(203 213 225);
+    border-radius: 0.75rem;
+    background: rgb(248 250 252);
+    padding: 0.5rem 0.75rem;
+  }
+  .table-cards tfoot td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.375rem 0;
+    text-align: right;
+    position: static !important;
+  }
+  .table-cards tfoot td::before {
+    content: attr(data-label);
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(100 116 139);
+  }
+}
+
+/* То же, но порог шире — для таблиц, которым тесно уже на планшете в портрете. */
+@media (max-width: 1023px) {
+  .table-cards-lg > table { display: block; width: 100%; }
+  .table-cards-lg thead { display: none; }
+  .table-cards-lg tbody { display: block; }
+  .table-cards-lg tbody tr {
+    display: block;
+    margin-bottom: 0.5rem;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 0.75rem;
+    background: #fff;
+    padding: 0.5rem 0.75rem;
+  }
+  .table-cards-lg tbody td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.375rem 0;
+    text-align: right;
+    white-space: normal;
+    border: 0;
+    position: static !important;
+    left: auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+  .table-cards-lg tbody td + td { border-top: 1px dashed rgb(241 245 249); }
+  .table-cards-lg tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    max-width: 55%;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(100 116 139);
+  }
+  .table-cards-lg tbody td:not([data-label])::before { content: none; }
+  .table-cards-lg tbody td[data-cell="title"] {
+    justify-content: flex-start;
+    text-align: left;
+    font-size: 0.9375rem;
+    font-weight: 700;
+  }
+  .table-cards-lg tbody td[data-cell="title"]::before { content: none; }
+  .table-cards-lg tbody td[data-cell="actions"] { justify-content: flex-end; padding-top: 0.625rem; }
+  .table-cards-lg tbody td[data-cell="actions"]::before { content: none; }
+  .table-cards-lg tbody td[colspan] { justify-content: center; text-align: center; }
+  .table-cards-lg tbody td[colspan]::before { content: none; }
+}
+
+/* ── Закреплённая панель действий ─────────────────────────────────────────
+   Главные кнопки экрана («Сохранить», «Провести», «Применить») на телефоне
+   должны быть под большим пальцем и не уезжать вместе с длинной формой.
+   Две ловушки, из-за которых такие панели обычно и ломаются:
+     — снизу системный индикатор iPhone: отступ обязан включать safe-area;
+     — снизу же экранная клавиатура: она НЕ двигает `position: fixed`, и
+       кнопка «Сохранить» оказывается под ней. `--kb-inset` держит датчик
+       components/ui/KeyboardInset.tsx.                                      */
+:root { --kb-inset: 0px; }
+
+.action-bar:not(.hidden):not([class*=":hidden"]) {
+  position: sticky;
+  bottom: var(--kb-inset);
+  z-index: 20;
+  background: #fff;
+  border-top: 1px solid rgb(226 232 240);
+  padding-bottom: calc(0.75rem + var(--safe-b));
+}
+
+/* Тот же смысл, но панель прибита к окну, а не к концу прокрутки. */
+.action-bar-fixed:not(.hidden):not([class*=":hidden"]) {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--kb-inset);
+  z-index: 30;
+  background: #fff;
+  border-top: 1px solid rgb(226 232 240);
+  padding-bottom: calc(0.75rem + var(--safe-b));
+}
+
+/* Панель закрывает низ страницы — контенту нужен запас, иначе последняя
+   строка списка навсегда останется под кнопками. */
+.has-action-bar { padding-bottom: calc(5.5rem + var(--safe-b)); }
+
+/* ── Навигация под палец ──────────────────────────────────────────────────
+   Пункт меню высотой 36px попадается мышью безошибочно и пальцем — через
+   раз. Увеличиваем только там, где указатель грубый: на десктопе плотный
+   список из 27 разделов остаётся плотным.                                  */
+@media (pointer: coarse), (max-width: 1023px) {
+  .nav-link { min-height: 2.75rem; }
+  .nav-group-toggle { min-height: 2.75rem; }
+  /* Строка списка, которая сама является кнопкой (открыть день, открыть
+     запись). На мыши она может быть плотной, пальцем в 24px не попасть. */
+  .tap-row { min-height: 2.75rem; }
+  /* Календарь выбора периода: день и предустановка под палец. Промах в дате
+     тихо меняет цифры всего отчёта — это не косметика. */
+  .day-cell { min-height: 2.5rem; font-size: 0.8125rem; }
+  .preset-btn { min-height: 2.75rem; font-size: 0.8125rem; }
+}

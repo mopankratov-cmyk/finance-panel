@@ -151,7 +151,7 @@ export function EventsTab({ entityId, refreshKey }: { entityId: string; refreshK
             <button
               key={label}
               onClick={() => setOnlyChanges(value)}
-              className={`rounded-md px-3 py-1 text-sm transition-colors ${
+              className={`min-h-11 whitespace-nowrap rounded-md px-3 text-sm transition-colors lg:min-h-0 lg:py-1 ${
                 onlyChanges === value ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
@@ -174,7 +174,7 @@ export function EventsTab({ entityId, refreshKey }: { entityId: string; refreshK
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div className="scroll-x rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
@@ -220,7 +220,7 @@ export function EventsTab({ entityId, refreshKey }: { entityId: string; refreshK
       {!loading && byActor.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="mb-3 text-sm font-medium text-slate-900">По пользователям · {period.toLowerCase()}</p>
-          <div className="overflow-x-auto">
+          <div className="scroll-x">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">

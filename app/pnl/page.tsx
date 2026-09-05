@@ -49,7 +49,7 @@ export default function PnlPage() {
   const totRev = (wb && !wb.error ? wb.revenue : 0) + (oz && !oz.error ? oz.revenue : 0);
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <FinanceTabs />
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><LineChart className="h-5 w-5" /></div>
@@ -60,10 +60,10 @@ export default function PnlPage() {
         <CabinetSwitcher mp="wb" accent="violet" onChange={setWbCab} />
         <CabinetSwitcher mp="ozon" accent="sky" onChange={setOzonCab} />
         <label className="flex items-center gap-1.5 text-sm text-gray-500">Налог
-          <input type="number" value={tax} onChange={(e) => setTax(Number(e.target.value))} className="w-16 rounded border border-gray-300 px-2 py-1 text-right text-sm" />%
+          <input type="number" value={tax} onChange={(e) => setTax(Number(e.target.value))} className="min-h-11 w-16 rounded border border-gray-300 px-2 py-1 text-right text-sm" />%
         </label>
         <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
-          {[2, 4, 8].map((w) => <button key={w} onClick={() => setWeeks(w)} className={`rounded px-3 py-1 text-xs font-semibold ${weeks === w ? "bg-white text-emerald-700 shadow" : "text-gray-500"}`}>{w} нед</button>)}
+          {[2, 4, 8].map((w) => <button key={w} onClick={() => setWeeks(w)} className={`tap-hit rounded px-3 py-1 text-xs font-semibold ${weeks === w ? "bg-white text-emerald-700 shadow" : "text-gray-500"}`}>{w} нед</button>)}
         </div>
       </div>
 

@@ -98,10 +98,10 @@ function PriceChart({ history }: { history: HistoryPoint[] }) {
   };
   const label = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
   return (
-    <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[480px]" role="img" aria-label="Динамика нашей цены и средней по конкурентам">
-        <text x="4" y={y(max) + 4} className="fill-slate-400" fontSize="9">{Math.round(max)}</text>
-        <text x="4" y={y(min) + 4} className="fill-slate-400" fontSize="9">{Math.round(min)}</text>
+    <div className="scroll-x">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px] sm:min-w-[480px]" role="img" aria-label="Динамика нашей цены и средней по конкурентам">
+        <text x="4" y={y(max) + 4} className="fill-slate-400 text-[11px] sm:text-[9px]">{Math.round(max)}</text>
+        <text x="4" y={y(min) + 4} className="fill-slate-400 text-[11px] sm:text-[9px]">{Math.round(min)}</text>
         {line((point) => point.average).map((points, index) => (
           <polyline key={`a${index}`} points={points} fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         ))}
@@ -109,7 +109,7 @@ function PriceChart({ history }: { history: HistoryPoint[] }) {
           <polyline key={`o${index}`} points={points} fill="none" stroke="#7c3aed" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
         ))}
         {history.map((point, index) => index === 0 || index === history.length - 1 || index === Math.floor(history.length / 2) ? (
-          <text key={point.date} x={x(index)} y={H - 6} textAnchor="middle" className="fill-slate-400" fontSize="9">{label(point.date)}</text>
+          <text key={point.date} x={x(index)} y={H - 6} textAnchor="middle" className="fill-slate-400 text-[11px] sm:text-[9px]">{label(point.date)}</text>
         ) : null)}
       </svg>
       <div className="mt-1 flex gap-4 text-[10px] text-slate-500">
@@ -291,8 +291,11 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
         </div>
       ) : null}
 
-      {/* Шапка колонок — как на полках: подписи один раз над списком. */}
-      <div className="sticky top-[54px] z-20 -mx-2 hidden border-b border-slate-200 bg-[#f6f7f9]/95 px-5 py-2 backdrop-blur-sm sm:-mx-6 sm:flex sm:items-end sm:px-10">
+      {/* Шапка колонок — как на полках: подписи один раз над списком. Липнет
+          под шапку оболочки, поэтому её высота считается вместе с вырезом.
+          Фон сплошной: сквозь полупрозрачный просвечивали уезжающие под него
+          цифры. На телефоне колонок нет — подписи стоят в самих ячейках. */}
+      <div className="sticky top-[calc(54px+var(--safe-t))] z-20 -mx-6 hidden border-b border-slate-200 bg-[#f6f7f9] px-10 py-2 lg:flex lg:items-end">
         <div className="min-w-0 flex-1" />
         <div className="flex items-center gap-3">
           <div className="grid grid-cols-[110px_130px_90px_120px] gap-3">
@@ -327,26 +330,46 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
                     <span className="truncate text-[17px] font-bold tracking-[-0.01em] text-slate-800">{item.article ?? `WB ${item.nmId}`}</span>
                     {item.brand ? <span className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline">{item.brand}</span> : null}
                   </div>
-                  <div className="truncate text-[11px] font-normal tabular-nums text-slate-400">WB {item.nmId}</div>
+                  {/* Бренд — то, по чему в разделе отбирают и исключают
+                      конкурентов. Бейджу рядом с артикулом на телефоне не
+                      хватает места, поэтому он приписывается к номеру WB. */}
+                  <div className="truncate text-[11px] font-normal tabular-nums text-slate-400">
+                    WB {item.nmId}
+                    {item.brand ? <span className="uppercase sm:hidden"> · {item.brand}</span> : null}
+                  </div>
                   {item.name ? <div className="truncate text-[11px] font-normal text-slate-500">{item.name}</div> : null}
                   <div className="mt-1 text-[12px] text-slate-400">наша цена снята {age(item.ourCollectedAt)}</div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                {/* Четыре колонки по 110–130px требуют 486px и на телефоне
+                    уносили вбок всю страницу. До sm цифры встают в две колонки
+                    с подписью у каждой — шапка колонок там скрыта, и без
+                    подписи это пять чисел без принадлежности. */}
+                <div className="flex w-full items-center gap-3 lg:w-auto">
                   <Spark history={item.history} />
-                  <div className="grid grid-cols-[110px_130px_90px_120px] gap-3">
-                    <div className="text-right text-[17px] font-bold tabular-nums text-slate-800">{money(item.ourPrice)}</div>
-                    <div className="text-right text-[17px] font-semibold tabular-nums text-slate-600">{money(item.average)}</div>
-                    <div className={`text-right text-[17px] font-bold tabular-nums ${
+                  <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-1.5 lg:flex-none lg:grid-cols-[110px_130px_90px_120px] lg:gap-3">
+                    <div className="flex items-baseline justify-between gap-2 text-right text-[17px] font-bold tabular-nums text-slate-800 lg:block">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">наша</span>
+                      {money(item.ourPrice)}
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2 text-right text-[17px] font-semibold tabular-nums text-slate-600 lg:block">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">у них</span>
+                      {money(item.average)}
+                    </div>
+                    <div className={`flex items-baseline justify-between gap-2 text-right text-[17px] font-bold tabular-nums lg:block ${
                       item.diffPct == null ? "text-slate-300" : item.diffPct > 0 ? "text-rose-600" : "text-emerald-600"
                     }`}>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">разница</span>
                       {item.diffPct == null ? "—" : `${item.diffPct > 0 ? "+" : ""}${item.diffPct}%`}
                     </div>
-                    <div className="text-right text-[12px] text-slate-500">
-                      {item.competitors.length}
-                      {/* Неснятых называем вслух: без этого средняя выглядит
-                          полной, хотя посчитана по части списка. */}
-                      {item.pending ? <span className="text-amber-600"> · {item.pending} без цены</span> : null}
+                    <div className="flex items-baseline justify-between gap-2 text-right text-[12px] text-slate-500 lg:block">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">конкурентов</span>
+                      <span>
+                        {item.competitors.length}
+                        {/* Неснятых называем вслух: без этого средняя выглядит
+                            полной, хотя посчитана по части списка. */}
+                        {item.pending ? <span className="text-amber-600"> · {item.pending} без цены</span> : null}
+                      </span>
                     </div>
                   </div>
                   <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -366,13 +389,13 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
                       onKeyDown={(event) => { if (event.key === "Enter") add(newRival[item.nmId] ?? "", item.nmId); }}
                       inputMode="numeric"
                       placeholder="артикул конкурента"
-                      className="min-h-10 w-52 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400"
+                      className="min-h-11 w-52 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 sm:min-h-10"
                     />
                     <button
                       type="button"
                       onClick={() => add(newRival[item.nmId] ?? "", item.nmId)}
                       disabled={busy || !(newRival[item.nmId] ?? "").trim()}
-                      className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50"
+                      className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50 sm:min-h-10"
                     >
                       <Plus className="h-3.5 w-3.5" /> добавить конкурента
                     </button>
@@ -380,7 +403,7 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
                       type="button"
                       onClick={() => remove(item.nmId)}
                       disabled={busy}
-                      className="ml-auto inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                      className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 sm:min-h-10"
                     >
                       <Trash2 className="h-3.5 w-3.5" /> убрать товар
                     </button>
@@ -410,14 +433,19 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
                             {competitor.label ? <span className="ml-2 text-slate-400">· {competitor.label}</span> : null}
                           </div>
                         </div>
-                        <div className="w-[110px] shrink-0 text-right text-[15px] font-semibold tabular-nums text-slate-800">{money(competitor.price)}</div>
-                        <div className="w-[110px] shrink-0 text-right text-[11px] text-slate-400">{age(competitor.collectedAt)}</div>
+                        {/* Две колонки по 110px вместе с фото и кнопкой не
+                            помещались в 320px и распирали карточку. На узком
+                            экране цена и возраст снимка встают друг под друга. */}
+                        <div className="flex shrink-0 flex-col items-end sm:flex-row sm:items-center sm:gap-3">
+                          <div className="text-right text-[15px] font-semibold tabular-nums text-slate-800 sm:w-[110px]">{money(competitor.price)}</div>
+                          <div className="text-right text-[11px] text-slate-400 sm:w-[110px]">{age(competitor.collectedAt)}</div>
+                        </div>
                         <button
                           type="button"
                           onClick={() => remove(competitor.nmId, item.nmId)}
                           disabled={busy}
                           aria-label={`Убрать конкурента ${competitor.nmId}`}
-                          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 sm:h-8 sm:w-8"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>

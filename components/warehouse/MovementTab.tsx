@@ -187,12 +187,12 @@ export function MovementTab({
       )}
       <DraftNotice at={restoredAt} onForget={() => { reset(); forget(); }} />
 
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
+      <div className="flex gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-slate-100 p-1 sm:w-fit">
         {([["transfer", "Перемещение", ArrowRight], ["return", "Возврат с МП", Undo2]] as const).map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => { setMode(key); reset(); setDone(null); }}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+            className={`flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-md px-3 text-sm transition-colors lg:min-h-0 lg:py-1.5 ${
               mode === key ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -317,7 +317,7 @@ export function MovementTab({
                     value={line.qty}
                     onChange={(e) => setLines(lines.map((item, i) => i === index ? { ...item, qty: e.target.value.replace(/[^\d]/g, "") } : item))}
                     placeholder="кол-во"
-                    className={`w-24 rounded-lg border px-3 py-1.5 text-right text-sm placeholder:text-slate-300 ${
+                    className={`min-h-11 w-24 rounded-lg border px-3 text-right text-sm placeholder:text-slate-300 lg:min-h-0 lg:py-1.5 ${
                       tooMuch ? "border-red-300 bg-red-50" : "border-slate-200"
                     }`}
                   />
@@ -328,13 +328,14 @@ export function MovementTab({
                       onChange={(e) => setLines(lines.map((item, i) => i === index ? { ...item, defectQty: e.target.value.replace(/[^\d]/g, "") } : item))}
                       placeholder="брак"
                       title="Сколько из вернувшегося непригодно — спишется сразу"
-                      className="w-24 rounded-lg border border-slate-200 px-3 py-1.5 text-right text-sm placeholder:text-slate-300"
+                      className="min-h-11 w-24 rounded-lg border border-slate-200 px-3 text-right text-sm placeholder:text-slate-300 lg:min-h-0 lg:py-1.5"
                     />
                   )}
                   {lines.length > 1 && (
                     <button
                       onClick={() => setLines(lines.filter((_, i) => i !== index))}
-                      className="text-slate-400 hover:text-red-600"
+                      aria-label="Убрать позицию"
+                      className="tap-hit text-slate-400 hover:text-red-600"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -347,14 +348,14 @@ export function MovementTab({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               onClick={() => setLines([...lines, { variantId: "", qty: "", defectQty: "" }])}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600"
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 lg:min-h-0 lg:py-1.5"
             >
               + позиция
             </button>
             <button
               onClick={() => void submit()}
               disabled={saving || (mode === "transfer" && !toWarehouse)}
-              className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
             >
               {saving ? "Сохраняю…" : mode === "transfer" ? "Переместить" : "Принять возврат"}
             </button>

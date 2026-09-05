@@ -77,9 +77,9 @@ export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
       <div className="flex flex-wrap items-center gap-2">
         <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none sm:w-64" />
-        <label className="flex items-center gap-1.5 text-sm text-slate-600">
-          <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
+          className="min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-violet-500 focus:outline-none sm:w-64 lg:min-h-0 lg:py-1.5" />
+        <label className="flex min-h-11 items-center gap-1.5 text-sm text-slate-600 lg:min-h-0">
+          <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} className="h-5 w-5 lg:h-4 lg:w-4" />
           Скрыть нулевые
         </label>
       </div>

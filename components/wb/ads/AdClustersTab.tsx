@@ -143,8 +143,8 @@ export function AdClustersTab({
               ) : (
                 <div className="mt-2 space-y-1">
                   {data.active.map((cluster) => (
-                    <div key={cluster.query} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5">
-                      <span className="min-w-0 flex-1 truncate text-[12px] text-slate-700">{cluster.query}</span>
+                    <div key={cluster.query} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5">
+                      <span className="min-w-0 flex-1 basis-full truncate text-[12px] text-slate-700 sm:basis-auto">{cluster.query}</span>
                       <span className="text-[11px] tabular-nums text-slate-400">
                         {cluster.bid == null ? "ставка кампании" : `${cluster.bid} ${currency}`}
                       </span>
@@ -153,11 +153,11 @@ export function AdClustersTab({
                         onChange={(event) => setBidDraft((prev) => ({ ...prev, [cluster.query]: event.target.value }))}
                         inputMode="numeric"
                         placeholder="своя"
-                        className="h-7 w-16 rounded border border-slate-300 px-1.5 text-[11px] tabular-nums focus:border-violet-500 focus:outline-none"
+                        className="min-h-11 w-20 rounded border border-slate-300 px-1.5 text-[11px] tabular-nums focus:border-violet-500 focus:outline-none lg:min-h-7 lg:w-16"
                       />
                       <button
                         type="button"
-                        className="h-7 rounded bg-slate-800 px-2 text-[10px] font-semibold text-white"
+                        className="min-h-11 rounded bg-slate-800 px-3 text-[10px] font-semibold text-white lg:min-h-7 lg:px-2"
                         onClick={() => {
                           const bid = Number(bidDraft[cluster.query]);
                           if (!Number.isFinite(bid) || bid <= 0) return;

@@ -433,7 +433,7 @@ export function OpiuPage() {
                             disabled={resyncingWeeks.has(w.weekStart)}
                             title="Пересинкать финотчёт WB за эту неделю"
                             aria-label="Пересинкать неделю"
-                            className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50"
+                            className="tap-hit shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50"
                           >
                             {resyncingWeeks.has(w.weekStart) ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />

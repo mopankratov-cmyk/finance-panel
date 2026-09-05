@@ -239,27 +239,32 @@ export function InlinePaymentForm({
         />
       </div>
 
-      <div className="flex justify-end gap-2 pt-1">
+      {/* На узкой ширине ряд переносился, и «Удалить платёж» оказывался
+          вплотную к «Сохранить». Ниже sm удаление уходит отдельной строкой под
+          парой «Отмена/Сохранить»; с sm ряд прежний — удаление слева. */}
+      <div className="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:items-center sm:justify-end">
         {payment && onDelete && <button
           type="button"
           onClick={onDelete}
-          className="mr-auto min-h-11 rounded-lg border border-red-300 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50"
+          className="min-h-11 rounded-lg border border-red-300 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50 sm:mr-auto"
         >
           Удалить платёж
         </button>}
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-11 rounded-lg px-3 py-1.5 text-sm text-slate-500 transition-colors hover:bg-white hover:text-slate-700"
-        >
-          Отмена
-        </button>
-        <button
-          type="submit"
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white transition-colors ${submitClass}`}
-        >
-          {payment ? "Сохранить" : "Добавить"}
-        </button>
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-11 rounded-lg px-3 py-1.5 text-sm text-slate-500 transition-colors hover:bg-white hover:text-slate-700"
+          >
+            Отмена
+          </button>
+          <button
+            type="submit"
+            className={`min-h-11 rounded-lg px-4 py-1.5 text-sm font-medium text-white transition-colors ${submitClass}`}
+          >
+            {payment ? "Сохранить" : "Добавить"}
+          </button>
+        </div>
       </div>
     </form>
   );

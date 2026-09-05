@@ -82,18 +82,20 @@ export default function SeoPage() {
   return (
     <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Search className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">SEO / Воронка</h1>
             <p className="text-xs text-gray-500">{data ? `${category ? `${filtered.length} из ${data.count}` : data.count} SKU · ${data.metrics_period}` : "показы → CTR → корзина → заказ"}</p>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* Правый блок на телефоне занимает свою строку: кабинет, категории,
+              пресеты и два поля даты не ужимаются и тянули шапку за край. */}
+          <div className="ml-auto flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
             <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
             <div className="flex gap-1 rounded-md bg-gray-100 p-0.5">
               {[1, 7, 30].map((d) => (
-                <button key={d} onClick={() => { setWin(d); setCustomFrom(""); setCustomTo(""); }} className={`rounded px-3 py-1 text-xs font-semibold ${win === d && !customFrom ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d === 1 ? "вчера" : d + "д"}</button>
+                <button key={d} onClick={() => { setWin(d); setCustomFrom(""); setCustomTo(""); }} className={`tap-row inline-flex items-center rounded px-3 py-1 text-xs font-semibold ${win === d && !customFrom ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}>{d === 1 ? "вчера" : d + "д"}</button>
               ))}
             </div>
             <DateRangePicker from={customFrom} to={customTo} onChange={(f, t) => { setCustomFrom(f); setCustomTo(t); }} />
@@ -110,7 +112,7 @@ export default function SeoPage() {
         ) : err ? (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>
         ) : data && skus.length ? (
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <div className="scroll-x rounded-2xl border border-gray-200 bg-white">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs text-gray-500">

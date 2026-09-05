@@ -80,13 +80,16 @@ export function OzonAdvertsPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9"><MetricCard label="Расход" value={formatMoney(data.summary.spent)} detail={data.summary.allocatedSpent != null && data.summary.allocatedSpent < data.summary.spent ? `по товарам разложено ${formatMoney(data.summary.allocatedSpent)}` : undefined} tone="amber" /><MetricCard label="Прибыль после рекламы" value={formatMoney(data.summary.calculatedProfit)} detail={`покрытие ${formatPercent(data.summary.profitCoveragePct)}`} tone={data.summary.profitCoveragePct < 90 || data.summary.calculatedProfit == null ? "amber" : data.summary.calculatedProfit < 0 ? "red" : "emerald"} /><MetricCard label="Рекомендации" value={formatNumber(data.summary.recommendations)} detail="увеличить / снизить / пауза" tone={data.summary.recommendations ? "amber" : "emerald"} /><MetricCard label="Продажи с рекламы" value={formatMoney(data.summary.adRevenue)} /><MetricCard label="Общая выручка" value={formatMoney(data.summary.revenue)} /><MetricCard label="ДРР общий" value={formatPercent(data.summary.drr)} tone={data.summary.drr >= 30 ? "red" : data.summary.drr >= 20 ? "amber" : "emerald"} /><MetricCard label="ДРР рекламный" value={formatPercent(data.summary.adDrr)} /><MetricCard label="ROAS рекламный" value={data.summary.roas == null ? "—" : `${data.summary.roas.toLocaleString("ru-RU")}×`} /><MetricCard label="SKU в рекламе" value={formatNumber(data.summary.sku)} tone="slate" /></div>
         <OzonCampaignsPanel />
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row sm:items-center"><OzonCsvButton count={rows.length} onExport={exportCsv} /><label className="relative flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск товара или кабинета" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 sm:ml-auto sm:h-8" aria-label="Сортировка рекламы"><option value="spent">Расход</option><option value="adRevenue">Продажи с рекламы</option><option value="revenue">Общая выручка</option><option value="drr">ДРР</option><option value="roas">ROAS</option></select><button type="button" onClick={() => setSortDir((d) => d === "desc" ? "asc" : "desc")} title={sortDir === "desc" ? "Сейчас по убыванию — нажмите для возрастания" : "Сейчас по возрастанию — нажмите для убывания"} aria-label="Направление сортировки" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-sky-700 sm:h-8 sm:w-8">{sortDir === "desc" ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}</button></div>
+          <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row sm:items-center"><OzonCsvButton count={rows.length} onExport={exportCsv} /><label className="relative flex-1 sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} type="search" enterKeyHint="search" placeholder="Поиск товара или кабинета" className="h-11 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-sky-400 sm:h-8" /></label><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 sm:ml-auto sm:h-8" aria-label="Сортировка рекламы"><option value="spent">Расход</option><option value="adRevenue">Продажи с рекламы</option><option value="revenue">Общая выручка</option><option value="drr">ДРР</option><option value="roas">ROAS</option></select><button type="button" onClick={() => setSortDir((d) => d === "desc" ? "asc" : "desc")} title={sortDir === "desc" ? "Сейчас по убыванию — нажмите для возрастания" : "Сейчас по возрастанию — нажмите для убывания"} aria-label="Направление сортировки" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-sky-700 sm:h-8 sm:w-8">{sortDir === "desc" ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}</button></div>
           {rows.length === 0 ? <div className="p-4"><EmptyState title="Рекламные SKU не найдены" detail="Проверьте Performance API, синхронизацию и поиск." href="/sync" /></div> : (
-            <div className="overflow-x-auto">
+            // scroll-x рисует на касании тонкую полосу и сдерживает жест на краю
+            // таблицы; первая колонка закреплена — на 1580px без неё строка
+            // теряет имя товара сразу после первой прокрутки вбок.
+            <div className="scroll-x">
               <table className="w-full min-w-[1580px] text-xs">
                 <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-4 py-2 text-left">Товар</th>
+                    <th className="sticky left-0 z-20 bg-slate-50 px-4 py-2 text-left">Товар</th>
                     <th className="px-3 py-2 text-right">Расход</th>
                     <th className="px-3 py-2 text-right">Прибыль после рекламы</th>
                     <th className="px-3 py-2 text-right">Продажи с рекламы</th>
@@ -103,8 +106,8 @@ export function OzonAdvertsPage() {
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.key} className="border-t border-slate-100 hover:bg-sky-50/40">
-                      <td className="px-4 py-2"><ProductCell image={row.image} name={row.name} code={row.offerId || `SKU ${row.sku}`} cabinet={data.scope.count > 1 ? row.cabinet : undefined} /></td>
+                    <tr key={row.key} className="group border-t border-slate-100 hover:bg-sky-50/40">
+                      <td className="sticky left-0 z-10 bg-white px-4 py-2 group-hover:bg-[#f9fdff]"><ProductCell image={row.image} name={row.name} code={row.offerId || `SKU ${row.sku}`} cabinet={data.scope.count > 1 ? row.cabinet : undefined} /></td>
                       <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatMoney(row.spent)}</td>
                       <td className={`px-3 py-2 text-right font-semibold tabular-nums ${row.economics.profitAfterAds == null ? "text-slate-400" : row.economics.profitAfterAds < 0 ? "text-red-600" : "text-emerald-700"}`}>{row.economics.profitAfterAds == null ? "—" : formatMoney(row.economics.profitAfterAds)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.adRevenue)}</td>
@@ -114,8 +117,12 @@ export function OzonAdvertsPage() {
                       <td className="px-3 py-2 text-right tabular-nums">{formatPercent(row.adDrr)}</td>
                       <td className="px-3 py-2 text-right font-semibold tabular-nums">{row.roas == null ? "—" : `${row.roas.toLocaleString("ru-RU")}×`} / {row.economics.breakEvenRoas == null ? "—" : `${row.economics.breakEvenRoas.toLocaleString("ru-RU")}×`}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{row.economics.daysCover == null ? "—" : `${row.economics.daysCover.toLocaleString("ru-RU")} дн.`}</td>
-                      <td className="max-w-[240px] px-3 py-2" title={row.economics.reason}>
+                      <td className="max-w-[240px] px-3 py-2">
                         <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${recommendationTone(row.economics.action)}`}>{recommendationLabel(row)}</span>
+                        {/* Причина видна текстом, а не в `title`: на касании
+                            всплывающей подсказки нет, и менять бюджет
+                            предлагалось вслепую. */}
+                        {row.economics.reason ? <div className="mt-1 text-[10px] leading-4 text-slate-500">{row.economics.reason}</div> : null}
                         {row.economics.expectedProfitEffect != null && row.economics.expectedProfitEffect !== 0 ? <div className="mt-1 text-[9px] tabular-nums text-slate-400">эффект {row.economics.expectedProfitEffect > 0 ? "+" : ""}{formatMoney(row.economics.expectedProfitEffect)}</div> : null}
                         {!row.attributionCompatible ? <div className="mt-1 text-[9px] text-amber-600">атрибуция не совпадает</div> : null}
                       </td>
@@ -128,7 +135,7 @@ export function OzonAdvertsPage() {
             </div>
           )}
         </section>
-        <p className="text-[10px] leading-4 text-slate-400">Прибыль после рекламы и общий ДРР рассчитаны по общей выручке Seller API и экономике товара. Продажи с рекламы, рекламный ДРР и ROAS берутся из модели атрибуции Ozon Performance и могут отличаться. История изменения ставок Ozon пока недоступна через текущий источник, поэтому честное сравнение «до / после» здесь не показывается.</p>
+        <p className="text-xs leading-4 text-slate-400 md:text-[10px]">Прибыль после рекламы и общий ДРР рассчитаны по общей выручке Seller API и экономике товара. Продажи с рекламы, рекламный ДРР и ROAS берутся из модели атрибуции Ozon Performance и могут отличаться. История изменения ставок Ozon пока недоступна через текущий источник, поэтому честное сравнение «до / после» здесь не показывается.</p>
       </>}
     </div>
   </div>;

@@ -47,10 +47,13 @@ export function PrintableDoc({ doc }: { doc: DocDetail }) {
   const releasedBy = doc.confirmedBy ?? doc.createdBy;
 
   return (
-    <div className="mx-auto max-w-[820px] bg-white p-8 text-slate-900 print:p-0">
-      <style>{`@media print { .no-print { display: none !important; } @page { margin: 16mm; } }`}</style>
+    // На телефоне 32 px полей с каждой стороны съедали четверть ширины, а
+    // таблица с неразрывным штрихкодом распирала страницу вбок. Печать это не
+    // трогает: под @media print поля свои, а прокрутка возвращается в поток.
+    <div className="mx-auto max-w-[820px] bg-white p-4 text-slate-900 sm:p-8 print:p-0">
+      <style>{`@media print { .no-print { display: none !important; } .scroll-x { overflow: visible !important; } @page { margin: 16mm; } }`}</style>
 
-      <div className="no-print mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
+      <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <p className="text-sm text-slate-500">
           {isTask
             ? "Печать задания. Фулфилмент отмечает выполнение в панели — кнопкой «Отгружено»."
@@ -108,47 +111,49 @@ export function PrintableDoc({ doc }: { doc: DocDetail }) {
         </tbody>
       </table>
 
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-y border-slate-400 text-xs uppercase tracking-wide text-slate-600">
-            <th className="w-8 py-2 text-left font-semibold">№</th>
-            <th className="py-2 text-left font-semibold">Товар</th>
-            <th className="py-2 text-left font-semibold">Штрихкод</th>
-            {showCabinetColumn && <th className="py-2 text-left font-semibold">Кабинет</th>}
-            <th className="py-2 text-right font-semibold">Кол-во</th>
-            {showAmount && <th className="py-2 text-right font-semibold">Сумма, ₽</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((row, index) => (
-            <tr key={index} className="border-b border-slate-200">
-              <td className="py-2 text-slate-500">{index + 1}</td>
-              <td className="py-2">
-                <span className="font-medium">{variantLabel(row.article, row.sizeLabel)}</span>
-                {row.nmId && <span className="ml-2 text-xs text-slate-400">WB {row.nmId}</span>}
-              </td>
-              <td className="py-2 text-slate-500">{row.barcode ?? "—"}</td>
-              {showCabinetColumn && <td className="py-2 text-slate-600">{row.cabinetName ?? "—"}</td>}
-              <td className="py-2 text-right font-semibold tabular-nums">{formatNumber(Math.abs(row.qty))}</td>
-              {showAmount && <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(Math.abs(row.amount)))}</td>}
+      <div className="scroll-x">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-y border-slate-400 text-xs uppercase tracking-wide text-slate-600">
+              <th className="w-8 py-2 text-left font-semibold">№</th>
+              <th className="py-2 text-left font-semibold">Товар</th>
+              <th className="py-2 text-left font-semibold">Штрихкод</th>
+              {showCabinetColumn && <th className="py-2 text-left font-semibold">Кабинет</th>}
+              <th className="py-2 text-right font-semibold">Кол-во</th>
+              {showAmount && <th className="py-2 text-right font-semibold">Сумма, ₽</th>}
             </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-slate-400 font-semibold">
-            <td className="py-2" colSpan={columns}>Итого</td>
-            <td className="py-2 text-right tabular-nums">{formatNumber(doc.totalQty)}</td>
-            {showAmount && <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(doc.totalAmount))}</td>}
-          </tr>
-        </tfoot>
-      </table>
+          </thead>
+          <tbody>
+            {lines.map((row, index) => (
+              <tr key={index} className="border-b border-slate-200">
+                <td className="py-2 text-slate-500">{index + 1}</td>
+                <td className="py-2">
+                  <span className="break-anywhere font-medium">{variantLabel(row.article, row.sizeLabel)}</span>
+                  {row.nmId && <span className="ml-2 text-xs text-slate-400">WB {row.nmId}</span>}
+                </td>
+                <td className="break-anywhere py-2 text-slate-500">{row.barcode ?? "—"}</td>
+                {showCabinetColumn && <td className="py-2 text-slate-600">{row.cabinetName ?? "—"}</td>}
+                <td className="py-2 text-right font-semibold tabular-nums">{formatNumber(Math.abs(row.qty))}</td>
+                {showAmount && <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(Math.abs(row.amount)))}</td>}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-slate-400 font-semibold">
+              <td className="py-2" colSpan={columns}>Итого</td>
+              <td className="py-2 text-right tabular-nums">{formatNumber(doc.totalQty)}</td>
+              {showAmount && <td className="py-2 text-right tabular-nums">{formatNumber(Math.round(doc.totalAmount))}</td>}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
       <p className="mt-2 text-xs text-slate-500">
         Всего наименований {lines.length}, количество {formatNumber(doc.totalQty)} шт
         {showAmount && doc.totalAmount ? ` на сумму ${formatNumber(Math.round(doc.totalAmount))} ₽ по складской себестоимости` : ""}.
       </p>
 
-      <div className="mt-12 grid grid-cols-2 gap-12 text-sm">
+      <div className="mt-12 grid gap-8 text-sm sm:grid-cols-2 sm:gap-12 print:grid-cols-2 print:gap-12">
         <div>
           <p className="text-slate-500">{isTask ? "Поставил" : "Отпустил"}</p>
           <div className="mt-8 border-b border-slate-400" />

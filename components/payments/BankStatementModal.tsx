@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, FileSpreadsheet, Loader2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { BankStatement } from "./bankStatement";
 import type { BankSuggestion } from "./bankAutoClassify";
 import type { DdsCompany } from "./ddsCompanies";
@@ -10,6 +10,7 @@ import { needsDirectUpload, uploadViaStorage } from "./uploadViaStorage";
 import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
+import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 
 // Статьи — из единого справочника; отдельного списка «для выписки» больше нет.
 const BANK_CATEGORIES = DDS_CATEGORIES;
@@ -40,7 +41,10 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
   const selectedAccount = accounts.find((account) => account.id === accountId);
   const selectedCompany = companies.find((company) => company.id === companyId);
 
-  const reset = () => {
+  // Ссылка на само окно и стабильный `close`: хук поведения диалога держит на
+  // них эффекты, и пересоздание функции на каждый ввод уводило бы фокус.
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => {
     setStatement(null);
     setFileName("");
     setCompanyId("");
@@ -52,12 +56,9 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
     setDone(null);
     setControlMismatchAccepted(false);
     setError(null);
-  };
-
-  const close = () => {
-    reset();
     onClose();
-  };
+  }, [onClose]);
+  useDialogBehavior(open, close, panel);
 
   const handleFile = async (file: File) => {
     setLoading(true);
@@ -167,14 +168,14 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
   if (!open) return null;
   const hasControlMismatch = statement?.warnings.some((warning) => warning.includes("не совпала с контрольной суммой")) ?? false;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-5">
       <button type="button" aria-label="Закрыть" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
-      <div className="relative flex max-h-[94vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-slate-900">Импорт банковской выписки</h2>
-          <button type="button" onClick={close} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
+      <div ref={panel} role="dialog" aria-modal="true" aria-label="Импорт банковской выписки" className="relative flex max-h-[92dvh] w-full max-w-[1500px] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 sm:px-5 sm:py-4">
+          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Импорт банковской выписки</h2>
+          <button type="button" onClick={close} aria-label="Закрыть" className="tap -mr-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </div>
-        <div className="overflow-y-auto px-5 py-4">
+        <div className="overflow-y-auto overscroll-contain px-4 pb-safe-4 pt-4 sm:px-5">
       {done ? (
         <div className="space-y-4 text-sm">
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
@@ -230,7 +231,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
                 </div>
                 <button onClick={applyBulkCategory} disabled={!bulkCategory} className="min-h-11 rounded-lg border border-slate-300 px-4 font-medium text-slate-700 disabled:opacity-50">Применить</button>
               </div>
-              <div className="max-h-[48vh] overflow-auto rounded-lg border border-slate-200">
+              <div className="max-h-[45dvh] overflow-auto overscroll-contain rounded-lg border border-slate-200">
                 <table className="w-full table-fixed text-xs">
                   <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
                     <tr><th className="w-16 p-2">Добавить</th><th className="w-24 p-2">Дата</th><th className="w-32 p-2 text-right">Сумма</th><th className="w-[18%] p-2">Контрагент</th><th className="p-2">Назначение</th><th className="w-72 p-2">Статья</th></tr>
@@ -238,11 +239,11 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
                   <tbody className="divide-y divide-slate-100">
                     {statement.rows.map((row) => (
                       <tr key={row.id} className={!included.has(row.id) ? "opacity-40" : ""}>
-                        <td className="p-2"><input type="checkbox" checked={included.has(row.id)} onChange={() => toggleIncluded(row.id)} /></td>
+                        <td className="p-2"><label className="tap-hit inline-flex cursor-pointer"><input type="checkbox" aria-label={`Добавить операцию от ${row.date} на ${formatMoney(row.amount)}`} checked={included.has(row.id)} onChange={() => toggleIncluded(row.id)} /></label></td>
                         <td className="whitespace-nowrap p-2">{row.date}</td>
                         <td className={`whitespace-nowrap p-2 text-right font-semibold ${row.amount >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatMoney(row.amount)}</td>
-                        <td className="max-w-48 truncate p-2" title={row.counterparty}>{row.counterparty}</td>
-                        <td className="max-w-72 truncate p-2" title={row.purpose}>{row.purpose}</td>
+                        <td className="break-anywhere p-2 lg:max-w-48 lg:truncate" title={row.counterparty}>{row.counterparty}</td>
+                        <td className="break-anywhere p-2 lg:max-w-72 lg:truncate" title={row.purpose}>{row.purpose}</td>
                         <td className="p-2">
                           <select value={categories.get(row.id) ?? ""} onChange={(e) => setCategory(row.id, e.target.value)} className="min-h-10 w-full rounded border border-slate-300 px-2">
                             <option value="">Выберите статью</option>
@@ -290,5 +291,5 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-lg border border-slate-200 p-3"><div className="text-[11px] uppercase text-slate-400">{label}</div><div className="truncate font-semibold text-slate-900" title={value}>{value}</div></div>;
+  return <div className="rounded-lg border border-slate-200 p-3"><div className="text-[11px] uppercase text-slate-400">{label}</div><div className="break-anywhere font-semibold text-slate-900">{value}</div></div>;
 }

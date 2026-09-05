@@ -22,20 +22,27 @@ export function ModuleMenu({ accent = "violet" }: { accent?: "violet" | "sky" })
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    // pointerdown, а не mousedown: касание по неинтерактивному месту страницы
+    // в Safari на iOS синтетических mouse-событий не порождает, и меню
+    // оставалось открытым, пока не ткнёшь в саму кнопку. Escape — рядом, по
+    // той же причине, по какой он есть у остальных всплывающих окон панели.
+    const h = (e: Event) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", h);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", h); document.removeEventListener("keydown", esc); };
   }, []);
   const color = accent === "sky" ? "text-sky-700" : "text-violet-700";
 
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)}
-        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold ${color} hover:bg-gray-100`}>
+        aria-expanded={open}
+        className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold lg:min-h-0 ${color} hover:bg-gray-100`}>
         <Grid3x3 className="h-4 w-4" /> Модули <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-1 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+        <div className="absolute right-0 z-50 mt-1 max-h-[70svh] w-56 overflow-y-auto overscroll-contain rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
           {MODULES.map((m, i) => {
             const prevGroup = MODULES[i - 1]?.group;
             const showHdr = m.group && m.group !== prevGroup;

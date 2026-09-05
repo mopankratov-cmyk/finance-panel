@@ -71,7 +71,7 @@ export function ReviewCard({ r }: { r: ReviewRow }) {
       <Modal open={!!photo} onClose={() => setPhoto(null)} title="Фото отзыва">
         {photo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo} alt="" className="max-h-[70vh] w-full rounded-lg object-contain" />
+          <img src={photo} alt="" className="max-h-[70dvh] w-full rounded-lg object-contain" />
         )}
       </Modal>
     </div>

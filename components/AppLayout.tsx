@@ -2,10 +2,21 @@
 
 import { usePathname } from "next/navigation";
 import { needsFinanceHydration } from "@/lib/navigation/financeHydration";
+import { ShellProvider } from "./providers/ShellProvider";
 import { Sidebar } from "./Sidebar";
 import { useFinance } from "./providers/FinanceProvider";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  // Провайдер оболочки снаружи: ширину боковой панели должны знать и сама
+  // панель, и основная область, которой на эту ширину нужно отступить.
+  return (
+    <ShellProvider>
+      <AppShell>{children}</AppShell>
+    </ShellProvider>
+  );
+}
+
+function AppShell({ children }: { children: React.ReactNode }) {
   const { hydrated, loadError, persistError, clearPersistError } = useFinance();
   const pathname = usePathname();
   // Страница входа и публичная политика конфиденциальности — без сайдбара и без гейта загрузки финансов
@@ -14,7 +25,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // должны ждать гидрацию финансового провайдера. Общий сайдбар им тоже не нужен:
   // модуль показывает слева свои разделы, а не навигацию всей панели.
   if (pathname.startsWith("/wb") || pathname.startsWith("/ozon") || pathname.startsWith("/warehouse")) {
-    return <div className="min-h-screen bg-gray-50">{children}</div>;
+    return <div className="min-h-dvh bg-gray-50">{children}</div>;
   }
   // Главная — полноэкранная, без финансового сайдбара.
   const isLauncher = pathname === "/";
@@ -23,7 +34,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (requiresFinanceHydration && !hydrated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5]">
+      <div className="flex min-h-dvh items-center justify-center bg-[#F5F5F5]">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-600 border-t-transparent" />
           <p className="text-sm text-slate-500">Загрузка...</p>
@@ -41,7 +52,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const unauthorized = /не авторизован|требуется вход|недостаточно прав|\b401\b|\b403\b/i.test(loadError);
     const schemaMissing = /PGRST2\d\d|does not exist|relation|schema cache|supabase/i.test(loadError);
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5] px-4">
+      <div className="flex min-h-dvh items-center justify-center bg-[#F5F5F5] px-4">
         <div className="max-w-md rounded-xl border border-red-200 bg-white p-6 text-center shadow-sm">
           <p className="text-lg font-semibold text-red-600">
             {unauthorized ? "Нужно войти" : "Ошибка загрузки данных"}
@@ -78,14 +89,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   if (isFullscreen) {
-    return <div className="min-h-screen bg-gray-50">{children}</div>;
+    return <div className="min-h-dvh bg-gray-50">{children}</div>;
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F5F5F5]">
+    <div className="flex min-h-dvh bg-[#F5F5F5]">
+      {/* Ширину боковой панели вычитает флексбокс: с планшета она обычный
+          элемент потока, и повторять её отступом здесь больше не нужно. */}
       <Sidebar />
-      <main className="min-w-0 flex-1 lg:ml-64">
-        <div className="px-4 py-6 pt-16 lg:px-8 lg:py-8 lg:pt-8">
+      <main className="min-w-0 flex-1">
+        {/* Сверху — высота панели телефона плюс вырез; снизу — высота нижней
+            навигации плюс системный индикатор. Без нижнего запаса последняя
+            строка любого списка навсегда оставалась бы под панелью. */}
+        <div className="px-4 pb-[calc(4rem+var(--safe-b))] pt-[calc(66px+var(--safe-t))] md:pb-8 md:pt-6 lg:px-8 lg:py-8">
           {persistError && (
             <div role="alert" className="mb-4 flex flex-col gap-3 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 sm:flex-row sm:items-center sm:justify-between">
               <span>{persistError}</span>

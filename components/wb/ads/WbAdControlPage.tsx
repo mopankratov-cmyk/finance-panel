@@ -267,7 +267,7 @@ export function WbAdControlPage() {
           ) : rows.length === 0 ? (
             <WbEmptyState>В кабинете нет кампаний. Их можно завести на вкладке «Создание».</WbEmptyState>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <div className="scroll-x rounded-xl border border-slate-200 bg-white">
               <table className="w-full min-w-[720px] text-[12px]">
                 <thead className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
                   <tr>

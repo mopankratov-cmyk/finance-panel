@@ -98,7 +98,7 @@ export function WbTagFilterChips({ tags, activeIds, counts, onToggle, onClear, s
             aria-pressed={active}
             onClick={() => onToggle(tag.id)}
             title={(counts.get(tag.id) ?? 0) === 0 ? "На этом экране ярлык пока никому не присвоен" : undefined}
-            className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-semibold transition ${
+            className={`inline-flex h-11 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-semibold transition lg:h-7 ${
               active ? "border-violet-400 bg-violet-50 text-violet-800"
                 : (counts.get(tag.id) ?? 0) === 0 ? "border-dashed border-slate-200 bg-white text-slate-400 hover:border-slate-300"
                   : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
@@ -111,7 +111,7 @@ export function WbTagFilterChips({ tags, activeIds, counts, onToggle, onClear, s
         );
       })}
       {activeIds.length ? (
-        <button type="button" onClick={onClear} className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[10px] font-semibold text-slate-400 hover:text-slate-600" aria-label="Сбросить фильтр по ярлыкам">
+        <button type="button" onClick={onClear} className="inline-flex h-11 items-center gap-1 rounded-full px-2 text-[10px] font-semibold text-slate-400 hover:text-slate-600 lg:h-7" aria-label="Сбросить фильтр по ярлыкам">
           <X className="h-3 w-3" /> сбросить
         </button>
       ) : null}
@@ -138,6 +138,10 @@ export async function setWbTagAssignment(
   return response.ok;
 }
 
+/** Ширина и предельная высота меню — нужны и разметке, и расчёту положения. */
+const MENU_WIDTH = 224;
+const MENU_MAX_HEIGHT = 280;
+
 /** Компактный выбор ярлыков для строки таблицы. */
 export function WbTagPicker({ tags, assignedIds, onToggle }: {
   tags: WbTagOption[];
@@ -146,25 +150,45 @@ export function WbTagPicker({ tags, assignedIds, onToggle }: {
 }) {
   const [open, setOpen] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   // Меню уходит порталом в body: ячейки таблицы липкие, они создают свой
   // слой, и выпадашка внутри них не перехватывала клики — те проваливались
   // на строку под меню и вместо выбора ярлыка раскрывали соседний артикул.
+  // Меню шириной 224px, а кнопка «+ ярлык» стоит в закреплённой первой колонке
+  // на x≈170-210: без прижима к краям половина ярлыков уезжала за правый край
+  // экрана. Снизу так же — открываем вверх, если внизу не помещается.
   const place = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) setAnchor({ top: rect.bottom + 4, left: rect.left });
+    if (!rect) return;
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - MENU_WIDTH - 8);
+    const below = window.innerHeight - rect.bottom - 12;
+    const above = rect.top - 12;
+    const dropUp = below < 160 && above > below;
+    const maxHeight = Math.max(120, Math.min(MENU_MAX_HEIGHT, dropUp ? above : below));
+    setAnchor({ top: dropUp ? Math.max(8, rect.top - maxHeight - 4) : rect.bottom + 4, left, maxHeight });
   };
 
   useEffect(() => {
     if (!open) return;
+    // Пальцем почти всякое касание даёт минимальный сдвиг прокрутки, и меню
+    // закрывалось само в момент выбора. Закрываем только на заметном скролле,
+    // а до порога — переставляем меню за уехавшей кнопкой.
+    let startedAt: number | null = null;
+    const onScroll = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) { setOpen(false); return; }
+      if (startedAt == null) startedAt = rect.top;
+      if (Math.abs(rect.top - startedAt) > 12) setOpen(false);
+      else place();
+    };
     const close = () => setOpen(false);
     window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
 
@@ -179,7 +203,7 @@ export function WbTagPicker({ tags, assignedIds, onToggle }: {
         }}
         aria-expanded={open}
         aria-label="Ярлыки артикула"
-        className="rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+        className="tap-hit rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
       >
         {assignedIds.length ? `ярлыков: ${assignedIds.length}` : "+ ярлык"}
       </button>
@@ -192,8 +216,8 @@ export function WbTagPicker({ tags, assignedIds, onToggle }: {
             aria-label="Закрыть выбор ярлыков"
           />
           <div
-            className="fixed z-[999] w-56 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-[0_18px_55px_rgba(15,23,42,0.18)]"
-            style={{ top: anchor.top, left: anchor.left }}
+            className="fixed z-[999] w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 text-left shadow-[0_18px_55px_rgba(15,23,42,0.18)]"
+            style={{ top: anchor.top, left: anchor.left, maxHeight: anchor.maxHeight }}
           >
             {tags.length ? tags.map((tag) => {
               const assigned = assignedIds.includes(tag.id);
@@ -208,7 +232,7 @@ export function WbTagPicker({ tags, assignedIds, onToggle }: {
                     await onToggle(tag.id, !assigned);
                     setPendingId(null);
                   }}
-                  className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[10px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  className="flex h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-[10px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 lg:h-8"
                 >
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
                   <span className="min-w-0 flex-1 truncate">{tag.name}</span>

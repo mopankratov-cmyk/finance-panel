@@ -45,7 +45,7 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
           onChange(result.snapshots);
         } catch (loadError) { setError(loadError instanceof Error ? loadError.message : "Не удалось прочитать снимки выплат"); }
         finally { setLoading(false); }
-      }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-indigo-300 bg-white px-4 text-sm font-semibold text-indigo-900 disabled:opacity-50">
+      }} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-indigo-300 bg-white px-4 text-sm font-semibold text-indigo-900 disabled:opacity-50 lg:min-h-10">
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Проверить кабинетные выплаты
       </button>
     </div>
@@ -62,13 +62,13 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
         onChange([]);
       } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить снимки"); }
       finally { setLoading(false); }
-    }} className="mt-3 text-sm font-medium text-rose-700 underline underline-offset-2 disabled:opacity-50">
+    }} className="tap mt-3 rounded-lg border border-rose-300 bg-white px-3 text-sm font-medium text-rose-700 disabled:opacity-50">
       Удалить снимки этого кабинета за месяц
     </button>}
     {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     {!error && checked && rows.length === 0 && <p className="mt-3 text-sm text-indigo-900">Снимков пока нет. Это нормально до первого успешного запуска агента.</p>}
     {!error && !checked && <p className="mt-3 text-sm text-indigo-900">Нажмите «Проверить кабинетные выплаты», чтобы посмотреть снимки агента.</p>}
-    {rows.length > 0 && <div className="mt-3 overflow-x-auto rounded-lg border border-indigo-200 bg-white">
+    {rows.length > 0 && <div className="scroll-x mt-3 rounded-lg border border-indigo-200 bg-white">
       <table className="w-full min-w-[700px] text-sm"><thead className="bg-indigo-50 text-xs text-indigo-900"><tr><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-left">Дата</th><th className="px-3 py-2 text-right">Сумма</th><th className="px-3 py-2 text-left">Период</th><th className="px-3 py-2 text-left">Собрано</th></tr></thead><tbody>
         {rows.map((row) => <tr key={`${row.marketplace}:${row.cabinetId}:${row.externalId}`} className="border-t border-indigo-100"><td className={`px-3 py-2 font-medium ${row.state === "awaiting_transfer" ? "text-amber-700" : "text-emerald-700"}`}>{row.state === "awaiting_transfer" ? "Ожидается перечисление" : "Отправлено маркетплейсом"}</td><td className="px-3 py-2">{row.plannedDate ? new Date(`${row.plannedDate}T00:00:00`).toLocaleDateString("ru-RU") : <span className="text-indigo-700">кабинет не указал<span className="block text-xs text-indigo-500">останется расчётный день</span></span>}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.amount)}</td><td className="px-3 py-2">{row.periodFrom && row.periodTo ? `${row.periodFrom}—${row.periodTo}` : "—"}</td><td className="px-3 py-2">{new Date(row.capturedAt).toLocaleString("ru-RU")}</td></tr>)}
       </tbody></table>

@@ -36,8 +36,14 @@ test("sales-plan UI asks for a return comment before calling the API", () => {
   const source = readFileSync(new URL("../components/planning/SalesPlanPage.tsx", import.meta.url), "utf8");
 
   assert.match(source, /const returnPlan = async \(\) =>/);
-  assert.match(source, /window\.prompt\("Почему возвращаем план\? Укажите, что нужно исправить\."\)/);
-  assert.match(source, /const comment = normalizeSalesPlanReturnComment\(rawComment\);/);
+  // Смысл проверки — комментарий обязателен ДО обращения к серверу. Спрашивают
+  // его теперь своим полем, а не window.prompt: системный диалог даёт
+  // однострочный ввод без правки длинного текста, а в приложении, добавленном
+  // на домашний экран, часть сборок Safari подавляет его вовсе — и возврат
+  // тихо не выполнялся бы.
+  assert.doesNotMatch(source, /window\.prompt\(/, "вернулся системный prompt — на телефоне он ненадёжен");
+  assert.match(source, /const comment = normalizeSalesPlanReturnComment\(returnComment\);/);
+  assert.match(source, /if \(!comment\)/, "возврат уходит на сервер без комментария");
   assert.match(source, /persist\("return", plan, false, \{ comment \}\)/);
 });
 

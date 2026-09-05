@@ -129,17 +129,17 @@ export function AdActionsPanel({
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {campaign.status !== 9 && campaign.status !== 7 ? (
-          <button type="button" onClick={() => lifecycle("start")} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100">
+          <button type="button" onClick={() => lifecycle("start")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 lg:min-h-9">
             <PlayCircle className="h-3.5 w-3.5" aria-hidden="true" /> Запустить
           </button>
         ) : null}
         {campaign.status === 9 ? (
-          <button type="button" onClick={() => lifecycle("pause")} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-100">
+          <button type="button" onClick={() => lifecycle("pause")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-100 lg:min-h-9">
             <PauseCircle className="h-3.5 w-3.5" aria-hidden="true" /> Пауза
           </button>
         ) : null}
         {campaign.status !== 7 ? (
-          <button type="button" onClick={() => lifecycle("stop")} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50">
+          <button type="button" onClick={() => lifecycle("stop")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 lg:min-h-9">
             <Square className="h-3.5 w-3.5" aria-hidden="true" /> Завершить
           </button>
         ) : null}
@@ -179,10 +179,10 @@ export function AdActionsPanel({
               onChange={(event) => setBid(event.target.value)}
               inputMode="numeric"
               placeholder={`шаг ${step}`}
-              className="h-9 w-24 rounded-lg border border-slate-300 px-2 text-[12px] tabular-nums focus:border-violet-500 focus:outline-none"
+              className="min-h-11 w-24 min-w-0 flex-1 rounded-lg border border-slate-300 px-2 text-[12px] tabular-nums focus:border-violet-500 focus:outline-none sm:flex-none lg:min-h-9"
             />
             {!isUnified ? (
-              <select value={placement} onChange={(event) => setPlacement(event.target.value)} className="h-9 rounded-lg border border-slate-300 px-1.5 text-[11px] focus:border-violet-500 focus:outline-none">
+              <select value={placement} onChange={(event) => setPlacement(event.target.value)} className="min-h-11 rounded-lg border border-slate-300 px-1.5 text-[11px] focus:border-violet-500 focus:outline-none lg:min-h-9">
                 <option value="search">поиск</option>
                 <option value="recommendations">полки</option>
               </select>
@@ -215,7 +215,7 @@ export function AdActionsPanel({
                   },
                 })
               }
-              className="h-9 rounded-lg bg-slate-800 px-3 text-[11px] font-semibold text-white disabled:opacity-40"
+              className="min-h-11 rounded-lg bg-slate-800 px-4 text-[11px] font-semibold text-white disabled:opacity-40 lg:min-h-9 lg:px-3"
             >
               Изменить
             </button>
@@ -234,9 +234,9 @@ export function AdActionsPanel({
               onChange={(event) => setSum(event.target.value)}
               inputMode="numeric"
               placeholder={minTopUp ? `от ${minTopUp}` : "сумма"}
-              className="h-9 w-24 rounded-lg border border-slate-300 px-2 text-[12px] tabular-nums focus:border-rose-400 focus:outline-none"
+              className="min-h-11 w-24 min-w-0 flex-1 rounded-lg border border-slate-300 px-2 text-[12px] tabular-nums focus:border-rose-400 focus:outline-none sm:flex-none lg:min-h-9"
             />
-            <select value={source} onChange={(event) => setSource(event.target.value)} className="h-9 rounded-lg border border-slate-300 px-1.5 text-[11px] focus:border-rose-400 focus:outline-none">
+            <select value={source} onChange={(event) => setSource(event.target.value)} className="min-h-11 rounded-lg border border-slate-300 px-1.5 text-[11px] focus:border-rose-400 focus:outline-none lg:min-h-9">
               <option value="1">взаимозачёт</option>
               <option value="0">счёт</option>
               <option value="3">бонусы</option>
@@ -269,7 +269,7 @@ export function AdActionsPanel({
                   },
                 })
               }
-              className="h-9 rounded-lg bg-rose-600 px-3 text-[11px] font-semibold text-white disabled:opacity-40"
+              className="min-h-11 rounded-lg bg-rose-600 px-4 text-[11px] font-semibold text-white disabled:opacity-40 lg:min-h-9 lg:px-3"
             >
               Пополнить
             </button>

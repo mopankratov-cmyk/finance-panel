@@ -1,4 +1,4 @@
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronRight, RefreshCw } from "lucide-react";
 
 type ErrorTone = "rose" | "amber";
 
@@ -142,13 +142,30 @@ export function ActionableError({
           <div className="font-semibold">{title || copy.title}</div>
           <div className={`${compact ? "mt-0.5 text-[11px]" : "mt-1 text-xs"} leading-5 opacity-80`}>{copy.detail}</div>
           {copy.action ? <div className={`${compact ? "mt-1 text-[11px]" : "mt-1 text-xs"} font-medium leading-5`}>{copy.action}</div> : null}
-          {hint && hint !== copy.detail ? <div className={`mt-1 truncate text-[10px] ${styles.hint}`} title={hint}>Технически: {hint}</div> : null}
+          {/* Причина сбоя. Мышь получает её как раньше — строкой сразу под
+              советом, полный текст по наведению в `title`. На касании
+              наведения не бывает и `title` не показывается вовсе, поэтому там
+              же причина раскрывается нажатием. Треугольник у `details` рисуем
+              сами: `display: list-item` у `summary` не переживает флексовую
+              раскладку, и слово «Технически» переставало выглядеть нажимаемым. */}
+          {hint && hint !== copy.detail ? (
+            <>
+              <div className={`mt-1 hidden truncate text-[10px] lg:block ${styles.hint}`} title={hint}>Технически: {hint}</div>
+              <details className={`group mt-1 text-xs lg:hidden ${styles.hint}`}>
+                <summary className="tap-row flex cursor-pointer list-none items-center gap-1 font-medium [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="h-3 w-3 shrink-0 transition-transform group-open:rotate-90" />
+                  Технически
+                </summary>
+                <div className="break-anywhere mt-0.5 leading-5">{hint}</div>
+              </details>
+            </>
+          ) : null}
         </div>
         {onRetry ? (
           <button
             type="button"
             onClick={onRetry}
-            className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${styles.button}`}
+            className={`tap-row inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${styles.button}`}
           >
             <RefreshCw className="h-3.5 w-3.5" />
             {retryLabel}

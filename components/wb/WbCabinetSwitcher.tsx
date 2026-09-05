@@ -42,7 +42,7 @@ export function WbCabinetSwitcher() {
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex h-11 min-w-[140px] items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-left text-[11px] font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:h-8 sm:min-w-[154px]"
+        className="flex h-11 min-w-[140px] items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-left text-[11px] font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:h-8 lg:min-w-[154px]"
       >
         <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
           {cabinetId === "all" ? <Layers3 className="h-3.5 w-3.5" /> : <Building2 className="h-3.5 w-3.5" />}
@@ -56,7 +56,7 @@ export function WbCabinetSwitcher() {
         <div
           role="listbox"
           aria-label="Кабинет Wildberries"
-          className="absolute right-0 z-[80] mt-1.5 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
+          className="absolute right-0 z-[80] mt-1.5 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
         >
           <div className="border-b border-slate-100 px-3 py-2">
             <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Кабинет данных</div>
@@ -119,7 +119,7 @@ export function WbCabinetSwitcher() {
             <button
               type="button"
               onClick={refreshCabinets}
-              className="inline-flex min-h-11 items-center gap-1 px-2 text-[10px] font-semibold text-slate-500 hover:text-violet-700 sm:min-h-8"
+              className="inline-flex min-h-11 items-center gap-1 px-2 text-[10px] font-semibold text-slate-500 hover:text-violet-700 lg:min-h-8"
             >
               <RefreshCw className="h-3 w-3" /> Обновить
             </button>

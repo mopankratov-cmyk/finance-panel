@@ -56,10 +56,10 @@ export function OzonOverviewPage() {
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.8fr)]">
               <section className="rounded-xl border border-slate-200 bg-white p-4" aria-labelledby="ozon-trend-title">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <div><h2 id="ozon-trend-title" className="text-sm font-bold text-slate-900">Динамика продаж и рекламы</h2><p className="mt-0.5 text-[11px] text-slate-500">Выручка и расход по дням; точные значения доступны в подсказке.</p></div>
+                  <div><h2 id="ozon-trend-title" className="text-sm font-bold text-slate-900">Динамика продаж и рекламы</h2><p className="mt-0.5 text-[11px] text-slate-500">Выручка и расход по дням; точные значения — при наведении или касании линии.</p></div>
                   <BadgeRussianRuble className="h-4 w-4 text-sky-600" />
                 </div>
-                <div className="min-h-[280px] min-w-0 w-full" role="img" aria-label={`График выручки и рекламы за ${days(period.days)}`}>
+                <div className="min-h-[280px] w-full min-w-0 touch-pan-y" role="img" aria-label={`График выручки и рекламы за ${days(period.days)}`}>
                   <ResponsiveContainer width="100%" height={280} minWidth={0}>
                     <LineChart data={data.trend} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
@@ -79,7 +79,7 @@ export function OzonOverviewPage() {
                   <div><h2 id="ozon-attention-title" className="text-sm font-bold text-slate-900">Требует внимания</h2><p className="mt-0.5 text-[10px] text-slate-400">Приоритетные сигналы по выбранному срезу</p></div>
                   <span className={`rounded-md px-2 py-1 text-[10px] font-bold ${data.attention.length ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>{data.attention.length}</span>
                 </div>
-                <div className="max-h-[318px] overflow-y-auto p-2">
+                <div className="p-2 xl:max-h-[318px] xl:overflow-y-auto xl:overscroll-contain">
                   {data.attention.length ? data.attention.map((item, index) => (
                     <Link key={`${item.title}-${index}`} href={withOzonCabinetScope(item.href, cabinetId)} className="flex min-h-14 items-start gap-2 rounded-lg px-2.5 py-2 hover:bg-slate-50">
                       {item.severity === "critical" ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />}
@@ -94,10 +94,10 @@ export function OzonOverviewPage() {
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.55fr)]">
               <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><h2 className="text-sm font-bold text-slate-900">Топ SKU по выручке</h2><p className="mt-0.5 text-[10px] text-slate-400">Продажи, остаток, запас и ДРР в одном месте</p></div><Link href={withOzonCabinetScope("/ozon/sales", cabinetId)} className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-sky-700 sm:min-h-8">Все продажи <ArrowRight className="h-3 w-3" /></Link></div>
-                <div className="overflow-x-auto">
+                <div className="scroll-x">
                   <table className="w-full min-w-[840px] text-xs">
-                    <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2 text-left">Товар</th><th className="px-3 py-2 text-right">Заказы</th><th className="px-3 py-2 text-right">Выручка</th><th className="px-3 py-2 text-right">Остаток</th><th className="px-3 py-2 text-right">Запас</th><th className="px-3 py-2 text-right">Реклама</th><th className="px-4 py-2 text-right">ДРР</th></tr></thead>
-                    <tbody>{data.topSku.slice(0, 12).map((row) => <tr key={row.key} className="border-t border-slate-100 hover:bg-sky-50/40"><td className="px-4 py-2"><ProductCell image={row.image} name={row.name} code={row.offerId || `SKU ${row.sku}`} cabinet={data.scope.count > 1 ? row.cabinet : undefined} /></td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.orders)}</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatMoney(row.revenue)}</td><td className={`px-3 py-2 text-right tabular-nums ${row.stock != null && row.stock <= 0 && row.orders > 0 ? "font-bold text-red-600" : ""}`}>{formatNumber(row.stock)}</td><td className="px-3 py-2 text-right tabular-nums">{row.daysCover == null ? "—" : `${row.daysCover} дн.`}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.adSpend)}</td><td className={`px-4 py-2 text-right font-semibold tabular-nums ${row.drr >= 30 ? "text-red-600" : row.drr >= 20 ? "text-amber-600" : "text-emerald-700"}`}>{formatPercent(row.drr)}</td></tr>)}</tbody>
+                    <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="sticky left-0 z-20 bg-slate-50 px-4 py-2 text-left">Товар</th><th className="px-3 py-2 text-right">Заказы</th><th className="px-3 py-2 text-right">Выручка</th><th className="px-3 py-2 text-right">Остаток</th><th className="px-3 py-2 text-right">Запас</th><th className="px-3 py-2 text-right">Реклама</th><th className="px-4 py-2 text-right">ДРР</th></tr></thead>
+                    <tbody>{data.topSku.slice(0, 12).map((row) => <tr key={row.key} className="group border-t border-slate-100 hover:bg-sky-50/40"><td className="sticky left-0 z-10 bg-white px-4 py-2 group-hover:bg-[#f9fdff]"><ProductCell image={row.image} name={row.name} code={row.offerId || `SKU ${row.sku}`} cabinet={data.scope.count > 1 ? row.cabinet : undefined} /></td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatNumber(row.orders)}</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{formatMoney(row.revenue)}</td><td className={`px-3 py-2 text-right tabular-nums ${row.stock != null && row.stock <= 0 && row.orders > 0 ? "font-bold text-red-600" : ""}`}>{formatNumber(row.stock)}</td><td className="px-3 py-2 text-right tabular-nums">{row.daysCover == null ? "—" : `${row.daysCover} дн.`}</td><td className="px-3 py-2 text-right tabular-nums">{formatMoney(row.adSpend)}</td><td className={`px-4 py-2 text-right font-semibold tabular-nums ${row.drr >= 30 ? "text-red-600" : row.drr >= 20 ? "text-amber-600" : "text-emerald-700"}`}>{formatPercent(row.drr)}</td></tr>)}</tbody>
                   </table>
                 </div>
               </section>

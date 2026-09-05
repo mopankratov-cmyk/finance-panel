@@ -7,9 +7,10 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonCards, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { MARKETPLACE_METRICS, METRIC_TEXT_TONE, marketplaceMetricStatus, type MarketplaceMetricId } from "@/lib/analytics/marketplaceMetrics";
+import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { WbProductImage } from "./WbProductImage";
@@ -84,6 +85,7 @@ export function WbSeoPage() {
   const [keywordsLoading, setKeywordsLoading] = useState(false);
   const [keywordsError, setKeywordsError] = useState<string | null>(null);
   const requestId = useRef(0);
+  const drawerRef = useRef<HTMLElement | null>(null);
   const elapsed = useElapsedSeconds(loading);
   const { categories, byArticle } = useCategoryMap();
 
@@ -149,14 +151,11 @@ export function WbSeoPage() {
     return () => controller.abort();
   }, [cabinetId, selected]);
 
-  useEffect(() => {
-    if (!selected) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelected(null);
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [selected]);
+  // Escape тут был и раньше, а вот фон под шторкой продолжал прокручиваться и
+  // фокус с внешней клавиатуры уходил в скрытый под ней список. Общий хук
+  // закрывает всё три вещи разом.
+  const closeSelected = useCallback(() => setSelected(null), []);
+  useDialogBehavior(Boolean(selected), closeSelected, drawerRef);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
@@ -178,15 +177,15 @@ export function WbSeoPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Search}
         title="SEO и позиции"
         description={data ? `${data.metrics_period} · показы → CTR → корзина → заказ` : "Поисковые позиции и воронка SKU"}
         actions={
-          <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">
+          <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm lg:min-h-8">
             {[1, 7, 30].map((days) => (
-              <button key={days} type="button" onClick={() => setWindowDays(days)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-7 ${windowDays === days ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{days === 1 ? "Вчера" : `${days} дней`}</button>
+              <button key={days} type="button" onClick={() => setWindowDays(days)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-7 ${windowDays === days ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{days === 1 ? "Вчера" : `${days} дней`}</button>
             ))}
           </div>
         }
@@ -195,13 +194,13 @@ export function WbSeoPage() {
       <div className="px-2 py-3 sm:px-6">
         <div className="mb-3 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center">
           {categories.length ? (
-            <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:min-h-8 sm:w-44">
+            <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 lg:min-h-8 sm:w-44">
               <option value="">Все категории</option>
               {categories.map((item) => <option key={item} value={item}>{item}</option>)}
               <option value="__none">Без категории</option>
             </select>
           ) : null}
-          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 sm:min-h-8">
+          <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 lg:min-h-8">
             <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по nm / артикулу / названию" className="min-w-0 flex-1 bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400" />
             {query ? <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}
@@ -219,7 +218,7 @@ export function WbSeoPage() {
         ) : filtered.length === 0 ? (
           <WbEmptyState>{query || category ? "По выбранным фильтрам ничего не найдено." : "Нет данных SEO за выбранный период."}</WbEmptyState>
         ) : (
-          <div className="h-[calc(100vh-205px)] min-h-[440px] overflow-auto overscroll-contain pr-0.5" onScroll={(event) => updateItemWindow(event.currentTarget)}>
+          <div className="h-[68svh] min-h-[320px] overflow-auto overscroll-contain pr-0.5 md:h-[calc(100dvh-205px)] md:min-h-[440px]" onScroll={(event) => updateItemWindow(event.currentTarget)}>
             {itemWindow.start > 0 ? <div aria-hidden="true" style={{ height: itemWindow.start * ITEM_HEIGHT }} /> : null}
             <div className="space-y-2">
               {filtered.slice(itemWindow.start, itemWindow.end).map((sku) => (
@@ -233,7 +232,7 @@ export function WbSeoPage() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12px] font-semibold text-slate-800">{sku.art}</div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-500">{sku.name}</div>
-                    <div className="mt-1 flex items-center gap-2 text-[9px] text-slate-400 sm:hidden"><span>{fmt(sku.orders_count_window)} заказов</span><span>ДРР к заказам {pct(sku.drr_window)}</span></div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-slate-400 sm:hidden"><span>{fmt(sku.orders_count_window)} заказов</span><span>ДРР {pct(sku.drr_window)}</span><span>{fmt(sku.shows_window)} показов</span><span className={sku.stock < 10 ? "font-semibold text-rose-600" : undefined}>остаток {fmt(sku.stock)}</span><span>{fmt(sku.reviews)} отз. <span className="text-amber-500">★ {sku.rating ?? "—"}</span></span></div>
                   </div>
                   <div className="hidden items-center gap-4 sm:flex">
                     <div className="text-right"><div className="text-[9px] uppercase tracking-wide text-slate-400">показы</div><div className="text-[11px] font-medium tabular-nums text-slate-700">{fmt(sku.shows_window)}</div></div>
@@ -254,12 +253,12 @@ export function WbSeoPage() {
       {selected ? (
         <>
           <button type="button" aria-label="Закрыть карточку SEO" onClick={() => setSelected(null)} className="fixed inset-0 z-[79] bg-slate-950/25" />
-          <aside role="dialog" aria-modal="true" aria-label={`SEO ${selected.art}`} className="fixed bottom-0 right-0 top-[54px] z-[80] flex w-full max-w-[760px] flex-col border-l border-slate-200 bg-[#f6f7f9] shadow-2xl">
+          <aside ref={drawerRef} role="dialog" aria-modal="true" aria-label={`SEO ${selected.art}`} className="fixed bottom-0 right-0 top-[calc(54px+var(--safe-t))] z-[80] flex w-full max-w-[760px] flex-col border-l border-slate-200 bg-[#f6f7f9] pb-safe shadow-2xl">
             <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
               <WbProductImage nm={selected.nm} src={selected.img_url} loading="eager" className="h-11 w-11 shrink-0 rounded-lg bg-slate-50 object-cover" />
               <div className="min-w-0"><div className="truncate text-sm font-bold text-slate-800">{selected.art}</div><div className="truncate text-[11px] text-slate-400">{selected.name}</div></div>
-              <a href={`https://www.wildberries.ru/catalog/${selected.nm}/detail.aspx`} target="_blank" rel="noreferrer" className="ml-auto hidden min-h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-50 sm:inline-flex">Карточка WB <ExternalLink className="h-3 w-3" /></a>
-              <button type="button" onClick={() => setSelected(null)} aria-label="Закрыть" className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:h-10 sm:w-10"><X className="h-4 w-4" /></button>
+              <a href={`https://www.wildberries.ru/catalog/${selected.nm}/detail.aspx`} target="_blank" rel="noreferrer" aria-label="Открыть карточку на Wildberries" className="ml-auto inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white text-[10px] font-semibold text-slate-500 hover:bg-slate-50 lg:min-h-8 sm:min-w-0 sm:px-2.5"><span className="hidden sm:inline">Карточка WB</span> <ExternalLink className="h-3.5 w-3.5" /></a>
+              <button type="button" onClick={() => setSelected(null)} aria-label="Закрыть" className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:h-10 lg:w-10"><X className="h-4 w-4" /></button>
             </div>
 
             <div className="grid grid-cols-3 gap-2 border-b border-slate-200 p-3 sm:grid-cols-6">
@@ -278,7 +277,7 @@ export function WbSeoPage() {
               {keywordsLoading ? <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> Загружаем поисковые позиции…</div> : null}
               {keywordsError ? <WbErrorState message={keywordsError} /> : null}
               {!keywordsLoading && keywords && keywords.words.length ? (
-                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <div className="scroll-x rounded-xl border border-slate-200 bg-white">
                   <table className="min-w-full border-collapse text-[10px]">
                     <thead><tr className="h-8 bg-slate-50 text-slate-500"><th className="sticky left-0 z-10 min-w-[210px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left">Запрос</th><th className="min-w-[70px] border-b border-r border-slate-200 px-2 text-right">Частота</th>{keywords.days.map((day) => <th key={day} className="min-w-[48px] border-b border-r border-slate-200 px-1 text-center">{day.slice(8, 10)}.{day.slice(5, 7)}</th>)}</tr></thead>
                     <tbody>{keywords.words.map((word) => <tr key={word.keyword} className="h-9 border-b border-slate-100 last:border-b-0"><td className="sticky left-0 z-10 max-w-[240px] truncate border-r border-slate-100 bg-white px-3 font-medium text-slate-700">{word.keyword}</td><td className="border-r border-slate-100 px-2 text-right tabular-nums text-slate-500">{fmt(word.shows)}</td>{word.daily.map((day, index) => <td key={`${word.keyword}-${keywords.days[index]}`} className="border-r border-slate-100 p-1 text-center"><span className={`inline-grid h-6 min-w-7 place-items-center rounded-md px-1 tabular-nums ${positionTone(day.pos)}`}>{day.pos ?? "—"}</span></td>)}</tr>)}</tbody>

@@ -99,12 +99,15 @@ export function AdCreateTab({
           <div className="mt-3">
             <div className="text-[11px] font-semibold text-slate-500">Места показа</div>
             <div className="mt-1 flex gap-3 text-[12px] text-slate-700">
-              <label className="inline-flex items-center gap-1.5">
-                <input type="checkbox" checked={search} onChange={() => setSearch((value) => !value)} />
+              {/* Палец получает 44px и подсветку, мышь — прежнюю компактную
+                  строку: без пары `lg:` блок «Места показа» раздувался вдвое
+                  и на большом экране. */}
+              <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 hover:bg-slate-50 lg:min-h-0 lg:gap-1.5 lg:px-0 lg:hover:bg-transparent">
+                <input type="checkbox" checked={search} onChange={() => setSearch((value) => !value)} className="h-5 w-5 accent-violet-600 lg:h-3.5 lg:w-3.5" />
                 Поиск
               </label>
-              <label className="inline-flex items-center gap-1.5">
-                <input type="checkbox" checked={shelf} onChange={() => setShelf((value) => !value)} />
+              <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 hover:bg-slate-50 lg:min-h-0 lg:gap-1.5 lg:px-0 lg:hover:bg-transparent">
+                <input type="checkbox" checked={shelf} onChange={() => setShelf((value) => !value)} className="h-5 w-5 accent-violet-600 lg:h-3.5 lg:w-3.5" />
                 Рекомендации
               </label>
             </div>

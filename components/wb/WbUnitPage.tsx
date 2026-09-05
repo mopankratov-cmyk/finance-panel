@@ -10,12 +10,13 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { summarizeUnitRows } from "@/lib/unit/summary";
 import { sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { METRIC_TEXT_TONE, marketplaceMetricStatus } from "@/lib/analytics/marketplaceMetrics";
+import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { useSort, sortGlyph } from "@/lib/useSort";
@@ -142,6 +143,7 @@ export function WbUnitPage() {
   const [solverError, setSolverError] = useState<string | null>(null);
   const [solverWindow, setSolverWindow] = useState({ start: 0, end: 18 });
   const requestId = useRef(0);
+  const solverRef = useRef<HTMLElement | null>(null);
   const elapsed = useElapsedSeconds(loading);
   const { categories, byArticle } = useCategoryMap();
   const [appliedPeriod, setAppliedPeriod] = useState(getDefaultUnitPeriod);
@@ -288,6 +290,25 @@ export function WbUnitPage() {
     }));
   }, [columns.ad, columns.buyoutPct, columns.cost, columns.marginUnit, columns.orders, columns.revenue, data?.rows, orderedIndices]);
 
+  // Карточка вместо таблицы (до md) раньше печатала только первые шесть колонок,
+  // и маржи — то, ради чего экран открывают, — с телефона не было видно нигде.
+  // Итоговые показатели поднимаем в свёрнутый вид, остальные уводим под
+  // «Все показатели»: карточка остаётся короткой, но ни одна колонка не пропала.
+  const mobileColumns = useMemo(() => {
+    const headers = data?.headers ?? [];
+    const isTotal = (header: string) => /маржа|вал %/i.test(header);
+    const lead: number[] = [];
+    const rest: number[] = [];
+    headers.forEach((header, index) => {
+      if (index < FIRST_DATA_COL) return;
+      if (index < FIRST_DATA_COL + 6 || isTotal(header)) lead.push(index);
+      else rest.push(index);
+    });
+    // sort стабилен, поэтому итоговые встают первыми, а порядок остальных не меняется.
+    lead.sort((a, b) => Number(isTotal(headers[b])) - Number(isTotal(headers[a])));
+    return { lead, rest };
+  }, [data?.headers]);
+
   const { sorted: indices, sortField, sortDir, toggleSort } = useSort(orderedIndices, (rowIndex, field) => {
     const value = data?.rows[rowIndex]?.[Number(field)];
     if (value == null || value === "") return null;
@@ -320,14 +341,11 @@ export function WbUnitPage() {
     return () => controller.abort();
   }, [cabinetId, solverOpen]);
 
-  useEffect(() => {
-    if (!solverOpen) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSolverOpen(false);
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [solverOpen]);
+  // Escape, ловушка фокуса и неподвижный фон: без последнего свайп по длинной
+  // таблице цен уводил страницу за спиной шторки, и закрыв её, человек
+  // оказывался в другом месте экрана.
+  const closeSolver = useCallback(() => setSolverOpen(false), []);
+  useDialogBehavior(solverOpen, closeSolver, solverRef);
 
   const refresh = async (kind: "prices" | "stocks" | "cogs") => {
     setRefreshing(kind);
@@ -370,7 +388,7 @@ export function WbUnitPage() {
       type="button"
       onClick={() => refresh(kind)}
       disabled={refreshing !== null}
-      className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-[11px] font-semibold text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait disabled:opacity-60 sm:min-h-8 ${tone}`}
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-[11px] font-semibold text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-wait disabled:opacity-60 lg:min-h-8 ${tone}`}
     >
       {refreshing === kind ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
       {label}
@@ -378,7 +396,7 @@ export function WbUnitPage() {
   );
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Gem}
         title="Unit fact"
@@ -386,7 +404,7 @@ export function WbUnitPage() {
         actions={
           <>
             {categories.length ? (
-              <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 max-w-44 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-600 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:min-h-8">
+              <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 max-w-44 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-600 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 lg:min-h-8">
                 <option value="">Все категории</option>
                 {categories.map((item) => <option key={item} value={item}>{item}</option>)}
                 <option value="__none">Без категории</option>
@@ -395,7 +413,7 @@ export function WbUnitPage() {
             {canRunSync ? actionButton("prices", "Обновить цены", WalletCards, "bg-violet-600 hover:bg-violet-700") : null}
             {canRunSync ? actionButton("stocks", "Обновить остатки", RefreshCw, "bg-amber-500 hover:bg-amber-600") : null}
             {canRunSync ? actionButton("cogs", "Обновить себест.", Boxes, "bg-violet-600 hover:bg-violet-700") : null}
-            <button type="button" onClick={() => setSolverOpen(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8">
+            <button type="button" onClick={() => setSolverOpen(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8">
               <Calculator className="h-3.5 w-3.5" /> Калькулятор цены
             </button>
           </>
@@ -455,17 +473,23 @@ export function WbUnitPage() {
             Только проблемные
           </label>
           <span className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />
-          <label className="flex h-10 items-center gap-1.5 text-[11px] font-medium text-slate-500">
-            С
-            <input type="date" value={draftPeriod.from} onChange={(event) => setDraftPeriod((current) => ({ ...current, from: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-violet-400" />
-          </label>
-          <label className="flex h-10 items-center gap-1.5 text-[11px] font-medium text-slate-500">
-            по
-            <input type="date" value={draftPeriod.to} onChange={(event) => setDraftPeriod((current) => ({ ...current, to: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-violet-400" />
-          </label>
-          <button type="button" onClick={applyPeriod} className="h-10 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">Применить</button>
+          {/* Даты и «Применить» — один подблок: при переносе по flex-wrap кнопка
+              отрывалась от полей, и между выбором периода и его применением
+              вставала вся ширина экрана. Ошибка периода печатается тут же под
+              полями, а не последней строкой всего ряда. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <label className="flex h-10 items-center gap-1.5 text-[11px] font-medium text-slate-500">
+              С
+              <input type="date" value={draftPeriod.from} onChange={(event) => setDraftPeriod((current) => ({ ...current, from: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-violet-400" />
+            </label>
+            <label className="flex h-10 items-center gap-1.5 text-[11px] font-medium text-slate-500">
+              по
+              <input type="date" value={draftPeriod.to} onChange={(event) => setDraftPeriod((current) => ({ ...current, to: event.target.value }))} className="h-10 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-violet-400" />
+            </label>
+            <button type="button" onClick={applyPeriod} className="h-10 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">Применить</button>
+            {periodError ? <span role="alert" className="w-full text-xs text-rose-600">{periodError}</span> : null}
+          </div>
           <span className="ml-auto text-[11px] text-slate-400">{formatUnitPeriod(appliedPeriod)}</span>
-          {periodError ? <span role="alert" className="w-full text-xs text-rose-600">{periodError}</span> : null}
         </div>
         {message ? <div role="status" className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{message}</div> : null}
         {loading ? (
@@ -486,12 +510,35 @@ export function WbUnitPage() {
               {summary.negative ? (
                 <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">{summary.negative} в минусе</span>
               ) : null}
-              <span className="ml-auto text-[10px] text-slate-400">Клик по заголовку — сортировка</span>
+              <span className="ml-auto hidden text-[10px] text-slate-400 md:inline">Клик по заголовку — сортировка</span>
+              {/* Заголовки таблицы — единственный способ сортировать, а сама
+                  таблица до md заменена карточками. Без этой пары подсказка
+                  «клик по заголовку» на телефоне обещала то, чего там нет. */}
+              <div className="ml-auto flex items-center gap-1.5 md:hidden">
+                <select
+                  aria-label="Сортировка"
+                  value={sortField ?? ""}
+                  onChange={(event) => { if (event.target.value) toggleSort(event.target.value); }}
+                  className="min-h-11 max-w-[190px] rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-600 outline-none focus:border-violet-400"
+                >
+                  <option value="" disabled>Сортировка</option>
+                  <option value="2">Артикул</option>
+                  {data.headers.slice(FIRST_DATA_COL).map((header, index) => <option key={`${header}-${index}`} value={String(FIRST_DATA_COL + index)}>{header}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => toggleSort(sortField ?? "2")}
+                  aria-label={sortDir === -1 ? "Сортировать по возрастанию" : "Сортировать по убыванию"}
+                  className="tap shrink-0 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600"
+                >
+                  {sortDir === -1 ? "↓" : "↑"}
+                </button>
+              </div>
             </div>
-            <div className="max-h-[calc(100vh-260px)] min-h-[360px] overflow-auto overscroll-contain" onScroll={(event) => updateRowWindow(event.currentTarget)}>
+            <div className="max-h-[70svh] min-h-[360px] overflow-auto overscroll-contain md:max-h-[calc(100dvh-260px)]" onScroll={(event) => updateRowWindow(event.currentTarget)}>
               <table className="hidden w-full min-w-[1560px] border-collapse text-[11px] md:table">
                 <thead className="sticky top-0 z-30">
-                  <tr className="h-[26px] bg-slate-100/90 backdrop-blur">
+                  <tr className="h-[26px] bg-slate-100">
                     <th className="sticky left-0 z-40 w-[245px] min-w-[245px] border-b border-r border-slate-200 bg-slate-100 px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">Товар</th>
                     {groupSpans(data.headers.slice(FIRST_DATA_COL)).map((group, index) => (
                       <th
@@ -528,7 +575,7 @@ export function WbUnitPage() {
                     const negative = marginUnit != null && marginUnit < 0;
                     return (
                       <tr key={`${row[2]}-${rowIndex}`} className={`group h-[49px] border-b border-slate-100 transition-colors hover:bg-violet-50/40 ${negative ? "bg-rose-50/40" : ""}`}>
-                        <td className={`sticky left-0 z-20 border-r border-slate-200 px-2 shadow-[1px_0_0_rgba(226,232,240,0.9)] ${negative ? "bg-rose-50/80" : "bg-white"} group-hover:bg-[#fbfaff]`}>
+                        <td className={`sticky left-0 z-20 border-r border-slate-200 px-2 shadow-[1px_0_0_rgba(226,232,240,0.9)] ${negative ? "bg-[#fff1f2]" : "bg-white"} group-hover:bg-[#fbfaff]`}>
                           <div className="flex min-w-0 items-center gap-2">
                             <WbProductImage nm={Number(row[4])} src={data.img_urls[rowIndex]} className="h-9 w-9 shrink-0 rounded-md border border-slate-100 bg-slate-50 object-cover" />
                             <div className="min-w-0">
@@ -569,8 +616,16 @@ export function WbUnitPage() {
                         <div className="min-w-0"><div className="truncate text-xs font-semibold text-slate-800">{show(row[2])}</div><div className="truncate text-[10px] text-slate-400">{data.names[rowIndex]}</div></div>
                       </div>
                       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-                        {data.headers.slice(FIRST_DATA_COL, FIRST_DATA_COL + 6).map((header, index) => <div key={header} className="flex items-center justify-between gap-2 border-t border-slate-100 pt-1.5"><dt className="text-[9px] text-slate-400">{header}</dt><dd className={`text-[10px] font-medium tabular-nums ${valueTone(header, row[FIRST_DATA_COL + index])}`}>{show(row[FIRST_DATA_COL + index])}</dd></div>)}
+                        {mobileColumns.lead.map((column) => <div key={column} className="flex items-center justify-between gap-2 border-t border-slate-100 pt-1.5"><dt className="text-[9px] text-slate-400">{data.headers[column]}</dt><dd className={`text-[10px] font-medium tabular-nums ${valueTone(data.headers[column], row[column])}`}>{show(row[column])}</dd></div>)}
                       </dl>
+                      {mobileColumns.rest.length ? (
+                        <details className="mt-2 border-t border-slate-100">
+                          <summary className="tap-row flex cursor-pointer list-none items-center text-[10px] font-semibold text-violet-700">Все показатели ({mobileColumns.rest.length})</summary>
+                          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 pb-1">
+                            {mobileColumns.rest.map((column) => <div key={column} className="flex items-center justify-between gap-2 border-t border-slate-100 pt-1.5"><dt className="text-[9px] text-slate-400">{data.headers[column]}</dt><dd className={`text-[10px] font-medium tabular-nums ${valueTone(data.headers[column], row[column])}`}>{show(row[column])}</dd></div>)}
+                          </dl>
+                        </details>
+                      ) : null}
                     </article>
                   );
                 })}
@@ -584,11 +639,11 @@ export function WbUnitPage() {
       {solverOpen ? (
         <>
           <button type="button" aria-label="Закрыть калькулятор цены" onClick={() => setSolverOpen(false)} className="fixed inset-0 z-[79] bg-slate-950/25" />
-          <aside role="dialog" aria-modal="true" aria-label="Калькулятор цены" className="fixed bottom-0 right-0 top-[54px] z-[80] flex w-full max-w-[920px] flex-col border-l border-slate-200 bg-[#f6f7f9] shadow-2xl">
+          <aside ref={solverRef} role="dialog" aria-modal="true" aria-label="Калькулятор цены" className="fixed bottom-0 right-0 top-[calc(54px+var(--safe-t))] z-[80] flex w-full max-w-[920px] flex-col border-l border-slate-200 bg-[#f6f7f9] pb-safe shadow-2xl">
             <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
               <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-violet-700"><Calculator className="h-4 w-4" /></span>
               <div className="min-w-0"><h2 className="text-sm font-bold text-slate-800">Калькулятор цены</h2><p className="truncate text-[10px] text-slate-400">Цена под целевую маржу · {activeCabinet?.name ?? "все кабинеты"}{solver?.truncated ? ` · показаны первые ${solver.items.length} из ${solver.total ?? solver.items.length}` : ""}</p></div>
-              <button type="button" onClick={() => setSolverOpen(false)} aria-label="Закрыть" className="ml-auto grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:h-10 sm:w-10"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setSolverOpen(false)} aria-label="Закрыть" className="ml-auto grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:h-10 lg:w-10"><X className="h-4 w-4" /></button>
             </div>
             <div className="border-b border-slate-200 px-4 py-2 text-[11px] leading-4 text-slate-500">Обратный расчёт: какая цена нужна под 15 / 25 / 35% маржи и насколько она отличается от текущей.</div>
             <div className="min-h-0 flex-1 p-3">
@@ -596,7 +651,7 @@ export function WbUnitPage() {
               {solverError ? <WbErrorState message={solverError} /> : null}
               {!solverLoading && !solverError && solver && solver.items.length === 0 ? <WbEmptyState>Нужны себестоимость и заказы по SKU.</WbEmptyState> : null}
               {!solverLoading && !solverError && solver && solver.items.length ? (
-                <div className="h-full max-h-[calc(100vh-155px)] overflow-auto rounded-xl border border-slate-200 bg-white" onScroll={(event) => updateSolverWindow(event.currentTarget)}>
+                <div className="h-full max-h-[calc(100dvh-165px)] overflow-auto rounded-xl border border-slate-200 bg-white" onScroll={(event) => updateSolverWindow(event.currentTarget)}>
                   <table className="w-full min-w-[760px] border-collapse text-[11px]">
                     <thead className="sticky top-0 z-20 bg-slate-50 text-slate-500"><tr className="h-[34px]"><th className="sticky left-0 z-30 min-w-[180px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left">Артикул</th><th className="border-b border-r border-slate-200 px-2 text-right">Себест.</th><th className="border-b border-r border-slate-200 px-2 text-right">Выручка/ед</th><th className="border-b border-r border-slate-200 px-2 text-right">Тек. маржа</th>{solver.margins.map((margin) => <th key={margin} className="border-b border-r border-slate-200 px-2 text-right last:border-r-0">под {margin}%</th>)}</tr></thead>
                     <tbody>

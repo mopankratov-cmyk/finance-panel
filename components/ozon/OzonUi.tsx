@@ -146,24 +146,29 @@ export function MetricCard({ label, value, detail, delta, tone = "sky" }: { labe
  * Возврат к серверному порядку нужен там, где он осмысленный сам по себе —
  * например, критичные запасы сверху.
  */
-export function SortableTh({ label, active, dir, onToggle, align = "right", hint }: {
+export function SortableTh({ label, active, dir, onToggle, align = "right", hint, sticky = false }: {
   label: string;
   active: boolean;
   dir: "asc" | "desc";
   onToggle: () => void;
   align?: "left" | "right";
   hint?: string;
+  /** Первая колонка широкой таблицы: остаётся на месте при прокрутке вбок. */
+  sticky?: boolean;
 }) {
   return (
     <th
-      className={`${align === "left" ? "px-4 text-left" : "px-3 text-right"} py-2`}
+      className={`${align === "left" ? "px-4 text-left" : "px-3 text-right"} ${sticky ? "sticky left-0 z-20 bg-slate-50" : ""} py-3 md:py-2`}
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
     >
+      {/* tap-hit растягивает невидимую область нажатия до 44px, не раздувая
+          шапку: заголовки стоят впритык, и пальцем попадали в соседнюю колонку. */}
       <button
         type="button"
         onClick={onToggle}
         title={hint}
-        className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${align === "left" ? "" : "flex-row-reverse"}`}
+        aria-label={hint ? `${label}. ${hint}` : undefined}
+        className={`tap-hit inline-flex items-center gap-1 uppercase tracking-wide hover:text-sky-700 ${active ? "font-bold text-sky-700" : ""} ${align === "left" ? "" : "flex-row-reverse"}`}
       >
         {active
           ? dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
@@ -198,7 +203,10 @@ export function ProductCell({ image, name, code, cabinet }: { image?: string | n
         <img src={image} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-200 object-cover" />
       ) : <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-100" />}
       <div className="min-w-0">
-        <div className="max-w-[360px] truncate text-xs font-semibold text-slate-800" title={name}>{name}</div>
+        {/* На касании подсказки по `title` не существует, поэтому на узком
+            экране название переносится в две строки, а не обрезается: иначе
+            понять, о каком товаре строка, с телефона было нельзя. */}
+        <div className="line-clamp-2 text-xs font-semibold text-slate-800 md:line-clamp-none md:max-w-[360px] md:truncate" title={name}>{name}</div>
         <div className="mt-0.5 flex flex-wrap gap-x-2 text-[10px] text-slate-400">{code && <span>{code}</span>}{cabinet && <span>{cabinet}</span>}</div>
       </div>
     </div>

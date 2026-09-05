@@ -192,20 +192,18 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
             {breakdown ? ` · ${breakdown}` : ""}
           </p>
         </div>
-        <div
-          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-          title="Доступно = остаток − в заданиях. Задание держит товар на складе, пока фулфилмент не отгрузит."
-        >
+        {/* Как считаются обе цифры, раньше говорил только title — то есть на
+            телефоне не говорил никто. Пишем в самой карточке. */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs text-slate-400">В заданиях на отгрузку</p>
           <p className={`text-xl font-bold ${data.totals.reserved > 0 ? "text-red-600" : "text-slate-900"}`}>
             {formatNumber(data.totals.reserved)}
           </p>
-          <p className="mt-1 text-xs text-slate-400">доступно {formatNumber(available)}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            доступно {formatNumber(available)} = остаток − в заданиях
+          </p>
         </div>
-        <div
-          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-          title="Ждём приёмки или пересчитано, но ещё не поставлено на остаток"
-        >
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs text-slate-400">Ожидается, не пересчитано</p>
           <p className={`text-xl font-bold ${data.totals.expected > 0 ? "text-red-600" : "text-slate-900"}`}>
             {formatNumber(data.totals.expected)}

@@ -187,21 +187,21 @@ export default function UsersPage() {
                       )) { e.target.value = u.role; return; }
                       void patch(u.id, { role: e.target.value });
                     }}
-                    className="rounded-md border border-gray-200 px-2 py-1 text-xs disabled:bg-gray-50 disabled:text-gray-400"
+                    className="min-h-11 rounded-md border border-gray-200 px-2 py-1 text-xs disabled:bg-gray-50 disabled:text-gray-400 lg:min-h-0"
                   >
                     {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
-                  <button onClick={() => patch(u.id, { is_active: !u.is_active })} className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100">{u.is_active ? "Выключить" : "Включить"}</button>
+                  <button onClick={() => patch(u.id, { is_active: !u.is_active })} className="inline-flex min-h-11 items-center rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 lg:min-h-0 lg:px-2">{u.is_active ? "Выключить" : "Включить"}</button>
                   {accessCabs(u).length ? (
                     <button
                       onClick={() => setOpenAccess(openAccess === u.id ? null : u.id)}
-                      className={`rounded-md px-2 py-1 text-xs ${openAccess === u.id ? "bg-violet-100 text-violet-700" : "text-gray-500 hover:bg-gray-100"}`}
+                      className={`inline-flex min-h-11 items-center rounded-md px-3 py-1 text-xs lg:min-h-0 lg:px-2 ${openAccess === u.id ? "bg-violet-100 text-violet-700" : "text-gray-500 hover:bg-gray-100"}`}
                     >Доступ по кабинетам</button>
                   ) : null}
                   {rowMsg[u.id] ? (
                     <span className={`text-xs ${rowMsg[u.id].ok ? "text-emerald-600" : "text-red-600"}`}>{rowMsg[u.id].t}</span>
                   ) : null}
-                  <button onClick={() => remove(u.id, u.email)} className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  <button onClick={() => remove(u.id, u.email)} aria-label={`Удалить ${u.email}`} className="tap ml-auto shrink-0 rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
 
                   {openAccess === u.id ? (
                     <div className="w-full rounded-lg border border-gray-200 bg-gray-50 p-3">

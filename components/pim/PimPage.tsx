@@ -114,17 +114,20 @@ export function PimPage() {
   return (
     <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><PackageSearch className="h-5 w-5" /></div>
           <div>
             <h1 className="text-lg font-extrabold tracking-tight">Информация по SKU</h1>
             <p className="text-xs text-gray-500">размеры, материалы и фото-комплектность карточек WB</p>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* Поле поиска на телефоне занимает свою строку: при обязательных 16px
+              шрифта оно не ужимается, и вместе с кабинетом и категориями тянуло
+              шапку за край экрана. */}
+          <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
             <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none sm:w-64" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} type="search" enterKeyHint="search" placeholder="поиск по артикулу/названию"
+              className="w-full min-w-0 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none sm:w-64" />
           </div>
         </div>
       </header>
@@ -151,14 +154,16 @@ export function PimPage() {
               </div>
             </div>
 
-            <AnalyticsTable columns={columns} data={filtered} filename="pim.csv" emptyMessage="Нет карточек по фильтру." />
+            {/* Реестр карточек читают по одной записи, а не сравнивают колонками —
+                на телефоне он показывается карточками, а не едет вбок. */}
+            <AnalyticsTable columns={columns} data={filtered} filename="pim.csv" emptyMessage="Нет карточек по фильтру." cards />
 
             {tests.length > 0 && (
               <div className="mt-8">
                 <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">История тестов обложек</h2>
                 <p className="mb-3 text-xs text-gray-400">Конверсия открытие→корзина за {WINDOW_LABEL} до/после смены главного фото — официальный API не даёт CTR показа в поиске, это честный измеримый proxy.</p>
-                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-                  <table className="w-full text-sm">
+                <div className="table-cards scroll-x rounded-xl border border-gray-200 bg-white md:overflow-hidden">
+                  <table className="w-full text-sm md:min-w-[560px]">
                     <thead className="bg-gray-50 text-xs text-gray-500">
                       <tr>
                         <th className="px-3 py-2 text-left">Товар</th>
@@ -173,11 +178,11 @@ export function PimPage() {
                         const delta = t.before.cartConvPct != null && t.after.cartConvPct != null ? Math.round((t.after.cartConvPct - t.before.cartConvPct) * 10) / 10 : null;
                         return (
                           <tr key={t.id} className="border-t border-gray-100">
-                            <td className="px-3 py-2 font-medium text-gray-800">{t.article}</td>
-                            <td className="px-3 py-2 text-gray-500">{formatTime(t.switchedAt)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-gray-500">{t.before.cartConvPct != null ? `${t.before.cartConvPct}%` : "—"} <span className="text-[10px] text-gray-400">({t.before.days}д)</span></td>
-                            <td className="px-3 py-2 text-right tabular-nums text-gray-500">{t.after.cartConvPct != null ? `${t.after.cartConvPct}%` : "—"} <span className="text-[10px] text-gray-400">({t.after.days}д)</span></td>
-                            <td className={`px-3 py-2 text-right font-semibold tabular-nums ${delta == null ? "text-gray-400" : delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-600" : "text-gray-500"}`}>
+                            <td data-cell="title" className="px-3 py-2 font-medium text-gray-800">{t.article}</td>
+                            <td data-label="Переключено" className="px-3 py-2 text-gray-500">{formatTime(t.switchedAt)}</td>
+                            <td data-label="Конверсия до" className="px-3 py-2 text-right tabular-nums text-gray-500">{t.before.cartConvPct != null ? `${t.before.cartConvPct}%` : "—"} <span className="text-[10px] text-gray-400">({t.before.days}д)</span></td>
+                            <td data-label="Конверсия после" className="px-3 py-2 text-right tabular-nums text-gray-500">{t.after.cartConvPct != null ? `${t.after.cartConvPct}%` : "—"} <span className="text-[10px] text-gray-400">({t.after.days}д)</span></td>
+                            <td data-label="Δ" className={`px-3 py-2 text-right font-semibold tabular-nums ${delta == null ? "text-gray-400" : delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-600" : "text-gray-500"}`}>
                               {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta}%`}
                             </td>
                           </tr>

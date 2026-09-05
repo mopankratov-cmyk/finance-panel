@@ -92,7 +92,7 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
           <p className="mt-1 text-sm text-slate-400">Номер появляется при первом же проведении.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div className="scroll-x rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
@@ -157,30 +157,36 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                     {who ?? "—"}
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <a
-                      // У партии приёмки своя печатная форма: она собирается по
-                      // строкам приёмки, а не по проводке в stock_docs.
-                      href={row.batchId ? `/warehouse/print/receipt/${row.batchId}` : `/warehouse/print/${row.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Печатная форма: бумага под подпись для фулфилмента"
-                      className="mr-3 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-600"
-                    >
-                      <Printer className="h-3.5 w-3.5" /> Печать
-                    </a>
-                    {/* Приёмку сторнируют коррекцией прихода на своей вкладке,
-                        а не отменой документа: у неё другая механика. */}
-                    {status === "posted" && !row.batchId && !row.reversedByNumber && (
-                      <button
-                        onClick={() => void reverse(row)}
-                        disabled={busy === row.id}
-                        title="Вернуть товар в остаток и пометить документ отменённым"
-                        className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-red-600 disabled:opacity-50"
+                    {/* Печать и необратимое сторно стояли в 12 px друг от друга
+                        голым текстом: пальцем промах по «Печать» попадал в
+                        отмену документа. Разводим на 44 px и на gap-3. */}
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                      <a
+                        // У партии приёмки своя печатная форма: она собирается по
+                        // строкам приёмки, а не по проводке в stock_docs.
+                        href={row.batchId ? `/warehouse/print/receipt/${row.batchId}` : `/warehouse/print/${row.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Печатная форма: бумага под подпись для фулфилмента"
+                        className="inline-flex min-h-11 items-center gap-1 text-xs text-slate-500 hover:text-violet-600 lg:min-h-0"
                       >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        {busy === row.id ? "Отменяю…" : "Отменить"}
-                      </button>
-                    )}
+                        <Printer className="h-3.5 w-3.5" /> Печать
+                      </a>
+                      {/* Приёмку сторнируют коррекцией прихода на своей вкладке,
+                          а не отменой документа: у неё другая механика. */}
+                      {status === "posted" && !row.batchId && !row.reversedByNumber && (
+                        <button
+                          onClick={() => void reverse(row)}
+                          disabled={busy === row.id}
+                          // Что сделает отмена, написано в самом подтверждении:
+                          // подсказки по наведению на касании не существует.
+                          className="inline-flex min-h-11 items-center gap-1 text-xs text-slate-500 hover:text-red-600 disabled:opacity-50 lg:min-h-0"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          {busy === row.id ? "Отменяю…" : "Отменить"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
                 );

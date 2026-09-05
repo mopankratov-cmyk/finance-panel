@@ -52,10 +52,13 @@ export function PrintableDiscrepancy({ doc }: { doc: DiscrepancyDoc }) {
   );
 
   return (
-    <div className="mx-auto max-w-[820px] bg-white p-8 text-slate-900 print:p-0">
-      <style>{`@media print { .no-print { display: none !important; } @page { margin: 16mm; } }`}</style>
+    // Акт проверяют с планшета перед подписанием: на узком экране поля вдвое
+    // меньше, а семь колонок едут внутри своего блока, а не тянут страницу.
+    // Печать не страдает — под @media print прокрутка возвращается в поток.
+    <div className="mx-auto max-w-[820px] bg-white p-4 text-slate-900 sm:p-8 print:p-0">
+      <style>{`@media print { .no-print { display: none !important; } .scroll-x { overflow: visible !important; } @page { margin: 16mm; } }`}</style>
 
-      <div className="no-print mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
+      <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <p className="text-sm text-slate-500">Проверьте состав и подпишите оба экземпляра.</p>
         <button
           onClick={() => window.print()}
@@ -97,53 +100,55 @@ export function PrintableDiscrepancy({ doc }: { doc: DiscrepancyDoc }) {
           Расхождений нет: принято {formatNumber(totals.received)} шт из {formatNumber(totals.expected)} ожидаемых, брак не выявлен.
         </p>
       ) : (
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-y border-slate-400 text-xs uppercase tracking-wide text-slate-600">
-              <th className="w-8 py-2 text-left font-semibold">№</th>
-              <th className="py-2 text-left font-semibold">Товар</th>
-              <th className="py-2 text-left font-semibold">Штрихкод</th>
-              <th className="py-2 text-right font-semibold">Ждали</th>
-              <th className="py-2 text-right font-semibold">Приняли</th>
-              <th className="py-2 text-right font-semibold">Расхождение</th>
-              <th className="py-2 text-right font-semibold">Брак</th>
-            </tr>
-          </thead>
-          <tbody>
-            {problems.map((row, index) => {
-              const gap = row.receivedQty - row.expectedQty;
-              return (
-                <tr key={index} className="border-b border-slate-200">
-                  <td className="py-2 text-slate-500">{index + 1}</td>
-                  <td className="py-2">
-                    <span className="font-medium">{variantLabel(row.article, row.sizeLabel)}</span>
-                    {row.nmId && <span className="ml-2 text-xs text-slate-400">WB {row.nmId}</span>}
-                  </td>
-                  <td className="py-2 text-slate-500">{row.barcode ?? "—"}</td>
-                  <td className="py-2 text-right tabular-nums">{formatNumber(row.expectedQty)}</td>
-                  <td className="py-2 text-right font-semibold tabular-nums">{formatNumber(row.receivedQty)}</td>
-                  <td className="py-2 text-right font-semibold tabular-nums">
-                    {gap === 0 ? "—" : `${gap > 0 ? "+" : "−"}${formatNumber(Math.abs(gap))}`}
-                  </td>
-                  <td className="py-2 text-right tabular-nums">{row.defectQty || "—"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="border-t-2 border-slate-400 font-semibold">
-              <td className="py-2" colSpan={3}>Итого по партии</td>
-              <td className="py-2 text-right tabular-nums">{formatNumber(totals.expected)}</td>
-              <td className="py-2 text-right tabular-nums">{formatNumber(totals.received)}</td>
-              <td className="py-2 text-right tabular-nums">
-                {totals.short === 0 && totals.over === 0
-                  ? "—"
-                  : [totals.short ? `−${formatNumber(totals.short)}` : "", totals.over ? `+${formatNumber(totals.over)}` : ""].filter(Boolean).join(" / ")}
-              </td>
-              <td className="py-2 text-right tabular-nums">{totals.defect || "—"}</td>
-            </tr>
-          </tfoot>
-        </table>
+        <div className="scroll-x">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-y border-slate-400 text-xs uppercase tracking-wide text-slate-600">
+                <th className="w-8 py-2 text-left font-semibold">№</th>
+                <th className="py-2 text-left font-semibold">Товар</th>
+                <th className="py-2 text-left font-semibold">Штрихкод</th>
+                <th className="py-2 text-right font-semibold">Ждали</th>
+                <th className="py-2 text-right font-semibold">Приняли</th>
+                <th className="py-2 text-right font-semibold">Расхождение</th>
+                <th className="py-2 text-right font-semibold">Брак</th>
+              </tr>
+            </thead>
+            <tbody>
+              {problems.map((row, index) => {
+                const gap = row.receivedQty - row.expectedQty;
+                return (
+                  <tr key={index} className="border-b border-slate-200">
+                    <td className="py-2 text-slate-500">{index + 1}</td>
+                    <td className="py-2">
+                      <span className="break-anywhere font-medium">{variantLabel(row.article, row.sizeLabel)}</span>
+                      {row.nmId && <span className="ml-2 text-xs text-slate-400">WB {row.nmId}</span>}
+                    </td>
+                    <td className="break-anywhere py-2 text-slate-500">{row.barcode ?? "—"}</td>
+                    <td className="py-2 text-right tabular-nums">{formatNumber(row.expectedQty)}</td>
+                    <td className="py-2 text-right font-semibold tabular-nums">{formatNumber(row.receivedQty)}</td>
+                    <td className="py-2 text-right font-semibold tabular-nums">
+                      {gap === 0 ? "—" : `${gap > 0 ? "+" : "−"}${formatNumber(Math.abs(gap))}`}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">{row.defectQty || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-slate-400 font-semibold">
+                <td className="py-2" colSpan={3}>Итого по партии</td>
+                <td className="py-2 text-right tabular-nums">{formatNumber(totals.expected)}</td>
+                <td className="py-2 text-right tabular-nums">{formatNumber(totals.received)}</td>
+                <td className="py-2 text-right tabular-nums">
+                  {totals.short === 0 && totals.over === 0
+                    ? "—"
+                    : [totals.short ? `−${formatNumber(totals.short)}` : "", totals.over ? `+${formatNumber(totals.over)}` : ""].filter(Boolean).join(" / ")}
+                </td>
+                <td className="py-2 text-right tabular-nums">{totals.defect || "—"}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
 
       {problems.length > 0 && (
@@ -156,7 +161,7 @@ export function PrintableDiscrepancy({ doc }: { doc: DiscrepancyDoc }) {
         </p>
       )}
 
-      <div className="mt-12 grid grid-cols-2 gap-12 text-sm">
+      <div className="mt-12 grid gap-8 text-sm sm:grid-cols-2 sm:gap-12 print:grid-cols-2 print:gap-12">
         <div>
           <p className="text-slate-500">Принял</p>
           <div className="mt-8 border-b border-slate-400" />

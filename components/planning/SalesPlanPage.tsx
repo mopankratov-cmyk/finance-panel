@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionableError } from "@/components/ui/ActionableError";
+import { Modal } from "@/components/ui/Modal";
 import {
   applySalesPlanSuggestion,
   buildSalesPlanSuggestion,
@@ -26,6 +27,7 @@ import {
   calculateSalesPlanSummary,
   calculateSalesPlanStockRiskSummary,
   createEmptySalesPlan,
+  daysInSalesPlanMonth,
   getApprovedSalesPlanForMonth,
   getSalesPlanMonthState,
   isSalesPlanCatalogResponseCurrent,
@@ -125,6 +127,8 @@ export function SalesPlanPage({
   const [selectedCell, setSelectedCell] = useState<SalesPlanCellPosition | null>(null);
   const [fill, setFill] = useState<SalesPlanFillState | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnComment, setReturnComment] = useState("");
   const [catalog, setCatalog] = useState<SalesPlanCatalogSku[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -143,6 +147,12 @@ export function SalesPlanPage({
   useEffect(() => {
     if (!visibleMonths.includes(activeMonth)) setActiveMonth(visibleMonths[0]);
   }, [activeMonth, visibleMonths]);
+
+  // Выбор ячейки — это пара «строка + номер дня», и номер живёт только внутри
+  // своего месяца: 30-е число есть в январе и нет в феврале. Пока выбор
+  // переживал переключение вкладки месяца, «Заполнить по» считало диапазон от
+  // дня, которого в новом месяце нет, и записывало значение мимо календаря.
+  useEffect(() => { setSelectedCell(null); }, [activeMonth]);
 
   useEffect(() => {
     if (!ready || !exactCabinet) {
@@ -396,26 +406,33 @@ export function SalesPlanPage({
     setAddOpen(false);
   }, [activeMonth, cabinetId, marketplace, year]);
 
+  const fillDays = useCallback((rowId: string, from: number, to: number, value: number) => {
+    editPlan((current) => ({
+      ...current,
+      rows: current.rows.map((row) => {
+        if (row.id !== rowId) return row;
+        const values = [...(row.months[activeMonth] ?? [])];
+        for (let day = Math.min(from, to); day <= Math.max(from, to); day++) values[day] = value;
+        return { ...row, months: { ...row.months, [activeMonth]: values } };
+      }),
+    }));
+  }, [activeMonth, editPlan]);
+
+  // Жест протяжки заканчивается указательным событием, а не мышиным: pointerup
+  // приходит и от мыши, и от пальца, поэтому ветка кода одна.
   useEffect(() => {
     if (!fill) return;
     const finish = () => {
-      const currentFill = fill;
-      editPlan((current) => ({
-        ...current,
-        rows: current.rows.map((row) => {
-          if (row.id !== currentFill.rowId) return row;
-          const values = [...(row.months[activeMonth] ?? [])];
-          const from = Math.min(currentFill.day, currentFill.endDay);
-          const to = Math.max(currentFill.day, currentFill.endDay);
-          for (let day = from; day <= to; day++) values[day] = currentFill.value;
-          return { ...row, months: { ...row.months, [activeMonth]: values } };
-        }),
-      }));
+      fillDays(fill.rowId, fill.day, fill.endDay, fill.value);
       setFill(null);
     };
-    document.addEventListener("mouseup", finish, { once: true });
-    return () => document.removeEventListener("mouseup", finish);
-  }, [activeMonth, editPlan, fill]);
+    document.addEventListener("pointerup", finish);
+    document.addEventListener("pointercancel", finish);
+    return () => {
+      document.removeEventListener("pointerup", finish);
+      document.removeEventListener("pointercancel", finish);
+    };
+  }, [fill, fillDays]);
 
   const updateRow = (rowId: string, patch: Partial<SalesPlanRow>) => editPlan((current) => ({ ...current, rows: current.rows.map((row) => row.id === rowId ? { ...row, ...patch } : row) }));
   const updateDay = (rowId: string, day: number, value: number) => editPlan((current) => ({ ...current, rows: current.rows.map((row) => {
@@ -457,14 +474,19 @@ export function SalesPlanPage({
     if (saved) setMode("approved");
   };
 
+  // Комментарий возврата берём своим окном, а не window.prompt: системный
+  // диалог на телефоне даёт однострочное поле без нормальной правки длинного
+  // текста, а в режиме «на экран Домой» часть сборок Safari подавляет его
+  // вовсе — и возврат тихо не выполнялся бы.
   const returnPlan = async () => {
     if (!plan) return;
-    const rawComment = window.prompt("Почему возвращаем план? Укажите, что нужно исправить.");
-    const comment = normalizeSalesPlanReturnComment(rawComment);
+    const comment = normalizeSalesPlanReturnComment(returnComment);
     if (!comment) {
       setActionError("Укажите комментарий возврата: что исправить в плане");
       return;
     }
+    setReturnOpen(false);
+    setReturnComment("");
     await persist("return", plan, false, { comment });
   };
 
@@ -484,6 +506,8 @@ export function SalesPlanPage({
   const displayPlan = mode === "approved" ? activeApprovedPlan : plan;
   const displayMonthState = displayPlan ? getSalesPlanMonthState(displayPlan, activeMonth) : null;
   const readOnly = !canWrite || mode !== "edit" || displayMonthState?.status !== "draft";
+  const selectedRow = selectedCell ? displayPlan?.rows.find((row) => row.id === selectedCell.rowId) ?? null : null;
+  const selectedValue = selectedRow && selectedCell ? Number(selectedRow.months[activeMonth]?.[selectedCell.day] ?? 0) : 0;
   const summary = displayPlan ? calculateSalesPlanSummary(displayPlan, visibleMonths) : null;
   const stockRisk = displayPlan ? calculateSalesPlanStockRiskSummary(displayPlan, activeMonth) : null;
   const monthCountWord = visibleMonths.length === 1 ? "месяц" : visibleMonths.length < 5 ? "месяца" : "месяцев";
@@ -569,7 +593,7 @@ export function SalesPlanPage({
   };
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-20 md:pb-6">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-20 md:pb-6">
       <header className="border-b border-slate-200 bg-white">
         <div className="flex flex-col gap-3 px-3 py-4 sm:px-6 xl:flex-row xl:items-center">
           <div className="flex min-w-0 items-start gap-3">
@@ -580,12 +604,14 @@ export function SalesPlanPage({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
-            <div className="flex h-11 items-center rounded-lg border border-slate-200 bg-slate-50 p-1 sm:h-9">
-              <button type="button" onClick={() => setYear((value) => value - 1)} aria-label="Предыдущий год" className="grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 sm:h-7 sm:w-7"><ChevronLeft className="h-4 w-4" /></button>
+            {/* Плотность привязана к lg, а не к sm: sm — это как раз iPad Pro 11",
+                устройство сенсорное, и ужимать на нём кнопки до 28px нельзя. */}
+            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1 lg:h-9">
+              <button type="button" onClick={() => setYear((value) => value - 1)} aria-label="Предыдущий год" className="grid h-11 w-11 place-items-center rounded-md text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:h-7 lg:w-7"><ChevronLeft className="h-4 w-4" /></button>
               <span className="min-w-12 text-center text-xs font-bold tabular-nums text-slate-700">{year}</span>
-              <button type="button" onClick={() => setYear((value) => value + 1)} aria-label="Следующий год" className="grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 sm:h-7 sm:w-7"><ChevronRight className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setYear((value) => value + 1)} aria-label="Следующий год" className="grid h-11 w-11 place-items-center rounded-md text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:h-7 lg:w-7"><ChevronRight className="h-4 w-4" /></button>
             </div>
-            <div className="flex h-11 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 sm:h-9" role="tablist" aria-label="Режим плана">
+            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 lg:h-9" role="tablist" aria-label="Режим плана">
               <ModeButton active={mode === "edit"} selectedClass={selectedTab} onClick={() => setMode("edit")}>Редактирование</ModeButton>
               <ModeButton active={mode === "approved"} selectedClass={selectedTab} onClick={() => setMode("approved")}>Утверждён</ModeButton>
               <ModeButton active={mode === "rnp"} selectedClass={selectedTab} onClick={() => setMode("rnp")}>РНП: план/факт</ModeButton>
@@ -606,7 +632,7 @@ export function SalesPlanPage({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {plan ? <span aria-live="polite" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium ${saveError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : dirty ? <Clock3 className="h-3.5 w-3.5 text-amber-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}{saving ? "Сохраняем…" : saveError ? "Ошибка автосохранения" : dirty ? "Есть изменения" : "Сохранено автоматически"}</span> : null}
-            {activeMonthState?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => void returnPlan()} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-9">Вернуть</button> : null}
+            {activeMonthState?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => { setReturnComment(""); setReturnOpen(true); }} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 lg:min-h-9">Вернуть</button> : null}
             {canWrite && mode === "edit" ? !plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
               : activeMonthState?.status === "draft" ? <ActionButton primary={primary} disabled={submitDisabled} title={submitDisabledHint} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
                 : activeMonthState?.status === "review" && elevated ? <ActionButton primary={primary} disabled={saving} onClick={() => void approvePlan()} icon={FileCheck2}>Утвердить</ActionButton>
@@ -625,11 +651,11 @@ export function SalesPlanPage({
             : mode === "rnp" ? <>
               {approvedPlan || Object.keys(approvedByMonth).length > 0 ? <section className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Период план-факт">
                   <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
-                    <div className="flex w-max min-w-full gap-1" role="tablist" aria-label="Месяц план-факт">
+                    <div className="flex w-max min-w-full gap-2 lg:gap-1" role="tablist" aria-label="Месяц план-факт">
                       {visibleMonths.map((monthKey) => {
                         const monthPlan = getApprovedSalesPlanForMonth(approvedEnvelope, monthKey);
                         const monthTotal = monthPlan ? calculateSalesPlanSummary(monthPlan, [monthKey]).orders : 0;
-                        return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-8 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{monthPlan ? number(monthTotal) : "—"}</span></button>;
+                        return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition lg:min-h-8 ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{monthPlan ? number(monthTotal) : "—"}</span></button>;
                       })}
                     </div>
                   </div>
@@ -661,23 +687,36 @@ export function SalesPlanPage({
                   <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3">
                     <div className="flex flex-col gap-3">
                       <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1">
-                        <div className="flex w-max min-w-full gap-1" role="tablist" aria-label="Месяц плана">
+                        <div className="flex w-max min-w-full gap-2 lg:gap-1" role="tablist" aria-label="Месяц плана">
                           {visibleMonths.map((monthKey) => {
                             const monthTotal = calculateSalesPlanSummary(displayPlan, [monthKey]).orders;
                             const state = getSalesPlanMonthState(displayPlan, monthKey);
                             const badge = state.status === "approved" ? "утв" : state.status === "review" ? "согл" : number(monthTotal);
-                            return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-8 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{badge}</span></button>;
+                            return <button key={monthKey} type="button" role="tab" aria-selected={activeMonth === monthKey} onClick={() => setActiveMonth(monthKey)} className={`min-h-11 min-w-[104px] whitespace-nowrap rounded-md border px-2 text-[11px] font-semibold transition lg:min-h-8 ${activeMonth === monthKey ? `${selectedTab} border-transparent` : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{salesPlanMonthLabel(year, monthKey, false)} <span className={`ml-1 rounded px-1 py-0.5 text-[9px] ${activeMonth === monthKey ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{badge}</span></button>;
                           })}
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                        {!readOnly ? <button type="button" onClick={openSuggestionPreview} disabled={catalogLoading || !hasDemandBasis} title={catalogLoading ? "Загружается основание плана" : !hasDemandBasis ? "Нет фактического спроса за период — предлагать план не от чего" : undefined} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 ${soft}`}><Wand2 className="h-4 w-4" /> Предложить план</button> : null}
-                        {stockRisk ? <button type="button" aria-pressed={stockRiskOnly} onClick={() => setStockRiskOnly((value) => !value)} className={`inline-flex min-h-11 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition sm:min-h-9 ${stockRiskOnly ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>Покажет дефицит <span className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-[10px]">{stockRisk.shortageRows}</span></button> : null}
-                        <label className="relative block min-w-[220px]"><span className="sr-only">Поиск в плане</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Артикул, цвет или ID" className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 sm:h-9" /></label>
-                        {!readOnly ? <button type="button" onClick={() => setAddOpen(true)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 sm:min-h-9 ${soft}`}><PackagePlus className="h-4 w-4" /> Добавить SKU</button> : null}
+                        {!readOnly ? <button type="button" onClick={openSuggestionPreview} disabled={catalogLoading || !hasDemandBasis} title={catalogLoading ? "Загружается основание плана" : !hasDemandBasis ? "Нет фактического спроса за период — предлагать план не от чего" : undefined} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-9 ${soft}`}><Wand2 className="h-4 w-4" /> Предложить план</button> : null}
+                        {stockRisk ? <button type="button" aria-pressed={stockRiskOnly} onClick={() => setStockRiskOnly((value) => !value)} className={`inline-flex min-h-11 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition lg:min-h-9 ${stockRiskOnly ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>Покажет дефицит <span className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-[10px]">{stockRisk.shortageRows}</span></button> : null}
+                        <label className="relative block min-w-[220px]"><span className="sr-only">Поиск в плане</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Артикул, цвет или ID" className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 lg:h-9" /></label>
+                        {!readOnly ? <button type="button" onClick={() => setAddOpen(true)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 lg:min-h-9 ${soft}`}><PackagePlus className="h-4 w-4" /> Добавить SKU</button> : null}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-100 pt-3 text-[11px] text-slate-500"><span>Фиолетовая/голубая рамка — выбранная ячейка заказов</span><span>Потяните маркер в углу, чтобы заполнить диапазон</span><span>Раскройте цвет для выкупа, выручки и рекламы по дням</span></div>
+                    <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
+                      <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-slate-500"><span>Фиолетовая/голубая рамка — выбранная ячейка заказов</span><span className="lg:hidden">Протяните маркер в углу ячейки или заполните диапазон кнопкой ниже</span><span className="hidden lg:inline">Потяните маркер в углу, чтобы заполнить диапазон</span><span>Раскройте цвет для выкупа, выручки и рекламы по дням</span></div>
+                      {!readOnly && selectedCell && selectedRow ? (
+                        <SalesPlanFillRange
+                          key={`${selectedCell.rowId}:${selectedCell.day}`}
+                          variant={selectedRow.variant}
+                          day={selectedCell.day}
+                          days={daysInSalesPlanMonth(year, activeMonth)}
+                          value={selectedValue}
+                          monthLabel={salesPlanMonthLabel(year, activeMonth, false)}
+                          onFill={(endDay) => fillDays(selectedCell.rowId, selectedCell.day, endDay, selectedValue)}
+                        />
+                      ) : null}
+                    </div>
                   </section>
 
                   <SalesPlanTable
@@ -701,6 +740,23 @@ export function SalesPlanPage({
                 </>}
       </div>
 
+      <Modal
+        open={returnOpen}
+        onClose={() => setReturnOpen(false)}
+        title="Вернуть план на доработку"
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => setReturnOpen(false)} className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">Отмена</button>
+            <button type="button" disabled={saving || !normalizeSalesPlanReturnComment(returnComment)} onClick={() => void returnPlan()} className="min-h-11 rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50">Вернуть автору</button>
+          </div>
+        }
+      >
+        <label className="grid gap-1.5 text-xs font-semibold text-slate-700">
+          Что нужно исправить в плане
+          <textarea value={returnComment} onChange={(event) => setReturnComment(event.target.value)} rows={4} placeholder="Например: завышен план по NV-08-35, пересчитайте вторую половину месяца" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-100" />
+        </label>
+        <p className="mt-2 text-xs text-slate-500">Комментарий увидит автор плана в шапке месяца — без него возврат не отправляется.</p>
+      </Modal>
       {suggestionPreview && plan ? <SalesPlanSuggestionModal suggestion={suggestionPreview} onClose={() => setSuggestionPreview(null)} onApplyEmpty={() => applySuggestion(false)} onReplaceAll={() => applySuggestion(true)} /> : null}
       {addOpen && activeMonthState?.status === "draft" && plan ? <SalesPlanAddSkuModal marketplace={marketplace} year={year} monthKey={activeMonth} catalog={catalog} catalogLoading={catalogLoading} catalogError={catalogError} existingVariants={plan.rows.map((row) => row.variant)} onClose={() => setAddOpen(false)} onAdd={addRows} /> : null}
     </div>
@@ -708,11 +764,47 @@ export function SalesPlanPage({
 }
 
 function ModeButton({ active, selectedClass, onClick, children }: { active: boolean; selectedClass: string; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`min-h-9 rounded-md px-2.5 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 sm:min-h-7 ${active ? selectedClass : "text-slate-500 hover:bg-white hover:text-slate-800"}`}>{children}</button>;
+  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`min-h-11 rounded-md px-2.5 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:min-h-7 ${active ? selectedClass : "text-slate-500 hover:bg-white hover:text-slate-800"}`}>{children}</button>;
 }
 
 function ActionButton({ primary, disabled, title, onClick, icon: Icon, children }: { primary: string; disabled: boolean; title?: string; onClick: () => void; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
-  return <button type="button" disabled={disabled} title={title} onClick={onClick} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-55 sm:min-h-9 ${primary}`}><Icon className="h-4 w-4" />{children}</button>;
+  return <button type="button" disabled={disabled} title={title} onClick={onClick} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-55 lg:min-h-9 ${primary}`}><Icon className="h-4 w-4" />{children}</button>;
+}
+
+/**
+ * Заполнение диапазона дней одним значением без перетаскивания.
+ *
+ * Маркер в углу ячейки после перевода на указательные события работает и
+ * пальцем, но попасть в него на ходу удаётся не всегда, а разложить значение
+ * до конца месяца нужно каждому и постоянно. Здесь тот же результат явным
+ * выбором последнего дня — без жеста и без промахов.
+ *
+ * Только там, где нет мыши (`lg:hidden`). На десктопе протяжка маркером
+ * попадает без промаха, а сам блок появлялся и исчезал вместе с выбором ячейки
+ * и каждым кликом сдвигал таблицу на свою высоту — ячейка уезжала из-под
+ * курсора, и следующий клик попадал в соседний день.
+ */
+function SalesPlanFillRange({ variant, day, days, value, monthLabel, onFill }: { variant: string; day: number; days: number; value: number; monthLabel: string; onFill: (endDay: number) => void }) {
+  // Границы месяца держим здесь, а не в разметке: и подпись, и список опций, и
+  // передаваемый наружу день должны говорить об одном и том же дне. Значение из
+  // состояния зажимаем при отрисовке — тогда даже рассинхронизация выбора и
+  // месяца не даст записать план в 31 февраля.
+  const lastDay = Math.max(0, days - 1);
+  const startDay = Math.min(day, lastDay);
+  const [endDay, setEndDay] = useState(lastDay);
+  const safeEndDay = Math.min(Math.max(endDay, startDay), lastDay);
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600 lg:hidden">
+      <span className="min-w-0 break-anywhere">Выбрано: <b className="text-slate-800">{variant}</b> · {startDay + 1} {monthLabel} · {number(value)} шт.</span>
+      <label className="flex items-center gap-1.5">
+        Заполнить по
+        <select value={safeEndDay} onChange={(event) => setEndDay(Number(event.target.value))} className="min-h-11 rounded-md border border-slate-200 bg-white px-2 font-semibold text-slate-700 lg:min-h-8">
+          {Array.from({ length: lastDay - startDay + 1 }, (_, index) => startDay + index).map((option) => <option key={option} value={option}>{option + 1} {monthLabel}</option>)}
+        </select>
+      </label>
+      <button type="button" onClick={() => onFill(safeEndDay)} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:min-h-8">Заполнить</button>
+    </div>
+  );
 }
 
 function Metric({ label, value, detail, tone = "slate" }: { label: string; value: string; detail: string; tone?: "slate" | "amber" | "rose" }) {
@@ -817,48 +909,50 @@ function SalesPlanSuggestionModal({
 }) {
   const changedRows = suggestion.rows.filter((row) => row.changedCells > 0);
   const previewRows = changedRows.length ? changedRows : suggestion.rows.slice(0, 8);
+  // Окно переписывает дневные значения всего месяца — цена промаха высокая,
+  // поэтому берём общий примитив: Escape, ловушка фокуса, неподвижный фон и
+  // кнопки, которые не уезжают под клавиатуру.
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="sales-plan-suggestion-title">
-      <button type="button" aria-label="Закрыть предложение плана" className="absolute inset-0 bg-slate-950/50" onClick={onClose} />
-      <div className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
-          <h2 id="sales-plan-suggestion-title" className="text-lg font-bold text-slate-900">Предложить план</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">Заказы RNP за 7 дней делятся на 7 и умножаются на сезонность предмета из MPSTATS. Слишком резкие рыночные пики ограничиваются безопасным пределом. Коэффициент спроса пока равен 1,0; по умолчанию заполняются только пустые ячейки.</p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-          <div className="grid gap-2 sm:grid-cols-4">
-            <MiniMetric label="Текущий план" value={`${number(suggestion.currentOrders)} шт.`} detail="выбранный месяц" />
-            <MiniMetric label="Предложение" value={`${number(suggestion.proposedOrders)} шт.`} detail={`${suggestion.deltaOrders >= 0 ? "+" : ""}${number(suggestion.deltaOrders)} шт.`} />
-            <MiniMetric label="Изменится ячеек" value={number(suggestion.changedCells)} detail="ручные заполненные не трогаем" />
-            <MiniMetric label="SKU в расчёте" value={number(suggestion.rows.length)} detail={`${changedRows.length} с изменениями`} />
-          </div>
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-            <table className="min-w-full text-[11px]">
-              <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
-                <tr><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">База 7д</th><th className="px-3 py-2 text-left">MPSTATS</th><th className="px-3 py-2 text-right">План</th><th className="px-3 py-2 text-left">Сигналы</th></tr>
-              </thead>
-              <tbody>
-                {previewRows.map((row) => (
-                  <tr key={row.rowId} className="border-t border-slate-100">
-                    <td className="px-3 py-2 font-semibold text-slate-800">{row.variant}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{number(row.avgDaily7)} шт./день</td>
-                    <td className="px-3 py-2"><span className="block font-medium text-slate-700">{row.seasonalitySubject || "Предмет не определён"}</span><span className="block text-[10px] tabular-nums text-slate-400">{row.seasonalityRawFactor > row.seasonalityFactor + 0.01 ? `рынок ${row.seasonalityRawFactor.toLocaleString("ru-RU")}× → применено ${row.seasonalityFactor.toLocaleString("ru-RU")}×` : `применено ${row.seasonalityFactor.toLocaleString("ru-RU")}×`} · спрос {row.demandFactor.toLocaleString("ru-RU")}×</span></td>
-                    <td className="px-3 py-2 text-right tabular-nums"><span className="font-semibold">{number(row.currentOrders)} → {number(row.proposedOrders)}</span><span className="block text-[10px] text-slate-400">{number(row.dailyOrders)} шт./день</span></td>
-                    <td className="px-3 py-2"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{confidenceLabels[row.confidence]}</span>{row.warnings.length ? <span className="ml-1 text-amber-700">{row.warnings.join(" · ")}</span> : null}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {suggestion.changedCells === 0 ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Нет пустых ячеек для безопасного заполнения. Можно заменить все значения отдельным подтверждением.</p> : null}
-        </div>
-        <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+    <Modal
+      open
+      onClose={onClose}
+      title="Предложить план"
+      size="xl"
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
           <button type="button" onClick={onClose} className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100">Отмена</button>
           <button type="button" onClick={onReplaceAll} className="min-h-11 rounded-lg border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-700 hover:bg-rose-50">Заменить все</button>
           <button type="button" onClick={onApplyEmpty} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"><Wand2 className="h-4 w-4" /> Заполнить пустые</button>
         </div>
+      }
+    >
+      <p className="mb-4 text-xs leading-5 text-slate-500">Заказы RNP за 7 дней делятся на 7 и умножаются на сезонность предмета из MPSTATS. Слишком резкие рыночные пики ограничиваются безопасным пределом. Коэффициент спроса пока равен 1,0; по умолчанию заполняются только пустые ячейки.</p>
+      <div className="grid gap-2 sm:grid-cols-4">
+        <MiniMetric label="Текущий план" value={`${number(suggestion.currentOrders)} шт.`} detail="выбранный месяц" />
+        <MiniMetric label="Предложение" value={`${number(suggestion.proposedOrders)} шт.`} detail={`${suggestion.deltaOrders >= 0 ? "+" : ""}${number(suggestion.deltaOrders)} шт.`} />
+        <MiniMetric label="Изменится ячеек" value={number(suggestion.changedCells)} detail="ручные заполненные не трогаем" />
+        <MiniMetric label="SKU в расчёте" value={number(suggestion.rows.length)} detail={`${changedRows.length} с изменениями`} />
       </div>
-    </div>
+      <div className="scroll-x mt-4 rounded-xl border border-slate-200">
+        <table className="min-w-full text-[11px]">
+          <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
+            <tr><th className="px-3 py-2 text-left">SKU</th><th className="px-3 py-2 text-right">База 7д</th><th className="px-3 py-2 text-left">MPSTATS</th><th className="px-3 py-2 text-right">План</th><th className="px-3 py-2 text-left">Сигналы</th></tr>
+          </thead>
+          <tbody>
+            {previewRows.map((row) => (
+              <tr key={row.rowId} className="border-t border-slate-100">
+                <td className="px-3 py-2 font-semibold text-slate-800">{row.variant}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{number(row.avgDaily7)} шт./день</td>
+                <td className="px-3 py-2"><span className="block font-medium text-slate-700">{row.seasonalitySubject || "Предмет не определён"}</span><span className="block text-[10px] tabular-nums text-slate-400">{row.seasonalityRawFactor > row.seasonalityFactor + 0.01 ? `рынок ${row.seasonalityRawFactor.toLocaleString("ru-RU")}× → применено ${row.seasonalityFactor.toLocaleString("ru-RU")}×` : `применено ${row.seasonalityFactor.toLocaleString("ru-RU")}×`} · спрос {row.demandFactor.toLocaleString("ru-RU")}×</span></td>
+                <td className="px-3 py-2 text-right tabular-nums"><span className="font-semibold">{number(row.currentOrders)} → {number(row.proposedOrders)}</span><span className="block text-[10px] text-slate-400">{number(row.dailyOrders)} шт./день</span></td>
+                <td className="px-3 py-2"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{confidenceLabels[row.confidence]}</span>{row.warnings.length ? <span className="ml-1 text-amber-700">{row.warnings.join(" · ")}</span> : null}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {suggestion.changedCells === 0 ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Нет пустых ячеек для безопасного заполнения. Можно заменить все значения отдельным подтверждением.</p> : null}
+    </Modal>
   );
 }
 
@@ -922,8 +1016,8 @@ function EmptyPlan({ mode, marketplace, workingStatus, onCreate, onOpenEdit }: {
 }
 
 function CabinetRequired({ marketplace }: { marketplace: SalesPlanMarketplace }) {
-  return <div className="grid min-h-[calc(100vh-54px)] place-items-center bg-[#f6f7f9] p-6"><div className="max-w-md rounded-2xl border border-amber-200 bg-white p-7 text-center shadow-sm"><LockKeyhole className="mx-auto h-8 w-8 text-amber-500" /><h1 className="mt-4 text-lg font-bold text-slate-900">Выберите один кабинет {marketplace === "wb" ? "WB" : "Ozon"}</h1><p className="mt-2 text-sm leading-6 text-slate-500">Общий план «Все кабинеты» и план группы нельзя редактировать или утверждать. Выберите конкретное юридическое лицо в переключателе сверху.</p></div></div>;
+  return <div className="grid min-h-[calc(100dvh-54px)] place-items-center bg-[#f6f7f9] p-6"><div className="max-w-md rounded-2xl border border-amber-200 bg-white p-7 text-center shadow-sm"><LockKeyhole className="mx-auto h-8 w-8 text-amber-500" /><h1 className="mt-4 text-lg font-bold text-slate-900">Выберите один кабинет {marketplace === "wb" ? "WB" : "Ozon"}</h1><p className="mt-2 text-sm leading-6 text-slate-500">Общий план «Все кабинеты» и план группы нельзя редактировать или утверждать. Выберите конкретное юридическое лицо в переключателе сверху.</p></div></div>;
 }
 
-function PageLoading({ marketplace }: { marketplace: SalesPlanMarketplace }) { return <div className="flex min-h-[calc(100vh-54px)] items-center justify-center gap-2 bg-[#f6f7f9] text-sm text-slate-500"><Loader2 className={`h-5 w-5 animate-spin motion-reduce:animate-none ${marketplace === "wb" ? "text-violet-600" : "text-sky-600"}`} /> Загружаем кабинеты…</div>; }
+function PageLoading({ marketplace }: { marketplace: SalesPlanMarketplace }) { return <div className="flex min-h-[calc(100dvh-54px)] items-center justify-center gap-2 bg-[#f6f7f9] text-sm text-slate-500"><Loader2 className={`h-5 w-5 animate-spin motion-reduce:animate-none ${marketplace === "wb" ? "text-violet-600" : "text-sky-600"}`} /> Загружаем кабинеты…</div>; }
 function PageError({ message, onRetry }: { message: string; onRetry: () => void }) { return <ActionableError message={message} label="План продаж" onRetry={onRetry} className="mx-3 my-4 sm:mx-6" />; }

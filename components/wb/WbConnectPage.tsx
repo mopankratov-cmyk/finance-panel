@@ -108,7 +108,7 @@ export function WbConnectPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] px-3 py-5 pb-20 sm:px-6 md:pb-6">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] px-3 py-5 pb-20 sm:px-6 md:pb-6">
       <div className="mx-auto max-w-5xl space-y-4">
         <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-start gap-3">

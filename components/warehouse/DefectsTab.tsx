@@ -188,7 +188,7 @@ export function DefectsTab({
         <div className="flex items-center justify-end rounded-xl border border-slate-200 bg-white p-4">
           <button
             onClick={() => void openDraft()}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"
+            className="flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-sm font-medium text-white hover:bg-violet-700 lg:min-h-0 lg:py-2"
           >
             <Plus className="h-4 w-4" /> Создать брак
           </button>
@@ -199,7 +199,7 @@ export function DefectsTab({
         <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-medium text-slate-900">Новый брак</p>
-            <button onClick={() => { setDraft(null); forget(); }} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+            <button onClick={() => { setDraft(null); forget(); }} aria-label="Закрыть форму" className="tap-hit -mr-1 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
           </div>
 
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -240,7 +240,7 @@ export function DefectsTab({
                     ...draft,
                     lines: draft.lines.map((item, i) => i === index ? { ...item, variantId: e.target.value } : item),
                   })}
-                  className="min-w-64 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
+                  className="min-h-11 w-full min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 sm:min-w-64 lg:min-h-0 lg:py-1.5"
                 >
                   <option value="">выберите позицию со склада</option>
                   {available.map((row) => (
@@ -257,12 +257,13 @@ export function DefectsTab({
                     lines: draft.lines.map((item, i) => i === index ? { ...item, qty: e.target.value.replace(/[^\d]/g, "") } : item),
                   })}
                   placeholder="кол-во"
-                  className="w-28 rounded-lg border border-slate-200 px-3 py-1.5 text-right text-sm text-slate-700 placeholder:text-slate-300"
+                  className="min-h-11 w-28 rounded-lg border border-slate-200 px-3 text-right text-sm text-slate-700 placeholder:text-slate-300 lg:min-h-0 lg:py-1.5"
                 />
                 {draft.lines.length > 1 && (
                   <button
                     onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_, i) => i !== index) })}
-                    className="text-slate-400 hover:text-red-600"
+                    aria-label="Убрать позицию"
+                    className="tap-hit text-slate-400 hover:text-red-600"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -274,14 +275,14 @@ export function DefectsTab({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               onClick={() => setDraft({ ...draft, lines: [...draft.lines, { variantId: "", qty: "" }] })}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600"
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 lg:min-h-0 lg:py-1.5"
             >
               + позиция
             </button>
             <button
               onClick={() => void submit()}
               disabled={saving}
-              className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
             >
               {saving ? "Списываю…" : "Списать"}
             </button>
@@ -298,7 +299,7 @@ export function DefectsTab({
           <p className="mt-1 text-sm text-slate-400">Брак при приёмке попадает сюда сам, отдельной строкой.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div className="scroll-x rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
@@ -345,8 +346,9 @@ export function DefectsTab({
                       <button
                         onClick={() => void revert(row)}
                         disabled={busy === row.id}
-                        title="Сторно: товар вернётся в остаток, запись останется в журнале с пометкой"
-                        className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-700 disabled:opacity-50"
+                        // Последствие названо в подтверждении: на касании
+                        // подсказки по наведению не бывает.
+                        className="inline-flex min-h-11 items-center gap-1 text-xs text-slate-500 hover:text-violet-700 disabled:opacity-50 lg:min-h-0"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                         {busy === row.id ? "Возвращаю…" : "Вернуть в остаток"}

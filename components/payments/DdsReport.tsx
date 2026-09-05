@@ -87,7 +87,7 @@ export function DdsReport({
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
             />
           </div>
           <div>
@@ -96,7 +96,7 @@ export function DdsReport({
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
             />
           </div>
           <div>
@@ -136,7 +136,7 @@ export function DdsReport({
           <h2 className="font-semibold text-slate-900">Расходы по компаниям</h2>
           <p className="mt-1 text-xs text-slate-400">Только фактические расходы; технические переводы между счетами исключены.</p>
         </div>
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-500">
@@ -175,7 +175,7 @@ export function DdsReport({
           const technical = g.section === TECHNICAL_SECTION;
           return (
             <Card key={g.section} className={technical ? "opacity-80" : ""}>
-              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-slate-100 px-4 py-3 sm:px-5">
                 <span className="font-semibold text-slate-900">
                   {g.section}
                   {technical && (
@@ -188,12 +188,12 @@ export function DdsReport({
               </div>
               <div className="divide-y divide-slate-50">
                 {g.rows.map((r) => (
-                  <div key={r.category} className="flex items-center justify-between px-5 py-2 text-sm">
-                    <span className="text-slate-600">{r.category}</span>
-                    <div className="flex items-center gap-4 tabular-nums">
+                  <div key={r.category} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 text-sm sm:px-5">
+                    <span className="min-w-0 text-slate-600">{r.category}</span>
+                    <div className="flex flex-1 flex-wrap items-center justify-end gap-x-4 tabular-nums">
                       {r.income > 0 && <span className="text-emerald-600">+{fmt(r.income)}</span>}
                       {r.expense > 0 && <span className="text-red-500">−{fmt(r.expense)}</span>}
-                      <span className={`w-28 text-right font-medium ${net(r.net)}`}>{fmt(r.net)} ₽</span>
+                      <span className={`min-w-0 text-right font-medium sm:w-28 ${net(r.net)}`}>{fmt(r.net)} ₽</span>
                     </div>
                   </div>
                 ))}

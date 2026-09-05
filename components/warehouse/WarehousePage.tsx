@@ -208,12 +208,15 @@ export function WarehousePage() {
       {entityId && (
         <TodoBell entityId={entityId} refreshKey={refreshKey} visibleTabs={visibleTabs} onGo={setTab} />
       )}
-      <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2">
-        <Building2 className="h-4 w-4 text-slate-400" />
+      {/* Ширина select — по самому длинному юрлицу («ИП Панкратов Максим
+          Олегович» при обязательных 16 px даёт под 280 px). Без min-w-0 этот
+          один элемент не давал строке сжаться и тянул вбок всю страницу. */}
+      <div className="flex min-w-0 max-w-full flex-1 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 sm:flex-none">
+        <Building2 className="h-4 w-4 shrink-0 text-slate-400" />
         <select
           value={entityId ?? ""}
           onChange={(e) => pickEntity(e.target.value)}
-          className="bg-transparent text-sm font-medium text-slate-700 outline-none"
+          className="w-full min-w-0 truncate bg-transparent text-sm font-medium text-slate-700 outline-none"
         >
           {entities.map((row) => (
             <option key={row.id} value={row.id}>{row.name}</option>
@@ -222,7 +225,7 @@ export function WarehousePage() {
       </div>
       <button
         onClick={refresh}
-        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+        className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 hover:bg-slate-50 lg:min-h-0 lg:py-2"
       >
         <RefreshCw className="h-4 w-4" />
         Обновить

@@ -426,7 +426,7 @@ function ReadOnlyTable({
       {rows.length === 0 ? (
         <p className="border-t border-slate-200 px-4 py-3 text-sm text-slate-500">Нет данных</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x">
           <table className="w-full min-w-[560px] text-sm">
             <thead className="border-t border-slate-200 bg-slate-50 text-xs text-slate-500">
               <tr>{headers.map((header) => <th key={header} className="px-4 py-2 text-left">{header}</th>)}</tr>

@@ -162,7 +162,7 @@ export function CtrTestWizard({ cabinetId, type, candidates, seed, onClose, onCr
         />
       </div>
 
-      <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+      <div className="scroll-x mt-4 flex gap-3 pb-2">
         {variants.map((variant, index) => <div key={index} className="w-[220px] shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="mb-2 flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white text-[10px] font-bold text-violet-700 shadow-sm">{String.fromCharCode(65 + index)}</span><input value={variant.label} onChange={(event) => setVariant(index, "label", event.target.value)} aria-label={`Название варианта ${index + 1}`} className="min-h-11 min-w-0 flex-1 bg-transparent text-xs font-semibold outline-none" />{index > 1 ? <button type="button" onClick={() => setVariants((current) => current.filter((_, position) => position !== index))} aria-label={`Удалить вариант ${index + 1}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button> : null}</div>
           <div className="aspect-[4/3] overflow-hidden rounded-lg border border-slate-200 bg-white">{variant.imageUrl ? type === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="h-full w-full object-cover" /> : <img src={variant.imageUrl} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-[10px] text-slate-300">HTTPS-ссылка на контент</div>}</div>

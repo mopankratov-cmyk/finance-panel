@@ -1,8 +1,9 @@
 "use client";
 
-import { Check, ScanLine, X } from "lucide-react";
+import { Check, ScanLine } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/lib/analytics/format";
+import { Modal } from "@/components/ui/Modal";
 import { WbProductImage } from "@/components/wb/WbProductImage";
 import { DraftNotice } from "@/components/warehouse/DraftNotice";
 import { plural } from "@/lib/warehouse/plural";
@@ -198,37 +199,75 @@ export function ReceiveModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:p-8">
-      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <div>
-            <p className="text-base font-bold text-slate-900">Пересчёт партии{number ? ` ${number}` : ""}</p>
-            <p className="text-xs text-slate-400">На склад «{warehouseName}»</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
+  const footer = (
+    <div className="flex flex-wrap items-center gap-3">
+      {pending.length > 0 && (
+        <div className="text-sm text-slate-500">
+          Ждём {formatNumber(totals.expected)} · принято{" "}
+          <span className="font-semibold text-slate-900">{formatNumber(totals.received)}</span>
+          {totals.gap !== 0 && (
+            <span className={totals.gap < 0 ? "text-amber-600" : "text-sky-600"}>
+              {" "}({totals.gap < 0 ? "недовоз " : "излишек "}{formatNumber(Math.abs(totals.gap))})
+            </span>
+          )}
+          {totals.defect > 0 && <span className="text-red-600"> · брак {formatNumber(totals.defect)}</span>}
         </div>
+      )}
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <button
+          onClick={onClose}
+          className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 px-4 text-sm text-slate-600 lg:min-h-0 lg:py-2"
+        >
+          Отмена
+        </button>
+        <button
+          onClick={() => void submit(false)}
+          disabled={saving !== null || pending.length === 0 || badDefect}
+          className="inline-flex min-h-11 items-center rounded-lg border border-violet-200 px-4 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50 lg:min-h-0 lg:py-2"
+        >
+          {saving === "save" ? "Сохраняю…" : "Только отметить"}
+        </button>
+        <button
+          onClick={() => void submit(true)}
+          disabled={saving !== null || pending.length === 0 || badDefect || !warehouseId}
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 lg:min-h-0 lg:py-2"
+        >
+          <Check className="h-4 w-4" />
+          {saving === "post" ? "Ставлю…" : "Пересчитано — на остаток"}
+        </button>
+      </div>
+    </div>
+  );
 
-        {error && <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-        {restoredAt !== null && (
-          <div className="mx-5 mt-4">
-            <DraftNotice at={restoredAt} onForget={() => { forget(); void load(); }} />
-          </div>
-        )}
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Пересчёт партии${number ? ` ${number}` : ""}`}
+      size="xl"
+      footer={footer}
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-slate-400">На склад «{warehouseName}»</p>
+
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        {restoredAt !== null && <DraftNotice at={restoredAt} onForget={() => { forget(); void load(); }} />}
 
         {loading ? (
-          <div className="p-10 text-center text-sm text-slate-400">Загружаю позиции…</div>
+          <div className="py-10 text-center text-sm text-slate-400">Загружаю позиции…</div>
         ) : pending.length === 0 ? (
-          <div className="p-10 text-center">
+          <div className="py-10 text-center">
             <p className="text-sm font-medium text-slate-700">Все позиции уже пересчитаны</p>
             <p className="mt-1 text-sm text-slate-400">Осталось поставить партию на остаток.</p>
           </div>
         ) : (
           <>
-            <div className="border-b border-slate-100 px-5 py-3">
+            {/* Поле сканера прилипает к верху: считают его не глядя на экран, и
+                уехавшая под прокрутку строка ввода означала бы потерянные пики. */}
+            <div className="sticky top-0 z-10 -mx-4 border-b border-slate-100 bg-white px-4 py-3 sm:-mx-6 sm:px-6">
               {scanning ? (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <ScanLine className="h-4 w-4 shrink-0 text-violet-500" />
                     <input
                       ref={scanRef}
@@ -236,9 +275,12 @@ export function ReceiveModal({
                       onChange={(e) => setScan(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyScan(scan); } }}
                       placeholder="Сканируйте штрихкод"
-                      className="flex-1 rounded-lg border border-violet-300 px-3 py-2 text-sm outline-none focus:border-violet-500"
+                      className="min-h-11 min-w-40 flex-1 rounded-lg border border-violet-300 px-3 text-sm outline-none focus:border-violet-500 lg:min-h-0 lg:py-2"
                     />
-                    <button onClick={stopScanning} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
+                    <button
+                      onClick={stopScanning}
+                      className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 px-3 text-sm text-slate-600 lg:min-h-0 lg:py-2"
+                    >
                       Ввести руками
                     </button>
                   </div>
@@ -249,7 +291,7 @@ export function ReceiveModal({
               ) : (
                 <button
                   onClick={startScanning}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  className="inline-flex min-h-11 flex-wrap items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm text-slate-600 hover:bg-slate-50 lg:min-h-0 lg:py-2"
                 >
                   <ScanLine className="h-4 w-4" />
                   Считать сканером
@@ -258,10 +300,10 @@ export function ReceiveModal({
               )}
             </div>
 
-            <div className="max-h-[55vh] space-y-4 overflow-y-auto px-5 py-4">
+            <div className="space-y-4">
               {groups.map((group) => (
-                <div key={group.key} className="rounded-xl border border-slate-200">
-                  <div className="flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5">
+                <div key={group.key} className="md:rounded-xl md:border md:border-slate-200">
+                  <div className="flex items-center gap-2.5 border-b border-slate-100 px-0 py-2.5 md:px-3">
                     <WbProductImage
                       nm={group.nmId ?? undefined}
                       src={group.photoUrl ?? undefined}
@@ -269,101 +311,73 @@ export function ReceiveModal({
                       label={group.article}
                       className="h-9 w-9 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                     />
-                    <span className="font-medium text-slate-900">{group.article || group.nmId}</span>
-                    <span className="ml-auto text-xs text-slate-400">
+                    <span className="break-anywhere font-medium text-slate-900">{group.article || group.nmId}</span>
+                    <span className="ml-auto shrink-0 text-xs text-slate-400">
                       {group.rows.length > 1 ? `${group.rows.length} размера` : ""}
                     </span>
                   </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-xs uppercase tracking-wide text-slate-400">
-                        <th className="px-3 pb-1 pt-2 text-left font-medium">Размер</th>
-                        <th className="px-3 pb-1 pt-2 text-right font-medium">Ждём</th>
-                        <th className="px-3 pb-1 pt-2 text-right font-medium">Принято</th>
-                        <th className="px-3 pb-1 pt-2 text-right font-medium">Из них брак</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.rows.map((line) => {
-                        const value = draft[line.id] ?? { received: "", defect: "" };
-                        const received = Number(value.received || 0);
-                        const tooMuchDefect = Number(value.defect || 0) > received;
-                        const short = received < line.expectedQty;
-                        const over = received > line.expectedQty;
-                        return (
-                          <tr key={line.id} className={`border-t border-slate-100 transition-colors ${flash === line.id ? "bg-emerald-50" : ""}`}>
-                            <td className="px-3 py-2 text-slate-700">
-                              {line.sizeLabel || <span className="text-slate-300">без размера</span>}
-                              {!line.barcode && scanning && (
-                                <span className="ml-1.5 text-xs text-amber-600">нет штрихкода</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right text-slate-500">{formatNumber(line.expectedQty)}</td>
-                            <td className="px-3 py-2 text-right">
-                              <input
-                                inputMode="numeric"
-                                value={value.received}
-                                onChange={(e) => setValue(line.id, { received: e.target.value.replace(/[^\d]/g, "") })}
-                                className={`w-24 rounded-lg border px-2 py-1 text-right ${
-                                  over ? "border-sky-300 bg-sky-50" : short ? "border-amber-300 bg-amber-50" : "border-slate-200"
-                                }`}
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <input
-                                inputMode="numeric"
-                                value={value.defect}
-                                onChange={(e) => setValue(line.id, { defect: e.target.value.replace(/[^\d]/g, "") })}
-                                placeholder="0"
-                                className={`w-24 rounded-lg border px-2 py-1 text-right placeholder:text-slate-300 ${
-                                  tooMuchDefect ? "border-red-300 bg-red-50" : "border-slate-200"
-                                }`}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                  {/* Четыре колонки с двумя полями ввода в 320 px не помещаются
+                      никак: на телефоне размер становится заголовком карточки,
+                      а «Принято» и «Из них брак» — двумя строками под ним. */}
+                  <div className="table-cards scroll-x pt-2 md:pt-0">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs uppercase tracking-wide text-slate-400">
+                          <th className="px-3 pb-1 pt-2 text-left font-medium">Размер</th>
+                          <th className="px-3 pb-1 pt-2 text-right font-medium">Ждём</th>
+                          <th className="px-3 pb-1 pt-2 text-right font-medium">Принято</th>
+                          <th className="px-3 pb-1 pt-2 text-right font-medium">Из них брак</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.rows.map((line) => {
+                          const value = draft[line.id] ?? { received: "", defect: "" };
+                          const received = Number(value.received || 0);
+                          const tooMuchDefect = Number(value.defect || 0) > received;
+                          const short = received < line.expectedQty;
+                          const over = received > line.expectedQty;
+                          return (
+                            <tr key={line.id} className={`border-t border-slate-100 transition-colors ${flash === line.id ? "bg-emerald-50" : ""}`}>
+                              <td data-cell="title" className="px-3 py-2 text-slate-700">
+                                {line.sizeLabel || <span className="text-slate-300">без размера</span>}
+                                {!line.barcode && scanning && (
+                                  <span className="ml-1.5 text-xs text-amber-600">нет штрихкода</span>
+                                )}
+                              </td>
+                              <td data-label="Ждём" className="px-3 py-2 text-right text-slate-500">{formatNumber(line.expectedQty)}</td>
+                              <td data-label="Принято" className="px-3 py-2 text-right">
+                                <input
+                                  inputMode="numeric"
+                                  value={value.received}
+                                  onChange={(e) => setValue(line.id, { received: e.target.value.replace(/[^\d]/g, "") })}
+                                  className={`min-h-11 w-24 rounded-lg border px-2 py-1 text-right lg:min-h-0 ${
+                                    over ? "border-sky-300 bg-sky-50" : short ? "border-amber-300 bg-amber-50" : "border-slate-200"
+                                  }`}
+                                />
+                              </td>
+                              <td data-label="Из них брак" className="px-3 py-2 text-right">
+                                <input
+                                  inputMode="numeric"
+                                  value={value.defect}
+                                  onChange={(e) => setValue(line.id, { defect: e.target.value.replace(/[^\d]/g, "") })}
+                                  placeholder="0"
+                                  className={`min-h-11 w-24 rounded-lg border px-2 py-1 text-right placeholder:text-slate-300 lg:min-h-0 ${
+                                    tooMuchDefect ? "border-red-300 bg-red-50" : "border-slate-200"
+                                  }`}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ))}
             </div>
           </>
         )}
-
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-4">
-          {pending.length > 0 && (
-            <div className="text-sm text-slate-500">
-              Ждём {formatNumber(totals.expected)} · принято{" "}
-              <span className="font-semibold text-slate-900">{formatNumber(totals.received)}</span>
-              {totals.gap !== 0 && (
-                <span className={totals.gap < 0 ? "text-amber-600" : "text-sky-600"}>
-                  {" "}({totals.gap < 0 ? "недовоз " : "излишек "}{formatNumber(Math.abs(totals.gap))})
-                </span>
-              )}
-              {totals.defect > 0 && <span className="text-red-600"> · брак {formatNumber(totals.defect)}</span>}
-            </div>
-          )}
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">Отмена</button>
-            <button
-              onClick={() => void submit(false)}
-              disabled={saving !== null || pending.length === 0 || badDefect}
-              className="rounded-lg border border-violet-200 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"
-            >
-              {saving === "save" ? "Сохраняю…" : "Только отметить"}
-            </button>
-            <button
-              onClick={() => void submit(true)}
-              disabled={saving !== null || pending.length === 0 || badDefect || !warehouseId}
-              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-            >
-              <Check className="h-4 w-4" />
-              {saving === "post" ? "Ставлю…" : "Пересчитано — на остаток"}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

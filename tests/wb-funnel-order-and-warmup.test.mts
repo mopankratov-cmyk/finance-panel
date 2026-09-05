@@ -84,5 +84,10 @@ test("вкладки метрик не делят строку с поиском
   // flex-1 на списке вкладок и был тем, что отдавало им остаток вместо
   // собственной строки.
   assert.doesNotMatch(page, /flex min-w-0 flex-1 gap-2 overflow-x-auto[^"]*" role="tablist"/, "список метрик снова делит строку и сжимается");
-  assert.match(page, /className="flex min-w-0 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist"/, "список метрик потерял свою строку");
+  // Собственная строка и собственная прокрутка вбок — это два свойства, а не
+  // одна строка классов: горизонтальную прокрутку теперь даёт общий `.scroll-x`
+  // (он же не даёт жесту утянуть страницу), и сверять посимвольно нечего.
+  const tablist = page.match(/className="([^"]*)" role="tablist"/)?.[1] ?? "";
+  assert.match(tablist, /(scroll-x|overflow-x-auto)/, "список метрик потерял собственную прокрутку");
+  assert.match(tablist, /min-w-0/, "список метрик потерял свою строку");
 });

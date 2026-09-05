@@ -124,7 +124,9 @@ test("на телефоне из модуля можно выйти и верн�
   const source = read("../components/warehouse/WarehouseShell.tsx");
   const mobile = source.slice(source.indexOf("lg:hidden"));
   assert.match(mobile, /logout\(\)/, "кнопка выхода");
-  assert.match(mobile, /href="\/"/, "ссылка на все модули");
+  // Не «/» жёстко: витрина модулей закрыта внешнему селлеру, и адрес выхода
+  // берётся тот же, что в сайдбаре.
+  assert.match(mobile, /href=\{exitHref\}/, "ссылка на другие модули");
 });
 
 /** resolveEntity зовут ВСЕ роуты склада до собственной работы: каждый лишний

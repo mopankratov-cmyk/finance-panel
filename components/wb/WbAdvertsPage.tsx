@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ChevronRight, FlaskConical, KeyRound, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
+import { Archive, ChevronLeft, ChevronRight, FlaskConical, KeyRound, Loader2, Megaphone, PauseCircle, PlayCircle, RefreshCw, Search, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
@@ -697,6 +697,16 @@ export function WbAdvertsPage() {
   };
 
   const selected = baseRows.find(({ campaign }) => campaign.id === selectedId) ?? null;
+
+  // «Выбрана кампания» и «показываем её карточку» — разные вещи, и разводить
+  // их приходится из-за автовыбора: как только приезжают данные, эффект выше
+  // сам ставит первую кампанию. На десктопе это правильно — обе колонки на
+  // экране. Ниже 1024px колонка одна, и список прятался сразу после загрузки:
+  // экран открывался карточкой первой попавшейся кампании, а поиск, сортировка
+  // и галочки массовых действий становились недостижимы. Кнопка «К списку»
+  // не спасала — она снимала выбор, эффект тут же выбирал заново.
+  const [detailOpen, setDetailOpen] = useState(false);
+  const openDetail = (id: number) => { setSelectedId(id); setDetailOpen(true); };
   // Выбранная кампания есть, но текущий фильтр её не показывает. Молча прятать
   // строку нельзя: человек видит карточку справа и не понимает, где её строка.
   const selectedOutsideFilter = selected != null && !rows.some(({ campaign }) => campaign.id === selectedId);
@@ -713,7 +723,7 @@ export function WbAdvertsPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={Megaphone}
         title="Реклама"
@@ -729,11 +739,11 @@ export function WbAdvertsPage() {
         actions={
           <>
           {singleCabinet ? (
-            <button type="button" onClick={() => setTokenPanelOpen((open) => !open)} title="Проверить или заменить ключ Продвижения" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 sm:min-h-8">
+            <button type="button" onClick={() => setTokenPanelOpen((open) => !open)} title="Проверить или заменить ключ Продвижения" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 lg:min-h-8">
               <KeyRound className="h-3.5 w-3.5 text-slate-400" /> Ключ
             </button>
           ) : null}
-          <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 sm:min-h-8">
+          <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 lg:min-h-8">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />} Обновить
           </button>
           </>
@@ -863,10 +873,10 @@ export function WbAdvertsPage() {
         </div>
       ) : null}
 
-      <div className={`${view === "campaigns" ? "grid" : "hidden"} min-h-[calc(100vh-110px)] gap-3 px-2 py-3 sm:px-6 lg:grid-cols-[408px_minmax(0,1fr)]`}>
-        <section className="flex min-h-[480px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className={`${view === "campaigns" ? "grid" : "hidden"} min-h-[calc(100dvh-110px)] gap-3 px-2 py-3 sm:px-6 lg:grid-cols-[408px_minmax(0,1fr)]`}>
+        <section className={`min-h-[480px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex ${detailOpen ? "hidden" : "flex"}`}>
           <div className="border-b border-slate-200 p-3">
-            <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 sm:min-h-8">
+            <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 lg:min-h-8">
               <Search className="h-3.5 w-3.5 text-slate-400" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="артикул, название или #id" className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400" />
             </label>
@@ -877,7 +887,7 @@ export function WbAdvertsPage() {
                   key={value}
                   type="button"
                   onClick={() => setOrder(value)}
-                  className={`min-h-7 rounded-lg px-2 font-semibold transition-colors ${order === value ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+                  className={`min-h-11 rounded-lg px-2 font-semibold transition-colors lg:min-h-7 ${order === value ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
                 >
                   {label}
                   {value === "verdict" && needDecision > 0 ? <span className="ml-1 rounded bg-white/20 px-1">{needDecision}</span> : null}
@@ -972,7 +982,7 @@ export function WbAdvertsPage() {
                     className={`flex items-center overflow-hidden border-b border-slate-100 transition-colors ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}
                   >
                     {singleCabinet && cabinetMoney ? (
-                      <label className="flex h-full shrink-0 cursor-pointer items-center pl-2 pr-1" title="Отметить для массового действия">
+                      <label className="flex h-full w-11 shrink-0 cursor-pointer items-center justify-center lg:w-auto lg:pl-2 lg:pr-1" title="Отметить для массового действия">
                         <input
                           type="checkbox"
                           checked={checked.has(campaign.id)}
@@ -981,11 +991,11 @@ export function WbAdvertsPage() {
                             if (next.has(campaign.id)) next.delete(campaign.id); else next.add(campaign.id);
                             return next;
                           })}
-                          className="h-3.5 w-3.5 accent-violet-600"
+                          className="h-5 w-5 accent-violet-600 lg:h-3.5 lg:w-3.5"
                         />
                       </label>
                     ) : null}
-                  <button type="button" onClick={() => setSelectedId(campaign.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500">
+                  <button type="button" onClick={() => openDetail(campaign.id)} className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500">
                     <WbProductImage nm={article.nm} src={article.photo} loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover" />
                     <div className="min-w-0 flex-1 pr-2">
                       {/*
@@ -1113,11 +1123,12 @@ export function WbAdvertsPage() {
           )}
         </section>
 
-        <section className="min-w-0 rounded-xl border border-dashed border-slate-200 bg-white">
+        <section className={`min-w-0 rounded-xl border border-dashed border-slate-200 bg-white ${selected && detailOpen ? "" : "hidden lg:block"}`}>
           {!selected ? (
             <div className="grid min-h-[420px] place-items-center px-6 text-center text-sm leading-5 text-slate-400">Выберите кампанию слева — здесь откроется её карточка: расписание, статистика и разбор.</div>
           ) : (
             <div className="p-3 sm:p-5">
+              <button type="button" onClick={() => setDetailOpen(false)} className="mb-2 inline-flex min-h-11 items-center gap-1.5 text-[11px] font-semibold text-violet-700 lg:hidden"><ChevronLeft className="h-4 w-4" /> К списку кампаний</button>
               <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
                 <WbProductImage nm={selected.article.nm} src={selected.article.photo} loading="eager" className="h-14 w-14 shrink-0 rounded-xl border border-slate-100 bg-slate-50 object-cover" />
                 <div className="min-w-0">
@@ -1268,7 +1279,7 @@ export function WbAdvertsPage() {
                 {selected.campaign.comparison ? <div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">До</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.before.drr)}</div><div className="text-[9px] text-slate-400">{selected.campaign.comparison.before.days} дн.</div></div><div className="rounded-lg bg-violet-50 p-2"><div className="text-[9px] text-violet-500">Изменение</div><div className="mt-1 font-semibold text-violet-700">{selected.campaign.last_change?.old_bid ?? "—"} → {selected.campaign.last_change?.new_bid ?? "—"}</div><div className="text-[9px] text-violet-500">ставка</div></div><div className="rounded-lg bg-slate-50 p-2"><div className="text-[9px] text-slate-400">После</div><div className="mt-1 font-semibold">ДРР {pct(selected.campaign.comparison.after.drr)}</div><div className={`text-[9px] ${Number(selected.campaign.comparison.drrDelta) <= 0 ? "text-emerald-600" : "text-rose-600"}`}>{selected.campaign.comparison.drrDelta == null ? "—" : `${selected.campaign.comparison.drrDelta > 0 ? "+" : ""}${selected.campaign.comparison.drrDelta} п.п.`}</div></div></div> : <p className="mt-2 text-[10px] leading-4 text-slate-400">{beforeAfterReason(selected.campaign)}</p>}
               </section>
 
-              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+              <div className="scroll-x mt-3 rounded-xl border border-slate-200">
                 <table className="w-full min-w-[640px] border-collapse text-[10px]">
                   <thead><tr className="h-8 bg-slate-50 text-slate-500"><th className="px-3 text-left">Дата</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">Клики</th><th className="px-3 text-right">CTR</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Атриб. выручка</th><th className="px-3 text-right">ДРР</th></tr></thead>
                   <tbody>{selected.campaign.days.slice().reverse().map((day) => <tr key={day.ts} className="h-8 border-t border-slate-100"><td className="px-3 text-slate-500">{day.ts}</td><td className="px-3 text-right tabular-nums">{day.views.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{day.clicks.toLocaleString("ru-RU")}</td><td className="px-3 text-right tabular-nums">{pct(day.views > 0 ? (day.clicks / day.views) * 100 : null)}</td><td className="px-3 text-right font-medium tabular-nums">{rub(day.spend)}</td><td className="px-3 text-right tabular-nums">{rub(day.orders)}</td><td className="px-3 text-right tabular-nums">{pct(day.orders > 0 ? (day.spend / day.orders) * 100 : null)}</td></tr>)}</tbody>

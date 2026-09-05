@@ -175,7 +175,20 @@ export function BulkPaymentModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Добавить платежи списком">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Добавить платежи списком"
+      /* Кнопки отданы окну: оно закрепляет их внизу и само отступает от
+         системного индикатора. Раньше они лежали под списком строк и уезжали
+         за нижний край, пока список не прокрутишь. */
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <button onClick={() => setRows((current) => [...(current.length ? current : activeRows), emptyRow(accounts, initialFlow)])} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700"><Plus className="h-4 w-4" /> Добавить строку</button>
+          <button onClick={save} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-5 text-sm font-semibold text-white"><FileSpreadsheet className="h-4 w-4" /> Сохранить {activeRows.length}</button>
+        </div>
+      }
+    >
       <div className="space-y-4">
         <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
           <p className="font-semibold text-violet-950">Можно заполнить строки здесь или загрузить файл</p>
@@ -187,7 +200,7 @@ export function BulkPaymentModal({
           </div>
         </div>
         {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-        <div className="max-h-[52vh] space-y-3 overflow-y-auto pr-1">
+        <div className="max-h-[52dvh] space-y-3 overflow-y-auto pr-1">
           {activeRows.map((row, index) => (
             <div key={row.id} className="rounded-xl border border-slate-200 p-3">
               <div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Строка {index + 1}</span><button onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} aria-label="Удалить строку" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button></div>
@@ -206,10 +219,6 @@ export function BulkPaymentModal({
               </div>
             </div>
           ))}
-        </div>
-        <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-between">
-          <button onClick={() => setRows((current) => [...(current.length ? current : activeRows), emptyRow(accounts, initialFlow)])} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700"><Plus className="h-4 w-4" /> Добавить строку</button>
-          <button onClick={save} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-5 text-sm font-semibold text-white"><FileSpreadsheet className="h-4 w-4" /> Сохранить {activeRows.length}</button>
         </div>
       </div>
     </Modal>

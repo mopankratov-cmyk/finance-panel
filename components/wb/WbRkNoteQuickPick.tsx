@@ -3,6 +3,8 @@
 import { Check, Loader2, PencilLine, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useDialogBehavior } from "@/hooks/useDialogBehavior";
+import { useIsPhone } from "@/hooks/useMediaQuery";
 import { RK_NOTE_PRESETS } from "@/lib/wb/rkNotes";
 
 /**
@@ -14,7 +16,9 @@ import { RK_NOTE_PRESETS } from "@/lib/wb/rkNotes";
  * сохраняет задачу и закрывает список.
  *
  * Открывается рядом с клеткой, а не по центру экрана: взгляд не теряет строку,
- * в которой человек работает.
+ * в которой человек работает. На телефоне привязка к клетке смысла не имеет —
+ * поповер в 232px с пунктами по 28px пальцем не берётся, а таблица под ним
+ * ездит и оставляет его висеть над чужим днём. Там это лист снизу.
  */
 export function WbRkNoteQuickPick({
   cabinetId, nmId, advertId, date, note, done, anchor, onSaved, onClose, onOpenFull,
@@ -35,14 +39,13 @@ export function WbRkNoteQuickPick({
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const isPhone = useIsPhone();
 
   useEffect(() => setMounted(true), []);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  // Escape, ловушка фокуса и неподвижный фон. Последнее важно и на мыши:
+  // список привязан к координатам клика, и прокрутка страницы под ним
+  // оставляла его висеть над соседней клеткой.
+  useDialogBehavior(mounted, onClose, boxRef);
 
   const save = async (nextNote: string, nextDone: boolean, tag: string) => {
     setSaving(tag);
@@ -74,15 +77,23 @@ export function WbRkNoteQuickPick({
     ? Math.max(8, anchor.y - height - 12)
     : anchor.y + 8;
 
+  // Пункт списка: на телефоне цель в 44px, на мыши прежняя плотность.
+  const itemClass = "flex w-full min-h-11 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[14px] transition-colors disabled:opacity-50 sm:min-h-0 sm:text-[12px]";
+
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[95]" onClick={onClose} />
+      {/* На телефоне подложка ещё и притеняет лист — иначе непонятно, что
+          таблица под ним сейчас не отзовётся. */}
+      <div className="fixed inset-0 z-[95] bg-slate-950/40 sm:bg-transparent" onClick={onClose} />
       <div
         ref={boxRef}
         role="dialog"
         aria-label="Выбор задачи"
-        style={{ left, top, width }}
-        className="fixed z-[96] rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.16)]"
+        tabIndex={-1}
+        style={isPhone ? undefined : { left, top, width }}
+        className={isPhone
+          ? "fixed inset-x-0 bottom-0 z-[96] max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-slate-200 bg-white p-2 pb-[calc(0.5rem+var(--safe-b))] shadow-[0_-12px_32px_rgba(15,23,42,0.16)] focus:outline-none"
+          : "fixed z-[96] rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.16)] focus:outline-none"}
       >
         <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
           Задача на день
@@ -96,7 +107,7 @@ export function WbRkNoteQuickPick({
               type="button"
               onClick={() => void save(preset.note, false, preset.note)}
               disabled={saving !== null}
-              className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] transition-colors disabled:opacity-50 ${
+              className={`${itemClass} justify-between ${
                 active ? "bg-violet-50 font-semibold text-violet-700" : "text-slate-700 hover:bg-slate-50"
               }`}
             >
@@ -115,7 +126,7 @@ export function WbRkNoteQuickPick({
             type="button"
             onClick={() => void save(note, !done, "done")}
             disabled={saving !== null}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+            className={`${itemClass} text-slate-600 hover:bg-slate-50`}
           >
             <Check className={`h-3.5 w-3.5 shrink-0 ${done ? "text-emerald-600" : "text-slate-300"}`} />
             {done ? "Снять отметку «сделано»" : "Отметить сделанной"}
@@ -125,7 +136,7 @@ export function WbRkNoteQuickPick({
         <button
           type="button"
           onClick={() => { onClose(); onOpenFull(); }}
-          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-slate-600 transition-colors hover:bg-slate-50"
+          className={`${itemClass} text-slate-600 hover:bg-slate-50`}
         >
           <PencilLine className="h-3.5 w-3.5 shrink-0 text-slate-400" />
           {note ? "Изменить текст" : "Своя задача…"}
@@ -136,14 +147,14 @@ export function WbRkNoteQuickPick({
             type="button"
             onClick={() => void save("", false, "clear")}
             disabled={saving !== null}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+            className={`${itemClass} text-rose-600 hover:bg-rose-50`}
           >
             {saving === "clear" ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 shrink-0" />}
             Убрать задачу
           </button>
         ) : null}
 
-        {error ? <div className="px-2 py-1 text-[11px] text-rose-600">{error}</div> : null}
+        {error ? <div className="px-2 py-1 text-[11px] text-rose-600" role="alert">{error}</div> : null}
       </div>
     </>,
     document.body,

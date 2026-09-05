@@ -33,7 +33,7 @@ export function CalendarAgenda({
           const isToday = day.date === today;
           return (
             <div key={day.date} className={`group grid gap-3 px-4 py-3 transition-colors lg:grid-cols-[112px_145px_145px_minmax(260px,1fr)_150px_48px] lg:items-center ${isToday ? "bg-violet-50/70" : payments.length ? "bg-white hover:bg-slate-50" : "bg-slate-50/30 hover:bg-slate-50"}`}>
-              <button onClick={() => onSelect(day.date)} className="text-left">
+              <button onClick={() => onSelect(day.date)} className="tap-row flex flex-col justify-center text-left">
                 <span className={`block text-sm font-bold ${isToday ? "text-violet-800" : "text-slate-900"}`}>{formatDate(day.date)}</span>
                 <span className="text-xs text-slate-500">{isToday ? "Сегодня" : new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(new Date(`${day.date}T00:00:00`))}</span>
               </button>
@@ -45,7 +45,7 @@ export function CalendarAgenda({
                 <span className="text-xs text-slate-500 lg:hidden">Расходы</span>
                 <span className={`font-bold tabular-nums ${expense > 0 ? "text-rose-700" : "text-slate-300"}`}>{expense > 0 ? `−${formatMoney(expense)}` : "—"}</span>
               </div>
-              <button onClick={() => onSelect(day.date)} className="min-w-0 text-left">
+              <button onClick={() => onSelect(day.date)} className="tap-row min-w-0 text-left">
                 {expenses.length ? (
                   <div className="flex flex-wrap gap-1.5">
                     {expenses.slice(0, 4).map((payment) => {
@@ -53,7 +53,7 @@ export function CalendarAgenda({
                       return (
                       <span key={payment.id} title={label} className="inline-flex max-w-56 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
                         {payment.status === "done" ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" /> : <Clock3 className="h-3.5 w-3.5 shrink-0 text-amber-600" />}
-                        <span className={`rounded border px-1 text-[9px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span>
+                        <span className={`rounded border px-1 text-[10px] font-bold ${PRIORITY_META[getPaymentPriority(payment)].badge}`}>{getPaymentPriority(payment)}</span>
                         <span className="truncate">{label}</span>
                         <b className="shrink-0 tabular-nums">{formatMoney(Math.abs(payment.amount))}</b>
                       </span>

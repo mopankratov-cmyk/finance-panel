@@ -90,7 +90,7 @@ const buildRowColumns = (onHide: ((subject: string) => void) | null): Column<Kiz
           <button
             type="button"
             onClick={() => onHide(row.subject!)}
-            className="mt-0.5 text-[11px] font-semibold text-slate-400 underline underline-offset-2 hover:text-violet-700"
+            className="mt-0.5 inline-flex min-h-11 items-center rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-500 hover:border-violet-300 hover:text-violet-700 lg:min-h-0 lg:border-0 lg:px-0 lg:text-slate-400 lg:underline lg:underline-offset-2"
             title={`Скрыть «${row.subject}» из сверки: товар не маркируется`}
           >
             скрыть
@@ -306,14 +306,14 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
           в оборот в ЛК Честный Знак) выполняете вы.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <div className="flex min-h-11 items-center gap-1 rounded-lg bg-slate-100 p-0.5 sm:min-h-9" role="group" aria-label="Период сверки">
+          <div className="flex min-h-11 items-center gap-1 rounded-lg bg-slate-100 p-0.5 lg:min-h-9" role="group" aria-label="Период сверки">
             {DAYS.map((value) => (
               <button
                 key={value}
                 type="button"
                 aria-pressed={days === value}
                 onClick={() => setDays(value)}
-                className={`min-h-10 rounded-md px-3 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${days === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                className={`min-h-11 rounded-md px-3 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8 ${days === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
               >
                 {value} дн.
               </button>
@@ -323,7 +323,7 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
             type="button"
             onClick={check}
             disabled={loading}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-4 text-[12px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:min-h-9"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-4 text-[12px] font-semibold text-white shadow-sm hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300 lg:min-h-9"
           >
             <RotateCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
             {loading ? "Проверяем…" : "Проверить"}
@@ -334,7 +334,7 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
               <select
                 value={codeGroup}
                 onChange={(event) => setCodeGroup(event.target.value)}
-                className="ml-2 min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-violet-400 sm:min-h-9"
+                className="ml-2 min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-violet-400 lg:min-h-9"
               >
                 <option value="">Все</option>
                 {result.codeGroups.map((item) => (
@@ -382,7 +382,7 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
           </span>
         </label>
         {hidden.length ? (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-slate-500">Скрыты как немаркируемые:</span>
             {hidden.map((subject) => (
               <button
@@ -390,7 +390,7 @@ export function WbKizReconcileTab({ cabinetId, cabinetName }: { cabinetId: strin
                 type="button"
                 disabled={savingSetting}
                 onClick={() => void saveSetting({ showSubject: subject })}
-                className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-600 hover:border-violet-300 hover:text-violet-700 disabled:opacity-50"
+                className="inline-flex min-h-11 items-center gap-1 rounded-full border border-slate-300 bg-white px-3 text-[11px] text-slate-600 hover:border-violet-300 hover:text-violet-700 disabled:opacity-50 lg:min-h-7 lg:px-2"
                 title="Вернуть предмет в сверку"
               >
                 {subject} ×

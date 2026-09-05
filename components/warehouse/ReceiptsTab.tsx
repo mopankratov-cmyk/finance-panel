@@ -256,7 +256,7 @@ export function ReceiptsTab({
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
+          className="min-h-11 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 lg:min-h-0 lg:py-1.5"
         >
           {operationalWarehouses(warehouses, target).map((warehouse) => (
             <option key={warehouse.id} value={warehouse.id}>
@@ -276,7 +276,7 @@ export function ReceiptsTab({
         )}
         <button
           onClick={() => void openDraft()}
-          className="ml-auto flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700"
+          className="ml-auto flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-sm font-medium text-white hover:bg-violet-700 lg:min-h-0 lg:py-1.5"
         >
           <Plus className="h-4 w-4" /> Новая приёмка
         </button>
@@ -286,54 +286,57 @@ export function ReceiptsTab({
         <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-medium text-slate-900">Новая приёмка</p>
-            <button onClick={() => setDraft(null)} className="text-slate-400 hover:text-slate-600">
+            <button onClick={() => setDraft(null)} aria-label="Закрыть форму" className="tap-hit -mr-1 text-slate-400 hover:text-slate-600">
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Шапка партии из ТЗ: поставщик, номер, дата, мешки, комментарий. */}
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-sm">
+          {/* Шапка партии из ТЗ: поставщик, номер, дата, мешки, комментарий.
+              Подпись рядом с полем не переносится внутри себя, поэтому на
+              телефоне «Поставщик» с полем в 176 px не помещался в строку и тянул
+              вбок всю страницу. Ниже 640 px подпись встаёт над полем. */}
+          <div className="mb-3 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
               <span className="text-slate-500">Поставщик</span>
               <input
                 value={draft.supplier}
                 onChange={(e) => setDraft({ ...draft, supplier: e.target.value })}
                 placeholder="Фабрика"
-                className="w-44 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-300"
+                className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-300 sm:w-44 lg:min-h-0 lg:py-1.5"
               />
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
               <span className="text-slate-500">№</span>
               <input
                 value={draft.number}
                 onChange={(e) => setDraft({ ...draft, number: e.target.value })}
                 placeholder="выдаётся сам: ПРМ-2026-…"
-                className="w-48 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-300"
+                className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-300 sm:w-48 lg:min-h-0 lg:py-1.5"
               />
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
               <span className="text-slate-500">Ждём</span>
               <input
                 type="date"
                 value={draft.expectedAt}
                 onChange={(e) => setDraft({ ...draft, expectedAt: e.target.value })}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
+                className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-700 sm:w-auto lg:min-h-0 lg:py-1.5"
               />
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
               <span className="text-slate-500">Мешков</span>
               <input
                 inputMode="numeric"
                 value={draft.bagsCount}
                 onChange={(e) => setDraft({ ...draft, bagsCount: e.target.value.replace(/[^\d]/g, "") })}
-                className="w-20 rounded-lg border border-slate-200 px-3 py-1.5 text-right text-sm text-slate-700"
+                className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-right text-sm text-slate-700 sm:w-20 lg:min-h-0 lg:py-1.5"
               />
             </label>
             <input
               value={draft.note}
               onChange={(e) => setDraft({ ...draft, note: e.target.value })}
               placeholder="Комментарий"
-              className="min-w-48 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-300"
+              className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-300 sm:min-w-48 sm:flex-1 lg:min-h-0 lg:py-1.5"
             />
           </div>
 
@@ -356,7 +359,7 @@ export function ReceiptsTab({
                     const novelty = products.find((p) => p.id === productId)?.isNovelty ?? false;
                     updateLine(index, { productId, qty: "", sizes: {}, novelty });
                   }}
-                  className="min-w-64 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
+                  className="min-h-11 w-full min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 sm:min-w-64 lg:min-h-0 lg:py-1.5"
                 >
                   <option value="">выберите товар</option>
                   {products.map((product) => (
@@ -371,7 +374,7 @@ export function ReceiptsTab({
                     value={line.qty}
                     onChange={(e) => updateLine(index, { qty: e.target.value.replace(/[^\d]/g, "") })}
                     placeholder="кол-во"
-                    className="w-28 rounded-lg border border-slate-200 px-3 py-1.5 text-right text-sm text-slate-700 placeholder:text-slate-300"
+                    className="min-h-11 w-28 rounded-lg border border-slate-200 px-3 text-right text-sm text-slate-700 placeholder:text-slate-300 lg:min-h-0 lg:py-1.5"
                   />
                 ) : (
                   <div className="flex flex-wrap items-end gap-1.5">
@@ -382,7 +385,7 @@ export function ReceiptsTab({
                           inputMode="numeric"
                           value={line.sizes[variant.id] ?? ""}
                           onChange={(e) => updateLine(index, { sizes: { ...line.sizes, [variant.id]: e.target.value.replace(/[^\d]/g, "") } })}
-                          className="w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm text-slate-700"
+                          className="min-h-11 w-16 rounded-lg border border-slate-200 px-2 text-center text-sm text-slate-700 lg:min-h-0 lg:py-1.5"
                         />
                       </label>
                     ))}
@@ -396,16 +399,17 @@ export function ReceiptsTab({
                 {canManage && (
                   <label
                     title="Товар, которым ещё не торговали: флаг остаётся на карточке для запуска в РНП"
-                    className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${line.novelty ? "bg-violet-100 text-violet-700" : "text-slate-500"}`}
+                    className={`flex min-h-11 items-center gap-1.5 rounded px-2 text-xs lg:min-h-0 lg:py-1 ${line.novelty ? "bg-violet-100 text-violet-700" : "text-slate-500"}`}
                   >
-                    <input type="checkbox" checked={line.novelty} onChange={(e) => updateLine(index, { novelty: e.target.checked })} />
+                    <input type="checkbox" checked={line.novelty} onChange={(e) => updateLine(index, { novelty: e.target.checked })} className="h-5 w-5 lg:h-4 lg:w-4" />
                     новинка
                   </label>
                 )}
                 {draft.lines.length > 1 && (
                   <button
                     onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_, i) => i !== index) })}
-                    className="text-slate-400 hover:text-red-600"
+                    aria-label="Убрать позицию"
+                    className="tap-hit text-slate-400 hover:text-red-600"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -417,14 +421,14 @@ export function ReceiptsTab({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               onClick={() => setDraft({ ...draft, lines: [...draft.lines, emptyLine()] })}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600"
+              className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 lg:min-h-0 lg:py-1.5"
             >
               + позиция
             </button>
             <button
               onClick={() => void createReceipt()}
               disabled={creating}
-              className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
             >
               {creating ? "Создаю…" : "Создать приёмку"}
             </button>
@@ -443,7 +447,10 @@ export function ReceiptsTab({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        // Партии читают по одной — «что с этой», а не сравнивают колонки:
+        // на телефоне таблица рассыпается в карточки, и кнопка «Пересчитать»
+        // перестаёт жить в 900 px от номера партии, к которой относится.
+        <div className="table-cards scroll-x md:rounded-xl md:border md:border-slate-200 md:bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
@@ -470,8 +477,8 @@ export function ReceiptsTab({
                 ].filter(Boolean).join(" · ");
                 return (
                   <tr key={row.batchId} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
+                    <td data-cell="title" className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className={row.number ? "font-medium text-slate-900" : "text-slate-400"}>{row.number ?? "без номера"}</span>
                         {row.hasNovelty && (
                           <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] text-violet-700">новинка</span>
@@ -479,11 +486,11 @@ export function ReceiptsTab({
                       </div>
                       <div className="mt-0.5 text-xs text-slate-400">{subtitle}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Ждали" className="px-4 py-3">
                       <div className="text-slate-900">{date(row.expectedAt)}</div>
                       {row.note && <div className="mt-0.5 max-w-xs truncate text-xs text-slate-400">{row.note}</div>}
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Состояние" className="px-4 py-3">
                       <span className={`rounded px-2 py-0.5 text-xs font-medium ${state.className}`}>{state.text}</span>
                       {counted && row.countedBy ? (
                         <div className="mt-0.5 text-xs text-slate-400">
@@ -493,7 +500,7 @@ export function ReceiptsTab({
                         <div className="mt-0.5 text-xs text-slate-400">{date(row.postedAt)}</div>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td data-label="Ждали / приняли" className="px-4 py-3 text-right">
                       <span className="text-slate-500">{formatNumber(row.expectedQty)}</span>
                       <span className="mx-1 text-slate-300">/</span>
                       {counted ? (
@@ -511,14 +518,14 @@ export function ReceiptsTab({
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td data-label="Брак" className="px-4 py-3 text-right">
                       {!counted
                         ? <span className="text-slate-300">—</span>
                         : row.defectQty > 0
                           ? <span className="font-semibold text-red-600">{formatNumber(row.defectQty)}</span>
                           : <span className="text-slate-500">0</span>}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td data-label="Себестоимость" className="px-4 py-3 text-right">
                       {row.cost ? (
                         <>
                           <div className="font-medium text-slate-900">{formatNumber(Math.round(row.cost.total))} ₽</div>
@@ -533,14 +540,14 @@ export function ReceiptsTab({
                         <span className="text-slate-300">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td data-cell="actions" className="px-4 py-3 text-right">
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {counted && (hasDiscrepancy || row.defectQty > 0) && (
                           <a
                             href={`/warehouse/print/receipt/${row.batchId}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                            className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-3 text-sm text-slate-600 hover:bg-slate-50 lg:min-h-0 lg:py-1.5"
                           >
                             <FileWarning className="h-3.5 w-3.5" /> Акт расхождений
                           </a>
@@ -548,7 +555,7 @@ export function ReceiptsTab({
                         {row.state === "expected" && (
                           <button
                             onClick={() => setReceiving(row)}
-                            className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-sm font-medium text-violet-700 hover:bg-violet-50"
+                            className="inline-flex min-h-11 items-center rounded-lg border border-violet-200 bg-white px-3 text-sm font-medium text-violet-700 hover:bg-violet-50 lg:min-h-0 lg:py-1.5"
                           >
                             Пересчитать
                           </button>
@@ -557,7 +564,7 @@ export function ReceiptsTab({
                           <button
                             onClick={() => void post(row.batchId)}
                             disabled={busy === row.batchId || !target}
-                            className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                            className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-3 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
                           >
                             {busy === row.batchId ? "Ставлю…" : "Поставить на остаток"}
                           </button>
@@ -565,8 +572,7 @@ export function ReceiptsTab({
                         {canManage && (
                           <button
                             onClick={() => setCorrecting(row)}
-                            title="Поправить принятое, брак или ожидание; проведённые строки правятся разницей в регистре"
-                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                            className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 hover:bg-slate-50 lg:min-h-0 lg:py-1.5"
                           >
                             Скорректировать
                           </button>

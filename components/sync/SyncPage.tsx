@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, Play, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { formatNumber, formatTime } from "@/lib/analytics/format";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
 import { readApiResponse, readOkApiResponse } from "@/lib/http/readApiResponse";
@@ -191,7 +192,7 @@ export function SyncPage() {
                 <div className="flex flex-wrap gap-1">{cabinet.brands.map((brand) => <span key={brand} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold uppercase text-violet-700">{brand}</span>)}</div>
               </header>
               <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
-                <div className="overflow-x-auto">
+                <div className="scroll-x">
                   <table className="w-full min-w-[720px] text-xs">
                     <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-2">Источник</th><th className="px-3 py-2">Состояние</th><th className="px-3 py-2 text-right">Покрытие</th><th className="px-3 py-2 text-right">Строк</th><th className="px-3 py-2">Последнее обновление</th><th className="px-3 py-2 text-right">Действие</th></tr></thead>
                     <tbody className="divide-y divide-slate-100">{cabinet.sources.map((source) => {
@@ -200,7 +201,7 @@ export function SyncPage() {
                       const tone = bad ? "bg-red-50 text-red-700" : pending ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
                       const key = `${source.job}:${cabinet.id}`;
                       const statusLabel = source.status === "stale" ? "просрочено" : bad ? "ошибка" : pending ? "догружается" : "свежо";
-                      return <tr key={source.job}><td className="px-4 py-2.5 font-medium text-slate-700">{source.job}</td><td className="px-3 py-2.5"><span className={`rounded px-1.5 py-0.5 font-semibold ${tone}`}>{statusLabel}</span>{source.lastError ? <div title={source.lastError} className="mt-1 max-w-[220px] truncate text-[10px] text-red-500">{source.lastError}</div> : null}</td><td className="px-3 py-2.5 text-right tabular-nums"><div>{source.coveragePct}%</div>{source.fieldCoverage?.map((coverage) => <div key={coverage.field} title={coverage.error || `${coverage.filled} из ${coverage.total}`} className={`mt-1 text-[9px] ${coverage.error ? "text-red-500" : coverage.coveragePct == null ? "text-slate-300" : coverage.coveragePct >= 80 ? "text-emerald-600" : "text-amber-600"}`}>{coverage.label}: {coverage.error ? "ошибка" : coverage.coveragePct == null ? "—" : `${coverage.coveragePct}%`}</div>)}</td><td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(source.rows)}</td><td className="px-3 py-2.5 text-slate-500">{source.lastSyncedAt ? formatTime(source.lastSyncedAt) : "—"}{source.ageMinutes != null ? <div className="text-[9px] text-slate-300">возраст {source.ageMinutes} мин · SLA {source.slaMinutes} мин</div> : null}{source.cursor ? <div className="max-w-[180px] truncate text-[9px] text-slate-300" title={source.cursor}>cursor {source.cursor}</div> : null}</td><td className="px-3 py-2.5 text-right"><button onClick={() => runJob(source.job, cabinet.id)} disabled={running !== null} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Play className={`h-3 w-3 ${running === key ? "animate-pulse" : ""}`} />Повторить</button></td></tr>;
+                      return <tr key={source.job}><td className="px-4 py-2.5 font-medium text-slate-700">{source.job}</td><td className="px-3 py-2.5"><span className={`rounded px-1.5 py-0.5 font-semibold ${tone}`}>{statusLabel}</span>{source.lastError ? <div className="mt-1 flex max-w-[220px] items-start gap-1 text-[10px] text-red-500"><span className="min-w-0 truncate">{source.lastError}</span><Hint label="Полный текст ошибки"><span className="break-anywhere">{source.lastError}</span></Hint></div> : null}</td><td className="px-3 py-2.5 text-right tabular-nums"><div>{source.coveragePct}%</div>{source.fieldCoverage?.map((coverage) => <div key={coverage.field} title={coverage.error || `${coverage.filled} из ${coverage.total}`} className={`mt-1 text-[9px] ${coverage.error ? "text-red-500" : coverage.coveragePct == null ? "text-slate-300" : coverage.coveragePct >= 80 ? "text-emerald-600" : "text-amber-600"}`}>{coverage.label}: {coverage.error ? "ошибка" : coverage.coveragePct == null ? "—" : `${coverage.coveragePct}%`}</div>)}</td><td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(source.rows)}</td><td className="px-3 py-2.5 text-slate-500">{source.lastSyncedAt ? formatTime(source.lastSyncedAt) : "—"}{source.ageMinutes != null ? <div className="text-[9px] text-slate-300">возраст {source.ageMinutes} мин · SLA {source.slaMinutes} мин</div> : null}{source.cursor ? <div className="max-w-[180px] truncate text-[9px] text-slate-300" title={source.cursor}>cursor {source.cursor}</div> : null}</td><td className="px-3 py-2.5 text-right"><button onClick={() => runJob(source.job, cabinet.id)} disabled={running !== null} className="tap-row inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Play className={`h-3 w-3 ${running === key ? "animate-pulse" : ""}`} />Повторить</button></td></tr>;
                     })}</tbody>
                   </table>
                 </div>
@@ -227,13 +228,13 @@ export function SyncPage() {
               type="date"
               value={backfillFrom}
               onChange={(e) => setBackfillFrom(e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700"
+              className="tap-row rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700"
             />
           </label>
           <button
             onClick={runBackfill}
             disabled={running !== null}
-            className="flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            className="tap-row flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
           >
             <Play className={`h-4 w-4 ${running === "backfill" ? "animate-pulse" : ""}`} />
             Догрузить заказы + продажи
@@ -257,7 +258,7 @@ export function SyncPage() {
                 <button
                   onClick={() => runJob(j.key)}
                   disabled={running !== null}
-                  className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  className="tap-row flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                 >
                   <Play className={`h-3 w-3 ${running === j.key ? "animate-pulse" : ""}`} />
                   Запустить
@@ -285,16 +286,22 @@ export function SyncPage() {
                 )}
               </div>
               {last && !ok && last.error && (
-                <p className="mt-2 truncate text-xs text-red-500" title={last.error}>
-                  {last.error}
-                </p>
+                // Причина сбоя видна строкой на любой ширине — прятать её под
+                // раскрывашку значило требовать лишний клик по каждой карточке.
+                // Полный текст живёт в Hint: он открывается и наведением, и
+                // касанием, в отличие от прежнего `title`, которого на телефоне
+                // нет вовсе.
+                <div className="mt-2 flex items-start gap-1 text-xs text-red-500">
+                  <span className="min-w-0 truncate">{last.error}</span>
+                  <Hint label="Полный текст ошибки"><span className="break-anywhere">{last.error}</span></Hint>
+                </div>
               )}
             </div>
           );
         })}
       </div>
 
-      <div className="max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="scroll-x max-w-full rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
             <tr>

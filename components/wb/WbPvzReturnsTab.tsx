@@ -170,7 +170,7 @@ export function WbPvzReturnsTab({ cabinetId, cabinetName }: { cabinetId: string;
               role="tab"
               aria-selected={subTab === value}
               onClick={() => setSubTab(value)}
-              className={`min-h-10 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${subTab === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+              className={`min-h-10 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8 ${subTab === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
             >
               {label}
             </button>
@@ -184,7 +184,7 @@ export function WbPvzReturnsTab({ cabinetId, cabinetName }: { cabinetId: string;
                 type="button"
                 aria-pressed={scope === value}
                 onClick={() => setScope(value)}
-                className={`min-h-10 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${scope === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                className={`min-h-10 rounded-md px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8 ${scope === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
               >
                 {label}
               </button>

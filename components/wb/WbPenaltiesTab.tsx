@@ -36,7 +36,7 @@ const PERIOD_PRESETS: ReadonlyArray<PeriodPreset> = [
   { value: "90", label: "90 дней" },
 ];
 
-const PILL_BASE = "min-h-10 shrink-0 rounded-md px-3 text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8";
+const PILL_BASE = "min-h-10 shrink-0 rounded-md px-3 text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8";
 
 /** Период считаем от сегодняшнего московского дня — как остальные WB-экраны. */
 function rangeForDays(days: number): { from: string; to: string } {
@@ -234,7 +234,7 @@ export function WbPenaltiesTab({ cabinetId, cabinetName }: { cabinetId: string; 
         </div>
       </div>
 
-      <div role="tablist" aria-label="Группы удержаний" className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-0.5">
+      <div role="tablist" aria-label="Группы удержаний" className="scroll-x flex max-w-full gap-1 rounded-lg bg-slate-100 p-0.5">
         {GROUP_TABS.map(([value, label]) => (
           <button
             key={value}

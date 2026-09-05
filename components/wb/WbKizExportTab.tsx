@@ -84,7 +84,7 @@ function UploadCard({
         type="file"
         accept=".xlsx"
         disabled={disabled}
-        className="mt-2 block w-full text-[11px] text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-2.5 file:py-1.5 file:text-[11px] file:font-semibold file:text-slate-700 hover:file:bg-slate-200 disabled:opacity-50"
+        className="mt-2 block w-full text-[11px] text-slate-500 file:mr-2 file:min-h-11 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:text-[11px] file:font-semibold file:text-slate-700 hover:file:bg-slate-200 disabled:opacity-50 lg:file:min-h-0 lg:file:px-2.5 lg:file:py-1.5"
         onChange={(event) => onPick(event.target.files?.[0] ?? null)}
       />
       {file ? (
@@ -92,7 +92,7 @@ function UploadCard({
           <span className="truncate text-slate-500" title={file.name}>{file.name}</span>
           <button
             type="button"
-            className="shrink-0 font-semibold text-slate-400 hover:text-rose-600"
+            className="tap shrink-0 font-semibold text-slate-400 hover:text-rose-600"
             onClick={() => {
               if (inputRef.current) inputRef.current.value = "";
               onPick(null);

@@ -300,7 +300,7 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
       <DraftNotice at={restoredAt} onForget={startOver} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex w-fit gap-1 rounded-lg bg-slate-100 p-1">
+        <div className="flex gap-1 overflow-x-auto overscroll-x-contain rounded-lg bg-slate-100 p-1 sm:w-fit">
           {([["task", "Задание для ФФ", ClipboardList], ["now", "Отгрузить сейчас", Truck]] as const).map(([key, label, Icon]) => (
             <button
               key={key}
@@ -308,7 +308,7 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
               title={key === "task"
                 ? "Товар резервируется; списывается, когда фулфилмент нажмёт «Отгружено»"
                 : "Списать сразу — товар уже физически уехал"}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+              className={`flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm transition-colors lg:min-h-0 lg:py-1.5 ${
                 mode === key ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
@@ -344,14 +344,24 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          {/* Смысл двух колонок раньше жил только в подсказке по наведению —
+              на касании её нет вовсе. Пишем текстом. */}
+          <p className="text-xs text-slate-400">
+            «В заданиях» — размещено в заданиях, которые ещё не отгружены.
+            «Доступно» — остаток минус то, что держат задания.
+          </p>
+
+          {/* Колонок столько, сколько кабинетов, — таблица заведомо шире экрана.
+              Артикул закреплён слева: без него ввод количества в третий кабинет
+              идёт вслепую, а ошибка здесь — товар, уехавший не на ту площадку. */}
+          <div className="scroll-x rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 text-left font-medium">Артикул</th>
+                  <th className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50 px-4 py-3 text-left font-medium">Артикул</th>
                   <th className="px-4 py-3 text-right font-medium">На складе</th>
-                  <th className="px-4 py-3 text-right font-medium text-red-600" title="Размещено в заданиях, которые ещё не отгружены">В заданиях</th>
-                  <th className="px-4 py-3 text-right font-medium" title="Остаток минус то, что держат задания">Доступно</th>
+                  <th className="px-4 py-3 text-right font-medium text-red-600">В заданиях</th>
+                  <th className="px-4 py-3 text-right font-medium">Доступно</th>
                   {cabinets.map((cabinet) => (
                     <th key={cabinet.id} className="px-4 py-3 text-right font-medium">
                       {cabinet.name}
@@ -374,7 +384,7 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
                   const available = availableOf(row);
                   return (
                     <tr key={row.variantId} className="border-b border-slate-100 last:border-0">
-                      <td className="px-4 py-2.5">
+                      <td className="sticky left-0 z-10 border-r border-slate-100 bg-white px-4 py-2.5">
                         <div className="flex items-center gap-2.5">
                           <WbProductImage
                             nm={row.nmId ?? undefined}
@@ -406,7 +416,7 @@ function ShipmentManager({ entityId, entity, warehouses, refreshKey, onShipped }
                               [cellKey(row.variantId, cabinet.id)]: e.target.value.replace(/[^\d]/g, ""),
                             }))}
                             placeholder="0"
-                            className={`w-20 rounded-lg border px-2 py-1 text-right text-sm ${
+                            className={`min-h-11 w-20 rounded-lg border px-2 py-1 text-right text-sm lg:min-h-0 ${
                               tooMuch ? "border-red-300 bg-red-50" : "border-slate-200"
                             }`}
                           />

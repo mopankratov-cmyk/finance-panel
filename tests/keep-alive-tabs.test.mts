@@ -215,7 +215,12 @@ test("экран тестов управляется одной панелью",
   assert.doesNotMatch(source, /как в Inferno/, "описание продукта в рабочем интерфейсе");
   assert.match(source, /role="tablist" aria-label="Тип теста"/);
   // Тип теста нарисован тем же сегментированным контролом, что и период.
-  assert.match(source, /rounded-lg border border-slate-200 bg-white p-0\.5 shadow-sm sm:min-h-9" role="tablist"/);
+  // Высоту проверяем как свойство, а не как точную строку: на касании
+  // переключатель обязан быть не ниже 44px, на большом экране остаётся
+  // плотным — конкретный брейкпоинт для теста несущественен.
+  const tablist = source.match(/className="([^"]*)" role="tablist"/)?.[1] ?? "";
+  assert.match(tablist, /rounded-lg border border-slate-200 bg-white p-0\.5 shadow-sm/);
+  assert.match(tablist, /min-h-11/, "переключатель типа теста ниже 44px — пальцем не попасть");
 });
 
 test("заголовок не обещает CTR, когда открыт другой тип теста", () => {

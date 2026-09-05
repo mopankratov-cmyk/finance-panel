@@ -7,6 +7,7 @@ import { WbProductImage } from "@/components/wb/WbProductImage";
 import { plural } from "@/lib/warehouse/plural";
 import type { StockMatrixResponse, StockModelNode } from "@/lib/warehouse/stockMatrix";
 import { StockSizeMatrix } from "@/components/warehouse/StockSizeMatrix";
+import { Hint } from "@/components/ui/Hint";
 
 export type StockWarehouse = StockMatrixResponse["warehouses"][number];
 
@@ -205,7 +206,14 @@ export function StockModelTree({ models, warehouses }: { models: StockModelNode[
       rows.push(
         <tr key={`${color.key}:matrix`} className="border-b border-slate-100">
           <td colSpan={COLUMNS} className="bg-slate-50 px-4 py-3">
-            <StockSizeMatrix node={color} />
+            {/* Ячейка растянута на всю ширину таблицы остатков, а та шире
+                экрана: раскрыв цвет на телефоне, человек видел середину
+                матрицы и её заголовок с колонкой «Размер» искал, прокрутив
+                внешнюю таблицу обратно влево. Прилипание к левому краю
+                прокрутки возвращает матрицу туда, где на неё смотрят. */}
+            <div className="sticky left-0 max-w-[calc(100vw-3rem)] lg:static lg:max-w-none">
+              <StockSizeMatrix node={color} />
+            </div>
           </td>
         </tr>,
       );
@@ -213,14 +221,29 @@ export function StockModelTree({ models, warehouses }: { models: StockModelNode[
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+    <div className="scroll-x rounded-xl border border-slate-200 bg-white">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
             <th className="px-4 py-3 text-left font-medium">Модель / цвет / размер</th>
             <th className="px-3 py-3 text-right font-medium">Остаток</th>
-            <th className="px-3 py-3 text-right font-medium text-red-600" title="Размещено в заданиях на отгрузку, но ещё не отгружено">В заданиях</th>
-            <th className="px-3 py-3 text-right font-medium text-red-600" title="Ждём приёмки или пересчитано, но ещё не на остатке">Ожидается</th>
+            {/* Смысл красных колонок жил только в `title`, а подсказки по
+                наведению на касании не существует. Абзацем над таблицей его
+                выносить нельзя: на десктопе это две лишние строки текста там,
+                где раньше была одна шапка. Кнопка-пояснение открывается и
+                пальцем, и мышью, а места занимает 14px. */}
+            <th className="px-3 py-3 text-right font-medium text-red-600">
+              <span className="inline-flex items-center justify-end gap-1">
+                В заданиях
+                <Hint label="Что значит «В заданиях»">Размещено в заданиях на отгрузку, но ещё не отгружено.</Hint>
+              </span>
+            </th>
+            <th className="px-3 py-3 text-right font-medium text-red-600">
+              <span className="inline-flex items-center justify-end gap-1">
+                Ожидается
+                <Hint label="Что значит «Ожидается»">Ждём приёмки или пересчитано, но ещё не на остатке.</Hint>
+              </span>
+            </th>
             <th className="px-3 py-3 text-right font-medium">Получено</th>
             <th className="px-3 py-3 text-right font-medium">Отгружено</th>
             <th className="px-3 py-3 text-right font-medium">Себес, ₽</th>

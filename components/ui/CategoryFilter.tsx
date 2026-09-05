@@ -17,13 +17,16 @@ export function CategoryFilter({ categories, value, onChange, hasUncategorized =
   const missing = value && value !== "__none" && !categories.includes(value) ? [value] : [];
   const options = ["", ...categories, ...missing, ...(hasUncategorized ? ["__none"] : [])];
   const label = (o: string) => (o === "" ? "Все" : o === "__none" ? "Остальное" : o);
+  // На телефоне ряд едет вбок одной строкой: десяток категорий переносом
+  // занимал четыре строки шапки, то есть треть экрана до таблицы. От sm
+  // возвращается прежний перенос — на широком экране прокрутка лишняя.
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded-md bg-gray-100 p-0.5">
+    <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-md bg-gray-100 p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:flex-wrap sm:overflow-visible">
       {options.map((o) => (
         <button
           key={o || "all"}
           onClick={() => onChange(o)}
-          className={`rounded px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${value === o ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}
+          className={`tap-row inline-flex items-center rounded px-3 py-1 text-xs font-semibold whitespace-nowrap sm:px-2.5 ${value === o ? "bg-white text-violet-700 shadow" : "text-gray-500"}`}
         >
           {label(o)}
         </button>

@@ -237,7 +237,7 @@ export function TaskCard({
         )}
         <button
           onClick={onToggle}
-          className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          className="ml-auto inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 hover:bg-slate-50 lg:min-h-0 lg:py-1"
         >
           {expanded ? "Свернуть" : "Открыть"}
         </button>
@@ -253,7 +253,11 @@ export function TaskCard({
           )}
           {error && <div className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-          <div className="overflow-x-auto">
+          {/* Пять колонок с полем ввода в последней в 320 px не помещаются: на
+              телефоне строка становится карточкой, где артикул с размером —
+              заголовок, а «Отгружаем» — поле под ним. Иначе фулфилмент вводит
+              число, уже не видя, к какому размеру оно относится. */}
+          <div className="table-cards scroll-x px-4 md:px-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
@@ -273,7 +277,7 @@ export function TaskCard({
                   const short = line.onHand < line.qty;
                   return (
                     <tr key={line.id} className="border-b border-slate-100 last:border-0">
-                      <td className="px-4 py-2">
+                      <td data-cell="title" className="px-4 py-2">
                         <div className="flex items-center gap-2.5">
                           <WbProductImage
                             nm={line.nmId ?? undefined}
@@ -282,26 +286,29 @@ export function TaskCard({
                             label={line.article}
                             className="h-9 w-9 shrink-0 rounded-lg border border-slate-100 bg-slate-50 object-cover"
                           />
-                          <span className="font-medium text-slate-900">{line.article}</span>
+                          <span className="break-anywhere font-medium text-slate-900">{line.article}</span>
                           {line.sizeLabel && (
                             <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{line.sizeLabel}</span>
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-xs text-slate-400">{line.barcode ?? "—"}</td>
+                      <td data-label="Штрихкод" className="break-anywhere px-4 py-2 text-xs text-slate-400">{line.barcode ?? "—"}</td>
                       <td
+                        data-label="На складе"
                         className={`px-4 py-2 text-right tabular-nums ${short ? "font-medium text-red-600" : "text-slate-600"}`}
-                        title={short ? "На складе меньше, чем в задании" : undefined}
                       >
                         {formatNumber(line.onHand)}
+                        {/* Пояснение текстом, а не в title: на касании подсказки
+                            по наведению не существует. */}
+                        {short && <span className="ml-1.5 text-xs font-normal">меньше задания</span>}
                       </td>
-                      <td className="px-4 py-2 text-right">
+                      <td data-label="Задание" className="px-4 py-2 text-right">
                         {editing ? (
                           <input
                             inputMode="numeric"
                             value={editQty[line.variantId] ?? ""}
                             onChange={(e) => setEditQty((prev) => ({ ...prev, [line.variantId]: digitsOnly(e.target.value) }))}
-                            className={`w-20 rounded-lg border px-2 py-1 text-right text-sm ${
+                            className={`min-h-11 w-20 rounded-lg border px-2 py-1 text-right text-sm lg:min-h-0 ${
                               toQty(editQty[line.variantId]) > line.onHand ? "border-red-300 bg-red-50" : "border-slate-200"
                             }`}
                           />
@@ -310,12 +317,12 @@ export function TaskCard({
                         )}
                       </td>
                       {!editing && (
-                        <td className="px-4 py-2 text-right">
+                        <td data-label="Отгружаем" className="px-4 py-2 text-right">
                           <input
                             inputMode="numeric"
                             value={shipQty[line.variantId] ?? ""}
                             onChange={(e) => setShipQty((prev) => ({ ...prev, [line.variantId]: digitsOnly(e.target.value) }))}
-                            className={`w-20 rounded-lg border px-2 py-1 text-right text-sm ${tone}`}
+                            className={`min-h-11 w-20 rounded-lg border px-2 py-1 text-right text-sm lg:min-h-0 ${tone}`}
                           />
                         </td>
                       )}
@@ -326,13 +333,13 @@ export function TaskCard({
             </table>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-4 py-3">
             <a
               href={`/warehouse/print/${task.id}`}
               target="_blank"
               rel="noreferrer"
               title="Печатная форма задания"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 hover:bg-slate-50 lg:min-h-0 lg:py-1.5"
             >
               <Printer className="h-3.5 w-3.5" /> Печать
             </a>
@@ -342,14 +349,14 @@ export function TaskCard({
                 <button
                   onClick={() => setEditing(false)}
                   disabled={busy !== null}
-                  className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  className="ml-auto inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
                 >
                   Отмена
                 </button>
                 <button
                   onClick={() => void save()}
                   disabled={busy !== null}
-                  className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                  className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
                 >
                   {busy === "save" ? "Сохраняю…" : "Сохранить"}
                 </button>
@@ -365,14 +372,14 @@ export function TaskCard({
                     <button
                       onClick={startEdit}
                       disabled={busy !== null}
-                      className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      className="ml-auto inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
                     >
                       Изменить
                     </button>
                     <button
                       onClick={() => void cancel()}
                       disabled={busy !== null}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:text-red-600 disabled:opacity-50"
+                      className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600 hover:text-red-600 disabled:opacity-50 lg:min-h-0 lg:py-1.5"
                     >
                       {busy === "cancel" ? "Отменяю…" : "Отменить"}
                     </button>
@@ -381,7 +388,7 @@ export function TaskCard({
                 <button
                   onClick={() => void ship()}
                   disabled={busy !== null || shipTotal === 0 || overTask.length > 0}
-                  className={`${canManage ? "" : "ml-auto "}inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50`}
+                  className={`${canManage ? "" : "ml-auto "}inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 lg:min-h-0 lg:py-1.5`}
                 >
                   <Check className="h-4 w-4" />
                   {busy === "ship" ? "Отгружаю…" : "Отгружено"}

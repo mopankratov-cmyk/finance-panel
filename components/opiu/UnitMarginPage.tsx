@@ -83,17 +83,17 @@ export function UnitMarginPage() {
   return (
     <div className="bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-[110rem] items-center gap-3 px-4 py-4 sm:px-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+        <div className="mx-auto flex max-w-[110rem] flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
             <Sigma className="h-5 w-5" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="text-lg font-extrabold tracking-tight">Юнит-экономика WB</h1>
             <p className="text-xs text-gray-500">
               {data?.meta_text || "прибыль/ед: цена до СПП − себес − комиссия − эквайринг − ДРР − налог"}
             </p>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
             <CabinetSwitcher mp="wb" accent="violet" onChange={setCabId} />
             <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
           </div>
@@ -119,7 +119,7 @@ export function UnitMarginPage() {
                   {data.headers.slice(FIRST_DATA_COL).map((header, index) => {
                     const field = String(FIRST_DATA_COL + index);
                     return (
-                      <th key={field} onClick={() => toggleSort(field)} className="cursor-pointer select-none px-3 py-2 text-right font-semibold whitespace-nowrap hover:text-violet-700">
+                      <th key={field} onClick={() => toggleSort(field)} className="tap-hit cursor-pointer select-none px-3 py-2 text-right font-semibold whitespace-nowrap hover:text-violet-700">
                         {header}{sortGlyph(sortField === field, sortDir)}
                       </th>
                     );
@@ -132,7 +132,7 @@ export function UnitMarginPage() {
                   return (
                     <tr key={String(row[4])} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
                       <td className="sticky left-0 z-10 bg-white px-3 py-2 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] group-hover:bg-gray-50">
-                        <div className="flex items-center gap-2">
+                        <div className="flex max-w-[9.5rem] items-center gap-2 sm:max-w-none">
                           <WbProductImage nm={Number(row[4])} src={data.img_urls[rowIndex]} className="h-8 w-8 shrink-0 rounded bg-gray-100 object-cover" />
                           <div className="min-w-0">
                             <div className="truncate text-xs font-semibold">{show(row[2])}</div>

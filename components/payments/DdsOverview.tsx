@@ -185,7 +185,10 @@ function Metric({
           <Icon className="h-5 w-5" />
         </div>
         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-        <p className="mt-1 truncate text-xl font-bold tabular-nums text-slate-950">{value}</p>
+        {/* Сумму не обрезаем: раньше в узкой колонке она молча превращалась в
+            «1 234…», и полного числа было негде взять — на денежном экране это
+            дезинформация. Длинное значение переносится и мельчает. */}
+        <p className="mt-1 text-lg font-bold tabular-nums break-anywhere text-slate-950 sm:text-xl">{value}</p>
       </CardContent>
     </Card>
   );

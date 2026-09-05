@@ -138,7 +138,7 @@ export function SalesPlanFactView({ marketplace, cabinetId, monthKey, approvedPl
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" aria-label="Сводка план факт">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h2 className="text-sm font-bold text-slate-900">План · факт · прогноз заказов</h2><p className="mt-1 text-xs text-slate-500">Утверждённый план v{approvedMonthState.version} · {salesPlanMonthLabel(approvedPlan.year, monthKey)} · факт из {marketplace === "wb" ? "Wildberries" : "Ozon"}</p></div>
-          <button type="button" onClick={load} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 sm:min-h-9"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> Обновить факт</button>
+          <button type="button" onClick={load} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 lg:min-h-9"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} /> Обновить факт</button>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Kpi label="План месяца" value={`${number(planSummary.orders)} шт.`} detail={`${approvedPlan.rows.length} цветовых вариаций`} tone="amber" />
@@ -151,10 +151,10 @@ export function SalesPlanFactView({ marketplace, cabinetId, monthKey, approvedPl
       {error ? <ActionableError message={error} label="План-факт" onRetry={load} /> : null}
       {loading && !data ? <div className="flex min-h-72 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" /> Загружаем фактические заказы…</div> : (
         <div className="max-w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-max min-w-full border-separate border-spacing-0 text-[10px] leading-4 text-slate-700">
+          <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-4 text-slate-700 lg:text-[10px]">
             <thead><tr className="h-10 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-              <th className="sticky left-0 top-0 z-30 w-[205px] min-w-[205px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left shadow-[6px_0_10px_rgba(15,23,42,0.05)]">Цвет · факт / план</th>
-              {Array.from({ length: days }, (_, day) => <th key={day} className="sticky top-0 z-20 w-14 min-w-14 border-b border-r border-slate-200 bg-slate-50 px-1 text-center"><span className="block text-slate-600">{String(day + 1).padStart(2, "0")}</span><span className="text-[9px] font-medium normal-case text-slate-400">день</span></th>)}
+              <th className="sticky left-0 top-0 z-30 w-[132px] min-w-[132px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left shadow-[6px_0_10px_rgba(15,23,42,0.05)] lg:w-[205px] lg:min-w-[205px]">Цвет · факт / план</th>
+              {Array.from({ length: days }, (_, day) => <th key={day} className="sticky top-0 z-20 w-14 min-w-14 border-b border-r border-slate-200 bg-slate-50 px-1 text-center"><span className="block text-slate-600">{String(day + 1).padStart(2, "0")}</span><span className="text-[10px] font-medium normal-case text-slate-400 lg:text-[9px]">день</span></th>)}
               <th className="sticky top-0 z-20 w-[88px] min-w-[88px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Заказы</th><th className="sticky top-0 z-20 w-[78px] min-w-[78px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Выполн.</th><th className="sticky top-0 z-20 w-[118px] min-w-[118px] border-b border-r border-slate-200 bg-slate-50 px-2 text-right">Реклама ф/п</th><th className="sticky top-0 z-20 w-[96px] min-w-[96px] border-b border-slate-200 bg-slate-50 px-2 text-right">ДРР ф/п</th>
             </tr></thead>
             <tbody>{rows.map((item) => <FactTableRow key={item.row.id} item={item} monthKey={monthKey} days={days} />)}</tbody>
@@ -175,14 +175,14 @@ function FactTableRow({ item, monthKey, days }: { item: FactRow; monthKey: strin
   const execution = plan.orders > 0 && knownOrders ? (factOrders / plan.orders) * 100 : null;
   return (
     <tr className="h-12 hover:bg-slate-50/70">
-      <td className="sticky left-0 z-10 w-[205px] min-w-[205px] border-b border-r border-slate-200 bg-white px-3 shadow-[6px_0_10px_rgba(15,23,42,0.04)]"><span className="block truncate font-semibold text-slate-800" title={`${item.row.model} · ${item.row.color}`}>{item.row.model} · {item.row.color}</span><span className="block truncate text-[10px] text-slate-400" title={item.row.variant}>{item.row.variant}</span></td>
+      <td className="sticky left-0 z-10 w-[132px] min-w-[132px] border-b border-r border-slate-200 bg-white px-3 shadow-[6px_0_10px_rgba(15,23,42,0.04)] lg:w-[205px] lg:min-w-[205px]"><span className="block truncate font-semibold text-slate-800" title={`${item.row.model} · ${item.row.color}`}>{item.row.model} · {item.row.color}</span><span className="block truncate text-[11px] text-slate-400 lg:text-[10px]" title={item.row.variant}>{item.row.variant}</span></td>
       {Array.from({ length: days }, (_, day) => {
         const fact = item.orders[day];
         const planned = item.row.months[monthKey]?.[day] ?? 0;
         const delta = fact == null ? null : fact - planned;
         const tone = delta == null || delta === 0 ? "bg-white" : delta > 0 ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800";
         const title = fact == null ? `План: ${number(planned)} шт.` : `Факт: ${number(fact)} шт. · План: ${number(planned)} шт.`;
-        return <td key={day} title={title} className={`w-14 min-w-14 border-b border-r border-slate-200 px-1 text-center tabular-nums ${tone}`}><span className="block whitespace-nowrap font-semibold">{fact == null ? "—" : number(fact)} / {number(planned)}</span><span className="block text-[9px] opacity-70">{delta == null ? "" : delta > 0 ? `+${number(delta)}` : number(delta)}</span></td>;
+        return <td key={day} title={title} className={`w-14 min-w-14 border-b border-r border-slate-200 px-1 text-center tabular-nums ${tone}`}><span className="block whitespace-nowrap font-semibold">{fact == null ? "—" : number(fact)} / {number(planned)}</span><span className="block text-[11px] lg:text-[9px] lg:opacity-70">{delta == null ? "" : delta > 0 ? `+${number(delta)}` : number(delta)}</span></td>;
       })}
       <td className="border-b border-r border-slate-200 px-2 text-right font-semibold tabular-nums">{knownOrders ? number(factOrders) : "—"} / {number(plan.orders)}</td>
       <td className="border-b border-r border-slate-200 px-2 text-right font-semibold tabular-nums">{execution == null ? "—" : `${execution.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`}</td>

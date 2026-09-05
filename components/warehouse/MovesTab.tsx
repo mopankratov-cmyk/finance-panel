@@ -117,7 +117,7 @@ export function MovesTab({ entityId, refreshKey }: { entityId: string; refreshKe
         </span>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="scroll-x rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">

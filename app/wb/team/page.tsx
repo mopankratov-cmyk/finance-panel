@@ -105,7 +105,7 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
+    <div className="mx-auto max-w-3xl px-4 pb-[calc(5rem+var(--safe-b))] pt-6 md:pb-6">
       <h1 className="text-xl font-semibold text-slate-900">Команда кабинета</h1>
       <p className="mt-1 text-sm text-slate-500">
         Сотрудники вашей организации и их уровни доступа. Заводить людей и выдавать уровни
@@ -122,26 +122,34 @@ export default function TeamPage() {
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <UserPlus className="h-4 w-4 text-violet-600" aria-hidden="true" /> Новый сотрудник
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="почта"
-            className="min-w-[14rem] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="пароль, не короче 10 символов"
-            className="min-w-[14rem] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          />
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="min-w-[14rem] flex-1 text-xs font-medium text-slate-500">
+            Почта сотрудника
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="почта"
+              autoComplete="off"
+              className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
+            />
+          </label>
+          <label className="min-w-[14rem] flex-1 text-xs font-medium text-slate-500">
+            Пароль, не короче 10 символов
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="пароль, не короче 10 символов"
+              autoComplete="new-password"
+              className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
+            />
+          </label>
           <button
             type="button"
             onClick={() => void create()}
             disabled={saving || !email || password.length < 10}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
+            className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
           >
             {saving ? "Сохраняем…" : "Добавить"}
           </button>
@@ -208,7 +216,7 @@ export default function TeamPage() {
                     <button
                       type="button"
                       onClick={async () => { if (await send({ action: "toggle", userId: user.id }, "Статус изменён")) await load(); }}
-                      className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+                      className="min-h-11 rounded-md border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-100 lg:min-h-9"
                     >{user.isActive ? "Выключить" : "Включить"}</button>
                   )}
                 </div>
@@ -218,8 +226,8 @@ export default function TeamPage() {
                     const level = access[`${user.id}|${cabinet.id}`] ?? "";
                     const self = user.id === me;
                     return (
-                      <div key={cabinet.id} className="flex items-center gap-2 text-xs">
-                        <span className="min-w-0 flex-1 truncate text-slate-600">{cabinet.name}</span>
+                      <div key={cabinet.id} className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="min-w-0 flex-1 basis-full truncate text-slate-600 sm:basis-auto">{cabinet.name}</span>
                         <select
                           value={level}
                           disabled={self}
@@ -235,7 +243,7 @@ export default function TeamPage() {
                               });
                             }
                           }}
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs disabled:bg-slate-50 disabled:text-slate-400"
+                          className="min-h-11 rounded-md border border-slate-200 bg-white px-2 text-xs disabled:bg-slate-50 disabled:text-slate-400 lg:min-h-9"
                         >
                           <option value="">не задано</option>
                           <option value="manager">менеджер кабинета</option>

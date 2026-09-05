@@ -5,6 +5,7 @@ import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, us
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ActionableError } from "@/components/ui/ActionableError";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { Modal } from "@/components/ui/Modal";
 import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 import { heat } from "@/lib/analytics/heat";
 import { deploymentPinnedFetch } from "@/lib/http/deploymentPinnedFetch";
@@ -249,6 +250,9 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
 const METRIC_ROW_HEIGHT = 34;
 const DELTA_METRIC_ROW_HEIGHT = 42;
 const MOBILE_PAGE_SIZE = 20;
+// Сколько показателей карточка SKU показывает без раскрытия. Восемь — это
+// экран телефона; остальные из выбранных шестидесяти открываются кнопкой.
+const MOBILE_CARD_METRICS = 8;
 // Порция десктопной ленты: карточка тяжёлая (метрики × дни), поэтому первый
 // экран отдаём быстро, остальное дорисовываем при скролле.
 const DESK_PAGE_SIZE = 8;
@@ -680,6 +684,14 @@ export function WbRnpPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [planMessage, setPlanMessage] = useState<string | null>(null);
   const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE_SIZE);
+  // Матрица и лента карточек — не «десктоп против телефона», а два способа
+  // читать одни и те же цифры: лента подряд по SKU, матрица — сравнение
+  // колонок. Раньше телефону доставалась только лента, и матрица вместе с
+  // журналом, теплокартой и планированием была недоступна вовсе.
+  const [mobileView, setMobileView] = useState<"cards" | "table">("cards");
+  // Показателей в срезе бывает шесть десятков, все они в карточку не влезут.
+  // Первые восемь видны сразу, остальные — по требованию, по каждому SKU.
+  const [expandedMobileNms, setExpandedMobileNms] = useState<number[]>([]);
   // Десктопная лента рендерится порциями: карточка SKU — это 9+ строк × (дни+3)
   // ячеек, и полная лента на квартале превращалась в сотни тысяч React-элементов,
   // которые реконсилировались на КАЖДЫЙ ввод и клик. Дорисовываем по мере скролла.
@@ -1478,7 +1490,7 @@ export function WbRnpPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-54px)] bg-[#f7f7fb] px-3 pb-20 pt-4 md:px-6 md:pb-8 lg:px-7">
+    <div className="min-h-[calc(100dvh-54px)] bg-[#f7f7fb] px-3 pb-20 pt-4 md:px-6 md:pb-8 lg:px-7">
       <header className="mb-3 flex min-h-12 flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
@@ -1489,7 +1501,11 @@ export function WbRnpPage() {
             <h1 className="mt-0.5 truncate text-xl font-bold leading-6 tracking-[-0.02em] text-slate-900">Рука на пульсе</h1>
           </div>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        {/* `shrink-0` на ряду из трёх кнопок держал 350px при экране в 320:
+            ряд не сжимался, не переносился и распирал страницу вбок целиком.
+            На узком экране кнопки уходят на свою строку и переносятся между
+            собой; с sm возвращается прежний прижим вправо. */}
+        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap sm:shrink-0">
           <button
             type="button"
             disabled={!hasExactCabinet || !canManage}
@@ -1499,7 +1515,7 @@ export function WbRnpPage() {
               setOrderEditorOpen(true);
             }}
             title={!hasExactCabinet ? "Выберите один кабинет" : "Ручная последовательность выдачи артикулов — применяется на всех экранах"}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40 lg:min-h-9"
           >
             <ListOrdered className="h-3.5 w-3.5" /> Порядок SKU{orderNmIds.length ? ` · ${orderNmIds.length}` : ""}
           </button>
@@ -1508,7 +1524,7 @@ export function WbRnpPage() {
             disabled={!canManage}
             onClick={() => setPlanning((value) => !value)}
             title={!canManage ? "Для планирования выберите один кабинет" : "Редактировать план внутри таблицы"}
-            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 lg:min-h-9 ${
               planning ? "border-violet-600 bg-violet-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:text-violet-700"
             }`}
           >
@@ -1518,7 +1534,7 @@ export function WbRnpPage() {
             type="button"
             onClick={() => setRetryKey((key) => key + 1)}
             disabled={loading}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#7567e8] px-3.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#6558d9] disabled:opacity-60"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#7567e8] px-3.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#6558d9] disabled:opacity-60 lg:min-h-9"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             Обновить
@@ -1635,7 +1651,7 @@ export function WbRnpPage() {
                     type="button"
                     onClick={() => deleteFilterPreset(preset.id)}
                     aria-label={`Удалить срез ${preset.label}`}
-                    className="grid h-8 w-7 place-items-center border-l border-slate-200 text-[13px] font-semibold text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+                    className="tap-hit grid h-8 w-7 place-items-center border-l border-slate-200 text-[13px] font-semibold text-slate-300 hover:bg-rose-50 hover:text-rose-600"
                   >
                     ×
                   </button>
@@ -1973,7 +1989,28 @@ export function WbRnpPage() {
         </div>
       ) : activeData ? (
         <>
-          <div className="hidden space-y-4 md:block">
+          {/* Матрица — главный инструмент экрана: сводка, посуточные колонки,
+              журнал по дням, теплокарта, планирование. Спрятанная брейкпоинтом,
+              она была недоступна с телефона целиком. Лента карточек остаётся
+              видом по умолчанию — читать SKU подряд пальцем удобнее, — но
+              выбор теперь за человеком, а не за шириной экрана. */}
+          <div className="mb-2.5 inline-flex rounded-lg bg-slate-100 p-0.5 md:hidden" role="group" aria-label="Вид данных">
+            {([["cards", "Карточки"], ["table", "Таблица"]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={mobileView === value}
+                onClick={() => setMobileView(value)}
+                className={`min-h-11 rounded-md px-4 text-[11px] font-semibold transition-colors ${
+                  mobileView === value ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className={`space-y-4 md:block ${mobileView === "table" ? "" : "hidden"}`}>
             <OptimaMatrixCard
               title="Общая сводка"
               subtitle={`${sortedSkus.length} артикулов${summaryFiltered ? ` из ${activeData.skus.length} · сводка по фильтру` : ""} · ${activeData.shop_label} · данные на ${formatAsOf(activeData.generated_at)}`}
@@ -2053,32 +2090,73 @@ export function WbRnpPage() {
             ) : null}
           </div>
 
-          <div className="space-y-2.5 md:hidden">
+          <div className={`space-y-2.5 md:hidden ${mobileView === "table" ? "hidden" : ""}`}>
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-[#e5e7ef] bg-white px-3 text-[11px] font-medium text-slate-600">
+              <input
+                type="checkbox"
+                disabled={!operationsAvailable || tableSkus.length === 0}
+                checked={tableSkus.length > 0 && tableSkus.every((sku) => selectedOperationNms.includes(sku.nm))}
+                onChange={(event) => setSelectedOperationNms(event.target.checked ? tableSkus.map((sku) => sku.nm) : [])}
+                className="h-5 w-5 accent-violet-600 disabled:opacity-40"
+              />
+              Выбрать все ({tableSkus.length})
+            </label>
             <p className="rounded-lg bg-violet-50 px-3 py-2 text-[10px] text-violet-700">
               Сначала показаны {Math.min(mobileLimit, tableSkus.length)} SKU по сортировке «{SORTS.find((sort) => sort.field === sortField)?.label}».
             </p>
             {mobileSkus.map((sku) => {
-              const selected = completeMetrics(sku.metrics, activeData.period.length, metricFields).slice(0, 8);
+              // Показатели идут в том порядке, в каком их выстроили в пикере:
+              // порядок — это и есть ответ на вопрос «что смотреть первым».
+              const skuMetrics = completeMetrics(sku.metrics, activeData.period.length, metricFields);
+              const expanded = expandedMobileNms.includes(sku.nm);
+              const visibleMetrics = expanded ? skuMetrics : skuMetrics.slice(0, MOBILE_CARD_METRICS);
+              const previousMetrics = previousSkuByNm.get(sku.nm)?.metrics ?? [];
               const orders = findMetric(sku.metrics, "orders_sum");
-              const previousOrders = findMetric(previousSkuByNm.get(sku.nm)?.metrics ?? [], "orders_sum");
+              const previousOrders = findMetric(previousMetrics, "orders_sum");
               const orderDelta = metricDelta(orders?.total, previousOrders?.total);
               const skuPlan = plan[String(sku.nm)]?.orders_sum ?? null;
               const skuTagIds = tagsByNm.get(sku.nm) ?? [];
+              const skuAnomalies = anomalyByNm.get(sku.nm) ?? [];
+              const risks = skuAnomalies.filter((item) => item.direction === "negative").length;
+              const growth = skuAnomalies.filter((item) => item.direction === "positive").length;
+              const editingPlan = planning && canManage;
               return (
                 <article key={sku.nm} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                   <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selectedOperationNms.includes(sku.nm)}
+                      disabled={!operationsAvailable}
+                      onChange={(event) => setSelectedOperationNms((current) =>
+                        event.target.checked ? [...new Set([...current, sku.nm])] : current.filter((nm) => nm !== sku.nm))}
+                      className="h-5 w-5 shrink-0 accent-violet-600 disabled:opacity-30"
+                      aria-label={`Выбрать артикул ${sku.art}`}
+                    />
                     <WbProductImage nm={sku.nm} src={sku.img_url} className="h-12 w-12 rounded-lg bg-slate-100 object-cover" />
                     <div className="min-w-0 flex-1">
-                      <h2 className="truncate text-xs font-semibold text-violet-700">{sku.art}</h2>
+                      <a
+                        href={`https://www.wildberries.ru/catalog/${sku.nm}/detail.aspx`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block truncate text-xs font-semibold text-violet-700"
+                      >
+                        {sku.art}
+                      </a>
                       <p className="mt-0.5 truncate text-[10px] text-slate-400">{sku.name}</p>
                       <p className="mt-1 text-[9px] text-slate-400">WB {sku.nm}</p>
                     </div>
                     {canManage ? (
-                      <button type="button" onClick={() => setOperationsSkuNm(sku.nm)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-400 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700" aria-label={`Теги и журнал ${sku.art}`}>
+                      <button type="button" onClick={() => setOperationsSkuNm(sku.nm)} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-400 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700" aria-label={`Теги и журнал ${sku.art}`}>
                         <BookOpen className="h-4 w-4" />
                       </button>
                     ) : null}
                   </div>
+                  {risks || growth ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {risks ? <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">↓ риск {risks}</span> : null}
+                      {growth ? <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600">↑ рост {growth}</span> : null}
+                    </div>
+                  ) : null}
                   {skuTagIds.length ? (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {tags.filter((tag) => skuTagIds.includes(tag.id)).map((tag) => (
@@ -2088,19 +2166,56 @@ export function WbRnpPage() {
                       ))}
                     </div>
                   ) : null}
-                  <dl className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-50 p-1.5">
-                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">План</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">{compactFmt(skuPlan, "money")}</dd></div>
-                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Факт</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">{compactFmt(orders?.total, "money")}</dd>{showDeltas && orderDelta ? <DeltaMark delta={orderDelta} kind="money" mode={deltaMode} field="orders_sum" /> : null}</div>
-                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Прогноз</dt><dd className="mt-0.5 truncate text-[10px] font-semibold text-violet-700">{compactFmt(orders?.forecast, "money")}</dd></div>
+                  {/* В 320px три колонки дают по 85px на «1 234 567 ₽»: сумма
+                      обрезалась ровно там, где её и читают. */}
+                  <dl className="mt-3 grid grid-cols-1 gap-1 rounded-lg bg-slate-50 p-1.5 min-[380px]:grid-cols-3">
+                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">План</dt><dd className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-700">{compactFmt(skuPlan, "money")}</dd></div>
+                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Факт</dt><dd className="mt-0.5 text-[10px] font-semibold tabular-nums text-slate-700">{compactFmt(orders?.total, "money")}</dd>{showDeltas && orderDelta ? <DeltaMark delta={orderDelta} kind="money" mode={deltaMode} field="orders_sum" /> : null}</div>
+                    <div className="rounded-md bg-white px-2 py-1.5"><dt className="text-[8px] text-slate-400">Прогноз</dt><dd className="mt-0.5 text-[10px] font-semibold tabular-nums text-violet-700">{compactFmt(orders?.forecast, "money")}</dd></div>
                   </dl>
                   <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-slate-200">
-                    {selected.map((metric) => (
-                      <div key={metric.field} className="bg-white px-2.5 py-2">
-                        <dt className="text-[9px] text-slate-400">{metric.label}</dt>
-                        <dd className="mt-0.5 text-xs font-semibold tabular-nums text-slate-700">{fmt(metric.total, metric.kind)}</dd>
-                      </div>
-                    ))}
+                    {visibleMetrics.map((metric) => {
+                      const planKey = `${sku.nm}:${metric.field}`;
+                      const savedPlan = plan[String(sku.nm)]?.[metric.field];
+                      const draft = drafts[planKey] ?? (savedPlan == null ? "" : String(savedPlan));
+                      const delta = showDeltas ? metricDelta(metric.total, findMetric(previousMetrics, metric.field)?.total) : null;
+                      return (
+                        <div key={metric.field} className="bg-white px-2.5 py-2">
+                          <dt className="text-[9px] text-slate-400">{metric.label}</dt>
+                          <dd className="mt-0.5 text-xs font-semibold tabular-nums text-slate-700">{matrixFmt(metric.total, metric.kind, compactNumbers)}</dd>
+                          {delta ? <DeltaMark delta={delta} kind={metric.kind} mode={deltaMode} field={metric.field} /> : null}
+                          {sparklinesEnabled ? <OptimaSparkline values={metric.daily} /> : null}
+                          {editingPlan ? (
+                            <div className="relative mt-1.5">
+                              <span className="mb-0.5 block text-[8px] text-slate-400">план месяца</span>
+                              <input
+                                inputMode="decimal"
+                                value={draft}
+                                onChange={(event) => setDrafts((current) => ({ ...current, [planKey]: event.target.value }))}
+                                onBlur={() => savePlan(sku, metric)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") event.currentTarget.blur();
+                                }}
+                                className="h-11 w-full rounded-md border border-amber-200 bg-amber-50 px-2 text-right font-semibold text-slate-700 outline-none focus:border-violet-400 focus:bg-white"
+                                aria-label={`План месяца ${metric.label} · ${sku.art}`}
+                              />
+                              {saving === planKey ? <Loader2 className="absolute bottom-3 left-1.5 h-3 w-3 animate-spin text-violet-500" /> : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </dl>
+                  {skuMetrics.length > MOBILE_CARD_METRICS ? (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedMobileNms((current) =>
+                        current.includes(sku.nm) ? current.filter((nm) => nm !== sku.nm) : [...current, sku.nm])}
+                      className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 text-[11px] font-semibold text-violet-700 hover:border-violet-200 hover:bg-violet-50"
+                    >
+                      {expanded ? "Свернуть показатели" : `Показать все показатели (${skuMetrics.length})`}
+                    </button>
+                  ) : null}
                 </article>
               );
             })}
@@ -2117,71 +2232,72 @@ export function WbRnpPage() {
         </>
       ) : null}
 
-      {orderEditorOpen ? (
-        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/30 p-4" role="dialog" aria-modal="true" aria-label="Свой порядок артикулов">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-bold text-slate-800">Свой порядок выдачи артикулов</h2>
-                <p className="mt-0.5 text-[10px] leading-4 text-slate-400">
-                  Вставьте nmID в нужной последовательности (из таблицы, по одному в строке или через запятую).
-                  Перечисленные идут первыми в этом порядке, остальные — после них.
-                  Применяется на всех экранах со списками SKU кабинета.
-                </p>
-              </div>
-              <button type="button" onClick={() => setOrderEditorOpen(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" aria-label="Закрыть">✕</button>
-            </div>
-            <textarea
-              value={orderDraft}
-              onChange={(event) => setOrderDraft(event.target.value)}
-              rows={12}
-              spellCheck={false}
-              className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-[11px] tabular-nums text-slate-700 outline-none focus:border-violet-300"
-              placeholder={"874393713\n874404592\n874404593"}
-            />
-            <div className="mt-1 text-[10px] text-slate-400">Распознано артикулов: {parseSkuOrderInput(orderDraft).length}{parseSkuOrderInput(orderDraft).length > SKU_ORDER_LIMIT ? ` — больше лимита ${SKU_ORDER_LIMIT}` : ""}</div>
-            {orderError ? <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[10px] text-rose-700">{orderError}</div> : null}
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                disabled={orderSaving || parseSkuOrderInput(orderDraft).length > SKU_ORDER_LIMIT}
-                onClick={() => {
-                  const nmIds = parseSkuOrderInput(orderDraft);
-                  setOrderSaving(true);
-                  setOrderError(null);
-                  void deploymentPinnedFetch("/api/sku-order", {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ cabinetId, nmIds }),
+      {/* Общее окно, а не самодельная подложка: Escape, ловушка фокуса и
+          неподвижный фон за окном идут вместе с ним. Раньше окно закрывалось
+          только крестиком, а страница под ним ездила под пальцем. */}
+      <Modal
+        open={orderEditorOpen}
+        onClose={() => setOrderEditorOpen(false)}
+        title="Свой порядок выдачи артикулов"
+        footer={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={orderSaving || parseSkuOrderInput(orderDraft).length > SKU_ORDER_LIMIT}
+              onClick={() => {
+                const nmIds = parseSkuOrderInput(orderDraft);
+                setOrderSaving(true);
+                setOrderError(null);
+                void deploymentPinnedFetch("/api/sku-order", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ cabinetId, nmIds }),
+                })
+                  .then(async (response) => {
+                    const body = await response.json().catch(() => ({})) as { error?: string };
+                    if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+                    refreshSkuOrder();
+                    setOrderEditorOpen(false);
+                    if (nmIds.length) setSortField("__custom");
                   })
-                    .then(async (response) => {
-                      const body = await response.json().catch(() => ({})) as { error?: string };
-                      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
-                      refreshSkuOrder();
-                      setOrderEditorOpen(false);
-                      if (nmIds.length) setSortField("__custom");
-                    })
-                    .catch((cause: unknown) => setOrderError(cause instanceof Error ? cause.message : "Не удалось сохранить порядок"))
-                    .finally(() => setOrderSaving(false));
-                }}
-                className="inline-flex h-9 items-center rounded-lg bg-violet-600 px-4 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
-              >
-                {orderSaving ? "Сохраняю…" : "Сохранить порядок"}
-              </button>
-              <button
-                type="button"
-                disabled={orderSaving}
-                onClick={() => setOrderDraft("")}
-                title="Пустой список = вернуть экранам их обычную сортировку"
-                className="h-9 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-500 hover:bg-slate-50"
-              >
-                Очистить
-              </button>
-              <span className="ml-auto text-[9px] text-slate-400">Пусто = порядок выключен</span>
-            </div>
+                  .catch((cause: unknown) => setOrderError(cause instanceof Error ? cause.message : "Не удалось сохранить порядок"))
+                  .finally(() => setOrderSaving(false));
+              }}
+              className="inline-flex min-h-11 items-center rounded-lg bg-violet-600 px-4 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
+            >
+              {orderSaving ? "Сохраняю…" : "Сохранить порядок"}
+            </button>
+            <button
+              type="button"
+              disabled={orderSaving}
+              onClick={() => setOrderDraft("")}
+              title="Пустой список = вернуть экранам их обычную сортировку"
+              className="min-h-11 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-500 hover:bg-slate-50"
+            >
+              Очистить
+            </button>
+            <span className="ml-auto text-[9px] text-slate-400">Пусто = порядок выключен</span>
           </div>
-        </div>
-      ) : null}
+        }
+      >
+        <p className="text-[10px] leading-4 text-slate-400">
+          Вставьте nmID в нужной последовательности (из таблицы, по одному в строке или через запятую).
+          Перечисленные идут первыми в этом порядке, остальные — после них.
+          Применяется на всех экранах со списками SKU кабинета.
+        </p>
+        {/* rows={12} на телефоне выше видимой области, поэтому высоту там
+            задаём явно, а на большом экране оставляем как было. */}
+        <textarea
+          value={orderDraft}
+          onChange={(event) => setOrderDraft(event.target.value)}
+          rows={12}
+          spellCheck={false}
+          className="mt-3 h-40 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono tabular-nums text-slate-700 outline-none focus:border-violet-300 sm:h-auto lg:text-[11px]"
+          placeholder={"874393713\n874404592\n874404593"}
+        />
+        <div className="mt-1 text-[10px] text-slate-400">Распознано артикулов: {parseSkuOrderInput(orderDraft).length}{parseSkuOrderInput(orderDraft).length > SKU_ORDER_LIMIT ? ` — больше лимита ${SKU_ORDER_LIMIT}` : ""}</div>
+        {orderError ? <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[10px] text-rose-700">{orderError}</div> : null}
+      </Modal>
 
       <RnpProductOperationsDrawer
         sku={operationsSku}
@@ -2521,12 +2637,12 @@ function OptimaMatrixTable({
   ].filter((group) => group.metrics.length > 0);
   const totalColumns = 2 + (sparklinesEnabled ? 1 : 0) + period.length;
   return (
-    <div className="overflow-x-auto">
+    <div className="scroll-x">
       <table className="w-full min-w-max border-separate border-spacing-0 text-[11px] leading-[1.15] text-slate-600">
         <thead>
           <tr>
-            <th className="sticky left-0 z-20 h-11 w-[205px] min-w-[205px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500">Показатель</th>
-            <th className="h-11 w-[110px] min-w-[110px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-right text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500">За период</th>
+            <th className="sticky left-0 z-20 h-11 w-[140px] min-w-[140px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500 lg:w-[205px] lg:min-w-[205px]">Показатель</th>
+            <th className="h-11 w-[92px] min-w-[92px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-3 text-right text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500 lg:w-[110px] lg:min-w-[110px]">За период</th>
             {sparklinesEnabled ? <th className="h-11 w-[108px] min-w-[108px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-2 text-center text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-500">Мини-график</th> : null}
             {period.map((day, index) => (
               <th key={`${day.label}-${index}`} className="h-11 w-[78px] min-w-[78px] border-b border-r border-[#e8eaf1] bg-[#fafafd] px-2 text-center text-[10px] font-semibold text-slate-600">
@@ -2557,7 +2673,7 @@ function OptimaMatrixTable({
                       type="button"
                       onClick={() => onJournalDate(day.label, index)}
                       title={entries.length ? `${entries.length} событий · добавить запись` : "Добавить запись"}
-                      className={`mx-auto grid h-6 min-w-6 place-items-center rounded-md px-1 text-[9px] font-semibold ${
+                      className={`tap-hit mx-auto grid h-6 min-w-6 place-items-center rounded-md px-1 text-[9px] font-semibold ${
                         entries.length ? "bg-violet-50 text-violet-700" : "text-slate-300 hover:bg-slate-50 hover:text-violet-700"
                       }`}
                     >
@@ -2668,14 +2784,14 @@ function OptimaMetricRow({
   const qualityTone = metric.status === "ready" ? "bg-[#7567e8]" : metric.status === "partial" ? "bg-amber-400" : "bg-slate-300";
   return (
     <tr className="group">
-      <td className="sticky left-0 z-10 h-[48px] w-[205px] min-w-[205px] border-b border-r border-[#eceef4] bg-white px-3 group-hover:bg-[#fbfaff]">
+      <td className="sticky left-0 z-10 h-[48px] w-[140px] min-w-[140px] border-b border-r border-[#eceef4] bg-white px-3 group-hover:bg-[#fbfaff] lg:w-[205px] lg:min-w-[205px]">
         <div className="flex items-center gap-2">
           <button
             type="button"
             disabled={!canHide}
             onClick={onHide}
             title="Скрыть показатель"
-            className={`h-4 w-7 rounded-full p-0.5 transition ${canHide ? "bg-[#7567e8]" : "bg-slate-200"}`}
+            className={`tap-hit h-4 w-7 shrink-0 rounded-full p-0.5 transition ${canHide ? "bg-[#7567e8]" : "bg-slate-200"}`}
           >
             <span className="block h-3 w-3 translate-x-3 rounded-full bg-white shadow-sm" />
           </button>
@@ -2684,7 +2800,7 @@ function OptimaMetricRow({
           <span className="ml-auto shrink-0 text-[9px] text-slate-400">{metricUnit(metric)}</span>
         </div>
       </td>
-      <td className="h-[48px] w-[110px] min-w-[110px] border-b border-r border-[#eceef4] bg-white px-3 text-right tabular-nums">
+      <td className="h-[48px] w-[92px] min-w-[92px] border-b border-r border-[#eceef4] bg-white px-2 text-right tabular-nums lg:w-[110px] lg:min-w-[110px] lg:px-3">
         {planning ? (
           <div className="relative">
             <span className="mb-0.5 block text-[8px] text-slate-400">план месяца</span>
@@ -2696,10 +2812,10 @@ function OptimaMetricRow({
               onKeyDown={(event) => {
                 if (event.key === "Enter") event.currentTarget.blur();
               }}
-              className="h-6 w-full rounded-md border border-amber-200 bg-amber-50 px-1.5 text-right text-[9px] font-semibold text-slate-700 outline-none focus:border-violet-400 focus:bg-white"
+              className="h-11 w-full rounded-md border border-amber-200 bg-amber-50 px-1.5 text-right font-semibold text-slate-700 outline-none focus:border-violet-400 focus:bg-white lg:h-6 lg:text-[9px]"
               aria-label={`План: ${metric.label}`}
             />
-            {saving ? <Loader2 className="absolute left-1 top-[18px] h-3 w-3 animate-spin text-violet-500" /> : null}
+            {saving ? <Loader2 className="absolute bottom-2 left-1 h-3 w-3 animate-spin text-violet-500 lg:bottom-1.5" /> : null}
           </div>
         ) : (
           <>

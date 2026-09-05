@@ -14,6 +14,9 @@ import {
   LineChart,
   Megaphone,
   Menu,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
   MessageSquare,
   Boxes,
   LogOut,
@@ -44,6 +47,7 @@ import { useEffect, useRef, useState } from "react";
 import { allowedNav, ROLE_LABEL } from "@/lib/auth/roles";
 import type { Role } from "@/lib/auth/session";
 import { isAgentSidebarPath, isFinanceSidebarPath, isSystemSidebarPath } from "@/lib/navigation/sidebar";
+import { useShell } from "./providers/ShellProvider";
 
 interface NavLink {
   href: string;
@@ -188,7 +192,7 @@ export function Sidebar() {
   const systemOnly = isSystemSidebarPath(pathname);
   const agentOnly = isAgentSidebarPath(pathname);
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const { navOpen, setNavOpen, railExpanded, toggleRail } = useShell();
   const [me, setMe] = useState<{ email: string; role: Role } | null>(null);
   const asideRef = useRef<HTMLElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
@@ -196,13 +200,13 @@ export function Sidebar() {
   // Мобильный drawer: focus-trap + Escape + возврат фокуса на триггер при закрытии —
   // без этого клавиатурный/скринридер-пользователь мог провалиться фокусом за drawer.
   useEffect(() => {
-    if (!mobileOpen) return;
+    if (!navOpen) return;
     previouslyFocused.current = document.activeElement as HTMLElement;
     const focusables = asideRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
     focusables?.[0]?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setMobileOpen(false); return; }
+      if (e.key === "Escape") { setNavOpen(false); return; }
       if (e.key !== "Tab" || !focusables || focusables.length === 0) return;
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
@@ -214,7 +218,7 @@ export function Sidebar() {
       document.removeEventListener("keydown", onKeyDown);
       previouslyFocused.current?.focus();
     };
-  }, [mobileOpen]);
+  }, [navOpen, setNavOpen]);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     analytics: true,
     finres: true,
@@ -227,6 +231,10 @@ export function Sidebar() {
   useEffect(() => {
     fetch("/api/auth/me", { cache: "no-store" }).then((r) => r.json()).then((j) => setMe(j.user)).catch(() => {});
   }, []);
+
+  // Переход по ссылке закрывает выезжающее меню: иначе оно остаётся висеть
+  // поверх только что открытого экрана.
+  useEffect(() => { setNavOpen(false); }, [pathname, setNavOpen]);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -259,13 +267,13 @@ export function Sidebar() {
   };
 
   const linkClass = (active: boolean) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a2e] ${
+    `nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a2e] ${
       active
         ? "bg-violet-600/20 text-violet-300"
         : "text-slate-300 hover:bg-white/10 hover:text-white"
     }`;
   const financeHomeLinkClass =
-    "mb-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a2e]";
+    "nav-link mb-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:border-violet-400/50 hover:bg-violet-500/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a2e]";
 
   const BrandIcon = systemOnly ? Settings2 : agentOnly ? Bot : BarChart3;
   const brandTitle = systemOnly ? "Настройки" : agentOnly ? "AI-агент" : "Финансы МП";
@@ -277,22 +285,38 @@ export function Sidebar() {
         ? "Финансовый контур"
         : "WB Analytics & Finance";
 
-  const nav = (
+  const renderNav = (expanded: boolean) => (
     <>
-      <div className="flex items-center gap-3 border-b border-white/10 px-4 py-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600/25">
+      <div className={`flex shrink-0 items-center border-b border-white/10 py-4 lg:py-6 ${expanded ? "gap-3 px-4" : "justify-center px-2"}`}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-600/25">
           <BrandIcon className="h-5 w-5 text-violet-400" />
         </div>
-        <div>
-          <p className="text-sm font-semibold text-white">{brandTitle}</p>
-          <p className="text-xs text-slate-400">{brandSubtitle}</p>
-        </div>
+        {expanded ? (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">{brandTitle}</p>
+            <p className="truncate text-xs text-slate-400">{brandSubtitle}</p>
+          </div>
+        ) : null}
         <button
-          className="ml-auto rounded-md p-1 text-slate-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 lg:hidden"
-          onClick={() => setMobileOpen(false)}
+          className="tap ml-auto rounded-md text-slate-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 md:hidden"
+          onClick={() => setNavOpen(false)}
           aria-label="Закрыть меню"
         >
           <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Свернуть до иконок — на планшете это отдаёт таблицам 190px ширины,
+          а на телефоне кнопка не нужна: там панель и так выезжает поверх. */}
+      <div className={`hidden shrink-0 items-center border-b border-white/10 py-1.5 md:flex ${expanded ? "justify-between px-4" : "justify-center px-2"}`}>
+        {expanded ? <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Разделы</span> : null}
+        <button
+          type="button"
+          onClick={toggleRail}
+          aria-label={expanded ? "Свернуть панель" : "Развернуть панель"}
+          className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          {expanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
       </div>
 
@@ -300,22 +324,25 @@ export function Sidebar() {
         {financeOnly ? (
           <Link
             href={DASHBOARD.href}
-            onClick={() => setMobileOpen(false)}
-            className={financeHomeLinkClass}
+            onClick={() => setNavOpen(false)}
+            className={expanded ? financeHomeLinkClass : `${financeHomeLinkClass} justify-center px-0`}
             aria-label="Вернуться на главную страницу"
+            title="На главную"
           >
             <DASHBOARD.icon className="h-5 w-5 shrink-0 text-violet-300" />
-            На главную
+            {expanded ? "На главную" : null}
           </Link>
         ) : (
           <Link
             href={DASHBOARD.href}
-            onClick={() => setMobileOpen(false)}
-            className={linkClass(isActive(pathname, DASHBOARD.href))}
+            onClick={() => setNavOpen(false)}
+            className={`${linkClass(isActive(pathname, DASHBOARD.href))} ${expanded ? "" : "justify-center"}`}
             aria-current={isActive(pathname, DASHBOARD.href) ? "page" : undefined}
+            aria-label={DASHBOARD.label}
+            title={DASHBOARD.label}
           >
             <DASHBOARD.icon className="h-5 w-5 shrink-0" />
-            {DASHBOARD.label}
+            {expanded ? DASHBOARD.label : null}
           </Link>
         )}
 
@@ -323,24 +350,50 @@ export function Sidebar() {
           const groupActive = group.items.some((item) =>
             isActive(pathname, item.href),
           );
-          const expanded = openGroups[group.id] ?? false;
+          const groupOpen = openGroups[group.id] ?? false;
+
+          if (!expanded) {
+            return (
+              <div key={group.id} className="pt-2">
+                <div className="mx-3 mb-1 border-t border-white/10" />
+                <div className="space-y-0.5">
+                  {group.items.map(({ href, label, icon: Icon }) => {
+                    const active = isActive(pathname, href);
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setNavOpen(false)}
+                        className={`${linkClass(active)} justify-center`}
+                        aria-current={active ? "page" : undefined}
+                        aria-label={label}
+                        title={label}
+                      >
+                        <Icon className="h-[18px] w-[18px] shrink-0" />
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div key={group.id} className="pt-2">
               <button
                 type="button"
                 onClick={() => toggleGroup(group.id)}
-                aria-expanded={expanded}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
+                aria-expanded={groupOpen}
+                className={`nav-group-toggle flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
                   groupActive ? "text-violet-400" : "text-slate-500"
                 } hover:text-slate-300`}
               >
                 <span>{group.label}</span>
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 transition-transform ${groupOpen ? "rotate-180" : ""}`}
                 />
               </button>
-              {expanded && (
+              {groupOpen && (
                 <div className="mt-1 space-y-0.5 pl-1">
                   {group.items.map(({ href, label, icon: Icon }) => {
                     const active = isActive(pathname, href);
@@ -348,7 +401,7 @@ export function Sidebar() {
                       <Link
                         key={href}
                         href={href}
-                        onClick={() => setMobileOpen(false)}
+                        onClick={() => setNavOpen(false)}
                         className={linkClass(active)}
                         aria-current={active ? "page" : undefined}
                       >
@@ -365,17 +418,19 @@ export function Sidebar() {
       </nav>
 
       {/* Пользователь + выход */}
-      <div className="border-t border-white/10 p-3">
+      <div className="shrink-0 border-t border-white/10 p-3 pb-[calc(0.75rem+var(--safe-b))]">
         {me ? (
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 ${expanded ? "" : "flex-col"}`}>
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600/30 text-xs font-bold text-violet-200">
               {me.email.slice(0, 2).toUpperCase()}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-medium text-white">{me.email}</div>
-              <div className="text-[10px] text-slate-400">{ROLE_LABEL[me.role]}</div>
-            </div>
-            <button onClick={logout} title="Выйти" aria-label="Выйти" className="rounded-md p-1.5 text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
+            {expanded ? (
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium text-white">{me.email}</div>
+                <div className="text-[10px] text-slate-400">{ROLE_LABEL[me.role]}</div>
+              </div>
+            ) : null}
+            <button onClick={logout} title="Выйти" aria-label="Выйти" className="tap shrink-0 rounded-md text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
@@ -386,35 +441,133 @@ export function Sidebar() {
     </>
   );
 
+  // Текущий раздел — для заголовка верхней панели: с телефона по одному
+  // содержимому не всегда понятно, где ты находишься.
+  const currentLabel =
+    sourceGroups.flatMap((g) => g.items).find((i) => isActive(pathname, i.href))?.label
+    ?? (isActive(pathname, DASHBOARD.href) ? DASHBOARD.label : brandTitle);
+
+  // Нижняя навигация: четыре ежедневных адреса плюс вход в полное меню.
+  // Список фильтруется теми же правами, что и боковая панель, — пункт, на
+  // который человеку ответят отказом, показывать нельзя.
+  const quickNav = [
+    { href: "/", label: "Главная", icon: LayoutDashboard },
+    { href: "/calendar", label: "Календарь", icon: Calendar },
+    { href: "/payments", label: "Платежи", icon: CreditCard },
+    { href: "/warehouse", label: "Склад", icon: Boxes },
+  ].filter((item) => (me ? allowedNav(me.role, item.href) : true));
+
   return (
     <>
-      <button
-        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-lg bg-[#1a1a2e] text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 lg:hidden"
-        onClick={() => setMobileOpen(true)}
-        aria-label="Открыть меню"
-        aria-expanded={mobileOpen}
-      >
-        <Menu className="h-5 w-5" />
-      </button>
+      {/* ── Верхняя панель: только телефон и узкое окно ──
+          Раньше здесь висела круглая кнопка меню поверх содержимого — она
+          перекрывала первую строку экрана и не говорила, где ты находишься.
+          Панель занимает те же 54px, но несёт название раздела и выход. */}
+      <header className="fixed inset-x-0 top-0 z-40 flex h-[calc(54px+var(--safe-t))] items-center gap-2 border-b border-white/10 bg-[#1a1a2e] px-2 pt-safe md:hidden">
+        <button
+          type="button"
+          className="tap rounded-lg text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+          onClick={() => setNavOpen(true)}
+          aria-label="Открыть меню"
+          aria-expanded={navOpen}
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{currentLabel}</span>
+        {me ? (
+          <button
+            type="button"
+            onClick={logout}
+            className="tap rounded-lg text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+            aria-label="Выйти"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        ) : null}
+      </header>
 
-      {mobileOpen && (
+      {navOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setNavOpen(false)}
+          aria-hidden="true"
         />
       )}
 
+      {/* ── Боковая панель ──
+          На телефоне выезжает поверх содержимого, с планшета (768px, сюда
+          попадает iPad Pro 11" в портрете) стоит постоянно и сворачивается
+          до иконок. Ширина в развёрнутом виде на планшете уже, чем на
+          десктопе: 834px — это не 1440, и 256px там стоят слишком дорого. */}
       <aside
         ref={asideRef}
-        role={mobileOpen ? "dialog" : undefined}
-        aria-modal={mobileOpen || undefined}
-        aria-label={mobileOpen ? "Навигация" : undefined}
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-[#1a1a2e] transition-transform lg:translate-x-0 ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        role={navOpen ? "dialog" : undefined}
+        aria-modal={navOpen || undefined}
+        aria-label="Навигация"
+        /* Два разных режима, разведённых по взаимоисключающим брейкпоинтам.
+           На телефоне панель выезжает поверх содержимого (fixed), с планшета —
+           становится обычным элементом потока (sticky), и её ширину вычитает из
+           основной области сам флексбокс. Это не украшение: пока панель была
+           fixed на всех ширинах, ширину приходилось дублировать отступом
+           основной области, и две величины разъезжались при каждой правке.
+           Теперь дублировать нечего.
+
+           Пары max-md/md здесь потому, что режимы отличаются САМИМ СПОСОБОМ
+           позиционирования (fixed против sticky), а не величиной одного
+           свойства: перечислить их взаимоисключающими вариантами честнее, чем
+           переопределять базовый класс. */
+        className={`z-50 flex flex-col bg-[#1a1a2e] transition-transform duration-200
+          max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-72
+          ${navOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}
+          md:sticky md:top-0 md:h-dvh md:shrink-0
+          ${railExpanded ? "md:w-56 lg:w-64" : "md:w-[60px]"}`}
       >
-        {nav}
+        {/* Одно дерево навигации, а не два. Раньше здесь стояли две копии —
+            телефонная с подписями и десктопная, — и 27 ссылок висели в DOM
+            дважды на каждой странице финансового контура.
+
+            Различие сводилось к одному флагу, и его можно вывести без второй
+            копии: выезжающее меню показывается только когда navOpen, и там
+            подписи нужны всегда; на планшете и шире navOpen ложно, и вид
+            решает railExpanded. */}
+        <div className="flex min-h-0 flex-1 flex-col">{renderNav(navOpen || railExpanded)}</div>
       </aside>
+
+      {/* ── Нижняя навигация: ежедневные адреса в один палец ──
+          Полное меню — 27 пунктов, и лезть за календарём в выезжающую панель
+          по десять раз на дню слишком дорого. */}
+      {quickNav.length > 0 ? (
+        <nav
+          aria-label="Быстрая навигация"
+          className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(3.5rem+var(--safe-b))] items-start justify-around border-t border-slate-200 bg-white pb-safe md:hidden"
+        >
+          {quickNav.map(({ href, label, icon: Icon }) => {
+            const active = isActive(pathname, href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className={`flex h-14 min-w-14 flex-1 flex-col items-center justify-center gap-1 px-1 text-[10px] leading-tight ${
+                  active ? "font-semibold text-violet-700" : "text-slate-500"
+                }`}
+              >
+                <Icon className="h-[18px] w-[18px]" />
+                <span className="max-w-full truncate">{label}</span>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            className="flex h-14 min-w-14 flex-1 flex-col items-center justify-center gap-1 px-1 text-[10px] leading-tight text-slate-500"
+            aria-label="Все разделы"
+          >
+            <MoreHorizontal className="h-[18px] w-[18px]" />
+            <span>Ещё</span>
+          </button>
+        </nav>
+      ) : null}
     </>
   );
 }

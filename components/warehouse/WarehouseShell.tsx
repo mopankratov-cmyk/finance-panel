@@ -53,8 +53,17 @@ export function WarehouseShell<T extends string>({
     router.refresh();
   };
 
+  // Общая витрина модулей открыта нашим ролям. Внешнему селлеру она закрыта, и
+  // ссылка «Все модули» уводила бы его на отказ: ему нужен его же второй модуль
+  // — управление WB. Считаем один раз: раньше сайдбар знал про это, а мобильная
+  // шапка вела на «/» жёстко, и селлер с телефона упирался в отказ доступа.
+  const isSeller = me?.role === "seller";
+  const exitHref = isSeller ? "/wb/rnp" : "/";
+  const exitLabel = isSeller ? "Управление WB" : "Все модули";
+  const ExitIcon = isSeller ? BarChart3 : Grid3x3;
+
   return (
-    <div className="flex min-h-screen bg-[#F5F5F5]">
+    <div className="flex min-h-dvh bg-[#F5F5F5]">
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-slate-200 bg-white lg:flex">
         <div className="border-b border-slate-100 px-5 py-5">
           <p className="text-base font-bold text-slate-900">{title}</p>
@@ -85,15 +94,12 @@ export function WarehouseShell<T extends string>({
         </nav>
 
         <div className="space-y-1 border-t border-slate-100 p-3">
-          {/* Общая витрина модулей открыта нашим ролям. Внешнему селлеру она
-              закрыта, и ссылка «Все модули» уводила бы его на отказ: ему нужен
-              его же второй модуль — управление WB. */}
           <Link
-            href={me?.role === "seller" ? "/wb/rnp" : "/"}
+            href={exitHref}
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
           >
-            {me?.role === "seller" ? <BarChart3 className="h-4 w-4 shrink-0" /> : <Grid3x3 className="h-4 w-4 shrink-0" />}
-            {me?.role === "seller" ? "Управление WB" : "Все модули"}
+            <ExitIcon className="h-4 w-4 shrink-0" />
+            {exitLabel}
           </Link>
           <div className="flex items-center gap-2 px-3 py-2">
             <div className="min-w-0 flex-1">
@@ -110,23 +116,27 @@ export function WarehouseShell<T extends string>({
       <main className="min-w-0 flex-1 lg:ml-60">
         {/* На узком экране сайдбар скрыт целиком — а вместе с ним уезжали выход
             из модуля и кнопка «Выйти». Кладовщик работает с телефона: у него не
-            было способа ни вернуться к другим модулям, ни разлогиниться. */}
-        <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 lg:hidden">
+            было способа ни вернуться к другим модулям, ни разлогиниться.
+            Отступ по бокам — свой плюс вырез: в ландшафте iPhone скруглённый
+            угол иначе съедает крайнюю кнопку. */}
+        <div className="flex items-center gap-2 border-b border-slate-200 bg-white py-2 pl-[calc(0.75rem+var(--safe-l))] pr-[calc(0.75rem+var(--safe-r))] lg:hidden">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-slate-900">{title}</p>
             <p className="truncate text-[11px] text-slate-400">{me?.email ?? "…"}</p>
           </div>
           <Link
-            href="/"
-            title="Все модули"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500"
+            href={exitHref}
+            title={exitLabel}
+            aria-label={exitLabel}
+            className="tap shrink-0 rounded-lg border border-slate-200 text-slate-500"
           >
-            <Grid3x3 className="h-4 w-4" />
+            <ExitIcon className="h-4 w-4" />
           </Link>
           <button
             onClick={() => void logout()}
             title="Выйти"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500"
+            aria-label="Выйти"
+            className="tap shrink-0 rounded-lg border border-slate-200 text-slate-500"
           >
             <LogOut className="h-4 w-4" />
           </button>
@@ -135,12 +145,12 @@ export function WarehouseShell<T extends string>({
         {/* Разделы модуля едут в горизонтальную ленту — сайдбар там не помещается.
             Группы («Работа», «Учёт», «Справочники») на ленте не показать, но
             порядок тот же, что в сайдбаре: ориентир сохраняется. */}
-        <div className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 lg:hidden">
+        <div className="chip-row border-b border-slate-200 bg-white py-2 pl-[calc(0.75rem+var(--safe-l))] pr-[calc(0.75rem+var(--safe-r))] lg:hidden">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => onSelect(key)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm ${
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm ${
                 active === key ? "bg-violet-50 font-medium text-violet-700" : "text-slate-500"
               }`}
             >

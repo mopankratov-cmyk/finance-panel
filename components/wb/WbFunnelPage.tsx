@@ -405,7 +405,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const formatCell = (value: number | null | undefined) => currentMetric.kind === "pct" ? pct(value) : currentMetric.kind === "money" ? (value == null ? "—" : `${fmt(value)} ₽`) : fmt(value);
 
   return (
-    <div className={embedded ? "" : "min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5"}>
+    <div className={embedded ? "" : "min-h-[calc(100dvh-54px)] bg-[#f6f7f9] pb-16 md:pb-5"}>
       {!embedded ? <WbModuleHeader icon={Filter} title="Воронка" description={skus ? `${skus.metrics_period} · ${filtered.length} SKU · ${activeCabinet?.name ?? "все кабинеты"}` : "SKU × метрики × дни"} actions={periodPicker} /> : null}
 
       <div className="px-2 py-3 sm:px-6">
@@ -424,7 +424,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
               title={daily
                 ? `Наверх — артикулы, по которым ${dayLabel(period.to)} реклама шла не меньше чем на ${CTR_MIN_VIEWS} показов: на меньшем объёме доля клика ничего не значит, и колонка её всё равно прячет. Остальные остаются на месте, ниже. Нажмите ещё раз, чтобы вернуть обычный порядок.`
                 : "Ждём посуточные данные — без них неизвестно, кто работал"}
-              className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold transition-colors disabled:opacity-40 sm:min-h-8 ${workingFirst ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold transition-colors disabled:opacity-40 lg:min-h-8 ${workingFirst ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
             >
               <ArrowUpNarrowWide className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>Сначала рабочие</span>
@@ -441,7 +441,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
             />
             <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:ml-auto lg:w-72 lg:min-h-8"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="nm, артикул, название" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />{query ? <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}</label>
           </div>
-          <div className="flex min-w-0 gap-2 overflow-x-auto pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
+          <div className="scroll-x flex min-w-0 gap-2 pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
         </div>
 
         {ctrPopup && cabinetId ? (
@@ -466,11 +466,12 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
           </div>
         ) : null}
         {loading ? <><LoadingBanner seconds={elapsed} hint="Собираем воронку" /><div className="rounded-xl border border-slate-200 bg-white"><SkeletonTableRows rows={12} cols={8} /></div></> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : filtered.length === 0 ? <WbEmptyState>Нет SKU с данными за выбранный период.</WbEmptyState> : (
-          <div ref={scrollRef} className="h-[calc(100vh-190px)] min-h-[470px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]" onScroll={(event) => updateWindow(event.currentTarget)}>
+          <>
+          <div ref={scrollRef} className="h-[68svh] min-h-[320px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:h-[calc(100dvh-190px)] md:min-h-[470px]" onScroll={(event) => updateWindow(event.currentTarget)}>
             <table className="min-w-max border-separate border-spacing-0 text-[10px]">
               <thead className="sticky top-0 z-30 bg-slate-50 text-slate-500">
                 <tr className="h-6 text-[9px] uppercase tracking-wide text-slate-400">
-                  <th rowSpan={2} className="sticky left-0 z-40 min-w-[245px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left font-semibold">Товар</th>
+                  <th rowSpan={2} className="sticky left-0 z-40 min-w-[150px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left font-semibold sm:min-w-[245px]">Товар</th>
                   <GroupHeader label="Реклама" hidden={1} span={adsCols} hint="показать Рекл. CTR" isCollapsed={collapsed.ads} onToggle={() => toggleGroup("ads")} />
                   <GroupHeader label="Товарная воронка" hidden={4} span={funnelCols} hint="переходы, корзины, % в корзину, заказы в штуках" isCollapsed={collapsed.funnel} onToggle={() => toggleGroup("funnel")} />
                   <GroupHeader label="Остатки" hidden={2} span={stockCols} hint="FBO и FBS по отдельности" isCollapsed={collapsed.stocks} onToggle={() => toggleGroup("stocks")} />
@@ -533,7 +534,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                   </tr>
                 ) : null}
                 {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + stockCols + dates.length} /></tr> : null}
-                {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} label={sku.art} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td>{collapsed.stocks ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.stock_fbo)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{sku.stock_fbs == null ? <span className="text-slate-300" title="Остатки склада продавца ещё не собирались">—</span> : fmt(sku.stock_fbs)}</td></>}<td className={`border-b border-r border-slate-100 px-2 text-right tabular-nums ${sku.stock === 0 ? "font-semibold text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => {
+                {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} label={sku.art} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[110px] sm:max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td>{collapsed.stocks ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.stock_fbo)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{sku.stock_fbs == null ? <span className="text-slate-300" title="Остатки склада продавца ещё не собирались">—</span> : fmt(sku.stock_fbs)}</td></>}<td className={`border-b border-r border-slate-100 px-2 text-right tabular-nums ${sku.stock === 0 ? "font-semibold text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => {
                   const cell = daily?.metrics[String(sku.nm)]?.[date];
                   const value = cell?.[metric];
                   const isCtr = metric === "ctr";
@@ -558,7 +559,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                             тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит` : null,
                             "Нажмите: разбор по кампаниям, заметка и цвет",
                           ].filter(Boolean).join(" · ")}
-                          className={`inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 ${markClass ?? (тонкийЗамер ? "text-slate-300" : cellTone(metric, shown))}`}
+                          className={`tap-hit inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 max-lg:underline max-lg:decoration-violet-300 max-lg:decoration-dotted max-lg:underline-offset-2 ${markClass ?? (тонкийЗамер ? "text-slate-300" : cellTone(metric, shown))}`}
                         >
                           {тонкийЗамер ? "—" : formatCell(shown)}
                           {hasNote ? <MessageSquare className="h-2.5 w-2.5 shrink-0 text-violet-500" aria-label="есть заметка" /> : null}
@@ -573,6 +574,33 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
               </tbody>
             </table>
           </div>
+          {/* Определения метрик жили только в `title=`: на касании нативная
+              подсказка не появляется никогда, и человек видел стену чисел без
+              единого объяснения. Ниже 1024px дублируем те же тексты списком. */}
+          <details className="mt-2 rounded-xl border border-slate-200 bg-white p-2 text-[11px] lg:hidden">
+            <summary className="tap-row flex cursor-pointer list-none items-center font-semibold text-slate-600">Что значат колонки</summary>
+            <dl className="mt-1 space-y-1.5 border-t border-slate-100 pt-2 text-slate-500">
+              {METRICS.map((item) => (
+                <div key={item.key}>
+                  <dt className="font-semibold text-slate-700">{item.label}</dt>
+                  <dd className="leading-4">{item.definition}</dd>
+                </div>
+              ))}
+              <div>
+                <dt className="font-semibold text-slate-700">Прочерк в колонке дня</dt>
+                <dd className="leading-4">Меньше {CTR_MIN_VIEWS} показов — доля клика ничего не значит, поэтому она не показывается.</dd>
+              </div>
+              <div>
+                <dt className="font-semibold text-slate-700">Сначала рабочие</dt>
+                <dd className="leading-4">Поднимает наверх артикулы, по которым в последний день периода реклама шла не меньше чем на {CTR_MIN_VIEWS} показов.</dd>
+              </div>
+              <div>
+                <dt className="font-semibold text-slate-700">Остатки FBO / FBS / Общий</dt>
+                <dd className="leading-4">FBO — склады Wildberries, FBS — склад продавца (прочерк значит, что обход ещё не собирал этот кабинет), Общий — их сумма.</dd>
+              </div>
+            </dl>
+          </details>
+          </>
         )}
       </div>
     </div>
