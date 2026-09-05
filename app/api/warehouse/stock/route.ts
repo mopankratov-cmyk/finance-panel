@@ -162,15 +162,20 @@ async function chunked<Row>(
  * 04.09.2026: в «получено» и «отгружено» только приёмки и отгрузки.
  */
 export async function GET(request: NextRequest) {
-  const gate = await requireApiSession();
-  if (gate) return gate;
-  // Где именно уходит время. Замер снаружи показал 3–7 с на пустом складе, а
-  // распараллеливание запросов сняло только треть — значит под ними лежит
-  // что-то ещё. Гадать бесполезно: `?timings=1` отвечает по этапам, как это
-  // уже сделано в /api/shelf/table.
+  // Где именно уходит время. `?timings=1` отвечает по этапам, как это уже
+  // сделано в /api/shelf/table.
+  //
+  // Секундомер стоит ДО гейта намеренно. Пока он запускался после,
+  // `mark("gate")` всегда показывал ноль, а чтение пользователя из базы —
+  // самый частый круг во всём продукте — не попадало в замер вовсе: цифры
+  // «всего 1,76–2,35 с» были занижены на его стоимость, и я приписал её
+  // соседнему этапу.
   const startedAt = Date.now();
   const timings: Record<string, number> = {};
   const mark = (name: string) => { timings[name] = Date.now() - startedAt; };
+
+  const gate = await requireApiSession();
+  if (gate) return gate;
   mark("gate");
 
   const url = new URL(request.url);

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, useRef } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
 import { moscowToday } from "@/lib/ui/calendarGrid";
@@ -304,21 +304,29 @@ export function WbRkJournalPage() {
   const skuNames = useWbSkuNames(hasExactCabinet ? cabinetId : null);
   const { orderIndex } = useCabinetSkuOrder(hasExactCabinet ? cabinetId : null);
 
+  // Период и кабинет переключают подряд, а журнал считается долго: без счётчика
+  // на экране оставался прежний срез под новой подписью. Приём тот же, что
+  // строкой ниже у заметок и в WbFunnelPage.
+  const requestId = useRef(0);
   const load = useCallback(async () => {
     if (!ready) return;
+    const current = ++requestId.current;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({ from: range.from, to: range.to });
       if (cabinetId) params.set("cabinet", cabinetId);
-      const response = await fetch(`/api/wb/rk-journal?${params}`, { cache: "no-store" });
+      const response = await fetch(`/api/wb/rk-journal?${params}`, { cache: "no-store", signal: controller.signal });
       const body = await response.json().catch(() => ({}));
+      if (current !== requestId.current) return;
       if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
       setData(body as JournalData);
     } catch (err) {
+      if (current !== requestId.current || controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : "Не удалось загрузить журнал");
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
   }, [cabinetId, range.from, range.to, ready]);
 

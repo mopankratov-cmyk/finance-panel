@@ -2,6 +2,7 @@
 
 import { Boxes, Loader2, PackageCheck, RefreshCw, Search, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { ReceivingTab } from "@/components/supplies/ReceivingTab";
 import { StockCatalogTab } from "@/components/supplies/StockCatalogTab";
@@ -53,6 +54,7 @@ export function WbSuppliesPage() {
   const { activeCabinet, cabinetId, canWrite, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, user } = useWbCabinet();
   const sellerReadOnly = user?.role === "seller";
   const [tab, setTab] = useState<Tab>("orders");
+  const panel = useKeepAliveTabs<Tab>(tab, cabinetId);
   const [data, setData] = useState<SuppliesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -219,7 +221,18 @@ export function WbSuppliesPage() {
         {standalonePanels}
         {!needsSuppliesData ? null : loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`поставки · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={10} cols={10} /></div> : error ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : !data?.data ? <WbEmptyState>Данные поставок ещё не синхронизированы.</WbEmptyState> : tab === "orders" ? (canWrite ? <WbPurchaseOrdersTab skus={data.data.skus} cabinetId={cabinetId} canWrite={canWrite} /> : <WbEmptyState>Заказы фабрике ведутся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>) : tab === "distribution" ? <WbSupplyDistributionPlanner cabinetId={cabinetId} cabinetName={activeCabinet?.name ?? "all"} canWrite={canWrite} recommendedWarehouses={data.warehouses} skus={data.skus} defaultMinBatch={data.threshold ?? 30} defaultPalletLiters={data.pallet_liters ?? 1230} volumeKnown={data.vol_known ?? 0} volumeTotal={data.vol_total ?? data.skus.length} /> : tab === "reorder" ? (
           reorderRows.length === 0 ? <WbEmptyState>Дозаказывать нечего — остатков хватает на выбранный горизонт.</WbEmptyState> : <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="min-w-[760px] w-full border-collapse text-[10px]"><thead className="sticky top-0 z-20 bg-slate-50"><tr className="h-9 bg-slate-50 text-slate-500"><th className="px-3 text-left">Артикул</th><th className="px-3 text-right">Заказы/день</th><th className="px-3 text-right">Остаток</th><th className="px-3 text-right">В пути</th><th className="px-3 text-right">Хватит дней</th><th className="px-3 text-right">К поставке ({horizon}д)</th></tr></thead><tbody>{reorderRows.map((row) => <tr key={row.nmId} className="h-10 border-t border-slate-100"><td className="px-3"><div className="font-semibold text-violet-700">{row.article || row.nmId}</div><div className="text-[9px] text-slate-400">nm {row.nmId}</div></td><td className="px-3 text-right tabular-nums">{row.avgDaily.toFixed(1)}</td><td className="px-3 text-right tabular-nums">{format(row.stock)}</td><td className="px-3 text-right tabular-nums">{format(row.inWay)}</td><td className={`px-3 text-right tabular-nums ${row.daysLeft != null && row.daysLeft <= 14 ? "font-semibold text-rose-600" : ""}`}>{row.daysLeft ?? "∞"}</td><td className="px-3 text-right font-semibold tabular-nums text-violet-700">{format(row.need)}</td></tr>)}</tbody></table></div>
-        ) : tab === "stock" ? <StockCatalogTab rows={data.data.catalog} /> : tab === "receiving" ? (canWrite ? <ReceivingTab skus={data.data.skus} cabId={cabinetId} warehouses={data.data.warehouses} /> : <WbEmptyState>Приёмка ведётся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>) : <MoySkladSourceTab cabinetId={cabinetId} canWrite={canWrite} />}
+        ) : (
+          /* Приёмка и «Мой склад» грузят себя на монтировании (2 и 3–4 запроса)
+             и держат незаконченный ввод: возврат на вкладку стоил и запросов,
+             и работы. Кабинет — то, при смене чего данные становятся чужими. */
+          <>
+            <TabPanel {...panel("stock")}><StockCatalogTab rows={data.data.catalog} /></TabPanel>
+            <TabPanel {...panel("receiving")}>
+              {canWrite ? <ReceivingTab skus={data.data.skus} cabId={cabinetId} warehouses={data.data.warehouses} /> : <WbEmptyState>Приёмка ведётся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>}
+            </TabPanel>
+            <TabPanel {...panel("source")}><MoySkladSourceTab cabinetId={cabinetId} canWrite={canWrite} /></TabPanel>
+          </>
+        )}
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ import { syncDdsToGoogleSheets } from "./ddsGoogleSync";
 import { ddsSheetNameForCompany } from "./ddsSheetGroups";
 import { ImportDdsModal } from "./ImportDdsModal";
 import { PaymentForm } from "./PaymentForm";
+import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
@@ -32,6 +33,7 @@ export function PaymentsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Payment | null>(null);
   const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation">("overview");
+  const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation">(mode);
   const [importOpen, setImportOpen] = useState(false);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [syncingGoogle, setSyncingGoogle] = useState(false);
@@ -318,11 +320,19 @@ export function PaymentsPage() {
           onOpenReconciliation={() => setMode("reconciliation")}
         />
       )}
-      {mode === "dds" && <DdsReport payments={paymentsWithCompany} companies={companies} />}
-      {mode === "review" && <BankReviewPanel accounts={state.accounts} companies={companies} />}
-      {mode === "reconciliation" && (
+      {/* Режимы не размонтируем: «Разбор» на каждом заходе перечитывал очередь
+          и терял отметки выбранных операций вместе с недописанным текстом
+          менеджеру. Ключ сброса не нужен — источник данных здесь один на весь
+          экран. */}
+      <TabPanel {...panel("dds")}>
+        <DdsReport payments={paymentsWithCompany} companies={companies} />
+      </TabPanel>
+      <TabPanel {...panel("review")}>
+        <BankReviewPanel accounts={state.accounts} companies={companies} />
+      </TabPanel>
+      <TabPanel {...panel("reconciliation")}>
         <BankReconciliationPanel accounts={state.accounts} onImportStatement={() => setBankImportOpen(true)} />
-      )}
+      </TabPanel>
 
       {mode === "ledger" && (
         <>

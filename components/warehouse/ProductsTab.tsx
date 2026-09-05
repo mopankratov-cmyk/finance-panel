@@ -1,7 +1,7 @@
 "use client";
 
 import { Building2, Download, ListPlus, Plus, Search, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProductRow } from "@/lib/warehouse/productRow";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { WbProductImage } from "@/components/wb/WbProductImage";
@@ -102,21 +102,30 @@ export function ProductsTab({
   const wbSource = entity ? hasWildberriesSource(entity.cabinets) : true;
   const noWbReason = entity && !wbSource ? noWildberriesSourceReason(entity.name, entity.cabinets) : null;
 
+  // Поиск набирают посимвольно, и ответы возвращаются вразнобой: более ранний,
+  // более длинный, может лечь последним — человек ищет одно, а видит другое.
+  // Счётчик отсекает всё, что пришло не к последнему запросу.
+  const requestId = useRef(0);
+
   const load = useCallback(async () => {
+    const current = ++requestId.current;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       if (onlyEntity) params.set("entity", entityId);
       if (query.trim()) params.set("q", query.trim());
-      const res = await fetch(`/api/warehouse/products?${params}`, { cache: "no-store" });
+      const res = await fetch(`/api/warehouse/products?${params}`, { cache: "no-store", signal: controller.signal });
       const json = await res.json();
+      if (current !== requestId.current) return;
       if (!res.ok) throw new Error(json.error || "Не удалось загрузить товары");
       setRows(json.data ?? []);
     } catch (e) {
+      if (current !== requestId.current) return;
       setError(e instanceof Error ? e.message : "Не удалось загрузить товары");
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
   }, [entityId, onlyEntity, query]);
 

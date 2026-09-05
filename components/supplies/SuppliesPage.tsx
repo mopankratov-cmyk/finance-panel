@@ -145,7 +145,10 @@ export function SuppliesPage() {
         ))}
       </div>
 
-      {loading ? (
+      {/* Заглушка — только пока данных нет ВООБЩЕ. Раньше «Обновить» сносило
+          панель «Мой склад» вместе с незаконченным вводом, и на возврате она
+          снова делала свои три-четыре запроса. */}
+      {loading && skus.length === 0 ? (
         <>
           <SkeletonKpiRow count={4} />
           <LoadingBanner seconds={elapsed} hint="остатки WB по складам" />

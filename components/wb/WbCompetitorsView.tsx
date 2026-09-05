@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { ChevronDown, Loader2, Plus, Trash2 } from "lucide-react";
 import { WbErrorState } from "./WbModuleHeader";
 import { WbProductImage } from "./WbProductImage";
@@ -193,22 +193,32 @@ export function WbCompetitorsView({ cabinetId, hasExactCabinet, ready, days }: {
     } finally { setBusy(false); }
   };
 
+  // Период переключают подряд, и ответы возвращаются вразнобой: без счётчика
+  // на экран ложились цены не за тот период, который подписан сверху.
+  const requestId = useRef(0);
   useEffect(() => {
     if (!ready) return;
     if (!hasExactCabinet) { setItems([]); setLoading(false); return; }
+    const current = ++requestId.current;
+    const controller = new AbortController();
     setLoading(true); setError(null);
-    fetch(`/api/wb/competitors?cabinet=${encodeURIComponent(cabinetId)}&days=${days}`, { cache: "no-store" })
+    fetch(`/api/wb/competitors?cabinet=${encodeURIComponent(cabinetId)}&days=${days}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
+        if (current !== requestId.current) return;
         if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
         setItems(body.items ?? []);
         setNotes(Array.isArray(body.notes) ? body.notes : []);
       })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "Не удалось загрузить"))
-      .finally(() => setLoading(false));
+      .catch((cause) => {
+        if (current !== requestId.current || controller.signal.aborted) return;
+        setError(cause instanceof Error ? cause.message : "Не удалось загрузить");
+      })
+      .finally(() => { if (current === requestId.current) setLoading(false); });
+    return () => controller.abort();
   }, [cabinetId, days, hasExactCabinet, ready, reloadKey]);
 
-  if (loading) {
+  if (loading && items.length === 0) {
     return <div className="py-16 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin motion-reduce:animate-none" /></div>;
   }
   if (error) return <WbErrorState message={error} />;

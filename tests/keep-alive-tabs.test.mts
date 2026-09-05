@@ -82,3 +82,53 @@ test("справочник юрлиц считается один раз на з
   // Тот же приём и по той же причине уже применён к сессии.
   assert.match(read("../lib/auth/server.ts"), /export const getServerSession = cache\(/);
 });
+
+/**
+ * Ответы возвращаются вразнобой: более ранний запрос может прийти последним и
+ * лечь поверх свежего — на экране данные не того периода, что подписан сверху.
+ * Счётчик запросов отсекает всё, что пришло не к последнему.
+ */
+test("экраны не кладут старый ответ поверх нового", () => {
+  const guarded = [
+    "../components/wb/WbRkJournalPage.tsx",
+    "../components/wb/WbCompetitorsView.tsx",
+    "../components/warehouse/ProductsTab.tsx",
+  ];
+  for (const file of guarded) {
+    const source = read(file);
+    assert.match(source, /const requestId = useRef\(0\);/, `${file}: нет счётчика`);
+    assert.match(source, /const current = \+\+requestId\.current;/, file);
+    assert.match(source, /if \(current !== requestId\.current\) return;/, `${file}: ответ не отсекается`);
+    assert.match(source, /if \(current === requestId\.current\) setLoading\(false\)/, `${file}: индикатор гасит чужой ответ`);
+  }
+});
+
+/** Второй заход по вкладкам: экраны, где дочерние компоненты сами ходят в сеть
+ *  или держат незаконченную работу. */
+test("вкладки поставок, полок и платежей тоже держатся", () => {
+  const screens = {
+    "../components/wb/WbSuppliesPage.tsx": ["stock", "receiving", "source"],
+    "../components/wb/WbShelfPage.tsx": ["competitors"],
+    "../components/payments/PaymentsPage.tsx": ["dds", "review", "reconciliation"],
+  };
+  for (const [file, tabs] of Object.entries(screens)) {
+    const source = read(file);
+    assert.match(source, /useKeepAliveTabs</, file);
+    for (const tab of tabs) assert.ok(source.includes(`panel("${tab}")`), `${file}: ${tab}`);
+  }
+  // Закупки: заглушка не сносит панель «Мой склад» с незаконченным вводом.
+  assert.match(read("../components/supplies/SuppliesPage.tsx"), /loading && skus\.length === 0/);
+});
+
+/**
+ * Секундомер стоял ПОСЛЕ гейта: чтение пользователя из базы — самый частый
+ * круг во всём продукте — не попадало в замер вовсе, а mark("gate") всегда
+ * показывал ноль.
+ */
+test("замер включает авторизацию, а не начинается после неё", () => {
+  const source = read("../app/api/warehouse/stock/route.ts");
+  const timer = source.indexOf("const startedAt = Date.now();");
+  const gate = source.indexOf("const gate = await requireApiSession();");
+  assert.ok(timer > 0 && gate > 0);
+  assert.ok(timer < gate, "секундомер обязан стартовать до проверки сессии");
+});

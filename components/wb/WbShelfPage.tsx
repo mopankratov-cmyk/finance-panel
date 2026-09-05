@@ -2,6 +2,7 @@
 
 import { Ban, ChevronDown, Info, Loader2, Plus, RefreshCw, Rows3, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import type { ShelfMarkedRow, ShelfSliceResult } from "@/lib/shelf/slices";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
@@ -340,6 +341,7 @@ export function WbShelfPage() {
     if (typeof window === "undefined") return "shelf";
     return new URLSearchParams(window.location.search).get("view") === "competitors" ? "competitors" : "shelf";
   });
+  const panel = useKeepAliveTabs<"shelf" | "competitors">(view, cabinetId);
   const switchView = (next: "shelf" | "competitors") => {
     setView(next);
     if (typeof window === "undefined") return;
@@ -534,9 +536,12 @@ export function WbShelfPage() {
       />
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
-        {view === "competitors" ? (
+        {/* Возврат на «Конкуренты» стоил запроса и терял раскрытый товар с
+            наполовину набранными артикулами. Кабинет — ключ сброса. */}
+        <TabPanel {...panel("competitors")}>
           <WbCompetitorsView cabinetId={cabinetId} hasExactCabinet={hasExactCabinet} ready={ready} days={days} />
-        ) : <>
+        </TabPanel>
+        {view === "competitors" ? null : <>
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}
         {error && !loading ? <WbErrorState message={error} onRetry={() => reload()} /> : null}
 
