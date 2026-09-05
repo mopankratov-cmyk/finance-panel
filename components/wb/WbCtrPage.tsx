@@ -21,6 +21,7 @@ import { CtrTestDetail } from "./ctr/CtrTestDetail";
 import { CtrTestWizard } from "./ctr/CtrTestWizard";
 import type { CtrCandidate, CtrTestView, CtrVariantView, CtrWizardSeed } from "./ctr/types";
 import { useWbCabinet } from "./WbCabinetContext";
+import { plural } from "@/lib/warehouse/plural";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 
 interface CtrData {
@@ -33,10 +34,19 @@ interface CtrData {
 interface ApiEnvelope<T> { data?: T; error?: string | null }
 
 const ROW_HEIGHT = 44;
-const typeTabs: { value: CtrTestType; label: string; tone: string }[] = [
-  { value: "ctr", label: "Тест CTR", tone: "bg-violet-600 text-white" },
-  { value: "cr", label: "Тест CR · beta", tone: "bg-violet-600 text-white" },
-  { value: "video", label: "Видео", tone: "bg-violet-600 text-white" },
+/**
+ * Тип теста — главный переключатель экрана: от него зависит и таблица, и то,
+ * что вообще меряется. Раньше он стоял третьей строкой сверху и был нарисован
+ * набором отдельных кнопок, тогда как период рядом — сегментированным
+ * контролом: два разных вида у двух одинаковых по смыслу переключателей.
+ *
+ * `note` объясняет, ЧТО меряет тест. Заголовок экрана его не назовёт: он один
+ * на все три типа, и «Тестирование CTR» над таблицей видео-тестов врало.
+ */
+const typeTabs: { value: CtrTestType; label: string; note: string }[] = [
+  { value: "ctr", label: "CTR", note: "кликабельность обложки в выдаче" },
+  { value: "cr", label: "CR · beta", note: "конверсия карточки в заказ" },
+  { value: "video", label: "Видео", note: "ролик карточки: заказы к открытиям" },
 ];
 const statusLabel = { draft: "черновик", running: "идёт", paused: "пауза", done: "завершён", cancelled: "отменён" } as const;
 const statusTone = { draft: "bg-slate-100 text-slate-600", running: "bg-violet-100 text-violet-700", paused: "bg-amber-100 text-amber-700", done: "bg-emerald-100 text-emerald-700", cancelled: "bg-rose-100 text-rose-700" } as const;
@@ -245,8 +255,8 @@ export function WbCtrPage() {
     <div className="min-h-[calc(100vh-54px)] bg-[#f6f7f9] pb-16 md:pb-5">
       <WbModuleHeader
         icon={FlaskConical}
-        title="Тестирование CTR"
-        description="CTR, CR и Video-тесты по реальным метрикам выбранного WB-кабинета"
+        title="Тесты контента"
+        description={`${typeTabs.find((tab) => tab.value === type)?.note ?? ""} · реальные метрики выбранного кабинета`}
         actions={<div className="flex items-center gap-2">
           <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-8">{[7, 14, 30].map((value) => <button key={value} type="button" onClick={() => setDays(value)} className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-7 ${days === value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{value} дней</button>)}</div>
           <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} aria-label="Обновить тесты" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:opacity-60 sm:h-8 sm:w-8">{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}</button>
@@ -254,22 +264,63 @@ export function WbCtrPage() {
       />
 
       <div className="space-y-3 px-2 py-3 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <p className="text-[11px] text-slate-500">Ротация вариантов, история раундов и объяснимый победитель — как в Inferno.</p>
-          <div className="flex flex-wrap gap-2 sm:ml-auto">
-            <button type="button" disabled={!canWrite || !flywheelSource} onClick={() => { const winner = flywheelSource?.variants.find((variant) => variant.id === flywheelSource.winnerVariantId || variant.isWinner); if (flywheelSource && winner) openFlywheelFor(flywheelSource, winner); }} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-100 px-3 text-[11px] font-semibold text-violet-700 disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />Маховик</button>
-            <Link href="/wb/product" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-amber-100 px-3 text-[11px] font-semibold text-amber-800"><WandSparkles className="h-3.5 w-3.5" />Лаборатория контента</Link>
-          </div>
-        </div>
 
         {!canWrite ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">Для создания и управления тестами выберите один реальный кабинет. В режиме «Все кабинеты» доступна только сводная аналитика кандидатов.</div> : null}
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}
         {error && !loading ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
 
         {selectedTest ? <><CtrTestDetail test={selectedTest} busy={busy} onBack={() => setSelectedId(null)} onAction={(name, variantId, explanation) => void action(name, variantId, explanation)} onFlywheel={openFlywheel} /><CtrCampaignBridge cabinetId={cabinetId} nmId={selectedTest.nmId} /></> : wizard !== false && canWrite ? <CtrTestWizard cabinetId={cabinetId} type={type} candidates={candidates} seed={wizard} onClose={() => setWizard(false)} onCreated={() => reload("Черновик теста создан")} /> : <>
-          <section className="flex min-h-14 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center">
-            <div><div className="flex items-center gap-2 text-sm font-bold text-slate-800"><Plus className="h-4 w-4" />Новый тест</div><div className="mt-0.5 text-[10px] text-slate-400">{eligibleCount} SKU подходят по ориентиру Inferno: ≥1 000 показов и CTR ниже 3%</div></div>
-            <button type="button" disabled={!canWrite || loading} onClick={() => setWizard(null)} className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"><Plus className="h-3.5 w-3.5" />создать тест</button>
+          {/*
+            Одна панель управления вместо трёх строк.
+            Было: строка-описание с двумя цветными кнопками, отдельная секция
+            «Новый тест» ради одной кнопки, и ниже — переключатель типа
+            отдельными кнопками. Три полосы на три элемента управления, причём
+            главный из них, тип теста, стоял последним и выглядел слабее
+            периода. Здесь тип слева как основной выбор, действия справа, и
+            один акцентный цвет на весь экран — у создания теста.
+          */}
+          <section className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex min-h-11 items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm sm:min-h-9" role="tablist" aria-label="Тип теста">
+              {typeTabs.map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={type === tab.value}
+                  title={tab.note}
+                  onClick={() => setType(tab.value)}
+                  className={`min-h-10 rounded-md px-3 text-[11px] font-semibold transition-colors sm:min-h-8 ${type === tab.value ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              <button
+                type="button"
+                disabled={!canWrite || !flywheelSource}
+                title="Взять победителя завершённого теста и запустить следующий раунд от него"
+                onClick={() => { const winner = flywheelSource?.variants.find((variant) => variant.id === flywheelSource.winnerVariantId || variant.isWinner); if (flywheelSource && winner) openFlywheelFor(flywheelSource, winner); }}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-40 sm:min-h-9"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />Маховик
+              </button>
+              <Link
+                href="/wb/product"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 sm:min-h-9"
+              >
+                <WandSparkles className="h-3.5 w-3.5" />Лаборатория контента
+              </Link>
+              <button
+                type="button"
+                disabled={!canWrite || loading}
+                onClick={() => setWizard(null)}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-40 sm:min-h-9"
+              >
+                <Plus className="h-3.5 w-3.5" />Создать тест
+              </button>
+            </div>
           </section>
 
           {focusNm ? (
@@ -297,9 +348,6 @@ export function WbCtrPage() {
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Тип теста">{typeTabs.map((tab) => <button key={tab.value} type="button" role="tab" aria-selected={type === tab.value} onClick={() => setType(tab.value)} className={`inline-flex min-h-11 items-center rounded-lg px-3 text-[11px] font-semibold transition ${type === tab.value ? tab.tone : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}>{tab.label}</button>)}</div>
-          </div>
 
           {loading ? <div className="rounded-xl border border-slate-200 bg-white p-3"><LoadingBanner seconds={elapsed} hint={`тесты · ${activeCabinet?.name ?? "все кабинеты"}`} /><SkeletonTableRows rows={5} cols={8} /></div> : canWrite && visibleTests.length ? <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="min-w-[920px] w-full border-collapse text-[10px]">
@@ -309,7 +357,12 @@ export function WbCtrPage() {
           </div> : canWrite ? <WbEmptyState>{focusNm ? `По артикулу nm ${focusNm} тестов этого типа не заводили — заведите первый в таблице кандидатов ниже.` : "Для этого типа тестов пока нет запусков. Создайте первый черновик."}</WbEmptyState> : null}
 
           <section className="space-y-2">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div><h2 className="text-xs font-bold text-slate-700">Кандидаты по рекламе</h2><p className="text-[10px] text-slate-400">Реальные данные выбранного периода; клик по SKU можно использовать при создании теста.</p></div><div className="flex min-w-0 flex-1 flex-col gap-2 sm:ml-auto sm:max-w-xl sm:flex-row">{categories.length ? <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400"><option value="">Все категории</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__none">Без категории</option></select> : null}<label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 focus-within:border-violet-400"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SKU или nm" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label></div></div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div><h2 className="text-xs font-bold text-slate-700">Кандидаты по рекламе</h2><p className="text-[10px] text-slate-400">
+                  Реальные данные выбранного периода; клик по строке открывает мастер с этим товаром.
+                  {eligibleCount > 0
+                    ? ` Кандидат — от 1 000 показов и CTR ниже 3%: ${eligibleCount} ${plural(eligibleCount, "товар подходит", "товара подходят", "товаров подходят")}.`
+                    : " Кандидат — от 1 000 показов и CTR ниже 3%: сейчас таких нет."}
+                </p></div><div className="flex min-w-0 flex-1 flex-col gap-2 sm:ml-auto sm:max-w-xl sm:flex-row">{categories.length ? <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Категория" className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400"><option value="">Все категории</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}<option value="__none">Без категории</option></select> : null}<label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 focus-within:border-violet-400"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="SKU или nm" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label></div></div>
             {loading ? null : candidates.length === 0 ? <WbEmptyState>Нет рекламных данных по выбранному периоду и фильтрам.</WbEmptyState> : <div className="h-[360px] overflow-auto rounded-xl border border-slate-200 bg-white" onScroll={(event) => updateWindow(event.currentTarget)}><table className="min-w-[860px] w-full border-collapse text-[10px]"><thead className="sticky top-0 z-20 bg-slate-50"><tr className="h-9 border-b border-slate-200 text-slate-500"><th className="sticky left-0 z-30 min-w-[220px] border-r border-slate-200 bg-slate-50 px-3 text-left">Товар</th><th className="px-3 text-left">Статус</th><th className="px-3 text-right">Показы</th><th className="px-3 text-right">CTR</th><th className="px-3 text-right">CPC</th><th className="px-3 text-right">ДРР</th><th className="px-3 text-right">Расход</th><th className="px-3 text-right">Остаток</th></tr></thead><tbody>
               {rowWindow.start > 0 ? <tr aria-hidden="true"><td colSpan={8} style={{ height: rowWindow.start * ROW_HEIGHT }} /></tr> : null}
               {candidates.slice(rowWindow.start, rowWindow.end).map((item) => { const eligible = item.views >= 1000 && (item.ctr ?? 0) < 3; return <tr key={item.nm} onClick={() => { if (canWrite) setWizard({ candidate: item }); }} className={`h-11 border-b border-slate-100 ${canWrite ? "cursor-pointer hover:bg-violet-50/30" : ""}`}><td className="sticky left-0 z-10 border-r border-slate-100 bg-white px-3"><div className="font-semibold text-violet-700">{item.art}</div><div className="text-[9px] text-slate-400">nm {item.nm}</div></td><td className="px-3"><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${eligible ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{eligible ? "кандидат" : "наблюдение"}</span></td><td className="px-3 text-right tabular-nums">{number(item.views)}</td><td className={`px-3 text-right tabular-nums ${(item.ctr ?? 0) < 3 ? "font-semibold text-rose-600" : "text-emerald-700"}`}>{percent(item.ctr)}</td><td className="px-3 text-right tabular-nums">{number(item.cpc)} ₽</td><td className="px-3 text-right tabular-nums">{percent(item.drr)}</td><td className="px-3 text-right tabular-nums">{number(item.spend)} ₽</td><td className="px-3 text-right tabular-nums">{number(item.stock)}</td></tr>; })}
@@ -318,7 +371,12 @@ export function WbCtrPage() {
           </section>
         </>}
 
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-5 text-slate-500"><b className="text-slate-700">Безопасный режим:</b> панель не переставляет контент скрыто. Владелец вручную устанавливает вариант и подтверждает начало слота; `live_swap_enabled` всегда выключен. Для Video честно используется proxy «заказы / открытия», потому что WB API не отдаёт просмотры конкретного ролика.</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-5 text-slate-500">
+          <b className="text-slate-700">Панель ничего не меняет в карточке сама.</b> Вариант вы ставите руками и
+          сами подтверждаете начало раунда — автоматической подмены контента здесь нет и не включается.
+          У видео-тестов вместо просмотров считается отношение заказов к открытиям карточки: просмотры
+          конкретного ролика WB не отдаёт, и подставлять вместо них похожее число было бы обманом.
+        </div>
       </div>
     </div>
   );

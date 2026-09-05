@@ -182,3 +182,44 @@ test("своё фото можно загрузить и убрать", () => {
   // Осиротевший файл в бакете безвреден, битая ссылка в библиотеке — нет.
   assert.ok(route.indexOf('from("content_assets").delete()') < route.indexOf("storage.from(BUCKET).remove([path])", route.indexOf('from("content_assets").delete()')));
 });
+
+/**
+ * Экран тестов вёл три полосы управления на три элемента: строка-описание с
+ * двумя цветными кнопками, секция «Новый тест» ради одной кнопки и ниже —
+ * переключатель типа отдельными кнопками. Главный переключатель стоял
+ * последним и выглядел слабее периода рядом.
+ */
+test("экран тестов управляется одной панелью", () => {
+  const source = read("../components/wb/WbCtrPage.tsx");
+  // Заголовок «Новый тест» остаётся у мастера — там он к месту. Проверяем, что
+  // исчезла ОТДЕЛЬНАЯ секция ради одной кнопки на самом экране.
+  assert.doesNotMatch(source, /<div className="flex items-center gap-2 text-sm font-bold text-slate-800"><Plus/, "секция ради одной кнопки убрана");
+  assert.doesNotMatch(source, /SKU подходят по ориентиру Inferno/);
+  assert.doesNotMatch(source, /как в Inferno/, "описание продукта в рабочем интерфейсе");
+  assert.match(source, /role="tablist" aria-label="Тип теста"/);
+  // Тип теста нарисован тем же сегментированным контролом, что и период.
+  assert.match(source, /rounded-lg border border-slate-200 bg-white p-0\.5 shadow-sm sm:min-h-9" role="tablist"/);
+});
+
+test("заголовок не обещает CTR, когда открыт другой тип теста", () => {
+  const source = read("../components/wb/WbCtrPage.tsx");
+  assert.doesNotMatch(source, /title="Тестирование CTR"/);
+  assert.match(source, /typeTabs\.find\(\(tab\) => tab\.value === type\)\?\.note/);
+  for (const note of ["кликабельность обложки", "конверсия карточки", "заказы к открытиям"]) {
+    assert.ok(source.includes(note), note);
+  }
+});
+
+test("счётчик кандидатов склоняется и объясняет свой порог там, где он применён", () => {
+  const source = read("../components/wb/WbCtrPage.tsx");
+  assert.doesNotMatch(source, /\{eligibleCount\} SKU подходят/, "«1 SKU подходят»");
+  assert.match(source, /plural\(eligibleCount, "товар подходит", "товара подходят", "товаров подходят"\)/);
+  assert.match(source, /Кандидат — от 1 000 показов и CTR ниже 3%/);
+});
+
+test("нижняя плашка говорит по-человечески, а не именем флага", () => {
+  const source = read("../components/wb/WbCtrPage.tsx");
+  assert.doesNotMatch(source, /live_swap_enabled/, "имя флага в коде — не текст для человека");
+  assert.doesNotMatch(source, /proxy «заказы \/ открытия»/);
+  assert.match(source, /Панель ничего не меняет в карточке сама/);
+});
