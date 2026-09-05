@@ -10,6 +10,8 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
+import { needsFinanceHydration } from "@/lib/navigation/financeHydration";
 import { loadFinanceState, persistFinanceAction } from "@/lib/db";
 import { financeReducer } from "@/lib/reducer";
 import type { FinanceAction, FinanceState } from "@/lib/types";
@@ -68,8 +70,30 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  /**
+   * Финансовое состояние грузится ТОЛЬКО на экранах, которым оно нужно.
+   *
+   * Провайдер лежит в корневом макете, и запрос уходил на КАЖДОЙ странице
+   * панели: на складе, в кабинете WB, в кокпите Ozon. Замер на проде показал
+   * 2,7–3,1 с — второй по тяжести запрос на экране воронки WB, где это
+   * состояние не читает никто. А роль ниже финансиста получала за эти секунды
+   * ещё и отказ: /api/finance/state открыт только директору и финотделу.
+   *
+   * Условие то же самое, по которому макет решает, ждать ли гидрацию
+   * (needsFinanceHydration) — два разных ответа на один вопрос разошлись бы.
+   * Переход с /wb на /payments поднимет загрузку сам: pathname меняется.
+   */
+  const pathname = usePathname();
+  const financeNeeded = needsFinanceHydration(pathname);
+
   useEffect(() => {
     let cancelled = false;
+    if (!financeNeeded) {
+      // Не «загружено», а «не требовалось»: экран финансов, открытый следом,
+      // должен честно дождаться своих данных, а не показать пустые счета.
+      setHydrated(false);
+      return;
+    }
 
     async function load() {
       try {
@@ -99,7 +123,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [financeNeeded]);
 
   const dispatch = useCallback((action: FinanceAction) => {
     const prevState = stateRef.current;
