@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- variant URLs are user-selected WB/external test assets */
 
 import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Pause, Play, RotateCcw, Square, Trophy, XCircle } from "lucide-react";
+import { useState } from "react";
 import { formatTime } from "@/lib/analytics/format";
 import type { CtrTestView, CtrVariantView } from "./types";
 
@@ -34,12 +35,45 @@ function metricRows(test: CtrTestView) {
   ];
 }
 
-function actionConfirm(action: string, variant?: CtrVariantView) {
+function actionConfirm(action: string, variant?: CtrVariantView, auto = false) {
+  // При автоматике первый слот стартует на том, что УЖЕ стоит на карточке:
+  // базовый вариант — это её текущее фото. Просить поставить его руками
+  // значит просить сделать то, что и так сделано.
+  if (action === "start" && auto) {
+    return window.confirm(`Запустить тест? Первым откручивается «${variant?.label ?? "базовый вариант"}» — фото, которое сейчас стоит на карточке. Дальше панель переставит варианты сама.`);
+  }
   if (action === "start" || action === "advance") return window.confirm(`Сначала вручную установите «${variant?.label ?? "выбранный вариант"}» в карточке/кампании WB. Контент уже установлен и можно зафиксировать начало слота?`);
   if (action === "finish") return window.confirm("Завершить тест и выбрать победителя по накопленным метрикам?");
   if (action === "cancel") return window.confirm("Отменить тест? История и метрики останутся в журнале.");
   if (action === "winner") return window.confirm(`Выбрать «${variant?.label}» победителем вручную и завершить тест?`);
   return true;
+}
+
+
+/**
+ * Картинка варианта, переживающая мёртвый адрес.
+ *
+ * У базового варианта ссылка на обложку записывалась формулой баскета, а она
+ * протухает при каждой разрезке у WB: на тесте HT-83-26 в базе лежит
+ * basket-48, а карточка на basket-47 — по адресу 404 и битая картинка вместо
+ * «Текущего фото». Новые тесты пишут проверенный адрес, но у заведённых он уже
+ * неверный, и экран обязан оставаться читаемым: подпись честнее пустого
+ * прямоугольника с иконкой поломки.
+ */
+function VariantImage({ url, label }: { url: string; label: string }) {
+  const [broken, setBroken] = useState(false);
+  if (!url || broken) {
+    return (
+      <span
+        title={url ? "Файл по этому адресу не открывается" : "У варианта нет ссылки"}
+        className="grid h-28 w-full place-items-center rounded-md bg-slate-100 px-1 text-center text-[9px] font-semibold leading-3 text-slate-500"
+      >
+        {label}
+        <span className="mt-1 font-normal text-slate-400">фото не открылось</span>
+      </span>
+    );
+  }
+  return <img src={url} alt="" onError={() => setBroken(true)} className="h-28 w-full rounded-md object-cover" />;
 }
 
 export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Props) {
@@ -53,7 +87,7 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
   const spentPct = Math.min(100, test.spendCapRub > 0 ? spent / test.spendCapRub * 100 : 0);
 
   const trigger = (action: string, variant?: CtrVariantView) => {
-    if (!actionConfirm(action, variant)) return;
+    if (!actionConfirm(action, variant, test.liveSwapEnabled)) return;
     onAction(action, variant?.id, action === "winner" ? "Победитель выбран владельцем после ручной проверки метрик и контента." : undefined);
   };
 
@@ -67,7 +101,7 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
           <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-semibold uppercase text-slate-500">{test.testType}</span>
           <div className="ml-auto flex flex-wrap gap-2">
             {(test.status === "draft" || test.status === "paused") && next ? <button type="button" disabled={busy} onClick={() => trigger("start", next)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white disabled:opacity-50"><Play className="h-3.5 w-3.5" />{test.status === "draft" ? "Запустить первый слот" : `Продолжить: ${next.label}`}</button> : null}
-            {test.status === "running" && next ? <button type="button" disabled={busy} onClick={() => trigger("advance", next)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" />Следующий: {next.label}</button> : null}
+            {test.status === "running" && next && !test.liveSwapEnabled ? <button type="button" disabled={busy} onClick={() => trigger("advance", next)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" />Следующий: {next.label}</button> : null}
             {test.status === "running" ? <button type="button" disabled={busy} onClick={() => onAction("pause")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-200 px-3 text-[11px] font-semibold text-amber-700 disabled:opacity-50"><Pause className="h-3.5 w-3.5" />Пауза</button> : null}
             {test.status !== "done" && test.status !== "cancelled" ? <button type="button" disabled={busy} onClick={() => trigger("finish")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 disabled:opacity-50"><Square className="h-3.5 w-3.5" />Стоп с победителем</button> : null}
             {/*
@@ -113,7 +147,7 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
         <h3 className="mb-2 text-xs font-bold text-slate-700">Тестирование</h3>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="min-w-[760px] w-full border-collapse text-[10px]">
-            <thead><tr><th className="sticky left-0 z-10 min-w-[190px] border-b border-r border-slate-200 bg-slate-50" />{test.variants.map((variant) => <th key={variant.id} className="min-w-[150px] border-b border-slate-200 p-2"><div className={`relative rounded-lg border p-2 ${variant.id === test.currentVariantId ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : variant.isWinner ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : "border-slate-200 bg-slate-50"}`}>{variant.id === test.currentVariantId ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-2 py-0.5 text-[8px] text-white">сейчас</span> : null}{variant.isWinner ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-2 py-0.5 text-[8px] text-white">победитель</span> : null}{test.testType === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="h-28 w-full rounded-md object-cover" /> : <img src={variant.imageUrl} alt="" className="h-28 w-full rounded-md object-cover" />}<div className="mt-1 truncate text-[10px] font-semibold text-slate-700">{variant.label}</div>{variant.isBaseline ? <div className="text-[8px] text-violet-500">база</div> : null}{test.status === "paused" && !variant.isWinner ? <button type="button" onClick={() => trigger("winner", variant)} disabled={busy} className="mt-2 min-h-11 rounded-md border border-emerald-200 px-2 text-[9px] font-semibold text-emerald-700 disabled:opacity-50">Выбрать победителем</button> : null}</div></th>)}</tr></thead>
+            <thead><tr><th className="sticky left-0 z-10 min-w-[190px] border-b border-r border-slate-200 bg-slate-50" />{test.variants.map((variant) => <th key={variant.id} className="min-w-[150px] border-b border-slate-200 p-2"><div className={`relative rounded-lg border p-2 ${variant.id === test.currentVariantId ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : variant.isWinner ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : "border-slate-200 bg-slate-50"}`}>{variant.id === test.currentVariantId ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-2 py-0.5 text-[8px] text-white">сейчас</span> : null}{variant.isWinner ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-2 py-0.5 text-[8px] text-white">победитель</span> : null}{test.testType === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="h-28 w-full rounded-md object-cover" /> : <VariantImage url={variant.imageUrl} label={variant.label} />}<div className="mt-1 truncate text-[10px] font-semibold text-slate-700">{variant.label}</div>{variant.isBaseline ? <div className="text-[8px] text-violet-500">база</div> : null}{test.status === "paused" && !variant.isWinner ? <button type="button" onClick={() => trigger("winner", variant)} disabled={busy} className="mt-2 min-h-11 rounded-md border border-emerald-200 px-2 text-[9px] font-semibold text-emerald-700 disabled:opacity-50">Выбрать победителем</button> : null}</div></th>)}</tr></thead>
             <tbody>{metricRows(test).map((row) => <tr key={row.label}><td className="sticky left-0 z-10 border-r border-t border-slate-200 bg-white px-3 py-2 font-medium text-slate-500">{row.label}</td>{test.variants.map((variant) => <td key={variant.id} className="border-t border-slate-100 px-3 py-2 text-center tabular-nums text-slate-700">{row.value(variant)}</td>)}</tr>)}</tbody>
           </table>
         </div>
