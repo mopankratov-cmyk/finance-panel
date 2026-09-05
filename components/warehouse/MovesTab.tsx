@@ -78,7 +78,10 @@ export function MovesTab({ entityId, refreshKey }: { entityId: string; refreshKe
   }, [rows, query, kind]);
   const kinds = useMemo(() => [...new Set(rows.map((row) => row.kind))], [rows]);
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю журнал…</div>;
+    // Заглушка — только пока данных нет ВООБЩЕ. Раньше она подменяла собой уже
+  // показанное на каждое «Обновить»: экран мигал пустотой, а вкладка, которая
+  // теперь остаётся смонтированной, теряла бы вид при любом обновлении соседней.
+  if (loading && rows.length === 0) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю журнал…</div>;
   if (error) return <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
 
   if (rows.length === 0) {

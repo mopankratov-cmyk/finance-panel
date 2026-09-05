@@ -218,7 +218,10 @@ export function ReceiptsTab({
   const updateLine = (index: number, patch: Partial<DraftLine>) =>
     setDraft((prev) => prev && ({ ...prev, lines: prev.lines.map((item, i) => (i === index ? { ...item, ...patch } : item)) }));
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю приёмки…</div>;
+    // Заглушка — только пока данных нет ВООБЩЕ. Раньше она подменяла собой уже
+  // показанное на каждое «Обновить»: экран мигал пустотой, а вкладка, которая
+  // теперь остаётся смонтированной, теряла бы вид при любом обновлении соседней.
+  if (loading && rows.length === 0) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю приёмки…</div>;
 
   const uncounted = rows.filter((row) => row.state === "expected");
   const pending = rows.filter((row) => row.state === "received");

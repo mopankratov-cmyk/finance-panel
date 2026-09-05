@@ -191,7 +191,10 @@ export function KizTab({ entityId, refreshKey }: { entityId: string; refreshKey:
     }
   };
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Читаю реестр…</div>;
+    // Заглушка — только пока данных нет ВООБЩЕ. Раньше она подменяла собой уже
+  // показанное на каждое «Обновить»: экран мигал пустотой, а вкладка, которая
+  // теперь остаётся смонтированной, теряла бы вид при любом обновлении соседней.
+  if (loading && !summary) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Читаю реестр…</div>;
 
   const pending = summary?.pending ?? 0;
   const age = summary?.ageBuckets ?? { overdue: 0, lastDay: 0, twoDays: 0, fresh: 0 };

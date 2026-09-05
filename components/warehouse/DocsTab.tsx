@@ -76,7 +76,10 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
     }
   };
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю документы…</div>;
+    // Заглушка — только пока данных нет ВООБЩЕ. Раньше она подменяла собой уже
+  // показанное на каждое «Обновить»: экран мигал пустотой, а вкладка, которая
+  // теперь остаётся смонтированной, теряла бы вид при любом обновлении соседней.
+  if (loading && !data) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">Загружаю документы…</div>;
 
   return (
     <div className="space-y-4">
