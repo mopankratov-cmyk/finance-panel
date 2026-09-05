@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
-import { isPanelUpload, PANEL_UPLOAD_BUCKET, PANEL_UPLOAD_PREFIX } from "@/lib/content/assetUsability";
+import { isPanelCover, isPanelOwned, isPanelUpload, PANEL_UPLOAD_BUCKET, PANEL_UPLOAD_PREFIX } from "@/lib/content/assetUsability";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -104,15 +104,33 @@ export async function DELETE(request: NextRequest) {
   if (!target) return fail("Не указан файл", 400);
   if (!cabinetId) return fail("Не указан кабинет", 400);
   if (!(await hasCabinetAccess(cabinetId))) return fail("Нет доступа к кабинету", 403);
-  if (!isPanelUpload(target)) {
+  if (!isPanelOwned(target)) {
     return fail("Удалять можно только то, что загрузили сюда сами: кадры карточки живут в WB, съёмки — в каталоге завода", 400);
   }
-  // Кабинет зашит в путь при загрузке — сверяем, чтобы по чужой ссылке нельзя
-  // было снести файл соседа.
-  if (!target.includes(`/${PREFIX}/${cabinetId}/`)) return fail("Файл принадлежит другому кабинету", 403);
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+
+  /**
+   * Принадлежность проверяется по-разному, потому что папки устроены
+   * по-разному.
+   *
+   * Загрузки с экрана несут кабинет прямо в пути — сверяем путь.
+   * Обложки лежат по `covers/<артикул>/…`, кабинета в пути нет вовсе: их
+   * заливали пакетом по товарам, а не из кабинета. Для них вопрос «твой ли
+   * файл» — это вопрос «твой ли товар», и отвечает на него карточка: артикул
+   * должен встречаться среди карточек ЭТОГО кабинета. Иначе сосед по ссылке
+   * снёс бы обложку чужого товара.
+   */
+  if (isPanelUpload(target)) {
+    if (!target.includes(`/${PREFIX}/${cabinetId}/`)) return fail("Файл принадлежит другому кабинету", 403);
+  } else if (isPanelCover(target)) {
+    const asset = await db.from("content_assets").select("article").eq("url", target).limit(1).maybeSingle();
+    const article = String(asset.data?.article ?? "").trim();
+    if (!article) return fail("Файла нет в каталоге — удалять нечего", 404);
+    const card = await db.from("wb_cards").select("nm_id").eq("cabinet_id", cabinetId).eq("article", article).limit(1).maybeSingle();
+    if (!card.data) return fail("Товар этой обложки не заведён в выбранном кабинете", 403);
+  }
 
   const marker = `/storage/v1/object/public/${BUCKET}/`;
   const path = decodeURIComponent(target.slice(target.indexOf(marker) + marker.length));

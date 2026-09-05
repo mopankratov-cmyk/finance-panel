@@ -158,7 +158,18 @@ const STATUS_FILTERS = [
   { value: "all", label: "Все", Icon: Megaphone },
 ] as const;
 
-const ROW_HEIGHT = 76;
+/**
+ * Высота строки списка кампаний.
+ *
+ * Это ЕДИНСТВЕННОЕ место, где она задаётся: тем же числом ниже выставляется
+ * `style.height` самой строки. Раньше высота жила в двух местах — здесь для
+ * распорок виртуального списка и классом `h-[76px]` в разметке, — и правка
+ * строки до трёх уровней подняла содержимое до 82px, не тронув ни одну из них.
+ * Строка не обрезалась (`overflow: visible`), поэтому семь пикселей имени
+ * кампании и «по артикулу» ложились поверх соседней строки: на экране это
+ * выглядело как слипшиеся кампании.
+ */
+const ROW_HEIGHT = 88;
 const rub = (value: number | null) => value == null ? "—" : `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 const pct = (value: number | null) => value == null ? "—" : `${Math.round(value * 10) / 10}%`;
 const int = (value: number | null) => value == null ? "—" : Math.round(value).toLocaleString("ru-RU");
@@ -852,7 +863,7 @@ export function WbAdvertsPage() {
         </div>
       ) : null}
 
-      <div className={`${view === "campaigns" ? "grid" : "hidden"} min-h-[calc(100vh-110px)] gap-3 px-2 py-3 sm:px-6 lg:grid-cols-[360px_minmax(0,1fr)]`}>
+      <div className={`${view === "campaigns" ? "grid" : "hidden"} min-h-[calc(100vh-110px)] gap-3 px-2 py-3 sm:px-6 lg:grid-cols-[408px_minmax(0,1fr)]`}>
         <section className="flex min-h-[480px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="border-b border-slate-200 p-3">
             <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 sm:min-h-8">
@@ -952,7 +963,14 @@ export function WbAdvertsPage() {
                 const status = campaignStatusMeta(campaign);
                 const StatusIcon = status.Icon;
                 return (
-                  <div key={campaign.id} className={`flex h-[76px] items-center border-b border-slate-100 transition-colors ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}>
+                  <div
+                    key={campaign.id}
+                    style={{ height: ROW_HEIGHT }}
+                    // overflow-hidden — не косметика, а страховка: если строка
+                    // однажды снова перерастёт свою высоту, она обрежется у
+                    // себя, а не поедет поверх соседней.
+                    className={`flex items-center overflow-hidden border-b border-slate-100 transition-colors ${active ? "bg-violet-50" : "hover:bg-slate-50"}`}
+                  >
                     {singleCabinet && cabinetMoney ? (
                       <label className="flex h-full shrink-0 cursor-pointer items-center pl-2 pr-1" title="Отметить для массового действия">
                         <input
@@ -986,24 +1004,48 @@ export function WbAdvertsPage() {
                         вылезала из своей колонки поверх соседней: на экране
                         «ESC00121» и «Снизить расход» наезжали друг на друга.
                       */}
-                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                      {/*
+                        Строки больше НЕ переносятся. Перенос был лекарством от
+                        выезда за край, но лечил симптом: строка вместо одного
+                        уровня занимала два, высота росла, и содержимое лезло на
+                        соседа. Теперь ширину держит `min-w-0` с обрезкой —
+                        длинный артикул укорачивается многоточием, а не ломает
+                        сетку.
+                      */}
+                      <div className="flex items-center gap-x-1.5 overflow-hidden">
                         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dot}`} />
                         <StatusIcon className="h-3 w-3 shrink-0 text-slate-400" />
-                        <span className="shrink-0 text-[11px] font-bold text-slate-800">{article.art}</span>
+                        <span className="min-w-0 truncate text-[11px] font-bold text-slate-800" title={article.art}>{article.art}</span>
                         {wentQuiet(campaign) ? (
                           <span title="Вчера кампания тратила, сегодня расхода нет. Что именно произошло — смотрите в разделе «Что мы меняли»." className="shrink-0 rounded bg-slate-800 px-1 py-0.5 text-[9px] font-bold text-white">
                             замолчала
                           </span>
                         ) : null}
+                      </div>
+                      {/*
+                        Вердикт стоит здесь, а не рядом с артикулом. В строке
+                        артикула он забирал половину ширины, и на кабинете с
+                        длинными кодами оба обрезались: «HT-83…» и «Снизит…».
+                        Артикул опознаёт товар — ему первая строка целиком;
+                        вердикт первым идёт во второй, впереди признаков
+                        кампании, потому что он важнее их.
+                      */}
+                      <div className="mt-1 flex items-center gap-1 overflow-hidden text-[9px] text-slate-400">
                         {needsDecision(campaign) && VERDICT_BADGE[campaign.economics.action] ? (
                           <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold ${VERDICT_BADGE[campaign.economics.action]!.className}`}>
                             {VERDICT_BADGE[campaign.economics.action]!.label}
                           </span>
                         ) : null}
-                      </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[9px] text-slate-400">
-                        <span className={`shrink-0 rounded px-1 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span>
-                        <span className={`shrink-0 rounded px-1 py-0.5 ${BID_BADGE[campaignBidKind(campaign)].className}`}>{BID_BADGE[campaignBidKind(campaign)].label}</span>
+                        {/*
+                          Подписи у обоих бейджей: когда рядом стоит вердикт,
+                          второй из них обрезается по краю колонки. Обрезанный
+                          бейдж без подсказки — это шум, о котором уже спотыкались
+                          на артикуле; наведением он читается целиком.
+                          Слитно их не рисуем: оплата и тип ставки — разные
+                          утверждения, и одним чипом они снова слипнутся.
+                        */}
+                        <span title={`Модель оплаты: ${PAYMENT_BADGE[campaignPaymentKind(campaign)].label}`} className={`shrink-0 rounded px-1 py-0.5 ${PAYMENT_BADGE[campaignPaymentKind(campaign)].className}`}>{PAYMENT_BADGE[campaignPaymentKind(campaign)].label}</span>
+                        <span title={`Тип ставки: ${BID_BADGE[campaignBidKind(campaign)].label}`} className={`shrink-0 rounded px-1 py-0.5 ${BID_BADGE[campaignBidKind(campaign)].className}`}>{BID_BADGE[campaignBidKind(campaign)].label}</span>
                         {campaign.last_change?.by_rule ? (
                           <span title={`Ставку последним менял автопрогон правил, ${new Date(campaign.last_change.created_at).toLocaleString("ru-RU")}`} className="shrink-0 rounded bg-violet-100 px-1 py-0.5 font-semibold text-violet-700">
                             правило
@@ -1021,7 +1063,7 @@ export function WbAdvertsPage() {
                       страховка: перекрытие соседней колонки недопустимо даже
                       при неожиданно длинном числе.
                     */}
-                    <div className="w-[148px] shrink-0 overflow-hidden text-right">
+                    <div className="w-[136px] shrink-0 overflow-hidden text-right">
                       <div title={closedDrrTitle(campaign) + ` · период ${campaign.metrics_period_7_closed.date_from} — ${campaign.metrics_period_7_closed.date_to}`} className={`inline-block rounded border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${closedDrrTone(campaign)}`}>ДРР 7д {closedDrrLabel(campaign)}</div>
                       {/*
                         Порог ЭТОЙ кампании вторым числом, а не другим цветом.
@@ -1035,12 +1077,30 @@ export function WbAdvertsPage() {
                       */}
                       <div className="text-[9px] tabular-nums text-slate-400">{campaign.economics.breakEvenDrr == null ? "порога нет" : `порог ${campaign.economics.breakEvenDrr}%`}</div>
                       <div className="mt-0.5 text-[9px] font-semibold tabular-nums text-slate-800">{campaign.bid_cpm_rub == null ? "ставка —" : rub(campaign.bid_cpm_rub)} · сег {rub(campaign.spend_today)}</div>
-                      <div className="mt-0.5 text-[9px] tabular-nums text-slate-500">вчера {rub(campaign.yesterday?.spend ?? 0)} · 7д {rub(campaign.spent_7_closed)}</div>
-                      {article.spent_sku_7_closed == null
-                        ? <div title="Разбивка расхода по артикулам за период не собрана" className="text-[9px] tabular-nums text-slate-400">по артикулу —</div>
-                        : Math.round(article.spent_sku_7_closed) !== Math.round(campaign.spent_7_closed)
-                          ? <div title="По этому артикулу тратит не только эта кампания" className="text-[9px] tabular-nums text-violet-700">по артикулу {rub(article.spent_sku_7_closed)}</div>
-                          : null}
+                      {/*
+                        «По артикулу» больше не занимает отдельную строку.
+                        Из трёх её состояний строкой стоило показывать одно:
+                        «разбивка не собрана» — это не факт о деньгах, а наше
+                        незнание, ему место в подсказке; «совпадает с расходом
+                        кампании» не сообщает ничего вовсе. Осталось третье —
+                        по артикулу тратит не только эта кампания, — и оно
+                        помечается точкой у числа за семь дней. Строка короче на
+                        уровень, а сигнал не потерян.
+                      */}
+                      <div
+                        title={article.spent_sku_7_closed == null
+                          ? "Разбивка расхода по артикулам за период не собрана — сравнить расход кампании с расходом по товару не с чем"
+                          : Math.round(article.spent_sku_7_closed) !== Math.round(campaign.spent_7_closed)
+                            ? `По этому артикулу тратит не только эта кампания: ${rub(article.spent_sku_7_closed)} за 7 дней`
+                            : "Весь расход по этому артикулу за 7 дней — из этой кампании"}
+                        className="mt-0.5 text-[9px] tabular-nums text-slate-500"
+                      >
+                        вчера {int(campaign.yesterday?.spend ?? 0)} · 7д {int(campaign.spent_7_closed)}
+                        {article.spent_sku_7_closed != null
+                          && Math.round(article.spent_sku_7_closed) !== Math.round(campaign.spent_7_closed) ? (
+                            <span className="ml-1 font-bold text-violet-600" aria-hidden="true">•</span>
+                          ) : null}
+                      </div>
                     </div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                   </button>

@@ -8,9 +8,7 @@ import {
   RotateCcw,
   Search,
   Trash2,
-  WandSparkles,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { CTR_FORCE_HINT, type CtrTestType } from "@/lib/ctrtest/model";
@@ -306,12 +304,6 @@ export function WbCtrPage() {
               >
                 <RotateCcw className="h-3.5 w-3.5" />Маховик
               </button>
-              <Link
-                href="/wb/product"
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 sm:min-h-9"
-              >
-                <WandSparkles className="h-3.5 w-3.5" />Лаборатория контента
-              </Link>
               <button
                 type="button"
                 disabled={!canWrite || loading}

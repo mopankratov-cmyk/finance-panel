@@ -4,7 +4,7 @@
 import { Check, ImageOff, Loader2, Lock, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { isPanelUpload, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
+import { isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
 import { plural } from "@/lib/warehouse/plural";
 import { itemsForTestType, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
 import type { CtrTestType } from "@/lib/ctrtest/model";
@@ -313,7 +313,7 @@ export function ContentPicker({
                 Показываем только на своих загрузках — кадр карточки живёт в WB,
                 съёмка в каталоге завода, и панель ими не распоряжается.
               */}
-              {isPanelUpload(item.url) ? (
+              {isPanelOwned(item.url) ? (
                 <button
                   type="button"
                   onClick={() => void remove(item)}

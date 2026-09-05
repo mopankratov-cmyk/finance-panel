@@ -87,3 +87,33 @@ export function isPanelUpload(url: string | null | undefined): boolean {
     `/storage/v1/object/public/${PANEL_UPLOAD_BUCKET}/${PANEL_UPLOAD_PREFIX}/`,
   );
 }
+
+/**
+ * Готовые обложки, залитые в наш бакет из наработок дизайна.
+ *
+ * Лежат по `covers/<артикул>/…` — без кабинета в пути, в отличие от загрузок с
+ * экрана. Поэтому и проверка принадлежности у них другая: не по пути, а по
+ * товару (см. роут удаления).
+ */
+export const PANEL_COVER_PREFIX = "covers";
+
+export function isPanelCover(url: string | null | undefined): boolean {
+  return String(url ?? "").includes(
+    `/storage/v1/object/public/${PANEL_UPLOAD_BUCKET}/${PANEL_COVER_PREFIX}/`,
+  );
+}
+
+/**
+ * Файл, которым распоряжается панель, — то есть его можно удалить отсюда.
+ *
+ * Это НЕ «всё, что лежит в нашем бакете»: там же живут `gen/` и `prepared/`
+ * контент-завода, у которого свой репозиторий и свои ссылки на эти файлы.
+ * Снести их отсюда значило бы сломать соседа молча. Панели принадлежат две
+ * папки: загрузки с экрана и обложки.
+ *
+ * Кадры карточки живут в WB, съёмки — в каталоге на Яндекс.Диске; ни то ни
+ * другое панель не удаляет и предлагать не должна.
+ */
+export function isPanelOwned(url: string | null | undefined): boolean {
+  return isPanelUpload(url) || isPanelCover(url);
+}

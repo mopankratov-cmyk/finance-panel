@@ -140,8 +140,17 @@ test("замер включает авторизацию, а не начинае
  */
 test("строка кампании не даёт колонкам наезжать", () => {
   const source = read("../components/wb/WbAdvertsPage.tsx");
-  assert.match(source, /<div className="flex flex-wrap items-center gap-x-1\.5 gap-y-1">/, "бейджи переносятся");
-  assert.match(source, /w-\[148px\] shrink-0 overflow-hidden text-right/, "правая колонка не выливается за край");
+  // Механизм сменился 05.09.2026. Перенос бейджей защищал от выезда ВБОК, но
+  // растил высоту: строка занимала два уровня вместо одного, содержимое
+  // доходило до 82px в семидесятишестипиксельной строке и ложилось на
+  // соседнюю. Теперь ширину держит обрезка, а высоту — одна константа.
+  assert.doesNotMatch(source, /flex flex-wrap items-center gap-x-1\.5 gap-y-1/, "перенос снова растит высоту строки");
+  assert.match(source, /<div className="flex items-center gap-x-1\.5 overflow-hidden">/, "первый уровень обрезается по ширине");
+  assert.match(source, /min-w-0 truncate text-\[11px\] font-bold text-slate-800/, "длинный артикул укорачивается, а не ломает сетку");
+  // Ширина числовой колонки — величина настраиваемая (её ужимали, чтобы вернуть
+  // место артикулу), поэтому сторож держит СВОЙСТВА, а не конкретные пиксели:
+  // колонка фиксированной ширины, не сжимается и обрезает себя.
+  assert.match(source, /w-\[\d+px\] shrink-0 overflow-hidden text-right/, "правая колонка не выливается за край");
 });
 
 /**
@@ -172,13 +181,21 @@ test("галерея контента не показывает то, что н�
 test("своё фото можно загрузить и убрать", () => {
   const source = read("../components/wb/ctr/ContentPicker.tsx");
   assert.match(source, /\/api\/content\/upload/);
-  assert.match(source, /isPanelUpload\(item\.url\)/, "корзина только на своих загрузках");
+  assert.match(source, /isPanelOwned\(item\.url\)/, "корзина только на том, чем распоряжается панель");
   assert.match(source, /window\.confirm/, "удаление файла необратимо — спрашиваем");
 
   const route = read("../app/api/content/upload/route.ts");
   assert.match(route, /hasCabinetAccess\(cabinetId\)/, "чужой кабинет");
-  assert.match(route, /if \(!isPanelUpload\(target\)\)/, "чужие файлы удалять нельзя");
+  assert.match(route, /if \(!isPanelOwned\(target\)\)/, "чужие файлы удалять нельзя");
+  // Две папки — две проверки принадлежности, потому что устроены они по-разному.
+  // Загрузка с экрана несёт кабинет в пути; обложка лежит по covers/<артикул>/
+  // и кабинета в пути не имеет — для неё «твой ли файл» это «твой ли товар».
   assert.match(route, /target\.includes\(`\/\$\{PREFIX\}\/\$\{cabinetId\}\/`\)/, "по чужой ссылке файл соседа не снести");
+  assert.match(route, /from\("wb_cards"\)[\s\S]{0,120}eq\("article", article\)/, "обложку чужого товара удалить нельзя");
+  // Папки завода (gen/, prepared/) остаются нетронутыми: у них свой репозиторий
+  // и свои ссылки на эти файлы, снести их отсюда значило бы сломать соседа молча.
+  const usability = read("../lib/content/assetUsability.ts");
+  assert.match(usability, /isPanelUpload\(url\) \|\| isPanelCover\(url\)/, "владение панели — ровно две папки");
   // Осиротевший файл в бакете безвреден, битая ссылка в библиотеке — нет.
   assert.ok(route.indexOf('from("content_assets").delete()') < route.indexOf("storage.from(BUCKET).remove([path])", route.indexOf('from("content_assets").delete()')));
 });
