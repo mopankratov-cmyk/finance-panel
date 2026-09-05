@@ -156,6 +156,7 @@ export function CtrTestWizard({ cabinetId, type, candidates, seed, onClose, onCr
         <ContentPicker
           cabinetId={cabinetId}
           nmId={selected?.nm ?? 0}
+          testType={type}
           selectedUrls={variants.map((variant) => variant.imageUrl)}
           onPick={pickFromLibrary}
         />

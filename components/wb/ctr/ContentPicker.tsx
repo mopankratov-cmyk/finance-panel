@@ -5,7 +5,8 @@ import { Check, ImageOff, Loader2, Lock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
-import type { ContentItem, ProductContent } from "@/lib/content/productLibrary";
+import { itemsForTestType, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
+import type { CtrTestType } from "@/lib/ctrtest/model";
 
 /**
  * Выбор вариантов теста из того, что у товара уже есть.
@@ -31,12 +32,15 @@ interface LibraryResponse {
 export function ContentPicker({
   cabinetId,
   nmId,
+  testType,
   selectedUrls,
   onPick,
 }: {
   cabinetId: string;
   /** Товар, ради которого открыт мастер. 0 — товар ещё не выбран. */
   nmId: number;
+  /** Тип теста решает, какие кадры вообще имеют смысл вариантами. */
+  testType: CtrTestType;
   selectedUrls: string[];
   onPick: (item: ContentItem) => void;
 }) {
@@ -74,16 +78,16 @@ export function ContentPicker({
   // «посмотреть контент по товарам», и пустой экран до выбора артикула был бы
   // ответом не на тот вопрос.
   const items = useMemo(() => {
-    if (product) return product.items;
+    if (product) return itemsForTestType(product.items, testType);
     if (!showAll || !data) return [];
     // В общем списке подпись начинается с артикула — иначе непонятно, чей это
     // кадр. Но имена файлов каталога уже часто начинаются с него же, и без
     // проверки выходило «HT-80-11 · HT-80-11 · фото 1».
-    return data.products.flatMap((entry) => entry.items.map((item) => ({
+    return data.products.flatMap((entry) => itemsForTestType(entry.items, testType).map((item) => ({
       ...item,
       label: item.label.startsWith(entry.article) ? item.label : `${entry.article} · ${item.label}`,
     })));
-  }, [data, product, showAll]);
+  }, [data, product, showAll, testType]);
 
   const selected = useMemo(() => new Set(selectedUrls.filter(Boolean)), [selectedUrls]);
 
@@ -105,9 +109,22 @@ export function ContentPicker({
         <h3 className="text-xs font-bold text-slate-700">Контент товара</h3>
         <span className="text-[10px] text-slate-400">
           {product
-            ? `${product.publishableCount} из ${product.items.length} можно отдать в тест`
+            ? `${items.filter((item) => item.usability === "public").length} из ${items.length} можно отдать в тест`
             : "Выберите товар выше — или посмотрите весь контент кабинета"}
         </span>
+        {/*
+          Почему список короче, чем весь контент товара. Без этой строки
+          человек, знающий, что у карточки 27 кадров, решит, что панель их
+          потеряла.
+        */}
+        {testType === "ctr" && product ? (
+          <span
+            title="CTR решает обложка: остальные кадры карточки человек видит уже после клика — они влияют на конверсию, а не на кликабельность."
+            className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500"
+          >
+            только обложка и кандидаты в неё
+          </span>
+        ) : null}
         {!product && data?.products.length ? (
           <button
             type="button"

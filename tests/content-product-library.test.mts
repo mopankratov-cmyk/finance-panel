@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assetUsability, canPublishAsset } from "../lib/content/assetUsability";
-import { buildProductContent, countOrphanAssets } from "../lib/content/productLibrary";
+import { buildProductContent, cardFrameIndex, countOrphanAssets, itemsForTestType } from "../lib/content/productLibrary";
 
 /**
  * Замер по всем 9 069 строкам каталога на 05.09.2026: настоящих адресов там
@@ -74,4 +74,55 @@ test("файлы, не приросшие ни к одному товару, с�
     { id: 3, article: "НЕТ-ТАКОГО", kind: "image", url: "https://basket-1.wbbasket.ru/c.webp", name: "", disk: "design", niche: null },
   ]);
   assert.equal(orphans, 2);
+});
+
+test("номер кадра карточки читается из ссылки WB", () => {
+  assert.equal(cardFrameIndex("https://basket-45.wbbasket.ru/vol1/part1/1/images/big/1.webp"), 1);
+  assert.equal(cardFrameIndex("https://basket-45.wbbasket.ru/vol1/part1/1/images/hq/12.webp"), 12);
+  assert.equal(cardFrameIndex("https://basket-45.wbbasket.ru/vol1/part1/1/images/c246x328/7.webp"), 7);
+  assert.equal(cardFrameIndex("https://x.supabase.co/storage/v1/object/public/factory-media/a.png"), null,
+    "своя съёмка — не кадр карточки");
+  assert.equal(cardFrameIndex("yandex-disk:/content-factory/1.png"), null);
+});
+
+/**
+ * CTR решает обложка: остальные кадры видны уже после клика и влияют на
+ * конверсию, а не на кликабельность. Предлагать их вариантами CTR-теста —
+ * значит предлагать эксперимент, который по построению ничего не измерит.
+ */
+test("в выборе для CTR-теста остаются обложка и кандидаты, но не кадры карточки", () => {
+  const [product] = buildProductContent(
+    [{
+      nm_id: 1, article: "HT-83-11", name: "", subject: "",
+      photos: ["https://basket-45.wbbasket.ru/a/1.webp", "https://basket-45.wbbasket.ru/a/2.webp"],
+      photos_big: ["https://basket-45.wbbasket.ru/big/1.webp", "https://basket-45.wbbasket.ru/big/2.webp"],
+    }],
+    [
+      // Тот же второй кадр, пришедший вторым путём — строкой каталога.
+      { id: 1, article: "HT-83-11", kind: "image", url: "https://basket-16.wbbasket.ru/vol1/part1/896338397/images/big/2.webp", name: "HT-83-11 · фото 2", disk: "wb", niche: null },
+      { id: 2, article: "HT-83-11", kind: "image", url: "https://x.supabase.co/storage/v1/object/public/factory-media/studio.png", name: "студия", disk: "prepared", niche: null },
+    ],
+  );
+
+  const ctr = itemsForTestType(product.items, "ctr");
+  assert.deepEqual(ctr.map((item) => item.label), ["Обложка карточки", "студия"]);
+  assert.equal(ctr.some((item) => item.label === "Кадр карточки 2"), false, "второй кадр из галереи убран");
+  assert.equal(ctr.some((item) => item.label === "HT-83-11 · фото 2"), false, "он же, пришедший каталогом, тоже убран");
+
+  // CR и Video смотрят на всю воронку карточки — там список остаётся полным.
+  assert.equal(itemsForTestType(product.items, "cr").length, product.items.length);
+  assert.equal(itemsForTestType(product.items, "video").length, product.items.length);
+});
+
+test("обложка другой карточки того же артикула названа своим именем", () => {
+  // У артикула бывает несколько номенклатур. Кадр тот же, файл другой — без
+  // подписи это выглядит копией и провоцирует тест картинки против самой себя.
+  const [product] = buildProductContent(
+    [{ nm_id: 1332992636, article: "HT-83-11", name: "", subject: "",
+       photos: ["https://basket-45.wbbasket.ru/vol1/part1/1332992636/images/big/1.webp"],
+       photos_big: ["https://basket-45.wbbasket.ru/vol1/part1/1332992636/images/big/1.webp"] }],
+    [{ id: 1, article: "HT-83-11", kind: "image", url: "https://basket-16.wbbasket.ru/vol1/part1/896338397/images/big/1.webp", name: "HT-83-11 · фото 1", disk: "wb", niche: null }],
+  );
+  const labels = itemsForTestType(product.items, "ctr").map((item) => item.label);
+  assert.deepEqual(labels, ["Обложка карточки", "Обложка карточки 896338397"]);
 });

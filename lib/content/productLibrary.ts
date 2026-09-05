@@ -52,6 +52,33 @@ export interface ContentItem {
   label: string;
   /** Обложка карточки — первый кадр галереи WB. */
   isCover: boolean;
+  /**
+   * Номер кадра карточки, если он известен: 1 — обложка.
+   * `null` у своих съёмок и генераций — они не кадр карточки, а кандидат в него.
+   */
+  frameIndex: number | null;
+}
+
+/**
+ * Кадр карточки по ссылке WB: `…/images/big/7.webp` → 7.
+ *
+ * Нужно потому, что кадры карточки приходят ДВУМЯ путями: из галереи в
+ * `wb_cards` и отдельными строками каталога (`disk=wb`, path вида `nm/7`).
+ * Отфильтровать «всё, кроме обложки» по одному источнику мало — вторым путём
+ * инфографика и таблица размеров вернутся обратно.
+ */
+export function cardNmId(url: string): number | null {
+  const match = /\/(\d{6,})\/images\//.exec(url);
+  if (!match) return null;
+  const nm = Number(match[1]);
+  return Number.isFinite(nm) ? nm : null;
+}
+
+export function cardFrameIndex(url: string): number | null {
+  const match = /\/images\/[a-z0-9]+\/(\d+)\.[a-z0-9]+(?:$|[?#])/i.exec(url);
+  if (!match) return null;
+  const index = Number(match[1]);
+  return Number.isFinite(index) && index > 0 ? index : null;
 }
 
 export interface ProductContent {
@@ -113,11 +140,14 @@ export function buildProductContent(
         usability: assetUsability(url),
         label: index === 0 ? "Обложка карточки" : `Кадр карточки ${index + 1}`,
         isCover: index === 0,
+        frameIndex: index + 1,
       });
     });
 
     for (const asset of assetsByArticle.get(article) ?? []) {
       const url = String(asset.url ?? "");
+      const frame = cardFrameIndex(url);
+      const nm = cardNmId(url);
       items.push({
         key: `shoot:${asset.id}`,
         url,
@@ -125,8 +155,15 @@ export function buildProductContent(
         kind: asset.kind === "video" ? "video" : "image",
         origin: "shoot",
         usability: assetUsability(url),
-        label: String(asset.name ?? "").trim() || String(asset.disk ?? "съёмка"),
+        // У артикула бывает несколько номенклатур, и каталог хранит кадры их
+        // всех. Обложка ЧУЖОЙ карточки выглядит в сетке как копия своей —
+        // кадр тот же, файл другой. Без подписи человек примет их за два
+        // варианта и запустит тест картинки против самой себя.
+        label: frame === 1 && nm !== nmId
+          ? `Обложка карточки ${nm ?? "другой"}`
+          : String(asset.name ?? "").trim() || String(asset.disk ?? "съёмка"),
         isCover: false,
+        frameIndex: frame,
       });
     }
 
@@ -169,4 +206,28 @@ export function countOrphanAssets(cards: LibraryCardRow[], assets: LibraryAssetR
     if (!article || !known.has(article)) orphans += 1;
   }
   return orphans;
+}
+
+/**
+ * Что показывать в выборе вариантов для теста этого типа.
+ *
+ * CTR решает ОБЛОЖКА и только она: остальные кадры человек видит уже после
+ * клика по карточке, то есть они влияют на конверсию в корзину, а не на
+ * кликабельность в выдаче. Класть их в выбор вариантов CTR-теста значит
+ * предлагать протестировать таблицу размеров против инфографики «температурный
+ * режим» — эксперимент, который по построению ничего не измерит.
+ *
+ * Поэтому для CTR остаются два сорта кадров:
+ *   — обложка карточки: то, что стоит сейчас, база сравнения;
+ *   — всё, что кадром карточки НЕ является: свои съёмки, генерации, твины —
+ *     то есть кандидаты в новую обложку.
+ * Отбрасываются ровно кадры карточки со второго и далее, каким бы путём они ни
+ * пришли — из галереи `wb_cards` или строкой каталога `disk=wb`.
+ *
+ * Для CR и Video правило другое и обратное: там как раз работает вся воронка
+ * карточки, поэтому список остаётся полным.
+ */
+export function itemsForTestType(items: ContentItem[], testType: string): ContentItem[] {
+  if (testType !== "ctr") return items;
+  return items.filter((item) => item.frameIndex == null || item.frameIndex === 1);
 }
