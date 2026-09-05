@@ -48,21 +48,18 @@ test("неудача автоматики не молчит", () => {
 });
 
 /** У ротации ровно один хозяин: либо человек, либо крон. */
-test("гейт запрещает только переключение раундов, а не весь тест", () => {
-  // Первая версия запрета накрывала любое действие: тест с автоматикой нельзя
-  // было ни запустить, ни остановить, ни отменить. Владелец терял возможность
-  // прервать то, что панель делает с витриной, — недопустимо в необратимой
-  // записи.
-  const sql = read("../supabase/migrations/202609050003_ctr_auto_gate_action.sql");
-  assert.match(sql, /if v_live and not p_auto and p_action = 'advance' then/, "запрет только на ротацию");
-  assert.match(sql, /if p_auto and p_action <> 'advance' then/, "крон умеет ровно один шаг");
+test("запрет узкий: автоматика не забирает у человека весь тест", () => {
+  // Первая версия накрывала любое действие: тест с автоматикой нельзя было ни
+  // запустить, ни остановить, ни отменить — владелец терял возможность
+  // прервать то, что панель делает с витриной.
+  const sql = read("../supabase/migrations/202609050003_ctr_auto_gate_narrow.sql");
   assert.match(sql, /if p_auto and not v_live then/, "крон не трогает тест с выключенной автоматикой");
-  assert.match(sql, /drop function if exists public\.ctr_auto_gate\(bigint, boolean\);/, "старая перегрузка убрана");
-  const transition = read("../supabase/migrations/202609050004_ctr_transition_gate_action.sql");
-  assert.match(transition, /perform public\.ctr_auto_gate\([\s\S]*?, v_action\);/, "гейт знает действие");
-  // Фраза остаётся в шапке-объяснении файла — смотрим на тело функции.
-  const body = transition.slice(transition.indexOf("create or replace function"));
-  assert.doesNotMatch(body, /raise exception 'live swap must remain disabled'/, "прежний безусловный запрет снят");
+  assert.doesNotMatch(sql, /if v_live and not p_auto then/, "человеку весь тест не запрещаем");
+
+  // Вторая половина правила — в роуте, и только для переключения раундов.
+  const action = read("../app/api/ctrtest/[id]/action/route.ts");
+  assert.match(action, /if \(action === "advance"\) \{[\s\S]*?live_swap_enabled/);
+  assert.match(action, /Раунды переключает автоматика/);
 });
 
 test("переключать способ ротации можно только у остановленного теста", () => {
