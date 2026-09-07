@@ -61,7 +61,29 @@ function nextVariant(variants: VariantRow[], currentId: number | null): VariantR
   return variants[(index + 1) % variants.length] ?? null;
 }
 
+/**
+ * Планировщик Vercel зовёт крон методом GET — и только им.
+ *
+ * Роут был объявлен одним `POST`, поэтому расписание «каждые пять минут» полтора
+ * суток било в 405 Method Not Allowed. След не оставался нигде: до кода дело
+ * не доходило, `auto_checked_at` не проставлялся, ошибки не записывались, а на
+ * экране автоматика выглядела включённой. Тест владельца простоял 29 часов,
+ * набрал 30 352 показа при норме раунда 350 — и не переключился ни разу.
+ *
+ * Все остальные кроны проекта (`sync/*`, `opiu/monitor`, `repricer/run/cron`,
+ * `adverts/rules/run`) экспортируют GET; этот был единственным исключением.
+ *
+ * POST оставлен: им пользуется ручной прогон и внутренний фан-аут.
+ */
+export async function GET(request: NextRequest) {
+  return rotate(request);
+}
+
 export async function POST(request: NextRequest) {
+  return rotate(request);
+}
+
+async function rotate(request: NextRequest) {
   const authError = await checkCronAuth(request);
   if (authError) return authError;
 

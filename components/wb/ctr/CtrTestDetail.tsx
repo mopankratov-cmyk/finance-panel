@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- variant URLs are user-selected WB/external test assets */
 
-import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Pause, Play, RotateCcw, Square, Trophy, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink, Loader2, Pause, Play, RotateCcw, Square, Trophy, XCircle } from "lucide-react";
 import { useState } from "react";
 import { formatTime } from "@/lib/analytics/format";
 import type { CtrTestView, CtrVariantView } from "./types";
@@ -157,7 +157,15 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
         <h3 className="mb-2 text-xs font-bold text-slate-700">История раундов</h3>
         {test.rounds.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white px-3 py-8 text-center text-[10px] text-slate-400">История появится после запуска первого раунда.</p> : <div className="scroll-x rounded-xl border border-slate-200 bg-white"><table className="min-w-[760px] w-full text-[10px]"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Начало</th><th className="px-3 py-2 text-left">Вариант</th><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-right">Показы</th><th className="px-3 py-2 text-right">Клики</th><th className="px-3 py-2 text-right">Корзины</th><th className="px-3 py-2 text-right">Заказы</th><th className="px-3 py-2 text-left">Автор</th></tr></thead><tbody>{test.rounds.map((round) => { const variant = test.variants.find((item) => item.id === round.variant_id); return <tr key={round.id} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-500">{formatTime(round.started_at)}</td><td className="px-3 py-2 font-semibold text-violet-700">{variant?.label ?? round.variant_id}</td><td className="px-3 py-2">{round.status}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.impressions ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.clicks ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.carts ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.orders ?? 0))}</td><td className="px-3 py-2 text-slate-400">{round.actor ?? "—"}</td></tr>; })}</tbody></table></div>}
       </section>
-      <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-5 text-slate-500"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /><span><b className="text-slate-700">Без скрытых write-действий:</b> панель фиксирует момент ручной установки варианта и считает дельту реальных WB-метрик. `live_swap_enabled` всегда false.</span></div>
+      {/* Текст правится вместе с режимом: раньше здесь стояло «панель ничего не
+          пишет, live_swap_enabled всегда false» — с появлением автосмены это
+          стало неправдой ровно на тех тестах, где автоматика включена, и
+          экран уверял в обратном. */}
+      {test.liveSwapEnabled ? (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span><b>Панель меняет фото сама.</b> Раз в пять минут проверяется, набрал ли раунд норму показов; когда набрал — обложка карточки на витрине WB переписывается следующим вариантом. Это запись в живой товар, а не пометка в панели.</span></div>
+      ) : (
+        <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-5 text-slate-500"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /><span><b className="text-slate-700">Без скрытых записей:</b> вариант вы ставите в кабинете сами, панель лишь отмечает момент и считает дельту реальных метрик WB.</span></div>
+      )}
     </div>
   );
 }

@@ -95,6 +95,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (flagError) {
       return fail(missingMigration(flagError.code) ? "Примените миграции 202609050001 и 202609050002" : flagError.message, missingMigration(flagError.code) ? 503 : 500);
     }
+    // Переключение режима пишется в журнал наравне с остальными действиями.
+    // Без этой записи в истории теста оставались только «создан / запущен /
+    // отменён», и по журналу было НЕ ВИДНО, работал ли тест на автоматике.
+    // Когда автосмена молчала полтора суток, именно этого следа не хватило,
+    // чтобы отличить «не включали» от «включили, но не сработало».
+    const actor = (await getServerSession())?.email ?? "—";
+    await db.from("ctr_test_events").insert({
+      test_id: id,
+      action: "auto",
+      actor,
+      details: { autoRotate: enabled },
+    });
     return NextResponse.json({ data: { autoRotate: enabled }, error: null });
   }
 
