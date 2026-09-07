@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import type { CtrTestType } from "@/lib/ctrtest/model";
 import type { ContentItem } from "@/lib/content/productLibrary";
+import { ctrTestForecast } from "@/lib/ctrtest/model";
 import type { CtrCandidate, CtrWizardSeed } from "./types";
 import { ContentPicker } from "./ContentPicker";
 
@@ -15,6 +16,8 @@ interface Props {
   cabinetId: string;
   type: CtrTestType;
   candidates: CtrCandidate[];
+  /** Окно, за которое посчитаны показы кандидата, — нужно для оценки срока. */
+  days: number;
   seed?: CtrWizardSeed | null;
   onClose: () => void;
   onCreated: () => void;
@@ -28,13 +31,40 @@ async function responseJson<T>(response: Response): Promise<T> {
   return body.data as T;
 }
 
-export function CtrTestWizard({ cabinetId, type, candidates, seed, onClose, onCreated }: Props) {
+export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose, onCreated }: Props) {
   const initialCandidate = seed?.candidate ?? null;
   const [nmId, setNmId] = useState(initialCandidate?.nm ?? 0);
+  // Умолчания посчитаны по этому кабинету, а не взяты на глаз.
+  //
+  // Замер 07.09.2026 по wb_advert_nm_daily за 14 дней: SKU, который реально
+  // крутится в рекламе, набирает медианно 13 200 показов в сутки, средний CTR
+  // по кабинету — 4,3%.
+  //
+  // Прежняя цель в 1000 показов на вариант при таком CTR давала около 43
+  // кликов. Доверительный интервал на такой выборке — примерно ±30% в
+  // относительном выражении, то есть шире той разницы, ради которой тест и
+  // затевают: отличить обложку, которая лучше на четверть, от той, что хуже,
+  // было нельзя в принципе. Тест шёл, цифры набегали, вывод был случайным.
+  //
+  // 5000 показов на вариант — минимум, на котором уверенно ловится разница
+  // около 25%. Меньше этой разницы менять обложку живого товара смысла нет,
+  // больше — редкость. При медианном трафике два варианта проходят такой тест
+  // примерно за 18 часов, то есть результат есть на следующий день.
   const [intervalMin, setIntervalMin] = useState(60);
-  const [impressionsPerRound, setImpressionsPerRound] = useState(350);
-  const [targetImpressions, setTargetImpressions] = useState(1000);
-  const [spendCapRub, setSpendCapRub] = useState(5000);
+  // Раунд — это отрезок, который целиком достаётся одному варианту. Он должен
+  // быть достаточно длинным, чтобы не гонять обложку живого товара туда-сюда
+  // (каждая смена стоит записи в карточку и 10 минут «мёртвой зоны», где
+  // данные выбрасываются), и достаточно коротким, чтобы варианты успели
+  // чередоваться и взаимно погасить время суток. 1000 показов на раунд при
+  // цели 5000 дают пять чередований на вариант — прежние 350 давали
+  // четырнадцать, то есть смену обложки почти каждые сорок минут.
+  const [impressionsPerRound, setImpressionsPerRound] = useState(1000);
+  const [targetImpressions, setTargetImpressions] = useState(5000);
+  // Потолок расхода — предохранитель от разгона, а не ограничитель нормального
+  // теста. По замеру того же кабинета показ стоит около 0,21 ₽, значит тест на
+  // два варианта обходится примерно в 2000 ₽, на три — в 3000 ₽. Прежние 5000
+  // рисковали остановить тест ровно на финише; 10 000 оставляют запас втрое.
+  const [spendCapRub, setSpendCapRub] = useState(10000);
   const [variants, setVariants] = useState<VariantDraft[]>(() => {
     if (seed?.baseline?.imageUrl) return [
       { label: `Победитель теста #${seed.sourceTestId}`, imageUrl: seed.baseline.imageUrl, source: "winner" },
@@ -50,6 +80,18 @@ export function CtrTestWizard({ cabinetId, type, candidates, seed, onClose, onCr
   const [error, setError] = useState<string | null>(null);
   const candidateOptions = useMemo(() => initialCandidate && !candidates.some((candidate) => candidate.nm === initialCandidate.nm) ? [initialCandidate, ...candidates] : candidates, [candidates, initialCandidate]);
   const selected = useMemo(() => candidateOptions.find((candidate) => candidate.nm === nmId) ?? initialCandidate, [candidateOptions, initialCandidate, nmId]);
+
+  // Расчёт живёт в lib/ctrtest/model (ctrTestForecast) и покрыт тестом:
+  // формула порога различимости — это не оформление, ошибиться в ней значит
+  // уверенно советовать неверную цель.
+  const forecast = useMemo(() => ctrTestForecast({
+    targetImpressions,
+    variantCount: variants.length,
+    ctrPercent: selected?.ctr ?? null,
+    viewsInWindow: selected?.views ?? null,
+    windowDays: days,
+  }).text, [days, selected, targetImpressions, variants.length]);
+
 
   const pickCandidate = (nextNm: number) => {
     setNmId(nextNm);
@@ -145,6 +187,15 @@ export function CtrTestWizard({ cabinetId, type, candidates, seed, onClose, onCr
         <label className="text-[11px] font-medium text-slate-600">Интервал, минут<input type="number" min={5} step={5} value={intervalMin} onChange={(event) => setIntervalMin(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
         <label className="text-[11px] font-medium text-slate-600">Лимит расходов, ₽<input type="number" min={100} step={100} value={spendCapRub} onChange={(event) => setSpendCapRub(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
       </div>
+
+      {/*
+        Числа в полях выше сами по себе ничего не говорят. Эта строка переводит
+        их в два ответа, ради которых их и трогают: какую разницу тест вообще
+        способен различить и сколько он продлится на трафике ЭТОГО товара.
+        Без неё цель «1000 показов» выглядела так же солидно, как «5000», хотя
+        на первой любой вывод был случайным.
+      */}
+      <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">{forecast}</p>
 
       {/*
         Библиотека стоит НАД полями вариантов, а не под ними: выбрать из своего

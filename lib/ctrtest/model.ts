@@ -171,3 +171,54 @@ export function ctrVariantScore(type: CtrTestType, variant: Pick<CtrVariantTotal
  * отправить его было нечем.
  */
 export const CTR_FORCE_HINT = "Варианты открутились неодинаково — сравнивать их пока нечестно.";
+
+/**
+ * Что тест сможет различить и сколько продлится.
+ *
+ * Порог различимости — обычная формула для двух долей (95% уверенности, 80%
+ * мощности): n ≈ 16·p(1−p)/Δ². Отсюда Δ — абсолютная разница в CTR, которую
+ * выборка размером n ещё различает, а Δ/p — она же в относительном виде, в
+ * котором про обложки и думают («лучше на четверть»).
+ *
+ * Нужна эта оценка затем, что цель «1000 показов» выглядит так же солидно,
+ * как «5000», хотя при среднем CTR около 4% на первой различима только
+ * разница в 60% — то есть почти любой итог случаен. Число в поле об этом
+ * молчит, а строка под полями говорит.
+ *
+ * Срок считается по показам самого товара за известное окно. Не знаем
+ * трафика — не выдумываем срок.
+ */
+export function ctrTestForecast(input: {
+  targetImpressions: number;
+  variantCount: number;
+  ctrPercent: number | null;
+  viewsInWindow: number | null;
+  windowDays: number;
+}): { detectableShare: number | null; days: number | null; text: string } {
+  const p = ((input.ctrPercent ?? 0) > 0 ? Number(input.ctrPercent) : 4.3) / 100;
+  const n = Math.max(0, Math.floor(input.targetImpressions));
+  const detectableShare = n > 0 && p > 0 && p < 1 ? Math.sqrt((16 * p * (1 - p)) / n) / p : null;
+
+  const perDay = input.viewsInWindow && input.windowDays > 0 ? input.viewsInWindow / input.windowDays : 0;
+  const needed = n * Math.max(1, input.variantCount);
+  const days = perDay > 0 ? needed / perDay : null;
+
+  const readable = detectableShare == null
+    ? null
+    : detectableShare <= 0.15
+      ? `различит разницу примерно от ${Math.round(detectableShare * 100)}% — хватит и на тонкие отличия`
+      : detectableShare <= 0.35
+        ? `различит разницу примерно от ${Math.round(detectableShare * 100)}% — обычный рабочий уровень для обложки`
+        : `различит только разницу от ${Math.round(detectableShare * 100)}%, то есть почти любой итог будет случайным: поднимите «показов на вариант»`;
+
+  const duration = days == null
+    ? "срок зависит от того, сколько реклама даст показов"
+    : days < 1
+      ? `на трафике товара это около ${Math.max(1, Math.round(days * 24))} ч`
+      : days < 2
+        ? "на трафике товара это около суток"
+        : `на трафике товара это около ${Math.round(days)} суток`;
+
+  const text = readable ? `Тест ${readable}. При ${Math.max(1, input.variantCount)} вариантах ${duration}.` : duration;
+  return { detectableShare, days, text };
+}

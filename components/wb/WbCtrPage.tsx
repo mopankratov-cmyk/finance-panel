@@ -294,7 +294,7 @@ export function WbCtrPage() {
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}
         {error && !loading ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
 
-        {selectedTest ? <><CtrTestDetail test={selectedTest} busy={busy} onBack={() => setSelectedId(null)} onAction={(name, variantId, explanation) => void action(name, variantId, explanation)} onFlywheel={openFlywheel} /><CtrCampaignBridge cabinetId={cabinetId} nmId={selectedTest.nmId} /></> : wizard !== false && canWrite ? <CtrTestWizard cabinetId={cabinetId} type={type} candidates={candidates} seed={wizard} onClose={() => setWizard(false)} onCreated={() => reload("Черновик теста создан")} /> : <>
+        {selectedTest ? <><CtrTestDetail test={selectedTest} busy={busy} onBack={() => setSelectedId(null)} onAction={(name, variantId, explanation) => void action(name, variantId, explanation)} onFlywheel={openFlywheel} /><CtrCampaignBridge cabinetId={cabinetId} nmId={selectedTest.nmId} /></> : wizard !== false && canWrite ? <CtrTestWizard cabinetId={cabinetId} type={type} candidates={candidates} days={days} seed={wizard} onClose={() => setWizard(false)} onCreated={() => reload("Черновик теста создан")} /> : <>
           {/*
             Одна панель управления вместо трёх строк.
             Было: строка-описание с двумя цветными кнопками, отдельная секция
