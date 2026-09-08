@@ -1,5 +1,5 @@
 import { FinanceTabs } from "@/components/FinanceTabs";
-import { UnitMarginPage } from "@/components/opiu/UnitMarginPage";
+import { MarginByArticlePage } from "@/components/opiu/MarginByArticlePage";
 
 export default function UnitMarginFinancePage() {
   return (
@@ -7,7 +7,7 @@ export default function UnitMarginFinancePage() {
       <div className="mx-auto max-w-[110rem] px-3 pt-6 sm:px-6">
         <FinanceTabs />
       </div>
-      <UnitMarginPage />
+      <MarginByArticlePage />
     </>
   );
 }
