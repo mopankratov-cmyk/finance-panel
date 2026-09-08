@@ -222,3 +222,48 @@ export function ctrTestForecast(input: {
   const text = readable ? `Тест ${readable}. При ${Math.max(1, input.variantCount)} вариантах ${duration}.` : duration;
   return { detectableShare, days, text };
 }
+
+/**
+ * Можно ли уже принимать решение по тесту.
+ *
+ * Чужие сервисы отвечают на это правилом большого пальца: «наберите 10 000
+ * показов, тогда погрешность минимальна». Правило удобное, но неверное:
+ * нужный объём зависит от того, НАСКОЛЬКО варианты разошлись. Если лидер
+ * впереди вдвое, хватит и тысячи; если на пять процентов — не хватит и
+ * пятидесяти тысяч.
+ *
+ * Поэтому считаем не «сколько набрать», а «различима ли уже та разница,
+ * которая получилась». Порог различимости — та же формула для двух долей,
+ * что и в прогнозе мастера (16·p(1−p)/Δ²), только n берётся фактический:
+ * меньший из объёмов лидера и второго места, потому что сравнение не
+ * надёжнее своей слабой стороны.
+ *
+ * Возвращает null, когда сравнивать нечего: меньше двух вариантов с
+ * достаточным числом показов.
+ */
+export function ctrLeaderVerdict(
+  variants: { label: string; impressions: number; clicks: number }[],
+  minViews = 50,
+): { leaderLabel: string; gapShare: number; detectableShare: number; decisive: boolean; sample: number; text: string } | null {
+  const scored = variants
+    .filter((v) => v.impressions >= minViews)
+    .map((v) => ({ ...v, ctr: v.clicks / v.impressions }))
+    .sort((a, b) => b.ctr - a.ctr);
+  if (scored.length < 2) return null;
+
+  const [leader, runnerUp] = scored;
+  if (leader.ctr <= 0) return null;
+
+  const gapShare = (leader.ctr - runnerUp.ctr) / (runnerUp.ctr || leader.ctr);
+  const sample = Math.min(leader.impressions, runnerUp.impressions);
+  const p = leader.ctr;
+  const detectableShare = Math.sqrt((16 * p * (1 - p)) / sample) / p;
+  const decisive = gapShare > detectableShare;
+
+  const pct = (share: number) => `${Math.round(share * 100)}%`;
+  const text = decisive
+    ? `Лидер — «${leader.label}»: опережение ${pct(gapShare)} при ${sample.toLocaleString("ru-RU")} показах у слабейшего из двух. Такая разница уже надёжна, можно решать.`
+    : `Впереди «${leader.label}», но опережение ${pct(gapShare)} меньше того, что различимо на ${sample.toLocaleString("ru-RU")} показах — это ${pct(detectableShare)}. Решать рано: продолжайте тест.`;
+
+  return { leaderLabel: leader.label, gapShare, detectableShare, decisive, sample, text };
+}

@@ -1,8 +1,9 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- variant URLs are user-selected WB/external test assets */
 
-import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink, Loader2, Pause, Play, RotateCcw, Square, Trophy, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, CheckCircle2, ExternalLink, Loader2, Pause, Play, RotateCcw, Square, Trophy, XCircle } from "lucide-react";
 import { useState } from "react";
+import { ctrLeaderVerdict } from "@/lib/ctrtest/model";
 import { formatTime } from "@/lib/analytics/format";
 import type { CtrTestView, CtrVariantView } from "./types";
 
@@ -46,6 +47,21 @@ function metricRows(test: CtrTestView) {
     { label: "Заказов", value: (variant: CtrVariantView) => number(total(variant, "orders")) },
     { label: test.testType === "ctr" ? "Результат CTR" : test.testType === "cr" ? "Результат CR" : "Video proxy", value: (variant: CtrVariantView) => pct(variant.score) },
     { label: "Изменение к базе", value: (variant: CtrVariantView) => variant.resultPct == null ? "—" : `${variant.resultPct > 0 ? "+" : ""}${variant.resultPct.toFixed(2)}%` },
+    // Отклонение от ЛУЧШЕГО, а не только от базы. База — это то, с чего
+    // начали; лучший — то, ради чего тест. Когда вариантов больше двух,
+    // «на сколько я отстаю от вожака» отвечает на вопрос «кого выключать»,
+    // а «изменение к базе» — нет.
+    {
+      label: "Отставание от лучшего",
+      value: (variant: CtrVariantView) => {
+        const ctr = (v: CtrVariantView) => (total(v, "impressions") >= 50 ? total(v, "clicks") / total(v, "impressions") : null);
+        const mine = ctr(variant);
+        const best = test.variants.map(ctr).filter((x): x is number => x != null).sort((a, b) => b - a)[0];
+        if (mine == null || best == null) return "—";
+        if (mine >= best) return "лучший";
+        return `${((best - mine) * 100).toFixed(2)} п.п.`;
+      },
+    },
     { label: "Побед в раундах", value: (variant: CtrVariantView) => `${variant.roundsWon} раз` },
     { label: "Раундов", value: (variant: CtrVariantView) => number(variant.roundsCount) },
     { label: "Расход", value: (variant: CtrVariantView) => `${number(total(variant, "spend"))} ₽` },
@@ -106,6 +122,16 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
   const nextPosition = ((current ?? lastVariant)?.position ?? -1) + 1;
   const next = test.variants.find((variant) => variant.position === nextPosition) ?? test.variants[0];
   const winner = test.variants.find((variant) => variant.id === test.winnerVariantId || variant.isWinner) ?? null;
+  // Вердикт считается по тем же числам, что видит человек в таблице, — то есть
+  // с учётом идущего раунда: иначе строка и таблица расходились бы.
+  const liveOf = (variant: CtrVariantView, key: "impressions" | "clicks") =>
+    Number(variant[key] ?? 0) + (variant.id === test.currentVariantId ? Number((test.currentLive as Record<string, unknown> | null)?.[key] ?? 0) : 0);
+  const verdict = ctrLeaderVerdict(test.variants.map((variant) => ({
+    label: variant.label,
+    impressions: liveOf(variant, "impressions"),
+    clicks: liveOf(variant, "clicks"),
+  })));
+
   const spent = test.variants.reduce((sum, variant) => sum + variant.spend, 0) + Number(test.currentLive?.spend ?? 0);
   const spentPct = Math.min(100, test.spendCapRub > 0 ? spent / test.spendCapRub * 100 : 0);
 
@@ -168,9 +194,20 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
 
       <section>
         <h3 className="mb-2 text-xs font-bold text-slate-700">Тестирование</h3>
+        {/* Главный вопрос экрана — «можно ли уже решать», и панель на него
+            отвечает счётом, а не правилом большого пальца. Чужие сервисы
+            советуют «наберите десять тысяч показов»; совет неверен по сути,
+            потому что нужный объём зависит от того, насколько варианты
+            разошлись: двукратный отрыв виден на тысяче, а разница в пять
+            процентов не проявится и на пятидесяти тысячах. */}
+        {verdict ? (
+          <p className={`mb-2 rounded-lg border px-3 py-2 text-[11px] leading-5 ${verdict.decisive ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+            {verdict.text}
+          </p>
+        ) : null}
         <div className="scroll-x rounded-xl border border-slate-200 bg-white">
           <table className="min-w-[760px] w-full border-collapse text-[10px]">
-            <thead><tr><th className="sticky left-0 z-10 min-w-[190px] border-b border-r border-slate-200 bg-slate-50" />{test.variants.map((variant) => <th key={variant.id} className="min-w-[150px] border-b border-slate-200 p-2"><div className={`relative rounded-lg border p-2 ${variant.id === test.currentVariantId ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : variant.isWinner ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : "border-slate-200 bg-slate-50"}`}>{variant.id === test.currentVariantId ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-2 py-0.5 text-[8px] text-white">сейчас</span> : null}{variant.isWinner ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-2 py-0.5 text-[8px] text-white">победитель</span> : null}{test.testType === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="aspect-[3/4] w-full rounded-md bg-slate-50 object-contain" /> : <VariantImage url={variant.imageUrl} label={variant.label} />}<div className="mt-1 truncate text-[10px] font-semibold text-slate-700">{variant.label}</div>{variant.isBaseline ? <div className="text-[8px] text-violet-500">база</div> : null}{test.status === "paused" && !variant.isWinner ? <button type="button" onClick={() => trigger("winner", variant)} disabled={busy} className="mt-2 min-h-11 rounded-md border border-emerald-200 px-2 text-[9px] font-semibold text-emerald-700 disabled:opacity-50">Выбрать победителем</button> : null}</div></th>)}</tr></thead>
+            <thead><tr><th className="sticky left-0 z-10 min-w-[190px] border-b border-r border-slate-200 bg-slate-50" />{test.variants.map((variant) => <th key={variant.id} className="min-w-[150px] border-b border-slate-200 p-2"><div className={`relative rounded-lg border p-2 ${variant.id === test.currentVariantId ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : variant.isWinner ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : "border-slate-200 bg-slate-50"}`}>{variant.id === test.currentVariantId ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-2 py-0.5 text-[8px] text-white">сейчас</span> : null}{variant.isWinner ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-2 py-0.5 text-[8px] text-white">победитель</span> : null}{test.testType === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="aspect-[3/4] w-full rounded-md bg-slate-50 object-contain" /> : <VariantImage url={variant.imageUrl} label={variant.label} />}<div className="mt-1 flex items-center justify-center gap-1"><span className="truncate text-[10px] font-semibold text-slate-700">{variant.label}</span>{variant.imageUrl ? <a href={variant.imageUrl} download target="_blank" rel="noreferrer" aria-label={`Скачать «${variant.label}»`} className="tap-hit shrink-0 text-slate-400 transition-colors hover:text-violet-600"><Download className="h-3 w-3" /></a> : null}</div>{variant.isBaseline ? <div className="text-[8px] text-violet-500">база</div> : null}{test.status === "paused" && !variant.isWinner ? <button type="button" onClick={() => trigger("winner", variant)} disabled={busy} className="mt-2 min-h-11 rounded-md border border-emerald-200 px-2 text-[9px] font-semibold text-emerald-700 disabled:opacity-50">Выбрать победителем</button> : null}</div></th>)}</tr></thead>
             <tbody>{metricRows(test).map((row) => <tr key={row.label}><td className="sticky left-0 z-10 border-r border-t border-slate-200 bg-white px-3 py-2 font-medium text-slate-500">{row.label}</td>{test.variants.map((variant) => <td key={variant.id} className="border-t border-slate-100 px-3 py-2 text-center tabular-nums text-slate-700">{row.value(variant)}</td>)}</tr>)}</tbody>
           </table>
         </div>
