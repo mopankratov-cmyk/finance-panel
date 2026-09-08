@@ -1,9 +1,10 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- variant URLs are user-selected WB/external test assets */
 
-import { AlertTriangle, ArrowLeft, Download, CheckCircle2, ExternalLink, Loader2, Pause, Play, RotateCcw, Square, Trophy, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, CheckCircle2, ExternalLink, Hourglass, Loader2, Pause, Play, RotateCcw, Square, Trophy, XCircle } from "lucide-react";
 import { useState } from "react";
-import { ctrLeaderVerdict } from "@/lib/ctrtest/model";
+import { ctrGapVerdict, ctrLeaderVerdict } from "@/lib/ctrtest/model";
+import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
 import { formatTime } from "@/lib/analytics/format";
 import type { CtrTestView, CtrVariantView } from "./types";
 
@@ -20,7 +21,69 @@ const statusClass = { draft: "bg-slate-400", running: "bg-violet-600", paused: "
 const number = (value: number) => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 const pct = (value: number | null) => value == null ? "—" : `${value.toFixed(2)}%`;
 
-function metricRows(test: CtrTestView) {
+/**
+ * Таблица как приборная панель, а не как ведомость.
+ *
+ * Сравнение обложек — работа взгляда, а не чтения. Пока все метрики набраны
+ * одинаковым десятым кеглем, глазу приходится обходить каждую клетку и
+ * держать в голове, где чей столбец. Здесь три средства, и все три несут
+ * смысл, а не украшают:
+ *
+ * ЦВЕТ СТОЛБЦА — кто есть кто: изумрудный вожак, фиолетовый тот, что
+ * меряется прямо сейчас, остальные серые. Один цвет ведёт столбец сверху
+ * донизу, и взгляд не сползает на соседний вариант.
+ * ПОЛОСА В КЛЕТКЕ — величина относительно лучшего в строке. «986 показов»
+ * рядом с «7 949» — это не два числа, это полоска в ноготь против полной, и
+ * недобор выборки виден раньше, чем прочитан.
+ * КЕГЛЬ — CTR вынесен в шапку крупно, к самой обложке: ради него всё. Прочее
+ * остаётся мелким справочным слоем и не спорит с ним за внимание.
+ *
+ * Тон отставания отдельно: КРАСНЫЙ — разрыв больше различимого на этой
+ * выборке, в нём можно быть уверенным; ЯНТАРНЫЙ — вариант позади, но разница
+ * ещё внутри погрешности и может оказаться шумом; ИЗУМРУДНЫЙ — впереди.
+ */
+type Tone = "good" | "warn" | "bad" | "lead" | "ahead" | "muted" | "neutral";
+/**
+ * Роль столбца — она же его цвет.
+ *
+ * «lead» и «ahead» разведены намеренно: сплошной изумруд означает
+ * доказанное превосходство, а бледный — «впереди, но разрыв ещё внутри
+ * погрешности». Красить их одинаково значило бы объявлять победу до того,
+ * как она измерена, — ровно то враньё, ради запрета которого экран и считает
+ * порог различимости.
+ */
+type Role = "lead" | "ahead" | "current" | "plain";
+interface Cell { text: string; tone?: Tone; arrow?: "up" | "down" }
+interface Row { group: string; label: string; cell: (variant: CtrVariantView) => Cell; value?: (variant: CtrVariantView) => number }
+
+const TONE_CHIP: Record<Tone, string> = {
+  lead: "bg-emerald-600 text-white shadow-sm shadow-emerald-200",
+  ahead: "bg-white text-emerald-700 ring-1 ring-inset ring-emerald-300",
+  good: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200",
+  warn: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
+  bad: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
+  muted: "text-slate-400",
+  neutral: "text-slate-700",
+};
+const TONE_TEXT: Record<Tone, string> = {
+  lead: "text-emerald-700",
+  ahead: "text-emerald-600",
+  good: "text-emerald-700",
+  warn: "text-amber-700",
+  bad: "text-rose-600",
+  muted: "text-slate-300",
+  neutral: "text-slate-700",
+};
+const ROLE_BAR: Record<Role, string> = { lead: "bg-emerald-500", ahead: "bg-emerald-300", current: "bg-violet-500", plain: "bg-slate-300" };
+const ROLE_COLUMN: Record<Role, string> = { lead: "bg-emerald-50/70", ahead: "bg-emerald-50/40", current: "bg-violet-50/70", plain: "" };
+const ROLE_CARD: Record<Role, string> = {
+  lead: "border-emerald-300 bg-white ring-2 ring-emerald-100",
+  ahead: "border-emerald-200 bg-white ring-1 ring-emerald-50",
+  current: "border-violet-300 bg-white ring-2 ring-violet-100",
+  plain: "border-slate-200 bg-white",
+};
+
+function metricRows(test: CtrTestView, verdict: ReturnType<typeof ctrLeaderVerdict>) {
   /**
    * Идущий раунд тоже считается.
    *
@@ -37,35 +100,129 @@ function metricRows(test: CtrTestView) {
   const live = test.currentLive;
   const total = (variant: CtrVariantView, key: "impressions" | "clicks" | "opens" | "carts" | "orders" | "spend") =>
     Number(variant[key] ?? 0) + (variant.id === test.currentVariantId ? Number((live as Record<string, unknown> | null)?.[key] ?? 0) : 0);
+  const ctrOf = (v: CtrVariantView) => (total(v, "impressions") >= CTR_MIN_VIEWS ? total(v, "clicks") / total(v, "impressions") : null);
+  /**
+   * Главная доля — та, по которой тест и решается.
+   *
+   * У ctr-теста это клики к показам, у cr — корзины к открытиям, у video —
+   * заказы к открытиям (ctrVariantScore в модели, оно же и в SQL, которая
+   * выбирает победителя). Пока крупным числом на карточке стоял CTR
+   * независимо от типа, экран CR-теста показывал не ту величину, по которой
+   * тест закончится, — самая тихая ложь из возможных.
+   */
+  const heroLabel = test.testType === "ctr" ? "CTR" : test.testType === "cr" ? "CR" : "Видео";
+  const heroOf = (v: CtrVariantView) => (test.testType === "ctr" ? ctrOf(v) : v.score == null ? null : v.score / 100);
+  const best = test.variants.map(heroOf).filter((x): x is number => x != null).sort((a, b) => b - a)[0] ?? null;
+  const leader = test.variants.find((v) => { const c = heroOf(v); return c != null && c >= (best ?? 0); }) ?? null;
 
-  return [
-    { label: "Показов", value: (variant: CtrVariantView) => number(total(variant, "impressions")) },
-    { label: "Кликов", value: (variant: CtrVariantView) => number(total(variant, "clicks")) },
-    { label: "CTR", value: (variant: CtrVariantView) => total(variant, "impressions") ? `${(total(variant, "clicks") / total(variant, "impressions") * 100).toFixed(2)}%` : "—" },
-    { label: "Открытий", value: (variant: CtrVariantView) => number(total(variant, "opens")) },
-    { label: "Корзин", value: (variant: CtrVariantView) => number(total(variant, "carts")) },
-    { label: "Заказов", value: (variant: CtrVariantView) => number(total(variant, "orders")) },
-    { label: test.testType === "ctr" ? "Результат CTR" : test.testType === "cr" ? "Результат CR" : "Video proxy", value: (variant: CtrVariantView) => pct(variant.score) },
-    { label: "Изменение к базе", value: (variant: CtrVariantView) => variant.resultPct == null ? "—" : `${variant.resultPct > 0 ? "+" : ""}${variant.resultPct.toFixed(2)}%` },
+  const counts = (v: CtrVariantView) => ({ impressions: total(v, "impressions"), clicks: total(v, "clicks") });
+  /**
+   * Разрыв считается ПОПАРНО: лидер против этого варианта, на их общей слабой
+   * выборке. Общий порог из вердикта посчитан по лидеру и второму месту — для
+   * третьего варианта, у которого показов вдесятеро меньше, он был бы просто
+   * неверен, и красный чип «доказанно хуже» оказался бы ложью.
+   */
+  const gapOf = (v: CtrVariantView) => (leader && leader.id !== v.id ? ctrGapVerdict(counts(leader), counts(v)) : null);
+
+  // Тон: красный только когда разрыв больше различимого на этой паре — то
+  // есть когда в нём можно быть уверенным. Иначе янтарный. У самого лидера
+  // сплошной изумруд включается лишь после того, как вердикт признал разницу
+  // надёжной; до этого — бледный «впереди».
+  const gapTone = (v: CtrVariantView): Tone => {
+    // Порог различимости считается только для кликов. У cr и video такого
+    // расчёта нет, поэтому там нет и права красить кого-то «доказанно хуже»:
+    // отставание показывается числом, но не цветом приговора.
+    if (leader && leader.id === v.id) return test.testType === "ctr" && verdict?.decisive ? "lead" : "ahead";
+    if (test.testType !== "ctr") return "neutral";
+    const gap = gapOf(v);
+    if (!gap) return "neutral";
+    return gap.decisive ? "bad" : "warn";
+  };
+
+  const num = (key: "impressions" | "clicks" | "opens" | "carts" | "orders") => ({
+    cell: (v: CtrVariantView): Cell => ({ text: number(total(v, key)) }),
+    value: (v: CtrVariantView) => total(v, key),
+  });
+  const rows: Row[] = [
+    { group: "Охват", label: "Показов", ...num("impressions") },
+    { group: "Охват", label: "Кликов", ...num("clicks") },
     // Отклонение от ЛУЧШЕГО, а не только от базы. База — это то, с чего
     // начали; лучший — то, ради чего тест. Когда вариантов больше двух,
     // «на сколько я отстаю от вожака» отвечает на вопрос «кого выключать»,
     // а «изменение к базе» — нет.
     {
+      group: "Отклик",
       label: "Отставание от лучшего",
-      value: (variant: CtrVariantView) => {
-        const ctr = (v: CtrVariantView) => (total(v, "impressions") >= 50 ? total(v, "clicks") / total(v, "impressions") : null);
-        const mine = ctr(variant);
-        const best = test.variants.map(ctr).filter((x): x is number => x != null).sort((a, b) => b - a)[0];
-        if (mine == null || best == null) return "—";
-        if (mine >= best) return "лучший";
-        return `${((best - mine) * 100).toFixed(2)} п.п.`;
+      cell: (v) => {
+        const mine = heroOf(v);
+        if (mine == null || best == null) return { text: "—", tone: "muted" };
+        if (leader && leader.id === v.id) return test.testType === "ctr" && verdict?.decisive ? { text: "лучший", tone: "lead" } : { text: "впереди", tone: "ahead" };
+        return { text: `${((best - mine) * 100).toFixed(2)} п.п.`, tone: gapTone(v), arrow: "down" };
       },
     },
-    { label: "Побед в раундах", value: (variant: CtrVariantView) => `${variant.roundsWon} раз` },
-    { label: "Раундов", value: (variant: CtrVariantView) => number(variant.roundsCount) },
-    { label: "Расход", value: (variant: CtrVariantView) => `${number(total(variant, "spend"))} ₽` },
+    {
+      group: "Отклик",
+      label: "Изменение к базе",
+      cell: (v) => {
+        if (v.isBaseline) return { text: "база", tone: "muted" };
+        if (v.resultPct == null) return { text: "—", tone: "muted" };
+        if (Math.abs(v.resultPct) < 0.005) return { text: "0%", tone: "neutral" };
+        return v.resultPct > 0
+          ? { text: `+${v.resultPct.toFixed(2)}%`, tone: "good", arrow: "up" }
+          : { text: `${v.resultPct.toFixed(2)}%`, tone: "bad", arrow: "down" };
+      },
+    },
+    { group: "Воронка", label: "Открытий", ...num("opens") },
+    { group: "Воронка", label: "Корзин", ...num("carts") },
+    { group: "Воронка", label: "Заказов", ...num("orders") },
+    { group: "Раунды и расход", label: "Побед в раундах", cell: (v) => (v.roundsWon > 0 ? { text: `${v.roundsWon} раз`, tone: "good" } : { text: "0 раз", tone: "muted" }) },
+    { group: "Раунды и расход", label: "Раундов", cell: (v) => ({ text: number(v.roundsCount) }), value: (v) => v.roundsCount },
+    { group: "Раунды и расход", label: "Расход", cell: (v) => ({ text: `${number(total(v, "spend"))} ₽` }), value: (v) => total(v, "spend") },
   ];
+  // Главная доля стоит крупно в шапке столбца, и повторять её строкой значит
+  // удлинять таблицу ради того же числа. А вот вторая доля — нужна: у
+  // ctr-теста в шапке CTR, значит в таблице ничего лишнего; у cr и video в
+  // шапке своя метрика, и CTR становится справочной строкой.
+  if (test.testType !== "ctr") {
+    rows.splice(2, 0, {
+      group: "Отклик",
+      label: "CTR",
+      cell: (v) => { const c = ctrOf(v); return c == null ? { text: "—", tone: "muted" } : { text: `${(c * 100).toFixed(2)}%` }; },
+      value: (v) => ctrOf(v) ?? 0,
+    });
+  }
+  return { rows, best, heroOf, heroLabel, gapTone, leader, total };
+}
+
+/** Вся группа по нулям: показывать её тремя пустыми рядами — тратить взгляд. */
+function isEmptyGroup(items: Row[], variants: CtrVariantView[]) {
+  return items.length > 1 && items.every((row) => row.value != null && variants.every((variant) => row.value!(variant) === 0));
+}
+
+/** Полоска величины: доля от лучшего в строке, цветом столбца. */
+function Bar({ share, role, thick = false }: { share: number; role: Role; thick?: boolean }) {
+  return (
+    <span className={`block w-full overflow-hidden rounded-full bg-slate-200/70 ${thick ? "h-1.5" : "h-1"}`}>
+      <span className={`block h-full rounded-full ${ROLE_BAR[role]}`} style={{ width: `${Math.min(100, Math.max(0, share * 100))}%` }} />
+    </span>
+  );
+}
+
+/** Рендер одной клетки: чип для суждений, число с полосой для величин. */
+function CellView({ cell, share, role }: { cell: Cell; share: number | null; role: Role }) {
+  const tone = cell.tone ?? "neutral";
+  const arrow = cell.arrow === "up" ? "↑" : cell.arrow === "down" ? "↓" : "";
+  const isChip = tone === "lead" || tone === "ahead" || tone === "good" || tone === "warn" || tone === "bad";
+  return (
+    <div className="mx-auto flex max-w-[150px] flex-col items-center gap-1">
+      {isChip ? (
+        <span className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${TONE_CHIP[tone]}`}>{cell.text}{arrow ? <span aria-hidden="true">{arrow}</span> : null}</span>
+      ) : (
+        <span className={`text-[11px] font-medium tabular-nums ${TONE_TEXT[tone]}`}>{cell.text}</span>
+      )}
+      {share == null ? null : <Bar share={share} role={role} />}
+    </div>
+  );
 }
 
 function actionConfirm(action: string, variant?: CtrVariantView, auto = false) {
@@ -99,7 +256,7 @@ function VariantImage({ url, label }: { url: string; label: string }) {
     return (
       <span
         title={url ? "Файл по этому адресу не открывается" : "У варианта нет ссылки"}
-        className="grid aspect-[3/4] w-full place-items-center rounded-md bg-slate-100 px-1 text-center text-[9px] font-semibold leading-3 text-slate-500"
+        className="mx-auto grid h-36 w-[108px] md:h-56 md:w-[168px] place-items-center rounded-md bg-slate-100 px-1 text-center text-[9px] font-semibold leading-3 text-slate-500"
       >
         {label}
         <span className="mt-1 font-normal text-slate-400">фото не открылось</span>
@@ -112,7 +269,7 @@ function VariantImage({ url, label }: { url: string; label: string }) {
    между обложками, это отнимает предмет выбора: сравнивались куртки по
    подолу. `object-contain` показывает кадр полностью даже когда пропорция
    у варианта своя. */
-  return <img src={url} alt="" onError={() => setBroken(true)} className="aspect-[3/4] w-full rounded-md bg-slate-50 object-contain" />;
+  return <img src={url} alt="" onError={() => setBroken(true)} className="mx-auto h-36 w-auto rounded-md bg-slate-50 object-contain md:h-56" />;
 }
 
 export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Props) {
@@ -132,6 +289,31 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
     clicks: liveOf(variant, "clicks"),
   })));
 
+  const { rows, best, heroOf, heroLabel, gapTone, leader } = metricRows(test, verdict);
+  /**
+   * Кого метить лидером.
+   *
+   * Когда победитель уже зафиксирован, отметка лидера по CTR снимается: если
+   * владелец выбрал не того, кто впереди по кликам, изумрудная корона на
+   * чужой карточке спорила бы с принятым решением, а если того — просто
+   * дублировала бы его.
+   */
+  const leadId = winner ? null : leader?.id ?? null;
+  // Роль ведёт цвет столбца сверху донизу, и взгляд не сползает на соседний
+  // вариант. Приоритет у вожака: «сейчас» и без того подписано ярлыком и
+  // кольцом, а вот кто впереди — по одному ярлыку не понять.
+  const roleOf = (variant: CtrVariantView): Role =>
+    variant.id === leadId ? (test.testType === "ctr" && verdict?.decisive ? "lead" : "ahead") : variant.id === test.currentVariantId ? "current" : "plain";
+  // Двенадцать одинаковых строк читаются как простыня; четыре подписанные
+  // группы дают ритм и говорят, что где искать.
+  const groups = rows.reduce<{ title: string; items: Row[] }[]>((acc, row) => {
+    const last = acc[acc.length - 1];
+    if (last && last.title === row.group) last.items.push(row);
+    else acc.push({ title: row.group, items: [row] });
+    return acc;
+  }, []);
+
+  const scaleMax = verdict ? Math.max(verdict.gapShare, verdict.detectableShare) * 1.25 || 1 : 1;
   const spent = test.variants.reduce((sum, variant) => sum + variant.spend, 0) + Number(test.currentLive?.spend ?? 0);
   const spentPct = Math.min(100, test.spendCapRub > 0 ? spent / test.spendCapRub * 100 : 0);
 
@@ -201,14 +383,160 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
             разошлись: двукратный отрыв виден на тысяче, а разница в пять
             процентов не проявится и на пятидесяти тысячах. */}
         {verdict ? (
-          <p className={`mb-2 rounded-lg border px-3 py-2 text-[11px] leading-5 ${verdict.decisive ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
-            {verdict.text}
-          </p>
+          <div className={`mb-2 rounded-xl border px-3 py-2.5 ${verdict.decisive ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"}`}>
+            <div className="flex items-start gap-2.5">
+              <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${verdict.decisive ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-400"}`}>
+                {verdict.decisive ? <Trophy className="h-3.5 w-3.5" /> : <Hourglass className="h-3.5 w-3.5" />}
+              </span>
+              <div className="min-w-0">
+                {/* Ответ на главный вопрос экрана — двумя словами и крупно.
+                    Прежде он был одиннадцатым кеглем в середине абзаца: чтобы
+                    узнать «решать или ждать», приходилось вычитывать фразу. */}
+                <p className={`text-sm font-bold leading-5 ${verdict.decisive ? "text-emerald-900" : "text-slate-900"}`}>
+                  {verdict.decisive ? "Можно решать" : "Решать рано"}
+                  {/* Порог различимости считается по кликам. На cr- и
+                      video-тестах решают другой долей, и заголовок обязан
+                      сказать, о чём именно он говорит. */}
+                  {test.testType === "ctr" ? null : <span className="ml-1 text-[11px] font-medium text-slate-400">— по кликам</span>}
+                </p>
+                <p className={`mt-0.5 text-[11px] leading-5 ${verdict.decisive ? "text-emerald-800" : "text-slate-500"}`}>{verdict.text}</p>
+              </div>
+            </div>
+            {/* Шкала «разрыв против порога»: заливка — насколько варианты
+                разошлись, засечка — с какой разницы этой выборке вообще можно
+                верить. Пока заливка не дошла до засечки, лидерство — совпадение,
+                и это видно раньше, чем прочитано. */}
+            <div className="mt-2.5 pl-[34px]">
+              <div className="relative h-2 rounded-full bg-slate-100">
+                <div className={`h-2 rounded-full ${verdict.decisive ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${Math.min(100, Math.max(1, verdict.gapShare / scaleMax * 100))}%` }} />
+                <span className="absolute -top-1 h-4 w-0.5 -translate-x-1/2 rounded-full bg-slate-400" style={{ left: `${Math.min(100, verdict.detectableShare / scaleMax * 100)}%` }} aria-hidden="true" />
+              </div>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[10px] text-slate-400">
+                <span><b className={`font-semibold ${verdict.decisive ? "text-emerald-700" : "text-amber-700"}`}>разрыв {Math.round(verdict.gapShare * 100)}%</b></span>
+                <span>порог различимости {Math.round(verdict.detectableShare * 100)}%</span>
+                {verdict.decisive ? null : (
+                  <span>
+                    {verdict.needSample == null
+                      ? "при нынешнем равенстве вариантов надёжного ответа не даст никакая выборка"
+                      : `набрано ${Math.round(verdict.progress * 100)}% нужной выборки — до ответа около ${verdict.needSample.toLocaleString("ru-RU")} показов на варианте, если разрыв сохранится`}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         ) : null}
         <div className="scroll-x rounded-xl border border-slate-200 bg-white">
-          <table className="min-w-[760px] w-full border-collapse text-[10px]">
-            <thead><tr><th className="sticky left-0 z-10 min-w-[190px] border-b border-r border-slate-200 bg-slate-50" />{test.variants.map((variant) => <th key={variant.id} className="min-w-[150px] border-b border-slate-200 p-2"><div className={`relative rounded-lg border p-2 ${variant.id === test.currentVariantId ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : variant.isWinner ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : "border-slate-200 bg-slate-50"}`}>{variant.id === test.currentVariantId ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-2 py-0.5 text-[8px] text-white">сейчас</span> : null}{variant.isWinner ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-2 py-0.5 text-[8px] text-white">победитель</span> : null}{test.testType === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="aspect-[3/4] w-full rounded-md bg-slate-50 object-contain" /> : <VariantImage url={variant.imageUrl} label={variant.label} />}<div className="mt-1 flex items-center justify-center gap-1"><span className="truncate text-[10px] font-semibold text-slate-700">{variant.label}</span>{variant.imageUrl ? <a href={variant.imageUrl} download target="_blank" rel="noreferrer" aria-label={`Скачать «${variant.label}»`} className="tap-hit shrink-0 text-slate-400 transition-colors hover:text-violet-600"><Download className="h-3 w-3" /></a> : null}</div>{variant.isBaseline ? <div className="text-[8px] text-violet-500">база</div> : null}{test.status === "paused" && !variant.isWinner ? <button type="button" onClick={() => trigger("winner", variant)} disabled={busy} className="mt-2 min-h-11 rounded-md border border-emerald-200 px-2 text-[9px] font-semibold text-emerald-700 disabled:opacity-50">Выбрать победителем</button> : null}</div></th>)}</tr></thead>
-            <tbody>{metricRows(test).map((row) => <tr key={row.label}><td className="sticky left-0 z-10 border-r border-t border-slate-200 bg-white px-3 py-2 font-medium text-slate-500">{row.label}</td>{test.variants.map((variant) => <td key={variant.id} className="border-t border-slate-100 px-3 py-2 text-center tabular-nums text-slate-700">{row.value(variant)}</td>)}</tr>)}</tbody>
+          <table className="w-full min-w-[760px] border-collapse text-[11px]">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-10 w-[116px] min-w-[116px] border-b border-r border-slate-200 bg-white align-bottom md:w-[180px] md:min-w-[180px]">
+                  {/* Пустой угол таблицы отдан ключу к цветам. Цвет здесь несёт
+                      суждение, а суждение обязано быть читаемым и без цвета —
+                      иначе экран говорит только тем, кто различает оттенки.
+                      На телефоне ключ скрыт: там этот угол шириной в палец. */}
+                  <ul className="hidden space-y-1 p-3 text-left text-[9px] leading-3 text-slate-400 md:block">
+                    {[
+                      ["bg-emerald-500", "впереди по отклику"],
+                      ["bg-amber-400", "позади, но внутри погрешности"],
+                      ["bg-rose-500", "отставание уже доказано"],
+                      ["bg-violet-500", "меряется прямо сейчас"],
+                    ].map(([dot, label]) => (
+                      <li key={label} className="flex items-center gap-1.5">
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
+                        <span>{label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </th>
+                {test.variants.map((variant) => {
+                  const role = roleOf(variant);
+                  const isCurrent = variant.id === test.currentVariantId;
+                  const hero = heroOf(variant);
+                  return (
+                    <th key={variant.id} className={`min-w-[190px] border-b border-slate-200 p-2 align-top ${ROLE_COLUMN[role]}`}>
+                      {/* Карточка варианта — трёх состояний: «сейчас» (фиолетовое
+                          кольцо, идёт замер), «победитель» (изумрудная заливка,
+                          решено) и «лидер» (изумрудное кольцо — впереди, но ещё
+                          не выбран). Ярлыки лежат в одной строке, потому что
+                          вариант бывает одновременно и текущим, и лидером. */}
+                      <div className={`relative mx-auto max-w-[240px] rounded-xl border p-2 shadow-sm ${variant.isWinner ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : ROLE_CARD[role]}`}>
+                        <div className="absolute -top-2 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap">
+                          {isCurrent ? <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[8px] font-semibold text-white shadow-sm">сейчас</span> : null}
+                          {variant.isWinner
+                            ? <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[8px] font-semibold text-white shadow-sm">победитель</span>
+                            : variant.id === leadId
+                              ? <span className={`rounded-full px-2 py-0.5 text-[8px] font-semibold shadow-sm ${test.testType === "ctr" && verdict?.decisive ? "bg-emerald-600 text-white" : "border border-emerald-300 bg-white text-emerald-700"}`}>{test.testType === "ctr" && verdict?.decisive ? "лидер" : "впереди"}</span>
+                              : null}
+                        </div>
+                        {test.testType === "video"
+                          ? <video src={variant.imageUrl} controls muted preload="metadata" className="mx-auto h-36 w-auto rounded-md bg-slate-50 object-contain md:h-56" />
+                          : <VariantImage url={variant.imageUrl} label={variant.label} />}
+                        <div className="mt-1.5 flex items-center justify-center gap-1">
+                          <span className="truncate text-[11px] font-semibold text-slate-700">{variant.label}</span>
+                          {variant.imageUrl ? <a href={variant.imageUrl} download target="_blank" rel="noreferrer" aria-label={`Скачать «${variant.label}»`} className="tap-hit shrink-0 text-slate-400 transition-colors hover:text-violet-600"><Download className="h-3 w-3" /></a> : null}
+                        </div>
+                        {variant.isBaseline ? <div className="text-center text-[8px] font-semibold uppercase tracking-wide text-violet-400">база</div> : null}
+                        {/* CTR стоит вплотную к обложке и крупно: человек
+                            сравнивает картинки, а не строки, и число должно
+                            попадать в тот же взгляд, что и кадр. Полоса под ним
+                            — доля от лучшего: отставание видно до чтения. */}
+                        <div className="mt-2 rounded-lg bg-slate-50/80 px-2 py-2">
+                          <div className="text-center text-[8px] font-semibold uppercase tracking-[0.08em] text-slate-400">{heroLabel}</div>
+                          <div className={`text-center text-2xl font-bold leading-7 tabular-nums ${hero == null ? "text-slate-300" : TONE_TEXT[gapTone(variant)]}`}>{hero == null ? "—" : `${(hero * 100).toFixed(2)}%`}</div>
+                          <div className="mt-1.5"><Bar share={hero != null && best ? hero / best : 0} role={role} thick /></div>
+                        </div>
+                        {test.status === "paused" && !variant.isWinner ? <button type="button" onClick={() => trigger("winner", variant)} disabled={busy} className="mt-2 min-h-11 w-full rounded-md border border-emerald-200 px-2 text-[9px] font-semibold text-emerald-700 disabled:opacity-50">Выбрать победителем</button> : null}
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            {groups.map((group) => (
+              <tbody key={group.title}>
+                <tr>
+                  <th colSpan={1 + test.variants.length} scope="colgroup" className="border-t border-slate-200 bg-slate-50/80 px-3 py-1 text-left text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-400">{group.title}</th>
+                </tr>
+                {/* Группа, в которой у всех вариантов по нулям, сворачивается в
+                    одну строку. Ноль остаётся нулём — данные есть, и они такие,
+                    — но три пустых ряда не должны весить столько же, сколько
+                    собранные показы, и оттягивать взгляд от того, что меряется. */}
+                {isEmptyGroup(group.items, test.variants) ? (
+                  <tr>
+                    <th scope="row" className="sticky left-0 z-10 border-r border-t border-slate-100 bg-white px-2 py-2 text-left text-[10px] font-medium leading-4 text-slate-500 md:px-3 md:text-[11px]">{group.items.map((row) => row.label.toLowerCase()).join(", ")}</th>
+                    <td colSpan={test.variants.length} className="border-t border-slate-100 px-3 py-2 text-center text-[10px] text-slate-400">по нулям у всех вариантов — на таких объёмах воронка вариантов не различает</td>
+                  </tr>
+                ) : group.items.map((row) => {
+                  const values = row.value ? test.variants.map((variant) => row.value!(variant)) : [];
+                  const max = values.length ? Math.max(...values) : 0;
+                  // Полосы нужны для сравнения. Когда у всех одно и то же —
+                  // сравнивать нечего, и ряд одинаковых полных полос только
+                  // шумит.
+                  const comparable = values.length > 0 && max > 0 && Math.min(...values) !== max;
+                  // Строка, где у всех ноль, гаснет целиком: пустая воронка не
+                  // должна весить столько же, сколько собранные показы.
+                  const dim = Boolean(row.value) && max === 0;
+                  return (
+                    <tr key={row.label}>
+                      <th scope="row" className="sticky left-0 z-10 border-r border-t border-slate-100 bg-white px-2 py-2 text-left text-[10px] font-medium leading-4 text-slate-500 md:px-3 md:text-[11px]">{row.label}</th>
+                      {test.variants.map((variant) => {
+                        const role = roleOf(variant);
+                        const cell = row.cell(variant);
+                        return (
+                          <td key={variant.id} className={`border-t border-slate-100 px-3 py-2 ${ROLE_COLUMN[role]}`}>
+                            <CellView
+                              cell={dim ? { ...cell, tone: "muted" } : cell}
+                              share={comparable && row.value ? row.value(variant) / max : null}
+                              role={role}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            ))}
           </table>
         </div>
       </section>

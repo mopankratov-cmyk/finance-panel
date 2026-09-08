@@ -241,10 +241,45 @@ export function ctrTestForecast(input: {
  * Возвращает null, когда сравнивать нечего: меньше двух вариантов с
  * достаточным числом показов.
  */
+/**
+ * Различима ли разница между двумя конкретными вариантами.
+ *
+ * Формула та же, что в прогнозе мастера (16·p(1−p)/Δ²), но вынесена в одно
+ * место, потому что порог у каждой ПАРЫ свой. На трёх и более вариантах общий
+ * порог, посчитанный по лидеру и второму месту, для третьего просто неверен:
+ * вариант с тысячей показов и вариант с восемью тысячами меряются разными
+ * линейками, и красить их одной значило бы называть доказанным то, что не
+ * измерено. n берётся меньший из двух: сравнение не надёжнее своей слабой
+ * стороны.
+ *
+ * `progress` — доля набранной выборки от необходимой. Различимая разница
+ * падает как 1/sqrt(n), поэтому отношение «разрыв к порогу» в квадрате и есть
+ * эта доля, а `needSample` — оценка «сколько показов нужно». Оценка честна
+ * при одном допущении, и его надо называть вслух: разрыв должен сохраниться.
+ * Когда варианты идут вровень, нужной выборки не существует — там честный
+ * ответ не число, а null.
+ */
+export function ctrGapVerdict(
+  leader: { impressions: number; clicks: number },
+  other: { impressions: number; clicks: number },
+): { gapShare: number; detectableShare: number; decisive: boolean; sample: number; progress: number; needSample: number | null } | null {
+  const sample = Math.min(leader.impressions, other.impressions);
+  if (sample <= 0 || leader.impressions <= 0 || other.impressions <= 0) return null;
+  const leaderCtr = leader.clicks / leader.impressions;
+  const otherCtr = other.clicks / other.impressions;
+  if (leaderCtr <= 0 || leaderCtr >= 1) return null;
+
+  const gapShare = (leaderCtr - otherCtr) / (otherCtr || leaderCtr);
+  const detectableShare = Math.sqrt((16 * leaderCtr * (1 - leaderCtr)) / sample) / leaderCtr;
+  const progress = Math.min(1, (Math.max(0, gapShare) / detectableShare) ** 2);
+  const needSample = progress > 0 ? Math.ceil(sample / progress) : null;
+  return { gapShare, detectableShare, decisive: gapShare > detectableShare, sample, progress, needSample };
+}
+
 export function ctrLeaderVerdict(
   variants: { label: string; impressions: number; clicks: number }[],
-  minViews = 50,
-): { leaderLabel: string; gapShare: number; detectableShare: number; decisive: boolean; sample: number; text: string } | null {
+  minViews = CTR_MIN_VIEWS,
+): { leaderLabel: string; gapShare: number; detectableShare: number; decisive: boolean; sample: number; progress: number; needSample: number | null; text: string } | null {
   const scored = variants
     .filter((v) => v.impressions >= minViews)
     .map((v) => ({ ...v, ctr: v.clicks / v.impressions }))
@@ -254,16 +289,16 @@ export function ctrLeaderVerdict(
   const [leader, runnerUp] = scored;
   if (leader.ctr <= 0) return null;
 
-  const gapShare = (leader.ctr - runnerUp.ctr) / (runnerUp.ctr || leader.ctr);
-  const sample = Math.min(leader.impressions, runnerUp.impressions);
-  const p = leader.ctr;
-  const detectableShare = Math.sqrt((16 * p * (1 - p)) / sample) / p;
-  const decisive = gapShare > detectableShare;
+  // Порог для пары «лидер ↔ второе место» считает общая функция: правило
+  // различимости живёт в одном месте, и экран не может разойтись с ним.
+  const gap = ctrGapVerdict(leader, runnerUp);
+  if (!gap) return null;
+  const { gapShare, detectableShare, decisive, sample, progress, needSample } = gap;
 
   const pct = (share: number) => `${Math.round(share * 100)}%`;
   const text = decisive
     ? `Лидер — «${leader.label}»: опережение ${pct(gapShare)} при ${sample.toLocaleString("ru-RU")} показах у слабейшего из двух. Такая разница уже надёжна, можно решать.`
     : `Впереди «${leader.label}», но опережение ${pct(gapShare)} меньше того, что различимо на ${sample.toLocaleString("ru-RU")} показах — это ${pct(detectableShare)}. Решать рано: продолжайте тест.`;
 
-  return { leaderLabel: leader.label, gapShare, detectableShare, decisive, sample, text };
+  return { leaderLabel: leader.label, gapShare, detectableShare, decisive, sample, progress, needSample, text };
 }
