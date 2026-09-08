@@ -5,7 +5,7 @@ import { checkCronAuth } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { fetchCardForWrite } from "@/lib/wb/cards";
-import { saveCardMediaOrder } from "@/lib/wb/media";
+import { replaceCardCover } from "@/lib/wb/media";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -138,18 +138,20 @@ async function rotate(request: NextRequest) {
       if (!cabinet) { note("кабинет не найден"); failure = "кабинет не найден"; continue; }
       const card = await fetchCardForWrite(resolveWbToken(cabinet, "content"), test.nm_id);
       if (!card.found) { note("WB не подтвердил карточку"); failure = "WB не подтвердил карточку — запись отменена"; continue; }
-      if (card.hasVideo) { note("карточка с видео"); failure = "у карточки есть видео: не проверено, переживает ли оно замену набора медиа"; continue; }
 
-      // Исходный набор запоминаем один раз и дальше строим записи от него:
-      // иначе галерея росла бы на вариант с каждым раундом, а исходные кадры
-      // вытеснялись бы за её пределы.
-      const base = (test.photos_original?.length ? test.photos_original : card.photos).filter(Boolean);
-      if (base.length === 0) { note("у карточки нет фото"); failure = "у карточки нет фотографий в пригодном размере"; continue; }
-      if (!test.photos_original?.length) {
-        await db.from("ctr_tests").update({ photos_original: base }).eq("id", test.id);
+      // Исходный набор запоминаем один раз — не для записи, а как след: по нему
+      // видно, что было на карточке до теста, если понадобится вернуть руками.
+      if (!test.photos_original?.length && card.photos.length) {
+        await db.from("ctr_tests").update({ photos_original: card.photos.filter(Boolean) }).eq("id", test.id);
       }
-      const photosAfter = [next.image_url, ...base.slice(1)];
-      const write = await saveCardMediaOrder(resolveWbToken(cabinet, "content"), test.nm_id, photosAfter);
+
+      // Меняем ТОЛЬКО обложку — первую позицию медиа. Раньше здесь
+      // переписывался весь набор (`media/save`), и из-за этого автоматика
+      // отказывалась работать на карточках с видео: неизвестно было, переживёт
+      // ли оно перезапись. Карточек с видео в кабинете больше половины, то есть
+      // функция была выключена на большей части ассортимента. Замена по номеру
+      // позиции видео и прочие фото не трогает вовсе.
+      const write = await replaceCardCover(resolveWbToken(cabinet, "content"), test.nm_id, next.image_url);
       if (!write.ok) { note("WB отказал в записи"); failure = write.error ?? "WB отказал в записи без объяснения"; continue; }
 
       // ── И только теперь отметка раунда ──

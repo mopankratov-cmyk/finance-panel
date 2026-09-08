@@ -11,7 +11,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
  */
 test("сначала фото в карточку, потом отметка раунда", () => {
   const route = read("../app/api/ctrtest/rotate/route.ts");
-  const write = route.indexOf("saveCardMediaOrder(");
+  const write = route.indexOf("replaceCardCover(");
   const transition = route.indexOf('rpc("transition_ctr_test"');
   assert.ok(write > 0 && transition > 0);
   assert.ok(write < transition,
@@ -23,8 +23,14 @@ test("ротация не трогает то, что трогать нельз�
   assert.match(route, /checkCronAuth\(request\)/, "только крон");
   assert.match(route, /\.eq\("live_swap_enabled", true\)/, "только тесты с включённой автоматикой");
   assert.match(route, /\.eq\("status", "running"\)/);
-  assert.match(route, /if \(card\.hasVideo\)/, "карточки с видео не трогаем");
   assert.match(route, /if \(!card\.found\)/, "WB не подтвердил карточку — не пишем");
+  // Отказа по видео здесь БОЛЬШЕ НЕТ, и это не послабление, а следствие смены
+  // метода: `media/save` переписывал весь набор медиа, поэтому видео было под
+  // угрозой и его приходилось обходить стороной — ценой того, что автоматика
+  // не работала на 56% карточек кабинета. Замена по номеру позиции видео не
+  // касается вовсе, обходить больше нечего.
+  assert.doesNotMatch(route, /card\.hasVideo/, "проверка на видео вернулась вместе с перезаписью всего набора?");
+  assert.doesNotMatch(route, /saveCardMediaOrder/, "перезапись всего набора медиа вернулась в ротацию");
 });
 
 test("мёртвая зона и норма показов соблюдаются", () => {
@@ -33,12 +39,21 @@ test("мёртвая зона и норма показов соблюдаютс�
   assert.match(route, /volume < test\.impressions_per_round/, "переключаем только по набранной норме");
 });
 
-test("галерея не растёт и не теряет кадры", () => {
+test("меняется ровно одна позиция — обложка", () => {
+  const media = read("../lib/wb/media.ts");
+  // Номер позиции задаётся заголовком и равен единице: остальные фото и видео
+  // остаются на месте по построению, а не потому, что мы их аккуратно
+  // переписали обратно. Раньше набор собирался руками, и любая ошибка в сборке
+  // означала потерю кадров из живой карточки.
+  assert.match(media, /"X-Photo-Number": "1"/, "меняем первую позицию, то есть обложку");
+  assert.match(media, /"X-Nm-Id": String\(nmId\)/);
+  assert.match(media, /content\/v3\/media\/file/, "метод замены одной позиции");
+
   const route = read("../app/api/ctrtest/rotate/route.ts");
-  // Каждая запись строится от ИСХОДНОГО набора, а не от текущего: иначе
-  // вариант прошлого раунда оставался бы в карточке навсегда.
+  // Исходный набор по-прежнему записывается — но уже как след для человека,
+  // а не как основа для сборки.
   assert.match(route, /photos_original/);
-  assert.match(route, /\[next\.image_url, \.\.\.base\.slice\(1\)\]/);
+  assert.doesNotMatch(route, /\.\.\.base\.slice\(1\)/, "сборка набора руками вернулась");
 });
 
 test("неудача автоматики не молчит", () => {

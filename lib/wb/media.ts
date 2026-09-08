@@ -69,3 +69,74 @@ export async function probeContentWriteAbility(token: string): Promise<ContentWr
     return { can: false, reason: "unknown", message: error instanceof Error ? error.message : "Сеть не ответила" };
   }
 }
+
+const MEDIA_FILE_URL = "https://content-api.wildberries.ru/content/v3/media/file";
+
+/** 32 МБ — предел WB на файл; больше не отправляем, чтобы не ждать отказа зря. */
+const MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
+
+/**
+ * Замена ОДНОЙ позиции медиа карточки — обложки.
+ *
+ * Почему не `media/save`, которым это делалось раньше: тот метод переписывает
+ * ВЕСЬ набор медиа. Если у карточки есть видео, оно в набор не входит, и
+ * переживёт ли оно перезапись — не проверено. Из-за этого автоматика CTR-теста
+ * отказывалась работать на карточках с видео, а их в кабинете больше половины
+ * (65 из 116 на 08.09.2026) — то есть функция была выключена на большей части
+ * ассортимента.
+ *
+ * `media/file` меняет медиа по НОМЕРУ позиции: видео и остальные фото он не
+ * трогает по построению, и вопрос «переживёт ли» просто не возникает.
+ *
+ * Контракт проверен пробой по несуществующему артикулу (08.09.2026): с
+ * настоящей картинкой WB доходит до проверки товара и отвечает «неизвестный
+ * артикул WB», то есть заголовки и форма запроса верны. Позиции нумеруются
+ * с единицы, обложка — первая.
+ *
+ * ⚠️ Что здесь необратимо: загруженный файл СТАНОВИТСЯ обложкой, а прежняя
+ * пропадает. Вернуть её можно только повторной загрузкой, а публично у WB
+ * доступен лишь размер `big` (900×1200) — если оригинал был крупнее, разница
+ * теряется. Это свойство любой смены обложки, а не этого метода; но тому, кто
+ * зовёт, о нём знать надо.
+ */
+export async function replaceCardCover(
+  token: string,
+  nmId: number,
+  imageUrl: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let bytes: Uint8Array;
+  let contentType = "image/jpeg";
+  try {
+    const source = await fetch(imageUrl, { cache: "no-store" });
+    if (!source.ok) return { ok: false, error: `картинка варианта не открылась: HTTP ${source.status}` };
+    const length = Number(source.headers.get("content-length") ?? 0);
+    if (length > MAX_UPLOAD_BYTES) return { ok: false, error: `файл больше 32 МБ (${Math.round(length / 1048576)} МБ)` };
+    bytes = new Uint8Array(await source.arrayBuffer());
+    if (bytes.length === 0) return { ok: false, error: "по адресу варианта пусто" };
+    if (bytes.length > MAX_UPLOAD_BYTES) return { ok: false, error: "файл больше 32 МБ" };
+    contentType = source.headers.get("content-type") || contentType;
+  } catch (cause) {
+    return { ok: false, error: cause instanceof Error ? `не скачать картинку варианта: ${cause.message}` : "не скачать картинку варианта" };
+  }
+
+  try {
+    const form = new FormData();
+    // Имя файла WB не проверяет, но пустое поле ломает разбор multipart.
+    form.append("uploadfile", new Blob([bytes as unknown as BlobPart], { type: contentType }), "cover");
+    const res = await fetch(MEDIA_FILE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: token.trim(),
+        "X-Nm-Id": String(nmId),
+        "X-Photo-Number": "1",
+      },
+      body: form,
+      cache: "no-store",
+    });
+    if (res.ok) return { ok: true };
+    const text = await res.text().catch(() => "");
+    return { ok: false, error: `WB ${res.status}: ${text.slice(0, 200)}` };
+  } catch (cause) {
+    return { ok: false, error: cause instanceof Error ? cause.message : "Ошибка сети" };
+  }
+}
