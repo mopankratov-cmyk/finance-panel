@@ -86,6 +86,8 @@ export function buildOpiuReport(
   adStats: WbAdStat[],
   costs: ProductCostRow[],
   warehouseByWeek: Record<string, number>,
+  loanTransferByWeek: Record<string, number> = {},
+  paidStorageByWeek: Record<string, number> | null = null,
 ): OpiuReport {
   const costLookup = buildCostLookup(costs);
 
@@ -97,6 +99,8 @@ export function buildOpiuReport(
       adStats,
       costLookup,
       warehouseByWeek[w.weekStart] ?? 0,
+      loanTransferByWeek[w.weekStart] ?? 0,
+      paidStorageByWeek ? (paidStorageByWeek[w.weekStart] ?? 0) : null,
     ),
   );
 
