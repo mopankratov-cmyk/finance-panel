@@ -7,7 +7,6 @@ import {
   type ProductCostRow,
   type WeekRawMetrics,
 } from "./metrics";
-import type { DeliveryCostRow } from "./fetchGoogleCosts";
 import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
 
 export type OpiuRowKind = "metric" | "separator" | "percent";
@@ -87,9 +86,8 @@ export function buildOpiuReport(
   adStats: WbAdStat[],
   costs: ProductCostRow[],
   warehouseByWeek: Record<string, number>,
-  deliveryCosts: DeliveryCostRow[] = [],
 ): OpiuReport {
-  const costLookup = buildCostLookup(costs, deliveryCosts);
+  const costLookup = buildCostLookup(costs);
 
   const weekMetrics = weeks.map((w) =>
     aggregateWeek(

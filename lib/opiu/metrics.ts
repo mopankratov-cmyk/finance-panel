@@ -1,6 +1,5 @@
 import type { WbAdStat, WbOrder, WbReportRow } from "@/lib/wb/types";
 import type { MonthWeek } from "./weeks";
-import type { DeliveryCostRow } from "./fetchGoogleCosts";
 
 export interface OpiuOrder extends WbOrder {
   nmId?: number;
@@ -66,6 +65,17 @@ export function num(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Количество единиц в строке отчёта: настоящий 0 (WB иногда пишет
+ * quantity: 0 в строке "Продажа") — это ноль, а не "нет данных". Раньше
+ * `Math.abs(num(row.quantity) || 1)` через `0 || 1` тихо превращал такую
+ * строку в 1 единицу, задваивая продажи. По умолчанию в 1 разворачиваем
+ * только настоящее отсутствие поля (null/undefined).
+ */
+export function qtyAbs(row: WbReportRow): number {
+  return row.quantity == null ? 1 : Math.abs(num(row.quantity));
+}
+
 function inRange(date: string, from: string, to: string): boolean {
   return date >= from && date <= to;
 }
@@ -80,11 +90,6 @@ export function rowDate(row: WbReportRow): string {
 
 function orderDate(row: OpiuOrder): string {
   return String(row.date ?? "").slice(0, 10);
-}
-
-function isSale(row: WbReportRow): boolean {
-  const t = String(row.doc_type_name ?? row.supplier_oper_name ?? "").toLowerCase();
-  return t.includes("продаж") || t.includes("sale");
 }
 
 export function docType(row: WbReportRow): "sale" | "return" | "other" {
@@ -105,7 +110,7 @@ export function docType(row: WbReportRow): "sale" | "return" | "other" {
 export function commissionResidualRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
-  const revenueWithoutSpp = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1) + loyaltyCompensationRub(row);
+  const revenueWithoutSpp = num(row.retail_price_withdisc_rub) * qtyAbs(row) + loyaltyCompensationRub(row);
   const forPay = num(row.ppvz_for_pay);
   const signed = revenueWithoutSpp - forPay;
   return type === "sale" ? signed : -signed;
@@ -267,7 +272,7 @@ export function forPayRub(row: WbReportRow): number {
 export function revenueRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
-  const amount = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
+  const amount = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * qtyAbs(row);
   return type === "sale" ? amount : -amount;
 }
 
@@ -280,7 +285,7 @@ export function revenueRub(row: WbReportRow): number {
 export function revenueWithoutSppRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
-  const amount = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1) + loyaltyCompensationRub(row);
+  const amount = num(row.retail_price_withdisc_rub) * qtyAbs(row) + loyaltyCompensationRub(row);
   return type === "sale" ? amount : -amount;
 }
 
@@ -370,20 +375,18 @@ function penaltyLoanRub(row: WbReportRow): number {
     : 0;
 }
 
-function rowGiId(row: WbReportRow): string {
-  return String((row as Record<string, unknown>).gi_id ?? "").trim();
-}
-
-export function buildCostLookup(
-  costs: ProductCostRow[],
-  deliveryCosts: DeliveryCostRow[] = [],
-): {
+/**
+ * Единственный источник себестоимости/подготовки — /costs (product_costs).
+ * Раньше здесь ещё был приоритетный gi_id-источник («Себестоимость поставок»,
+ * гугл-таблица), но он всегда молчал (в wb_report_rows нет столбца gi_id) и
+ * иногда расходился с данными на /costs — по решению владельца полностью
+ * убран, /costs остаётся единственным источником истины.
+ */
+export function buildCostLookup(costs: ProductCostRow[]): {
   byArticle: Map<string, number>;
   byBarcode: Map<string, number>;
-  packagingByArticle?: Map<string, number>;
-  packagingByBarcode?: Map<string, number>;
-  costByGiBarcode?: Map<string, number>;
-  packagingByGiBarcode?: Map<string, number>;
+  packagingByArticle: Map<string, number>;
+  packagingByBarcode: Map<string, number>;
 } {
   const byArticle = new Map<string, number>();
   const byBarcode = new Map<string, number>();
@@ -397,36 +400,14 @@ export function buildCostLookup(
     packagingByArticle.set(article, packaging);
     if (c.wb_barcode) packagingByBarcode.set(c.wb_barcode, packaging);
   }
-  // Приоритетный источник: точное совпадение поставка (gi_id) + баркод —
-  // «Себестоимость поставок WB» (гугл-таблица, ведётся вручную по фактическим
-  // закупочным ценам каждой поставки).
-  const costByGiBarcode = new Map<string, number>();
-  const packagingByGiBarcode = new Map<string, number>();
-  for (const d of deliveryCosts) {
-    const key = `${d.gi_id}|${d.barcode}`;
-    costByGiBarcode.set(key, d.cost_rub);
-    packagingByGiBarcode.set(key, d.packaging_rub);
-  }
-  return {
-    byArticle,
-    byBarcode,
-    packagingByArticle,
-    packagingByBarcode,
-    costByGiBarcode,
-    packagingByGiBarcode,
-  };
+  return { byArticle, byBarcode, packagingByArticle, packagingByBarcode };
 }
 
 export function unitCost(
   row: WbReportRow,
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  const giId = rowGiId(row);
   const barcode = String(row.barcode ?? "");
-  if (giId && barcode) {
-    const v = lookup.costByGiBarcode?.get(`${giId}|${barcode}`);
-    if (v !== undefined) return v;
-  }
   const article = String(row.sa_name ?? "").trim().toUpperCase();
   return lookup.byArticle.get(article) ?? lookup.byBarcode.get(barcode) ?? 0;
 }
@@ -435,23 +416,26 @@ export function unitPackaging(
   row: WbReportRow,
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  const giId = rowGiId(row);
   const barcode = String(row.barcode ?? "");
-  if (giId && barcode) {
-    const v = lookup.packagingByGiBarcode?.get(`${giId}|${barcode}`);
-    if (v !== undefined) return v;
-  }
   const article = String(row.sa_name ?? "").trim().toUpperCase();
-  return lookup.packagingByArticle?.get(article) ?? lookup.packagingByBarcode?.get(barcode) ?? 0;
+  return lookup.packagingByArticle.get(article) ?? lookup.packagingByBarcode.get(barcode) ?? 0;
 }
 
+/**
+ * Возвраты вычитают себестоимость/подготовку так же, как вычитают выручку
+ * (revenueRub и др.) — иначе возвращённый товар остаётся в затратах, а его
+ * продажа из выручки уже вычтена, и себестоимость оказывается завышена на
+ * стоимость всех возвратов периода.
+ */
 function cogsForSales(
   sales: WbReportRow[],
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  return sales.filter(isSale).reduce((sum, row) => {
-    const qty = Math.abs(num(row.quantity) || 1);
-    return sum + unitCost(row, lookup) * qty;
+  return sales.reduce((sum, row) => {
+    const type = docType(row);
+    if (type === "other") return sum;
+    const amount = unitCost(row, lookup) * qtyAbs(row);
+    return sum + (type === "sale" ? amount : -amount);
   }, 0);
 }
 
@@ -459,9 +443,11 @@ function packagingForSales(
   sales: WbReportRow[],
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  return sales.filter(isSale).reduce((sum, row) => {
-    const qty = Math.abs(num(row.quantity) || 1);
-    return sum + unitPackaging(row, lookup) * qty;
+  return sales.reduce((sum, row) => {
+    const type = docType(row);
+    if (type === "other") return sum;
+    const amount = unitPackaging(row, lookup) * qtyAbs(row);
+    return sum + (type === "sale" ? amount : -amount);
   }, 0);
 }
 

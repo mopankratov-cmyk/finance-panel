@@ -8,6 +8,7 @@ import {
   forPayRub,
   num,
   penaltiesRub,
+  qtyAbs,
   revenueRub,
   revenueWithoutSppRub,
   storageFeeRub,
@@ -16,7 +17,6 @@ import {
   unitPackaging,
   type ProductCostRow,
 } from "./metrics";
-import type { DeliveryCostRow } from "./fetchGoogleCosts";
 
 /**
  * «Маржа по артикулам» — та же методология, что и у ОПиУ (docType-агрегация
@@ -76,11 +76,10 @@ export interface MarginByBarcodeResult {
 export function buildMarginByBarcode(
   rows: WbReportRow[],
   costs: ProductCostRow[],
-  deliveryCosts: DeliveryCostRow[],
   adSpendByNmId: Map<number, number>,
   taxPct = 6,
 ): MarginByBarcodeResult {
-  const lookup = buildCostLookup(costs, deliveryCosts);
+  const lookup = buildCostLookup(costs);
   // Не все строки финотчёта несут баркод — «Хранение», «Транзит» и часть
   // штрафов WB привязывает только к nm_id, без конкретного размера. Группируем
   // такие строки по nm_id (ключ "nm:<id>"), а не отбрасываем: иначе реальные
@@ -129,7 +128,7 @@ export function buildMarginByBarcode(
 
     for (const row of group) {
       const type = docType(row);
-      const qty = Math.abs(num(row.quantity) || 1);
+      const qty = qtyAbs(row);
       const gross = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * qty;
       if (type === "sale") {
         salesQty += qty;
@@ -139,6 +138,10 @@ export function buildMarginByBarcode(
       } else if (type === "return") {
         returnsQty += qty;
         returnsRub += gross;
+        // Возврат уменьшает себестоимость/подготовку так же, как выручку —
+        // товар вернулся, и его затраты не должны оставаться в марже.
+        cost -= unitCost(row, lookup) * qty;
+        packaging -= unitPackaging(row, lookup) * qty;
       }
       revenueWithoutSpp += revenueWithoutSppRub(row);
       revenueAfterSpp += revenueRub(row);

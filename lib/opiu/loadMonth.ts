@@ -11,7 +11,6 @@ import {
   type ProductCostRow,
 } from "./metrics";
 import { fetchReportRows, rowsBySaleDate } from "./reportRows";
-import { fetchDeliveryCosts } from "./fetchGoogleCosts";
 
 function financeDb() {
   const db = getSupabaseAdmin();
@@ -137,12 +136,21 @@ async function fetchAdStats(
   return [{ days }];
 }
 
+/**
+ * Себестоимость ищем по ВСЕЙ таблице product_costs, без фильтра по entity
+ * бренда: артикул — уникальный ключ на весь каталог (проверено — ни одного
+ * пересечения между юрлицами), а владельца товара и кабинет, через который
+ * он продаётся, часто разные (тот же принцип, что и в списании FBS —
+ * lib/warehouse/fbsSales.ts: "владельца определяет ТОВАР, а не кабинет").
+ * Например, TIM TIN/ООО РИО продаётся через кабинет ИП Панкратова — раньше
+ * фильтр по entity="ИП ПАНКРАТОВ" такие товары терял, и себестоимость в
+ * ОПиУ занижалась на весь их объём продаж.
+ */
 export async function fetchProductCosts(brand: OpiuBrand): Promise<ProductCostRow[]> {
   const client = financeDb();
   const { data, error } = await client
     .from("product_costs")
-    .select("article, wb_barcode, cost_rub, warehouse_expenses")
-    .eq("entity", brand.entity);
+    .select("article, wb_barcode, cost_rub, warehouse_expenses");
 
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as ProductCostRow[];
@@ -220,17 +228,12 @@ export async function loadOpiuMonth(
     orders,
     costs,
     warehouseByWeek,
-    deliveryCosts,
   ] = await Promise.all([
     fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
     fetchReportRows(dateFrom, dateTo, "report", brand.cabinetId),
     fetchOrders(dateFrom, dateTo, refresh, brand),
     fetchProductCosts(brand),
     fetchWarehouseCosts(month, weeks, brand),
-    fetchDeliveryCosts().catch((e) => {
-      console.error("[opiu] delivery costs read:", e instanceof Error ? e.message : e);
-      return [];
-    }),
   ]);
   const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
   const reportDateRows = reportDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
@@ -243,7 +246,6 @@ export async function loadOpiuMonth(
     adStats,
     costs,
     warehouseByWeek,
-    deliveryCosts,
   );
   const reportByReportDate = buildOpiuReport(
     weeks,
@@ -252,7 +254,6 @@ export async function loadOpiuMonth(
     adStats,
     costs,
     warehouseByWeek,
-    deliveryCosts,
   );
   const reportRowIds = new Set(
     [...saleDateRows, ...reportDateRows]
@@ -286,14 +287,10 @@ export async function loadOpiuSalePeriod(
 }> {
   const brand = resolveOpiuBrand(brandId);
   const period = periodFromRange(dateFrom, dateTo);
-  const [saleDateRowsRaw, orders, costs, deliveryCosts] = await Promise.all([
+  const [saleDateRowsRaw, orders, costs] = await Promise.all([
     fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
     fetchOrders(dateFrom, dateTo, false, brand),
     fetchProductCosts(brand),
-    fetchDeliveryCosts().catch((e) => {
-      console.error("[opiu] delivery costs read:", e instanceof Error ? e.message : e);
-      return [];
-    }),
   ]);
   const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
   const adStats = await fetchAdStats(dateFrom, dateTo, brand, brandNmIdWhitelist(brand, orders, saleDateRows));
@@ -305,7 +302,6 @@ export async function loadOpiuSalePeriod(
     adStats,
     costs,
     {},
-    deliveryCosts,
   );
 
   return {

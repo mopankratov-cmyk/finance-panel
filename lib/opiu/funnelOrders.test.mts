@@ -19,8 +19,6 @@ const emptyCosts = {
   byBarcode: new Map<string, number>(),
   packagingByArticle: new Map<string, number>(),
   packagingByBarcode: new Map<string, number>(),
-  costByGiBarcode: new Map<string, number>(),
-  packagingByGiBarcode: new Map<string, number>(),
 };
 const targetCabinetId = "cabinet-a";
 
