@@ -61,7 +61,7 @@ export interface WeekRawMetrics {
   loyaltyCompensation: number;
 }
 
-function num(value: unknown): number {
+export function num(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
@@ -71,7 +71,7 @@ function inRange(date: string, from: string, to: string): boolean {
 }
 
 /** Дата операции в финотчёте WB (rr_dt — основное поле отчёта) */
-function rowDate(row: WbReportRow): string {
+export function rowDate(row: WbReportRow): string {
   return String(row.rr_dt ?? row.sale_dt ?? row.order_dt ?? row.create_dt ?? "").slice(
     0,
     10,
@@ -87,7 +87,7 @@ function isSale(row: WbReportRow): boolean {
   return t.includes("продаж") || t.includes("sale");
 }
 
-function docType(row: WbReportRow): "sale" | "return" | "other" {
+export function docType(row: WbReportRow): "sale" | "return" | "other" {
   const t = String(row.doc_type_name ?? row.supplier_oper_name ?? "").toLowerCase();
   if (t.includes("продаж") || t.includes("sale")) return "sale";
   if (t.includes("возврат") || t.includes("return")) return "return";
@@ -102,7 +102,7 @@ function docType(row: WbReportRow): "sale" | "return" | "other" {
  * строкам (продажи и возвраты) со знаком — возврат вычитает — чтобы
  * остаток точно совпадал с методологией старой ветки (Excel-модель).
  */
-function commissionResidualRub(row: WbReportRow): number {
+export function commissionResidualRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
   const revenueWithoutSpp = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1) + loyaltyCompensationRub(row);
@@ -252,7 +252,7 @@ export function overlayFunnelOrders(
  * к сложению) — суммировать без учёта типа операции нельзя, иначе выплата
  * продавцу задваивается на сумму возвратов.
  */
-function forPayRub(row: WbReportRow): number {
+export function forPayRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
   const amount = num(row.ppvz_for_pay);
@@ -264,7 +264,7 @@ function forPayRub(row: WbReportRow): number {
  * иначе выручка задваивается на сумму возвратов относительно реального
  * поступления денег.
  */
-function revenueRub(row: WbReportRow): number {
+export function revenueRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
   const amount = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
@@ -277,7 +277,7 @@ function revenueRub(row: WbReportRow): number {
  * из-за скидки постоянного покупателя. Без этого "без СПП" занижена ровно
  * на сумму компенсации за неделю.
  */
-function revenueWithoutSppRub(row: WbReportRow): number {
+export function revenueWithoutSppRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
   const amount = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1) + loyaltyCompensationRub(row);
@@ -285,7 +285,7 @@ function revenueWithoutSppRub(row: WbReportRow): number {
 }
 
 /** Суммируем со знаком: возвраты уменьшают удержания */
-function expenseRub(value: unknown): number {
+export function expenseRub(value: unknown): number {
   return num(value);
 }
 
@@ -306,7 +306,7 @@ function bonusType(row: WbReportRow): string {
   return String(row.bonus_type_name ?? "").toLowerCase();
 }
 
-function penaltiesRub(row: WbReportRow): number {
+export function penaltiesRub(row: WbReportRow): number {
   return expenseRub(row.penalty) + expenseRub(row.additional_payment);
 }
 
@@ -314,7 +314,7 @@ function subscriptionJemRub(row: WbReportRow): number {
   return bonusType(row).includes("джем") ? expenseRub(row.deduction) : 0;
 }
 
-function transitDeliveryRub(row: WbReportRow): number {
+export function transitDeliveryRub(row: WbReportRow): number {
   return bonusType(row).includes("транзит") ? expenseRub(row.deduction) : 0;
 }
 
@@ -325,7 +325,7 @@ function withdrawNowRub(row: WbReportRow): number {
     : 0;
 }
 
-function acceptanceRub(row: WbReportRow): number {
+export function acceptanceRub(row: WbReportRow): number {
   return expenseRub(row.acceptance);
 }
 
@@ -349,7 +349,7 @@ function adsInvoiceDeductionRub(row: WbReportRow): number {
 }
 
 /** Автоматическое "Хранение" — идёт в строку "Хранение / упаковка склада" в дополнение к ручному вводу. */
-function storageFeeRub(row: WbReportRow): number {
+export function storageFeeRub(row: WbReportRow): number {
   return expenseRub(row.storage_fee);
 }
 
@@ -417,7 +417,7 @@ export function buildCostLookup(
   };
 }
 
-function unitCost(
+export function unitCost(
   row: WbReportRow,
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
@@ -431,7 +431,7 @@ function unitCost(
   return lookup.byArticle.get(article) ?? lookup.byBarcode.get(barcode) ?? 0;
 }
 
-function unitPackaging(
+export function unitPackaging(
   row: WbReportRow,
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {

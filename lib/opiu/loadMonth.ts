@@ -20,7 +20,7 @@ function financeDb() {
 }
 
 /** Совпадает ли артикул с хотя бы одним префиксом суб-бренда (регистронезависимо). Без префиксов — всегда true (фильтра нет). */
-function matchesArticlePrefix(article: string | null | undefined, prefixes: string[] | undefined): boolean {
+export function matchesArticlePrefix(article: string | null | undefined, prefixes: string[] | undefined): boolean {
   if (!prefixes || prefixes.length === 0) return true;
   const normalized = String(article ?? "").trim().toUpperCase();
   if (!normalized) return false;
@@ -137,7 +137,7 @@ async function fetchAdStats(
   return [{ days }];
 }
 
-async function fetchProductCosts(brand: OpiuBrand): Promise<ProductCostRow[]> {
+export async function fetchProductCosts(brand: OpiuBrand): Promise<ProductCostRow[]> {
   const client = financeDb();
   const { data, error } = await client
     .from("product_costs")
