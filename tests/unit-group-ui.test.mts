@@ -2,18 +2,47 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("manager unit route has no finance tabs and finance wrapper owns them", async () => {
-  const [unit, wrapper, client, tabs] = await Promise.all([
+// Маржу по артикулам показывают ДВА разных экрана, и это намеренно:
+// `/unit` — рабочий экран менеджера, живёт без финансовых вкладок и получает
+// кабинет параметром; `/opiu/margin` — тот же смысл внутри финансового
+// контура, со вкладками и кабинетом из сессии. Тест раньше считал, что
+// компонент один, и после разделения молча сторожил не тот файл: проверял
+// защиты у `UnitMarginPage`, тогда как финансовый маршрут давно рисует
+// `MarginByArticlePage`. Здесь каждый экран проверяется тем, что верно
+// про него.
+test("финансовый контур владеет вкладками, экран менеджера — нет", async () => {
+  const [unit, wrapper, tabs] = await Promise.all([
     readFile(new URL("../app/unit/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/opiu/margin/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/opiu/UnitMarginPage.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/FinanceTabs.tsx", import.meta.url), "utf8"),
   ]);
-  assert.doesNotMatch(unit, /FinanceTabs/);
+  assert.doesNotMatch(unit, /FinanceTabs/, "экран менеджера не должен тянуть финансовые вкладки");
   assert.match(wrapper, /<FinanceTabs\s*\/>/);
-  assert.match(wrapper, /<UnitMarginPage\s*\/>/);
+  assert.match(wrapper, /<MarginByArticlePage\s*\/>/, "финансовый маршрут рисует свой компонент");
   assert.match(tabs, /\{ href: "\/opiu\/margin", label: "Маржа по артикулам" \}/);
+});
+
+test("экран менеджера передаёт кабинет в запрос", async () => {
+  // У `/unit` кабинет приходит параметром, и его надо экранировать: id
+  // подставляется в строку запроса.
+  const client = await readFile(new URL("../components/opiu/UnitMarginPage.tsx", import.meta.url), "utf8");
   assert.match(client, /encodeURIComponent\(cabId\)/);
+});
+
+test("финансовый экран не показывает чужие цифры, пока грузит новые", async () => {
+  // Здесь кабинет берётся из сессии, параметра нет — зато есть смена бренда и
+  // периода. Пока новые данные едут, старые строки показывать нельзя: под
+  // новым заголовком стояла бы прошлая выборка. Защита сделана порядком веток
+  // рендера — сначала `loading`, и только потом данные, — поэтому проверяем
+  // именно порядок, а не наличие сброса состояния.
+  const client = await readFile(new URL("../components/opiu/MarginByArticlePage.tsx", import.meta.url), "utf8");
+  assert.match(client, /new AbortController\(\)/, "устаревший ответ не должен выиграть гонку");
+  assert.match(client, /return \(\) => controller\.abort\(\)/);
+  const loadingBranch = client.indexOf("{loading ?");
+  const dataBranch = client.indexOf("data && data.rows.length");
+  assert.ok(loadingBranch > 0 && dataBranch > 0, "ветки загрузки и данных на месте");
+  assert.ok(loadingBranch < dataBranch,
+    "данные проверяются раньше загрузки — на экране останутся строки прошлой выборки");
 });
 
 test("scope changes abort stale requests and clear last-good data", async () => {

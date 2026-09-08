@@ -39,6 +39,7 @@ interface TestRow {
   dead_zone_min: number;
   photos_original: string[] | null;
   test_type: string;
+  auto_error: string | null;
 }
 
 interface VariantRow { id: number; image_url: string; position: number | null; rounds_count: number | null }
@@ -92,7 +93,7 @@ async function rotate(request: NextRequest) {
 
   const { data: tests, error } = await db
     .from("ctr_tests")
-    .select("id, cabinet_id, nm_id, status, round_num, current_variant_id, impressions_per_round, dead_zone_min, photos_original, test_type")
+    .select("id, cabinet_id, nm_id, status, round_num, current_variant_id, impressions_per_round, dead_zone_min, photos_original, test_type, auto_error")
     .eq("status", "running")
     .eq("live_swap_enabled", true);
   if (error) {
@@ -168,7 +169,21 @@ async function rotate(request: NextRequest) {
     } finally {
       // Отметка попытки в любом случае: молчащая автоматика неотличима от
       // сломанной, а человек видит на экране только результат.
-      await db.from("ctr_tests").update({ auto_checked_at: new Date().toISOString(), auto_error: failure }).eq("id", test.id);
+      //
+      // Одинаковый отказ второй раз подряд означает, что дело не в сетевой
+      // заминке, а в чём-то, что само не пройдёт: нет следующего варианта,
+      // WB не принимает запись, карточка не подтверждается. Раньше в этом
+      // случае ротация билась в стену каждые пять минут неделями, а тест на
+      // экране всё это время значился идущим — человек считал, что варианты
+      // сменяются, пока крутился один. Ставим на паузу с той же причиной:
+      // остановленный тест виден в списке, «идущий» с ошибкой — нет.
+      const repeated = failure !== null && failure === test.auto_error;
+      await db.from("ctr_tests").update({
+        auto_checked_at: new Date().toISOString(),
+        auto_error: failure,
+        ...(repeated ? { status: "paused" } : {}),
+      }).eq("id", test.id);
+      if (repeated) note("тот же отказ второй раз — тест на паузе");
     }
   }
 

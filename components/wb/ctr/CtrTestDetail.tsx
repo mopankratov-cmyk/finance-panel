@@ -20,18 +20,35 @@ const number = (value: number) => Number(value || 0).toLocaleString("ru-RU", { m
 const pct = (value: number | null) => value == null ? "—" : `${value.toFixed(2)}%`;
 
 function metricRows(test: CtrTestView) {
+  /**
+   * Идущий раунд тоже считается.
+   *
+   * Итоги раунда записываются в момент его ЗАКРЫТИЯ, а накопленные суммы
+   * варианта складываются только из закрытых. Пока первый раунд идёт — а при
+   * цели в тысячи показов это часы, — таблица показывала сплошные нули, и
+   * работающий тест выглядел сломанным. Живая дельта при этом уже была на
+   * странице, но только одной строкой сверху.
+   *
+   * Поэтому у варианта, который меряется сейчас, к накопленному прибавляется
+   * дельта текущего раунда. Столбец и без того помечен «сейчас», так что
+   * спутать незавершённое с итогом нельзя.
+   */
+  const live = test.currentLive;
+  const total = (variant: CtrVariantView, key: "impressions" | "clicks" | "opens" | "carts" | "orders" | "spend") =>
+    Number(variant[key] ?? 0) + (variant.id === test.currentVariantId ? Number((live as Record<string, unknown> | null)?.[key] ?? 0) : 0);
+
   return [
-    { label: "Показов", value: (variant: CtrVariantView) => number(variant.impressions) },
-    { label: "Кликов", value: (variant: CtrVariantView) => number(variant.clicks) },
-    { label: "CTR", value: (variant: CtrVariantView) => variant.impressions ? `${(variant.clicks / variant.impressions * 100).toFixed(2)}%` : "—" },
-    { label: "Открытий", value: (variant: CtrVariantView) => number(variant.opens) },
-    { label: "Корзин", value: (variant: CtrVariantView) => number(variant.carts) },
-    { label: "Заказов", value: (variant: CtrVariantView) => number(variant.orders) },
+    { label: "Показов", value: (variant: CtrVariantView) => number(total(variant, "impressions")) },
+    { label: "Кликов", value: (variant: CtrVariantView) => number(total(variant, "clicks")) },
+    { label: "CTR", value: (variant: CtrVariantView) => total(variant, "impressions") ? `${(total(variant, "clicks") / total(variant, "impressions") * 100).toFixed(2)}%` : "—" },
+    { label: "Открытий", value: (variant: CtrVariantView) => number(total(variant, "opens")) },
+    { label: "Корзин", value: (variant: CtrVariantView) => number(total(variant, "carts")) },
+    { label: "Заказов", value: (variant: CtrVariantView) => number(total(variant, "orders")) },
     { label: test.testType === "ctr" ? "Результат CTR" : test.testType === "cr" ? "Результат CR" : "Video proxy", value: (variant: CtrVariantView) => pct(variant.score) },
     { label: "Изменение к базе", value: (variant: CtrVariantView) => variant.resultPct == null ? "—" : `${variant.resultPct > 0 ? "+" : ""}${variant.resultPct.toFixed(2)}%` },
     { label: "Побед в раундах", value: (variant: CtrVariantView) => `${variant.roundsWon} раз` },
     { label: "Раундов", value: (variant: CtrVariantView) => number(variant.roundsCount) },
-    { label: "Расход", value: (variant: CtrVariantView) => `${number(variant.spend)} ₽` },
+    { label: "Расход", value: (variant: CtrVariantView) => `${number(total(variant, "spend"))} ₽` },
   ];
 }
 

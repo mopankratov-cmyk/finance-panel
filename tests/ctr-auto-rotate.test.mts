@@ -58,7 +58,13 @@ test("меняется ровно одна позиция — обложка", (
 
 test("неудача автоматики не молчит", () => {
   const route = read("../app/api/ctrtest/rotate/route.ts");
-  assert.match(route, /auto_checked_at: new Date\(\)\.toISOString\(\), auto_error: failure/);
+  // Отметка и причина пишутся в блоке finally — то есть при любом исходе,
+  // включая отказ. Проверяем это по существу, а не по форме записи: объект
+  // обновления переформатируется при каждой правке соседних строк.
+  assert.match(route, /auto_checked_at: new Date\(\)\.toISOString\(\)/);
+  assert.match(route, /auto_error: failure/);
+  const finallyBlock = route.slice(route.indexOf("} finally {"));
+  assert.match(finallyBlock, /auto_checked_at/, "отметка должна стоять в finally, иначе тихий отказ не запишется");
   assert.match(read("../components/wb/ctr/CtrTestDetail.tsx"), /test\.autoError/, "экран показывает причину");
 });
 
@@ -165,4 +171,23 @@ test("битая картинка варианта не превращает э�
   assert.match(detail, /function VariantImage/);
   assert.match(detail, /onError=\{\(\) => setBroken\(true\)\}/);
   assert.match(detail, /фото не открылось/, "подпись честнее пустого прямоугольника");
+});
+
+test("повторный отказ останавливает тест, а не бьётся в стену", () => {
+  const route = read("../app/api/ctrtest/rotate/route.ts");
+  // Пока отказ повторялся молча, тест значился идущим неделями: на живом
+  // NV-01-35 ротация упиралась в видео каждые пять минут, а экран показывал
+  // «идёт» — человек считал, что варианты сменяются, пока крутился один.
+  assert.match(route, /failure === test\.auto_error/, "сравниваем с прошлым отказом");
+  assert.match(route, /status: "paused"/, "второй одинаковый отказ подряд ставит тест на паузу");
+  assert.match(route, /auto_error/, "причина отказа читается из теста");
+});
+
+test("идущий раунд виден в таблице, а не показан нулями", () => {
+  const detail = read("../components/wb/ctr/CtrTestDetail.tsx");
+  // Итоги раунда пишутся при его ЗАКРЫТИИ. Пока первый раунд идёт — а это
+  // часы, — таблица показывала нули, и работающий тест выглядел сломанным.
+  assert.match(detail, /variant\.id === test\.currentVariantId/, "живая дельта идёт только текущему варианту");
+  assert.match(detail, /const total = \(variant/, "показатели складываются с дельтой идущего раунда");
+  assert.doesNotMatch(detail, /number\(variant\.impressions\)/, "вернулся показ только накопленного");
 });
