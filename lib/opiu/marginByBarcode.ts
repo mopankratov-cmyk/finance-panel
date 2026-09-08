@@ -8,6 +8,7 @@ import {
   forPayRub,
   num,
   penaltiesRub,
+  qtyAbs,
   revenueRub,
   revenueWithoutSppRub,
   storageFeeRub,
@@ -129,7 +130,7 @@ export function buildMarginByBarcode(
 
     for (const row of group) {
       const type = docType(row);
-      const qty = Math.abs(num(row.quantity) || 1);
+      const qty = qtyAbs(row);
       const gross = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * qty;
       if (type === "sale") {
         salesQty += qty;
@@ -139,6 +140,10 @@ export function buildMarginByBarcode(
       } else if (type === "return") {
         returnsQty += qty;
         returnsRub += gross;
+        // Возврат уменьшает себестоимость/подготовку так же, как выручку —
+        // товар вернулся, и его затраты не должны оставаться в марже.
+        cost -= unitCost(row, lookup) * qty;
+        packaging -= unitPackaging(row, lookup) * qty;
       }
       revenueWithoutSpp += revenueWithoutSppRub(row);
       revenueAfterSpp += revenueRub(row);

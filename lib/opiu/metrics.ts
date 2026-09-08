@@ -66,6 +66,17 @@ export function num(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Количество единиц в строке отчёта: настоящий 0 (WB иногда пишет
+ * quantity: 0 в строке "Продажа") — это ноль, а не "нет данных". Раньше
+ * `Math.abs(num(row.quantity) || 1)` через `0 || 1` тихо превращал такую
+ * строку в 1 единицу, задваивая продажи. По умолчанию в 1 разворачиваем
+ * только настоящее отсутствие поля (null/undefined).
+ */
+export function qtyAbs(row: WbReportRow): number {
+  return row.quantity == null ? 1 : Math.abs(num(row.quantity));
+}
+
 function inRange(date: string, from: string, to: string): boolean {
   return date >= from && date <= to;
 }
@@ -80,11 +91,6 @@ export function rowDate(row: WbReportRow): string {
 
 function orderDate(row: OpiuOrder): string {
   return String(row.date ?? "").slice(0, 10);
-}
-
-function isSale(row: WbReportRow): boolean {
-  const t = String(row.doc_type_name ?? row.supplier_oper_name ?? "").toLowerCase();
-  return t.includes("продаж") || t.includes("sale");
 }
 
 export function docType(row: WbReportRow): "sale" | "return" | "other" {
@@ -105,7 +111,7 @@ export function docType(row: WbReportRow): "sale" | "return" | "other" {
 export function commissionResidualRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
-  const revenueWithoutSpp = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1) + loyaltyCompensationRub(row);
+  const revenueWithoutSpp = num(row.retail_price_withdisc_rub) * qtyAbs(row) + loyaltyCompensationRub(row);
   const forPay = num(row.ppvz_for_pay);
   const signed = revenueWithoutSpp - forPay;
   return type === "sale" ? signed : -signed;
@@ -267,7 +273,7 @@ export function forPayRub(row: WbReportRow): number {
 export function revenueRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
-  const amount = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1);
+  const amount = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * qtyAbs(row);
   return type === "sale" ? amount : -amount;
 }
 
@@ -280,7 +286,7 @@ export function revenueRub(row: WbReportRow): number {
 export function revenueWithoutSppRub(row: WbReportRow): number {
   const type = docType(row);
   if (type === "other") return 0;
-  const amount = num(row.retail_price_withdisc_rub) * Math.abs(num(row.quantity) || 1) + loyaltyCompensationRub(row);
+  const amount = num(row.retail_price_withdisc_rub) * qtyAbs(row) + loyaltyCompensationRub(row);
   return type === "sale" ? amount : -amount;
 }
 
@@ -445,13 +451,21 @@ export function unitPackaging(
   return lookup.packagingByArticle?.get(article) ?? lookup.packagingByBarcode?.get(barcode) ?? 0;
 }
 
+/**
+ * Возвраты вычитают себестоимость/подготовку так же, как вычитают выручку
+ * (revenueRub и др.) — иначе возвращённый товар остаётся в затратах, а его
+ * продажа из выручки уже вычтена, и себестоимость оказывается завышена на
+ * стоимость всех возвратов периода.
+ */
 function cogsForSales(
   sales: WbReportRow[],
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  return sales.filter(isSale).reduce((sum, row) => {
-    const qty = Math.abs(num(row.quantity) || 1);
-    return sum + unitCost(row, lookup) * qty;
+  return sales.reduce((sum, row) => {
+    const type = docType(row);
+    if (type === "other") return sum;
+    const amount = unitCost(row, lookup) * qtyAbs(row);
+    return sum + (type === "sale" ? amount : -amount);
   }, 0);
 }
 
@@ -459,9 +473,11 @@ function packagingForSales(
   sales: WbReportRow[],
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  return sales.filter(isSale).reduce((sum, row) => {
-    const qty = Math.abs(num(row.quantity) || 1);
-    return sum + unitPackaging(row, lookup) * qty;
+  return sales.reduce((sum, row) => {
+    const type = docType(row);
+    if (type === "other") return sum;
+    const amount = unitPackaging(row, lookup) * qtyAbs(row);
+    return sum + (type === "sale" ? amount : -amount);
   }, 0);
 }
 
