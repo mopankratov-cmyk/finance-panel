@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { fetchReportRows } from "@/lib/opiu/reportRows";
 import { fetchProductCosts, matchesArticlePrefix } from "@/lib/opiu/loadMonth";
-import { fetchDeliveryCosts } from "@/lib/opiu/fetchGoogleCosts";
 import { buildMarginByBarcode } from "@/lib/opiu/marginByBarcode";
 import { OPIU_BRANDS, resolveOpiuBrand } from "@/lib/opiu/constants";
 import { isValidDateParam } from "@/lib/opiu/weeks";
@@ -51,13 +50,9 @@ export async function GET(request: NextRequest) {
   const brand = resolveOpiuBrand(resolveBrandId(request));
 
   try {
-    const [reportRows, costs, deliveryCosts, adSpendByNmId] = await Promise.all([
+    const [reportRows, costs, adSpendByNmId] = await Promise.all([
       fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
       fetchProductCosts(brand),
-      fetchDeliveryCosts().catch((e) => {
-        console.error("[opiu margin] delivery costs read:", e instanceof Error ? e.message : e);
-        return [];
-      }),
       fetchAdSpendByNmId(brand.cabinetId, dateFrom, dateTo),
     ]);
 
@@ -65,7 +60,7 @@ export async function GET(request: NextRequest) {
       ? reportRows.filter((row) => matchesArticlePrefix(row.sa_name, brand.articlePrefixes))
       : reportRows;
 
-    const { rows, unattributedRows } = buildMarginByBarcode(scopedRows, costs, deliveryCosts, adSpendByNmId);
+    const { rows, unattributedRows } = buildMarginByBarcode(scopedRows, costs, adSpendByNmId);
 
     return NextResponse.json({
       rows,

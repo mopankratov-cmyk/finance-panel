@@ -17,7 +17,6 @@ import {
   unitPackaging,
   type ProductCostRow,
 } from "./metrics";
-import type { DeliveryCostRow } from "./fetchGoogleCosts";
 
 /**
  * «Маржа по артикулам» — та же методология, что и у ОПиУ (docType-агрегация
@@ -77,11 +76,10 @@ export interface MarginByBarcodeResult {
 export function buildMarginByBarcode(
   rows: WbReportRow[],
   costs: ProductCostRow[],
-  deliveryCosts: DeliveryCostRow[],
   adSpendByNmId: Map<number, number>,
   taxPct = 6,
 ): MarginByBarcodeResult {
-  const lookup = buildCostLookup(costs, deliveryCosts);
+  const lookup = buildCostLookup(costs);
   // Не все строки финотчёта несут баркод — «Хранение», «Транзит» и часть
   // штрафов WB привязывает только к nm_id, без конкретного размера. Группируем
   // такие строки по nm_id (ключ "nm:<id>"), а не отбрасываем: иначе реальные

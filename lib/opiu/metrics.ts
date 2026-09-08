@@ -1,6 +1,5 @@
 import type { WbAdStat, WbOrder, WbReportRow } from "@/lib/wb/types";
 import type { MonthWeek } from "./weeks";
-import type { DeliveryCostRow } from "./fetchGoogleCosts";
 
 export interface OpiuOrder extends WbOrder {
   nmId?: number;
@@ -376,20 +375,18 @@ function penaltyLoanRub(row: WbReportRow): number {
     : 0;
 }
 
-function rowGiId(row: WbReportRow): string {
-  return String((row as Record<string, unknown>).gi_id ?? "").trim();
-}
-
-export function buildCostLookup(
-  costs: ProductCostRow[],
-  deliveryCosts: DeliveryCostRow[] = [],
-): {
+/**
+ * Единственный источник себестоимости/подготовки — /costs (product_costs).
+ * Раньше здесь ещё был приоритетный gi_id-источник («Себестоимость поставок»,
+ * гугл-таблица), но он всегда молчал (в wb_report_rows нет столбца gi_id) и
+ * иногда расходился с данными на /costs — по решению владельца полностью
+ * убран, /costs остаётся единственным источником истины.
+ */
+export function buildCostLookup(costs: ProductCostRow[]): {
   byArticle: Map<string, number>;
   byBarcode: Map<string, number>;
-  packagingByArticle?: Map<string, number>;
-  packagingByBarcode?: Map<string, number>;
-  costByGiBarcode?: Map<string, number>;
-  packagingByGiBarcode?: Map<string, number>;
+  packagingByArticle: Map<string, number>;
+  packagingByBarcode: Map<string, number>;
 } {
   const byArticle = new Map<string, number>();
   const byBarcode = new Map<string, number>();
@@ -403,36 +400,14 @@ export function buildCostLookup(
     packagingByArticle.set(article, packaging);
     if (c.wb_barcode) packagingByBarcode.set(c.wb_barcode, packaging);
   }
-  // Приоритетный источник: точное совпадение поставка (gi_id) + баркод —
-  // «Себестоимость поставок WB» (гугл-таблица, ведётся вручную по фактическим
-  // закупочным ценам каждой поставки).
-  const costByGiBarcode = new Map<string, number>();
-  const packagingByGiBarcode = new Map<string, number>();
-  for (const d of deliveryCosts) {
-    const key = `${d.gi_id}|${d.barcode}`;
-    costByGiBarcode.set(key, d.cost_rub);
-    packagingByGiBarcode.set(key, d.packaging_rub);
-  }
-  return {
-    byArticle,
-    byBarcode,
-    packagingByArticle,
-    packagingByBarcode,
-    costByGiBarcode,
-    packagingByGiBarcode,
-  };
+  return { byArticle, byBarcode, packagingByArticle, packagingByBarcode };
 }
 
 export function unitCost(
   row: WbReportRow,
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  const giId = rowGiId(row);
   const barcode = String(row.barcode ?? "");
-  if (giId && barcode) {
-    const v = lookup.costByGiBarcode?.get(`${giId}|${barcode}`);
-    if (v !== undefined) return v;
-  }
   const article = String(row.sa_name ?? "").trim().toUpperCase();
   return lookup.byArticle.get(article) ?? lookup.byBarcode.get(barcode) ?? 0;
 }
@@ -441,14 +416,9 @@ export function unitPackaging(
   row: WbReportRow,
   lookup: ReturnType<typeof buildCostLookup>,
 ): number {
-  const giId = rowGiId(row);
   const barcode = String(row.barcode ?? "");
-  if (giId && barcode) {
-    const v = lookup.packagingByGiBarcode?.get(`${giId}|${barcode}`);
-    if (v !== undefined) return v;
-  }
   const article = String(row.sa_name ?? "").trim().toUpperCase();
-  return lookup.packagingByArticle?.get(article) ?? lookup.packagingByBarcode?.get(barcode) ?? 0;
+  return lookup.packagingByArticle.get(article) ?? lookup.packagingByBarcode.get(barcode) ?? 0;
 }
 
 /**
