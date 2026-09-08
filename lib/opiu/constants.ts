@@ -56,6 +56,12 @@ export function resolveOpiuBrand(brandId: string | null | undefined): OpiuBrand 
   return OPIU_BRANDS.find((b) => b.id === brandId) ?? OPIU_BRANDS[0]!;
 }
 
+/** Сколько суб-брендов (включая сам brand) делят один WB-кабинет по префиксу артикула. */
+export function siblingBrandCount(brand: OpiuBrand): number {
+  if (!brand.articlePrefixes?.length) return 1;
+  return OPIU_BRANDS.filter((b) => b.cabinetId === brand.cabinetId && b.articlePrefixes?.length).length || 1;
+}
+
 /** @deprecated используй resolveOpiuBrand(...).entity — оставлено для кода, ещё не переведённого на мультибренд. */
 export const OPIU_ENTITY = OPIU_BRANDS[0]!.entity;
 /** @deprecated используй resolveOpiuBrand(...).cabinetId — оставлено для кода, ещё не переведённого на мультибренд. */

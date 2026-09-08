@@ -358,7 +358,7 @@ export function storageFeeRub(row: WbReportRow): number {
   return expenseRub(row.storage_fee);
 }
 
-function loanTransferRub(row: WbReportRow): number {
+export function loanTransferRub(row: WbReportRow): number {
   const bt = bonusType(row);
   const isLoan =
     bt.startsWith("перевод на баланс заёмщика для платежа по договору займа") ||
@@ -473,6 +473,8 @@ export function aggregateWeek(
   adStats: WbAdStat[],
   costLookup: ReturnType<typeof buildCostLookup>,
   warehousePackaging: number,
+  sharedLoanTransfer = 0,
+  paidStorage: number | null = null,
 ): WeekRawMetrics {
   const { rangeFrom, rangeTo } = week;
 
@@ -521,11 +523,22 @@ export function aggregateWeek(
     transitDelivery: weekSales.reduce((s, r) => s + transitDeliveryRub(r), 0),
     withdrawNow: weekSales.reduce((s, r) => s + withdrawNowRub(r), 0),
     acceptance: weekSales.reduce((s, r) => s + acceptanceRub(r), 0),
-    loanTransfer: weekSales.reduce((s, r) => s + loanTransferRub(r), 0),
+    // Строки "Перевод на баланс заёмщика" в финотчёте WB не привязаны ни к
+    // артикулу, ни к nm_id (общекабинетный расход) — при разделении общего
+    // кабинета на суб-бренды по префиксу артикула (Norvia/Heaton) их некому
+    // приписать, и они выпадали из отчёта у обоих. sharedLoanTransfer — уже
+    // поделённая на число суб-брендов доля, посчитанная выше по стеку
+    // (loadMonth.ts) по НЕотфильтрованным строкам кабинета.
+    loanTransfer: weekSales.reduce((s, r) => s + loanTransferRub(r), 0) + sharedLoanTransfer,
     penaltyLoan: weekSales.reduce((s, r) => s + penaltyLoanRub(r), 0),
     adsSpend: adsSpendInRange(adStats, rangeFrom, rangeTo),
-    // "Хранение / упаковка склада" = ручной ввод (собственные расходы) + storage_fee из финотчёта.
-    warehousePackaging: warehousePackaging + weekSales.reduce((s, r) => s + storageFeeRub(r), 0),
+    // "Хранение / упаковка склада" = ручной ввод (собственные расходы) +
+    // «Платное хранение» WB (per nmId/vendorCode), если для этой недели уже
+    // есть синканные данные — иначе откат на обезличенный storage_fee из
+    // финотчёта (старое поведение, точное для кабинетов без суб-брендов, но
+    // теряющее хранение целиком там, где кабинет разбит по vendorCode-
+    // префиксу — см. lib/opiu/paidStorage.ts).
+    warehousePackaging: warehousePackaging + (paidStorage ?? weekSales.reduce((s, r) => s + storageFeeRub(r), 0)),
     loyaltyCompensation: weekSales.reduce((s, r) => s + loyaltyCompensationRub(r), 0),
   };
 }

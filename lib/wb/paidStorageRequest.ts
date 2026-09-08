@@ -1,0 +1,77 @@
+// «Платное хранение» — асинхронный отчёт WB (seller-analytics-api), другой
+// протокол, чем nm-report/downloads (lib/wb/syncRecovery.ts): здесь задача
+// создаётся GET-запросом с параметрами в query, а не POST с телом.
+const BASE_URL = "https://seller-analytics-api.wildberries.ru/api/v1/paid_storage";
+
+export interface PaidStorageApiRow {
+  date?: string;
+  logWarehouseCoef?: number;
+  officeId?: number;
+  warehouse?: string;
+  warehouseCoef?: number;
+  giId?: number;
+  chrtId?: number;
+  size?: string;
+  barcode?: string;
+  subject?: string;
+  brand?: string;
+  vendorCode?: string;
+  nmId?: number;
+  volume?: number;
+  calcType?: string;
+  warehousePrice?: number;
+  barcodesCount?: number;
+}
+
+async function wbRequest(url: string, token: string): Promise<Response> {
+  return fetch(url, {
+    headers: { Authorization: token },
+    cache: "no-store",
+  });
+}
+
+/** Создаёт задачу на отчёт за период; WB отвечает taskId, сам отчёт готовится асинхронно. */
+export async function createPaidStorageTask(
+  token: string,
+  dateFrom: string,
+  dateTo: string,
+): Promise<{ ok: true; taskId: string } | { ok: false; status: number; body: string }> {
+  const url = new URL(BASE_URL);
+  url.searchParams.set("dateFrom", dateFrom);
+  url.searchParams.set("dateTo", dateTo);
+  const res = await wbRequest(url.toString(), token);
+  if (!res.ok) return { ok: false, status: res.status, body: (await res.text()).slice(0, 200) };
+  const json = (await res.json()) as { data?: { taskId?: string } };
+  const taskId = json.data?.taskId;
+  if (!taskId) return { ok: false, status: res.status, body: "ответ WB без taskId" };
+  return { ok: true, taskId };
+}
+
+export type PaidStorageTaskStatus = "processing" | "done" | "purged" | "canceled" | "unknown";
+
+export async function checkPaidStorageTaskStatus(
+  token: string,
+  taskId: string,
+): Promise<{ ok: true; status: PaidStorageTaskStatus } | { ok: false; status: number; body: string }> {
+  const res = await wbRequest(`${BASE_URL}/tasks/${taskId}/status`, token);
+  if (!res.ok) return { ok: false, status: res.status, body: (await res.text()).slice(0, 200) };
+  const json = (await res.json()) as { data?: { status?: string } };
+  const raw = String(json.data?.status ?? "").toLowerCase();
+  const status: PaidStorageTaskStatus =
+    raw === "done" ? "done"
+    : raw === "processing" ? "processing"
+    : raw === "purged" ? "purged"
+    : raw === "canceled" ? "canceled"
+    : "unknown";
+  return { ok: true, status };
+}
+
+export async function downloadPaidStorageTask(
+  token: string,
+  taskId: string,
+): Promise<{ ok: true; rows: PaidStorageApiRow[] } | { ok: false; status: number; body: string }> {
+  const res = await wbRequest(`${BASE_URL}/tasks/${taskId}/download`, token);
+  if (!res.ok) return { ok: false, status: res.status, body: (await res.text()).slice(0, 200) };
+  const rows = (await res.json()) as PaidStorageApiRow[];
+  return { ok: true, rows: Array.isArray(rows) ? rows : [] };
+}

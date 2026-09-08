@@ -1,16 +1,19 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveOpiuBrand, type OpiuBrand } from "./constants";
+import { resolveOpiuBrand, siblingBrandCount, type OpiuBrand } from "./constants";
 import { buildOpiuReport, type OpiuReport } from "./buildReport";
 import { loadReadyFunnelFacts } from "./loadFunnelOrders";
 import { periodFromRange, weeksInMonth, type MonthWeek } from "./weeks";
 import {
+  loanTransferRub,
   overlayFunnelOrders,
+  rowDate,
   type OpiuOrder,
   type ProductCostRow,
 } from "./metrics";
 import { fetchReportRows, rowsBySaleDate } from "./reportRows";
+import { fetchPaidStorageByWeek } from "./paidStorage";
 
 function financeDb() {
   const db = getSupabaseAdmin();
@@ -188,6 +191,35 @@ async function fetchWarehouseCosts(
   return map;
 }
 
+/**
+ * "Перевод на баланс заёмщика" в финотчёте WB приходит без артикула и без
+ * nm_id (общекабинетный расход по кредиту/займу, не привязанный к товару).
+ * Когда общий WB-кабинет разбит на суб-бренды по префиксу артикула
+ * (Norvia/Heaton — оба на Retail Family), такие строки не проходят ни под
+ * один префикс и выпадают из отчёта у обоих. По решению владельца — делим
+ * поровну между суб-брендами кабинета. rawRows — НЕотфильтрованные по
+ * префиксу строки всего кабинета (до matchesArticlePrefix).
+ */
+function sharedLoanTransferByWeek(
+  rawRows: WbReportRow[],
+  weeks: MonthWeek[],
+  brand: OpiuBrand,
+): Record<string, number> {
+  const map: Record<string, number> = {};
+  if (!brand.articlePrefixes?.length) return map;
+  const siblings = siblingBrandCount(brand);
+
+  for (const w of weeks) {
+    const total = rawRows.reduce((sum, row) => {
+      const date = rowDate(row);
+      return date >= w.rangeFrom && date <= w.rangeTo ? sum + loanTransferRub(row) : sum;
+    }, 0);
+    map[w.weekStart] = total / siblings;
+  }
+
+  return map;
+}
+
 export interface OpiuLoadMeta {
   salesRows: number;
   ordersCount: number;
@@ -239,6 +271,10 @@ export async function loadOpiuMonth(
   const reportDateRows = reportDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
   const adStats = await fetchAdStats(dateFrom, dateTo, brand, brandNmIdWhitelist(brand, orders, saleDateRows));
 
+  const loanTransferBySaleWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), weeks, brand);
+  const loanTransferByReportWeek = sharedLoanTransferByWeek(reportDateRowsRaw, weeks, brand);
+  const paidStorageByWeek = await fetchPaidStorageByWeek(brand, weeks);
+
   const report = buildOpiuReport(
     weeks,
     rowsBySaleDate(saleDateRows),
@@ -246,6 +282,8 @@ export async function loadOpiuMonth(
     adStats,
     costs,
     warehouseByWeek,
+    loanTransferBySaleWeek,
+    paidStorageByWeek,
   );
   const reportByReportDate = buildOpiuReport(
     weeks,
@@ -254,6 +292,8 @@ export async function loadOpiuMonth(
     adStats,
     costs,
     warehouseByWeek,
+    loanTransferByReportWeek,
+    paidStorageByWeek,
   );
   const reportRowIds = new Set(
     [...saleDateRows, ...reportDateRows]
@@ -294,6 +334,8 @@ export async function loadOpiuSalePeriod(
   ]);
   const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
   const adStats = await fetchAdStats(dateFrom, dateTo, brand, brandNmIdWhitelist(brand, orders, saleDateRows));
+  const loanTransferByWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), [period], brand);
+  const paidStorageByWeek = await fetchPaidStorageByWeek(brand, [period]);
 
   const report = buildOpiuReport(
     [period],
@@ -302,6 +344,8 @@ export async function loadOpiuSalePeriod(
     adStats,
     costs,
     {},
+    loanTransferByWeek,
+    paidStorageByWeek,
   );
 
   return {

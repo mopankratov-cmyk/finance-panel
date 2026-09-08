@@ -40,6 +40,10 @@
       "schedule": "20 * * * *"
     },
     {
+      "path": "/api/sync/paid-storage",
+      "schedule": "30 * * * *"
+    },
+    {
       "path": "/api/sync/ozon-adverts",
       "schedule": "25 * * * *"
     },
