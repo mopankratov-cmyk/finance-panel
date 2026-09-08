@@ -66,14 +66,20 @@ function VariantImage({ url, label }: { url: string; label: string }) {
     return (
       <span
         title={url ? "Файл по этому адресу не открывается" : "У варианта нет ссылки"}
-        className="grid h-28 w-full place-items-center rounded-md bg-slate-100 px-1 text-center text-[9px] font-semibold leading-3 text-slate-500"
+        className="grid aspect-[3/4] w-full place-items-center rounded-md bg-slate-100 px-1 text-center text-[9px] font-semibold leading-3 text-slate-500"
       >
         {label}
         <span className="mt-1 font-normal text-slate-400">фото не открылось</span>
       </span>
     );
   }
-  return <img src={url} alt="" onError={() => setBroken(true)} className="h-28 w-full rounded-md object-cover" />;
+  /* Обложка показывается ЦЕЛИКОМ, без обрезки, и в пропорции карточки WB (3:4).
+   Прежние `h-28 object-cover` и `aspect-[4/3]` срезали верх вертикального
+   фото — то есть ровно лицо и композицию. На экране, где человек выбирает
+   между обложками, это отнимает предмет выбора: сравнивались куртки по
+   подолу. `object-contain` показывает кадр полностью даже когда пропорция
+   у варианта своя. */
+  return <img src={url} alt="" onError={() => setBroken(true)} className="aspect-[3/4] w-full rounded-md bg-slate-50 object-contain" />;
 }
 
 export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Props) {
@@ -147,7 +153,7 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
         <h3 className="mb-2 text-xs font-bold text-slate-700">Тестирование</h3>
         <div className="scroll-x rounded-xl border border-slate-200 bg-white">
           <table className="min-w-[760px] w-full border-collapse text-[10px]">
-            <thead><tr><th className="sticky left-0 z-10 min-w-[190px] border-b border-r border-slate-200 bg-slate-50" />{test.variants.map((variant) => <th key={variant.id} className="min-w-[150px] border-b border-slate-200 p-2"><div className={`relative rounded-lg border p-2 ${variant.id === test.currentVariantId ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : variant.isWinner ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : "border-slate-200 bg-slate-50"}`}>{variant.id === test.currentVariantId ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-2 py-0.5 text-[8px] text-white">сейчас</span> : null}{variant.isWinner ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-2 py-0.5 text-[8px] text-white">победитель</span> : null}{test.testType === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="h-28 w-full rounded-md object-cover" /> : <VariantImage url={variant.imageUrl} label={variant.label} />}<div className="mt-1 truncate text-[10px] font-semibold text-slate-700">{variant.label}</div>{variant.isBaseline ? <div className="text-[8px] text-violet-500">база</div> : null}{test.status === "paused" && !variant.isWinner ? <button type="button" onClick={() => trigger("winner", variant)} disabled={busy} className="mt-2 min-h-11 rounded-md border border-emerald-200 px-2 text-[9px] font-semibold text-emerald-700 disabled:opacity-50">Выбрать победителем</button> : null}</div></th>)}</tr></thead>
+            <thead><tr><th className="sticky left-0 z-10 min-w-[190px] border-b border-r border-slate-200 bg-slate-50" />{test.variants.map((variant) => <th key={variant.id} className="min-w-[150px] border-b border-slate-200 p-2"><div className={`relative rounded-lg border p-2 ${variant.id === test.currentVariantId ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : variant.isWinner ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : "border-slate-200 bg-slate-50"}`}>{variant.id === test.currentVariantId ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-2 py-0.5 text-[8px] text-white">сейчас</span> : null}{variant.isWinner ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-2 py-0.5 text-[8px] text-white">победитель</span> : null}{test.testType === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="aspect-[3/4] w-full rounded-md bg-slate-50 object-contain" /> : <VariantImage url={variant.imageUrl} label={variant.label} />}<div className="mt-1 truncate text-[10px] font-semibold text-slate-700">{variant.label}</div>{variant.isBaseline ? <div className="text-[8px] text-violet-500">база</div> : null}{test.status === "paused" && !variant.isWinner ? <button type="button" onClick={() => trigger("winner", variant)} disabled={busy} className="mt-2 min-h-11 rounded-md border border-emerald-200 px-2 text-[9px] font-semibold text-emerald-700 disabled:opacity-50">Выбрать победителем</button> : null}</div></th>)}</tr></thead>
             <tbody>{metricRows(test).map((row) => <tr key={row.label}><td className="sticky left-0 z-10 border-r border-t border-slate-200 bg-white px-3 py-2 font-medium text-slate-500">{row.label}</td>{test.variants.map((variant) => <td key={variant.id} className="border-t border-slate-100 px-3 py-2 text-center tabular-nums text-slate-700">{row.value(variant)}</td>)}</tr>)}</tbody>
           </table>
         </div>
