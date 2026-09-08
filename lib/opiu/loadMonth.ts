@@ -137,12 +137,21 @@ async function fetchAdStats(
   return [{ days }];
 }
 
+/**
+ * Себестоимость ищем по ВСЕЙ таблице product_costs, без фильтра по entity
+ * бренда: артикул — уникальный ключ на весь каталог (проверено — ни одного
+ * пересечения между юрлицами), а владельца товара и кабинет, через который
+ * он продаётся, часто разные (тот же принцип, что и в списании FBS —
+ * lib/warehouse/fbsSales.ts: "владельца определяет ТОВАР, а не кабинет").
+ * Например, TIM TIN/ООО РИО продаётся через кабинет ИП Панкратова — раньше
+ * фильтр по entity="ИП ПАНКРАТОВ" такие товары терял, и себестоимость в
+ * ОПиУ занижалась на весь их объём продаж.
+ */
 export async function fetchProductCosts(brand: OpiuBrand): Promise<ProductCostRow[]> {
   const client = financeDb();
   const { data, error } = await client
     .from("product_costs")
-    .select("article, wb_barcode, cost_rub, warehouse_expenses")
-    .eq("entity", brand.entity);
+    .select("article, wb_barcode, cost_rub, warehouse_expenses");
 
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as ProductCostRow[];
