@@ -27,7 +27,14 @@ interface PaidStorageJobState extends Record<string, unknown> {
   periodStart?: string;
   periodEnd?: string;
   createdAt?: string;
-  coveredThrough?: string; // ISO-дата последнего успешно загруженного дня
+  /**
+   * Бэкфилл идёт от СЕГОДНЯ НАЗАД, а не от истории вперёд: пользователю
+   * важна прежде всего текущая/прошлая неделя в ОПиУ, а не глубина
+   * истории. frontier — самая ранняя уже загруженная дата; следующее окно
+   * берётся сразу перед ней. Без этого первая неделя после мёржа PR ждала
+   * бы своей очереди несколько суток, пока догоняется 180-дневная история.
+   */
+  frontier?: string;
   historyStart?: string;
   lastRunAt?: string;
 }
@@ -184,17 +191,18 @@ export async function GET(request: NextRequest) {
         }
 
         total += rows.length;
-        const coveredThrough = state.periodEnd ?? state.coveredThrough ?? maxAllowedDate;
+        const frontier = state.periodStart ?? state.frontier ?? maxAllowedDate;
+        const historyStart = state.historyStart ?? addDays(today, -HISTORY_DEPTH_DAYS);
         await writeWbSyncState(db, cabinetId, JOB, {
-          cursor: coveredThrough,
-          status: coveredThrough >= maxAllowedDate ? "caught_up" : "backfill",
+          cursor: frontier,
+          status: frontier <= historyStart ? "caught_up" : "backfill",
           attempts: 0,
           lastError: null,
           state: {
             ...state,
             taskId: undefined,
-            coveredThrough,
-            historyStart: state.historyStart ?? state.periodStart,
+            frontier,
+            historyStart,
             lastRunAt: new Date().toISOString(),
           },
         });
@@ -202,13 +210,14 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Нет активной задачи — определяем следующее окно и создаём задачу.
-      const historyStart = state.historyStart ?? state.coveredThrough ?? addDays(today, -HISTORY_DEPTH_DAYS);
-      const periodStart = state.coveredThrough ? addDays(state.coveredThrough, 1) : historyStart;
-      if (periodStart > maxAllowedDate) {
+      // Нет активной задачи — окно берём НАЗАД от frontier (при первом
+      // запуске — от maxAllowedDate, т.е. с самых свежих дней).
+      const historyStart = state.historyStart ?? addDays(today, -HISTORY_DEPTH_DAYS);
+      const periodEnd = state.frontier ? addDays(state.frontier, -1) : maxAllowedDate;
+      if (periodEnd < historyStart) {
         progress.push({ cabinet: target.name, status: "caught_up" });
         await writeWbSyncState(db, cabinetId, JOB, {
-          cursor: state.coveredThrough ?? null,
+          cursor: state.frontier ?? null,
           status: "caught_up",
           attempts: 0,
           lastError: null,
@@ -216,8 +225,8 @@ export async function GET(request: NextRequest) {
         });
         continue;
       }
-      const windowEnd = addDays(periodStart, WINDOW_DAYS - 1);
-      const periodEnd = windowEnd > maxAllowedDate ? maxAllowedDate : windowEnd;
+      const windowStart = addDays(periodEnd, -(WINDOW_DAYS - 1));
+      const periodStart = windowStart < historyStart ? historyStart : windowStart;
 
       const created = await createPaidStorageTask(target.statsToken, periodStart, periodEnd);
       if (!created.ok) {
@@ -228,7 +237,7 @@ export async function GET(request: NextRequest) {
         } else {
           errors.push(`${target.name}: создание задачи WB ${created.status}: ${created.body}`);
           await writeWbSyncState(db, cabinetId, JOB, {
-            cursor: state.coveredThrough ?? null,
+            cursor: state.frontier ?? null,
             status: "error",
             attempts: (saved?.attempts ?? 0) + 1,
             lastError: created.body,
@@ -239,7 +248,7 @@ export async function GET(request: NextRequest) {
       }
 
       await writeWbSyncState(db, cabinetId, JOB, {
-        cursor: state.coveredThrough ?? null,
+        cursor: state.frontier ?? null,
         status: "backfill",
         attempts: 0,
         lastError: null,
