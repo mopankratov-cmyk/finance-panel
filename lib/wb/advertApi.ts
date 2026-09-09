@@ -203,7 +203,18 @@ export function getAdvertBalance(token: string) {
  */
 export interface AdvertSpendHistoryItem {
   advertId?: number;
+  /**
+   * Имя поля с названием кампании ("Кампания" в экспорте кабинета) не
+   * подтверждено вживую (нет сетевого доступа к WB API из окружения
+   * разработки) — первый прогон на проде вернул campaignName всегда null.
+   * Держим несколько кандидатов, сбор значения — в route.ts (первое
+   * непустое). raw хранится в БД отдельным jsonb, чтобы разобраться по
+   * факту первого реального ответа без нового релиза.
+   */
   campaignName?: string;
+  campName?: string;
+  name?: string;
+  advertName?: string;
   advertType?: number;
   paymentType?: string;
   updSum?: number;

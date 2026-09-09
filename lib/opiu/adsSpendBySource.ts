@@ -5,32 +5,44 @@ import type { OpiuBrand } from "./constants";
 
 interface SpendHistoryRow {
   date: string;
-  advert_id: number;
   payment_type: string;
   amount: number;
 }
 
-interface CampaignRow {
-  advert_id: number;
+interface FullstatsRow {
+  date: string;
   nm_id: number;
+  spent: number | null;
 }
 
 export interface AdsSpendBySource {
   /** С баланса (реальные деньги продавца) — идёт в "ВБ продвижение" и вычитается из валовой прибыли. */
   balance: number;
-  /** Промо-бонусами WB — идёт в отдельную строку "Бонусы", в валовую прибыль НЕ входит. */
+  /** Промо-бонусами/кэшбэком WB — идёт в отдельную строку "Бонусы", в валовую прибыль НЕ входит. */
   bonus: number;
 }
 
 /**
  * Расход на рекламу по источнику списания (баланс/бонусы) — из "Истории
- * затрат" WB (adv/v1/upd), которая, в отличие от wb_advert_nm_daily
- * (fullstats), различает источник денег, но не делит списание по nmId
- * внутри кампании — только по кампании целиком.
+ * затрат" WB (adv/v1/upd), которая различает источник денег, но списывается
+ * ЦЕЛОЙ кампанией — не по nmId. На практике многие кампании этого кабинета
+ * (особенно автокампании "Единая Ставка") продвигают товары НЕСКОЛЬКИХ
+ * суб-брендов сразу (Norvia+Heaton на одном Retail Family) — атрибуция
+ * "кампания → один суб-бренд" (пробовали через wb_advert_nm_campaign_daily)
+ * на реальных данных удваивала сумму (кампания засчитывалась в оба
+ * суб-бренда целиком).
+ *
+ * Вместо точной атрибуции по кампании — делим общую сумму кабинета
+ * ПРОПОРЦИОНАЛЬНО доле суб-бренда в fullstats-расходе (wb_advert_nm_daily),
+ * который, в отличие от "Истории затрат", уже корректно разложен по nmId.
+ * Это оценка, а не точная сумма, но она несмещённая (доля бонусов/баланса
+ * в общем расходе кампании — общекабинетная, для конкретного суб-бренда
+ * WB её не публикует).
  *
  * Возвращает null, если для кабинета в этом диапазоне дат вообще нет
- * синканных строк — вызывающий код должен в этом случае откатиться на
- * общий adsSpend из fullstats (см. aggregateWeek), а не показать 0.
+ * синканных строк "Истории затрат" — вызывающий код должен в этом случае
+ * откатиться на общий adsSpend из fullstats (см. aggregateWeek), а не
+ * показать 0.
  */
 export async function fetchAdsSpendBySourceByWeek(
   brand: OpiuBrand,
@@ -44,11 +56,11 @@ export async function fetchAdsSpendBySourceByWeek(
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
 
-  let rows: SpendHistoryRow[];
+  let historyRows: SpendHistoryRow[];
   try {
-    rows = await loadAllSupabasePages<SpendHistoryRow>((from, to) => client
+    historyRows = await loadAllSupabasePages<SpendHistoryRow>((from, to) => client
       .from("wb_advert_spend_history")
-      .select("date, advert_id, payment_type, amount")
+      .select("date, payment_type, amount")
       .eq("cabinet_id", brand.cabinetId)
       .gte("date", dateFrom)
       .lte("date", dateTo)
@@ -60,50 +72,62 @@ export async function fetchAdsSpendBySourceByWeek(
     return null;
   }
 
-  if (!rows.length) return null;
+  if (!historyRows.length) return null;
 
-  let allowedAdvertIds: Set<number> | undefined;
+  // Доля суб-бренда по неделям — по умолчанию 1 (весь кабинет = сам бренд,
+  // для Панкратова/Кучеренко, у которых нет articlePrefixes).
+  let shareByWeek: Record<string, number> | null = null;
   if (nmIdWhitelist) {
-    // "История затрат" списывается ЦЕЛОЙ кампанией, не по nmId — если
-    // кампания продвигает товары нескольких суб-брендов сразу (общая РК на
-    // несколько артикулов), её расход попадёт в оба суб-бренда сразу. Для
-    // типичных одноартикульных кампаний этого кабинета (см. названия РК —
-    // каждая ведёт один товар) это не проблема, но стоит иметь в виду.
-    let campaignRows: CampaignRow[];
+    let fullstatsRows: FullstatsRow[];
     try {
-      campaignRows = await loadAllSupabasePages<CampaignRow>((from, to) => client
-        .from("wb_advert_nm_campaign_daily")
-        .select("advert_id, nm_id")
+      fullstatsRows = await loadAllSupabasePages<FullstatsRow>((from, to) => client
+        .from("wb_advert_nm_daily")
+        .select("date, nm_id, spent")
         .eq("cabinet_id", brand.cabinetId)
         .gte("date", dateFrom)
         .lte("date", dateTo)
-        .range(from, to), { maxPages: 1_000, label: "ОПиУ: кампании суб-бренда" });
+        .range(from, to), { maxPages: 1_000, label: "ОПиУ: доля суб-бренда в рекламе" });
     } catch (e) {
-      console.error("[opiu] campaign nm read:", e instanceof Error ? e.message : e);
+      console.error("[opiu] fullstats share read:", e instanceof Error ? e.message : e);
       return null;
     }
-    allowedAdvertIds = new Set(
-      campaignRows
-        .filter((r) => nmIdWhitelist.has(Number(r.nm_id)))
-        .map((r) => Number(r.advert_id)),
-    );
+
+    const totalByWeek = new Map<string, number>();
+    const brandByWeek = new Map<string, number>();
+    for (const row of fullstatsRows) {
+      const week = weeks.find((w) => row.date >= w.rangeFrom && row.date <= w.rangeTo);
+      if (!week) continue;
+      const spent = Number(row.spent ?? 0);
+      totalByWeek.set(week.weekStart, (totalByWeek.get(week.weekStart) ?? 0) + spent);
+      if (nmIdWhitelist.has(Number(row.nm_id))) {
+        brandByWeek.set(week.weekStart, (brandByWeek.get(week.weekStart) ?? 0) + spent);
+      }
+    }
+
+    shareByWeek = {};
+    for (const w of weeks) {
+      const total = totalByWeek.get(w.weekStart) ?? 0;
+      shareByWeek[w.weekStart] = total > 0 ? (brandByWeek.get(w.weekStart) ?? 0) / total : 0;
+    }
   }
 
   const map: Record<string, AdsSpendBySource> = {};
   for (const w of weeks) map[w.weekStart] = { balance: 0, bonus: 0 };
 
-  for (const row of rows) {
-    if (allowedAdvertIds && !allowedAdvertIds.has(Number(row.advert_id))) continue;
+  for (const row of historyRows) {
     const week = weeks.find((w) => row.date >= w.rangeFrom && row.date <= w.rangeTo);
     if (!week) continue;
+    const share = shareByWeek ? shareByWeek[week.weekStart]! : 1;
+    if (share === 0) continue;
     const bucket = map[week.weekStart]!;
     // WB называет источник по-разному в разных кабинетах/версиях API:
     // "Промо бонусы" в одном, "Кэшбэк" в другом — оба не реальные деньги
     // продавца, оба — "бонусы". "Баланс" и "Счёт" — реальные деньги.
     const source = row.payment_type.toLowerCase();
     const isBonus = source.includes("бонус") || source.includes("кэшбэк") || source.includes("кешбэк");
-    if (isBonus) bucket.bonus += Number(row.amount ?? 0);
-    else bucket.balance += Number(row.amount ?? 0);
+    const amount = Number(row.amount ?? 0) * share;
+    if (isBonus) bucket.bonus += amount;
+    else bucket.balance += amount;
   }
 
   return map;
