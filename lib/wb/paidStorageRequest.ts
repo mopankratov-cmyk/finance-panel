@@ -23,11 +23,25 @@ export interface PaidStorageApiRow {
   barcodesCount?: number;
 }
 
+// Без таймаута зависший fetch к WB съедал весь бюджет функции молча — не
+// давая коду вообще дойти до проверки SOFT_BUDGET_MS (та смотрит на часы
+// ТОЛЬКО между запросами, не может прервать уже идущий запрос). Реальный
+// 504 (FUNCTION_INVOCATION_TIMEOUT) на проде вероятнее всего был именно
+// таким зависанием одного запроса, а не медленным поллингом в целом.
+const REQUEST_TIMEOUT_MS = 20_000;
+
 async function wbRequest(url: string, token: string): Promise<Response> {
-  return fetch(url, {
-    headers: { Authorization: token },
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      headers: { Authorization: token },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Создаёт задачу на отчёт за период; WB отвечает taskId, сам отчёт готовится асинхронно. */

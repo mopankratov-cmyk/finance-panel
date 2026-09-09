@@ -23,8 +23,18 @@ const WINDOW_DAYS = 7;
 const HISTORY_DEPTH_DAYS = 180;
 // Пауза между проверками статуса ВНУТРИ одного вызова.
 const POLL_INTERVAL_MS = 8_000;
-// Запас на upsert + запись состояния — не гнать поллинг до самого maxDuration.
+// Запас на upsert + запись состояния — не гнать поллинг до самого дедлайна.
 const RESERVE_MS = 12_000;
+/**
+ * Реальный прогон дважды падал 504 (FUNCTION_INVOCATION_TIMEOUT) при
+ * maxDuration=60 и внутреннем дедлайне ровно 60с от старта — часы Vercel
+ * (с холодным стартом, сетевыми задержками до этой точки) явно тикают
+ * раньше и жёстче, чем наш собственный startedAt внутри обработчика.
+ * Останавливаем поллинг с большим запасом (35с бюджета вместо 60), а не
+ * впритык — лучше нормально выйти с "pending" и продолжить в следующем
+ * вызове, чем поймать жёсткий обрыв Vercel без единой записи состояния.
+ */
+const SOFT_BUDGET_MS = 35_000;
 
 interface PaidStorageJobState extends Record<string, unknown> {
   taskId?: string;
@@ -277,7 +287,7 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const deadline = startedAt.getTime() + (maxDuration * 1000);
+  const deadline = startedAt.getTime() + SOFT_BUDGET_MS;
   const allTargets = await getWbSyncTargets();
   const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
   const targets = onlyCabinet ? allTargets.filter((t) => t.cabinetId === onlyCabinet) : allTargets;
