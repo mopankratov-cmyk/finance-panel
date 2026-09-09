@@ -189,15 +189,18 @@ test("своё фото можно загрузить и убрать", () => {
   const route = read("../app/api/content/upload/route.ts");
   assert.match(route, /hasCabinetAccess\(cabinetId\)/, "чужой кабинет");
   assert.match(route, /if \(!isPanelOwned\(target\)\)/, "чужие файлы удалять нельзя");
-  // Две папки — две проверки принадлежности, потому что устроены они по-разному.
-  // Загрузка с экрана несёт кабинет в пути; обложка лежит по covers/<артикул>/
-  // и кабинета в пути не имеет — для неё «твой ли файл» это «твой ли товар».
+  // Две проверки принадлежности, потому что папки устроены по-разному.
+  // Загрузка с экрана несёт кабинет в пути; всё прочее в бакете кабинета в пути
+  // не имеет — для него «твой ли файл» это «твой ли товар».
   assert.match(route, /target\.includes\(`\/\$\{PREFIX\}\/\$\{cabinetId\}\/`\)/, "по чужой ссылке файл соседа не снести");
-  assert.match(route, /from\("wb_cards"\)[\s\S]{0,120}eq\("article", article\)/, "обложку чужого товара удалить нельзя");
-  // Папки завода (gen/, prepared/) остаются нетронутыми: у них свой репозиторий
-  // и свои ссылки на эти файлы, снести их отсюда значило бы сломать соседа молча.
+  assert.match(route, /from\("wb_cards"\)[\s\S]{0,120}eq\("article", article\)/, "файл чужого товара удалить нельзя");
+  assert.match(route, /не заполнен артикул/, "владение нечем подтвердить — значит нельзя, а не «можно»");
+  // Граница удаления проходит по ХРАНИЛИЩУ: наш бакет — можно, WB и
+  // yandex-disk: — нет. Кадр карточки живёт в WB и вернётся при обходе,
+  // поэтому корзина на нём обещала бы то, чего не делает.
   const usability = read("../lib/content/assetUsability.ts");
-  assert.match(usability, /isPanelUpload\(url\) \|\| isPanelCover\(url\)/, "владение панели — ровно две папки");
+  assert.match(usability, /object\/public\/\$\{PANEL_UPLOAD_BUCKET\}\//, "владение панели — наш бакет целиком");
+  assert.match(usability, /export function isFactoryFolder/, "папки завода различимы: о них предупреждают отдельно");
   // Осиротевший файл в бакете безвреден, битая ссылка в библиотеке — нет.
   assert.ok(route.indexOf('from("content_assets").delete()') < route.indexOf("storage.from(BUCKET).remove([path])", route.indexOf('from("content_assets").delete()')));
 });

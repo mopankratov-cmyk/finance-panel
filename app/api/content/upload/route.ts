@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
-import { isPanelCover, isPanelOwned, isPanelUpload, PANEL_UPLOAD_BUCKET, PANEL_UPLOAD_PREFIX } from "@/lib/content/assetUsability";
+import { isPanelOwned, isPanelUpload, PANEL_UPLOAD_BUCKET, PANEL_UPLOAD_PREFIX } from "@/lib/content/assetUsability";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -105,7 +105,7 @@ export async function DELETE(request: NextRequest) {
   if (!cabinetId) return fail("Не указан кабинет", 400);
   if (!(await hasCabinetAccess(cabinetId))) return fail("Нет доступа к кабинету", 403);
   if (!isPanelOwned(target)) {
-    return fail("Удалять можно только то, что загрузили сюда сами: кадры карточки живут в WB, съёмки — в каталоге завода", 400);
+    return fail("Удалить можно только файл из нашего хранилища: кадр карточки живёт в WB и вернётся при ближайшем обходе, а запись «yandex-disk:» — это путь, а не файл", 400);
   }
 
   const db = getSupabaseAdmin();
@@ -116,20 +116,24 @@ export async function DELETE(request: NextRequest) {
    * по-разному.
    *
    * Загрузки с экрана несут кабинет прямо в пути — сверяем путь.
-   * Обложки лежат по `covers/<артикул>/…`, кабинета в пути нет вовсе: их
-   * заливали пакетом по товарам, а не из кабинета. Для них вопрос «твой ли
-   * файл» — это вопрос «твой ли товар», и отвечает на него карточка: артикул
-   * должен встречаться среди карточек ЭТОГО кабинета. Иначе сосед по ссылке
-   * снёс бы обложку чужого товара.
+   *
+   * Всё остальное в нашем бакете (`covers/`, `shoots/`, папки завода) кабинета
+   * в пути не имеет: эти файлы клали пакетом по товарам, а не из кабинета. Для
+   * них вопрос «твой ли файл» — это вопрос «твой ли товар», и отвечает на него
+   * карточка: артикул строки каталога должен встречаться среди карточек ЭТОГО
+   * кабинета. Иначе сосед по прямой ссылке снёс бы файл чужого товара.
+   *
+   * Строка без артикула не проходит проверку намеренно: подтвердить владение
+   * нечем, а «не смог проверить» не то же самое, что «можно».
    */
   if (isPanelUpload(target)) {
     if (!target.includes(`/${PREFIX}/${cabinetId}/`)) return fail("Файл принадлежит другому кабинету", 403);
-  } else if (isPanelCover(target)) {
+  } else {
     const asset = await db.from("content_assets").select("article").eq("url", target).limit(1).maybeSingle();
     const article = String(asset.data?.article ?? "").trim();
-    if (!article) return fail("Файла нет в каталоге — удалять нечего", 404);
+    if (!article) return fail("У файла не заполнен артикул — подтвердить, что он ваш, нечем", 403);
     const card = await db.from("wb_cards").select("nm_id").eq("cabinet_id", cabinetId).eq("article", article).limit(1).maybeSingle();
-    if (!card.data) return fail("Товар этой обложки не заведён в выбранном кабинете", 403);
+    if (!card.data) return fail("Товар этого файла не заведён в выбранном кабинете", 403);
   }
 
   const marker = `/storage/v1/object/public/${BUCKET}/`;

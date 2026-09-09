@@ -1,12 +1,12 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- превью каталога: адреса приходят из WB-баскета и нашего публичного бакета */
 
-import { Images, Loader2, Search, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, Images, Loader2, Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
-import { isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
-import { displayableItems, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
+import { isFactoryFolder, isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
+import { displayableItems, itemsForTestType, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
 import { plural } from "@/lib/warehouse/plural";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -112,6 +112,9 @@ function ProductCard({
   onChanged: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // Воронка свёрнута по умолчанию: за ней приходят реже, а места она занимает
+  // втрое больше главных.
+  const [funnelOpen, setFunnelOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -148,7 +151,13 @@ function ProductCard({
 
   const remove = async (item: ContentItem) => {
     // Удаление необратимо: файл уходит и из каталога, и из хранилища.
-    if (!window.confirm(`Убрать «${item.label}» из библиотеки? Файл удалится из хранилища насовсем.`)) return;
+    // У папок завода есть сосед — контент-завод ссылается на эти файлы из
+    // своего репозитория. Молча стереть их значило бы сломать его без следа,
+    // поэтому предупреждение стоит в самом моменте удаления, а не в доках.
+    const warning = isFactoryFolder(item.url)
+      ? `Убрать «${item.label}»?\n\nЭто файл контент-завода: на него ссылается соседний проект, и там он пропадёт. Удалить насовсем?`
+      : `Убрать «${item.label}» из библиотеки? Файл удалится из хранилища насовсем.`;
+    if (!window.confirm(warning)) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -174,7 +183,26 @@ function ProductCard({
     [shown, filters],
   );
 
-  const tiles = expanded ? visible : visible.slice(0, PREVIEW_TILES);
+  /**
+   * Главные фото отдельно от фотоворонки.
+   *
+   * CTR решает обложка и только она: остальные кадры человек видит уже ПОСЛЕ
+   * клика по карточке, то есть они влияют на конверсию в корзину, а не на
+   * кликабельность в выдаче. В одной куче кандидат в обложку тонул среди
+   * тридцати кадров воронки — а искать здесь приходят именно кандидата.
+   *
+   * Граница та же, что у выбора вариантов CTR-теста (`itemsForTestType`):
+   * главные — обложка и всё, что кадром карточки НЕ является; воронка — кадры
+   * карточки со второго и далее.
+   */
+  const main = useMemo(() => itemsForTestType(visible, "ctr"), [visible]);
+  const funnel = useMemo(() => {
+    const keys = new Set(main.map((item) => item.key));
+    return visible.filter((item) => !keys.has(item.key));
+  }, [visible, main]);
+  const mainPublishable = main.filter((item) => item.usability === "public").length;
+
+  const tiles = expanded ? main : main.slice(0, PREVIEW_TILES);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3">
@@ -183,7 +211,7 @@ function ProductCard({
         <span className="text-[10px] text-slate-400">nm {product.nmId}</span>
         {product.name ? <span className="min-w-0 truncate text-[11px] text-slate-500">{product.name}</span> : null}
         <span className="ml-auto text-[10px] text-slate-400">
-          {product.publishableCount} из {shown.length} годны в тест
+          главных {mainPublishable} из {main.length} годны в тест
           {hiddenOnDisk > 0 ? ` · скрыто ${hiddenOnDisk}` : ""}
         </span>
         <button
@@ -223,17 +251,46 @@ function ProductCard({
         </p>
       ) : (
         <>
-          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12">
-            {tiles.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} />)}
-          </div>
-          {visible.length > PREVIEW_TILES ? (
-            <button
-              type="button"
-              onClick={() => setExpanded((value) => !value)}
-              className="mt-2 text-[11px] font-medium text-violet-600 hover:text-violet-700"
-            >
-              {expanded ? "свернуть" : `показать все ${visible.length}`}
-            </button>
+          <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Главные фото · {main.length}
+            <span className="ml-1.5 font-normal normal-case tracking-normal text-slate-400">обложка и кандидаты в неё — то, что решает CTR</span>
+          </p>
+          {main.length === 0 ? (
+            <p className="mt-1 text-[11px] text-slate-400">Кандидатов в обложку нет — добавьте фото кнопкой выше.</p>
+          ) : (
+            <>
+              <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12">
+                {tiles.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} />)}
+              </div>
+              {main.length > PREVIEW_TILES ? (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((value) => !value)}
+                  className="mt-2 text-[11px] font-medium text-violet-600 hover:text-violet-700"
+                >
+                  {expanded ? "свернуть" : `показать все ${main.length}`}
+                </button>
+              ) : null}
+            </>
+          )}
+
+          {funnel.length > 0 ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setFunnelOpen((value) => !value)}
+                className="mt-3 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600"
+              >
+                {funnelOpen ? <ChevronDown className="h-3 w-3" aria-hidden="true" /> : <ChevronRight className="h-3 w-3" aria-hidden="true" />}
+                Фотоворонка · {funnel.length}
+                <span className="font-normal normal-case tracking-normal">кадры карточки со второго — они про конверсию, не про CTR</span>
+              </button>
+              {funnelOpen ? (
+                <div className="mt-1.5 grid grid-cols-3 gap-2 opacity-80 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12">
+                  {funnel.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} />)}
+                </div>
+              ) : null}
+            </>
           ) : null}
         </>
       )}
