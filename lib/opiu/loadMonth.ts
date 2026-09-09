@@ -276,7 +276,7 @@ export async function loadOpiuMonth(
   const loanTransferBySaleWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), weeks, brand);
   const loanTransferByReportWeek = sharedLoanTransferByWeek(reportDateRowsRaw, weeks, brand);
   const paidStorageByWeek = await fetchPaidStorageByWeek(brand, weeks);
-  const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, weeks, nmIdWhitelist);
+  const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, weeks);
 
   const report = buildOpiuReport(
     weeks,
@@ -342,7 +342,7 @@ export async function loadOpiuSalePeriod(
   const adStats = await fetchAdStats(dateFrom, dateTo, brand, nmIdWhitelist);
   const loanTransferByWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), [period], brand);
   const paidStorageByWeek = await fetchPaidStorageByWeek(brand, [period]);
-  const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, [period], nmIdWhitelist);
+  const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, [period]);
 
   const report = buildOpiuReport(
     [period],
