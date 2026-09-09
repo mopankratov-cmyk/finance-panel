@@ -260,7 +260,7 @@ export function OpiuPage() {
   };
 
   const currentBrandLabel = OPIU_BRANDS.find((b) => b.id === brand)?.label ?? brand;
-  const report = tab === "report_date" ? data?.reportByReportDate : rangeData?.report;
+  const report = tab === "report_date" ? data?.report : rangeData?.report;
   const isRangeTab = tab === "sale_date";
   const weekCount = report?.weeks.length ?? 4;
   const colCount = isRangeTab ? 2 : weekCount + 2;
@@ -386,7 +386,7 @@ export function OpiuPage() {
         {(
           [
             { id: "sale_date", label: "Свод по произвольной дате" },
-            { id: "report_date", label: "Свод по дате отчёта" },
+            { id: "report_date", label: "Свод по дате продажи" },
           ] as { id: OpiuTab; label: string }[]
         ).map((t) => (
           <button
@@ -408,7 +408,7 @@ export function OpiuPage() {
         <OpiuTableSkeleton cols={colCount} />
       ) : tab === "report_date" && !report ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-800">
-          Данные по дате отчёта пока недоступны: источник не синхронизирован
+          Данные по дате продажи пока недоступны: источник не синхронизирован
         </div>
       ) : report ? (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">

@@ -149,8 +149,16 @@ test("finance navigation and report-date UI are wired without dishonest fallback
 
   assert.match(tabs, /\{ href: "\/opiu\/margin", label: "Маржа по артикулам" \}/);
   assert.doesNotMatch(unitPage, /FinanceTabs/);
+  // По решению владельца вкладку "report_date" развернули на дату продажи
+  // целиком (не тихий fallback через `??` — источник данных заменён явно,
+  // а сама вкладка переименована в "Свод по дате продажи", см. ниже) —
+  // старый "нечестный" паттерн `reportByReportDate ?? data?.report` (когда
+  // подмена происходит молча, а подпись экрана остаётся прежней) по-прежнему
+  // запрещён.
   assert.doesNotMatch(opiuPage, /reportByReportDate\s*\?\?\s*data\?\.report/);
-  assert.match(opiuPage, /Данные по дате отчёта пока недоступны: источник не синхронизирован/);
+  assert.match(opiuPage, /tab === "report_date" \? data\?\.report : rangeData\?\.report/);
+  assert.match(opiuPage, /\{ id: "report_date", label: "Свод по дате продажи" \}/);
+  assert.match(opiuPage, /Данные по дате продажи пока недоступны: источник не синхронизирован/);
 });
 
 test("safe rescue does not introduce prohibited fallback wiring", async () => {
