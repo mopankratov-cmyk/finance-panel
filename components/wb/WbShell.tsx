@@ -12,6 +12,7 @@ import {
   Filter,
   FlaskConical,
   Home,
+  Images,
   Link2,
   LogOut,
   KeyRound,
@@ -61,6 +62,7 @@ const ITEM_ICONS: Record<string, IconComponent> = {
   "/wb/market": ChartNoAxesCombined,
   "/wb/supplies": Truck,
   "/wb/product": PackageSearch,
+  "/wb/content": Images,
   "/wb/reviews": MessageSquareText,
 };
 

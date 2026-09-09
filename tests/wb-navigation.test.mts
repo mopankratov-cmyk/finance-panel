@@ -17,6 +17,11 @@ test("WB navigation exposes only the approved dashboards as direct links", () =>
     "/wb/supplies",
     "/wb/unit",
     "/wb/product",
+    // Каталог контента — отдельный пункт, а не вкладка «Товаров»: девять тысяч
+    // файлов каталога были доступны ровно из подборщика внутри мастера
+    // CTR-теста, то есть посмотреть съёмки можно было только начав заводить
+    // тест, и только по одному артикулу за раз.
+    "/wb/content",
     "/wb/seo",
     "/wb/sklejki",
     "/wb/reviews",

@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Hint } from "@/components/ui/Hint";
 import { isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
 import { plural } from "@/lib/warehouse/plural";
-import { itemsForTestType, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
+import { displayableItems, itemsForTestType, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
 import type { CtrTestType } from "@/lib/ctrtest/model";
 
 /**
@@ -94,15 +94,9 @@ export function ContentPicker({
     })));
   }, [data, product, showAll, testType]);
 
-  /**
-   * Сетка показывает только то, что видно глазом.
-   *
-   * У записей каталога со статусами «файл недоступен» и «нет ссылки» нечего
-   * рисовать: в галерее они выглядели пустыми плитками с замком — целый ряд
-   * серых прямоугольников, который ничего не сообщает и не нажимается.
-   * Считаем их и говорим числом, а место не занимаем.
-   */
-  const shown = useMemo(() => items.filter((item) => item.usability !== "unresolved" && item.usability !== "missing"), [items]);
+  // Сетка показывает только то, что видно глазом; правило — в displayableItems,
+  // общее с каталогом контента. Скрытое считаем и говорим числом.
+  const shown = useMemo(() => displayableItems(items), [items]);
   const hidden = items.length - shown.length;
 
   const selected = useMemo(() => new Set(selectedUrls.filter(Boolean)), [selectedUrls]);

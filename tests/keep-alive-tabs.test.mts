@@ -172,8 +172,10 @@ test("действия по кампании стоят под шапкой, а 
  * ни показать, ни отдать в тест. Место занимали, не сообщая ничего.
  */
 test("галерея контента не показывает то, что нечем нарисовать", () => {
+  // Правило переехало в displayableItems: показывают каталог теперь два экрана,
+  // и переписанный от руки фильтр разъехался бы между ними молча.
   const source = read("../components/wb/ctr/ContentPicker.tsx");
-  assert.match(source, /items\.filter\(\(item\) => item\.usability !== "unresolved" && item\.usability !== "missing"\)/);
+  assert.match(source, /displayableItems\(items\)/);
   assert.match(source, /Ещё \{hidden\}/, "скрытое считаем вслух, а не молча");
   assert.match(source, /\{shown\.map\(\(item\) => \{/);
 });
