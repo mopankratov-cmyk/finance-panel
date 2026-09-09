@@ -6,7 +6,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { isFactoryFolder, isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
-import { displayableItems, itemsForTestType, type ContentGroup, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
+import {
+  displayableItems,
+  itemsForTestType,
+  patchProductItems,
+  sortContentItems,
+  uploadedContentItem,
+  type ContentGroup,
+  type ContentItem,
+  type ProductContent,
+} from "@/lib/content/productLibrary";
 import { plural } from "@/lib/warehouse/plural";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -134,12 +143,16 @@ function ProductCard({
   product,
   filters,
   cabinetId,
-  onChanged,
+  onAdded,
+  onRemoved,
+  onMoved,
 }: {
   product: ProductContent;
   filters: Set<Usable>;
   cabinetId: string;
-  onChanged: () => void;
+  onAdded: (nmId: number, item: ContentItem) => void;
+  onRemoved: (url: string) => void;
+  onMoved: (url: string, group: ContentGroup | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   // Воронка свёрнута по умолчанию: за ней приходят реже, а места она занимает
@@ -170,7 +183,7 @@ function ProductCard({
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error || `Не удалось загрузить (${response.status})`);
       setNotice(`Загружено: ${file.name}`);
-      onChanged();
+      onAdded(product.nmId, uploadedContentItem(Number(body?.id ?? Date.now()), String(body?.url ?? ""), file.name));
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "Не удалось загрузить файл");
     } finally {
@@ -199,7 +212,7 @@ function ProductCard({
       setNotice(group === null
         ? "Пометка снята — кадр вернулся в расчётную половину."
         : group === "main" ? "Кадр перенесён в главные фото." : "Кадр перенесён в фотоворонку.");
-      onChanged();
+      onMoved(item.url, group);
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "Не удалось перенести кадр");
     } finally {
@@ -224,7 +237,7 @@ function ProductCard({
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error || `Не удалось удалить (${response.status})`);
       setNotice(body?.note ?? "Файл убран из библиотеки.");
-      onChanged();
+      onRemoved(item.url);
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "Не удалось удалить файл");
     } finally {
@@ -361,9 +374,6 @@ export function WbContentPage() {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Set<Usable>>(() => new Set<Usable>(["public", "panel-only"]));
   const [limit, setLimit] = useState(PRODUCTS_STEP);
-  // Счётчик перечитывания: после загрузки и удаления сетка обязана показать
-  // то, что реально лежит в каталоге, а не то, что было до действия.
-  const [reloadKey, setReloadKey] = useState(0);
   const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
@@ -384,11 +394,39 @@ export function WbContentPage() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [cabinetId, ready, reloadKey]);
+  }, [cabinetId, ready]);
 
   // Через useMemo, а не `data?.products ?? []`: пустой литерал был бы новой
   // ссылкой на каждый рендер и пересчитывал бы всё, что от него зависит.
   const products = useMemo(() => data?.products ?? [], [data]);
+
+  /**
+   * Правку показываем сразу, а не перечитыванием каталога.
+   *
+   * Библиотека отдаёт 2,6 МБ за восемь секунд: после удаления плитка эти восемь
+   * секунд оставалась на месте, и выглядело это как «кнопка не сработала» —
+   * человек жал ещё раз или уходил обновлять страницу. Сервер к этому моменту
+   * уже ответил, что сделал, поэтому чинить нечего: достаточно применить то же
+   * самое к своему списку.
+   */
+  const patchProducts = (nmId: number | null, change: (items: ContentItem[]) => ContentItem[]) =>
+    setData((current) => current && { ...current, products: patchProductItems(current.products, nmId, change) });
+
+  // Удаление и перенос идут ПО АДРЕСУ по всем товарам: файл каталог иногда
+  // хранит несколькими строками, и роут правит их все — экран обязан повторить
+  // ровно это, иначе на месте останется двойник.
+  const handleRemoved = (url: string) =>
+    patchProducts(null, (items) => items.filter((item) => item.url !== url));
+
+  const handleMoved = (url: string, group: ContentGroup | null) =>
+    patchProducts(null, (items) => items.map((item) => item.url !== url ? item : {
+      ...item,
+      group: group ?? (item.frameIndex == null || item.frameIndex === 1 ? "main" : "funnel"),
+      groupPinned: group !== null,
+    }));
+
+  const handleAdded = (nmId: number, item: ContentItem) =>
+    patchProducts(nmId, (items) => sortContentItems([...items, item]));
 
   const found = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -487,7 +525,9 @@ export function WbContentPage() {
                 product={product}
                 filters={filters}
                 cabinetId={cabinetId}
-                onChanged={() => setReloadKey((value) => value + 1)}
+                onAdded={handleAdded}
+                onRemoved={handleRemoved}
+                onMoved={handleMoved}
               />
             ))}
             {found.length > limit ? (

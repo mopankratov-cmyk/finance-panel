@@ -131,6 +131,49 @@ const asStringArray = (value: unknown): string[] => {
 
 const normalizeArticle = (value: unknown): string => String(value ?? "").trim();
 
+/**
+ * Сначала то, что можно пустить в дело: обложка, потом остальные публичные,
+ * потом просмотр-только, потом недоступное. Человек ищет глазами сверху, и
+ * первым ему должно попадаться пригодное, а не мусор каталога.
+ *
+ * Живёт отдельной функцией, потому что порядок нужен в двух местах: при сборке
+ * списка на сервере и когда экран добавляет только что загруженный файл к себе,
+ * не перечитывая каталог целиком.
+ */
+export function sortContentItems(items: ContentItem[]): ContentItem[] {
+  const rank = (item: ContentItem) =>
+    item.isCover ? 0
+      : item.usability === "public" ? 1
+        : item.usability === "panel-only" ? 2 : 3;
+  items.sort((left, right) => rank(left) - rank(right));
+  return items;
+}
+
+/**
+ * Только что загруженный файл — как его собрал бы обход каталога.
+ *
+ * Экран показывает его сразу, не дожидаясь перечитывания библиотеки: та отдаёт
+ * 2,6 МБ за восемь секунд, и ждать их ради одной новой плитки значит делать
+ * вид, что кнопка не сработала. Правила сборки берём отсюда же, чтобы плитка
+ * «до перезагрузки» и «после» не оказались разными.
+ */
+export function uploadedContentItem(id: number, url: string, name: string): ContentItem {
+  const frame = cardFrameIndex(url);
+  return {
+    key: `shoot:${id}`,
+    url,
+    thumbUrl: url,
+    kind: "image",
+    origin: "shoot",
+    usability: assetUsability(url),
+    label: String(name ?? "").trim() || "загрузка",
+    isCover: false,
+    frameIndex: frame,
+    group: frame == null || frame === 1 ? "main" : "funnel",
+    groupPinned: false,
+  };
+}
+
 export function buildProductContent(
   cards: LibraryCardRow[],
   assets: LibraryAssetRow[],
@@ -217,14 +260,7 @@ export function buildProductContent(
       });
     }
 
-    // Сначала то, что можно пустить в дело: обложка, потом остальные публичные,
-    // потом просмотр-только, потом недоступное. Человек ищет глазами сверху,
-    // и первым ему должно попадаться пригодное, а не мусор каталога.
-    const rank = (item: ContentItem) =>
-      item.isCover ? 0
-        : item.usability === "public" ? 1
-          : item.usability === "panel-only" ? 2 : 3;
-    items.sort((left, right) => rank(left) - rank(right));
+    sortContentItems(items);
 
     products.push({
       nmId,
@@ -238,6 +274,32 @@ export function buildProductContent(
   }
 
   return products;
+}
+
+/**
+ * Применить правку к спискам товаров, не перечитывая каталог.
+ *
+ * Библиотека отдаёт 2,6 МБ за восемь секунд: держать удалённую плитку на экране
+ * эти восемь секунд значит показывать, что кнопка не сработала. Сервер к этому
+ * моменту уже ответил, что сделал, — экран просто повторяет это у себя.
+ *
+ * `nmId === null` — правка по всем товарам: файл каталог иногда хранит
+ * несколькими строками, и удаление с переносом идут по АДРЕСУ, а не по строке.
+ *
+ * Чистой функцией в модуле, а не замыканием в компоненте: так её видят оба
+ * экрана, и React Compiler не спотыкается о ручную мемоизацию рядом.
+ */
+export function patchProductItems(
+  products: ProductContent[],
+  nmId: number | null,
+  change: (items: ContentItem[]) => ContentItem[],
+): ProductContent[] {
+  return products.map((entry) => {
+    if (nmId != null && entry.nmId !== nmId) return entry;
+    const items = change(entry.items);
+    if (items === entry.items) return entry;
+    return { ...entry, items, publishableCount: items.filter((item) => item.usability === "public").length };
+  });
 }
 
 /**

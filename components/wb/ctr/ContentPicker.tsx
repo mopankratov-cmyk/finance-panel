@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Hint } from "@/components/ui/Hint";
 import { isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
 import { plural } from "@/lib/warehouse/plural";
-import { displayableItems, itemsForTestType, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
+import { displayableItems, itemsForTestType, sortContentItems, uploadedContentItem, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
 import type { CtrTestType } from "@/lib/ctrtest/model";
 
 /**
@@ -46,9 +46,6 @@ export function ContentPicker({
   selectedUrls: string[];
   onPick: (item: ContentItem) => void;
 }) {
-  // Счётчик перечитывания библиотеки: после загрузки и удаления сетка обязана
-  // показать то, что реально лежит в каталоге, а не то, что было до действия.
-  const [reloadKey, setReloadKey] = useState(0);
   const [data, setData] = useState<LibraryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,7 +69,7 @@ export function ContentPicker({
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [cabinetId, reloadKey]);
+  }, [cabinetId]);
 
   const product = useMemo(
     () => data?.products.find((item) => item.nmId === nmId) ?? null,
@@ -126,7 +123,17 @@ export function ContentPicker({
       const response = await fetch("/api/content/upload", { method: "POST", body: form });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error || `Не удалось загрузить (${response.status})`);
-      setReloadKey((value) => value + 1);
+      /*
+        Плитку показываем сразу, своим списком, а не перечитыванием библиотеки:
+        она отдаёт 2,6 МБ за восемь секунд, и ждать их ради одной картинки
+        значит показывать, что кнопка не сработала. Сервер уже ответил, что
+        сделал, — повторяем то же у себя. Порядок и сборку берём из
+        productLibrary, чтобы плитка «до перезагрузки» и «после» совпадали.
+      */
+      setData((current) => current && { ...current, products: current.products.map((entry) => entry.nmId !== product.nmId ? entry : ({
+        ...entry,
+        items: sortContentItems([...entry.items, uploadedContentItem(Number(body?.id ?? Date.now()), String(body?.url ?? ""), file.name)]),
+      })) });
       setNotice(`Загружено: ${file.name}. Файл уже можно отдать в тест.`);
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "Не удалось загрузить файл");
@@ -145,7 +152,9 @@ export function ContentPicker({
       const response = await fetch(`/api/content/upload?${query}`, { method: "DELETE" });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error || `Не удалось удалить (${response.status})`);
-      setReloadKey((value) => value + 1);
+      // Убираем по АДРЕСУ и по всем товарам: роут удаляет все строки с этой
+      // ссылкой, и экран обязан повторить ровно это, иначе останется двойник.
+      setData((current) => current && { ...current, products: current.products.map((entry) => ({ ...entry, items: entry.items.filter((x) => x.url !== item.url) })) });
       setNotice(body?.note ?? "Файл убран из библиотеки.");
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "Не удалось удалить файл");

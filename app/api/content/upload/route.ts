@@ -84,13 +84,16 @@ export async function POST(request: NextRequest) {
     name: file.name,
     disk: "panel",
     path,
-  });
+  }).select("id").single();
   if (insert.error) {
     await db.storage.from(BUCKET).remove([path]);
     return fail(`Каталог не принял запись: ${insert.error.message}`, 502);
   }
 
-  return NextResponse.json({ url, name: file.name });
+  // id возвращаем, чтобы экран показал плитку сразу и с тем же ключом, каким её
+  // потом соберёт обход каталога: библиотека отдаёт 2,6 МБ за восемь секунд, и
+  // ждать их ради одной картинки значит делать вид, что кнопка не сработала.
+  return NextResponse.json({ id: insert.data?.id ?? null, url, name: file.name });
 }
 
 /** Убрать свою загрузку — из каталога и из хранилища. */
