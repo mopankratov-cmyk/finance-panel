@@ -246,8 +246,8 @@ export async function loadOpiuMonth(
   if (weeks.length === 0) {
     return {
       month,
-      report: { weeks: [], rows: [], warehouseByWeek: {} },
-      reportByReportDate: { weeks: [], rows: [], warehouseByWeek: {} },
+      report: { weeks: [], rows: [], warehouseByWeek: {}, missingCostArticles: [] },
+      reportByReportDate: { weeks: [], rows: [], warehouseByWeek: {}, missingCostArticles: [] },
       timestamp: new Date().toISOString(),
       meta: { salesRows: 0, ordersCount: 0, costsCount: 0, adCampaigns: 0 },
     };

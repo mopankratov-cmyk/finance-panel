@@ -370,6 +370,18 @@ export function OpiuPage() {
         </p>
       )}
 
+      {report && report.missingCostArticles.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-medium">
+            {report.missingCostArticles.length === 1 ? "Нет карточки в /costs у 1 артикула" : `Нет карточки в /costs у ${report.missingCostArticles.length} артикулов`}
+            {" — Себестоимость и Подготовка по нему сейчас считаются как 0, а не как «не заполнено»."}
+          </p>
+          <p className="mt-1 text-amber-700">
+            {report.missingCostArticles.map((m) => `${m.article} (${m.qty > 0 ? "+" : ""}${m.qty} шт.)`).join(", ")}
+          </p>
+        </div>
+      )}
+
       <div className="flex gap-1 border-b border-slate-200">
         {(
           [

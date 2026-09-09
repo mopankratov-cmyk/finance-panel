@@ -425,6 +425,56 @@ export function unitPackaging(
 }
 
 /**
+ * true, если для товара в /costs ЕСТЬ карточка (по артикулу или баркоду) —
+ * в отличие от unitCost/unitPackaging, которые при отсутствии карточки
+ * молча возвращают 0 (неотличимо от "себестоимость реально 0"). Нужен
+ * отдельно, чтобы находить именно "нет данных", а не "цена нулевая".
+ */
+export function hasCostEntry(row: WbReportRow, lookup: ReturnType<typeof buildCostLookup>): boolean {
+  const barcode = String(row.barcode ?? "");
+  const article = String(row.sa_name ?? "").trim().toUpperCase();
+  return lookup.byArticle.has(article) || lookup.byBarcode.has(barcode);
+}
+
+export interface MissingCostArticle {
+  article: string;
+  /** Нетто-штук (продажи минус возвраты) без себестоимости в /costs. */
+  qty: number;
+  /** Выручка (со знаком, возврат вычитает) по этим строкам — на сколько занижена статья Себестоимость/Подготовка примерно судно по объёму продаж. */
+  revenue: number;
+}
+
+/**
+ * Артикулы, которые продавались/возвращались в периоде, но не имеют
+ * карточки в /costs вообще — их себестоимость и подготовка сейчас
+ * молча считаются нулём (лишь бы не уронить отчёт), и это легко пропустить.
+ * Реальный кейс из практики: TT05101/YYS0101 (ИП Панкратов), HT-83-55/
+ * HT-83-26 (Heaton) — расхождение с рефересной таблицей нашлось только
+ * ручной построчной сверкой. UI должен показывать эту сумму сам, а не
+ * дожидаться внешней сверки.
+ */
+export function findMissingCostArticles(
+  sales: WbReportRow[],
+  lookup: ReturnType<typeof buildCostLookup>,
+): MissingCostArticle[] {
+  const byArticle = new Map<string, MissingCostArticle>();
+  for (const row of sales) {
+    const type = docType(row);
+    if (type === "other") continue;
+    if (hasCostEntry(row, lookup)) continue;
+    const article = String(row.sa_name ?? "").trim() || "(без артикула)";
+    const sign = type === "sale" ? 1 : -1;
+    const entry = byArticle.get(article) ?? { article, qty: 0, revenue: 0 };
+    entry.qty += sign * qtyAbs(row);
+    entry.revenue += revenueRub(row); // revenueRub уже нетто по sale/return, знак не дублируем
+    byArticle.set(article, entry);
+  }
+  return [...byArticle.values()]
+    .filter((r) => r.qty !== 0)
+    .sort((a, b) => b.qty - a.qty);
+}
+
+/**
  * Возвраты вычитают себестоимость/подготовку так же, как вычитают выручку
  * (revenueRub и др.) — иначе возвращённый товар остаётся в затратах, а его
  * продажа из выручки уже вычтена, и себестоимость оказывается завышена на

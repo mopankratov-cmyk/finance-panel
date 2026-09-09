@@ -2,7 +2,9 @@ import type { MonthWeek } from "./weeks";
 import {
   aggregateWeek,
   buildCostLookup,
+  findMissingCostArticles,
   sumWeeks,
+  type MissingCostArticle,
   type OpiuOrder,
   type ProductCostRow,
   type WeekRawMetrics,
@@ -25,6 +27,8 @@ export interface OpiuReport {
   weeks: MonthWeek[];
   rows: OpiuTableRow[];
   warehouseByWeek: Record<string, number>;
+  /** Артикулы без карточки в /costs — их Себестоимость/Подготовка сейчас 0, а не "и правда бесплатно". */
+  missingCostArticles: MissingCostArticle[];
 }
 
 function pct(numerator: number, denominator: number): number | null {
@@ -91,6 +95,7 @@ export function buildOpiuReport(
   adsSpendBySourceByWeek: Record<string, { balance: number; bonus: number }> | null = null,
 ): OpiuReport {
   const costLookup = buildCostLookup(costs);
+  const missingCostArticles = findMissingCostArticles(sales, costLookup);
 
   const weekMetrics = weeks.map((w) =>
     aggregateWeek(
@@ -155,5 +160,5 @@ export function buildOpiuReport(
     { id: "penalty_loan",   label: "Пени",                                            kind: "metric",  expense: true, values: cols((m) => m.penaltyLoan) },
   ];
 
-  return { weeks, rows, warehouseByWeek };
+  return { weeks, rows, warehouseByWeek, missingCostArticles };
 }
