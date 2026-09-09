@@ -127,6 +127,7 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
     label: "Финрезультат",
     items: [
       { href: "/opiu", label: "WB недельный", icon: Table2 },
+      { href: "/opiu/margin", label: "Маржа по артикулам", icon: PieChart },
     ],
   },
   {

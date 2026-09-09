@@ -32,11 +32,8 @@ export function FinanceMenuScope() {
   return null;
 }
 
-// Под-вкладки раздела «Финрезультат» — склеивает 4 денежные страницы в один логичный раздел.
+// Под-вкладки раздела «Финрезультат».
 const TABS = [
-  { href: "/summary", label: "Сводка WB · Ozon" },
-  { href: "/pnl", label: "ОПиУ (до СПП)" },
-  { href: "/losses", label: "Где теряем" },
   { href: "/opiu", label: "WB недельный" },
   { href: "/opiu/margin", label: "Маржа по артикулам" },
 ];
