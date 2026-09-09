@@ -29,10 +29,16 @@ export interface PaidStorageApiRow {
 // 504 (FUNCTION_INVOCATION_TIMEOUT) на проде вероятнее всего был именно
 // таким зависанием одного запроса, а не медленным поллингом в целом.
 const REQUEST_TIMEOUT_MS = 20_000;
+// Скачивание готового отчёта — самый тяжёлый по объёму запрос (крупные
+// кабинеты вроде общего Retail Family дают заметно больше строк, чем
+// отдельные ИП), и именно на нём наблюдалось зависание/обрыв. Отдельный,
+// более щедрый таймаут — чтобы не резать честно работающий, просто долгий
+// запрос под ту же метку "20с и точка", что годится для лёгких create/status.
+const DOWNLOAD_TIMEOUT_MS = 45_000;
 
-async function wbRequest(url: string, token: string): Promise<Response> {
+async function wbRequest(url: string, token: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       headers: { Authorization: token },
@@ -90,7 +96,7 @@ export async function downloadPaidStorageTask(
   token: string,
   taskId: string,
 ): Promise<{ ok: true; rows: PaidStorageApiRow[] } | { ok: false; status: number; body: string }> {
-  const res = await wbRequest(`${BASE_URL}/tasks/${taskId}/download`, token);
+  const res = await wbRequest(`${BASE_URL}/tasks/${taskId}/download`, token, DOWNLOAD_TIMEOUT_MS);
   if (!res.ok) return { ok: false, status: res.status, body: (await res.text()).slice(0, 200) };
   const rows = (await res.json()) as PaidStorageApiRow[];
   return { ok: true, rows: Array.isArray(rows) ? rows : [] };
