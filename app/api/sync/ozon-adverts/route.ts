@@ -84,25 +84,46 @@ async function backfillOneDay(
   }
   if (!day) return { state: null, rows: 0, note: null };
 
-  // Зависший заказ пересдаём: день 26.08 провисел в NOT_STARTED два часа,
-  // пока заказанные позже отчёты спокойно обгоняли его. Три захода без
-  // прогресса — заказываем день заново.
+  /**
+   * Зависший заказ пересдаём — но только по-настоящему зависший.
+   *
+   * Счётчик задумывался как «сколько заходов подряд НЕТ ПРОГРЕССА»: день 26.08
+   * провисел в NOT_STARTED два часа, пока заказанные позже отчёты его
+   * обгоняли. А считал он любой незавершённый заход, включая те, что честно
+   * дотащили по два батча из одиннадцати. Отсюда живой клинч: у COSMOS 101
+   * SKU-кампания, это 11 батчей по 10, за заход берётся два — на полный день
+   * нужно шесть заходов, а сброс наступал на четвёртом и выбрасывал всё
+   * скачанное. Оба кабинета так и стояли с 26–27 августа: 8 готовых батчей из
+   * 11 и 5 из 8, разнесение расхода по товарам не наполнялось никогда, а
+   * экран вечно обещал «ещё собирается».
+   *
+   * Поэтому прогресс сбрасывает счётчик: пересдаём только тот день, который за
+   * три захода подряд не сдвинулся ни на батч.
+   */
   const misses = saved?.misses ?? 0;
+  const doneBefore = (saved?.report?.batches ?? []).filter((batch) => batch.done).length;
   const resumeReport = misses >= 3 ? null : saved?.report ?? null;
   const report = await perfProductReport(
     { clientId: cabinet.perf_client_id, secret: cabinet.perf_secret },
     `${day}T00:00:00.000Z`,
     `${day}T23:59:59.999Z`,
     10_000,
-    { allowPending: true, resumeState: resumeReport, pollAttempts: 8, maxBatchesPerRun: 2, createRetries: 1, createRetryDelayMs: 20_000 },
+    // Батчей за заход четыре, а не два. Отчёт заказывается пачками по десять
+    // кампаний, а у кабинета их сотня — одиннадцать частей. По две за час
+    // день закрывался бы шесть часов; по четыре — полтора, и это укладывается
+    // в maxDuration = 300 с даже когда Ozon отвечает 429 на создание и заход
+    // ждёт двадцать секунд перед повтором.
+    { allowPending: true, resumeState: resumeReport, pollAttempts: 8, maxBatchesPerRun: 4, createRetries: 1, createRetryDelayMs: 20_000 },
   );
   if (!report) return { state: { day, report: resumeReport, misses: misses + 1 }, rows: 0, note: `история ${day}: отчёт не получен` };
   if (!report.complete) {
     const reordered = misses >= 3;
+    const doneNow = report.resumeState.batches.filter((batch) => batch.done).length;
+    const moved = reordered || doneNow > doneBefore;
     return {
-      state: { day, report: report.resumeState, misses: reordered ? 0 : misses + 1 },
+      state: { day, report: report.resumeState, misses: moved ? 0 : misses + 1 },
       rows: 0,
-      note: `история ${day}: ${reordered ? "пересдан заказ" : "ещё готовится"}`,
+      note: `история ${day}: ${reordered ? "пересдан заказ" : `${doneNow} из ${report.resumeState.batches.length} частей`}`,
     };
   }
   const updatedAt = new Date().toISOString();

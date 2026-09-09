@@ -64,9 +64,10 @@ interface EconomyData {
   taxPct: number;
   settings: (AppliedUnitSettings & { cabinetId: string }) | null;
   summary: {
-    payout: number;
-    deductions: number;
-    refunds: number;
+    // null — Ozon не отдал финансы за период; ноль означал бы «удержаний не было».
+    payout: number | null;
+    deductions: number | null;
+    refunds: number | null;
     calculatedProfit: number;
     missingCost: number;
     knownCostSku: number;
@@ -239,7 +240,7 @@ export function OzonEconomyPage() {
                 detail="только SKU с себестоимостью"
                 tone={data.summary.calculatedProfit < 0 ? "red" : "emerald"}
               />
-              <MetricCard label="К выплате" value={formatMoney(data.summary.payout)} detail="факт транзакций" />
+              <MetricCard label="К выплате" value={formatMoney(data.summary.payout)} detail={data.summary.payout == null ? "финансы Ozon недоступны" : "расчёт по балансу Ozon"} tone={data.summary.payout == null ? "amber" : "slate"} />
               <MetricCard
                 label="Реклама"
                 value={formatMoney(data.summary.adSpend)}
@@ -250,8 +251,8 @@ export function OzonEconomyPage() {
                   : "расход за период"}
                 tone={data.summary.adUnallocated > 0 ? "amber" : "sky"}
               />
-              <MetricCard label="Удержания" value={formatMoney(data.summary.deductions)} tone="amber" />
-              <MetricCard label="Возвраты" value={formatMoney(data.summary.refunds)} tone="amber" />
+              <MetricCard label="Удержания" value={formatMoney(data.summary.deductions)} detail={data.summary.deductions == null ? "финансы Ozon недоступны" : undefined} tone="amber" />
+              <MetricCard label="Возвраты" value={formatMoney(data.summary.refunds)} detail={data.summary.refunds == null ? "финансы Ozon недоступны" : undefined} tone="amber" />
               <MetricCard
                 label="Без себестоимости"
                 value={formatNumber(data.summary.missingCost)}
