@@ -32,8 +32,10 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - WINDOW_DAYS * 24 * 60 * 60;
+  const toDate = new Date();
+  const fromDate = new Date(toDate.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const to = toDate.toISOString().slice(0, 10);
+  const from = fromDate.toISOString().slice(0, 10);
 
   let total = 0;
   const errors: string[] = [];

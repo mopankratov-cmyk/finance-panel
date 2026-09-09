@@ -211,8 +211,13 @@ export interface AdvertSpendHistoryItem {
   updNum?: number;
 }
 
-/** from/to — Unix-время в секундах. */
-export function getAdvertSpendHistory(token: string, from: number, to: number) {
+/**
+ * from/to — календарные даты "YYYY-MM-DD" (как везде в WB API: statistics,
+ * paid_storage). Первая попытка (Unix-время в секундах) упала на проде с
+ * "WB 400: Invalid Params: invalid date param" сразу на всех кабинетах —
+ * дата, а не токен/права, так что дело было именно в формате.
+ */
+export function getAdvertSpendHistory(token: string, from: string, to: string) {
   return advertCall<AdvertSpendHistoryItem[]>({
     token,
     path: "/adv/v1/upd",
