@@ -1,12 +1,12 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- превью каталога: адреса приходят из WB-баскета и нашего публичного бакета */
 
-import { ChevronDown, ChevronRight, Images, Loader2, Search, Trash2, Upload } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronRight, Images, Loader2, Pin, Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { isFactoryFolder, isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
-import { displayableItems, itemsForTestType, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
+import { displayableItems, itemsForTestType, type ContentGroup, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
 import { plural } from "@/lib/warehouse/plural";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
@@ -54,7 +54,18 @@ const FILTERS: { value: Usable; label: string }[] = [
   { value: "panel-only", label: "только просмотр" },
 ];
 
-function Tile({ item, busy, onRemove }: { item: ContentItem; busy: boolean; onRemove: (item: ContentItem) => void }) {
+function Tile({
+  item,
+  busy,
+  onRemove,
+  onMove,
+}: {
+  item: ContentItem;
+  busy: boolean;
+  onRemove: (item: ContentItem) => void;
+  onMove: (item: ContentItem, group: ContentGroup | null) => void;
+}) {
+  const other: ContentGroup = item.group === "main" ? "funnel" : "main";
   const publishable = item.usability === "public";
   const title = `${item.label} — ${USABILITY_LABEL[item.usability]}. ${USABILITY_HINT[item.usability]}`;
   // Корзина — СОСЕДОМ ссылки, а не внутри неё: кнопка внутри ссылки
@@ -85,6 +96,25 @@ function Tile({ item, busy, onRemove }: { item: ContentItem; busy: boolean; onRe
         {item.label}
       </span>
     </a>
+    {/*
+      Перенос между половинами. Кнопка — соседом ссылки, как и корзина:
+      кнопка внутри ссылки недопустима, а клик по ней не должен открывать файл.
+    */}
+    <button
+      type="button"
+      onClick={() => onMove(item, item.groupPinned ? null : other)}
+      disabled={busy}
+      title={item.groupPinned
+        ? "Пометка стоит руками. Нажмите, чтобы вернуть кадру расчётную половину"
+        : item.group === "main" ? "Перенести в фотоворонку" : "Перенести в главные фото"}
+      className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded bg-slate-900/70 text-white opacity-0 transition hover:bg-violet-600 focus-visible:opacity-100 disabled:opacity-40 group-hover:opacity-100"
+    >
+      {item.groupPinned
+        ? <Pin className="h-3 w-3" aria-hidden="true" />
+        : item.group === "main"
+          ? <ArrowDownToLine className="h-3 w-3" aria-hidden="true" />
+          : <ArrowUpToLine className="h-3 w-3" aria-hidden="true" />}
+    </button>
     {isPanelOwned(item.url) ? (
       <button
         type="button"
@@ -149,6 +179,34 @@ function ProductCard({
     }
   };
 
+  /**
+   * Перенос кадра в другую половину — и снятие пометки обратно.
+   *
+   * Ничего не удаляет и не трогает файл: меняется только то, в какой половине
+   * экрана кадр показан и попадает ли он в выбор вариантов CTR-теста.
+   */
+  const move = async (item: ContentItem, group: ContentGroup | null) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/content/role", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: item.url, cabinet: cabinetId, group }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || `Не удалось перенести (${response.status})`);
+      setNotice(group === null
+        ? "Пометка снята — кадр вернулся в расчётную половину."
+        : group === "main" ? "Кадр перенесён в главные фото." : "Кадр перенесён в фотоворонку.");
+      onChanged();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Не удалось перенести кадр");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async (item: ContentItem) => {
     // Удаление необратимо: файл уходит и из каталога, и из хранилища.
     // У папок завода есть сосед — контент-завод ссылается на эти файлы из
@@ -196,10 +254,7 @@ function ProductCard({
    * карточки со второго и далее.
    */
   const main = useMemo(() => itemsForTestType(visible, "ctr"), [visible]);
-  const funnel = useMemo(() => {
-    const keys = new Set(main.map((item) => item.key));
-    return visible.filter((item) => !keys.has(item.key));
-  }, [visible, main]);
+  const funnel = useMemo(() => visible.filter((item) => item.group !== "main"), [visible]);
   const mainPublishable = main.filter((item) => item.usability === "public").length;
 
   const tiles = expanded ? main : main.slice(0, PREVIEW_TILES);
@@ -260,7 +315,7 @@ function ProductCard({
           ) : (
             <>
               <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12">
-                {tiles.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} />)}
+                {tiles.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} onMove={(entry, group) => void move(entry, group)} />)}
               </div>
               {main.length > PREVIEW_TILES ? (
                 <button
@@ -287,7 +342,7 @@ function ProductCard({
               </button>
               {funnelOpen ? (
                 <div className="mt-1.5 grid grid-cols-3 gap-2 opacity-80 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12">
-                  {funnel.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} />)}
+                  {funnel.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} onMove={(entry, group) => void move(entry, group)} />)}
                 </div>
               ) : null}
             </>

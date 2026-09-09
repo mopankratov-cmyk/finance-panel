@@ -36,6 +36,22 @@ export interface LibraryAssetRow {
   name: string | null;
   disk: string | null;
   niche: string | null;
+  /** Ручная пометка «главное» / «воронка», если её ставили руками. */
+  role?: string | null;
+}
+
+/**
+ * К какой половине контента относится кадр.
+ *
+ * `main` — обложка и кандидаты в неё: то, что решает CTR.
+ * `funnel` — кадры карточки со второго: они работают уже после клика.
+ */
+export type ContentGroup = "main" | "funnel";
+
+/** Пометка, поставленная руками. Всё прочее в `role` — не наше дело. */
+export function roleOverride(role: unknown): ContentGroup | null {
+  const value = String(role ?? "").trim();
+  return value === "main" || value === "funnel" ? value : null;
 }
 
 export type ContentOrigin = "card" | "shoot";
@@ -57,6 +73,18 @@ export interface ContentItem {
    * `null` у своих съёмок и генераций — они не кадр карточки, а кандидат в него.
    */
   frameIndex: number | null;
+  /**
+   * Главное фото или кадр воронки.
+   *
+   * По умолчанию считается из номера кадра, но правило по номеру ошибается в
+   * обе стороны: инфографика приезжает съёмкой без номера и попадает в
+   * главные, а удачный кадр карточки со второго места в главные не попадает,
+   * хотя обложкой стать может. Поэтому пометку можно поставить руками, и она
+   * сильнее вычисленной.
+   */
+  group: ContentGroup;
+  /** Пометка стоит руками — значит её можно снять. */
+  groupPinned: boolean;
 }
 
 /**
@@ -116,6 +144,22 @@ export function buildProductContent(
     assetsByArticle.set(article, list);
   }
 
+  // Пометка руками хранится в каталоге по АДРЕСУ файла: кадр галереи и строка
+  // каталога — это один и тот же файл, пришедший двумя путями, и пометка
+  // должна действовать на оба, иначе один и тот же кадр окажется в разных
+  // половинах экрана.
+  const overrideByUrl = new Map<string, ContentGroup>();
+  for (const asset of assets) {
+    const override = roleOverride(asset.role);
+    const url = String(asset.url ?? "").trim();
+    if (override && url) overrideByUrl.set(url, override);
+  }
+  const groupOf = (url: string, frameIndex: number | null): { group: ContentGroup; pinned: boolean } => {
+    const pinned = overrideByUrl.get(url);
+    if (pinned) return { group: pinned, pinned: true };
+    return { group: frameIndex == null || frameIndex === 1 ? "main" : "funnel", pinned: false };
+  };
+
   const products: ProductContent[] = [];
   for (const card of cards) {
     const nmId = Number(card.nm_id);
@@ -131,6 +175,7 @@ export function buildProductContent(
     const items: ContentItem[] = [];
     const gallery = bigs.length ? bigs : thumbs;
     gallery.forEach((url, index) => {
+      const placement = groupOf(url, index + 1);
       items.push({
         key: `card:${nmId}:${index}`,
         url,
@@ -141,6 +186,8 @@ export function buildProductContent(
         label: index === 0 ? "Обложка карточки" : `Кадр карточки ${index + 1}`,
         isCover: index === 0,
         frameIndex: index + 1,
+        group: placement.group,
+        groupPinned: placement.pinned,
       });
     });
 
@@ -148,6 +195,7 @@ export function buildProductContent(
       const url = String(asset.url ?? "");
       const frame = cardFrameIndex(url);
       const nm = cardNmId(url);
+      const placement = groupOf(url, frame);
       items.push({
         key: `shoot:${asset.id}`,
         url,
@@ -164,6 +212,8 @@ export function buildProductContent(
           : String(asset.name ?? "").trim() || String(asset.disk ?? "съёмка"),
         isCover: false,
         frameIndex: frame,
+        group: placement.group,
+        groupPinned: placement.pinned,
       });
     }
 
@@ -244,5 +294,5 @@ export function displayableItems(items: ContentItem[]): ContentItem[] {
  */
 export function itemsForTestType(items: ContentItem[], testType: string): ContentItem[] {
   if (testType !== "ctr") return items;
-  return items.filter((item) => item.frameIndex == null || item.frameIndex === 1);
+  return items.filter((item) => item.group === "main");
 }

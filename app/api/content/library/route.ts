@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
   const assets = articles.length
     ? await loadAllSupabasePages<LibraryAssetRow>((from, to) => db
       .from("content_assets")
-      .select("id, article, kind, url, name, disk, niche")
+      .select("id, article, kind, url, name, disk, niche, role")
       .in("article", articles)
       .order("id", { ascending: true })
       .range(from, to), { label: "Библиотека контента: съёмки" }).catch(() => [] as LibraryAssetRow[])
