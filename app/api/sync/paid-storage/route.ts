@@ -155,7 +155,7 @@ async function processCabinet(
       throw new Error(`статус задачи WB ${statusRes.status}: ${statusRes.body}`);
     }
 
-    if (statusRes.status === "purged" || statusRes.status === "canceled" || statusRes.status === "unknown") {
+    if (statusRes.status === "purged" || statusRes.status === "canceled") {
       // Забываем taskId — следующий вызов создаст новую задачу на то же окно.
       await writeWbSyncState(db, cabinetId, JOB, {
         cursor: state.frontier ?? null,
@@ -169,8 +169,26 @@ async function processCabinet(
 
     if (statusRes.status === "done") break;
 
-    // status === "processing" — ждём, если есть запас времени, иначе выходим
-    // и оставляем taskId для следующего вызова (он попадёт сюда же и продолжит поллинг).
+    // status === "processing" ИЛИ "unknown" (WB прислал строку статуса, не
+    // входящую в наш известный набор) — трактуем как "ещё не готово", а НЕ
+    // как мёртвую задачу. Раньше "unknown" сразу убивал задачу и создавал
+    // новую на то же окно — если WB для "в процессе" использует не то слово,
+    // которое мы ждём, каждая проверка мгновенно "убивала" свежесозданную
+    // задачу, и бэкфилл вечно топтался на первом окне, ни разу не дав задаче
+    // шанс дойти до "done". rawStatus идёт в lastError только для диагностики,
+    // не как сигнал к пересозданию.
+    if (statusRes.status === "unknown") {
+      await writeWbSyncState(db, cabinetId, JOB, {
+        cursor: state.frontier ?? null,
+        status: "backfill",
+        attempts: 0,
+        lastError: `диагностика: неизвестный статус задачи WB (raw: ${statusRes.rawStatus})`,
+        state: { ...state, lastRunAt: new Date().toISOString() },
+      });
+    }
+
+    // ждём, если есть запас времени, иначе выходим и оставляем taskId для
+    // следующего вызова (он попадёт сюда же и продолжит поллинг).
     if (Date.now() + POLL_INTERVAL_MS + RESERVE_MS > deadline) {
       await writeWbSyncState(db, cabinetId, JOB, {
         cursor: state.frontier ?? null,

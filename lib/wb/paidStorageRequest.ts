@@ -52,18 +52,24 @@ export type PaidStorageTaskStatus = "processing" | "done" | "purged" | "canceled
 export async function checkPaidStorageTaskStatus(
   token: string,
   taskId: string,
-): Promise<{ ok: true; status: PaidStorageTaskStatus } | { ok: false; status: number; body: string }> {
+): Promise<{ ok: true; status: PaidStorageTaskStatus; rawStatus: string } | { ok: false; status: number; body: string }> {
   const res = await wbRequest(`${BASE_URL}/tasks/${taskId}/status`, token);
   if (!res.ok) return { ok: false, status: res.status, body: (await res.text()).slice(0, 200) };
-  const json = (await res.json()) as { data?: { status?: string } };
-  const raw = String(json.data?.status ?? "").toLowerCase();
+  const bodyText = await res.text();
+  let json: { data?: { status?: string } } = {};
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    // Тело не JSON — ниже это тоже уйдёт в rawStatus для диагностики.
+  }
+  const raw = String(json.data?.status ?? bodyText).toLowerCase().trim();
   const status: PaidStorageTaskStatus =
     raw === "done" ? "done"
     : raw === "processing" ? "processing"
     : raw === "purged" ? "purged"
     : raw === "canceled" ? "canceled"
     : "unknown";
-  return { ok: true, status };
+  return { ok: true, status, rawStatus: raw.slice(0, 200) };
 }
 
 export async function downloadPaidStorageTask(
