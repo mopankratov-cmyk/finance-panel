@@ -44,6 +44,10 @@
       "schedule": "30 * * * *"
     },
     {
+      "path": "/api/sync/advert-spend-history",
+      "schedule": "35 * * * *"
+    },
+    {
       "path": "/api/sync/ozon-adverts",
       "schedule": "25 * * * *"
     },

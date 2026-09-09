@@ -193,6 +193,34 @@ export function getAdvertBalance(token: string) {
   return advertCall<AdvertBalance>({ token, path: "/adv/v1/balance", method: "GET" });
 }
 
+/**
+ * Строка «Истории затрат» (личный кабинет: Продвижение → Финансы → скачать
+ * отчёт) — факт списания по документу с указанием ИСТОЧНИКА денег. В отличие
+ * от fullstats (wb_advert_nm_daily) — там расход разнесён по nmId и дням
+ * активности кампании, но БЕЗ источника: баланс и промо-бонусы смешаны в
+ * одну сумму. paymentType — как прислал WB текстом ("Баланс", "Промо бонусы",
+ * возможно другие; матчить по подстроке "бонус", не точным значением).
+ */
+export interface AdvertSpendHistoryItem {
+  advertId?: number;
+  campaignName?: string;
+  advertType?: number;
+  paymentType?: string;
+  updSum?: number;
+  updTime?: string;
+  updNum?: number;
+}
+
+/** from/to — Unix-время в секундах. */
+export function getAdvertSpendHistory(token: string, from: number, to: number) {
+  return advertCall<AdvertSpendHistoryItem[]>({
+    token,
+    path: "/adv/v1/upd",
+    method: "GET",
+    query: { from, to },
+  });
+}
+
 export function getAdvertBudget(token: string, advertId: number) {
   return advertCall<{ total: number; cash?: number; bonus?: number }>({
     token,
