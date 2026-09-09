@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- превью каталога: адреса приходят из WB-баскета и нашего публичного бакета */
 
-import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronRight, Images, Loader2, Pin, Search, Trash2, Upload } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Images, Loader2, Pin, Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
@@ -17,6 +17,7 @@ import {
   type ProductContent,
 } from "@/lib/content/productLibrary";
 import { plural } from "@/lib/warehouse/plural";
+import { Modal } from "@/components/ui/Modal";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -68,25 +69,33 @@ function Tile({
   busy,
   onRemove,
   onMove,
+  onOpen,
 }: {
   item: ContentItem;
   busy: boolean;
   onRemove: (item: ContentItem) => void;
   onMove: (item: ContentItem, group: ContentGroup | null) => void;
+  onOpen: (item: ContentItem) => void;
 }) {
   const other: ContentGroup = item.group === "main" ? "funnel" : "main";
   const publishable = item.usability === "public";
   const title = `${item.label} — ${USABILITY_LABEL[item.usability]}. ${USABILITY_HINT[item.usability]}`;
-  // Корзина — СОСЕДОМ ссылки, а не внутри неё: кнопка внутри ссылки
-  // недопустима, и клик по корзине не должен заодно открывать файл.
+  /*
+    Клик открывает предпросмотр, а не уводит на адрес файла в хранилище.
+    Раньше плитка была ссылкой: чтобы разглядеть кадр, человек уходил в новую
+    вкладку на голый webp — без подписи, без соседних кадров и без обратной
+    дороги, кроме кнопки «назад». Ссылка на оригинал осталась, но внутри окна.
+
+    Кнопки действий — СОСЕДЯМИ плитки, а не внутри неё: кнопка в кнопке
+    недопустима, и клик по корзине не должен заодно открывать предпросмотр.
+  */
   return (
     <div className="group relative">
-    <a
-      href={item.url}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      onClick={() => onOpen(item)}
       title={title}
-      className="group relative block aspect-[3/4] overflow-hidden rounded-lg border border-slate-200 bg-slate-50 transition hover:border-violet-400"
+      className="group relative block aspect-[3/4] w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 transition hover:border-violet-400"
     >
       {item.kind === "video" ? (
         <video src={item.url} muted preload="metadata" className="h-full w-full object-cover" />
@@ -101,10 +110,10 @@ function Tile({
           только просмотр
         </span>
       ) : null}
-      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-slate-900/85 to-transparent px-1 py-0.5 text-[8px] text-white">
+      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-slate-900/85 to-transparent px-1 py-0.5 text-left text-[8px] text-white">
         {item.label}
       </span>
-    </a>
+    </button>
     {/*
       Перенос между половинами. Кнопка — соседом ссылки, как и корзина:
       кнопка внутри ссылки недопустима, а клик по ней не должен открывать файл.
@@ -158,6 +167,14 @@ function ProductCard({
   // Воронка свёрнута по умолчанию: за ней приходят реже, а места она занимает
   // втрое больше главных.
   const [funnelOpen, setFunnelOpen] = useState(false);
+  /**
+   * Что показано в предпросмотре: половина и ключ кадра.
+   *
+   * Не снимок списка и не копия кадра: список меняется под окном — файл
+   * удалили, кадр перенесли в другую половину, — и снимок показывал бы то,
+   * чего уже нет. Держим ссылку на кадр, а список берём живой.
+   */
+  const [preview, setPreview] = useState<{ group: ContentGroup; key: string } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -272,6 +289,34 @@ function ProductCard({
 
   const tiles = expanded ? main : main.slice(0, PREVIEW_TILES);
 
+  const shownList = useMemo(
+    () => (preview ? (preview.group === "main" ? main : funnel) : []),
+    [preview, main, funnel],
+  );
+  const shotIndex = preview ? shownList.findIndex((item) => item.key === preview.key) : -1;
+  const shot = shotIndex >= 0 ? shownList[shotIndex] : null;
+
+  const step = (delta: number) => {
+    const next = shotIndex + delta;
+    if (shotIndex < 0 || next < 0 || next >= shownList.length) return;
+    setPreview({ group: preview!.group, key: shownList[next].key });
+  };
+
+  // Стрелки листают кадры. Escape, ловушка фокуса и блокировка прокрутки —
+  // в самом Modal, здесь только перелистывание.
+  useEffect(() => {
+    if (!preview || shotIndex < 0) return;
+    const onKey = (event: KeyboardEvent) => {
+      const delta = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+      if (!delta) return;
+      const next = shotIndex + delta;
+      if (next < 0 || next >= shownList.length) return;
+      setPreview({ group: preview.group, key: shownList[next].key });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [preview, shotIndex, shownList]);
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -328,7 +373,7 @@ function ProductCard({
           ) : (
             <>
               <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12">
-                {tiles.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} onMove={(entry, group) => void move(entry, group)} />)}
+                {tiles.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} onMove={(entry, group) => void move(entry, group)} onOpen={() => setPreview({ group: "main", key: item.key })} />)}
               </div>
               {main.length > PREVIEW_TILES ? (
                 <button
@@ -355,13 +400,101 @@ function ProductCard({
               </button>
               {funnelOpen ? (
                 <div className="mt-1.5 grid grid-cols-3 gap-2 opacity-80 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12">
-                  {funnel.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} onMove={(entry, group) => void move(entry, group)} />)}
+                  {funnel.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} onMove={(entry, group) => void move(entry, group)} onOpen={() => setPreview({ group: "funnel", key: item.key })} />)}
                 </div>
               ) : null}
             </>
           ) : null}
         </>
       )}
+
+      {shot ? (
+        <Modal
+          open
+          onClose={() => setPreview(null)}
+          size="xl"
+          title={`${product.article} · ${shot.label}`}
+          footer={(
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-slate-400">
+                {shotIndex + 1} из {shownList.length}
+                {shot.groupPinned ? " · половина выбрана руками" : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = shot.groupPinned ? null : (shot.group === "main" ? "funnel" : "main");
+                  // Окно следует за кадром: он меняет половину, и без этого
+                  // список под ним опустел бы, а окно закрылось само собой.
+                  setPreview({ group: target ?? (shot.frameIndex == null || shot.frameIndex === 1 ? "main" : "funnel"), key: shot.key });
+                  void move(shot, target);
+                }}
+                disabled={busy}
+                className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[12px] font-medium text-slate-600 transition hover:border-violet-400 hover:text-violet-700 disabled:opacity-50"
+              >
+                {shot.groupPinned ? <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+                  : shot.group === "main" ? <ArrowDownToLine className="h-3.5 w-3.5" aria-hidden="true" />
+                    : <ArrowUpToLine className="h-3.5 w-3.5" aria-hidden="true" />}
+                {shot.groupPinned ? "Вернуть расчётную половину" : shot.group === "main" ? "В фотоворонку" : "В главные фото"}
+              </button>
+              <a
+                href={shot.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[12px] font-medium text-slate-600 transition hover:border-slate-300"
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                Оригинал
+              </a>
+              {isPanelOwned(shot.url) ? (
+                <button
+                  type="button"
+                  onClick={() => { const victim = shot; setPreview(null); void remove(victim); }}
+                  disabled={busy}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 text-[12px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  Удалить
+                </button>
+              ) : null}
+            </div>
+          )}
+        >
+          <div className="relative">
+            {shot.kind === "video"
+              ? <video src={shot.url} controls className="mx-auto max-h-[70dvh] w-auto rounded-lg" />
+              : <img src={shot.url} alt={shot.label} className="mx-auto max-h-[70dvh] w-auto rounded-lg object-contain" />}
+            {/* Листалка поверх кадра: разглядывают подряд, и целиться в мелкие
+                кнопки внизу ради следующего кадра — лишняя работа. Стрелки на
+                клавиатуре делают то же самое. */}
+            {shownList.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => step(-1)}
+                  disabled={shotIndex <= 0}
+                  aria-label="Предыдущий кадр"
+                  className="absolute left-1 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-slate-900/60 text-white transition hover:bg-slate-900/80 disabled:opacity-0"
+                >
+                  <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => step(1)}
+                  disabled={shotIndex >= shownList.length - 1}
+                  aria-label="Следующий кадр"
+                  className="absolute right-1 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-slate-900/60 text-white transition hover:bg-slate-900/80 disabled:opacity-0"
+                >
+                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </>
+            ) : null}
+          </div>
+          <p className="mt-2 text-center text-[11px] text-slate-400">
+            {USABILITY_LABEL[shot.usability]} · {USABILITY_HINT[shot.usability]}
+          </p>
+        </Modal>
+      ) : null}
     </section>
   );
 }
