@@ -295,6 +295,25 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       errors.push(`${target.name}: ${message}`);
+      // Раньше необработанное исключение (например, таймаут запроса к WB —
+      // крупные кабинеты вроде Retail Family отдают заметно больше строк,
+      // и download мог не укладываться в таймаут) оставляло claimWbSyncJob
+      // замок "running" висеть на все 15 минут: processCabinet сам пишет
+      // состояние только на "чистых" ветках, а брошенное исключение эту
+      // запись пропускало. Кабинет застревал молча — до ручного разблока.
+      // Снимаем замок сразу, сохраняя существующий прогресс (taskId и т.п.).
+      try {
+        const current = await readWbSyncState<PaidStorageJobState>(db, cabinetId, JOB);
+        await writeWbSyncState(db, cabinetId, JOB, {
+          cursor: current?.cursor ?? null,
+          status: "error",
+          attempts: (current?.attempts ?? 0) + 1,
+          lastError: message,
+          state: current?.state ?? {},
+        });
+      } catch {
+        // Не удалось даже это — переживёт stale-recovery через 15 минут.
+      }
     }
   }
 
