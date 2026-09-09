@@ -18,8 +18,14 @@ const JOB = "paid_storage";
 // может быть не досчитан, поэтому не запрашиваем его сразу.
 const REPORT_LAG_DAYS = 2;
 // Небольшое окно за запрос — быстрее закрывает разрывы и меньше данных
-// теряется при ошибке одной задачи.
-const WINDOW_DAYS = 7;
+// теряется при ошибке одной задачи. Было 7 — для крупных кабинетов
+// (Retail Family отдаёт на порядок больше строк, чем отдельные ИП) само
+// скачивание + upsert тысяч строк не укладывалось в оставшийся бюджет уже
+// ПОСЛЕ успешного скачивания: данные реально записывались в базу (видно по
+// приросту строк), а сам процесс обрывался 504 раньше, чем успевал дописать
+// финальное состояние — снова оставляя "running" висеть. Меньшее окно —
+// меньше объём за один шаг.
+const WINDOW_DAYS = 3;
 const HISTORY_DEPTH_DAYS = 180;
 
 interface PaidStorageJobState extends Record<string, unknown> {
@@ -225,7 +231,10 @@ async function processCabinet(
   // учитывает, дубль внутри одного upsert уронит всю пачку.
   const rows = [...new Map(mappedRows.map((r) => [r.id, r])).values()];
 
-  const upsertError = await chunkedUpsert("wb_paid_storage_rows", rows, "id");
+  // Крупный chunk (100КБ вместо дефолтных 20КБ) — меньше round-trip'ов к
+  // Supabase на тысячах строк; сама запись, а не только скачивание, была
+  // частью того, что не укладывалось в бюджет функции для больших кабинетов.
+  const upsertError = await chunkedUpsert("wb_paid_storage_rows", rows, "id", 100_000);
   if (upsertError) {
     await writeWbSyncState(db, cabinetId, JOB, {
       cursor: state.frontier ?? null,
