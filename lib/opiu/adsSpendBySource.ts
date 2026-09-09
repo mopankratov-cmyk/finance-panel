@@ -7,12 +7,7 @@ interface SpendHistoryRow {
   date: string;
   payment_type: string;
   amount: number;
-}
-
-interface FullstatsRow {
-  date: string;
-  nm_id: number;
-  spent: number | null;
+  campaign_name: string | null;
 }
 
 export interface AdsSpendBySource {
@@ -23,31 +18,37 @@ export interface AdsSpendBySource {
 }
 
 /**
- * Расход на рекламу по источнику списания (баланс/бонусы) — из "Истории
- * затрат" WB (adv/v1/upd), которая различает источник денег, но списывается
- * ЦЕЛОЙ кампанией — не по nmId. На практике многие кампании этого кабинета
- * (особенно автокампании "Единая Ставка") продвигают товары НЕСКОЛЬКИХ
- * суб-брендов сразу (Norvia+Heaton на одном Retail Family) — атрибуция
- * "кампания → один суб-бренд" (пробовали через wb_advert_nm_campaign_daily)
- * на реальных данных удваивала сумму (кампания засчитывалась в оба
- * суб-бренда целиком).
+ * Кампания относится к суб-бренду, если её название СОДЕРЖИТ артикул с
+ * нужным префиксом — не startsWith: реальные названия вида "РС полки -
+ * 755549645 куртка NV-816-04" несут артикул в середине строки. Это то же
+ * самое, что владелец делает вручную при экспорте "Истории затрат" —
+ * смотрит колонку "Кампания" и видит там артикул товара.
  *
- * Вместо точной атрибуции по кампании — делим общую сумму кабинета
- * ПРОПОРЦИОНАЛЬНО доле суб-бренда в fullstats-расходе (wb_advert_nm_daily),
- * который, в отличие от "Истории затрат", уже корректно разложен по nmId.
- * Это оценка, а не точная сумма, но она несмещённая (доля бонусов/баланса
- * в общем расходе кампании — общекабинетная, для конкретного суб-бренда
- * WB её не публикует).
+ * Пробовали атрибутировать по advertId→nmId (wb_advert_nm_campaign_daily) —
+ * на реальных данных давало кратно завышенные суммы: этот кабинет рекламирует
+ * не только Norvia/Heaton, но и другие бренды (Supporto и др.), и связь
+ * кампания↔товар в той таблице для части кампаний оказалась неточной/устаревшей.
+ * Парсинг названия — прямой источник истины, тот же, каким пользуется владелец.
+ */
+function matchesVendorPrefix(campaignName: string | null, prefixes: string[] | undefined): boolean {
+  if (!prefixes?.length) return true;
+  if (!campaignName) return false;
+  const normalized = campaignName.toUpperCase();
+  return prefixes.some((p) => normalized.includes(p.toUpperCase()));
+}
+
+/**
+ * Расход на рекламу по источнику списания (баланс/бонусы) — из "Истории
+ * затрат" WB (adv/v1/upd), которая различает источник денег (в отличие от
+ * fullstats/wb_advert_nm_daily, где баланс и бонусы смешаны в одну сумму).
  *
  * Возвращает null, если для кабинета в этом диапазоне дат вообще нет
- * синканных строк "Истории затрат" — вызывающий код должен в этом случае
- * откатиться на общий adsSpend из fullstats (см. aggregateWeek), а не
- * показать 0.
+ * синканных строк — вызывающий код должен в этом случае откатиться на
+ * общий adsSpend из fullstats (см. aggregateWeek), а не показать 0.
  */
 export async function fetchAdsSpendBySourceByWeek(
   brand: OpiuBrand,
   weeks: MonthWeek[],
-  nmIdWhitelist?: Set<number>,
 ): Promise<Record<string, AdsSpendBySource> | null> {
   if (!weeks.length) return {};
   const client = getSupabaseAdmin();
@@ -56,11 +57,11 @@ export async function fetchAdsSpendBySourceByWeek(
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
 
-  let historyRows: SpendHistoryRow[];
+  let rows: SpendHistoryRow[];
   try {
-    historyRows = await loadAllSupabasePages<SpendHistoryRow>((from, to) => client
+    rows = await loadAllSupabasePages<SpendHistoryRow>((from, to) => client
       .from("wb_advert_spend_history")
-      .select("date, payment_type, amount")
+      .select("date, payment_type, amount, campaign_name")
       .eq("cabinet_id", brand.cabinetId)
       .gte("date", dateFrom)
       .lte("date", dateTo)
@@ -72,60 +73,22 @@ export async function fetchAdsSpendBySourceByWeek(
     return null;
   }
 
-  if (!historyRows.length) return null;
-
-  // Доля суб-бренда по неделям — по умолчанию 1 (весь кабинет = сам бренд,
-  // для Панкратова/Кучеренко, у которых нет articlePrefixes).
-  let shareByWeek: Record<string, number> | null = null;
-  if (nmIdWhitelist) {
-    let fullstatsRows: FullstatsRow[];
-    try {
-      fullstatsRows = await loadAllSupabasePages<FullstatsRow>((from, to) => client
-        .from("wb_advert_nm_daily")
-        .select("date, nm_id, spent")
-        .eq("cabinet_id", brand.cabinetId)
-        .gte("date", dateFrom)
-        .lte("date", dateTo)
-        .range(from, to), { maxPages: 1_000, label: "ОПиУ: доля суб-бренда в рекламе" });
-    } catch (e) {
-      console.error("[opiu] fullstats share read:", e instanceof Error ? e.message : e);
-      return null;
-    }
-
-    const totalByWeek = new Map<string, number>();
-    const brandByWeek = new Map<string, number>();
-    for (const row of fullstatsRows) {
-      const week = weeks.find((w) => row.date >= w.rangeFrom && row.date <= w.rangeTo);
-      if (!week) continue;
-      const spent = Number(row.spent ?? 0);
-      totalByWeek.set(week.weekStart, (totalByWeek.get(week.weekStart) ?? 0) + spent);
-      if (nmIdWhitelist.has(Number(row.nm_id))) {
-        brandByWeek.set(week.weekStart, (brandByWeek.get(week.weekStart) ?? 0) + spent);
-      }
-    }
-
-    shareByWeek = {};
-    for (const w of weeks) {
-      const total = totalByWeek.get(w.weekStart) ?? 0;
-      shareByWeek[w.weekStart] = total > 0 ? (brandByWeek.get(w.weekStart) ?? 0) / total : 0;
-    }
-  }
+  if (!rows.length) return null;
 
   const map: Record<string, AdsSpendBySource> = {};
   for (const w of weeks) map[w.weekStart] = { balance: 0, bonus: 0 };
 
-  for (const row of historyRows) {
+  for (const row of rows) {
+    if (!matchesVendorPrefix(row.campaign_name, brand.articlePrefixes)) continue;
     const week = weeks.find((w) => row.date >= w.rangeFrom && row.date <= w.rangeTo);
     if (!week) continue;
-    const share = shareByWeek ? shareByWeek[week.weekStart]! : 1;
-    if (share === 0) continue;
     const bucket = map[week.weekStart]!;
     // WB называет источник по-разному в разных кабинетах/версиях API:
     // "Промо бонусы" в одном, "Кэшбэк" в другом — оба не реальные деньги
     // продавца, оба — "бонусы". "Баланс" и "Счёт" — реальные деньги.
     const source = row.payment_type.toLowerCase();
     const isBonus = source.includes("бонус") || source.includes("кэшбэк") || source.includes("кешбэк");
-    const amount = Number(row.amount ?? 0) * share;
+    const amount = Number(row.amount ?? 0);
     if (isBonus) bucket.bonus += amount;
     else bucket.balance += amount;
   }
