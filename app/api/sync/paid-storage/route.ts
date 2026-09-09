@@ -273,35 +273,39 @@ export async function GET(request: NextRequest) {
   const today = isoDate(new Date());
   const maxAllowedDate = addDays(today, -REPORT_LAG_DAYS);
 
-  let total = 0;
-  const errors: string[] = [];
-  const deferred: string[] = [];
-  const progress: CabinetResult[] = [];
-
-  for (const target of targets) {
-    if (!target.cabinetId) continue;
+  /**
+   * Кабинеты — разные токены/аккаунты, друг от друга рейт-лимитом WB не
+   * связаны. Раньше обрабатывались последовательно (for): крупный кабинет
+   * (Retail Family — на порядок больше строк, чем у отдельных ИП) мог
+   * занять большую часть бюджета функции на одном скачивании, и кабинеты,
+   * идущие следом в очереди (Оптима, Слоёно), просто не успевали получить
+   * свой черёд в течение того же вызова — их прогресс не двигался вообще,
+   * хотя каждый по отдельности обрабатывался бы быстро. Обрабатываем
+   * параллельно: общее время ограничено самым медленным кабинетом, а не
+   * суммой всех.
+   */
+  async function runOneCabinet(
+    dbClient: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+    target: SyncTarget,
+  ): Promise<{ cabinetId: string | null; result?: CabinetResult; error?: string }> {
+    const db = dbClient;
     const cabinetId = target.cabinetId;
+    if (!cabinetId) return { cabinetId: null };
 
     if (!(await claimWbSyncJob(db, cabinetId, JOB, 15 * 60))) {
-      progress.push({ cabinet: target.name, status: "running" });
-      continue;
+      return { cabinetId, result: { cabinet: target.name, status: "running" } };
     }
 
     try {
       const result = await processCabinet(db, target, cabinetId, today, maxAllowedDate);
-      progress.push(result);
-      if (result.status === "deferred") deferred.push(`${target.name}: лимит WB`);
-      if (result.status === "downloaded") total += result.rows ?? 0;
+      return { cabinetId, result };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      errors.push(`${target.name}: ${message}`);
-      // Раньше необработанное исключение (например, таймаут запроса к WB —
-      // крупные кабинеты вроде Retail Family отдают заметно больше строк,
-      // и download мог не укладываться в таймаут) оставляло claimWbSyncJob
-      // замок "running" висеть на все 15 минут: processCabinet сам пишет
-      // состояние только на "чистых" ветках, а брошенное исключение эту
-      // запись пропускало. Кабинет застревал молча — до ручного разблока.
-      // Снимаем замок сразу, сохраняя существующий прогресс (taskId и т.п.).
+      // Раньше необработанное исключение (например, таймаут запроса к WB)
+      // оставляло claimWbSyncJob замок "running" висеть на все 15 минут:
+      // processCabinet сам пишет состояние только на "чистых" ветках, а
+      // брошенное исключение эту запись пропускало. Снимаем замок сразу,
+      // сохраняя существующий прогресс (taskId и т.п.).
       try {
         const current = await readWbSyncState<PaidStorageJobState>(db, cabinetId, JOB);
         await writeWbSyncState(db, cabinetId, JOB, {
@@ -314,7 +318,26 @@ export async function GET(request: NextRequest) {
       } catch {
         // Не удалось даже это — переживёт stale-recovery через 15 минут.
       }
+      return { cabinetId, error: `${target.name}: ${message}` };
     }
+  }
+
+  const settled = await Promise.all(targets.map((target) => runOneCabinet(db, target)));
+
+  let total = 0;
+  const errors: string[] = [];
+  const deferred: string[] = [];
+  const progress: CabinetResult[] = [];
+  for (const outcome of settled) {
+    if (!outcome.cabinetId) continue;
+    if (outcome.error) {
+      errors.push(outcome.error);
+      continue;
+    }
+    if (!outcome.result) continue;
+    progress.push(outcome.result);
+    if (outcome.result.status === "deferred") deferred.push(`${outcome.result.cabinet}: лимит WB`);
+    if (outcome.result.status === "downloaded") total += outcome.result.rows ?? 0;
   }
 
   const nothingCollected = total === 0 && progress.every((p) => p.status !== "downloaded");
