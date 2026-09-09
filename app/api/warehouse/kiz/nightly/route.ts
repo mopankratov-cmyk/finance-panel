@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!machineAuthorized(request)) {
     // Те же роли, что запускают руками остальные фоновые задачи.
-    const gate = await requireApiSession(["director", "finance"]);
+    const gate = await requireApiSession(["director", "fin_director", "financier"]);
     if (gate) return gate;
   }
   return run(request);

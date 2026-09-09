@@ -10,7 +10,7 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
 
 test("пересинк доступен ответственным за деньги и машине по секрету", async () => {
   const route = await read("../app/api/opiu/report-sync/route.ts");
-  assert.match(route, /MANUAL_ROLES = \["director", "finance"\]/);
+  assert.match(route, /MANUAL_ROLES = \["director", "fin_director", "financier"\]/);
   assert.match(route, /CRON_SECRET/);
   // Гейт-прокси знает только CRON_SECRET: обещанный, но непропускаемый секрет —
   // мёртвый ключ, на этом уже спотыкался сборщик «Полок».

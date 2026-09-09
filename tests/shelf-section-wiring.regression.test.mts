@@ -60,7 +60,7 @@ test("раздел в навигации WB и открыт внешнему с�
   const proxy = await read("../proxy.ts");
   assert.match(proxy, /pathname === "\/api\/shelf\/watch"/);
   const watch = await read("../app/api/shelf/watch/route.ts");
-  assert.match(watch, /WRITE_ROLES = \["director", "finance", "manager", "seller"\]/);
+  assert.match(watch, /WRITE_ROLES = \["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"\]/);
   const page = await read("../components/wb/WbShelfPage.tsx");
   assert.match(page, /user\?\.role === "seller" && hasExactCabinet/);
 });

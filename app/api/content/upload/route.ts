@@ -38,7 +38,7 @@ function objectPath(cabinetId: string, nmId: number, extension: string): string 
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance", "manager", "seller"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"]);
   if (gate) return gate;
 
   const form = await request.formData().catch(() => null);
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
 
 /** Убрать свою загрузку — из каталога и из хранилища. */
 export async function DELETE(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance", "manager", "seller"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"]);
   if (gate) return gate;
 
   const url = new URL(request.url);

@@ -72,7 +72,7 @@ export async function resolveAdvertCabinetAccess(
 ): Promise<{ access: AdvertCabinetAccess; response?: never } | { access?: never; response: NextResponse }> {
   const session = await getServerSession();
   if (!session) return { response: error("Требуется вход", 401) };
-  if (session.role !== "director" && session.role !== "manager") {
+  if (session.role !== "director" && session.role !== "wb_manager", "ozon_manager") {
     return { response: error("Недостаточно прав для управления рекламой", 403) };
   }
   const cabinetId = typeof cabinetIdInput === "string" ? cabinetIdInput.trim() : "";

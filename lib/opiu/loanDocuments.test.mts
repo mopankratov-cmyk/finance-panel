@@ -14,7 +14,7 @@ test("loan document API is authenticated and only returns a short-lived signed U
     "utf8",
   );
 
-  assert.match(source, /requireApiSession\(\["director", "finance"\]\)/);
+  assert.match(source, /requireApiSession\(\["director", "fin_director", "financier"\]\)/);
   assert.match(source, /public: false/);
   assert.match(source, /createSignedUrl\(row\.object_path, SIGNED_URL_TTL_SECONDS\)/);
   assert.match(source, /"Cache-Control": "no-store"/);

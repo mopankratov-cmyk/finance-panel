@@ -266,7 +266,7 @@ test("мутирующий GET закрыт для человека", () => {
   const src = readFileSync(new URL("../app/api/warehouse/kiz/nightly/route.ts", import.meta.url), "utf8");
   const get = src.slice(src.indexOf("export async function GET"), src.indexOf("export async function POST"));
   assert.match(get, /if \(!machineAuthorized\(request\)\) return fail/, "GET доступен человеку с сессией");
-  assert.match(src, /requireApiSession\(\["director", "finance"\]\)/, "ручной запуск не ограничен ролями");
+  assert.match(src, /requireApiSession\(\["director", "fin_director", "financier"\]\)/, "ручной запуск не ограничен ролями");
 });
 
 test("сбор идёт по кабинетам того юрлица, чьи числа на экране", () => {

@@ -50,7 +50,7 @@ const telegramHtml = (value: unknown) => String(value ?? "")
   .replace(/>/g, "&gt;");
 
 export async function GET(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return jsonError("Серверная база не настроена", 503);
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return jsonError("Серверная база не настроена", 503);
@@ -247,7 +247,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return jsonError("Серверная база не настроена", 503);
@@ -352,7 +352,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE() {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return jsonError("Серверная база не настроена", 503);

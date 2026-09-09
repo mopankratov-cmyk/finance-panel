@@ -11,7 +11,7 @@ import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductSco
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const READ_ROLES = ["director", "finance", "manager", "seller"] as const;
+const READ_ROLES = ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"] as const;
 const DAYS_DEFAULT = 5;
 const DAYS_MAX = 60;
 

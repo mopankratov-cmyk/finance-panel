@@ -133,5 +133,5 @@ test("finance browser calls are guarded by director or finance server routes", a
     readFile(new URL("../app/api/finance/companies/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/finance/import/route.ts", import.meta.url), "utf8"),
   ]);
-  for (const source of routes) assert.match(source, /requireApiSession\(\["director", "finance"\]\)/);
+  for (const source of routes) assert.match(source, /requireApiSession\(\["director", "fin_director", "financier"\]\)/);
 });

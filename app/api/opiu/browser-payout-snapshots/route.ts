@@ -16,7 +16,7 @@ function machineAuthorized(request: Request) {
 }
 
 export async function GET(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const year = Number(request.nextUrl.searchParams.get("year"));
   const marketplace = request.nextUrl.searchParams.get("marketplace");
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
  * нельзя. Доступ — как у остальных денежных действий: director/finance.
  */
 export async function DELETE(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const marketplace = request.nextUrl.searchParams.get("marketplace");
   const cabinetId = String(request.nextUrl.searchParams.get("cabinet") ?? "");

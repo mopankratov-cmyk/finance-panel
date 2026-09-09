@@ -88,7 +88,7 @@ function planForMonth(value: unknown, monthKey: string) {
 
 export async function GET(request: NextRequest) {
   const businessDateKey = deriveMoscowBusinessDate(new Date());
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const deadline = createRequestDeadline(Date.now(), REQUEST_BUDGET_MS);
   const deadlineOptions = { signal: request.signal };

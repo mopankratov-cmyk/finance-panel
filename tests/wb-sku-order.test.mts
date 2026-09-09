@@ -57,7 +57,7 @@ test("селлер управляет своим кабинетом: поряд�
   assert.match(proxy, /pathname === "\/api\/sku-order"\) return method === "GET" \|\| method === "PUT"/);
   assert.match(proxy, /\\\/api\\\/rnp\\\/\[\^\/\]\+\\\/\(plan\|operations\)/);
   const order = await read("../app/api/sku-order/route.ts");
-  assert.match(order, /WRITE_ROLES = \["director", "finance", "manager", "seller"\]/);
+  assert.match(order, /WRITE_ROLES = \["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"\]/);
   // Страница открывает управление селлеру только в конкретном кабинете.
   const page = await read("../components/wb/WbRnpPage.tsx");
   assert.match(page, /canManage = canWrite \|\| \(user\?\.role === "seller" && hasExactCabinet\)/);

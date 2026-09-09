@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export type CabinetGroup = SafeCabinetGroup;
 
 export async function GET(req: NextRequest) {
-  const gate = await requireApiSession(["director", "finance", "manager"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager"]);
   if (gate) return gate;
   const session = await getServerSession();
   if (!session) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });

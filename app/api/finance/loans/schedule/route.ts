@@ -24,7 +24,7 @@ const text = (value: unknown, max = 200) => String(value ?? "").trim().slice(0, 
 const isoDate = (value: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? "")) ? String(value) : null;
 
 async function gate() {
-  return requireApiSession(["director", "finance"]);
+  return requireApiSession(["director", "fin_director", "financier"]);
 }
 
 function db() {

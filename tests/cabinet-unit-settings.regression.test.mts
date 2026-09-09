@@ -136,7 +136,7 @@ test("Ozon применяет те же настройки", async () => {
 
 test("настройки пишет только финансовая роль", async () => {
   const api = await read("../app/api/cabinet-settings/unit/route.ts");
-  assert.match(api, /const WRITE_ROLES = \["director", "finance"\] as const/);
+  assert.match(api, /const WRITE_ROLES = \["director", "fin_director", "financier"\] as const/);
   assert.match(api, /requireApiSession\(\[\.\.\.WRITE_ROLES\]\)/);
   // Значение вне диапазона не должно молча стать «не задано».
   assert.match(api, /isRejectedCabinetPct/);

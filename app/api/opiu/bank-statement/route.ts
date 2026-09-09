@@ -14,7 +14,7 @@ export const maxDuration = 120;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Серверная база не настроена" }, { status: 503 });

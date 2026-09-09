@@ -271,11 +271,11 @@ export async function GET(req: NextRequest) {
   ) && (await checkCronAuth(req)) === null;
   let session = null;
   if (!isCron) {
-    const gate = await requireApiSession(["director", "finance", "manager", "seller"]);
+    const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"]);
     if (gate) return gate;
     session = await getServerSession();
     if (!session) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
-    if (!["director", "finance", "manager", "seller"].includes(session.role)) {
+    if (!["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"].includes(session.role)) {
       return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
     }
   }

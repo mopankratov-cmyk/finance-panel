@@ -1,5 +1,6 @@
 import type { Session } from "@/lib/auth/session";
 import { createHash } from "node:crypto";
+import { isCabinetScopedRole } from "@/lib/auth/permissions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GROUP = /^group:([1-9]\d*)$/;
@@ -109,7 +110,10 @@ export function assertUnitScopeAccess(
   session: Pick<Session, "role" | "cabinet_ids"> | null,
   scope: UnitResolvedScope,
 ): void {
-  if (!session || (session.role !== "manager" && session.role !== "seller")) return;
+  // Ограничение действует для всех ролей, работающих в выданном списке
+  // кабинетов. Прежде здесь перечислялись две роли руками, и менеджер Ozon
+  // в перечень не попадал — группы кабинетов ему не резались вовсе.
+  if (!session || !isCabinetScopedRole(session.role)) return;
   if (scope.mode === "all") throw new UnitScopeError(403, "Нет доступа к кабинетам");
   const members = scope.mode === "single" ? [scope.cabinetId] : scope.members;
   const allowed = new Set(session.cabinet_ids.map((member) => member.toLowerCase()));
@@ -122,7 +126,10 @@ export function assertUnitMemberAccess(
   session: Pick<Session, "role" | "cabinet_ids"> | null,
   members: string[],
 ): void {
-  if (!session || (session.role !== "manager" && session.role !== "seller")) return;
+  // Ограничение действует для всех ролей, работающих в выданном списке
+  // кабинетов. Прежде здесь перечислялись две роли руками, и менеджер Ozon
+  // в перечень не попадал — группы кабинетов ему не резались вовсе.
+  if (!session || !isCabinetScopedRole(session.role)) return;
   const allowed = new Set(session.cabinet_ids.map((member) => member.toLowerCase()));
   if (members.some((member) => !allowed.has(member.toLowerCase()))) {
     throw new UnitScopeError(403, "Нет доступа ко всем кабинетам группы");

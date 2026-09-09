@@ -53,5 +53,5 @@ test("внешнему селлеру открыт мониторинг конк
   const route = await readFile(new URL("../app/api/wb/competitors/route.ts", import.meta.url), "utf8");
   // Открывать роль можно только там, где границу кабинета держит сам роут.
   assert.equal((route.match(/hasCabinetAccess\(cabinetId\)/g) ?? []).length, 3, "GET, POST и DELETE проверяют кабинет");
-  assert.match(route, /requireApiSession\(\["director", "finance", "manager", "seller"\]\)/);
+  assert.match(route, /requireApiSession\(\["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"\]\)/);
 });

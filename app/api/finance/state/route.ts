@@ -6,7 +6,7 @@ import type { FinanceAction, FinanceState } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   try {
     return NextResponse.json(await loadFinanceStateServer());
@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const body = await request.json().catch(() => null) as { action?: FinanceAction; prevState?: FinanceState; nextState?: FinanceState } | null;
   if (!body?.action || !body.prevState || !body.nextState) {

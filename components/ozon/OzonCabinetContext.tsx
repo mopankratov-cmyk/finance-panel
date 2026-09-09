@@ -3,6 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { withOzonCabinetScope } from "@/lib/ozon/navigation";
+import { isCabinetScopedRole, type Role } from "@/lib/auth/permissions";
 
 export interface OzonCabinet {
   id: string;
@@ -22,7 +23,9 @@ export interface OzonCabinetGroup {
 
 interface SessionUser {
   email: string;
-  role: "director" | "finance" | "manager";
+  // Список ролей не дублируем: копия разъезжается с оригиналом молча. Здесь
+  // она уже разъехалась — оператора склада и менеджера Ozon в ней не было.
+  role: Role;
   cabinet_ids: string[];
 }
 
@@ -95,7 +98,10 @@ export function OzonCabinetProvider({ children }: { children: React.ReactNode })
     return () => controller.abort();
   }, [refreshKey]);
 
-  const canUseAll = !(user?.role === "manager" && user.cabinet_ids.length > 0);
+  // Агрегат «все кабинеты» закрыт всем, кто работает в выданном списке. Прежде
+  // здесь стояла одна роль «manager», и менеджер Ozon — тот, ради кого экран и
+  // сделан, — спокойно выбирал «все».
+  const canUseAll = !(isCabinetScopedRole(user?.role) && (user?.cabinet_ids.length ?? 0) > 0);
   const isAllowed = useCallback((candidate: string | null | undefined) => {
     if (!candidate) return false;
     if (candidate === "all") return canUseAll && cabinets.length > 1;

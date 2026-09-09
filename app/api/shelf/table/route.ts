@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // Селлер читает «Полки» своего кабинета (см. комментарий в watch/route.ts).
-const READ_ROLES = ["director", "finance", "manager", "seller"] as const;
+const READ_ROLES = ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"] as const;
 const HISTORY_DAYS_DEFAULT = 14;
 const HISTORY_DAYS_MAX = 90;
 

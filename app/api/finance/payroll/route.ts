@@ -30,7 +30,7 @@ const nullableId = (value: unknown) => {
 };
 
 async function authorize() {
-  return requireApiSession(["director", "finance"]);
+  return requireApiSession(["director", "fin_director", "financier"]);
 }
 
 function dbOrError() {
