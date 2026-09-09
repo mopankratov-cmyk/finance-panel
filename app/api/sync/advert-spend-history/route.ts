@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
-import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { getWbSyncTargets, type SyncTarget } from "@/lib/sync/cabinets";
 import { claimWbSyncJob, writeWbSyncState } from "@/lib/wb/syncState";
 import { getAdvertSpendHistory, type AdvertSpendHistoryItem } from "@/lib/wb/advertApi";
 
@@ -15,6 +15,75 @@ const WINDOW_DAYS = 30;
 
 function rowId(cabinetId: string, item: AdvertSpendHistoryItem): string {
   return [cabinetId, item.advertId ?? "", item.updTime ?? "", item.paymentType ?? "", item.updNum ?? ""].join("|");
+}
+
+interface CabinetResult {
+  cabinet: string;
+  status: string;
+  scanned?: number;
+  rows?: number;
+}
+
+/**
+ * Кабинеты — разные токены/аккаунты, друг от друга рейт-лимитом WB не
+ * связаны. Раньше обрабатывались последовательно (for), и при нескольких
+ * кабинетах суммарное время (до 30с на запрос — TIMEOUT_MS в advertApi.ts —
+ * на каждый) легко превышало maxDuration=60 и весь прогон падал по таймауту
+ * Vercel, не записав вообще ничего. Обрабатываем параллельно — общее время
+ * ограничено самым медленным кабинетом, а не суммой всех.
+ */
+async function processCabinet(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  target: SyncTarget,
+  from: string,
+  to: string,
+): Promise<CabinetResult> {
+  const cabinetId = target.cabinetId;
+  if (!cabinetId) return { cabinet: target.name, status: "skipped" };
+
+  if (!(await claimWbSyncJob(db, cabinetId, JOB, 15 * 60))) {
+    return { cabinet: target.name, status: "running" };
+  }
+
+  const res = await getAdvertSpendHistory(target.advertToken, from, to);
+  if (!res.ok) {
+    if (res.rateLimited) {
+      await writeWbSyncState(db, cabinetId, JOB, { status: "running", attempts: 0, lastError: null, state: {} });
+      return { cabinet: target.name, status: "deferred" };
+    }
+    await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: res.message, state: {} });
+    throw new Error(res.message);
+  }
+
+  const items = Array.isArray(res.data) ? res.data : [];
+  const rows = items
+    .map((item) => ({
+      id: rowId(cabinetId, item),
+      cabinet_id: cabinetId,
+      advert_id: item.advertId ?? null,
+      campaign_name: item.campaignName ?? null,
+      payment_type: String(item.paymentType ?? "").trim(),
+      amount: item.updSum ?? 0,
+      doc_number: item.updNum ?? null,
+      charged_at: item.updTime ?? null,
+      date: item.updTime ? String(item.updTime).slice(0, 10) : null,
+      synced_at: new Date().toISOString(),
+    }))
+    .filter((r) => r.advert_id && r.charged_at && r.date && r.payment_type);
+
+  const upsertError = await chunkedUpsert("wb_advert_spend_history", rows, "id");
+  if (upsertError) {
+    await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: upsertError, state: {} });
+    throw new Error(`запись wb_advert_spend_history: ${upsertError}`);
+  }
+
+  await writeWbSyncState(db, cabinetId, JOB, {
+    status: "caught_up",
+    attempts: 0,
+    lastError: null,
+    state: { lastRunAt: new Date().toISOString(), rowsLoaded: rows.length, scanned: items.length },
+  });
+  return { cabinet: target.name, status: "ok", scanned: items.length, rows: rows.length };
 }
 
 export async function GET(request: NextRequest) {
@@ -37,69 +106,20 @@ export async function GET(request: NextRequest) {
   const to = toDate.toISOString().slice(0, 10);
   const from = fromDate.toISOString().slice(0, 10);
 
+  const settled = await Promise.allSettled(targets.map((target) => processCabinet(db, target, from, to)));
+
   let total = 0;
   const errors: string[] = [];
-  const progress: Array<Record<string, unknown>> = [];
-
-  for (const target of targets) {
-    if (!target.cabinetId) continue;
-    const cabinetId = target.cabinetId;
-
-    if (!(await claimWbSyncJob(db, cabinetId, JOB, 15 * 60))) {
-      progress.push({ cabinet: target.name, status: "running", skipped: true });
-      continue;
+  const progress: CabinetResult[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      progress.push(result.value);
+      total += result.value.rows ?? 0;
+    } else {
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      errors.push(`${targets[index]!.name}: ${message}`);
     }
-
-    try {
-      const res = await getAdvertSpendHistory(target.advertToken, from, to);
-      if (!res.ok) {
-        if (res.rateLimited) {
-          progress.push({ cabinet: target.name, status: "deferred" });
-          await writeWbSyncState(db, cabinetId, JOB, { status: "running", attempts: 0, lastError: null, state: {} });
-          continue;
-        }
-        errors.push(`${target.name}: ${res.message}`);
-        await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: res.message, state: {} });
-        continue;
-      }
-
-      const items = Array.isArray(res.data) ? res.data : [];
-      const rows = items
-        .map((item) => ({
-          id: rowId(cabinetId, item),
-          cabinet_id: cabinetId,
-          advert_id: item.advertId ?? null,
-          campaign_name: item.campaignName ?? null,
-          payment_type: String(item.paymentType ?? "").trim(),
-          amount: item.updSum ?? 0,
-          doc_number: item.updNum ?? null,
-          charged_at: item.updTime ?? null,
-          date: item.updTime ? String(item.updTime).slice(0, 10) : null,
-          synced_at: new Date().toISOString(),
-        }))
-        .filter((r) => r.advert_id && r.charged_at && r.date && r.payment_type);
-
-      const upsertError = await chunkedUpsert("wb_advert_spend_history", rows, "id");
-      if (upsertError) {
-        errors.push(`${target.name}: запись wb_advert_spend_history: ${upsertError}`);
-        await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: upsertError, state: {} });
-        continue;
-      }
-
-      total += rows.length;
-      await writeWbSyncState(db, cabinetId, JOB, {
-        status: "caught_up",
-        attempts: 0,
-        lastError: null,
-        state: { lastRunAt: new Date().toISOString(), rowsLoaded: rows.length, scanned: items.length },
-      });
-      progress.push({ cabinet: target.name, status: "ok", scanned: items.length, rows: rows.length });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      errors.push(`${target.name}: ${message}`);
-      await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: message, state: {} });
-    }
-  }
+  });
 
   const ok = errors.length === 0;
   await writeSyncLog(JOB, ok ? "ok" : "error", total, errors.join("; ") || null, startedAt);

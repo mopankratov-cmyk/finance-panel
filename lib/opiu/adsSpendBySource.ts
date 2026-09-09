@@ -97,7 +97,11 @@ export async function fetchAdsSpendBySourceByWeek(
     const week = weeks.find((w) => row.date >= w.rangeFrom && row.date <= w.rangeTo);
     if (!week) continue;
     const bucket = map[week.weekStart]!;
-    const isBonus = row.payment_type.toLowerCase().includes("бонус");
+    // WB называет источник по-разному в разных кабинетах/версиях API:
+    // "Промо бонусы" в одном, "Кэшбэк" в другом — оба не реальные деньги
+    // продавца, оба — "бонусы". "Баланс" и "Счёт" — реальные деньги.
+    const source = row.payment_type.toLowerCase();
+    const isBonus = source.includes("бонус") || source.includes("кэшбэк") || source.includes("кешбэк");
     if (isBonus) bucket.bonus += Number(row.amount ?? 0);
     else bucket.balance += Number(row.amount ?? 0);
   }
