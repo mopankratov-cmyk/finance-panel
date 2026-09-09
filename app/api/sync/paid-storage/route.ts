@@ -51,7 +51,12 @@ function addDays(dateStr: string, days: number): string {
 
 function rowId(cabinetId: string, row: PaidStorageApiRow): string {
   const date = String(row.date ?? "").slice(0, 10);
-  return [cabinetId, date, row.barcode ?? "", row.giId ?? "", row.chrtId ?? "", row.calcType ?? ""].join("|");
+  // officeId (склад) обязателен в ключе: WB хранит один и тот же товар/
+  // поставку одновременно на нескольких складах — без officeId такие строки
+  // (тот же date/barcode/giId/chrtId/calcType, разный склад) схлопывались в
+  // один id, и upsert падал с "ON CONFLICT DO UPDATE command cannot affect
+  // row a second time" (два разных склада внутри одного чанка).
+  return [cabinetId, date, row.barcode ?? "", row.giId ?? "", row.chrtId ?? "", row.calcType ?? "", row.officeId ?? ""].join("|");
 }
 
 export async function GET(request: NextRequest) {
@@ -156,7 +161,7 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        const rows = download.rows.map((row) => ({
+        const mappedRows = download.rows.map((row) => ({
           id: rowId(cabinetId, row),
           cabinet_id: cabinetId,
           date: String(row.date ?? "").slice(0, 10),
@@ -176,6 +181,13 @@ export async function GET(request: NextRequest) {
           barcodes_count: row.barcodesCount ?? null,
           synced_at: new Date().toISOString(),
         })).filter((r) => r.date);
+
+        // Защита от "ON CONFLICT DO UPDATE command cannot affect row a
+        // second time": если у WB найдётся ещё одно измерение строки,
+        // которое rowId не учитывает, дубль внутри одного upsert уронит всю
+        // пачку. Схлопываем по id, а не падаем — прошлый раз так уже было
+        // (не хватало officeId в ключе).
+        const rows = [...new Map(mappedRows.map((r) => [r.id, r])).values()];
 
         const upsertError = await chunkedUpsert("wb_paid_storage_rows", rows, "id");
         if (upsertError) {
