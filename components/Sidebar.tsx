@@ -126,9 +126,6 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
     id: "finres",
     label: "Финрезультат",
     items: [
-      { href: "/summary", label: "Сводка WB · Ozon", icon: LayoutDashboard },
-      { href: "/pnl", label: "ОПиУ (до СПП)", icon: LineChart },
-      { href: "/losses", label: "Где теряем", icon: TrendingDown },
       { href: "/opiu", label: "WB недельный", icon: Table2 },
     ],
   },
