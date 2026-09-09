@@ -12,7 +12,7 @@ export const maxDuration = 300;
 //
 // Только пересинк — без телеграм-уведомлений и анализа, которые делает
 // /api/opiu/monitor: у ручного запуска не должно быть побочных эффектов.
-const MANUAL_ROLES = ["director", "finance"] as const;
+const MANUAL_ROLES = ["director", "fin_director", "financier"] as const;
 const MAX_PERIOD_DAYS = 92;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 

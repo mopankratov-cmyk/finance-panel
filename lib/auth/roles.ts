@@ -1,13 +1,19 @@
-import type { Role } from "./session";
+import type { Role } from "./permissions";
+
+export { ROLE_LABEL, isCabinetScopedRole } from "./permissions";
 
 // Стартовая страница по роли
 export const ROLE_HOME: Record<Role, string> = {
   director: "/",
-  finance: "/pnl",
-  manager: "/ozon",
+  fin_director: "/pnl",
+  financier: "/pnl",
+  hr: "/payroll",
+  wb_manager: "/wb/rnp",
   ozon_manager: "/ozon",
-  seller: "/wb/connect",
+  buyer: "/supplies",
   warehouse: "/warehouse",
+  seller_owner: "/wb/connect",
+  seller: "/wb/connect",
 };
 
 /**
@@ -27,48 +33,52 @@ export function roleHome(session: { role: Role; cabinet_ids?: string[] } | null 
   return ROLE_HOME[session.role] || "/";
 }
 
-export const ROLE_LABEL: Record<Role, string> = {
-  director: "Директор",
-  finance: "Финотдел / аналитик",
-  manager: "Менеджер МП",
-  ozon_manager: "Менеджер Ozon",
-  seller: "Внешний селлер WB",
-  warehouse: "Оператор склада",
-};
 
-// Доступные префиксы путей по роли. director — всё.
+/**
+ * Доступные префиксы путей по роли.
+ *
+ * Это ГРУБЫЙ гейт: он отвечает «куда пустить», а не «что там можно делать».
+ * Тонкая проверка — матрица действий в lib/auth/permissions.ts. Пути остаются,
+ * потому что дешевле не пустить человека на экран целиком, чем разбираться с
+ * правами внутри него, и потому что прокси должен уметь отвечать до запуска
+ * роута.
+ */
+const FINANCE_PATHS = ["/", "/calendar", "/payments", "/payroll", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"];
+
+// Товарный контур менеджера. Маркетплейс отсекается отдельной осью
+// (ROLE_MARKETPLACES), поэтому здесь перечислены общие для обоих экраны.
+const MERCH_PATHS = ["/", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/costs", "/warehouse", "/agent", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"];
+
 const ACCESS: Record<Role, string[]> = {
   director: ["*"],
-  finance: ["/", "/calendar", "/payments", "/payroll", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
-  manager: ["/", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/costs", "/warehouse", "/agent", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"],
+  fin_director: [...FINANCE_PATHS],
+  // Финансист работает там же, где финдиректор: разница между ними не в
+  // экранах, а в праве утвердить — а это уже матрица действий.
+  financier: [...FINANCE_PATHS],
+  // Кадры и зарплата. Финансовый контур компании и маркетплейсы закрыты (§7).
+  hr: ["/", "/payroll"],
+  // Менеджер WB: свой маркетплейс без чужого. Прежняя роль «менеджер МП»
+  // держала оба контура сразу, и ТЗ §8 их разделяет.
+  wb_manager: [...MERCH_PATHS, "/wb"],
   // Менеджер Ozon ведёт кабинеты Ozon и товародвижение по ним. Финансовый
   // контур компании, WB-контур и системные настройки ему не нужны и потому
   // закрыты: роль описывает работу человека, а не «всё, что не жалко».
   ozon_manager: ["/", "/ozon", "/warehouse"],
-  // Внешний селлер работает только в собственном WB-контуре. Управляющие
-  // инструменты (публикация контента, цены, системные настройки) не открываем.
+  // Закупщик: поставщики, заказы, приёмка и себестоимость.
+  buyer: ["/", "/supplies", "/warehouse", "/costs", "/planning", "/unit", "/abc"],
+  // Оператор фулфилмента работает только в модуле «Склад»: приёмка, отгрузка, брак.
+  warehouse: ["/warehouse"],
+  // Внешний контур работает только в собственных кабинетах. Управляющие
+  // инструменты компании (системные настройки, финансы) не открываем.
   //
   // Склад ему открыт целиком, но это не дыра: модуль считает всё по юрлицу, а
-  // юрлица селлеру видны только те, чьи кабинеты принадлежат его организации
-  // (lib/warehouse/entityAccess.ts). Чужой склад он не увидит даже по прямой
-  // ссылке — юрлицо не пройдёт resolveEntity.
+  // юрлица внешнему пользователю видны только те, чьи кабинеты принадлежат его
+  // организации (lib/warehouse/entityAccess.ts). Чужой склад он не увидит даже
+  // по прямой ссылке — юрлицо не пройдёт resolveEntity.
+  seller_owner: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
   seller: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
-  // Оператор фулфилмента работает только в модуле «Склад»: приёмка, отгрузка, брак.
-  // Решение владельца: внутри модуля видит всё, включая себестоимость.
-  warehouse: ["/warehouse"],
 };
 
-/**
- * Роли, работающие в выданном им списке кабинетов.
- *
- * Такому сотруднику видны только его кабинеты, а агрегаты «все» и группы —
- * лишь в пределах выданного. Признак вынесен отдельно, чтобы новая роль не
- * требовала правки десятка мест, каждое из которых сравнивало роль со
- * строкой «manager» и молча пропускало всё остальное.
- */
-export function isCabinetScopedRole(role: Role | string | null | undefined): boolean {
-  return role === "manager" || role === "ozon_manager";
-}
 
 export function canAccess(role: Role, path: string): boolean {
   const rules = ACCESS[role] ?? [];

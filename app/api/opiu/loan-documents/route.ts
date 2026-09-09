@@ -127,7 +127,7 @@ function errorResponse(error: unknown) {
 }
 
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   try {
     const contentLength = Number(request.headers.get("content-length") ?? 0);
@@ -185,7 +185,7 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   try {
     const loanId = new URL(request.url).searchParams.get("loanId")?.trim() ?? "";
@@ -241,7 +241,7 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   try {
     const body = await request.json().catch(() => null) as { loanId?: string } | null;

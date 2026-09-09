@@ -215,7 +215,7 @@ export async function proxy(req: NextRequest) {
       if (session.role === "ozon_manager" && !isOzonManagerApiAllowed(pathname, req.method)) {
         return NextResponse.json({ error: "Менеджеру Ozon доступны модули Ozon и Склад" }, { status: 403 });
       }
-      if (session.role === "manager" && !isManagerApiAllowed(pathname)) {
+      if (session.role === "wb_manager" && !isManagerApiAllowed(pathname)) {
         return NextResponse.json({ error: "Финансовый контур компании доступен директору и финотделу" }, { status: 403 });
       }
       return NextResponse.next();

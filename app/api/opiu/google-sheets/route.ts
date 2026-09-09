@@ -22,7 +22,7 @@ function safeCell(value: string | number): string | number {
 }
 
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const webhookUrl = process.env.FINANCE_GOOGLE_SHEETS_WEBHOOK_URL;
   const secret = process.env.FINANCE_GOOGLE_SHEETS_SECRET;

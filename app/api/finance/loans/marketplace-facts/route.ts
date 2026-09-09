@@ -14,7 +14,7 @@ type LoanRow = { id: string; creditor: string; start_date: string };
 type PaymentRow = { comment: string | null };
 
 export async function GET() {
-  const denied = await requireApiSession(["director", "finance"]);
+  const denied = await requireApiSession(["director", "fin_director", "financier"]);
   if (denied) return denied;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });

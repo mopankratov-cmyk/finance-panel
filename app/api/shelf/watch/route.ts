@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 // разделом полностью — ведёт конкурентов СВОЕГО кабинета: tenant-границу
 // держит hasCabinetAccess (чужой кабинет и агрегат all для него — 403).
 // Смена списка меняет только будущие сборы; история снимков остаётся.
-const READ_ROLES = ["director", "finance", "manager", "seller"] as const;
-const WRITE_ROLES = ["director", "finance", "manager", "seller"] as const;
+const READ_ROLES = ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"] as const;
+const WRITE_ROLES = ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"] as const;
 
 const BRAND_LIST_LIMIT = 50;
 

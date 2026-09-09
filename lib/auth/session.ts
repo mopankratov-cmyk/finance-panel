@@ -1,6 +1,11 @@
 import { SignJWT, jwtVerify } from "jose";
 
-export type Role = "director" | "finance" | "manager" | "ozon_manager" | "seller" | "warehouse";
+// Роль и её права живут в одном месте — lib/auth/permissions.ts. Здесь только
+// перевывоз, чтобы старые импорты `from "@/lib/auth/session"` не переписывать:
+// словарь ролей обязан быть один, иначе матрица прав и проверка сессии
+// разойдутся молча.
+export type { Role } from "./permissions";
+import type { Role } from "./permissions";
 export interface Session {
   uid: string;
   email: string;

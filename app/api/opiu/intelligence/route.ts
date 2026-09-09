@@ -6,7 +6,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   try {
     const body = await request.json() as { accounts?: Account[]; payments?: Payment[]; today?: string };

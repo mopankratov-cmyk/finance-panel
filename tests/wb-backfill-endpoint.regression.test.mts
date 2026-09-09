@@ -12,7 +12,7 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
 test("бэкфилл доступен под сессией, а не только по cron-секрету", async () => {
   const route = await read("../app/api/wb/backfill/route.ts");
   assert.match(route, /requireApiSession\(\[\.\.\.WRITE_ROLES\]\)/);
-  assert.match(route, /const WRITE_ROLES = \["director", "finance"\] as const/);
+  assert.match(route, /const WRITE_ROLES = \["director", "fin_director", "financier"\] as const/);
   // Секрет подставляет сервер, наружу он не уходит.
   assert.match(route, /Authorization: `Bearer \$\{secret\}`/);
   assert.doesNotMatch(route, /secret[^\n]*NextResponse\.json\(\{[^}]*secret/);

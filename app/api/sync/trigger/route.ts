@@ -14,7 +14,7 @@ const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
-  const gate = await requireApiSession(["director", "manager"]);
+  const gate = await requireApiSession(["director", "wb_manager", "ozon_manager"]);
   if (gate) return gate;
   const { searchParams } = new URL(request.url);
   const job = searchParams.get("job") ?? "";

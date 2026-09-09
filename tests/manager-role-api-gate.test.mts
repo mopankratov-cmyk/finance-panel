@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 const proxy = readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
 
 test("роль manager отсекается на /api/*, а не только на страницах", () => {
-  assert.match(proxy, /session\.role === "manager" && !isManagerApiAllowed/);
+  assert.match(proxy, /session\.role === "wb_manager" && !isManagerApiAllowed/);
 });
 
 test("закрыт финансовый контур, рабочие инструменты менеджера открыты", () => {

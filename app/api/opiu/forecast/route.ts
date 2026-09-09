@@ -12,7 +12,7 @@ export const maxDuration = 60;
 const FORECAST_BUDGET_MS = 50_000;
 
 export async function GET(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const year = Number(request.nextUrl.searchParams.get("year"));
   const month = Number(request.nextUrl.searchParams.get("month"));

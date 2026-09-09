@@ -7,7 +7,7 @@ import { createUploadTicket, DIRECT_UPLOAD_THRESHOLD_BYTES, MAX_UPLOAD_BYTES } f
 // подписанный URL на один объект, действует ~2 часа. Нужен для файлов крупнее
 // 4,5 МБ, которые не проходят через тело запроса Vercel-функции.
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const body = await request.json().catch(() => null) as { fileName?: string; size?: number } | null;
   const fileName = String(body?.fileName ?? "").trim();

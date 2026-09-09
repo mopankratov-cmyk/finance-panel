@@ -30,7 +30,7 @@ async function wbJson(url: string, token: string, init?: RequestInit) {
 }
 
 export async function GET(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const cabinetId = String(request.nextUrl.searchParams.get("cabinet") ?? "");
   const year = Number(request.nextUrl.searchParams.get("year"));

@@ -4,6 +4,7 @@ import test from "node:test";
 import { parseUnitCabinetScope } from "../lib/unit/cabinetScope";
 import { isConfiguredCronBearer } from "../lib/unit/cronAuth";
 import { parseUnitMoneyQuery, parseUnitRefreshQuery, validateUnitSingletonQuery } from "../lib/unit/query";
+import { canAccess } from "../lib/auth/roles.ts";
 
 test("unit cron auth requires a configured exact bearer", () => {
   assert.equal(isConfiguredCronBearer("Bearer arbitrary", undefined), false);
@@ -94,7 +95,7 @@ test("unit table dual auth and explicit cabinet resolution fail closed before da
   ]);
   const handlerIndex = route.indexOf("export async function GET");
   const cronIndex = route.indexOf("checkCronAuth(req)", handlerIndex);
-  const guardIndex = route.indexOf('requireApiSession(["director", "finance", "manager", "seller"])');
+  const guardIndex = route.indexOf('requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"])');
   const queryValidationIndex = route.indexOf("parseUnitPeriodQuery(sp)", handlerIndex);
   const queryValidationCatchIndex = route.indexOf("} catch (error) {", queryValidationIndex);
   const dbIndex = route.indexOf("getSupabaseAdmin()", handlerIndex);
@@ -103,7 +104,11 @@ test("unit table dual auth and explicit cabinet resolution fail closed before da
   const accessIndex = route.indexOf("assertUnitScopeAccess(", resolveIndex);
   const refreshIndex = route.indexOf("parseUnitRefreshQuery(sp)", handlerIndex);
 
-  assert.match(roles, /manager:\s*\[[^\]]*"\/unit"/);
+  // Проверяем доступ, а не форму записи: пути менеджеров вынесены в общий
+  // список, и регулярка по тексту файла ловила бы вёрстку, а не право.
+  assert.equal(canAccess("wb_manager", "/unit"), true);
+  assert.equal(canAccess("ozon_manager", "/unit"), false, "у менеджера Ozon свой контур");
+  assert.ok(roles.includes("MERCH_PATHS"), "пути менеджера собраны в одном месте");
   assert.ok(cronIndex >= 0);
   assert.ok(guardIndex >= 0);
   assert.ok(cronIndex < guardIndex);
@@ -115,8 +120,8 @@ test("unit table dual auth and explicit cabinet resolution fail closed before da
   assert.ok(guardIndex < refreshIndex);
   assert.ok(resolveIndex < accessIndex);
   assert.ok(refreshIndex < dbIndex);
-  assert.match(route, /if \(!isCron\)\s*\{\s*const gate = await requireApiSession\(\["director", "finance", "manager", "seller"\]\)/);
-  assert.match(route, /\["director", "finance", "manager", "seller"\]\.includes\(session\.role\)/);
+  assert.match(route, /if \(!isCron\)\s*\{\s*const gate = await requireApiSession\(\["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"\]\)/);
+  assert.match(route, /\["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"\]\.includes\(session\.role\)/);
   assert.match(route, /const p_cabinet = scope\.mode === "single" \? scope\.cabinetId : null/);
   assert.doesNotMatch(route, /if \(!db\) return NextResponse\.json\(\{ headers: \[\], rows: \[\], img_urls: \[\] \}\)/);
   // Ошибка чтения себестоимостей обязана ронять ответ, а не превращаться в

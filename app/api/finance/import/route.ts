@@ -20,7 +20,7 @@ type ImportPlanBody = {
 const DEMO_ACCOUNT_NAMES = ["WB Счёт 1", "WB Счёт 2", "Ozon", "Банковский счёт", "Наличные"];
 
 async function authorize() {
-  return requireApiSession(["director", "finance"]);
+  return requireApiSession(["director", "fin_director", "financier"]);
 }
 
 function validUuid(value: unknown) {

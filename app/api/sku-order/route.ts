@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 // Ручной порядок выдачи артикулов кабинета: настраивается в РНП, читается
 // всеми экранами со списками SKU. Порядок — представление, не деньги, поэтому
 // править может и менеджер.
-const READ_ROLES = ["director", "finance", "manager", "seller"] as const;
+const READ_ROLES = ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"] as const;
 // Порядок выдачи — представление своего кабинета, а не владельческая настройка:
 // селлер ведёт его сам (tenant-границу держит hasCabinetAccess).
-const WRITE_ROLES = ["director", "finance", "manager", "seller"] as const;
+const WRITE_ROLES = ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"] as const;
 
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession([...READ_ROLES]);

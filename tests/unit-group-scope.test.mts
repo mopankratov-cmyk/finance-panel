@@ -91,7 +91,7 @@ test("malformed/missing/foreign group fails visibly", async () => {
 });
 
 test("restricted manager needs every member and cannot request all", () => {
-  const manager = { role: "manager" as const, cabinet_ids: [A] };
+  const manager = { role: "wb_manager" as const, cabinet_ids: [A] };
   assert.throws(() => assertUnitScopeAccess(manager, { mode: "all", scopeKey: "all" }), UnitScopeError);
   assert.throws(
     () => assertUnitScopeAccess(manager, { mode: "group", members: [A, B], scopeKey: canonicalGroupScopeKey([A, B]) }),
@@ -142,7 +142,7 @@ test("manager member ACL runs before active-member diagnostics", async () => {
       authorizeMembers: (members) => {
         calls.push("acl");
         assertUnitScopeAccess(
-          { role: "manager", cabinet_ids: [A] },
+          { role: "wb_manager", cabinet_ids: [A] },
           { mode: "group", members, scopeKey: canonicalGroupScopeKey(members) },
         );
       },
@@ -168,7 +168,7 @@ test("UUID scope is canonical lowercase for lookup, access and cache", async () 
   });
   assert.deepEqual(scope, { mode: "single", cabinetId: A, scopeKey: `single:${A}` });
   assert.doesNotThrow(() => assertUnitScopeAccess(
-    { role: "manager", cabinet_ids: [A.toUpperCase()] },
+    { role: "wb_manager", cabinet_ids: [A.toUpperCase()] },
     scope,
   ));
 });

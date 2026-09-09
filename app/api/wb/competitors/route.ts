@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
 
 /** Добавить свой товар в мониторинг или конкурента к нему. */
 export async function POST(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance", "manager", "seller"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"]);
   if (gate) return gate;
   const cabinetId = cabinetOf(request);
   if (!(await hasCabinetAccess(cabinetId))) return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
 
 /** Убрать конкурента у товара или сам товар из мониторинга. */
 export async function DELETE(request: NextRequest) {
-  const gate = await requireApiSession(["director", "finance", "manager", "seller"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"]);
   if (gate) return gate;
   const cabinetId = cabinetOf(request);
   if (!(await hasCabinetAccess(cabinetId))) return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });

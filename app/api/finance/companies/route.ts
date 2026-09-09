@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 export const dynamic = "force-dynamic";
 
 async function authorize() {
-  return requireApiSession(["director", "finance"]);
+  return requireApiSession(["director", "fin_director", "financier"]);
 }
 
 export async function GET() {

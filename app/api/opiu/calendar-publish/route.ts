@@ -43,7 +43,7 @@ function paymentFromRow(row: Record<string, unknown>): Payment {
 }
 
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const body = await request.json().catch(() => null) as { scope?: ForecastPublishScope; rows?: ForecastPublishRow[]; approved?: boolean } | null;
   const scope = body?.scope;
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const body = await request.json().catch(() => null) as { plannedId?: string; factId?: string; mode?: "automatic" | "confirmed" } | null;
   const plannedId = String(body?.plannedId ?? "");

@@ -16,7 +16,7 @@ export const maxDuration = 300;
 // Этот роут — та же операция, но под обычной сессией: владелец подключил кабинет
 // и должен уметь сам сказать «забери историю с начала месяца», не имея доступа к
 // секретам окружения. Секрет подставляется на сервере, наружу не уходит.
-const WRITE_ROLES = ["director", "finance"] as const;
+const WRITE_ROLES = ["director", "fin_director", "financier"] as const;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 

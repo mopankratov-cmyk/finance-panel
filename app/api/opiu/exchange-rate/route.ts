@@ -3,7 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { fetchCbrRate, isSupportedCurrency } from "@/lib/loans/exchangeRate";
 
 export async function GET(request: Request) {
-  const gate = await requireApiSession(["director", "finance"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const currency = new URL(request.url).searchParams.get("currency")?.toUpperCase() ?? "RUB";
   if (!isSupportedCurrency(currency)) return NextResponse.json({ error: "Неподдерживаемая валюта" }, { status: 400 });

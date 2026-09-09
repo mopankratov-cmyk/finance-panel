@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import type { Role } from "@/lib/auth/session";
+import { isCabinetScopedRole } from "@/lib/auth/permissions";
 
 export interface WbCabinet {
   id: string;
@@ -109,7 +110,7 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
 
   const canUseAll = !(
     user?.role === "seller"
-    || (user?.role === "manager" && Array.isArray(user.cabinet_ids) && user.cabinet_ids.length > 0)
+    || (isCabinetScopedRole(user?.role) && Array.isArray(user?.cabinet_ids) && user!.cabinet_ids.length > 0)
   );
 
   const isAllowed = useCallback(

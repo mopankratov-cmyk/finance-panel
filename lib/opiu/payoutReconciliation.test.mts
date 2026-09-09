@@ -174,7 +174,7 @@ test("Ozon forecast route is an authenticated read-only GET with fail-visible fi
   );
 
   assert.match(source, /export async function GET\(/);
-  assert.match(source, /requireApiSession\(\["director", "finance"\]\)/);
+  assert.match(source, /requireApiSession\(\["director", "fin_director", "financier"\]\)/);
   assert.match(source, /cabinetId/);
   assert.match(source, /companyId/);
   assert.match(source, /reportDataStatus/);
@@ -204,7 +204,7 @@ test("forecast publication is owner-approved and performed by one guarded upsert
   assert.match(ozonPanel, /publishForecastToCalendar/);
   assert.match(wbPanel, /data\.planSource !== "approved_sales_plan"/);
   assert.match(wbPanel, /publishForecastToCalendar/);
-  assert.match(publishRoute, /requireApiSession\(\["director", "finance"\]\)/);
+  assert.match(publishRoute, /requireApiSession\(\["director", "fin_director", "financier"\]\)/);
   assert.match(publishRoute, /body\?\.approved !== true/);
   assert.match(publishRoute, /loadPlanningState/);
   assert.match(publishRoute, /hasApprovedPlan/);

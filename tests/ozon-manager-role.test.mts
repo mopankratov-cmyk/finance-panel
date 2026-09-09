@@ -30,9 +30,14 @@ test("роль работает в выданном списке кабинет�
   // «manager» и молча пропускало всё остальное — новая роль получила бы
   // доступ ко ВСЕМ кабинетам вместо выданных.
   assert.equal(isCabinetScopedRole("ozon_manager"), true);
-  assert.equal(isCabinetScopedRole("manager"), true);
+  assert.equal(isCabinetScopedRole("wb_manager"), true);
   assert.equal(isCabinetScopedRole("director"), false);
-  assert.equal(isCabinetScopedRole("seller"), false);
+  // Внешний контур тоже работает в выданном списке — и это ужесточение.
+  // Раньше признак его не покрывал, и ограничение держалось на россыпи
+  // отдельных сравнений `role === "seller"`; там, где такого сравнения не
+  // случилось (кабинеты Ozon), список не резался вовсе.
+  assert.equal(isCabinetScopedRole("seller"), true);
+  assert.equal(isCabinetScopedRole("seller_owner"), true);
   assert.equal(isCabinetScopedRole(null), false);
 });
 

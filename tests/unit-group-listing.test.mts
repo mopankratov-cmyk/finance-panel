@@ -11,14 +11,14 @@ const rows = [
 ];
 
 test("manager listing only returns fully-covered groups without leaking partial names or members", () => {
-  const groups = filterCabinetGroups(rows, { role: "manager", cabinet_ids: [A] });
+  const groups = filterCabinetGroups(rows, { role: "wb_manager", cabinet_ids: [A] });
   assert.deepEqual(groups, [{ id: 1, name: "mine", marketplace: "wb", memberIds: [A] }]);
   assert.doesNotMatch(JSON.stringify(groups), /partial-secret/);
   assert.doesNotMatch(JSON.stringify(groups), new RegExp(B));
 });
 
 test("director and finance preserve the complete safe group list", () => {
-  for (const role of ["director", "finance"] as const) {
+  for (const role of ["director", "fin_director", "financier"] as const) {
     assert.equal(filterCabinetGroups(rows, { role, cabinet_ids: [] }).length, 2);
   }
 });
