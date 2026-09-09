@@ -21,20 +21,6 @@ const REPORT_LAG_DAYS = 2;
 // теряется при ошибке одной задачи.
 const WINDOW_DAYS = 7;
 const HISTORY_DEPTH_DAYS = 180;
-// Пауза между проверками статуса ВНУТРИ одного вызова.
-const POLL_INTERVAL_MS = 8_000;
-// Запас на upsert + запись состояния — не гнать поллинг до самого дедлайна.
-const RESERVE_MS = 12_000;
-/**
- * Реальный прогон дважды падал 504 (FUNCTION_INVOCATION_TIMEOUT) при
- * maxDuration=60 и внутреннем дедлайне ровно 60с от старта — часы Vercel
- * (с холодным стартом, сетевыми задержками до этой точки) явно тикают
- * раньше и жёстче, чем наш собственный startedAt внутри обработчика.
- * Останавливаем поллинг с большим запасом (35с бюджета вместо 60), а не
- * впритык — лучше нормально выйти с "pending" и продолжить в следующем
- * вызове, чем поймать жёсткий обрыв Vercel без единой записи состояния.
- */
-const SOFT_BUDGET_MS = 35_000;
 
 interface PaidStorageJobState extends Record<string, unknown> {
   taskId?: string;
@@ -61,10 +47,6 @@ function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return isoDate(d);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function rowId(cabinetId: string, row: PaidStorageApiRow): string {
@@ -100,7 +82,6 @@ async function processCabinet(
   cabinetId: string,
   today: string,
   maxAllowedDate: string,
-  deadline: number,
 ): Promise<CabinetResult> {
   const saved = await readWbSyncState<PaidStorageJobState>(db, cabinetId, JOB);
   let state: PaidStorageJobState = saved?.state ?? {};
@@ -149,67 +130,59 @@ async function processCabinet(
 
   const taskId = state.taskId!;
 
-  // Поллим статус в этом же вызове, пока не done/purged или не кончится время.
-  for (;;) {
-    const statusRes = await checkPaidStorageTaskStatus(target.statsToken, taskId);
-    if (!statusRes.ok) {
-      const rateLimited = isWbGlobalRateLimit(statusRes.status, statusRes.body);
-      if (rateLimited) return { cabinet: target.name, status: "deferred", taskId };
-      await writeWbSyncState(db, cabinetId, JOB, {
-        cursor: state.frontier ?? null,
-        status: "error",
-        attempts: attempts + 1,
-        lastError: statusRes.body,
-        state,
-      });
-      throw new Error(`статус задачи WB ${statusRes.status}: ${statusRes.body}`);
-    }
+  // РОВНО ОДНА проверка статуса за вызов — без sleep/поллинга внутри
+  // функции. Версия с циклом (создать → ждать до N секунд не отпуская
+  // обработчик) на практике так и не завершилась ни разу за несколько
+  // прогонов: состояние в базе не обновлялось по 3+ минуты после старта,
+  // хотя мягкий бюджет был выставлен всего на 35с — значит настоящий
+  // жёсткий лимит этой среды заметно строже, чем 60с maxDuration, и
+  // синхронный sleep() внутри функции, похоже, сам по себе плохо уживается
+  // с этим лимитом. Каждый вызов теперь — один быстрый шаг (одна проверка
+  // статуса, максимум один запрос к WB) и сразу возврат; следующий тик
+  // крона (или ручной вызов) продолжает с того места, где остановились.
+  const statusRes = await checkPaidStorageTaskStatus(target.statsToken, taskId);
+  if (!statusRes.ok) {
+    const rateLimited = isWbGlobalRateLimit(statusRes.status, statusRes.body);
+    if (rateLimited) return { cabinet: target.name, status: "deferred", taskId };
+    await writeWbSyncState(db, cabinetId, JOB, {
+      cursor: state.frontier ?? null,
+      status: "error",
+      attempts: attempts + 1,
+      lastError: statusRes.body,
+      state,
+    });
+    throw new Error(`статус задачи WB ${statusRes.status}: ${statusRes.body}`);
+  }
 
-    if (statusRes.status === "purged" || statusRes.status === "canceled") {
-      // Забываем taskId — следующий вызов создаст новую задачу на то же окно.
-      await writeWbSyncState(db, cabinetId, JOB, {
-        cursor: state.frontier ?? null,
-        status: "backfill",
-        attempts: attempts + 1,
-        lastError: `задача WB ${statusRes.status}`,
-        state: { ...state, taskId: undefined, lastRunAt: new Date().toISOString() },
-      });
-      return { cabinet: target.name, status: statusRes.status, taskId };
-    }
+  if (statusRes.status === "purged" || statusRes.status === "canceled") {
+    // Забываем taskId — следующий вызов создаст новую задачу на то же окно.
+    await writeWbSyncState(db, cabinetId, JOB, {
+      cursor: state.frontier ?? null,
+      status: "backfill",
+      attempts: attempts + 1,
+      lastError: `задача WB ${statusRes.status}`,
+      state: { ...state, taskId: undefined, lastRunAt: new Date().toISOString() },
+    });
+    return { cabinet: target.name, status: statusRes.status, taskId };
+  }
 
-    if (statusRes.status === "done") break;
-
-    // status === "processing" ИЛИ "unknown" (WB прислал строку статуса, не
-    // входящую в наш известный набор) — трактуем как "ещё не готово", а НЕ
-    // как мёртвую задачу. Раньше "unknown" сразу убивал задачу и создавал
-    // новую на то же окно — если WB для "в процессе" использует не то слово,
-    // которое мы ждём, каждая проверка мгновенно "убивала" свежесозданную
-    // задачу, и бэкфилл вечно топтался на первом окне, ни разу не дав задаче
-    // шанс дойти до "done". rawStatus идёт в lastError только для диагностики,
-    // не как сигнал к пересозданию.
-    if (statusRes.status === "unknown") {
-      await writeWbSyncState(db, cabinetId, JOB, {
-        cursor: state.frontier ?? null,
-        status: "backfill",
-        attempts: 0,
-        lastError: `диагностика: неизвестный статус задачи WB (raw: ${statusRes.rawStatus})`,
-        state: { ...state, lastRunAt: new Date().toISOString() },
-      });
-    }
-
-    // ждём, если есть запас времени, иначе выходим и оставляем taskId для
-    // следующего вызова (он попадёт сюда же и продолжит поллинг).
-    if (Date.now() + POLL_INTERVAL_MS + RESERVE_MS > deadline) {
-      await writeWbSyncState(db, cabinetId, JOB, {
-        cursor: state.frontier ?? null,
-        status: "backfill",
-        attempts: 0,
-        lastError: null,
-        state: { ...state, lastRunAt: new Date().toISOString() },
-      });
-      return { cabinet: target.name, status: "pending", taskId };
-    }
-    await sleep(POLL_INTERVAL_MS);
+  if (statusRes.status !== "done") {
+    // "processing" ИЛИ "unknown" (WB прислал строку статуса вне нашего
+    // известного набора) — трактуем как "ещё не готово", НЕ как мёртвую
+    // задачу: раньше "unknown" сразу убивал задачу и создавал новую на то
+    // же окно, из-за чего бэкфилл вечно топтался на первом окне, ни разу
+    // не дав задаче шанс дойти до "done". rawStatus идёт в lastError как
+    // диагностика (если "unknown"), не как сигнал к пересозданию.
+    await writeWbSyncState(db, cabinetId, JOB, {
+      cursor: state.frontier ?? null,
+      status: "backfill",
+      attempts: 0,
+      lastError: statusRes.status === "unknown"
+        ? `диагностика: неизвестный статус задачи WB (raw: ${statusRes.rawStatus})`
+        : null,
+      state: { ...state, lastRunAt: new Date().toISOString() },
+    });
+    return { cabinet: target.name, status: statusRes.status, taskId };
   }
 
   const download = await downloadPaidStorageTask(target.statsToken, taskId);
@@ -287,7 +260,6 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const deadline = startedAt.getTime() + SOFT_BUDGET_MS;
   const allTargets = await getWbSyncTargets();
   const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
   const targets = onlyCabinet ? allTargets.filter((t) => t.cabinetId === onlyCabinet) : allTargets;
@@ -316,7 +288,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      const result = await processCabinet(db, target, cabinetId, today, maxAllowedDate, deadline);
+      const result = await processCabinet(db, target, cabinetId, today, maxAllowedDate);
       progress.push(result);
       if (result.status === "deferred") deferred.push(`${target.name}: лимит WB`);
       if (result.status === "downloaded") total += result.rows ?? 0;
