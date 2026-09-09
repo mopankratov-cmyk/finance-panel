@@ -29,7 +29,7 @@ export const OZON_COCKPIT_FRESH_SECONDS = 15 * 60;
  * свежий снимок доходит почти сразу.
  */
 const OZON_COCKPIT_INSTANCE_SECONDS = 60;
-export const OZON_COCKPIT_CACHE_VERSION = "v7"; // v7: источник рекламы выбирается по каждому кабинету — снимки с нулевым расходом недействительны
+export const OZON_COCKPIT_CACHE_VERSION = "v8"; // v8: финансы переехали с выключенного transaction/totals на баланс, а отказ отдаётся прочерком — снимки с нулями вместо «не знаем» недействительны
 const OZON_COCKPIT_RELIABILITY_VERSION = "complete-sales-v1";
 
 export interface OzonCockpitCacheRequest {

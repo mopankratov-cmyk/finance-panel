@@ -43,7 +43,13 @@ export async function GET(request: NextRequest) {
     const totals = await ozonTransactionTotals(cabinet.creds, fromIso, toIso);
     if (!totals.ok) return { cabinet: cabinet.name, ok: false as const, error: totals.error };
     const services = await ozonServiceBreakdown(cabinet.creds, fromIso, toIso);
-    return { cabinet: cabinet.name, ok: true as const, totals: totals.totals, services };
+    return {
+      cabinet: cabinet.name,
+      ok: true as const,
+      totals: totals.totals,
+      services: services.ok ? services.services : {},
+      servicesError: services.ok ? null : services.error,
+    };
   }));
   const ready = results.filter((result) => result.ok);
   if (!ready.length) {
@@ -88,6 +94,8 @@ export async function GET(request: NextRequest) {
     totalDeductions,
     items,
     serviceItems,
-    warnings: results.flatMap((result) => result.ok ? [] : [`${result.cabinet}: ${result.error}`]),
+    warnings: results.flatMap((result) => result.ok
+      ? (result.servicesError ? [`${result.cabinet}: услуги — ${result.servicesError}`] : [])
+      : [`${result.cabinet}: ${result.error}`]),
   });
 }

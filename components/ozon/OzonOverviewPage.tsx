@@ -17,10 +17,13 @@ interface OverviewData {
   period: { days: number; from: string; to: string };
   summary: {
     orders: number; revenue: number; avgPrice: number; stock: number | null; reserved: number | null; stocksIncomplete: boolean;
-    adSpend: number; adRevenue: number; drr: number; refunds: number; deductions: number; payout: number;
+    // null — Ozon не отдал финансы. Ноль здесь читался бы как «возвратов не
+    // было» и «удержаний не было», а это разные вещи.
+    adSpend: number; adRevenue: number; drr: number; refunds: number | null; deductions: number | null; payout: number | null;
+    financeAvailable?: boolean; financeIncomplete?: boolean;
     delta: { orders: number | null; revenue: number | null; adSpend: number | null };
   };
-  finance: { commission: number; logistics: number; services: number; refunds: number; other: number; deductions: number };
+  finance: { commission: number; logistics: number; services: number; refunds: number; other: number; deductions: number } | null;
   trend: { day: string; orders: number; revenue: number; adSpend: number }[];
   attention: { severity: "critical" | "warning"; title: string; detail: string; href: string }[];
   topSku: { key: string; cabinet: string; sku: string; offerId: string; name: string; image: string | null; orders: number; revenue: number; stock: number | null; daysCover: number | null; adSpend: number; drr: number; deltaRevenue: number | null }[];
@@ -47,9 +50,12 @@ export function OzonOverviewPage() {
               <MetricCard label="Заказы" value={formatNumber(data.summary.orders)} delta={data.summary.delta.orders} detail={`Средняя цена ${formatMoney(data.summary.avgPrice)}`} />
               <MetricCard label="Реклама" value={formatMoney(data.summary.adSpend)} delta={data.summary.delta.adSpend} detail={`ДРР ${formatPercent(data.summary.drr)}`} tone={data.summary.drr >= 30 ? "red" : data.summary.drr >= 20 ? "amber" : "sky"} />
               <MetricCard label="Остаток" value={formatNumber(data.summary.stock)} detail={data.summary.stock == null ? "Ozon не отдал остатки" : data.summary.stocksIncomplete ? `${formatNumber(data.summary.reserved)} в резерве · часть кабинетов молчит` : `${formatNumber(data.summary.reserved)} в резерве`} tone={data.summary.stock == null || data.summary.stocksIncomplete ? "amber" : "slate"} />
-              <MetricCard label="Возвраты" value={formatMoney(data.summary.refunds)} detail={data.summary.revenue > 0 ? `${formatPercent(data.summary.refunds / data.summary.revenue * 100)} выручки` : "Факт Ozon"} tone={data.summary.refunds > 0 ? "amber" : "emerald"} />
-              <MetricCard label="Удержания" value={formatMoney(data.summary.deductions)} detail="Факт Ozon" tone="amber" />
-              <MetricCard label="К выплате" value={formatMoney(data.summary.payout)} detail="Расчёт по транзакциям" tone="emerald" />
+              {/* Подпись плитки утверждает происхождение цифры, поэтому при
+                  отказе Ozon она меняется вместе со значением: «—» под
+                  подписью «Факт Ozon» врёт ровно так же, как «0 ₽». */}
+              <MetricCard label="Возвраты" value={formatMoney(data.summary.refunds)} detail={data.finance == null ? "Ozon не отдал финансы" : data.summary.revenue > 0 ? `${formatPercent((data.summary.refunds ?? 0) / data.summary.revenue * 100)} выручки` : "Факт Ozon"} tone={data.finance == null ? "amber" : (data.summary.refunds ?? 0) > 0 ? "amber" : "emerald"} />
+              <MetricCard label="Удержания" value={formatMoney(data.summary.deductions)} detail={data.finance == null ? "Ozon не отдал финансы" : "Факт Ozon"} tone="amber" />
+              <MetricCard label="К выплате" value={formatMoney(data.summary.payout)} detail={data.finance == null ? "нечего считать: финансы недоступны" : "Расчёт по балансу Ozon"} tone={data.finance == null ? "amber" : "emerald"} />
               <MetricCard label="Продажи с рекламы" value={formatMoney(data.summary.adRevenue)} detail="Атрибуция Performance" />
             </div>
 
@@ -103,19 +109,32 @@ export function OzonOverviewPage() {
               </section>
 
               <section className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between"><div><h2 className="text-sm font-bold text-slate-900">Структура удержаний</h2><p className="mt-0.5 text-[10px] text-slate-400">Фактические транзакции Ozon</p></div><RotateCcw className="h-4 w-4 text-slate-400" /></div>
-                <div className="mt-4 space-y-3">{[
-                  ["Комиссия", data.finance.commission, "bg-sky-600"],
-                  ["Логистика", data.finance.logistics, "bg-indigo-500"],
-                  ["Услуги", data.finance.services, "bg-amber-500"],
-                  ["Возвраты", data.finance.refunds, "bg-red-500"],
-                  ["Прочее", data.finance.other, "bg-slate-400"],
+                <div className="flex items-start justify-between"><div><h2 className="text-sm font-bold text-slate-900">Структура удержаний</h2><p className="mt-0.5 text-[10px] text-slate-400">{data.finance ? "Баланс Ozon за период" : "Ozon не отдал финансы"}</p></div><RotateCcw className="h-4 w-4 text-slate-400" /></div>
+                {/* Пять нулевых полос под заголовком «Структура удержаний» —
+                    это картинка структуры, которой нет. Лучше сказать словами. */}
+                {(() => { const finance = data.finance; return !finance ? (
+                  <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900">
+                    Ozon не вернул финансы за этот период — раскладывать нечего. Причина указана в предупреждении наверху страницы.
+                  </p>
+                ) : (
+                <><div className="mt-4 space-y-3">{[
+                  ["Комиссия", finance.commission, "bg-sky-600"],
+                  ["Логистика", finance.logistics, "bg-indigo-500"],
+                  ["Услуги", finance.services, "bg-amber-500"],
+                  ["Возвраты", finance.refunds, "bg-red-500"],
+                  // «Прочее» здесь больше нет. Баланс Ozon не выделяет такой
+                  // корзины: всё, что он удержал, уже разложено по комиссии,
+                  // логистике, услугам и возвратам — их сумма сходится с его
+                  // собственным итогом до рубля. Вечная нулевая полоса под
+                  // подписью «Прочее» утверждала бы, что прочих удержаний не
+                  // было, тогда как её просто не существует как строки.
                 ].map(([label, value, color]) => {
                   const amount = Number(value);
-                  const width = data.finance.deductions > 0 ? Math.max(2, amount / data.finance.deductions * 100) : 0;
+                  const width = finance.deductions > 0 ? Math.max(2, amount / finance.deductions * 100) : 0;
                   return <div key={String(label)}><div className="mb-1 flex items-center justify-between text-[11px]"><span className="text-slate-600">{label}</span><span className="font-semibold tabular-nums text-slate-800">{formatMoney(amount)}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${color}`} style={{ width: `${width}%` }} /></div></div>;
                 })}</div>
-                <div className="mt-4 border-t border-slate-100 pt-3"><div className="flex items-center justify-between text-xs"><span className="font-semibold text-slate-600">Всего удержаний</span><span className="font-bold tabular-nums text-slate-900">{formatMoney(data.finance.deductions)}</span></div></div>
+                <div className="mt-4 border-t border-slate-100 pt-3"><div className="flex items-center justify-between text-xs"><span className="font-semibold text-slate-600">Всего удержаний</span><span className="font-bold tabular-nums text-slate-900">{formatMoney(finance.deductions)}</span></div></div></>
+                ); })()}
               </section>
             </div>
           </>

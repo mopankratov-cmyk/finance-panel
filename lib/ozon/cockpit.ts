@@ -373,9 +373,20 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
   let stocksAvailable = 0;
   let currentAdSpend = 0;
   let previousAdSpend = 0;
+  /**
+   * Сколько кабинетов отдали финансы.
+   *
+   * Аккумулятор начинается с нулей, и отказ Ozon от них неотличим: 8 сентября
+   * 2026, когда выключили финансовый метод, «Обзор» показал «Возвраты 0 ₽,
+   * Удержания 0 ₽, К выплате 0 ₽» — под подписями «Факт Ozon» и «Расчёт по
+   * транзакциям», то есть уверенно соврал. Ноль здесь означает «не знаем», и
+   * счётчик — единственный способ отличить одно от другого дальше по коду.
+   * Ровно тем же приёмом уже живут остатки (stocksAvailable).
+   */
+  let financeAvailable = 0;
 
   for (const base of bases) {
-    if (base.currentTotals) addTotals(currentTotals, base.currentTotals);
+    if (base.currentTotals) { addTotals(currentTotals, base.currentTotals); financeAvailable += 1; }
     if (base.previousTotals) addTotals(previousTotals, base.previousTotals);
     const grouped = new Map<string, { name: string; orders: number; previousOrders: number; revenue: number; previousRevenue: number }>();
     for (const row of base.analytics) {
@@ -481,7 +492,7 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
     return messages;
   }).sort((left, right) => left.severity === right.severity ? 0 : left.severity === "critical" ? -1 : 1).slice(0, 12);
 
-  if (financial.refunds > 0 && pct(financial.refunds, currentRevenue) >= 10) {
+  if (financeAvailable && financial.refunds > 0 && pct(financial.refunds, currentRevenue) >= 10) {
     attention.unshift({ severity: "warning", title: "Высокая сумма возвратов", detail: `${pct(financial.refunds, currentRevenue)}% от выручки`, href: "/ozon/orders?state=cancelled" });
   }
 
@@ -501,16 +512,19 @@ export async function loadOverview(scope: OzonCabinetScope, current: OzonPeriod)
       adSpend: r0(currentAdSpend),
       adRevenue: r0(sum([...adCache.values()].map((row) => row.ordersMoney))),
       drr: pct(currentAdSpend, currentRevenue),
-      refunds: financial.refunds,
-      deductions: financial.deductions,
-      payout: financial.payout,
+      // Ни один кабинет не отдал финансы — плитки честно пустые, а не «0 ₽».
+      refunds: financeAvailable ? financial.refunds : null,
+      deductions: financeAvailable ? financial.deductions : null,
+      payout: financeAvailable ? financial.payout : null,
+      financeAvailable: financeAvailable > 0,
+      financeIncomplete: financeAvailable > 0 && financeAvailable < bases.length,
       delta: {
         orders: deltaPct(currentOrders, previousOrders),
         revenue: deltaPct(currentRevenue, previousRevenue),
         adSpend: deltaPct(currentAdSpend, previousAdSpend),
       },
     },
-    finance: financial,
+    finance: financeAvailable ? financial : null,
     trend: dates.map((day) => ({ day, ...currentByDay.get(day)! })).map((row) => ({ ...row, revenue: r0(row.revenue), adSpend: r0(row.adSpend), orders: r0(row.orders) })),
     attention,
     topSku: skuRows
@@ -571,6 +585,18 @@ export async function loadSales(scope: OzonCabinetScope, current: OzonPeriod) {
     }
     const stockByOffer = new Map<string, number>();
     if (base.stocks.ok) for (const stock of base.stocks.rows) stockByOffer.set(stock.article, (stockByOffer.get(stock.article) ?? 0) + stock.free);
+    /**
+     * Есть ли у кабинета вообще разнесение расхода по товарам за период.
+     *
+     * Расход у кабинета известен целиком, а по товарам Ozon отдаёт его
+     * отдельными отчётами Performance, и они наполняются медленно. Пока в
+     * кэше на этот кабинет нет ни одной товарной строки, «Реклама 0 ₽» и
+     * «ДРР 0%» у каждого SKU означают не «на этот товар не тратили», а «мы не
+     * знаем, на какие тратили», — и продавец, глядя на такую таблицу, решит,
+     * что реклама не идёт. Тот же приём уже применён к воронке рядом:
+     * funnelAvailable.
+     */
+    const adAllocated = [...adCache.keys()].some((key) => key.startsWith(`${base.clientId}:`));
     for (const [sku, entry] of grouped) {
       const offerId = base.images.skuToOffer[sku] ?? "";
       const ad = adCache.get(`${base.clientId}:${sku}`) ?? { spent: 0, ordersMoney: 0 };
@@ -590,8 +616,9 @@ export async function loadSales(scope: OzonCabinetScope, current: OzonPeriod) {
         crCart: entry.views > 0 ? pct(entry.carts, entry.views) : null,
         crOrder: entry.carts > 0 ? pct(entry.orders, entry.carts) : null,
         stock: r0(stockByOffer.get(offerId) ?? 0),
-        adSpend: r0(ad.spent),
-        drr: pct(ad.spent, entry.revenue),
+        adSpend: adAllocated ? r0(ad.spent) : null,
+        drr: adAllocated ? pct(ad.spent, entry.revenue) : null,
+        adAllocated,
         daily: dates.map((day) => ({ day, orders: entry.daily[day]?.orders ?? 0, revenue: entry.daily[day]?.revenue ?? 0 })),
         funnelAvailable: base.funnel,
       });
@@ -870,13 +897,14 @@ export async function loadOrders(scope: OzonCabinetScope, current: OzonPeriod) {
   const rows: Record<string, unknown>[] = [];
   const totals = emptyTotals();
   const warnings: string[] = [];
+  let financeAvailable = 0;
   await Promise.all(scope.cabinets.map(async (cabinet) => {
     const [postings, finance] = await Promise.all([
       ozonPostings(cabinet.creds, fromIso, toIso),
       ozonTransactionTotals(cabinet.creds, fromIso, toIso),
     ]);
     warnings.push(...postings.errors.map((error) => `${cabinet.name}: ${error}`));
-    if (finance.ok) addTotals(totals, finance.totals);
+    if (finance.ok) { addTotals(totals, finance.totals); financeAvailable += 1; }
     else warnings.push(`${cabinet.name}: ${finance.error}`);
     for (const posting of postings.postings) {
       const state = describeOzonPostingStatus(posting.status);
@@ -913,7 +941,9 @@ export async function loadOrders(scope: OzonCabinetScope, current: OzonPeriod) {
       // Отдельно от «в работе»: это то, что менеджер обязан собрать и отгрузить
       // сам, и именно эти отправления горят по срокам.
       awaitingShipment: rows.filter((row) => row.awaitingShipment).length,
-      refunds: financial.refunds,
+      // Тот же прочерк, что на «Обзоре»: ноль без финансов — это не «возвратов
+      // не было», это «Ozon не сказал».
+      refunds: financeAvailable ? financial.refunds : null,
     },
     rows: rows.sort((left, right) => String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? ""))),
     warnings,
@@ -948,6 +978,7 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
   // кэша отчётов и бывает неполным — эту разницу больше не теряем.
   let adCabinetTotal = 0;
   let adAllocated = 0;
+  let financeAvailable = 0;
   const analyticsStates: Array<{ cabinet: string; available: boolean; error: string | null }> = [];
   await Promise.all(scope.cabinets.map(async (cabinet) => {
     const [prices, analytics, images, finance, services, stocks, buyerDiscount, dailySpend] = await Promise.all([
@@ -984,9 +1015,13 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
     if (!prices.ok) warnings.push(`${cabinet.name}: ${prices.error}`);
     if (!analytics.ok) warnings.push(`${cabinet.name}: ${analytics.error}`);
     if (!stocks.ok) warnings.push(`${cabinet.name}: остатки — ${stocks.error}`);
-    if (finance.ok) addTotals(totals, finance.totals);
+    if (finance.ok) { addTotals(totals, finance.totals); financeAvailable += 1; }
     else warnings.push(`${cabinet.name}: ${finance.error}`);
-    for (const [name, value] of Object.entries(services)) serviceTotals[name] = (serviceTotals[name] ?? 0) + value;
+    // Отказ по услугам теперь виден. Прежде функция возвращала пустую карту и
+    // на сеть, и на отказ Ozon, и «Экономика» показывала нулевые услуги как
+    // факт — ровно та подмена незнания нулём, которую проект запрещает.
+    if (services.ok) for (const [name, value] of Object.entries(services.services)) serviceTotals[name] = (serviceTotals[name] ?? 0) + value;
+    else warnings.push(`${cabinet.name}: услуги — ${services.error}`);
 
     const stockNameByOffer = new Map<string, string>();
     // Товар со своего склада считается по тарифам FBS: комиссия и логистика
@@ -1159,6 +1194,13 @@ export async function loadEconomy(scope: OzonCabinetScope, current: OzonPeriod, 
     taxPct,
     summary: {
       ...financial,
+      // Те же три величины, что на «Обзоре», и то же правило: без финансов
+      // Ozon это не ноль, а прочерк. Раскладка удержаний (комиссия, логистика,
+      // услуги) остаётся из спреда: она приходит из тех же итогов и без них
+      // тоже нулевая — но её экран показывает как разбивку, а не как факт.
+      refunds: financeAvailable ? financial.refunds : null,
+      deductions: financeAvailable ? financial.deductions : null,
+      payout: financeAvailable ? financial.payout : null,
       ...quality,
       // Расход кабинета целиком — то же число, что на «Обзоре».
       adSpend: r0(adCabinetTotal),

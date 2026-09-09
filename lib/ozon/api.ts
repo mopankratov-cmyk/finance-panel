@@ -38,18 +38,20 @@ function tfetch(c: OzonCreds, url: string, opts: RequestInit = {}): Promise<Resp
   return ozonSellerFetch(c.clientId, url, { ...opts, signal });
 }
 
-// Валидация ключа: лёгкий запрос финансовых итогов за 1 день. 200 → ключ рабочий.
+// Валидация ключа: самый дешёвый живой запрос — одна карточка товара.
+// Прежде ключ проверялся финансовыми итогами, и 8 сентября 2026, когда Ozon
+// выключил тот метод, подключение нового кабинета стало невозможным: рабочий
+// ключ объявлялся нерабочим. Проверка живучести ключа не должна зависеть от
+// того, какой конкретно отчёт сегодня жив.
 export async function validateOzon(
   c: OzonCreds,
 ): Promise<{ ok: true } | { ok: false; error: string; status?: number }> {
   if (!c.clientId?.trim() || !c.apiKey?.trim()) return { ok: false, error: "Укажите Client-Id и Api-Key" };
-  const to = new Date();
-  const from = new Date(Date.now() - 86400000);
   try {
-    const res = await tfetch(c, `${BASE}/v3/finance/transaction/totals`, {
+    const res = await tfetch(c, `${BASE}/v3/product/list`, {
       method: "POST",
       headers: headers(c),
-      body: JSON.stringify({ date: { from: from.toISOString(), to: to.toISOString() }, posting_number: "", transaction_type: "all" }),
+      body: JSON.stringify({ filter: {}, limit: 1 }),
       cache: "no-store",
     });
     if (res.status === 401 || res.status === 403) return { ok: false, error: `Ключ невалиден (${res.status})`, status: res.status };
@@ -71,21 +73,133 @@ export interface OzonTotals {
   others_amount: number;
 }
 
-// Итоги транзакций за период (аналог финотчёта WB): начислено/комиссия/логистика/услуги/возвраты.
+/**
+ * Финансы Ozon после 8 сентября 2026.
+ *
+ * В этот день Ozon выключил /v3/finance/transaction/totals и
+ * /v3/finance/transaction/list — оба отвечают 400 {"code":9,"message":
+ * "obsolete method cannot be used"}. В тексте депрекации сам Ozon называет
+ * замену: /v1/finance/accrual/{postings,types,by-day} для построчных операций
+ * и /v1/finance/balance для готовых итогов раздела «Финансы → Баланс».
+ *
+ * Панель спрашивает произвольный период, поэтому берём balance: он его и
+ * принимает, тогда как cash-flow-statement умеет только половины месяца
+ * (1–15 и 16–31), и подставить его цифры в двухдневное окно значило бы
+ * соврать правдоподобно. Ограничение balance — месяц за запрос; период режем
+ * на куски и складываем.
+ *
+ * Раскладка услуг идёт по СОБСТВЕННЫМ именам Ozon (logistics, cross_docking,
+ * pay_per_click…) — это машинные идентификаторы, а не вольный текст. Всё, чего
+ * нет в списке доставки, попадает в услуги: неизвестное имя не должно
+ * потеряться по дороге, иначе удержания молча уменьшатся.
+ */
+const DELIVERY_SERVICES = new Set([
+  "logistics",
+  "cross_docking",
+  "reverse_logistics",
+  "delivery_to_handover_place_by_ozon",
+  "courier_client_reinvoice",
+  "partner_returns_cancellations_processing",
+  "packing_by_agents",
+  "packing_package",
+  "temporary_placement_agent",
+  "booking_space_and_staff_for_partial_shipment",
+  "processing_of_identified_surpluses_in_shipment",
+]);
+
+interface OzonBalanceMoney { value?: number | string; currency_code?: string }
+interface OzonBalanceResponse {
+  total?: { accrued?: OzonBalanceMoney; payments?: OzonBalanceMoney[] };
+  cashflows?: {
+    sales?: { amount?: OzonBalanceMoney; fee?: OzonBalanceMoney };
+    returns?: { amount?: OzonBalanceMoney; fee?: OzonBalanceMoney };
+    services?: { name?: string; amount?: OzonBalanceMoney }[];
+  };
+}
+
+const money = (value: OzonBalanceMoney | undefined) => Number(value?.value ?? 0) || 0;
+
+/** Нулевые итоги — база для сложения кусков периода. */
+export function emptyOzonTotals(): OzonTotals {
+  return {
+    accruals_for_sale: 0,
+    sale_commission: 0,
+    processing_and_delivery: 0,
+    refunds_and_cancellations: 0,
+    services_amount: 0,
+    compensation_amount: 0,
+    money_transfer: 0,
+    others_amount: 0,
+  };
+}
+
+/** Куски не длиннее месяца: Ozon отвечает 400 «maximum period is one month». */
+export function splitOzonPeriodByMonth(fromIso: string, toIso: string): { from: string; to: string }[] {
+  const day = (iso: string) => iso.slice(0, 10);
+  const start = new Date(`${day(fromIso)}T00:00:00Z`);
+  const end = new Date(`${day(toIso)}T00:00:00Z`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) return [];
+  const chunks: { from: string; to: string }[] = [];
+  let cursor = start;
+  while (cursor <= end) {
+    const limit = new Date(cursor);
+    limit.setUTCDate(limit.getUTCDate() + 29);
+    const stop = limit < end ? limit : end;
+    chunks.push({ from: cursor.toISOString().slice(0, 10), to: stop.toISOString().slice(0, 10) });
+    cursor = new Date(stop);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return chunks;
+}
+
+/** Ответ баланса → прежняя форма итогов, чтобы экраны не переписывать. */
+export function ozonTotalsFromBalance(payload: OzonBalanceResponse): OzonTotals {
+  const sales = payload.cashflows?.sales;
+  const returns = payload.cashflows?.returns;
+  let delivery = 0;
+  let services = 0;
+  for (const item of payload.cashflows?.services ?? []) {
+    const amount = money(item.amount);
+    if (DELIVERY_SERVICES.has(String(item.name ?? ""))) delivery += amount;
+    else services += amount;
+  }
+  return {
+    accruals_for_sale: money(sales?.amount),
+    sale_commission: money(sales?.fee),
+    processing_and_delivery: delivery,
+    // Возврат — это и сам возвращённый товар, и вернувшаяся с ним комиссия.
+    refunds_and_cancellations: money(returns?.amount) + money(returns?.fee),
+    services_amount: services,
+    // Баланс не разделяет компенсации, переводы rFBS и «прочее» — они уже
+    // сидят в услугах и начислениях. Отдельными полями их взять неоткуда, и
+    // выдумывать разбивку нельзя: ноль тут значит «отдельной строки нет», а
+    // не «денег не было», и сумма удержаний от этого не меняется.
+    compensation_amount: 0,
+    money_transfer: 0,
+    others_amount: 0,
+  };
+}
+
+// Итоги за период (аналог финотчёта WB): начислено/комиссия/логистика/услуги/возвраты.
 export async function ozonTransactionTotals(
   c: OzonCreds, fromIso: string, toIso: string,
 ): Promise<{ ok: true; totals: OzonTotals } | { ok: false; error: string }> {
+  const chunks = splitOzonPeriodByMonth(fromIso, toIso);
+  if (!chunks.length) return { ok: false, error: "Пустой период" };
+  const totals = emptyOzonTotals();
   try {
-    const res = await tfetch(c, `${BASE}/v3/finance/transaction/totals`, {
-      method: "POST",
-      headers: headers(c),
-      body: JSON.stringify({ date: { from: fromIso, to: toIso }, posting_number: "", transaction_type: "all" }),
-      next: { revalidate: 3600 },
-    });
-    if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
-    const j = (await res.json()) as { result?: OzonTotals };
-    if (!j.result) return { ok: false, error: "Ozon не вернул result" };
-    return { ok: true, totals: j.result };
+    for (const chunk of chunks) {
+      const res = await tfetch(c, `${BASE}/v1/finance/balance`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify({ date_from: chunk.from, date_to: chunk.to }),
+        next: { revalidate: 3600 },
+      });
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
+      const part = ozonTotalsFromBalance((await res.json()) as OzonBalanceResponse);
+      for (const key of Object.keys(totals) as (keyof OzonTotals)[]) totals[key] += part[key];
+    }
+    return { ok: true, totals };
   } catch (e) {
     return { ok: false, error: String(e).slice(0, 120) };
   }
@@ -772,27 +886,39 @@ export async function ozonImages(
   }
 }
 
-// Детализация услуг (реклама/хранение/...) из transaction/list по operation_type.
+/**
+ * Детализация услуг: реклама, хранение, логистика — построчно, как их зовёт
+ * Ozon. Раньше собиралась постранично из transaction/list; тот метод выключен
+ * 8 сентября 2026, а баланс отдаёт ту же разбивку сразу и без листания.
+ *
+ * Отказ больше не проглатывается. Прежде и сеть, и 400 давали пустую карту —
+ * неотличимую от «услуг не было», и экран «Экономика» показывал нули без
+ * единого предупреждения.
+ */
 export async function ozonServiceBreakdown(
   c: OzonCreds, fromIso: string, toIso: string,
-): Promise<Record<string, number>> {
+): Promise<{ ok: true; services: Record<string, number> } | { ok: false; error: string }> {
+  const chunks = splitOzonPeriodByMonth(fromIso, toIso);
+  if (!chunks.length) return { ok: false, error: "Пустой период" };
   const acc: Record<string, number> = {};
   try {
-    for (let page = 1; page <= 20; page++) {
-      const res = await tfetch(c, `${BASE}/v3/finance/transaction/list`, {
+    for (const chunk of chunks) {
+      const res = await tfetch(c, `${BASE}/v1/finance/balance`, {
         method: "POST",
         headers: headers(c),
-        body: JSON.stringify({ filter: { date: { from: fromIso, to: toIso }, transaction_type: "all" }, page, page_size: 1000 }),
+        body: JSON.stringify({ date_from: chunk.from, date_to: chunk.to }),
         next: { revalidate: 3600 },
       });
-      if (!res.ok) break;
-      const j = (await res.json()) as { result?: { operations?: { services?: { name: string; price: number }[] }[]; page_count?: number } };
-      const ops = j.result?.operations ?? [];
-      for (const op of ops) for (const s of op.services ?? []) acc[s.name] = (acc[s.name] ?? 0) + Number(s.price ?? 0);
-      if (!ops.length || page >= (j.result?.page_count ?? 1)) break;
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
+      const j = (await res.json()) as OzonBalanceResponse;
+      for (const item of j.cashflows?.services ?? []) {
+        const name = String(item.name ?? "").trim();
+        if (!name) continue;
+        acc[name] = (acc[name] ?? 0) + (Number(item.amount?.value ?? 0) || 0);
+      }
     }
-  } catch {
-    /* ignore */
+    return { ok: true, services: acc };
+  } catch (e) {
+    return { ok: false, error: String(e).slice(0, 120) };
   }
-  return acc;
 }
