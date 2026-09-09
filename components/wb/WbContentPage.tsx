@@ -1,11 +1,11 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- превью каталога: адреса приходят из WB-баскета и нашего публичного бакета */
 
-import { Images, Loader2, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Images, Loader2, Search, Trash2, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
-import { USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
+import { isPanelOwned, USABILITY_HINT, USABILITY_LABEL } from "@/lib/content/assetUsability";
 import { displayableItems, type ContentItem, type ProductContent } from "@/lib/content/productLibrary";
 import { plural } from "@/lib/warehouse/plural";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -24,6 +24,12 @@ import { useWbCabinet } from "./WbCabinetContext";
  * (`displayableItems`), и оно сознательно не «прячет проблему» — сколько файлов
  * не показано, написано числом в шапке. Пустая серая плитка с замком не
  * сообщает ничего, а вот «скрыто 2 577» — сообщает.
+ *
+ * Каталог здесь редактируемый: файл можно добавить и убрать, не заходя в мастер
+ * теста. Роут и правила те же, что у подборщика (`/api/content/upload`), в том
+ * числе главное: удалять можно только то, что положила сама панель. Кадр
+ * карточки живёт в WB, съёмка — в каталоге завода; корзина на них означала бы
+ * обещание, которого панель не может сдержать.
  */
 
 interface LibraryResponse {
@@ -48,10 +54,13 @@ const FILTERS: { value: Usable; label: string }[] = [
   { value: "panel-only", label: "только просмотр" },
 ];
 
-function Tile({ item }: { item: ContentItem }) {
+function Tile({ item, busy, onRemove }: { item: ContentItem; busy: boolean; onRemove: (item: ContentItem) => void }) {
   const publishable = item.usability === "public";
   const title = `${item.label} — ${USABILITY_LABEL[item.usability]}. ${USABILITY_HINT[item.usability]}`;
+  // Корзина — СОСЕДОМ ссылки, а не внутри неё: кнопка внутри ссылки
+  // недопустима, и клик по корзине не должен заодно открывать файл.
   return (
+    <div className="group relative">
     <a
       href={item.url}
       target="_blank"
@@ -76,11 +85,85 @@ function Tile({ item }: { item: ContentItem }) {
         {item.label}
       </span>
     </a>
+    {isPanelOwned(item.url) ? (
+      <button
+        type="button"
+        onClick={() => onRemove(item)}
+        disabled={busy}
+        title="Убрать из библиотеки и удалить файл"
+        className="absolute bottom-1 right-1 grid h-5 w-5 place-items-center rounded bg-slate-900/70 text-white opacity-0 transition hover:bg-rose-600 focus-visible:opacity-100 disabled:opacity-40 group-hover:opacity-100"
+      >
+        <Trash2 className="h-3 w-3" aria-hidden="true" />
+      </button>
+    ) : null}
+    </div>
   );
 }
 
-function ProductCard({ product, filters }: { product: ProductContent; filters: Set<Usable> }) {
+function ProductCard({
+  product,
+  filters,
+  cabinetId,
+  onChanged,
+}: {
+  product: ProductContent;
+  filters: Set<Usable>;
+  cabinetId: string;
+  onChanged: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /**
+   * Своё фото прямо в каталог.
+   *
+   * Файл уезжает в публичный бакет и тут же дописывается в `content_assets`
+   * с артикулом этого товара — то есть появляется здесь же уже пригодным к
+   * тесту. Роут один с подборщиком: две двери в один каталог не должны
+   * складывать файлы по-разному.
+   */
+  const upload = async (file: File) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("cabinet", cabinetId);
+      form.set("nmId", String(product.nmId));
+      form.set("article", product.article);
+      const response = await fetch("/api/content/upload", { method: "POST", body: form });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || `Не удалось загрузить (${response.status})`);
+      setNotice(`Загружено: ${file.name}`);
+      onChanged();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Не удалось загрузить файл");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const remove = async (item: ContentItem) => {
+    // Удаление необратимо: файл уходит и из каталога, и из хранилища.
+    if (!window.confirm(`Убрать «${item.label}» из библиотеки? Файл удалится из хранилища насовсем.`)) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const query = new URLSearchParams({ url: item.url, cabinet: cabinetId });
+      const response = await fetch(`/api/content/upload?${query}`, { method: "DELETE" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || `Не удалось удалить (${response.status})`);
+      setNotice(body?.note ?? "Файл убран из библиотеки.");
+      onChanged();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Не удалось удалить файл");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Скрытое считаем ДО фильтров: «скрыто N» должно означать «недоступно на
   // диске», а не «вы сняли галочку». Иначе число врёт при каждом клике.
@@ -103,7 +186,28 @@ function ProductCard({ product, filters }: { product: ProductContent; filters: S
           {product.publishableCount} из {shown.length} годны в тест
           {hiddenOnDisk > 0 ? ` · скрыто ${hiddenOnDisk}` : ""}
         </span>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="flex h-6 items-center gap-1 rounded-lg border border-slate-200 px-2 text-[10px] font-medium text-slate-600 transition hover:border-violet-400 hover:text-violet-700 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Upload className="h-3 w-3" aria-hidden="true" />}
+          Добавить фото
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void upload(file);
+          }}
+        />
       </div>
+
+      {notice ? <p className="mt-1.5 rounded-lg bg-slate-50 px-2 py-1 text-[10px] leading-4 text-slate-600">{notice}</p> : null}
 
       {product.galleryUnknown ? (
         <p className="mt-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[10px] leading-4 text-slate-500">
@@ -120,7 +224,7 @@ function ProductCard({ product, filters }: { product: ProductContent; filters: S
       ) : (
         <>
           <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12">
-            {tiles.map((item) => <Tile key={item.key} item={item} />)}
+            {tiles.map((item) => <Tile key={item.key} item={item} busy={busy} onRemove={(entry) => void remove(entry)} />)}
           </div>
           {visible.length > PREVIEW_TILES ? (
             <button
@@ -145,6 +249,9 @@ export function WbContentPage() {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Set<Usable>>(() => new Set<Usable>(["public", "panel-only"]));
   const [limit, setLimit] = useState(PRODUCTS_STEP);
+  // Счётчик перечитывания: после загрузки и удаления сетка обязана показать
+  // то, что реально лежит в каталоге, а не то, что было до действия.
+  const [reloadKey, setReloadKey] = useState(0);
   const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
@@ -165,7 +272,7 @@ export function WbContentPage() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [cabinetId, ready]);
+  }, [cabinetId, ready, reloadKey]);
 
   // Через useMemo, а не `data?.products ?? []`: пустой литерал был бы новой
   // ссылкой на каждый рендер и пересчитывал бы всё, что от него зависит.
@@ -248,7 +355,11 @@ export function WbContentPage() {
           <WbEmptyState>Выберите один реальный WB-кабинет — каталог собирается по его товарам.</WbEmptyState>
         ) : error ? (
           <WbErrorState message={error} />
-        ) : loading ? (
+        ) : loading && !data ? (
+          // Баннер во весь экран — только на ПЕРВОЙ загрузке. После добавления
+          // или удаления файла список перечитывается, и подменять его на
+          // «готовим данные» значило бы на каждый клик убирать с глаз то, ради
+          // чего человек сюда пришёл.
           <LoadingBanner seconds={elapsed} hint="каталог контента" />
         ) : data?.galleryColumnsMissing ? (
           <WbEmptyState>{data.migrationHint ?? "Галерея карточек ещё не включена."}</WbEmptyState>
@@ -259,7 +370,13 @@ export function WbContentPage() {
         ) : (
           <>
             {found.slice(0, limit).map((product) => (
-              <ProductCard key={product.nmId} product={product} filters={filters} />
+              <ProductCard
+                key={product.nmId}
+                product={product}
+                filters={filters}
+                cabinetId={cabinetId}
+                onChanged={() => setReloadKey((value) => value + 1)}
+              />
             ))}
             {found.length > limit ? (
               <button
