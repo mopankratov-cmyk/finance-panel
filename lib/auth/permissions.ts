@@ -55,6 +55,10 @@ export type Permission =
   | "purchase.manage"
 
   // ── Склад ──
+  /** Видеть остатки, движения и документы склада. Отделено от исполнения:
+   *  внешний менеджер смотрит свои остатки, но заданий не выполняет, а
+   *  фулфилмент выполняет задание, не видя ничего сверх него. */
+  | "warehouse.view"
   /** Выполнить назначенное складское задание: принять, пересчитать, собрать. */
   | "warehouse.task.execute"
   /** Завести заявку или черновик акта расхождения — без изменения остатка. */
@@ -188,7 +192,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "cost.view", "cost.edit",
     ...MERCHANDISING,
     "purchase.manage",
-    "warehouse.task.execute", "warehouse.request.create", "warehouse.approve", "warehouse.stock.adjust",
+    "warehouse.view", "warehouse.task.execute", "warehouse.request.create", "warehouse.approve", "warehouse.stock.adjust",
     "hr.view", "hr.edit", "payroll.view", "payroll.edit", "payroll.approve",
     "users.manage", "users.roles.assign",
     "audit.view", "settings.manage",
@@ -201,6 +205,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "finance.view", "finance.edit", "finance.approve", "finance.period.close",
     ...MP_REPORTS_FULL, ...ANALYTICS,
     "cost.view", "cost.edit",
+    "warehouse.view",
     "hr.view", "hr.edit", "payroll.view", "payroll.edit", "payroll.approve",
     "users.manage", "users.roles.assign",
     "audit.view",
@@ -212,6 +217,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "finance.view", "finance.edit",
     ...MP_REPORTS_FULL, ...ANALYTICS,
     "cost.view", "cost.edit",
+    "warehouse.view",
   ],
 
   // §7. Кадры. Зарплату готовит, но не утверждает; системные права не
@@ -237,13 +243,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     ...ANALYTICS,
     "cost.view", "cost.edit",
     "purchase.manage", "supply.manage",
-    "warehouse.request.create", "warehouse.approve",
+    "warehouse.view", "warehouse.request.create", "warehouse.approve",
   ],
 
   // §11. Только своя часть склада. Себестоимости, цен, финансов и аналитики
   // не видит; собственное расхождение не утверждает; остаток руками не меняет.
   warehouse: [
-    "warehouse.task.execute", "warehouse.request.create",
+    "warehouse.view", "warehouse.task.execute", "warehouse.request.create",
   ],
 
   // §12. Внешний менеджер: товарный контур, себестоимость и заявки на склад
@@ -253,7 +259,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     ...ANALYTICS,
     "cost.view", "cost.edit",
     ...MERCHANDISING,
-    "warehouse.request.create",
+    "warehouse.view", "warehouse.request.create",
     "users.manage",
   ],
 
@@ -262,7 +268,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     ...ANALYTICS,
     "cost.view", "cost.edit",
     ...MERCHANDISING,
-    "warehouse.request.create",
+    "warehouse.view", "warehouse.request.create",
   ],
 };
 
