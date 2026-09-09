@@ -88,6 +88,7 @@ export function buildOpiuReport(
   warehouseByWeek: Record<string, number>,
   loanTransferByWeek: Record<string, number> = {},
   paidStorageByWeek: Record<string, number> | null = null,
+  adsSpendBySourceByWeek: Record<string, { balance: number; bonus: number }> | null = null,
 ): OpiuReport {
   const costLookup = buildCostLookup(costs);
 
@@ -101,6 +102,7 @@ export function buildOpiuReport(
       warehouseByWeek[w.weekStart] ?? 0,
       loanTransferByWeek[w.weekStart] ?? 0,
       paidStorageByWeek ? (paidStorageByWeek[w.weekStart] ?? 0) : null,
+      adsSpendBySourceByWeek ? (adsSpendBySourceByWeek[w.weekStart] ?? { balance: 0, bonus: 0 }) : null,
     ),
   );
 
@@ -141,6 +143,9 @@ export function buildOpiuReport(
     { id: "marginal_pct",   label: "Рентабельность по МД, %",                         kind: "percent", values: pctCols((d) => d.marginalPct) },
     sep("sep2"),
     { id: "ads",            label: "ВБ продвижение, руб",                             kind: "metric",  expense: true, values: cols((m) => m.adsSpend) },
+    // Расход, списанный промо-бонусами WB (не реальные деньги) — справочно,
+    // в валовую прибыль не входит (та считается по m.adsSpend — только баланс).
+    { id: "ads_bonus",      label: "Бонусы, руб",                                     kind: "metric",  expense: true, values: cols((m) => m.adsBonus) },
     { id: "drr",            label: "ДРР, %",                                          kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.adsSpend, m.revenue)) },
     sep("sep3"),
     { id: "gross",          label: "Валовая прибыль",                                 kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.gross) },

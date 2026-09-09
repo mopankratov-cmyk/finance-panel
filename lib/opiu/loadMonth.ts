@@ -14,6 +14,7 @@ import {
 } from "./metrics";
 import { fetchReportRows, rowsBySaleDate } from "./reportRows";
 import { fetchPaidStorageByWeek } from "./paidStorage";
+import { fetchAdsSpendBySourceByWeek } from "./adsSpendBySource";
 
 function financeDb() {
   const db = getSupabaseAdmin();
@@ -269,11 +270,13 @@ export async function loadOpiuMonth(
   ]);
   const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
   const reportDateRows = reportDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
-  const adStats = await fetchAdStats(dateFrom, dateTo, brand, brandNmIdWhitelist(brand, orders, saleDateRows));
+  const nmIdWhitelist = brandNmIdWhitelist(brand, orders, saleDateRows);
+  const adStats = await fetchAdStats(dateFrom, dateTo, brand, nmIdWhitelist);
 
   const loanTransferBySaleWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), weeks, brand);
   const loanTransferByReportWeek = sharedLoanTransferByWeek(reportDateRowsRaw, weeks, brand);
   const paidStorageByWeek = await fetchPaidStorageByWeek(brand, weeks);
+  const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, weeks, nmIdWhitelist);
 
   const report = buildOpiuReport(
     weeks,
@@ -284,6 +287,7 @@ export async function loadOpiuMonth(
     warehouseByWeek,
     loanTransferBySaleWeek,
     paidStorageByWeek,
+    adsSpendBySourceByWeek,
   );
   const reportByReportDate = buildOpiuReport(
     weeks,
@@ -294,6 +298,7 @@ export async function loadOpiuMonth(
     warehouseByWeek,
     loanTransferByReportWeek,
     paidStorageByWeek,
+    adsSpendBySourceByWeek,
   );
   const reportRowIds = new Set(
     [...saleDateRows, ...reportDateRows]
@@ -333,9 +338,11 @@ export async function loadOpiuSalePeriod(
     fetchProductCosts(brand),
   ]);
   const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
-  const adStats = await fetchAdStats(dateFrom, dateTo, brand, brandNmIdWhitelist(brand, orders, saleDateRows));
+  const nmIdWhitelist = brandNmIdWhitelist(brand, orders, saleDateRows);
+  const adStats = await fetchAdStats(dateFrom, dateTo, brand, nmIdWhitelist);
   const loanTransferByWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), [period], brand);
   const paidStorageByWeek = await fetchPaidStorageByWeek(brand, [period]);
+  const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, [period], nmIdWhitelist);
 
   const report = buildOpiuReport(
     [period],
@@ -346,6 +353,7 @@ export async function loadOpiuSalePeriod(
     {},
     loanTransferByWeek,
     paidStorageByWeek,
+    adsSpendBySourceByWeek,
   );
 
   return {

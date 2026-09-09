@@ -52,7 +52,10 @@ export interface WeekRawMetrics {
   loanTransfer: number;
   /** Перевод на баланс заёмщика для оплаты пени (deduction). */
   penaltyLoan: number;
+  /** Расход на рекламу с БАЛАНСА (реальные деньги) — участвует в валовой прибыли. */
   adsSpend: number;
+  /** Расход на рекламу промо-бонусами WB — справочная строка, в валовую прибыль НЕ входит. */
+  adsBonus: number;
   warehousePackaging: number;
   /** Подготовка (упаковка, маркировка, отгрузка) — из product_costs.warehouse_expenses. */
   packaging: number;
@@ -475,6 +478,7 @@ export function aggregateWeek(
   warehousePackaging: number,
   sharedLoanTransfer = 0,
   paidStorage: number | null = null,
+  adsSpendBySource: { balance: number; bonus: number } | null = null,
 ): WeekRawMetrics {
   const { rangeFrom, rangeTo } = week;
 
@@ -531,7 +535,12 @@ export function aggregateWeek(
     // (loadMonth.ts) по НЕотфильтрованным строкам кабинета.
     loanTransfer: weekSales.reduce((s, r) => s + loanTransferRub(r), 0) + sharedLoanTransfer,
     penaltyLoan: weekSales.reduce((s, r) => s + penaltyLoanRub(r), 0),
-    adsSpend: adsSpendInRange(adStats, rangeFrom, rangeTo),
+    // adsSpend с БАЛАНСА — из "Истории затрат" WB (adv/v1/upd), если для
+    // кабинета/недели есть синканные данные; иначе откат на прежний общий
+    // расход (fullstats, wb_advert_nm_daily — баланс+бонусы смешаны, деление
+    // на источник тогда невозможно, adsBonus остаётся 0).
+    adsSpend: adsSpendBySource ? adsSpendBySource.balance : adsSpendInRange(adStats, rangeFrom, rangeTo),
+    adsBonus: adsSpendBySource ? adsSpendBySource.bonus : 0,
     // "Хранение / упаковка склада" = ручной ввод (собственные расходы) +
     // «Платное хранение» WB (per nmId/vendorCode), если для этой недели уже
     // есть синканные данные — иначе откат на обезличенный storage_fee из
@@ -564,6 +573,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       loanTransfer: acc.loanTransfer + w.loanTransfer,
       penaltyLoan: acc.penaltyLoan + w.penaltyLoan,
       adsSpend: acc.adsSpend + w.adsSpend,
+      adsBonus: acc.adsBonus + w.adsBonus,
       warehousePackaging: acc.warehousePackaging + w.warehousePackaging,
       loyaltyCompensation: acc.loyaltyCompensation + w.loyaltyCompensation,
     }),
@@ -586,6 +596,7 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       loanTransfer: 0,
       penaltyLoan: 0,
       adsSpend: 0,
+      adsBonus: 0,
       warehousePackaging: 0,
       loyaltyCompensation: 0,
     },
