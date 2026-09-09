@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
+import { checkCronAuth, chunkedUpsertWithOptionalColumns, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets, type SyncTarget } from "@/lib/sync/cabinets";
 import { claimWbSyncJob, writeWbSyncState } from "@/lib/wb/syncState";
 import { getAdvertSpendHistory, type AdvertSpendHistoryItem } from "@/lib/wb/advertApi";
@@ -61,17 +61,21 @@ async function processCabinet(
       id: rowId(cabinetId, item),
       cabinet_id: cabinetId,
       advert_id: item.advertId ?? null,
-      campaign_name: item.campaignName ?? null,
+      // Точное имя JSON-поля не подтверждено (см. AdvertSpendHistoryItem) —
+      // берём первое непустое среди кандидатов, raw хранит весь объект,
+      // чтобы поправить без гадания, если ни один кандидат не совпал.
+      campaign_name: item.campaignName ?? item.campName ?? item.advertName ?? item.name ?? null,
       payment_type: String(item.paymentType ?? "").trim(),
       amount: item.updSum ?? 0,
       doc_number: item.updNum ?? null,
       charged_at: item.updTime ?? null,
       date: item.updTime ? String(item.updTime).slice(0, 10) : null,
+      raw: item,
       synced_at: new Date().toISOString(),
     }))
     .filter((r) => r.advert_id && r.charged_at && r.date && r.payment_type);
 
-  const upsertError = await chunkedUpsert("wb_advert_spend_history", rows, "id");
+  const { error: upsertError } = await chunkedUpsertWithOptionalColumns("wb_advert_spend_history", rows, "id", ["raw"]);
   if (upsertError) {
     await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: upsertError, state: {} });
     throw new Error(`запись wb_advert_spend_history: ${upsertError}`);
