@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, sessionRoles, verifySession } from "@/lib/auth/session";
 import { canAccess, roleHome } from "@/lib/auth/roles";
+import { apiPermissionFor } from "@/lib/auth/apiPermissions";
+import { rolesCan } from "@/lib/auth/permissions";
 
 // Защищаем всё, кроме /login, /privacy, /api/auth/*, статики и публичных шар-доков (/share/*).
 export const config = {
@@ -39,7 +41,7 @@ const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
   { prefix: "/api/opiu/browser-payout-snapshots", methods: ["POST"] },
 ];
 
-function isPublicApi(pathname: string, method: string): boolean {
+export function isPublicApi(pathname: string, method: string): boolean {
   return PUBLIC_API.some(
     (p) => pathname.startsWith(p.prefix) && (!p.methods || p.methods.includes(method)),
   );
@@ -100,7 +102,7 @@ const SELLER_READ_API_PREFIXES = [
 // /api/purchase-orders — прибыль, закупочные цены по всем юрлицам и условия
 // фабрик. Решение показывать ему себестоимость касалось одной колонки на его
 // экране, а не всего финансового контура компании.
-function isWarehouseApiAllowed(pathname: string, method: string): boolean {
+export function isWarehouseApiAllowed(pathname: string, method: string): boolean {
   if (pathname.startsWith("/api/warehouse/")) return true;
   // Отметка факта приёмки живёт в старом разделе поставок, но делает её тот же
   // оператор из окна приёмки склада.
@@ -108,7 +110,7 @@ function isWarehouseApiAllowed(pathname: string, method: string): boolean {
   return false;
 }
 
-function isSellerApiAllowed(pathname: string, method: string): boolean {
+export function isSellerApiAllowed(pathname: string, method: string): boolean {
   // Модуль склада: внешний селлер ведёт в нём СВОЙ склад — приёмки, задания,
   // отгрузки, брак. Граница здесь не в списке путей, а в юрлице: каждый роут
   // проходит resolveEntity, а тот отдаёт селлеру только юрлица его организации.
@@ -164,7 +166,7 @@ const OZON_MANAGER_READ_API_EXACT = [
   "/api/operational-health",
 ] as const;
 
-function isOzonManagerApiAllowed(pathname: string, method: string): boolean {
+export function isOzonManagerApiAllowed(pathname: string, method: string): boolean {
   // Модуль «Склад» целиком — тот же набор, что у оператора фулфилмента.
   if (isWarehouseApiAllowed(pathname, method)) return true;
   // Кокпит Ozon и его экраны: только чтение, записи в этом контуре нет.
@@ -189,7 +191,7 @@ const MANAGER_DENIED_API = [
   "/api/repricer",
 ] as const;
 
-function isManagerApiAllowed(pathname: string): boolean {
+export function isManagerApiAllowed(pathname: string): boolean {
   return !MANAGER_DENIED_API.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
@@ -222,6 +224,28 @@ export async function proxy(req: NextRequest) {
       }
       if (roles.length === 1 && roles[0] === "wb_manager" && !isManagerApiAllowed(pathname)) {
         return NextResponse.json({ error: "Финансовый контур компании доступен директору и финотделу" }, { status: 403 });
+      }
+      /**
+       * Проверка по карте прав — ДОПОЛНЕНИЕ к спискам выше, а не замена.
+       *
+       * Карта описывает, какое действие требует каждый эндпоинт (ТЗ о правах).
+       * Заменить ею прежние списки нельзя: у внешнего контура список сегодня
+       * узкий, а карта по решению владельца даёт ему весь товарный контур — и
+       * такое расширение открыло бы клиенту роуты, часть которых не проверяет
+       * принадлежность кабинета. Пока эта проверка не пройдена по каждому
+       * роуту, обе двери должны открыться одновременно: так гейт способен
+       * только СУЖАТЬ нынешний доступ, но не расширять его.
+       *
+       * Неописанный роут закрывается. Полноту карты держит тест
+       * tests/api-permission-map.test.mts, поэтому сюда такой запрос не должен
+       * доходить вовсе; если дошёл — это ошибка карты, а не разрешение.
+       */
+      const required = apiPermissionFor(pathname, req.method);
+      if (!required) {
+        return NextResponse.json({ error: "Эндпоинт не описан в карте прав" }, { status: 403 });
+      }
+      if ("permission" in required && !rolesCan(roles, required.permission)) {
+        return NextResponse.json({ error: "Недостаточно прав для этого действия" }, { status: 403 });
       }
       return NextResponse.next();
     }

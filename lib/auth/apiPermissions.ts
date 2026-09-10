@@ -132,6 +132,10 @@ const RULES: readonly ApiRule[] = [
   // ── Поставки ──
   ["/api/supplies", { read: READ_ANALYTICS, write: "supply.manage" }],
   ["/api/supplies/", { read: READ_ANALYTICS, write: "supply.manage" }],
+  // Приёмка — работа склада, а не планирование поставки: право на неё
+  // складское, иначе оператор фулфилмента не смог бы принять товар.
+  ["/api/supplies/receipts", { read: READ_ANALYTICS, write: "warehouse.task.execute" }],
+  ["/api/supplies/receipts/", { read: READ_ANALYTICS, write: "warehouse.task.execute" }],
   ["/api/planning/", { read: READ_ANALYTICS, write: "supply.manage" }],
   ["/api/sales-plan", { read: READ_ANALYTICS, write: "supply.manage" }],
 
@@ -192,12 +196,18 @@ const RULES: readonly ApiRule[] = [
 
   // ── Кабинеты маркетплейсов ──
   ["/api/wb/", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
-  ["/api/wb/losses", { read: "mp_reports.view", write: "mp_reports.view" }],
+  // Удержания и комиссии нужны внешнему менеджеру для юнит-экономики
+  // (ТЗ §12.1), и сегодня они ему открыты. Право отчётов маркетплейсов
+  // закрыло бы этот экран напрасно: это не работа с самим отчётом, а
+  // чтение уже посчитанных расходов.
+  ["/api/wb/losses", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
   ["/api/wb/backfill", { permission: "mp_reports.sync" }],
-  // Клиент набирает свою команду сам — это его организация, не наша.
-  ["/api/wb/team", { permission: "users.manage" }],
+  // Клиент набирает свою команду сам — это его организация, не наша. Но
+  // «посмотреть, кто в команде» и «завести человека» — разные действия:
+  // первое нужно каждому сотруднику клиента, второе только главному.
+  ["/api/wb/team", { read: READ_ANALYTICS, write: "users.manage" }],
   ["/api/ozon/", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
-  ["/api/ozon/losses", { read: "mp_reports.view", write: "mp_reports.view" }],
+  ["/api/ozon/losses", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
 ];
 
 /** Правила от длинного пути к короткому: частный случай побеждает общий. */

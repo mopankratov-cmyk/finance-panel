@@ -119,7 +119,11 @@ test("фулфилменту не открывается ни один фина�
       const access = apiPermissionFor(route.url, method);
       if (!access || "open" in access) continue;
       if (!roleCan("warehouse", access.permission)) continue;
-      if (!route.url.startsWith("/api/warehouse")) leaks.push(`${method} ${route.url} → ${access.permission}`);
+      // Приёмка поставки лежит под /api/supplies по адресу, но по сути это
+      // складская работа, и ТЗ §11 прямо её оператору поручает: «принимать
+      // товар». Судить по префиксу пути здесь нельзя.
+      const warehouseWork = route.url.startsWith("/api/warehouse") || route.url.startsWith("/api/supplies/receipts");
+      if (!warehouseWork) leaks.push(`${method} ${route.url} → ${access.permission}`);
     }
   }
   assert.deepEqual(leaks, [], `оператору склада открыто лишнее:\n  ${leaks.join("\n  ")}`);

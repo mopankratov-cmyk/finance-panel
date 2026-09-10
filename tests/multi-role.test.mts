@@ -117,3 +117,34 @@ test("словарь ролей знает ровно те роли, что оп
     assert.equal(isRole(role), false, role);
   }
 });
+
+test("словарь ролей в панели ровно один", () => {
+  // Своя копия списка ролей уже жила в lib/auth/session.ts и отстала при их
+  // разделении: verifySession сверял роль с перечнем «finance | manager | …»
+  // и на любой НОВОЙ роли возвращал null. Для гейта это «человек не
+  // залогинен» — финдиректор, HR, закупщик и менеджер WB не смогли бы войти
+  // вовсе, а в проде уехали бы на /login по кругу. Компилятор молчал:
+  // сравнение строк, не тип. Ищем такие копии текстом — иначе следующая
+  // появится так же незаметно.
+  const suspects = [
+    "../lib/auth/session.ts",
+    "../lib/auth/roles.ts",
+    "../lib/auth/apiGuard.ts",
+    "../proxy.ts",
+  ];
+  for (const file of suspects) {
+    const source = read(file);
+    const handwritten = /value === "director"|role === "director" \|\||\["director", "fin_director", "financier", "hr"/;
+    assert.doesNotMatch(source, handwritten, `${file}: список ролей написан руками — он отстанет от словаря`);
+  }
+  // И сама проверка обязана быть перевывезена из словаря, а не объявлена заново.
+  assert.match(read("../lib/auth/session.ts"), /export \{ isRole \} from "\.\/permissions"/);
+});
+
+test("список ролей доезжает из куки до гейта", () => {
+  // Без этого многоролевость мертва: проверка увидит одну роль там, где
+  // сотруднику выдали две, и вторая роль ничего не добавит.
+  const source = read("../lib/auth/session.ts");
+  assert.match(source, /Array\.isArray\(payload\.roles\)/);
+  assert.match(source, /roles: roles\.length \? roles : undefined/);
+});

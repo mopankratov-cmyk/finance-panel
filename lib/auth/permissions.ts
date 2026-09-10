@@ -235,14 +235,16 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "payroll.view", "payroll.edit",
   ],
 
-  // §8. Менеджер WB. Себестоимость видит, но не правит (§13).
+  // §8. Менеджер WB. Себестоимость видит, но не правит (§13). Склад — на
+  // просмотр: он открыт менеджеру и сегодня, ТЗ его не запрещает, а
+  // планировать потребность в поставках, не видя остатков, нельзя.
   wb_manager: [
-    ...ANALYTICS, "cost.view", ...MERCHANDISING,
+    ...ANALYTICS, "cost.view", "warehouse.view", ...MERCHANDISING,
   ],
 
   // §9. Менеджер Ozon — те же права в своём контуре.
   ozon_manager: [
-    ...ANALYTICS, "cost.view", ...MERCHANDISING,
+    ...ANALYTICS, "cost.view", "warehouse.view", ...MERCHANDISING,
   ],
 
   // §10. Закупки, поставщики, себестоимость и приёмка на складе.

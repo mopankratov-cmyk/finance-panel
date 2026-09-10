@@ -6,6 +6,7 @@ import { SignJWT, jwtVerify } from "jose";
 // разойдутся молча.
 export type { Role } from "./permissions";
 import type { Role } from "./permissions";
+import { isRole } from "./permissions";
 export interface Session {
   uid: string;
   email: string;
@@ -62,10 +63,16 @@ export async function verifySession(token: string | undefined | null): Promise<S
   try {
     const { payload } = await jwtVerify(token, secret());
     if (!payload.email || !isRole(payload.role)) return null;
+    // Список ролей обязан доехать до гейта: без него многоролевость мертва —
+    // проверка увидит одну роль там, где сотруднику выдали две.
+    const roles = Array.isArray(payload.roles)
+      ? (payload.roles as unknown[]).filter((role): role is Role => isRole(role))
+      : [];
     return {
       uid: String(payload.uid ?? ""),
       email: String(payload.email),
       role: payload.role,
+      roles: roles.length ? roles : undefined,
       cabinet_ids: Array.isArray(payload.cabinet_ids) ? (payload.cabinet_ids as string[]) : [],
       organization_id: typeof payload.organization_id === "string" && payload.organization_id
         ? payload.organization_id
@@ -76,10 +83,15 @@ export async function verifySession(token: string | undefined | null): Promise<S
   }
 }
 
-export function isRole(value: unknown): value is Role {
-  return value === "director" || value === "finance" || value === "manager"
-    || value === "ozon_manager" || value === "seller" || value === "warehouse";
-}
+// Проверка роли живёт в словаре, а не здесь.
+//
+// Своя копия списка тут была, и она отстала при разделении ролей: verifySession
+// сверял роль с перечнем «finance | manager | …» и на любой НОВОЙ роли —
+// финдиректор, финансист, HR, закупщик, менеджер WB, главный внешний — возвращал
+// null. Для гейта это значит «человек не залогинен»: такой сотрудник не смог бы
+// войти вовсе, а в проде уехал бы на /login по кругу. Компилятор молчал —
+// сравнение строк, не тип. Второго словаря ролей в панели быть не должно.
+export { isRole } from "./permissions";
 
 export const sessionCookieOptions = {
   httpOnly: true as const,
