@@ -3,11 +3,21 @@
 import { useEffect, useState } from "react";
 import { Loader2, Users as UsersIcon, Plus, Trash2 } from "lucide-react";
 import { Hint } from "@/components/ui/Hint";
+import { ROLE_LABEL, ROLE_MARKETPLACES, isCabinetScopedRole, isExternalRole, type Role } from "@/lib/auth/permissions";
 
 interface U { id: string; email: string; role: string; cabinet_ids: string[]; access_cabinet_ids?: string[]; is_active: boolean }
 interface Cab { id: string; name: string; marketplace: string }
-const ROLES = [["director", "Директор всей панели"], ["finance", "Финотдел/аналитик"], ["manager", "Менеджер МП"], ["ozon_manager", "Менеджер Ozon"], ["seller", "Внешний селлер WB"], ["warehouse", "Оператор склада"]] as const;
-const roleLabel = (r: string) => ROLES.find(([k]) => k === r)?.[1] ?? r;
+/**
+ * Роли берутся из общего словаря, а не из списка рядом.
+ *
+ * Список здесь был написан руками и отстал сразу же, как роли разделили: он
+ * предлагал «Финотдел» и «Менеджер МП», которых больше нет, и не показывал
+ * ни финансового директора, ни HR, ни закупщика. Выбрав такую роль, человек
+ * получал отказ «Неизвестная роль» — форма обещала то, чего сервер не
+ * принимает.
+ */
+const ROLES = (Object.keys(ROLE_LABEL) as Role[]).map((role) => [role, ROLE_LABEL[role]] as const);
+const roleLabel = (r: string) => ROLE_LABEL[r as Role] ?? r;
 /**
  * Кабинеты, в которых человеку есть что делать. Сервер считает их по роли:
  * у селлера доступ идёт через организацию, и собственный список кабинетов у
@@ -23,8 +33,11 @@ export default function UsersPage() {
   const [forbidden, setForbidden] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("manager");
+  // По умолчанию — самая частая роль, а не первая в списке.
+  const [role, setRole] = useState<Role>("wb_manager");
   const [sel, setSel] = useState<string[]>([]);
+  // Контур роли: у менеджера WB — только wb, у менеджера Ozon — только ozon.
+  const roleMarketplaces: readonly string[] = ROLE_MARKETPLACES[role] ?? [];
   /**
    * Уровни доступа по кабинетам: ключ «пользователь|кабинет».
    * Глобальная роль отвечает, КУДА пускать; уровень — ЧТО там можно.
@@ -98,7 +111,7 @@ export default function UsersPage() {
         email,
         password,
         role,
-        cabinet_ids: role === "manager" || role === "ozon_manager" ? sel : [],
+        cabinet_ids: isCabinetScopedRole(role) && !isExternalRole(role) ? sel : [],
         ...(replace ? { replace_existing: true } : {}),
       }),
     });
@@ -113,7 +126,7 @@ export default function UsersPage() {
       j = await r.json();
     }
     if (!r.ok || j.error) setMsg({ ok: false, t: j.error || `Ошибка ${r.status}` });
-    else { setMsg({ ok: true, t: `${role === "seller" ? "Внешний селлер" : "Сотрудник"} ${email} сохранён` }); setEmail(""); setPassword(""); setSel([]); await load(); }
+    else { setMsg({ ok: true, t: `${isExternalRole(role) ? "Внешний менеджер" : "Сотрудник"} ${email} сохранён` }); setEmail(""); setPassword(""); setSel([]); await load(); }
     setBusy(false);
   };
   const patch = async (id: string, body: object) => {
@@ -139,16 +152,20 @@ export default function UsersPage() {
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="email" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
           <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="пароль (≥10)" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
-          <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none">
+          <select value={role} onChange={(e) => { setRole(e.target.value as Role); setSel([]); }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none">
             {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </div>
-        {role === "seller" ? <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">После первого входа селлер сам подключит свой WB-кабинет проверенным API-токеном.</div> : null}
-        {(role === "manager" || role === "ozon_manager") && cabs.length > 0 && (
+        {isExternalRole(role) ? <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">После первого входа клиент сам подключит свой кабинет проверенным API-токеном. Модули — Wildberries, Ozon и склад — раздаёт его главный пользователь на экране «Команда».</div> : null}
+        {isCabinetScopedRole(role) && !isExternalRole(role) && cabs.length > 0 && (
           <div className="mt-2">
             <div className="mb-1 text-xs text-gray-500">Кабинеты менеджера (пусто = все):</div>
             <div className="flex flex-wrap gap-1.5">
-              {cabs.map((c) => {
+              {/* Только кабинеты своего маркетплейса. Менеджер WB в контур Ozon
+                  не пускается ролью, и предлагать ему ozon-кабинет значит
+                  предлагать доступ, которого он не получит: отметил бы и не
+                  понял, почему экран пуст. */}
+              {cabs.filter((c) => roleMarketplaces.includes(c.marketplace === "ozon" ? "ozon" : "wb")).map((c) => {
                 const on = sel.includes(c.id);
                 return <button key={c.id} type="button" onClick={() => setSel((s) => on ? s.filter((x) => x !== c.id) : [...s, c.id])}
                   className={`rounded-full px-2.5 py-1 text-xs font-medium ${on ? "bg-violet-600 text-white" : "bg-gray-100 text-gray-600"}`}>
@@ -172,7 +189,7 @@ export default function UsersPage() {
               {users.map((u) => (
                 <div key={u.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
                   <span className={`h-2.5 w-2.5 rounded-full ${u.is_active ? "bg-emerald-500" : "bg-gray-300"}`} />
-                  <div className="min-w-0 flex-1"><div className="font-medium text-gray-900">{u.email}</div><div className="text-xs text-gray-400">{roleLabel(u.role)}{(u.role === "manager" || u.role === "seller") && accessCabs(u).length ? ` · ${accessCabs(u).length} каб.` : ""}</div></div>
+                  <div className="min-w-0 flex-1"><div className="font-medium text-gray-900">{u.email}</div><div className="text-xs text-gray-400">{roleLabel(u.role)}{isCabinetScopedRole(u.role) && accessCabs(u).length ? ` · ${accessCabs(u).length} каб.` : ""}</div></div>
                   <select
                     value={u.role}
                     disabled={u.id === me}
