@@ -82,6 +82,9 @@ export type Permission =
   | "users.roles.assign"
 
   // ── Прочее ──
+  /** Задавать пороги, за которыми нужна чужая подпись. У компании их ставит
+   *  руководство, у внешнего клиента — он сам, в своём юрлице. */
+  | "limits.manage"
   | "audit.view"
   | "settings.manage"
   /** Показать секрет маркетплейса в открытом виде. Не выдано никому: ТЗ §2.9
@@ -195,7 +198,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "warehouse.view", "warehouse.task.execute", "warehouse.request.create", "warehouse.approve", "warehouse.stock.adjust",
     "hr.view", "hr.edit", "payroll.view", "payroll.edit", "payroll.approve",
     "users.manage", "users.roles.assign",
-    "audit.view", "settings.manage",
+    "limits.manage", "audit.view", "settings.manage",
   ],
 
   // §5. Полный финансовый контур и сотрудники — но не товарный контур.
@@ -205,10 +208,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "finance.view", "finance.edit", "finance.approve", "finance.period.close",
     ...MP_REPORTS_FULL, ...ANALYTICS,
     "cost.view", "cost.edit",
-    "warehouse.view",
+    // Склад — на просмотр по всем юрлицам, плюс подпись под внутренними
+    // списаниями, расхождениями и стоимостными корректировками. Приёмку и
+    // комплектацию за складских он не делает: этих прав здесь нет.
+    "warehouse.view", "warehouse.approve", "warehouse.stock.adjust",
     "hr.view", "hr.edit", "payroll.view", "payroll.edit", "payroll.approve",
     "users.manage", "users.roles.assign",
-    "audit.view",
+    "limits.manage", "audit.view",
   ],
 
   // §6. Ежедневная финансовая работа. Утверждение и закрытие периода —
@@ -217,7 +223,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "finance.view", "finance.edit",
     ...MP_REPORTS_FULL, ...ANALYTICS,
     "cost.view", "cost.edit",
-    "warehouse.view",
+    // Корректировку он готовит, подписывает её финдиректор — поэтому заявка
+    // есть, а подтверждения нет.
+    "warehouse.view", "warehouse.request.create",
   ],
 
   // §7. Кадры. Зарплату готовит, но не утверждает; системные права не
@@ -243,7 +251,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     ...ANALYTICS,
     "cost.view", "cost.edit",
     "purchase.manage", "supply.manage",
-    "warehouse.view", "warehouse.request.create", "warehouse.approve",
+    // Списание закупщику разрешено, но не любое: пороги по документу и по
+    // месяцу считает lib/auth/approvals.ts. Право отвечает «вправе ли», лимит
+    // — «на сколько», и это разные вопросы.
+    "warehouse.view", "warehouse.request.create", "warehouse.approve", "warehouse.stock.adjust",
   ],
 
   // §11. Только своя часть склада. Себестоимости, цен, финансов и аналитики
@@ -260,7 +271,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "cost.view", "cost.edit",
     ...MERCHANDISING,
     "warehouse.view", "warehouse.request.create",
-    "users.manage",
+    "users.manage", "limits.manage",
   ],
 
   // Сотрудник клиента. Тот же контур, но команду не набирает.
@@ -269,6 +280,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "cost.view", "cost.edit",
     ...MERCHANDISING,
     "warehouse.view", "warehouse.request.create",
+    "limits.manage",
   ],
 };
 
