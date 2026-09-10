@@ -77,8 +77,13 @@ const ACCESS: Record<Role, string[]> = {
   // юрлица внешнему пользователю видны только те, чьи кабинеты принадлежат его
   // организации (lib/warehouse/entityAccess.ts). Чужой склад он не увидит даже
   // по прямой ссылке — юрлицо не пройдёт resolveEntity.
-  seller_owner: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
-  seller: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
+  // По решению владельца внешнему контуру открыты три модуля: WB, Ozon и
+  // склад. Прежде Ozon был закрыт вовсе — селлер не мог вести свои
+  // ozon-кабинеты, даже когда они принадлежали его юрлицу. Какие из трёх
+  // модулей открыты конкретному сотруднику, решает главный пользователь
+  // клиента (lib/auth/modules.ts).
+  seller_owner: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team", "/ozon"],
+  seller: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team", "/ozon"],
 };
 
 

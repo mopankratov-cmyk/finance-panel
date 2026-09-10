@@ -8,6 +8,8 @@ export interface AppUser {
   role: Role;
   /** Все роли сотрудника. Пусто, пока миграция не применена. */
   roles?: Role[];
+  /** Модули внешнего контура. Пусто — открыты все три. */
+  modules?: string[];
   cabinet_ids: string[];
   organization_id: string | null;
   is_active: boolean;
@@ -73,7 +75,7 @@ export async function authenticate(
    */
   const withRoles = await db
     .from("app_users")
-    .select("id, email, role, roles, cabinet_ids, organization_id, is_active, password_hash")
+    .select("id, email, role, roles, modules, cabinet_ids, organization_id, is_active, password_hash")
     .eq("email", email).maybeSingle();
   const primary = withRoles.error?.code === "42703"
     ? await db
@@ -96,5 +98,5 @@ export async function authenticate(
   if (!u || !u.is_active) return { ok: false, error: "Неверный email или пароль" };
   const match = await bcrypt.compare(password, u.password_hash as string);
   if (!match) return { ok: false, error: "Неверный email или пароль" };
-  return { ok: true, user: { id: u.id, email: u.email, role: u.role, roles: (u.roles as Role[] | null) ?? undefined, cabinet_ids: u.cabinet_ids ?? [], organization_id: u.organization_id ?? null, is_active: u.is_active } as AppUser };
+  return { ok: true, user: { id: u.id, email: u.email, role: u.role, roles: (u.roles as Role[] | null) ?? undefined, modules: (u.modules as string[] | null) ?? undefined, cabinet_ids: u.cabinet_ids ?? [], organization_id: u.organization_id ?? null, is_active: u.is_active } as AppUser };
 }

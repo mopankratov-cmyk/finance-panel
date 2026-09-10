@@ -3,6 +3,7 @@ import { SESSION_COOKIE, sessionRoles, verifySession } from "@/lib/auth/session"
 import { canAccess, roleHome } from "@/lib/auth/roles";
 import { apiPermissionFor } from "@/lib/auth/apiPermissions";
 import { rolesCan } from "@/lib/auth/permissions";
+import { allowsModulePath } from "@/lib/auth/modules";
 
 // Защищаем всё, кроме /login, /privacy, /api/auth/*, статики и публичных шар-доков (/share/*).
 export const config = {
@@ -90,6 +91,10 @@ const SELLER_READ_API_EXACT = [
 
 const SELLER_READ_API_PREFIXES = [
   "/api/market/",
+  // Ozon внешнему контуру открыт: кабинеты его юрлица он ведёт сам. Границу
+  // держит не этот список, а область — кабинеты организации, — и модуль,
+  // выданный ему главным пользователем клиента.
+  "/api/ozon/",
   "/api/pim/",
   "/api/planning/",
   "/api/rnp/",
@@ -240,6 +245,11 @@ export async function proxy(req: NextRequest) {
        * tests/api-permission-map.test.mts, поэтому сюда такой запрос не должен
        * доходить вовсе; если дошёл — это ошибка карты, а не разрешение.
        */
+      // Третья ось для внешнего контура: главный пользователь клиента раздаёт
+      // своим сотрудникам доступ по модулям, и это ограничение поверх роли.
+      if (!allowsModulePath(session, pathname)) {
+        return NextResponse.json({ error: "Этот модуль вам не открыт" }, { status: 403 });
+      }
       const required = apiPermissionFor(pathname, req.method);
       if (!required) {
         return NextResponse.json({ error: "Эндпоинт не описан в карте прав" }, { status: 403 });
@@ -268,7 +278,7 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (!canAccess(sessionRoles(session), pathname)) {
+  if (!allowsModulePath(session, pathname) || !canAccess(sessionRoles(session), pathname)) {
     const url = req.nextUrl.clone();
     url.pathname = roleHome(session);
     return NextResponse.redirect(url);

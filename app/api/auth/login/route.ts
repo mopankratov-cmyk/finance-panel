@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   }
 
   const token = await signSession({
-    uid: res.user.id, email: res.user.email, role: res.user.role, roles: res.user.roles, cabinet_ids: res.user.cabinet_ids,
+    uid: res.user.id, email: res.user.email, role: res.user.role, roles: res.user.roles, modules: res.user.modules, cabinet_ids: res.user.cabinet_ids,
     organization_id: res.user.organization_id,
   });
   // Куда вести после входа: селлеру с подключённым кабинетом — в аналитику,

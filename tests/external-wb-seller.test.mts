@@ -5,18 +5,44 @@ import test from "node:test";
 import { sessionHasCabinetAccess } from "../lib/auth/cabinetAccess";
 import { canAccess, ROLE_HOME } from "../lib/auth/roles";
 import { assertUnitScopeAccess, UnitScopeError } from "../lib/unit/groupScope";
+import { allowsModulePath } from "../lib/auth/modules.ts";
 
 const OWN = "00000000-0000-4000-8000-00000000000a";
 const FOREIGN = "00000000-0000-4000-8000-00000000000b";
 
-test("external seller can open only the WB analytics contour", () => {
+test("внешнему контуру открыты три модуля и ничего из внутренних", () => {
+  // Решение владельца: клиенту доступны Wildberries, Ozon и склад. Ozon
+  // прежде был закрыт вовсе — селлер не мог вести свои ozon-кабинеты, даже
+  // когда они принадлежали его юрлицу.
   assert.equal(ROLE_HOME.seller, "/wb/connect");
-  for (const page of ["/wb/connect", "/wb/rnp", "/wb/adverts", "/wb/unit", "/wb/product"]) {
+  for (const page of ["/wb/connect", "/wb/rnp", "/wb/adverts", "/wb/unit", "/wb/product", "/ozon", "/warehouse"]) {
     assert.equal(canAccess("seller", page), true, page);
   }
-  for (const page of ["/", "/pnl", "/calendar", "/ozon", "/users", "/cabinets", "/agent"]) {
+  // Внутренние разделы компании закрыты — это и есть граница между двумя
+  // компаниями, и она не про права, а про то, чьи это данные.
+  for (const page of ["/", "/pnl", "/calendar", "/users", "/cabinets", "/agent", "/payroll", "/audit"]) {
     assert.equal(canAccess("seller", page), false, page);
   }
+});
+
+test("модули внешнего контура раздаются по одному", () => {
+  // Главный пользователь клиента раздаёт своим сотрудникам доступ по
+  // модулям. Пустой список значит «все три», а не «ни одного»: у заведённых
+  // учёток модулей не проставляли, и прочитать пустоту как запрет значило бы
+  // отключить живых людей в день выкладки.
+  const employee = { role: "seller" as const, modules: ["wb"] };
+  assert.equal(allowsModulePath(employee, "/wb/rnp"), true);
+  assert.equal(allowsModulePath(employee, "/ozon"), false);
+  assert.equal(allowsModulePath(employee, "/api/ozon/cockpit"), false);
+  assert.equal(allowsModulePath(employee, "/warehouse"), false);
+
+  const legacy = { role: "seller" as const, modules: [] as string[] };
+  for (const path of ["/wb/rnp", "/ozon", "/warehouse"]) {
+    assert.equal(allowsModulePath(legacy, path), true, path);
+  }
+
+  // Внутренних сотрудников модулями не ограничивают.
+  assert.equal(allowsModulePath({ role: "wb_manager" as const, modules: ["wb"] }, "/ozon"), true);
 });
 
 test("production sessions fail closed without AUTH_SECRET", async () => {

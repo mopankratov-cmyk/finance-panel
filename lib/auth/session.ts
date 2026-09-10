@@ -21,6 +21,12 @@ export interface Session {
    * вести и WB, и Ozon, получив обе роли.
    */
   roles?: Role[];
+  /**
+   * Модули внешнего контура: wb, ozon, warehouse. Пусто — все три.
+   * У внутренних ролей поле не используется: их ограничивают роль и карта
+   * прав, а третьей оси ТЗ для них не просило.
+   */
+  modules?: string[];
   cabinet_ids: string[];
   organization_id: string | null;
 }
@@ -73,6 +79,7 @@ export async function verifySession(token: string | undefined | null): Promise<S
       email: String(payload.email),
       role: payload.role,
       roles: roles.length ? roles : undefined,
+      modules: Array.isArray(payload.modules) ? (payload.modules as unknown[]).map(String) : undefined,
       cabinet_ids: Array.isArray(payload.cabinet_ids) ? (payload.cabinet_ids as string[]) : [],
       organization_id: typeof payload.organization_id === "string" && payload.organization_id
         ? payload.organization_id
