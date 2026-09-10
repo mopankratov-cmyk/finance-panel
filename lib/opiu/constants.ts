@@ -56,6 +56,16 @@ export function resolveOpiuBrand(brandId: string | null | undefined): OpiuBrand 
   return OPIU_BRANDS.find((b) => b.id === brandId) ?? OPIU_BRANDS[0]!;
 }
 
+/**
+ * WB-кабинеты, реально нужные ОПиУ — 3 уникальных cabinetId (Retail Family
+ * общий для Norvia/Heaton). Синки, которые тянут данные ИСКЛЮЧИТЕЛЬНО для
+ * ОПиУ (paid-storage, advert-spend-history) должны фильтроваться по этому
+ * набору — иначе тянут вообще все активные кабинеты аккаунта (Оптима,
+ * Слоёно и другие, не относящиеся к ОПиУ), впустую тратя лимиты WB API и
+ * время крона на данные, которые никто не читает.
+ */
+export const OPIU_CABINET_IDS: ReadonlySet<string> = new Set(OPIU_BRANDS.map((b) => b.cabinetId));
+
 /** Сколько суб-брендов (включая сам brand) делят один WB-кабинет по префиксу артикула. */
 export function siblingBrandCount(brand: OpiuBrand): number {
   if (!brand.articlePrefixes?.length) return 1;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets, type SyncTarget } from "@/lib/sync/cabinets";
+import { OPIU_CABINET_IDS } from "@/lib/opiu/constants";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
 import {
@@ -272,7 +273,10 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const allTargets = await getWbSyncTargets();
+  // «Платное хранение» нужно только ОПиУ — только 3 кабинета из OPIU_BRANDS,
+  // не весь аккаунт (Оптима/Слоёно и другие сюда не относятся, тянуть их
+  // здесь — впустую жечь лимиты WB API и время крона без всякой пользы).
+  const allTargets = (await getWbSyncTargets()).filter((t) => t.cabinetId && OPIU_CABINET_IDS.has(t.cabinetId));
   const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
   const targets = onlyCabinet ? allTargets.filter((t) => t.cabinetId === onlyCabinet) : allTargets;
   if (!targets.length) {
