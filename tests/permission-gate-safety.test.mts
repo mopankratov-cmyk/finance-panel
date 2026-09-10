@@ -127,7 +127,11 @@ test("менеджер WB теряет финансы, зарплату, учё�
     // Журнал действий — история чужих поступков, и ТЗ отдаёт её руководителю
     // и финдиректору. Прежний список для менеджера пропускал бы и её.
     "audit.view",
-    "cost.edit", "finance.edit", "finance.view", "mp_reports.sync", "mp_reports.view",
+    "cost.edit", "finance.edit", "finance.view",
+    // Пороги согласований задаёт руководство, а во внешнем контуре — главный
+    // пользователь клиента. Менеджеру менять их незачем и нельзя.
+    "limits.manage",
+    "mp_reports.sync", "mp_reports.view",
     "payroll.edit", "payroll.view", "purchase.manage", "settings.manage",
     "users.manage", "users.roles.assign",
     "warehouse.approve", "warehouse.request.create", "warehouse.stock.adjust", "warehouse.task.execute",

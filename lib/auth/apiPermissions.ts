@@ -87,6 +87,11 @@ const RULES: readonly ApiRule[] = [
   // 202609100003), поэтому у роута нет и не может быть мутаций.
   ["/api/audit", { read: "audit.view", write: "audit.view" }],
 
+  // ── Пороги согласований ──
+  // Смотреть может каждый, кому они мешают работать: человек должен знать, за
+  // какой суммой понадобится чужая подпись, ДО того как упрётся в отказ.
+  ["/api/limits", { read: READ_ANALYTICS, write: "limits.manage" }],
+
   // ── Себестоимость ──
   ["/api/costs", { read: "cost.view", write: "cost.edit" }],
   ["/api/costs/categories", { read: READ_ANALYTICS, write: "cost.edit" }],

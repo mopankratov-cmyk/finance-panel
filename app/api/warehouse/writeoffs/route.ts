@@ -9,6 +9,8 @@ import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { recordStockDoc } from "@/lib/warehouse/stockDocs";
 import { auditedMutation, redactSecrets } from "@/lib/audit/log";
+import { sessionRoles } from "@/lib/auth/session";
+import { checkWriteOffLimit } from "@/lib/warehouse/writeoffLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -183,11 +185,23 @@ export async function POST(request: NextRequest) {
   // Журнал пишется вокруг обработчика: одна запись на запрос, и только
   // на успех — неудавшийся запрос данных не менял.
   return auditedMutation(request, "warehouse.writeoff", await getServerSession(), () => handlePost(request), (body) => ({
-    after: redactSecrets(body),
+    // costRub кладётся в журнал не для красоты: по нему же считается,
+    // сколько человек уже списал за месяц (lib/warehouse/writeoffLimit.ts).
+    after: { ...redactSecrets(body), costRub: lastWriteOffCost },
   }));
 }
 
+/**
+ * Стоимость последнего списания — для журнала.
+ *
+ * Обёртка журнала видит только тело запроса, а сумма считается внутри
+ * обработчика. Модуль на сервере живёт в пределах запроса, поэтому переменная
+ * не переживает соседние вызовы.
+ */
+let lastWriteOffCost: number | null = null;
+
 async function handlePost(request: NextRequest) {
+  lastWriteOffCost = null;
   const gate = await requireApiSession();
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as
@@ -233,6 +247,16 @@ async function handlePost(request: NextRequest) {
   if (!scopeList.ok) return fail(scopeList.error, scopeList.status);
   const lineScope = await assertVariantsInScope(db, lines.map((line) => line.variantId), scopeList.rows.map((row) => row.id));
   if (!lineScope.ok) return fail(lineScope.error, lineScope.status);
+
+  /**
+   * Порог списания. Права мало: без этой проверки закупщик списывал бы любую
+   * сумму, потому что право warehouse.stock.adjust у него есть. Стоимость
+   * считается по учётной себестоимости, накопленное за месяц — из журнала,
+   * который нельзя ни почистить, ни переписать.
+   */
+  const limit = await checkWriteOffLimit(db, session, sessionRoles(session), lines);
+  if (!limit.allowed) return fail(`Списание сверх лимита: ${limit.reason}`, 403);
+  lastWriteOffCost = limit.costRub;
 
   // Ключ идемпотентности: второй клик по кнопке не должен давать второй документ.
   const docKey = typeof body.docKey === "string" ? body.docKey.trim() || null : null;
