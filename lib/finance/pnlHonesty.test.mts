@@ -22,3 +22,13 @@ test("несчитанные статьи WB не выдаются за ноль
   assert.match(page, /notComputed/);
   assert.doesNotMatch(page, /\+ соинвест, как принято/);
 });
+
+test("общий ОПиУ выбирается только по календарному месяцу без налога в интерфейсе", () => {
+  assert.match(route, /sp\.get\("month"\)/);
+  assert.match(route, /const from = `\$\{month\}-01`/);
+  assert.doesNotMatch(route, /sp\.get\("weeks"\)/);
+  assert.match(page, /type="month"/);
+  assert.doesNotMatch(page, /\[2, 4, 8\]/);
+  assert.doesNotMatch(page, />Налог</);
+  assert.doesNotMatch(page, /ОПиУ маркетплейсов/);
+});

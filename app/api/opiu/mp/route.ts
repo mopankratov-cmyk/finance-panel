@@ -16,9 +16,15 @@ const r0 = (value: number) => Math.round(value);
 // агрегируется по выбранному кабинету, группе или честному контуру «все».
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
-  const weeks = Math.min(8, Math.max(1, Number(sp.get("weeks")) || 4));
-  const taxParam = sp.get("tax");
-  const taxPct = taxParam !== null && Number.isFinite(Number(taxParam)) ? Number(taxParam) : 7;
+  const now = new Date();
+  const fallbackMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const requestedMonth = sp.get("month") ?? "";
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth : fallbackMonth;
+  const [year, monthNumber] = month.split("-").map(Number);
+  const from = `${month}-01`;
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const to = `${month}-${String(lastDay).padStart(2, "0")}`;
+  const taxPct = 0;
   const wbCabinetId = cabinetIdFromParam(sp.get("wb_cabinet"));
   if (!(await hasCabinetAccess(wbCabinetId))) {
     return NextResponse.json({ error: "Нет доступа к WB-кабинету" }, { status: 403 });
@@ -30,9 +36,6 @@ export async function GET(request: NextRequest) {
   const costs = await db.from("product_costs").select("article, cost_rub");
   if (costs.error) return NextResponse.json({ error: costs.error.message }, { status: 502 });
   for (const row of costs.data ?? []) costByArt.set(String(row.article || "").trim().toUpperCase(), num(row.cost_rub));
-
-  const to = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - weeks * 7 * 86_400_000).toISOString().slice(0, 10);
 
   const wbPromise = loadWbCachedFinance({ dateFrom: from, dateTo: to, cabinetId: wbCabinetId, taxPct })
     // Кэш продаж не содержит логистику, хранение, штрафы и соинвест. Раньше они
@@ -120,5 +123,5 @@ export async function GET(request: NextRequest) {
   })();
 
   const [wb, ozon] = await Promise.all([wbPromise, ozonPromise]);
-  return NextResponse.json({ period: { from, to, weeks }, taxPct, wb, ozon });
+  return NextResponse.json({ period: { from, to, month }, wb, ozon });
 }

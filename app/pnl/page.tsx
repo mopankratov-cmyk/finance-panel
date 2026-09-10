@@ -5,9 +5,10 @@ import { Loader2, LineChart } from "lucide-react";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { FinanceTabs } from "@/components/FinanceTabs";
+import { currentMonthParam } from "@/lib/opiu/weeks";
 
-type WB = { revenue_before_spp: number; returns?: number; coinvest: number | null; revenue: number; commission: number; logistics: number | null; storage: number | null; penalty: number | null; notComputed?: string[]; acquiring: number; ad: number; other: number; cogs: number; tax: number; profit: number; margin: number; error?: string };
-type OZ = { revenue: number; commission: number; delivery: number; services: number; cogs: number; tax: number; profit: number; margin: number; error?: string; noCabinet?: boolean };
+type WB = { revenue_before_spp: number; returns?: number; coinvest: number | null; revenue: number; commission: number; logistics: number | null; storage: number | null; penalty: number | null; notComputed?: string[]; acquiring: number; ad: number; other: number; cogs: number; profit: number; margin: number; error?: string };
+type OZ = { revenue: number; commission: number; delivery: number; services: number; cogs: number; profit: number; margin: number; error?: string; noCabinet?: boolean };
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
@@ -24,8 +25,7 @@ function Line({ label, v, kind }: { label: string; v: number | null | undefined;
 }
 
 export default function PnlPage() {
-  const [weeks, setWeeks] = useState(4);
-  const [tax, setTax] = useState(7);
+  const [month, setMonth] = useState(currentMonthParam);
   const [data, setData] = useState<{ wb: WB; ozon: OZ } | null>(null);
   const [loading, setLoading] = useState(true);
   const [ozonCab, setOzonCab, ozonReady] = useActiveCabinet("ozon");
@@ -35,14 +35,17 @@ export default function PnlPage() {
     if (!ozonReady || !wbReady) return;
     let ignore = false;
     setLoading(true);
-    const q = `weeks=${weeks}&tax=${tax}${ozonCab ? `&cabinet=${ozonCab}` : ""}${wbCab ? `&wb_cabinet=${wbCab}` : ""}`;
-    fetch(`/api/opiu/mp?${q}`, { cache: "no-store" })
+    setData(null);
+    const params = new URLSearchParams({ month });
+    if (ozonCab) params.set("cabinet", ozonCab);
+    if (wbCab) params.set("wb_cabinet", wbCab);
+    fetch(`/api/opiu/mp?${params}`, { cache: "no-store" })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d) => { if (!ignore) setData({ wb: d.wb, ozon: d.ozon }); })
       .catch(() => { if (!ignore) setData(null); })
       .finally(() => { if (!ignore) setLoading(false); });
     return () => { ignore = true; };
-  }, [weeks, tax, ozonCab, wbCab, ozonReady, wbReady]);
+  }, [month, ozonCab, wbCab, ozonReady, wbReady]);
 
   const wb = data?.wb, oz = data?.ozon;
   const totProfit = (wb && !wb.error ? wb.profit : 0) + (oz && !oz.error ? oz.profit : 0);
@@ -54,22 +57,25 @@ export default function PnlPage() {
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700"><LineChart className="h-5 w-5" /></div>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">ОПиУ маркетплейсов</h1>
-          <p className="text-sm text-gray-500">P&L от выручки до СПП + соинвест · WB и Ozon</p>
+          <h1 className="text-2xl font-bold text-gray-900">ОПиУ</h1>
+          <p className="text-sm text-gray-500">Управленческий отчёт о доходах и расходах за месяц</p>
         </div>
+        <label className="flex min-w-40 flex-col gap-1 text-sm font-medium text-gray-500">
+          Месяц
+          <input
+            type="month"
+            value={month}
+            onChange={(event) => setMonth(event.target.value || currentMonthParam())}
+            className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 text-gray-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+        </label>
         <CabinetSwitcher mp="wb" accent="violet" onChange={setWbCab} />
         <CabinetSwitcher mp="ozon" accent="sky" onChange={setOzonCab} />
-        <label className="flex items-center gap-1.5 text-sm text-gray-500">Налог
-          <input type="number" value={tax} onChange={(e) => setTax(Number(e.target.value))} className="min-h-11 w-16 rounded border border-gray-300 px-2 py-1 text-right text-sm" />%
-        </label>
-        <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
-          {[2, 4, 8].map((w) => <button key={w} onClick={() => setWeeks(w)} className={`tap-hit rounded px-3 py-1 text-xs font-semibold ${weeks === w ? "bg-white text-emerald-700 shadow" : "text-gray-500"}`}>{w} нед</button>)}
-        </div>
       </div>
 
       {/* объединённая прибыль */}
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 bg-white p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Выручка WB+Ozon</div><div className="text-2xl font-extrabold">{fmt(totRev)} ₽</div></div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Выручка</div><div className="text-2xl font-extrabold">{fmt(totRev)} ₽</div></div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Чистая прибыль</div><div className={`text-2xl font-extrabold ${totProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{fmt(totProfit)} ₽</div></div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 text-center"><div className="text-[11px] uppercase text-gray-400">Маржа общая</div><div className="text-2xl font-extrabold">{totRev > 0 ? Math.round((totProfit / totRev) * 1000) / 10 : 0}%</div></div>
       </div>
@@ -92,7 +98,6 @@ export default function PnlPage() {
                 <Line label="Эквайринг" v={wb.acquiring} kind="minus" />
                 <Line label="Штрафы" v={wb.penalty} kind="minus" />
                 <Line label="Прочие удержания" v={wb.other} kind="minus" />
-                <Line label={`Налог ${tax}%`} v={wb.tax} kind="minus" />
                 <Line label="Чистая прибыль" v={wb.profit} kind="sum" />
                 {wb.notComputed?.length ? (
                   <p className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
@@ -112,14 +117,13 @@ export default function PnlPage() {
                 <Line label="Комиссия Ozon" v={oz.commission} kind="minus" />
                 <Line label="Логистика и обработка" v={oz.delivery} kind="minus" />
                 <Line label="Услуги (реклама/хранение)" v={oz.services} kind="minus" />
-                <Line label={`Налог ${tax}%`} v={oz.tax} kind="minus" />
                 <Line label="Чистая прибыль" v={oz.profit} kind="sum" />
               </>
             )}
           </div>
         </div>
       )}
-      <p className="mt-3 text-[11px] text-gray-400">WB: выручка считается от цены до СПП (retail_price_withdisc_rub) по кэшу продаж; логистика, хранение, штрафы и соинвест в эту сводку не входят. Ozon: от начисленного (accruals_for_sale). Налог — % от выручки, настраивается.</p>
+      <p className="mt-3 text-[11px] text-gray-400">WB: выручка считается от цены до СПП (retail_price_withdisc_rub) по кэшу продаж; логистика, хранение, штрафы и соинвест в эту сводку не входят. Ozon: от начисленного (accruals_for_sale).</p>
     </div>
   );
 }
