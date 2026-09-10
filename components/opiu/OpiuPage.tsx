@@ -11,6 +11,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type OpiuTab = "sale_date" | "report_date";
 
+/** Строки-подпункты "Прочие удержания" — сворачиваются/разворачиваются вместе, спрятаны по умолчанию. */
+const OTHER_DEDUCTIONS_CHILD_IDS = new Set(["jem", "withdraw_now", "transit", "acceptance"]);
+
 interface OpiuMeta {
   salesRows: number;
   ordersCount: number;
@@ -187,6 +190,7 @@ export function OpiuPage() {
   const [savingWeeks, setSavingWeeks] = useState<Set<string>>(() => new Set());
   const [resyncingWeeks, setResyncingWeeks] = useState<Set<string>>(() => new Set());
   const [resyncError, setResyncError] = useState<string | null>(null);
+  const [otherDeductionsExpanded, setOtherDeductionsExpanded] = useState(false);
 
   const [rangeFrom, setRangeFrom] = useState(defaultRangeFrom);
   const [rangeTo, setRangeTo] = useState(defaultRangeTo);
@@ -577,7 +581,10 @@ export function OpiuPage() {
                 <tbody>
                   {(() => {
                     let stripeIndex = 0;
-                    return report.rows.map((row) => {
+                    const visibleRows = report.rows.filter(
+                      (row) => otherDeductionsExpanded || !OTHER_DEDUCTIONS_CHILD_IDS.has(row.id),
+                    );
+                    return visibleRows.map((row) => {
                       if (row.kind === "separator") {
                         return (
                           <tr key={row.id}>
@@ -591,6 +598,8 @@ export function OpiuPage() {
     
                       const isPercent = row.kind === "percent";
                       const isTotal = row.id === "marginal" || row.id === "gross";
+                      const isOtherRow = row.id === "other";
+                      const isOtherChildRow = OTHER_DEDUCTIONS_CHILD_IDS.has(row.id);
                       const rowBg = isTotal
                         ? "bg-violet-50"
                         : stripeIndex % 2 === 1 ? "bg-slate-50" : "bg-white";
@@ -606,7 +615,26 @@ export function OpiuPage() {
                         : isTotal
                           ? "text-[14px] font-semibold"
                           : "text-[14px] font-medium";
-    
+
+                      const labelContent = isOtherRow ? (
+                        <button
+                          type="button"
+                          onClick={() => setOtherDeductionsExpanded((v) => !v)}
+                          className="flex w-full items-center gap-1 text-left"
+                        >
+                          <ChevronRight
+                            className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${
+                              otherDeductionsExpanded ? "rotate-90" : ""
+                            }`}
+                          />
+                          {row.label}
+                        </button>
+                      ) : isOtherChildRow ? (
+                        <span className="pl-[18px]">{row.label}</span>
+                      ) : (
+                        row.label
+                      );
+
                       if (isRangeTab) {
                         const val = row.values[row.values.length - 1] ?? null;
                         return (
@@ -617,7 +645,7 @@ export function OpiuPage() {
                             }`}
                           >
                             <td className={`sticky left-0 z-10 px-4 ${rowPad} ${rowBg} ${labelClass}`}>
-                              {row.label}
+                              {labelContent}
                             </td>
                             <td
                               className={`px-4 ${rowPad} text-center tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
@@ -636,7 +664,7 @@ export function OpiuPage() {
                           }`}
                         >
                           <td className={`sticky left-0 z-10 px-4 ${rowPad} ${rowBg} ${labelClass}`}>
-                            {row.label}
+                            {labelContent}
                           </td>
                           {row.values.slice(0, -1).map((val, i) => {
                             const week = report.weeks[i];
