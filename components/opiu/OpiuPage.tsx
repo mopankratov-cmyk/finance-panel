@@ -314,7 +314,7 @@ export function OpiuPage() {
       setGoogleResult({ message: `Лист «${payload.sheetName}» обновлён`, url: result.spreadsheetUrl });
     } catch (exportError) {
       setGoogleResult({
-        message: exportError instanceof Error ? exportError.message : "Не удалось выгрузить ОПиУ",
+        message: exportError instanceof Error ? exportError.message : "Не удалось выгрузить финансовый отчёт WB",
         error: true,
       });
     } finally {
@@ -325,7 +325,7 @@ export function OpiuPage() {
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 px-4 pb-8 sm:px-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">ОПиУ</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Финансовый отчёт WB</h1>
         <p className="mt-1 text-sm text-slate-500">
           {currentBrandLabel} · Wildberries · недели пн–вс
         </p>

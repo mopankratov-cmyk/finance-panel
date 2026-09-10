@@ -19,7 +19,7 @@ export const OPIU_SECTION_BEFORE: Partial<Record<OpiuTableRow["id"], string>> = 
 };
 
 function safeSheetName(value: string): string {
-  return value.replace(/[\\/?*\[\]:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31) || "ОПиУ";
+  return value.replace(/[\\/?*\[\]:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31) || "Финансовый отчёт WB";
 }
 
 function cellValue(value: number | null, row: OpiuTableRow): string | number {
@@ -36,7 +36,7 @@ export function buildOpiuSheetPayload(
   const header = ["Показатель", ...periodColumns, "Итого"];
   const width = header.length;
   const rows: Array<Array<string | number>> = [
-    [`ОПиУ · ${context.brandLabel}`, ...Array.from({ length: width - 1 }, () => "")],
+    [`Финансовый отчёт WB · ${context.brandLabel}`, ...Array.from({ length: width - 1 }, () => "")],
     ["ФАКТ", ...Array.from({ length: width - 1 }, () => "")],
     ["Период", context.periodLabel, ...Array.from({ length: Math.max(0, width - 2) }, () => "")],
     ["Обновлено", context.generatedAt, ...Array.from({ length: Math.max(0, width - 2) }, () => "")],
@@ -52,7 +52,7 @@ export function buildOpiuSheetPayload(
   }
 
   return {
-    sheetName: safeSheetName(`ОПиУ ${context.brandLabel} ${context.periodLabel}`),
+    sheetName: safeSheetName(`Финансовый отчёт WB ${context.brandLabel} ${context.periodLabel}`),
     rows,
   };
 }
@@ -68,6 +68,6 @@ export async function exportOpiuToGoogleSheets(payload: OpiuSheetPayload): Promi
     }),
   });
   const result = await response.json().catch(() => null) as { error?: string; spreadsheetUrl?: string } | null;
-  if (!response.ok) throw new Error(result?.error ?? "Не удалось выгрузить ОПиУ в Google Таблицу");
+  if (!response.ok) throw new Error(result?.error ?? "Не удалось выгрузить финансовый отчёт WB в Google Таблицу");
   return { spreadsheetUrl: result?.spreadsheetUrl };
 }

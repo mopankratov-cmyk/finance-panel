@@ -17,14 +17,14 @@ const report: OpiuReport = {
   ],
 };
 
-test("Google export preserves the OPIU hierarchy and numeric types", () => {
+test("Google export preserves the WB financial report hierarchy and numeric types", () => {
   const payload = buildOpiuSheetPayload(report, {
     brandLabel: "ИП Панкратов",
     periodLabel: "Сентябрь 2026",
     generatedAt: "10.09.2026, 15:30",
   });
 
-  assert.equal(payload.sheetName, "ОПиУ ИП Панкратов Сентябрь 2026");
+  assert.equal(payload.sheetName, "Финансовый отчёт WB ИП Панкрато");
   assert.deepEqual(payload.rows[5], ["Показатель", "7–13 сен.", "Итого"]);
   assert.ok(payload.rows.some((row) => row[0] === "Производственные расходы · Переменные"));
   assert.deepEqual(payload.rows.find((row) => row[0] === "Комиссия ВБ, руб"), ["Комиссия ВБ, руб", 200, 200]);

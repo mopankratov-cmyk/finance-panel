@@ -475,8 +475,8 @@ export async function syncFinanceSheetsDirect(jobs: DirectSheetJob[]) {
   let sheets = (metadata.sheets ?? []).flatMap((item) => item.properties ? [item.properties] : []);
   const results = [];
   for (const job of jobs) {
-    if (job.template === "opiu" && !job.sheet.startsWith("ОПиУ ")) {
-      throw new Error("Выгрузка ОПиУ не может перезаписывать служебные финансовые листы");
+    if (job.template === "opiu" && !job.sheet.startsWith("Финансовый отчёт WB ")) {
+      throw new Error("Выгрузка финансового отчёта WB не может перезаписывать служебные финансовые листы");
     }
     let sheet = findSheet(job.sheet, sheets);
     if (!sheet && (job.template === "dds" || job.template === "opiu")) {
