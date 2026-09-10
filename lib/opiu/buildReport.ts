@@ -151,7 +151,7 @@ export function buildOpiuReport(
     // Расход, списанный промо-бонусами WB (не реальные деньги) — справочно,
     // в валовую прибыль не входит (та считается по m.adsSpend — только баланс).
     { id: "ads_bonus",      label: "Бонусы, руб",                                     kind: "metric",  expense: true, values: cols((m) => m.adsBonus) },
-    { id: "drr",            label: "ДРР, %",                                          kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.adsSpend, m.revenueWithoutSpp)) },
+    { id: "drr",            label: "ДРР, %",                                          kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.adsSpend + m.adsBonus, m.revenueWithoutSpp)) },
     sep("sep3"),
     { id: "gross",          label: "Валовая прибыль",                                 kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.gross) },
     { id: "gross_pct",      label: "Рентабельность, %",                               kind: "percent", values: pctCols((d) => d.grossPct) },
