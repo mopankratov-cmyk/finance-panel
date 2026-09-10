@@ -25,12 +25,14 @@ export const ROLE_HOME: Record<Role, string> = {
  * — он уходит в аналитику. Раньше карта была статической, и селлер с уже
  * подключённым кабинетом каждый раз упирался в «Подключение WB».
  */
-export function roleHome(session: { role: Role; cabinet_ids?: string[] } | null | undefined): string {
+export function roleHome(session: { role: Role; roles?: Role[]; cabinet_ids?: string[] } | null | undefined): string {
   if (!session) return "/login";
-  if (session.role === "seller") {
+  // У сотрудника с двумя ролями стартовый экран один — по первой роли.
+  const role = session.roles?.length ? session.roles[0] : session.role;
+  if (role === "seller" || role === "seller_owner") {
     return (session.cabinet_ids?.length ?? 0) > 0 ? "/wb/rnp" : "/wb/connect";
   }
-  return ROLE_HOME[session.role] || "/";
+  return ROLE_HOME[role] || "/";
 }
 
 
@@ -80,14 +82,24 @@ const ACCESS: Record<Role, string[]> = {
 };
 
 
-export function canAccess(role: Role, path: string): boolean {
-  const rules = ACCESS[role] ?? [];
-  if (rules.includes("*")) return true;
-  // точное «/» только для лаунчера
-  if (path === "/") return rules.includes("/");
-  return rules.some((p) => p !== "/" && (path === p || path.startsWith(p + "/")));
+/**
+ * Открыт ли путь.
+ *
+ * Принимает и одну роль, и набор: сотрудник может вести оба маркетплейса,
+ * и тогда экран открыт, если его открывает ХОТЯ БЫ одна из ролей. Вторая
+ * роль обязана добавлять доступ, а не отнимать.
+ */
+export function canAccess(role: Role | readonly Role[], path: string): boolean {
+  const roles: readonly Role[] = Array.isArray(role) ? role : [role as Role];
+  return roles.some((one: Role) => {
+    const rules = ACCESS[one] ?? [];
+    if (rules.includes("*")) return true;
+    // точное «/» только для лаунчера
+    if (path === "/") return rules.includes("/");
+    return rules.some((p: string) => p !== "/" && (path === p || path.startsWith(p + "/")));
+  });
 }
 
-export function allowedNav(role: Role, href: string): boolean {
+export function allowedNav(role: Role | readonly Role[], href: string): boolean {
   return canAccess(role, href);
 }

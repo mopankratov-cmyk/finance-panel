@@ -319,6 +319,53 @@ export function roleAllowsMarketplace(
   return ROLE_MARKETPLACES[role].includes(marketplace);
 }
 
+/**
+ * Сотрудник может держать несколько ролей сразу.
+ *
+ * Решение владельца: человек, ведущий оба маркетплейса, получает обе роли
+ * менеджера, а не третью «менеджер МП». Так набор прав остаётся суммой
+ * понятных ролей, и не приходится заводить роль на каждое сочетание —
+ * иначе их станет больше, чем людей.
+ *
+ * Права складываются: достаточно, чтобы действие разрешала ХОТЯ БЫ одна
+ * роль. Запрет из другой роли не отнимает уже выданного — иначе вторая
+ * роль отбирала бы доступ вместо того, чтобы добавлять, и выдача роли
+ * оборачивалась бы поражением в правах.
+ */
+export function rolesCan(roles: readonly (Role | string)[] | null | undefined, permission: Permission): boolean {
+  return (roles ?? []).some((role) => roleCan(role, permission));
+}
+
+/** Контур маркетплейса — тоже сумма: две роли менеджера дают оба. */
+export function rolesAllowMarketplace(
+  roles: readonly (Role | string)[] | null | undefined,
+  marketplace: Marketplace,
+): boolean {
+  return (roles ?? []).some((role) => roleAllowsMarketplace(role, marketplace));
+}
+
+/** Первая известная роль: ею подписывают журнал и по ней выбирают стартовый экран. */
+export function primaryRole(roles: readonly (Role | string)[] | null | undefined): Role | null {
+  return (roles ?? []).find((role): role is Role => isRole(role)) ?? null;
+}
+
+/**
+ * Роли работают в выданном списке кабинетов, только если ВСЕ они такие.
+ *
+ * Достаточно одной роли без ограничения по кабинетам — и ограничивать
+ * нечего: человек и так видит всё. Проверять «хотя бы одна ограничена»
+ * значило бы урезать доступ, который сам же и выдан другой ролью.
+ */
+export function rolesAreCabinetScoped(roles: readonly (Role | string)[] | null | undefined): boolean {
+  const list = roles ?? [];
+  return list.length > 0 && list.every((role) => isCabinetScopedRole(role));
+}
+
+/** Внешний контур не смешивается с внутренним: одна внешняя роль — весь набор внешний. */
+export function rolesAreExternal(roles: readonly (Role | string)[] | null | undefined): boolean {
+  return (roles ?? []).some((role) => isExternalRole(role));
+}
+
 /** Роли, которым разрешено действие — для тестов и экрана прав. */
 export function rolesWith(permission: Permission): Role[] {
   return (Object.keys(ROLE_PERMISSIONS) as Role[]).filter((role) => roleCan(role, permission));

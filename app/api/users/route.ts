@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
+import { isExternalRole, isRole } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -79,9 +80,33 @@ export async function POST(request: NextRequest) {
   if (!directorSession) return NextResponse.json({ error: "Доступ только для директора" }, { status: 403 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const b = (await request.json().catch(() => ({}))) as { email?: string; password?: string; role?: string; cabinet_ids?: string[]; replace_existing?: boolean };
+  const b = (await request.json().catch(() => ({}))) as { email?: string; password?: string; role?: string; roles?: string[]; cabinet_ids?: string[]; replace_existing?: boolean };
   const email = (b.email || "").trim().toLowerCase();
-  const role = ["director", "finance", "manager", "ozon_manager", "seller", "warehouse"].includes(b.role || "") ? b.role : "manager";
+  /**
+   * Роли берутся из общего словаря, а не из списка строк рядом.
+   *
+   * Список здесь был написан руками и отстал от словаря: после разделения
+   * ролей он всё ещё принимал «finance» и «manager», которых больше нет, и
+   * молча подставлял несуществующую роль по умолчанию — то есть заводил
+   * сотрудника, которому потом не открылся бы ни один экран. Компилятор
+   * этого не видел: обычный массив строк.
+   *
+   * Роль может быть не одна: сотрудник, ведущий оба маркетплейса, получает
+   * обе роли менеджера (решение владельца от 09.09.2026).
+   */
+  const requested = (b.roles?.length ? b.roles : [b.role]).filter((value): value is string => Boolean(value));
+  const roles = requested.filter(isRole);
+  if (requested.length && roles.length !== requested.length) {
+    const unknown = requested.filter((value) => !isRole(value));
+    return NextResponse.json({ error: `Неизвестная роль: ${unknown.join(", ")}` }, { status: 400 });
+  }
+  if (!roles.length) return NextResponse.json({ error: "Укажите роль сотрудника" }, { status: 400 });
+  // Внешний контур не смешивается с внутренним ни при каких сочетаниях:
+  // иначе сотрудник клиента получил бы права нашей компании.
+  if (roles.some(isExternalRole) && roles.some((value) => !isExternalRole(value))) {
+    return NextResponse.json({ error: "Внешнюю роль нельзя совмещать с внутренней" }, { status: 400 });
+  }
+  const role = roles[0];
   if (!email || !b.password || b.password.length < 10) return NextResponse.json({ error: "Email и пароль (≥10 символов)" }, { status: 400 });
   const password_hash = await hashPassword(b.password);
   const { data: existing } = await db.from("app_users").select("id,role,organization_id").eq("email", email).maybeSingle();
@@ -101,8 +126,8 @@ export async function POST(request: NextRequest) {
     );
   }
   let organizationId: string | null = null;
-  if (role === "seller") {
-    if (existing?.role === "seller" && existing.organization_id) organizationId = existing.organization_id;
+  if (roles.some(isExternalRole)) {
+    if (existing && isExternalRole(existing.role) && existing.organization_id) organizationId = existing.organization_id;
     else {
       const { data: organization, error: organizationError } = await createSellerOrganization(db, email);
       if (organizationError || !organization) return NextResponse.json({ error: organizationError?.message ?? "Не удалось создать организацию" }, { status: 500 });
@@ -116,9 +141,23 @@ export async function POST(request: NextRequest) {
   let error;
   // Кабинет внешнего селлера связывается только self-service endpoint после
   // проверки WB-токена. Нельзя назначить ему чужой внутренний кабинет из формы.
-  const userPatch = { role, cabinet_ids: role === "seller" || role === "warehouse" ? [] : b.cabinet_ids ?? [], organization_id: organizationId, password_hash, is_active: true };
-  if (existing) ({ error } = await db.from("app_users").update(userPatch).eq("id", existing.id));
-  else ({ error } = await db.from("app_users").insert({ email, ...userPatch }));
+  // Кабинеты внешнему контуру и складу не выдаются здесь: у первого они
+  // приходят из его организации, второму не нужны вовсе.
+  const withoutCabinets = roles.some(isExternalRole) || roles.includes("warehouse");
+  const userPatch = { role, cabinet_ids: withoutCabinets ? [] : b.cabinet_ids ?? [], organization_id: organizationId, password_hash, is_active: true };
+  /**
+   * Колонка `roles` появляется миграцией, которую применяет владелец, а код
+   * выкладывается раньше. Поэтому запись идёт с ней, а на отказ «нет такой
+   * колонки» повторяется без неё: до миграции сотрудник получит одну роль,
+   * после — все, и ни в один из моментов форма не сломается.
+   */
+  const missingRolesColumn = (message: string | undefined) => /column .*roles.* does not exist/i.test(message ?? "");
+  const save = async (patch: Record<string, unknown>) => existing
+    ? db.from("app_users").update(patch).eq("id", existing.id)
+    : db.from("app_users").insert({ email, ...patch });
+  let saved = await save({ ...userPatch, roles });
+  if (missingRolesColumn(saved.error?.message)) saved = await save(userPatch);
+  error = saved.error;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

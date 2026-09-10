@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "./server";
 import type { Role } from "./session";
+import { sessionRoles } from "@/lib/auth/session";
 
 // Защита на уровне роута (defense-in-depth поверх гейта в proxy.ts).
 // Док Next прямо предупреждает: «verify authentication inside each handler, not proxy alone» —
@@ -11,7 +12,9 @@ import type { Role } from "./session";
 export async function requireApiSession(roles?: Role[]): Promise<NextResponse | null> {
   const s = await getServerSession();
   if (!s) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
-  if (roles && !roles.includes(s.role)) {
+  // Достаточно одной подходящей роли: вторая роль сотрудника добавляет
+  // доступ, а не отменяет первый.
+  if (roles && !sessionRoles(s).some((role) => roles.includes(role))) {
     return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
   }
   return null;

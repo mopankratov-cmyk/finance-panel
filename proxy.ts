@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+import { SESSION_COOKIE, sessionRoles, verifySession } from "@/lib/auth/session";
 import { canAccess, roleHome } from "@/lib/auth/roles";
 
 // Защищаем всё, кроме /login, /privacy, /api/auth/*, статики и публичных шар-доков (/share/*).
@@ -206,16 +206,21 @@ export async function proxy(req: NextRequest) {
     // 2) залогиненный пользователь — кука fp_session уходит автоматически
     //    на same-origin fetch() и подзапросы <img>/<video src="/api/...">
     if (session) {
-      if (session.role === "seller" && !isSellerApiAllowed(pathname, req.method)) {
+      // Узкие списки API писались на одну роль. Пока проверка по карте прав
+      // не включена, они применяются только к сотруднику РОВНО с этой одной
+      // ролью: у человека с двумя ролями вторая обязана добавлять доступ, а
+      // не молча упираться в чужой запрет.
+      const roles = sessionRoles(session);
+      if (roles.length === 1 && roles[0] === "seller" && !isSellerApiAllowed(pathname, req.method)) {
         return NextResponse.json({ error: "Внешнему селлеру доступна только WB-аналитика" }, { status: 403 });
       }
-      if (session.role === "warehouse" && !isWarehouseApiAllowed(pathname, req.method)) {
+      if (roles.length === 1 && roles[0] === "warehouse" && !isWarehouseApiAllowed(pathname, req.method)) {
         return NextResponse.json({ error: "Оператору склада доступен только модуль склада" }, { status: 403 });
       }
-      if (session.role === "ozon_manager" && !isOzonManagerApiAllowed(pathname, req.method)) {
+      if (roles.length === 1 && roles[0] === "ozon_manager" && !isOzonManagerApiAllowed(pathname, req.method)) {
         return NextResponse.json({ error: "Менеджеру Ozon доступны модули Ozon и Склад" }, { status: 403 });
       }
-      if (session.role === "wb_manager" && !isManagerApiAllowed(pathname)) {
+      if (roles.length === 1 && roles[0] === "wb_manager" && !isManagerApiAllowed(pathname)) {
         return NextResponse.json({ error: "Финансовый контур компании доступен директору и финотделу" }, { status: 403 });
       }
       return NextResponse.next();
@@ -239,7 +244,7 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (!canAccess(session.role, pathname)) {
+  if (!canAccess(sessionRoles(session), pathname)) {
     const url = req.nextUrl.clone();
     url.pathname = roleHome(session);
     return NextResponse.redirect(url);

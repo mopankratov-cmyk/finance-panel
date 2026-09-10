@@ -84,7 +84,9 @@ test("switching an internal account to seller creates a separate tenant", async 
   for (const source of routes) assert.match(source, /createSellerOrganization/);
   // Создание сотрудника: селлер заводится в своей организации и без списка
   // кабинетов — доступ он получает через организацию, а не поимённо.
-  assert.match(collection, /role === "seller" \|\| role === "warehouse" \? \[\]/);
+  // Условие стало по НАБОРУ ролей: внешний контур определяется признаком, а
+  // не сравнением с одной строкой.
+  assert.match(collection, /roles\.some\(isExternalRole\) \|\| roles\.includes\("warehouse"\)/);
   // Смена роли уже существующему: тенант определяется видом организации, а
   // кабинеты берутся из неё же. Обнулять список здесь нельзя — это отрезало бы
   // селлера от кабинета ровно в момент выдачи роли.
