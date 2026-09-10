@@ -3,6 +3,7 @@ import { companyAliasKeys } from "@/lib/finance/companyAliases";
 
 const MAIN_GROUP_COMPANIES = [
   "ип кучеренко",
+  "ип митриченко",
   "ип панкратов",
   "ооо рио",
   "ооо иллюмей",
