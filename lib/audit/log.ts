@@ -134,3 +134,37 @@ export async function audit(
 ): Promise<AuditResult> {
   return writeAudit(event, auditContext(request, session));
 }
+
+/**
+ * Журналирование роута целиком, а не каждой ветки отдельно.
+ *
+ * Роуты-диспетчеры устроены как «одно действие в теле, десяток ветвей в
+ * коде»: у зарплатного их пятьдесят пять точек выхода. Расставить запись в
+ * каждую — значит гарантированно забыть одну, и именно та окажется важной.
+ * Поэтому запись делается один раз, вокруг обработчика.
+ *
+ * Пишется ТОЛЬКО успех: неудавшийся запрос не менял данных, и строка о нём в
+ * истории изменений — ложный след. Тело читается с копии запроса: обработчик
+ * читает поток сам, и второй раз он уже пуст.
+ */
+export async function auditedMutation(
+  request: Request,
+  action: AuditAction,
+  session: Pick<Session, "uid" | "email" | "role" | "roles"> | null,
+  handler: () => Promise<Response>,
+  describe?: (body: Record<string, unknown>) => Partial<AuditEvent>,
+): Promise<Response> {
+  const copy = request.clone();
+  const response = await handler();
+  if (!response.ok) return response;
+  const body = await copy.json().catch(() => ({})) as Record<string, unknown>;
+  const detail = describe ? describe(body) : { after: body };
+  await audit(request, session, { action, ...detail });
+  return response;
+}
+
+/** Тело без секретов: пароли и токены в историю не попадают никогда. */
+export function redactSecrets(body: Record<string, unknown>): Record<string, unknown> {
+  const hidden = /password|token|secret|api[-_]?key|hash/i;
+  return Object.fromEntries(Object.entries(body).filter(([key]) => !hidden.test(key)));
+}

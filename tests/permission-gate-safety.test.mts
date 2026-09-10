@@ -124,6 +124,9 @@ test("менеджер WB теряет финансы, зарплату, учё�
   // финансовых путей и пропускал всё остальное — включая удаление
   // пользователей и кабинетов. Это не регрессия, а то, ради чего работа.
   assert.deepEqual(lostPermissions("wb_manager", (path) => isManagerApiAllowed(path)), [
+    // Журнал действий — история чужих поступков, и ТЗ отдаёт её руководителю
+    // и финдиректору. Прежний список для менеджера пропускал бы и её.
+    "audit.view",
     "cost.edit", "finance.edit", "finance.view", "mp_reports.sync", "mp_reports.view",
     "payroll.edit", "payroll.view", "purchase.manage", "settings.manage",
     "users.manage", "users.roles.assign",

@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { OPIU_ENTITY } from "@/lib/opiu/constants";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getServerSession } from "@/lib/auth/server";
 import { mergeCostCatalog, type MarketplaceCostProduct } from "@/lib/costs/catalog";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { describeOzonScope, getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { loadCachedOzonCockpit } from "@/lib/ozon/cockpitCache";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { audit } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -122,7 +124,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Некорректная сумма" }, { status: 400 });
   }
 
-  const { data: existing } = await db.from("product_costs").select("article").eq("article", article).maybeSingle();
+  // Читаем «было» целиком, а не только признак существования: §17 требует в
+  // журнале старое значение, и после записи его уже не достать.
+  const { data: existing } = await db.from("product_costs")
+    .select("article, name, cost_rub, warehouse_expenses, category").eq("article", article).maybeSingle();
   let error;
   if (existing) {
     // Патчим ТОЛЬКО присланное. Раньше cost_rub записывался всегда, поэтому
@@ -146,5 +151,11 @@ export async function POST(request: NextRequest) {
     }));
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await audit(request, await getServerSession(), {
+    action: "cost.change",
+    subject: article,
+    before: existing,
+    after: { cost_rub: cost, warehouse_expenses: fulfillment, name: b.name, category: b.category },
+  });
   return NextResponse.json({ ok: true });
 }

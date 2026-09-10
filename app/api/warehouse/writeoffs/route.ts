@@ -8,6 +8,7 @@ import { assertVariantsInScope } from "@/lib/warehouse/ownership";
 import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { recordStockDoc } from "@/lib/warehouse/stockDocs";
+import { auditedMutation, redactSecrets } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
@@ -179,6 +180,14 @@ export async function GET(request: NextRequest) {
 
 /** Ручное списание: порча, недостача — всё, что всплыло позже приёмки. */
 export async function POST(request: NextRequest) {
+  // Журнал пишется вокруг обработчика: одна запись на запрос, и только
+  // на успех — неудавшийся запрос данных не менял.
+  return auditedMutation(request, "warehouse.writeoff", await getServerSession(), () => handlePost(request), (body) => ({
+    after: redactSecrets(body),
+  }));
+}
+
+async function handlePost(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as

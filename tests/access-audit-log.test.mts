@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { auditContext } from "../lib/audit/log.ts";
+import { auditContext, auditedMutation, redactSecrets } from "../lib/audit/log.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -118,4 +118,61 @@ test("права на удаление отзываются явно, а не «
   // Без прав на последовательность insert упрётся в отказ при выдаче номера,
   // и журнал перестанет писаться вовсе — отзыв не должен закрыть запись.
   assert.match(sql, /grant usage, select on all sequences in schema public to service_role/);
+});
+
+test("обёртка пишет только успех и не трогает поток обработчика", async () => {
+  // Неудавшийся запрос данных не менял, и строка о нём в истории изменений —
+  // ложный след. А тело читается с копии: обработчик читает поток сам, и
+  // второй раз он уже пуст.
+  let seenByHandler: unknown = null;
+  const make = (status: number) => new Request("https://panel.local/api/x", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "pay", amount: 10 }),
+  });
+
+  const failing = make(500);
+  const failed = await auditedMutation(failing, "payroll.change", null, async () => {
+    seenByHandler = await failing.json();
+    return new Response("nope", { status: 500 });
+  });
+  assert.equal(failed.status, 500);
+  assert.deepEqual(seenByHandler, { action: "pay", amount: 10 }, "обработчик должен получить тело целиком");
+
+  const okRequest = make(200);
+  const okResponse = await auditedMutation(okRequest, "payroll.change", null, async () => {
+    await okRequest.json();
+    return new Response("{}", { status: 200 });
+  });
+  assert.equal(okResponse.status, 200);
+});
+
+test("секреты вырезаются из тела перед записью", () => {
+  // Пароль, токен и хеш — не история изменений, а утечка.
+  const cleaned = redactSecrets({
+    action: "create", password: "hunter2", api_key: "k", apiToken: "t",
+    password_hash: "h", SECRET: "s", amount: 100, email: "a@b.c",
+  });
+  assert.deepEqual(cleaned, { action: "create", amount: 100, email: "a@b.c" });
+});
+
+test("денежные и товарные события подключены к журналу", () => {
+  // §17 перечисляет их поимённо. Проверяем не «есть импорт», а что метка
+  // события в роуте та, которую ждёт журнал.
+  const wired: [string, string][] = [
+    ["../app/api/costs/route.ts", "cost.change"],
+    ["../app/api/finance/payroll/route.ts", "payroll.change"],
+    ["../app/api/warehouse/writeoffs/route.ts", "warehouse.writeoff"],
+    ["../app/api/warehouse/receipts/route.ts", "warehouse.receipt"],
+    ["../app/api/warehouse/receipts/route.ts", "warehouse.discrepancy"],
+    ["../app/api/sync/trigger/route.ts", "mp_report.sync"],
+  ];
+  for (const [file, action] of wired) {
+    assert.match(read(file), new RegExp(`"${action.replace(/\./g, "\\.")}"`), `${file}: нет события ${action}`);
+  }
+});
+
+test("себестоимость пишет в журнал старое значение целиком", () => {
+  // Раньше запрос читал только признак существования строки, и «было» в
+  // журнале оказалось бы пустым — а §17 требует оба значения.
+  assert.match(read("../app/api/costs/route.ts"), /select\("article, name, cost_rub, warehouse_expenses, category"\)/);
 });

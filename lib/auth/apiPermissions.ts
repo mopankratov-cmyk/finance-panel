@@ -82,6 +82,11 @@ const RULES: readonly ApiRule[] = [
   // тест поймал, что так к ОПиУ получал доступ оператор фулфилмента.
   ["/api/opiu/warehouse", { read: "finance.view", write: "finance.edit" }],
 
+  // ── Журнал действий ──
+  // Только чтение: удалять и править записи не может даже панель (миграция
+  // 202609100003), поэтому у роута нет и не может быть мутаций.
+  ["/api/audit", { read: "audit.view", write: "audit.view" }],
+
   // ── Себестоимость ──
   ["/api/costs", { read: "cost.view", write: "cost.edit" }],
   ["/api/costs/categories", { read: READ_ANALYTICS, write: "cost.edit" }],

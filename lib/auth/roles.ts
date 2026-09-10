@@ -45,7 +45,7 @@ export function roleHome(session: { role: Role; roles?: Role[]; cabinet_ids?: st
  * правами внутри него, и потому что прокси должен уметь отвечать до запуска
  * роута.
  */
-const FINANCE_PATHS = ["/", "/calendar", "/payments", "/payroll", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"];
+const FINANCE_PATHS = ["/", "/audit", "/calendar", "/payments", "/payroll", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"];
 
 // Товарный контур менеджера. Маркетплейс отсекается отдельной осью
 // (ROLE_MARKETPLACES), поэтому здесь перечислены общие для обоих экраны.
