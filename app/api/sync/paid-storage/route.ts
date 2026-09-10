@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets, type SyncTarget } from "@/lib/sync/cabinets";
+import { OPIU_CABINET_IDS } from "@/lib/opiu/constants";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
 import {
@@ -18,14 +19,16 @@ const JOB = "paid_storage";
 // может быть не досчитан, поэтому не запрашиваем его сразу.
 const REPORT_LAG_DAYS = 2;
 // Небольшое окно за запрос — быстрее закрывает разрывы и меньше данных
-// теряется при ошибке одной задачи. Было 7 — для крупных кабинетов
-// (Retail Family отдаёт на порядок больше строк, чем отдельные ИП) само
-// скачивание + upsert тысяч строк не укладывалось в оставшийся бюджет уже
-// ПОСЛЕ успешного скачивания: данные реально записывались в базу (видно по
-// приросту строк), а сам процесс обрывался 504 раньше, чем успевал дописать
-// финальное состояние — снова оставляя "running" висеть. Меньшее окно —
-// меньше объём за один шаг.
-const WINDOW_DAYS = 3;
+// теряется при ошибке одной задачи. Было 7, потом 3 — для Retail Family
+// (общий кабинет сразу на несколько брендов: Norvia, Heaton и другие) даже
+// 3 дня оказались тяжелы: ~3200 строк/день, то есть под 10 000 строк за
+// окно — download + upsert такого объёма всё ещё обрывался 504 уже ПОСЛЕ
+// того, как данные фактически записались (видно по приросту строк в базе).
+// 1 день — компромисс: для этого кабинета это тоже несколько тысяч строк,
+// но заметно безопаснее; для лёгких кабинетов (Панкратов/Кучеренко) просто
+// на один шаг больше кругов, там это не проблема — они и так уже дошли до
+// июля.
+const WINDOW_DAYS = 1;
 const HISTORY_DEPTH_DAYS = 180;
 
 interface PaidStorageJobState extends Record<string, unknown> {
@@ -205,24 +208,25 @@ async function processCabinet(
     throw new Error(`скачивание WB ${download.status}: ${download.body}`);
   }
 
+  // Только то, что реально используется: lib/opiu/paidStorage.ts считает
+  // "Хранение" по date/vendor_code/warehouse_price, а gi_id/chrt_id/
+  // office_id/calc_type/barcode нужны исключительно для rowId (WB не даёт
+  // свой id строки). subject/brand/warehouse(текст)/size/volume/
+  // barcodes_count нигде не читаются — не отправляем их в payload вообще:
+  // WB всё равно генерирует и качает отчёт целиком (сократить сам download
+  // так нельзя, это его сторона), но payload на upsert в базу становится
+  // заметно легче на тысячах строк.
   const mappedRows = download.rows.map((row) => ({
     id: rowId(cabinetId, row),
     cabinet_id: cabinetId,
     date: String(row.date ?? "").slice(0, 10),
-    nm_id: row.nmId ?? null,
     vendor_code: row.vendorCode ?? null,
     barcode: row.barcode ?? null,
-    subject: row.subject ?? null,
-    brand: row.brand ?? null,
-    warehouse: row.warehouse ?? null,
     office_id: row.officeId ?? null,
     gi_id: row.giId ?? null,
     chrt_id: row.chrtId ?? null,
-    size: row.size ?? null,
-    volume: row.volume ?? null,
     calc_type: row.calcType ?? null,
     warehouse_price: row.warehousePrice ?? 0,
-    barcodes_count: row.barcodesCount ?? null,
     synced_at: new Date().toISOString(),
   })).filter((r) => r.date);
 
@@ -269,7 +273,10 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  const allTargets = await getWbSyncTargets();
+  // «Платное хранение» нужно только ОПиУ — только 3 кабинета из OPIU_BRANDS,
+  // не весь аккаунт (Оптима/Слоёно и другие сюда не относятся, тянуть их
+  // здесь — впустую жечь лимиты WB API и время крона без всякой пользы).
+  const allTargets = (await getWbSyncTargets()).filter((t) => t.cabinetId && OPIU_CABINET_IDS.has(t.cabinetId));
   const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
   const targets = onlyCabinet ? allTargets.filter((t) => t.cabinetId === onlyCabinet) : allTargets;
   if (!targets.length) {
