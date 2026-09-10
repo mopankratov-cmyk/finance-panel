@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import type { Account, Payment } from "@/lib/types";
 import { importedMonths, type CalendarReplaceScope } from "./calendarReplace";
+import { defaultCalendarAccountId } from "./defaultCalendarAccount";
 
 export type { CalendarReplaceScope };
 
@@ -29,7 +30,7 @@ export function ReplaceCalendarModal({
   countExisting: (imported: Payment[], companyId: string | null, scope: CalendarReplaceScope) => number;
   onReplace: (payments: Payment[], companyId: string | null, scope: CalendarReplaceScope) => Promise<void>;
 }) {
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const [accountId, setAccountId] = useState(() => defaultCalendarAccountId(accounts));
   const [companyId, setCompanyId] = useState("");
   const [scope, setScope] = useState<CalendarReplaceScope>("expenses");
   const [payments, setPayments] = useState<Payment[]>([]);
