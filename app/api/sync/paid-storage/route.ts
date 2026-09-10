@@ -207,24 +207,25 @@ async function processCabinet(
     throw new Error(`скачивание WB ${download.status}: ${download.body}`);
   }
 
+  // Только то, что реально используется: lib/opiu/paidStorage.ts считает
+  // "Хранение" по date/vendor_code/warehouse_price, а gi_id/chrt_id/
+  // office_id/calc_type/barcode нужны исключительно для rowId (WB не даёт
+  // свой id строки). subject/brand/warehouse(текст)/size/volume/
+  // barcodes_count нигде не читаются — не отправляем их в payload вообще:
+  // WB всё равно генерирует и качает отчёт целиком (сократить сам download
+  // так нельзя, это его сторона), но payload на upsert в базу становится
+  // заметно легче на тысячах строк.
   const mappedRows = download.rows.map((row) => ({
     id: rowId(cabinetId, row),
     cabinet_id: cabinetId,
     date: String(row.date ?? "").slice(0, 10),
-    nm_id: row.nmId ?? null,
     vendor_code: row.vendorCode ?? null,
     barcode: row.barcode ?? null,
-    subject: row.subject ?? null,
-    brand: row.brand ?? null,
-    warehouse: row.warehouse ?? null,
     office_id: row.officeId ?? null,
     gi_id: row.giId ?? null,
     chrt_id: row.chrtId ?? null,
-    size: row.size ?? null,
-    volume: row.volume ?? null,
     calc_type: row.calcType ?? null,
     warehouse_price: row.warehousePrice ?? 0,
-    barcodes_count: row.barcodesCount ?? null,
     synced_at: new Date().toISOString(),
   })).filter((r) => r.date);
 
