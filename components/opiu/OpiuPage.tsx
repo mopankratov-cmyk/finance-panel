@@ -385,8 +385,8 @@ export function OpiuPage() {
       <div className="flex gap-1 border-b border-slate-200">
         {(
           [
-            { id: "sale_date", label: "Свод по произвольной дате" },
             { id: "report_date", label: "Свод по дате продажи" },
+            { id: "sale_date", label: "Свод по произвольной дате" },
           ] as { id: OpiuTab; label: string }[]
         ).map((t) => (
           <button
