@@ -13,6 +13,7 @@ test("основная группа компаний выгружается вм
   assert.equal(ddsSheetNameForCompany(company("1", "ИП Панкратов")), "ДДС Группа компаний");
   assert.equal(ddsSheetNameForCompany(company("2", "ООО РИО")), "ДДС Группа компаний");
   assert.equal(ddsSheetNameForCompany(company("3", "Прайм Бьюти")), "ДДС Группа компаний");
+  assert.equal(ddsSheetNameForCompany(company("4", "ИП Митриченко")), "ДДС Группа компаний");
 });
 
 test("новое самостоятельное юрлицо получает отдельный лист", () => {

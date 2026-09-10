@@ -1,16 +1,17 @@
 "use client";
 
-import { BarChart3, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Pencil, Plus, RefreshCw, Trash2, Upload, WalletCards } from "lucide-react";
+import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Pencil, Plus, RefreshCw, Trash2, Upload, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
 import { BankReviewPanel } from "./BankReviewPanel";
 import { loadBankGoogleSyncData } from "./bankReviewStore";
 import { BankReconciliationPanel } from "./BankReconciliationPanel";
 import { DdsOverview } from "./DdsOverview";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { DdsReport } from "./DdsReport";
 import {
   loadDdsCompanies,
   loadPaymentCompanyLinks,
+  createDdsCompany,
   savePaymentWithCompany,
   type DdsCompany,
 } from "./ddsCompanies";
@@ -36,6 +37,7 @@ export function PaymentsPage() {
   const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation">(mode);
   const [importOpen, setImportOpen] = useState(false);
   const [bankImportOpen, setBankImportOpen] = useState(false);
+  const [companiesOpen, setCompaniesOpen] = useState(false);
   const [syncingGoogle, setSyncingGoogle] = useState(false);
 
   const [dateFrom, setDateFrom] = useState("");
@@ -226,6 +228,13 @@ export function PaymentsPage() {
           >
             <Upload className="h-4 w-4" />
             Импорт ДДС
+          </button>
+          <button
+            onClick={() => setCompaniesOpen(true)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <Building2 className="h-4 w-4" />
+            Компании
           </button>
           <button
             onClick={() => setBankImportOpen(true)}
@@ -557,6 +566,12 @@ export function PaymentsPage() {
         companies={companies}
         onCompanyCreated={(company) => setCompanies((current) => [...current, company])}
       />
+      <CompaniesModal
+        open={companiesOpen}
+        companies={companies}
+        onClose={() => setCompaniesOpen(false)}
+        onCreated={(company) => setCompanies((current) => [...current, company])}
+      />
       <BankStatementModal
         open={bankImportOpen}
         onClose={() => setBankImportOpen(false)}
@@ -567,4 +582,56 @@ export function PaymentsPage() {
       />
     </div>
   );
+}
+
+function CompaniesModal({ open, companies, onClose, onCreated }: {
+  open: boolean;
+  companies: DdsCompany[];
+  onClose: () => void;
+  onCreated: (company: DdsCompany) => void;
+}) {
+  const [name, setName] = useState("");
+  const [groupName, setGroupName] = useState("Основная группа");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!name.trim() || !groupName.trim()) return;
+    setSaving(true);
+    setError("");
+    try {
+      const company = await createDdsCompany(name.trim(), groupName.trim());
+      onCreated(company);
+      setName("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось добавить компанию");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <Modal open={open} onClose={onClose} title="Компании ДДС">
+    <div className="space-y-5">
+      <p className="text-sm text-slate-600">Добавляйте компании здесь, до загрузки выписки. ИП Митриченко входит в «Основную группу» вместе с РИО, ИП Панкратова и ИП Кучеренко.</p>
+      <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={(event) => void submit(event)}>
+        <label className="text-sm font-semibold text-slate-700">Компания
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Например, ИП Митриченко" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+        </label>
+        <label className="text-sm font-semibold text-slate-700">Группа
+          <input value={groupName} onChange={(event) => setGroupName(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+        </label>
+        <button type="submit" disabled={saving || !name.trim() || !groupName.trim()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-bold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}Добавить
+        </button>
+      </form>
+      {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-sm">
+          <thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-2.5">Компания</th><th className="px-3 py-2.5">Группа</th><th className="px-3 py-2.5 text-right">Статус</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">{companies.length === 0 ? <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-500">Компаний пока нет</td></tr> : companies.map((company) => <tr key={company.id}><td className="px-3 py-3 font-medium text-slate-900">{company.name}</td><td className="px-3 py-3 text-slate-600">{company.groupName}</td><td className="px-3 py-3 text-right"><span className={company.isActive ? "text-emerald-700" : "text-slate-400"}>{company.isActive ? "Активна" : "Отключена"}</span></td></tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  </Modal>;
 }
