@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isPanelOwner } from "@/lib/auth/owner";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
+import { audit } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
@@ -105,12 +106,23 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if (typeof b.is_active === "boolean") patch.is_active = b.is_active;
   if (b.password && b.password.length >= 10) patch.password_hash = await hashPassword(b.password);
   if (!Object.keys(patch).length) return NextResponse.json({ error: "Нечего обновлять" }, { status: 400 });
+  // «Было» читаем ДО записи: без этого журнал знает новое значение и не
+  // знает старого, а §17 требует оба.
+  const { data: before } = await db.from("app_users").select("email, role, roles, cabinet_ids, is_active").eq("id", id).maybeSingle();
   const { error } = await db.from("app_users").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Пароль в журнал не попадает: хеш — такой же секрет, как сам пароль.
+  const { password_hash: _hidden, ...visible } = patch as Record<string, unknown>;
+  await audit(request, directorSession, {
+    action: typeof b.is_active === "boolean" && !b.is_active ? "user.block" : visible.role || visible.roles ? "user.role.assign" : "user.update",
+    subject: String(before?.email ?? id),
+    before,
+    after: visible,
+  });
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const s = await director();
   if (!s) return NextResponse.json({ error: "Доступ только для директора" }, { status: 403 });
   const { id } = await ctx.params;
@@ -123,5 +135,6 @@ export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id:
   }
   const { error } = await db.from("app_users").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await audit(request, s, { action: "user.block", subject: String(victim?.email ?? id), before: victim, after: { deleted: true } });
   return NextResponse.json({ ok: true });
 }

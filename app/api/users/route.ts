@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
 import { isExternalRole, isRole } from "@/lib/auth/permissions";
+import { audit } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
@@ -159,5 +160,13 @@ export async function POST(request: NextRequest) {
   if (missingRolesColumn(saved.error?.message)) saved = await save(userPatch);
   error = saved.error;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await audit(request, directorSession, {
+    action: existing ? "user.update" : "user.create",
+    subject: email,
+    before: existing ? { role: existing.role, organization_id: existing.organization_id } : null,
+    // Ни пароля, ни его хеша: секрет остаётся секретом и в журнале.
+    after: { roles, cabinet_ids: userPatch.cabinet_ids, organization_id: organizationId, is_active: true },
+    organizationId,
+  });
   return NextResponse.json({ ok: true });
 }
