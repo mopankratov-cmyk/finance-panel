@@ -32,10 +32,11 @@ export function FinanceMenuScope() {
   return null;
 }
 
-// Под-вкладки раздела «Финрезультат».
+// Основные вкладки раздела «Финрезультат».
 const TABS = [
+  { href: "/pnl", label: "ОПиУ" },
+  { href: "/pnl/balance", label: "Баланс" },
   { href: "/opiu", label: "WB недельный" },
-  { href: "/opiu/margin", label: "Маржа по артикулам" },
 ];
 
 export function FinanceTabs() {
@@ -46,7 +47,7 @@ export function FinanceTabs() {
       <div className="mb-1 text-xs font-bold uppercase tracking-wider text-gray-400">Финрезультат</div>
       <div className="flex flex-wrap gap-1.5 border-b border-gray-200 pb-px">
         {TABS.map((t) => {
-          const active = pathname === t.href || (t.href !== "/opiu" && pathname.startsWith(t.href + "/"));
+          const active = pathname === t.href;
           return (
             <Link key={t.href} href={t.href}
               className={`rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors ${
