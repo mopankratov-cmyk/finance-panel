@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, sessionRoles, verifySession } from "@/lib/auth/session";
 import { canAccess, roleHome } from "@/lib/auth/roles";
 import { apiPermissionFor } from "@/lib/auth/apiPermissions";
-import { rolesCan } from "@/lib/auth/permissions";
-import { allowsModulePath } from "@/lib/auth/modules";
+import { rolesAllowMarketplace, rolesCan } from "@/lib/auth/permissions";
+import { allowsModulePath, marketplaceOfPath } from "@/lib/auth/modules";
 
 // Защищаем всё, кроме /login, /privacy, /api/auth/*, статики и публичных шар-доков (/share/*).
 export const config = {
@@ -249,6 +249,15 @@ export async function proxy(req: NextRequest) {
       // своим сотрудникам доступ по модулям, и это ограничение поверх роли.
       if (!allowsModulePath(session, pathname)) {
         return NextResponse.json({ error: "Этот модуль вам не открыт" }, { status: 403 });
+      }
+      /**
+       * Контур маркетплейса. Менеджер WB в Ozon не ходит, и наоборот: список
+       * путей закрывал им страницу, но не запрос — API оставался открыт, и
+       * держала его только проверка кабинета внутри роута.
+       */
+      const marketplace = marketplaceOfPath(pathname);
+      if (marketplace && !rolesAllowMarketplace(roles, marketplace)) {
+        return NextResponse.json({ error: "Этот маркетплейс вам не открыт" }, { status: 403 });
       }
       const required = apiPermissionFor(pathname, req.method);
       if (!required) {

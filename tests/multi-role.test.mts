@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { sessionRoles } from "../lib/auth/session.ts";
 import { canAccess } from "../lib/auth/roles.ts";
 import {
@@ -116,6 +118,74 @@ test("словарь ролей знает ровно те роли, что оп
   for (const role of ["finance", "manager", "admin", "root"]) {
     assert.equal(isRole(role), false, role);
   }
+});
+
+test("нигде в коде нет второго списка ролей", () => {
+  /**
+   * Четыре раза подряд одна и та же ошибка.
+   *
+   * Копия списка ролей заводилась в lib/auth/session.ts (вход ломался для
+   * шести новых ролей), в app/api/users/route.ts (форма писала
+   * несуществующую роль), в app/users/page.tsx (предлагала снятые роли) и в
+   * lib/auth/server.ts — последняя выключила первого же живого менеджера WB:
+   * страницу он открывал, а любой запрос к данным отвечал «Требуется вход».
+   *
+   * Поэтому проверка ищет копии ПО ВСЕМУ коду, а не по списку подозреваемых:
+   * список подозреваемых — это ровно та же ручная копия, только в тесте.
+   */
+  const roots = ["../lib", "../app", "../components", "../proxy.ts"];
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name) && !/\.test\./.test(entry.name)) files.push(full);
+    }
+  };
+  for (const root of roots) {
+    const full = fileURLToPath(new URL(root, import.meta.url));
+    if (statSync(full).isDirectory()) walk(full); else files.push(full);
+  }
+
+  // Перечисление ролей строками: три и больше подряд — это копия словаря.
+  const listPattern = /"(?:director|fin_director|financier|hr|wb_manager|ozon_manager|buyer|warehouse|seller|seller_owner)"(?:\s*[,|]\s*"(?:director|fin_director|financier|hr|wb_manager|ozon_manager|buyer|warehouse|seller|seller_owner)"){2,}/;
+  const offenders: string[] = [];
+  for (const file of files) {
+    if (file.endsWith("permissions.ts")) continue; // единственный законный дом словаря
+    const source = readFileSync(file, "utf8");
+    if (!listPattern.test(source)) continue;
+    /**
+     * Список ролей бывает двух видов, и только один из них — копия словаря.
+     *
+     * «Кому открыт этот роут» — законное перечисление: оно отвечает, кого
+     * пускать сюда, и живёт рядом с самим роутом. А копия словаря отвечает
+     * на другой вопрос — «бывает ли такая роль вообще» — и сверяет с
+     * перечислением РОЛЬ, ПРИШЕДШУЮ ИЗВНЕ: из тела запроса, из базы, из
+     * куки. Именно она отстаёт и выключает людей. По этому признаку и
+     * различаем.
+     */
+    const validatesIncoming = /\b(b|body|payload|data|input)\.role\b|value === "director"/.test(source);
+    if (validatesIncoming) offenders.push(file.split("/finance-panel/").pop() ?? file);
+  }
+  assert.deepEqual(offenders, [], `второй словарь ролей:\n  ${offenders.join("\n  ")}`);
+});
+
+test("проверка роли в сессии идёт по словарю", () => {
+  // Именно эта строка выключила менеджера WB: страницу гейт пропускал по
+  // подписанной куке, а getServerSession возвращал null, и каждый запрос к
+  // данным отвечал «Требуется вход».
+  const source = read("../lib/auth/server.ts");
+  assert.match(source, /if \(!isRole\(data\.role\)\) return null;/);
+  assert.doesNotMatch(source, /\["director", "finance", "manager"/);
+});
+
+test("роли и модули переживают перечитывание из базы", () => {
+  // Без этого многоролевость и модули работали бы только до первого
+  // обращения к данным: гейт видит их из куки, а роут — уже нет.
+  const source = read("../lib/auth/server.ts");
+  assert.match(source, /select\("id,email,role,roles,modules,/);
+  assert.match(source, /roles: roles\.length \? roles : undefined/);
+  assert.match(source, /modules: Array\.isArray\(data\.modules\)/);
 });
 
 test("словарь ролей в панели ровно один", () => {

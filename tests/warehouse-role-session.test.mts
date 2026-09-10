@@ -2,20 +2,25 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 
-test("роль оператора склада может держать сессию", () => {
-  // Гейт-прокси пускает оператора на /warehouse и /api/warehouse/* по подписанной
-  // куке, а роуты перепроверяют сессию через getServerSession. Если роли нет в
-  // его списке, страница откроется, а данные — нет: 401 на каждом запросе.
+test("любая объявленная роль может держать сессию", async () => {
+  /**
+   * Гейт пускает человека на страницу по подписанной куке, а роуты
+   * перепроверяют сессию через getServerSession. Если роли там нет — страница
+   * откроется, а данные нет: «Требуется вход» на каждом запросе.
+   *
+   * Это случалось дважды. Сначала так выключило оператора склада, и тогда в
+   * список дописали одну роль. Потом, после разделения ролей, список отстал
+   * снова и выключил менеджера WB — первого же сотрудника, заведённого по
+   * новому ТЗ. Поэтому список оттуда убран совсем: сверка идёт со словарём, и
+   * совпадение теперь не поддерживается руками, а обеспечено по построению.
+   */
   const server = readFileSync(new URL("../lib/auth/server.ts", import.meta.url), "utf8");
-  const allowed = server.match(/if \(!\[(.*?)\]\.includes\(String\(data\.role\)\)\) return null;/s);
-  assert.ok(allowed, "не нашёл список ролей, которым разрешена сессия");
-  assert.match(allowed![1], /"warehouse"/, "оператор склада не может держать сессию");
+  assert.match(server, /if \(!isRole\(data\.role\)\) return null;/);
+  assert.doesNotMatch(server, /\]\.includes\(String\(data\.role\)\)/, "вернулся список ролей, написанный руками");
 
-  // Список обязан совпадать с тем, что вообще считается ролью.
-  const session = readFileSync(new URL("../lib/auth/session.ts", import.meta.url), "utf8");
-  const declared = [...session.matchAll(/"(director|finance|manager|seller|warehouse)"/g)].map((m) => m[1]);
-  for (const role of new Set(declared)) {
-    assert.match(allowed![1], new RegExp(`"${role}"`), `роль ${role} объявлена, но сессию держать не может`);
+  const { ROLE_PERMISSIONS, isRole } = await import("../lib/auth/permissions.ts");
+  for (const role of Object.keys(ROLE_PERMISSIONS)) {
+    assert.equal(isRole(role), true, `роль ${role} объявлена, но сессию держать не может`);
   }
 });
 

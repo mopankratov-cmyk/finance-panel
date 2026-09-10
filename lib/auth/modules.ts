@@ -82,3 +82,19 @@ export function allowsModulePath(
   if (!target) return true;
   return sessionModules(session).includes(target);
 }
+
+/**
+ * Контур маркетплейса по пути — для внутренних ролей.
+ *
+ * Ось маркетплейса была построена (ROLE_MARKETPLACES), но в гейт не заведена:
+ * страницу /ozon менеджеру WB закрывал список путей, а запрос к /api/ozon/*
+ * проходил — его спасала только проверка кабинета внутри роута. Ровно та же
+ * дыра, что и с модулями: экран закрыт, а запрос из консоли идёт.
+ *
+ * `null` — путь не принадлежит ни одному маркетплейсу: склад, поставки,
+ * финансы и общие справочники этой осью не режутся.
+ */
+export function marketplaceOfPath(pathname: string): "wb" | "ozon" | null {
+  const target = moduleOfPath(pathname);
+  return target === "wb" || target === "ozon" ? target : null;
+}

@@ -11,7 +11,8 @@ import {
   isWarehouseApiAllowed,
 } from "../proxy.ts";
 import { apiPermissionFor } from "../lib/auth/apiPermissions.ts";
-import { rolesCan, type Role } from "../lib/auth/permissions.ts";
+import { rolesAllowMarketplace, rolesCan, type Role } from "../lib/auth/permissions.ts";
+import { marketplaceOfPath } from "../lib/auth/modules.ts";
 
 /**
  * Включение проверки не должно запереть живых людей.
@@ -72,6 +73,10 @@ function lostPermissions(role: Role, allowed: (path: string, method: string) => 
         const required = apiPermissionFor(route.url, method);
         // Роут со своим сторожем карта прав не закрывает.
         if (!required || "open" in required) continue;
+        // Ось маркетплейса — тоже дверь гейта: менеджер WB в /api/ozon/* не
+        // ходит, даже имея право на аналитику. Считаем её потерю отдельно.
+        const marketplace = marketplaceOfPath(url);
+        if (marketplace && !rolesAllowMarketplace([role], marketplace)) { lost.add(`marketplace:${marketplace}`); continue; }
         if (rolesCan([role], required.permission)) continue;
         lost.add(required.permission);
       }
@@ -131,6 +136,10 @@ test("менеджер WB теряет финансы, зарплату, учё�
     // Пороги согласований задаёт руководство, а во внешнем контуре — главный
     // пользователь клиента. Менеджеру менять их незачем и нельзя.
     "limits.manage",
+    // Контур Ozon ему закрыт целиком — страница была закрыта и раньше, а
+    // теперь и API: до этого запрос к /api/ozon/* проходил, и держала его
+    // только проверка кабинета внутри роута.
+    "marketplace:ozon",
     "mp_reports.sync", "mp_reports.view",
     "payroll.edit", "payroll.view", "purchase.manage", "settings.manage",
     "users.manage", "users.roles.assign",

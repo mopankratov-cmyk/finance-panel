@@ -6,6 +6,7 @@ import {
   MODULE_LABEL,
   allowsModulePath,
   isExternalModule,
+  marketplaceOfPath,
   moduleOfPath,
   sessionModules,
 } from "../lib/auth/modules.ts";
@@ -124,4 +125,22 @@ test("миграция не превращает пустоту в запрет"
   // Значения по умолчанию быть не должно: пустой список и так значит «все».
   assert.doesNotMatch(sql, /default '\{/);
   assert.match(sql, /notify pgrst/);
+});
+
+test("ось маркетплейса заведена в гейт, а не только объявлена", () => {
+  // Она была построена (ROLE_MARKETPLACES) и проверена как функция, но в
+  // запрос не заведена: менеджер WB получал 404 от /api/ozon/cockpit вместо
+  // 403 от гейта — то есть доходил до роута, и держала его только проверка
+  // кабинета внутри. Ровно та дыра, что и с модулями: экран закрыт, а запрос
+  // из консоли идёт.
+  assert.equal(marketplaceOfPath("/api/ozon/cockpit"), "ozon");
+  assert.equal(marketplaceOfPath("/api/wb/losses"), "wb");
+  assert.equal(marketplaceOfPath("/wb/rnp"), "wb");
+  // Склад, поставки и финансы этой осью не режутся.
+  assert.equal(marketplaceOfPath("/api/warehouse/stock"), null);
+  assert.equal(marketplaceOfPath("/api/supplies/receipts"), null);
+  assert.equal(marketplaceOfPath("/api/finance/state"), null);
+  const proxy = read("../proxy.ts");
+  assert.match(proxy, /const marketplace = marketplaceOfPath\(pathname\)/);
+  assert.match(proxy, /!rolesAllowMarketplace\(roles, marketplace\)[\s\S]{0,120}status: 403/);
 });
