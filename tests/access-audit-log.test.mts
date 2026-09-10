@@ -98,9 +98,24 @@ test("таблица журнала не привязана к кабинету 
   assert.match(sql, /cabinet_id\s+uuid,/);
   assert.match(sql, /entity_id\s+uuid,/);
   assert.doesNotMatch(sql, /cabinet_id\s+uuid not null/);
-  // Право на удаление не выдаётся вообще никому — §17.
   assert.match(sql, /grant select, insert on table public\.access_audit_log to service_role/);
   assert.doesNotMatch(sql, /grant all on table public\.access_audit_log/);
   assert.match(sql, /actor_roles\s+text\[\]/);
   assert.match(sql, /ip\s+text/);
+});
+
+test("права на удаление отзываются явно, а не «просто не выдаются»", () => {
+  // GRANT только ДОБАВЛЯЕТ. Supabase раздаёт service_role полный набор на
+  // новые таблицы схемы public через default privileges, поэтому «выдам
+  // select+insert» не отнимает delete. Живая проверка на стенде показала,
+  // что сервисная роль удаляла и переписывала записи журнала — при том, что
+  // в комментарии к первой миграции было написано обратное. Отзывать надо
+  // явно и именно у той роли, под которой ходит приложение.
+  const sql = read("../supabase/migrations/202609100003_access_audit_log_immutable.sql");
+  assert.match(sql, /revoke all on table public\.access_audit_log from service_role/);
+  assert.match(sql, /grant select, insert on table public\.access_audit_log to service_role/);
+  assert.doesNotMatch(sql, /grant (all|delete|update) on table public\.access_audit_log to service_role/);
+  // Без прав на последовательность insert упрётся в отказ при выдаче номера,
+  // и журнал перестанет писаться вовсе — отзыв не должен закрыть запись.
+  assert.match(sql, /grant usage, select on all sequences in schema public to service_role/);
 });
