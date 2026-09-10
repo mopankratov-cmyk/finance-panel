@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadOpiuMonth, loadOpiuSalePeriod } from "@/lib/opiu/loadMonth";
-import { isValidDateParam, parseMonthParam } from "@/lib/opiu/weeks";
+import { loadOpiuRollingWeeks, loadOpiuSalePeriod } from "@/lib/opiu/loadMonth";
+import { isValidDateParam, todayParam } from "@/lib/opiu/weeks";
 import { OPIU_BRANDS } from "@/lib/opiu/constants";
 
 export const maxDuration = 60;
+
+/** Ширина скользящего окна на вкладке "Свод по дате продажи" — см. PR с обсуждением. */
+const ROLLING_WEEKS_COUNT = 4;
 
 function resolveBrandIds(request: NextRequest): string[] {
   return request.nextUrl.searchParams
@@ -29,12 +32,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const month = request.nextUrl.searchParams.get("month") ?? "";
+  const endDateParam = request.nextUrl.searchParams.get("endDate") ?? "";
   const refresh = request.nextUrl.searchParams.get("refresh") === "1";
-  const { year, monthIndex } = parseMonthParam(month);
+  if (endDateParam && !isValidDateParam(endDateParam)) {
+    return NextResponse.json({ error: "Некорректная дата" }, { status: 400 });
+  }
+  const endDate = endDateParam || todayParam();
 
   try {
-    const result = await loadOpiuMonth(year, monthIndex, refresh, brandIds);
+    const result = await loadOpiuRollingWeeks(endDate, ROLLING_WEEKS_COUNT, refresh, brandIds);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Ошибка загрузки ОПиУ";
