@@ -58,10 +58,29 @@ export async function saveLimits(
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "Supabase не настроен" };
   const merged = mergeLimits(limits);
-  const { error } = await db.from("access_limits").upsert(
-    { organization_id: organizationId, limits: merged, updated_by: actorEmail, updated_at: new Date().toISOString() },
-    { onConflict: "organization_id" },
-  );
+  const row = { limits: merged, updated_by: actorEmail, updated_at: new Date().toISOString() };
+
+  /**
+   * Не upsert, а «прочитать и дописать».
+   *
+   * Уникальность области держит индекс по coalesce(organization_id, …): без
+   * него две строки лимитов компании стали бы двумя ответами на один вопрос,
+   * потому что в Postgres NULL не равен NULL. Но с таким индексом ON CONFLICT
+   * (organization_id) не совпадает — Postgres не соотносит список колонок с
+   * функциональным индексом и отвечает «нет подходящего ограничения». Живая
+   * проверка это и показала: чтение работало, запись падала.
+   *
+   * Два обращения вместо одного здесь ничего не стоят: пороги правят раз в
+   * год, а не в каждом запросе.
+   */
+  const existing = organizationId
+    ? await db.from("access_limits").select("id").eq("organization_id", organizationId).maybeSingle()
+    : await db.from("access_limits").select("id").is("organization_id", null).maybeSingle();
+  if (existing.error) return { ok: false, error: existing.error.message };
+
+  const { error } = existing.data
+    ? await db.from("access_limits").update(row).eq("id", existing.data.id)
+    : await db.from("access_limits").insert({ organization_id: organizationId, ...row });
   if (error) return { ok: false, error: error.message };
   return { ok: true, limits: merged };
 }

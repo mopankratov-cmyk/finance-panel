@@ -97,3 +97,16 @@ test("миграция порогов держит одну строку на о
   assert.match(sql, /coalesce\(organization_id/);
   assert.match(sql, /revoke all on table public\.access_limits from service_role/);
 });
+
+test("запись порогов не полагается на ON CONFLICT по колонке", () => {
+  // Уникальность области держит индекс по coalesce(organization_id, …): без
+  // него две строки лимитов компании стали бы двумя ответами на один вопрос,
+  // потому что NULL не равен NULL. Но ON CONFLICT (organization_id) с таким
+  // индексом не совпадает, и Postgres отвечает «нет подходящего ограничения».
+  // Живая проверка это показала: чтение работало, запись падала — а тест на
+  // текст миграции поймать этого не мог.
+  const source = read("../lib/auth/limitsStore.ts");
+  assert.doesNotMatch(source, /onConflict/);
+  assert.match(source, /is\("organization_id", null\)/);
+  assert.match(source, /existing\.data\s*\?[\s\S]{0,200}\.update\(row\)/);
+});
