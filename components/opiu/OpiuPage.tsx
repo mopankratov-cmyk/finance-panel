@@ -502,14 +502,14 @@ export function OpiuPage() {
         ))}
       </div>
 
-      <div className={isRangeTab ? undefined : "flex items-center gap-2"}>
+      <div className={isRangeTab ? undefined : "flex items-start gap-2"}>
         {!isRangeTab && (
           <button
             type="button"
             onClick={() => handleShiftWeeks(-1)}
             title="Неделя назад"
             aria-label="Неделя назад"
-            className="tap-hit shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-500 shadow-sm hover:bg-slate-50 hover:text-violet-600"
+            className="tap-hit sticky top-4 shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-500 shadow-sm hover:bg-slate-50 hover:text-violet-600"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -704,7 +704,7 @@ export function OpiuPage() {
             disabled={isAtLatestWeek}
             title="Неделя вперёд"
             aria-label="Неделя вперёд"
-            className="tap-hit shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-500 shadow-sm hover:bg-slate-50 hover:text-violet-600 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-slate-500"
+            className="tap-hit sticky top-4 shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-500 shadow-sm hover:bg-slate-50 hover:text-violet-600 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-slate-500"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
