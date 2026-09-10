@@ -94,6 +94,128 @@ async function writeValues(token: string, spreadsheetId: string, data: Array<{ r
   });
 }
 
+async function clearValues(token: string, spreadsheetId: string, sheet: string) {
+  const target = encodeURIComponent(`${quoteSheet(sheet)}!A1:CV10000`);
+  await googleRequest(token, `${SHEETS_API}/${spreadsheetId}/values/${target}:clear`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+const rgb = (red: number, green: number, blue: number) => ({ red, green, blue });
+
+async function syncOpiu(
+  token: string,
+  spreadsheetId: string,
+  sheet: SheetProperties,
+  rows: DirectSheetJob["rows"],
+) {
+  const width = Math.max(1, ...rows.map((row) => row.length));
+  const sectionLabels = new Set([
+    "Выручка",
+    "Производственные расходы · Переменные",
+    "Прямые постоянные",
+    "Расходы ниже EBITDA",
+  ]);
+  const totalLabels = new Set(["Маржинальный доход", "Валовая прибыль"]);
+  const sectionRows = rows.flatMap((row, index) => sectionLabels.has(String(row[0] ?? "")) ? [index] : []);
+  const totalRows = rows.flatMap((row, index) => totalLabels.has(String(row[0] ?? "")) ? [index] : []);
+  const percentRows = rows.flatMap((row, index) => {
+    const label = String(row[0] ?? "");
+    return label.startsWith("%") || /Рентабельность|ДРР/.test(label) ? [index] : [];
+  });
+  const requiredRows = Math.max(rows.length + 10, sheet.gridProperties?.rowCount ?? 0);
+  const requiredColumns = Math.max(width, sheet.gridProperties?.columnCount ?? 0);
+  const requests: unknown[] = [];
+  if (rows.length > (sheet.gridProperties?.rowCount ?? 0)) requests.push({
+    appendDimension: { sheetId: sheet.sheetId, dimension: "ROWS", length: rows.length - (sheet.gridProperties?.rowCount ?? 0) + 10 },
+  });
+  if (width > (sheet.gridProperties?.columnCount ?? 0)) requests.push({
+    appendDimension: { sheetId: sheet.sheetId, dimension: "COLUMNS", length: width - (sheet.gridProperties?.columnCount ?? 0) },
+  });
+  requests.push(
+    {
+      updateSheetProperties: {
+        properties: { sheetId: sheet.sheetId, gridProperties: { frozenRowCount: 6, frozenColumnCount: 1 } },
+        fields: "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId: sheet.sheetId, startRowIndex: 0, endRowIndex: requiredRows, startColumnIndex: 0, endColumnIndex: requiredColumns },
+        cell: { userEnteredFormat: { backgroundColor: rgb(1, 1, 1), textFormat: { foregroundColor: rgb(0.18, 0.22, 0.29), fontSize: 10 }, verticalAlignment: "MIDDLE" } },
+        fields: "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)",
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId: sheet.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: width },
+        cell: { userEnteredFormat: { backgroundColor: rgb(0.263, 0.263, 0.263), textFormat: { foregroundColor: rgb(1, 0.851, 0.4), bold: true, fontSize: 14 } } },
+        fields: "userEnteredFormat(backgroundColor,textFormat)",
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId: sheet.sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: width },
+        cell: { userEnteredFormat: { backgroundColor: rgb(0.937, 0.937, 0.937), textFormat: { bold: true, fontSize: 11 } } },
+        fields: "userEnteredFormat(backgroundColor,textFormat)",
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId: sheet.sheetId, startRowIndex: 5, endRowIndex: 6, startColumnIndex: 0, endColumnIndex: width },
+        cell: { userEnteredFormat: { backgroundColor: rgb(0.937, 0.937, 0.937), textFormat: { bold: true }, horizontalAlignment: "CENTER", borders: { bottom: { style: "SOLID", color: rgb(0.75, 0.75, 0.75) } } } },
+        fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,borders)",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId: sheet.sheetId, dimension: "COLUMNS", startIndex: 0, endIndex: 1 },
+        properties: { pixelSize: 360 }, fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId: sheet.sheetId, dimension: "COLUMNS", startIndex: 1, endIndex: width },
+        properties: { pixelSize: 130 }, fields: "pixelSize",
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId: sheet.sheetId, startRowIndex: 6, endRowIndex: rows.length, startColumnIndex: 1, endColumnIndex: width },
+        cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: "#,##0 ₽;[Red]-#,##0 ₽" }, horizontalAlignment: "RIGHT" } },
+        fields: "userEnteredFormat(numberFormat,horizontalAlignment)",
+      },
+    },
+  );
+  for (const rowIndex of sectionRows) requests.push({
+    repeatCell: {
+      range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 0, endColumnIndex: width },
+      cell: { userEnteredFormat: { backgroundColor: rgb(1, 0.851, 0.4), textFormat: { bold: true, foregroundColor: rgb(0.263, 0.263, 0.263) } } },
+      fields: "userEnteredFormat(backgroundColor,textFormat)",
+    },
+  });
+  for (const rowIndex of totalRows) requests.push({
+    repeatCell: {
+      range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 0, endColumnIndex: width },
+      cell: { userEnteredFormat: { backgroundColor: rgb(0.878, 0.4, 0.4), textFormat: { bold: true, foregroundColor: rgb(1, 1, 1) } } },
+      fields: "userEnteredFormat(backgroundColor,textFormat)",
+    },
+  });
+  for (const rowIndex of percentRows) requests.push({
+    repeatCell: {
+      range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 1, endColumnIndex: width },
+      cell: { userEnteredFormat: { numberFormat: { type: "PERCENT", pattern: "0.0%" }, textFormat: { italic: true, foregroundColor: rgb(0.39, 0.45, 0.55) } } },
+      fields: "userEnteredFormat(numberFormat,textFormat)",
+    },
+  });
+
+  await clearValues(token, spreadsheetId, sheet.title);
+  await batchUpdate(token, spreadsheetId, requests);
+  await writeValues(token, spreadsheetId, [{ range: `${quoteSheet(sheet.title)}!A1`, values: rows }]);
+  return { appended: Math.max(0, rows.length - 6), updated: 0, skipped: 0, sheet: sheet.title };
+}
+
 function findSheet(requested: string, sheets: SheetProperties[]) {
   return sheets.find((sheet) => sheet.title === requested)
     ?? sheets.find((sheet) => (aliases[requested] ?? []).includes(sheet.title));
@@ -353,8 +475,11 @@ export async function syncFinanceSheetsDirect(jobs: DirectSheetJob[]) {
   let sheets = (metadata.sheets ?? []).flatMap((item) => item.properties ? [item.properties] : []);
   const results = [];
   for (const job of jobs) {
+    if (job.template === "opiu" && !job.sheet.startsWith("ОПиУ ")) {
+      throw new Error("Выгрузка ОПиУ не может перезаписывать служебные финансовые листы");
+    }
     let sheet = findSheet(job.sheet, sheets);
-    if (!sheet && job.template === "dds") {
+    if (!sheet && (job.template === "dds" || job.template === "opiu")) {
       await batchUpdate(token, spreadsheetId, [{ addSheet: { properties: { title: job.sheet, gridProperties: { rowCount: Math.max(1000, job.rows.length + 20), columnCount: Math.max(30, job.rows[0]?.length ?? 13) } } } }]);
       await writeValues(token, spreadsheetId, [{ range: `${quoteSheet(job.sheet)}!A1`, values: [job.rows[0] ?? []] }]);
       const refreshed = await googleRequest<{ sheets?: Array<{ properties?: SheetProperties }> }>(
@@ -367,7 +492,9 @@ export async function syncFinanceSheetsDirect(jobs: DirectSheetJob[]) {
     if (!sheet) throw new Error(`В Google Таблице не найден лист «${job.sheet}»`);
     results.push(job.template === "loans"
       ? await syncLoans(token, spreadsheetId, sheet, job.rows, job.rowIds)
-      : await syncRegister(token, spreadsheetId, sheet, job.rows, job.rowIds));
+      : job.template === "opiu"
+        ? await syncOpiu(token, spreadsheetId, sheet, job.rows)
+        : await syncRegister(token, spreadsheetId, sheet, job.rows, job.rowIds));
   }
   return {
     ok: true,
