@@ -111,6 +111,22 @@ export function buildOpiuReport(
     ),
   );
 
+  return buildOpiuReportFromWeekMetrics(weeks, weekMetrics, missingCostArticles, warehouseByWeek);
+}
+
+/**
+ * Сборка строк отчёта из уже готовых недельных метрик — вынесено отдельно
+ * от buildOpiuReport, чтобы при выборе нескольких брендов можно было сначала
+ * сложить их WeekRawMetrics (по неделям, см. mergeWeekMetrics в loadMonth.ts),
+ * а потом один раз посчитать проценты/производные от уже просуммированных
+ * чисел — усреднять сами проценты по брендам было бы математически неверно.
+ */
+export function buildOpiuReportFromWeekMetrics(
+  weeks: MonthWeek[],
+  weekMetrics: WeekRawMetrics[],
+  missingCostArticles: MissingCostArticle[],
+  warehouseByWeek: Record<string, number>,
+): OpiuReport {
   const cols = (fn: (m: WeekRawMetrics) => number) =>
     rowValues(weekMetrics, (m) => fn(m));
 
@@ -161,4 +177,30 @@ export function buildOpiuReport(
   ];
 
   return { weeks, rows, warehouseByWeek, missingCostArticles };
+}
+
+/**
+ * Складывает списки "нет карточки в /costs" нескольких брендов в один — по
+ * артикулу (qty/revenue суммируются). Один и тот же артикул может продаваться
+ * под разными брендами (например, суб-бренды одного кабинета), тогда объём
+ * недостающей себестоимости в сводном отчёте должен быть суммой по всем.
+ */
+export function mergeMissingCostArticles(
+  lists: MissingCostArticle[][],
+): MissingCostArticle[] {
+  const byArticle = new Map<string, MissingCostArticle>();
+  for (const list of lists) {
+    for (const item of list) {
+      const existing = byArticle.get(item.article);
+      if (existing) {
+        existing.qty += item.qty;
+        existing.revenue += item.revenue;
+      } else {
+        byArticle.set(item.article, { ...item });
+      }
+    }
+  }
+  return [...byArticle.values()]
+    .filter((r) => r.qty !== 0)
+    .sort((a, b) => b.qty - a.qty);
 }

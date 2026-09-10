@@ -6,7 +6,7 @@ import type { MonthWeek } from "@/lib/opiu/weeks";
 import { DEFAULT_OPIU_BRAND_ID, OPIU_BRANDS } from "@/lib/opiu/constants";
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
 import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type OpiuTab = "sale_date" | "report_date";
@@ -96,8 +96,83 @@ function OpiuTableSkeleton({ cols }: { cols: number }) {
   );
 }
 
+function BrandMultiSelect({
+  selected,
+  onToggle,
+  label,
+}: {
+  selected: string[];
+  onToggle: (brandId: string) => void;
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-slate-500">Бренд</label>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex h-10 min-w-[180px] items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          className="absolute left-0 top-full z-20 mt-1 min-w-[220px] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {OPIU_BRANDS.map((b) => {
+            const checked = selected.includes(b.id);
+            return (
+              <button
+                key={b.id}
+                type="button"
+                role="option"
+                aria-selected={checked}
+                onClick={() => onToggle(b.id)}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    checked ? "border-violet-600 bg-violet-600" : "border-slate-300 bg-white"
+                  }`}
+                >
+                  {checked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                </span>
+                {b.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OpiuPage() {
-  const [brand, setBrand] = useState(DEFAULT_OPIU_BRAND_ID);
+  const [brands, setBrands] = useState<string[]>([DEFAULT_OPIU_BRAND_ID]);
   const [month, setMonth] = useState(currentMonthParam);
   const [tab, setTab] = useState<OpiuTab>("sale_date");
   const [data, setData] = useState<OpiuResponse | null>(null);
@@ -120,13 +195,14 @@ export function OpiuPage() {
     refresh = false,
     signal?: AbortSignal,
   ) => {
-    const params = new URLSearchParams({ month: m, brand });
+    const params = new URLSearchParams({ month: m });
+    for (const b of brands) params.append("brand", b);
     if (refresh) params.set("refresh", "1");
     const res = await fetch(`/api/opiu?${params}`, { signal });
     const json = (await res.json()) as OpiuResponse & { error?: string };
     if (!res.ok) throw new Error(json.error ?? "Ошибка загрузки");
     return json;
-  }, [brand]);
+  }, [brands]);
 
   const fetchReportRef = useRef(fetchReport);
   fetchReportRef.current = fetchReport;
@@ -177,7 +253,7 @@ export function OpiuPage() {
     coordinator.setMonth(month);
     setData(null);
     void coordinator.loadReport(month, false);
-  }, [coordinator, month, tab, brand]);
+  }, [coordinator, month, tab, brands]);
 
   useEffect(() => () => coordinator.dispose(), [coordinator]);
 
@@ -188,12 +264,13 @@ export function OpiuPage() {
     to: string,
     signal?: AbortSignal,
   ): Promise<OpiuRangeResponse> => {
-    const params = new URLSearchParams({ dateFrom: from, dateTo: to, brand });
+    const params = new URLSearchParams({ dateFrom: from, dateTo: to });
+    for (const b of brands) params.append("brand", b);
     const res = await fetch(`/api/opiu?${params}`, { signal });
     const json = (await res.json()) as OpiuRangeResponse & { error?: string };
     if (!res.ok) throw new Error(json.error ?? "Ошибка загрузки");
     return json;
-  }, [brand]);
+  }, [brands]);
 
   useEffect(() => {
     if (tab !== "sale_date" || !isValidRange) return;
@@ -217,10 +294,16 @@ export function OpiuPage() {
     setMonth(nextMonth);
   };
 
-  const handleBrandChange = (nextBrand: string) => {
+  const handleBrandToggle = (brandId: string) => {
+    setBrands((current) => {
+      const next = current.includes(brandId)
+        ? current.filter((b) => b !== brandId)
+        : [...current, brandId];
+      // всегда должен быть выбран хотя бы один бренд
+      return next.length > 0 ? next : current;
+    });
     setError(null);
     setRangeError(null);
-    setBrand(nextBrand);
   };
 
   const handleRefresh = () => {
@@ -240,13 +323,25 @@ export function OpiuPage() {
     setResyncError(null);
     setResyncingWeeks((current) => new Set(current).add(week.weekStart));
     try {
-      const res = await fetch("/api/opiu/report-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dateFrom: week.rangeFrom, dateTo: week.rangeTo, brand }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Ошибка пересинка");
+      // Пересинк идёт по WB-кабинету, а не по бренду — при нескольких выбранных
+      // брендах на одном кабинете (Norvia/Heaton) достаточно одного запроса.
+      const cabinetBrandIds = new Map<string, string>();
+      for (const id of brands) {
+        const b = OPIU_BRANDS.find((x) => x.id === id);
+        if (b && !cabinetBrandIds.has(b.cabinetId)) cabinetBrandIds.set(b.cabinetId, b.id);
+      }
+      await Promise.all(
+        [...cabinetBrandIds.values()].map((brand) =>
+          fetch("/api/opiu/report-sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dateFrom: week.rangeFrom, dateTo: week.rangeTo, brand }),
+          }).then(async (res) => {
+            const json = (await res.json()) as { error?: string };
+            if (!res.ok) throw new Error(json.error ?? "Ошибка пересинка");
+          }),
+        ),
+      );
       await coordinator.loadReport(month, true);
     } catch (e) {
       setResyncError(e instanceof Error ? e.message : "Ошибка пересинка");
@@ -259,7 +354,8 @@ export function OpiuPage() {
     }
   };
 
-  const currentBrandLabel = OPIU_BRANDS.find((b) => b.id === brand)?.label ?? brand;
+  const selectedBrandLabels = OPIU_BRANDS.filter((b) => brands.includes(b.id)).map((b) => b.label);
+  const currentBrandLabel = selectedBrandLabels.join(", ") || "—";
   const report = tab === "report_date" ? data?.report : rangeData?.report;
   const isRangeTab = tab === "sale_date";
   const weekCount = report?.weeks.length ?? 4;
@@ -280,18 +376,7 @@ export function OpiuPage() {
       </div>
 
       <div className="flex flex-wrap items-start gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-500">Бренд</label>
-          <select
-            value={brand}
-            onChange={(e) => handleBrandChange(e.target.value)}
-            className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-          >
-            {OPIU_BRANDS.map((b) => (
-              <option key={b.id} value={b.id}>{b.label}</option>
-            ))}
-          </select>
-        </div>
+        <BrandMultiSelect selected={brands} onToggle={handleBrandToggle} label={currentBrandLabel} />
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-slate-500">Период</label>

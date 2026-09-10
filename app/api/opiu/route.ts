@@ -5,22 +5,23 @@ import { OPIU_BRANDS } from "@/lib/opiu/constants";
 
 export const maxDuration = 60;
 
-function resolveBrandId(request: NextRequest): string | undefined {
-  const brand = request.nextUrl.searchParams.get("brand");
-  return brand && OPIU_BRANDS.some((b) => b.id === brand) ? brand : undefined;
+function resolveBrandIds(request: NextRequest): string[] {
+  return request.nextUrl.searchParams
+    .getAll("brand")
+    .filter((brand) => OPIU_BRANDS.some((b) => b.id === brand));
 }
 
 export async function GET(request: NextRequest) {
   const dateFrom = request.nextUrl.searchParams.get("dateFrom") ?? "";
   const dateTo = request.nextUrl.searchParams.get("dateTo") ?? "";
-  const brandId = resolveBrandId(request);
+  const brandIds = resolveBrandIds(request);
 
   if (dateFrom || dateTo) {
     if (!isValidDateParam(dateFrom) || !isValidDateParam(dateTo) || dateFrom > dateTo) {
       return NextResponse.json({ error: "Некорректный диапазон дат" }, { status: 400 });
     }
     try {
-      const result = await loadOpiuSalePeriod(dateFrom, dateTo, brandId);
+      const result = await loadOpiuSalePeriod(dateFrom, dateTo, brandIds);
       return NextResponse.json(result);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Ошибка загрузки ОПиУ";
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
   const { year, monthIndex } = parseMonthParam(month);
 
   try {
-    const result = await loadOpiuMonth(year, monthIndex, refresh, brandId);
+    const result = await loadOpiuMonth(year, monthIndex, refresh, brandIds);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Ошибка загрузки ОПиУ";
