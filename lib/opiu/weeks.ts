@@ -19,45 +19,45 @@ function formatShort(d: Date): string {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
-/** Недели пн–вс, пересекающиеся с календарным месяцем */
-export function weeksInMonth(year: number, monthIndex: number): MonthWeek[] {
-  const monthStart = new Date(year, monthIndex, 1);
-  const monthEnd = new Date(year, monthIndex + 1, 0);
+/** Понедельник недели, в которую попадает переданная дата. */
+export function mondayOfWeek(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  const mondayOffset = (d.getDay() + 6) % 7;
+  return toLocalISODate(addDays(d, -mondayOffset));
+}
 
-  const cursor = new Date(monthStart);
-  const mondayOffset = (cursor.getDay() + 6) % 7;
-  cursor.setDate(cursor.getDate() - mondayOffset);
+/**
+ * Скользящее окно из `count` полных недель пн–вс, заканчивающееся неделей,
+ * в которую попадает `endDate` (эта неделя — последний/самый свежий столбец).
+ * Всегда полные недели без обрезки по границе календарного месяца и без
+ * пустых недель, которые ещё не наступили (см. обсуждение — ОПиУ раньше
+ * резал недели по границе месяца, из-за чего динамику в 4 недели нельзя
+ * было увидеть на одном экране).
+ */
+export function weeksEndingAt(endDate: string, count: number): MonthWeek[] {
+  const lastWeekStart = new Date(`${mondayOfWeek(endDate)}T00:00:00`);
 
   const weeks: MonthWeek[] = [];
-
-  while (cursor <= monthEnd) {
-    const weekStart = new Date(cursor);
+  for (let i = count - 1; i >= 0; i--) {
+    const weekStart = addDays(lastWeekStart, -7 * i);
     const weekEnd = addDays(weekStart, 6);
     weeks.push({
       weekStart: toLocalISODate(weekStart),
-      rangeFrom: toLocalISODate(weekStart < monthStart ? monthStart : weekStart),
-      rangeTo: toLocalISODate(weekEnd > monthEnd ? monthEnd : weekEnd),
+      rangeFrom: toLocalISODate(weekStart),
+      rangeTo: toLocalISODate(weekEnd),
       label: `${formatShort(weekStart)} – ${formatShort(weekEnd)}`,
     });
-
-    cursor.setDate(cursor.getDate() + 7);
   }
-
   return weeks;
 }
 
-export function parseMonthParam(month: string): { year: number; monthIndex: number } {
-  const [y, m] = month.split("-").map(Number);
-  if (!y || !m || m < 1 || m > 12) {
-    const now = new Date();
-    return { year: now.getFullYear(), monthIndex: now.getMonth() };
-  }
-  return { year: y, monthIndex: m - 1 };
+/** Понедельник текущей недели — верхняя граница для стрелки "вперёд" в скользящем окне. */
+export function currentWeekStartParam(): string {
+  return mondayOfWeek(todayParam());
 }
 
-export function currentMonthParam(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+export function todayParam(): string {
+  return toLocalISODate(new Date());
 }
 
 /** Один произвольный период (не привязан к неделям/месяцу) — для выбора диапазона дат в календаре. */
