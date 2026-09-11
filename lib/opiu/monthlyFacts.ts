@@ -11,6 +11,7 @@ export interface DdsFactRow {
   amount: number;
   category: string | null;
   comment?: string | null;
+  companyId?: string | null;
 }
 
 export interface PayrollPeriodFact {
@@ -26,7 +27,8 @@ export interface PayrollEntryFact {
   unofficialAmount: number;
   contractorAmount: number;
   taxAmount: number;
-  lines?: Array<{ amount?: number }> | null;
+  companyId?: string | null;
+  lines?: Array<{ amount?: number; taxAmount?: number; companyId?: string | null }> | null;
 }
 
 export interface PayrollEmployeeFact {
@@ -100,6 +102,7 @@ export function aggregatePayrollMonthlyFacts(input: {
   employees: readonly PayrollEmployeeFact[];
   from: string;
   to: string;
+  companyId?: string | null;
 }): Record<string, MonthlySharedFact> {
   if (!input.periods.length || !input.entries.length) return {};
   const periodIds = new Set(input.periods.map((period) => period.id));
@@ -109,15 +112,23 @@ export function aggregatePayrollMonthlyFacts(input: {
     if (!periodIds.has(entry.periodId)) continue;
     const employee = employeeById.get(entry.employeeId);
     if (!employee) continue;
-    const salary = entry.lines?.length
-      ? entry.lines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0)
+    const selectedLines = entry.lines?.length
+      ? entry.lines.filter((line) => !input.companyId || line.companyId === input.companyId)
+      : null;
+    if (input.companyId && !selectedLines && entry.companyId !== input.companyId) continue;
+    if (input.companyId && selectedLines?.length === 0) continue;
+    const salary = selectedLines
+      ? selectedLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0)
       : entry.officialAmount + entry.unofficialAmount + entry.contractorAmount;
+    const tax = selectedLines
+      ? selectedLines.reduce((sum, line) => sum + (Number(line.taxAmount) || 0), 0)
+      : entry.taxAmount;
     const category = payrollCategoryForEmployee(employee.position);
     if (category === "administrative") add(totals, "admin_salary", salary);
     if (category === "commercial") add(totals, "commercial_salary", salary);
     // Производственный ФОТ не кладём в фулфилмент: в исходной модели эта
     // статья означает внешние услуги, а отдельной строки зарплаты склада нет.
-    add(totals, "payroll_taxes", entry.taxAmount);
+    add(totals, "payroll_taxes", tax);
   }
   const complete = coversMonth(input.periods, input.from, input.to);
   return Object.fromEntries([...totals].map(([id, amount]) => [id, {

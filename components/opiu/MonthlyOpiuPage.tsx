@@ -3,7 +3,8 @@
 import { FinanceTabs } from "@/components/FinanceTabs";
 import { Hint } from "@/components/ui/Hint";
 import { formatPct, formatRub } from "@/lib/analytics/format";
-import { buildMonthlyOpiuStatement, type MonthlyOpiuAmount, type MonthlyOpiuRow, type MonthlyOpiuStatus } from "@/lib/opiu/monthlyStatement";
+import { buildMonthlyOpiuStatement, type MonthlyOpiuAmount, type MonthlyOpiuRow } from "@/lib/opiu/monthlyStatement";
+import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
 import { buildMonthlyOpiuSheetPayload, exportMonthlyOpiuToGoogleSheets } from "@/lib/opiu/monthlySheetExport";
 import { Check, ExternalLink, FileSpreadsheet, LineChart, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -17,20 +18,16 @@ interface MonthlyOpiuResponse {
 
 interface MonthlyFactsResponse {
   shared?: Parameters<typeof buildMonthlyOpiuStatement>[0]["shared"];
+  companies?: OpiuCompanyOption[];
   warnings?: string[];
   error?: string;
 }
 
 interface MonthlyOpiuData extends MonthlyOpiuResponse {
   shared?: MonthlyFactsResponse["shared"];
+  companies?: OpiuCompanyOption[];
   warnings?: string[];
 }
-
-const STATUS_LABELS: Record<Exclude<MonthlyOpiuStatus, "na">, string> = {
-  complete: "Полные данные",
-  partial: "Частично",
-  missing: "Нет данных",
-};
 
 function currentMonthParam(): string {
   const now = new Date();
@@ -44,39 +41,25 @@ function monthLabel(month: string): string {
 }
 
 function visibleAmount(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string {
-  if (amount.status === "na" || amount.status === "missing") return "—";
-  const value = amount.value ?? amount.known;
-  return row.kind === "percent" ? formatPct(value) : formatRub(value);
+  if (amount.value == null) return "—";
+  return row.kind === "percent" ? formatPct(amount.value) : formatRub(amount.value);
 }
 
 function AmountCell({ amount, row, label }: { amount: MonthlyOpiuAmount; row: MonthlyOpiuRow; label: string }) {
-  const incomplete = amount.status === "partial";
   return (
-    <td data-label={label} className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${incomplete ? "text-amber-700" : "text-slate-800"}`}>
-      <span>{visibleAmount(amount, row)}</span>
-      {incomplete && amount.note ? (
-        <Hint label={`${row.label}: данные учтены частично`} className="ml-1 align-middle text-amber-500">
-          {amount.note}
-        </Hint>
-      ) : null}
+    <td data-label={label} className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-slate-800">
+      {visibleAmount(amount, row)}
     </td>
   );
 }
 
 function KpiValue({ amount, percent = false }: { amount: MonthlyOpiuAmount; percent?: boolean }) {
-  if (amount.value != null) return <>{percent ? formatPct(amount.value) : formatRub(amount.value)}</>;
-  return (
-    <>
-      <span>—</span>
-      {amount.known !== 0 ? (
-        <span className="mt-1 block text-xs font-medium text-amber-700">По известным статьям: {percent ? formatPct(amount.known) : formatRub(amount.known)}</span>
-      ) : null}
-    </>
-  );
+  return <>{amount.value == null ? "—" : percent ? formatPct(amount.value) : formatRub(amount.value)}</>;
 }
 
 export function MonthlyOpiuPage() {
   const [month, setMonth] = useState(currentMonthParam);
+  const [companyId, setCompanyId] = useState("");
   const [data, setData] = useState<MonthlyOpiuData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +70,7 @@ export function MonthlyOpiuPage() {
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams({ month });
+    if (companyId) params.set("company", companyId);
     setLoading(true);
     setError(null);
     setExportedUrl(null);
@@ -97,14 +81,14 @@ export function MonthlyOpiuPage() {
           if (!response.ok) throw new Error(json.error ?? `HTTP ${response.status}`);
           return json;
         }),
-      fetch(`/api/opiu/monthly-facts?month=${encodeURIComponent(month)}`, { cache: "no-store", signal: controller.signal })
+      fetch(`/api/opiu/monthly-facts?${params}`, { cache: "no-store", signal: controller.signal })
         .then(async (response) => {
           const json = await response.json() as MonthlyFactsResponse;
           if (!response.ok) return { shared: {}, warnings: [json.error ?? `HTTP ${response.status}`] } satisfies MonthlyFactsResponse;
           return json;
         }),
     ])
-      .then(([marketplaces, facts]) => ({ ...marketplaces, shared: facts.shared, warnings: facts.warnings }))
+      .then(([marketplaces, facts]) => ({ ...marketplaces, shared: facts.shared, companies: facts.companies, warnings: facts.warnings }))
       .then(setData)
       .catch((reason) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -113,9 +97,11 @@ export function MonthlyOpiuPage() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [month]);
+  }, [month, companyId]);
 
   const statement = useMemo(() => data ? buildMonthlyOpiuStatement({ wb: data.wb, ozon: data.ozon, shared: data.shared }) : null, [data]);
+  const companies = data?.companies ?? [];
+  const selectedCompanyLabel = companies.find((company) => company.id === companyId)?.name ?? "Все компании";
 
   const handleExport = async () => {
     if (!statement) return;
@@ -126,6 +112,7 @@ export function MonthlyOpiuPage() {
       const payload = buildMonthlyOpiuSheetPayload(statement, {
         monthLabel: monthLabel(month),
         generatedAt: new Date().toLocaleString("ru-RU"),
+        companyLabel: selectedCompanyLabel,
       });
       const result = await exportMonthlyOpiuToGoogleSheets(payload);
       setExportedUrl(result.spreadsheetUrl ?? null);
@@ -156,6 +143,17 @@ export function MonthlyOpiuPage() {
             className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
         </label>
+        <label className="flex min-w-56 flex-col gap-1 text-sm font-medium text-slate-500">
+          Компания
+          <select
+            value={companyId}
+            onChange={(event) => setCompanyId(event.target.value)}
+            className="min-h-11 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          >
+            <option value="">Все компании</option>
+            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
+        </label>
         <button
           type="button"
           onClick={() => void handleExport()}
@@ -168,7 +166,6 @@ export function MonthlyOpiuPage() {
       </div>
 
       {exportError ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div> : null}
-      {data?.warnings?.length ? <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Часть общих расходов не загружена: {data.warnings.join("; ")}</div> : null}
       {exportedUrl ? (
         <a href={exportedUrl} target="_blank" rel="noreferrer" className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
           <Check className="h-4 w-4" /> ОПиУ выгружен в Google Таблицу <ExternalLink className="ml-auto h-4 w-4" />
@@ -176,11 +173,10 @@ export function MonthlyOpiuPage() {
       ) : null}
 
       {statement ? (
-        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Выручка</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.revenue} /></div></div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">EBITDA</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.ebitda} /></div></div>
           <div className="rounded-xl border border-red-200 bg-red-50/40 p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Чистая прибыль</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.netProfit} /></div></div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Полнота статей</div><div className="mt-1 text-2xl font-extrabold text-slate-900">{statement.coverage.complete} из {statement.coverage.total}</div><div className="mt-1 text-xs text-amber-800">Частично: {statement.coverage.partial} · нет данных: {statement.coverage.missing}</div></div>
         </div>
       ) : null}
 
@@ -190,7 +186,7 @@ export function MonthlyOpiuPage() {
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700">{error}</div>
       ) : statement ? (
         <div className="scroll-x rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-[1120px] w-full border-collapse text-sm">
+          <table className="min-w-[820px] w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-300 bg-[#434343] text-[#ffd966]">
                 <th className="sticky left-0 z-20 min-w-[290px] bg-[#434343] px-4 py-3 text-left font-bold">Статья</th>
@@ -198,15 +194,13 @@ export function MonthlyOpiuPage() {
                 <th className="w-[120px] px-3 py-3 text-right">Ozon</th>
                 <th className="w-[120px] px-3 py-3 text-right">Общие</th>
                 <th className="w-[145px] px-3 py-3 text-right">Итого</th>
-                <th className="w-[220px] px-3 py-3 text-left">Источник</th>
-                <th className="w-[120px] px-3 py-3 text-left">Полнота</th>
               </tr>
             </thead>
             <tbody>
               {statement.rows.map((row, index) => {
                 if (row.kind === "section") return (
                   <tr key={row.id} className="border-y border-amber-400 bg-amber-300 text-slate-900">
-                    <td colSpan={7} className="bg-amber-300 px-4 py-2 font-bold uppercase tracking-wide"><span className="sticky left-4 inline-block">{row.label}</span></td>
+                    <td colSpan={5} className="bg-amber-300 px-4 py-2 font-bold uppercase tracking-wide"><span className="sticky left-4 inline-block">{row.label}</span></td>
                   </tr>
                 );
                 const resultRow = row.kind === "result";
@@ -223,18 +217,7 @@ export function MonthlyOpiuPage() {
                     <AmountCell amount={row.amounts.wb} row={row} label="WB" />
                     <AmountCell amount={row.amounts.ozon} row={row} label="Ozon" />
                     <AmountCell amount={row.amounts.shared} row={row} label="Общие" />
-                    <td data-label="Итого" className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${total.status === "partial" ? "text-amber-700" : "text-slate-900"}`}>
-                      {total.value != null ? visibleAmount(total, row) : "—"}
-                      {total.status === "partial" && total.known !== 0 ? <span className="block text-[10px] font-medium text-amber-700">известно: {percentRow ? formatPct(total.known) : formatRub(total.known)}</span> : null}
-                    </td>
-                    <td data-label="Источник" className="px-3 py-2.5 text-xs text-slate-500">{row.source ?? "Расчёт"}</td>
-                    <td data-label="Полнота" className="px-3 py-2.5 text-xs">
-                      {total.status === "na" ? "—" : (
-                        <span className={`inline-flex rounded-full px-2 py-1 font-medium ${total.status === "complete" ? "bg-emerald-100 text-emerald-700" : total.status === "partial" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-500"}`}>
-                          {STATUS_LABELS[total.status]}
-                        </span>
-                      )}
-                    </td>
+                    <td data-label="Итого" className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-slate-900">{visibleAmount(total, row)}</td>
                   </tr>
                 );
               })}
@@ -242,7 +225,6 @@ export function MonthlyOpiuPage() {
           </table>
         </div>
       ) : null}
-      <p className="mt-3 text-xs leading-5 text-slate-500">Пустая сумма означает, что источник не подключён или не дал полный факт. Числа с пометкой «частично» не используются как окончательный финансовый результат.</p>
     </div>
   );
 }
