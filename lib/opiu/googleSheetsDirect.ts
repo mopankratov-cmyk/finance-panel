@@ -113,12 +113,30 @@ async function syncOpiu(
   const width = Math.max(1, ...rows.map((row) => row.length));
   const sectionLabels = new Set([
     "Выручка",
+    "Производственные расходы",
+    "Косвенные расходы",
     "Производственные расходы · Переменные",
     "Прямые постоянные",
     "Расходы ниже EBITDA",
   ]);
-  const totalLabels = new Set(["Маржинальный доход", "Валовая прибыль"]);
+  const subtotalLabels = new Set([
+    "Переменные расходы",
+    "Прямые постоянные",
+    "Общепроизводственные",
+    "Административные",
+    "Коммерческие",
+    "Доходы ниже EBITDA",
+    "Расходы ниже EBITDA",
+  ]);
+  const totalLabels = new Set([
+    "Маржинальный доход",
+    "Валовая прибыль по направлениям",
+    "Валовая прибыль",
+    "Операционная прибыль (EBITDA)",
+    "Чистая прибыль",
+  ]);
   const sectionRows = rows.flatMap((row, index) => sectionLabels.has(String(row[0] ?? "")) ? [index] : []);
+  const subtotalRows = rows.flatMap((row, index) => subtotalLabels.has(String(row[0] ?? "")) ? [index] : []);
   const totalRows = rows.flatMap((row, index) => totalLabels.has(String(row[0] ?? "")) ? [index] : []);
   const percentRows = rows.flatMap((row, index) => {
     const label = String(row[0] ?? "");
@@ -192,6 +210,13 @@ async function syncOpiu(
     repeatCell: {
       range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 0, endColumnIndex: width },
       cell: { userEnteredFormat: { backgroundColor: rgb(1, 0.851, 0.4), textFormat: { bold: true, foregroundColor: rgb(0.263, 0.263, 0.263) } } },
+      fields: "userEnteredFormat(backgroundColor,textFormat)",
+    },
+  });
+  for (const rowIndex of subtotalRows) requests.push({
+    repeatCell: {
+      range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 0, endColumnIndex: width },
+      cell: { userEnteredFormat: { backgroundColor: rgb(1, 0.949, 0.8), textFormat: { bold: true, foregroundColor: rgb(0.263, 0.263, 0.263) } } },
       fields: "userEnteredFormat(backgroundColor,textFormat)",
     },
   });
@@ -478,8 +503,11 @@ export async function syncFinanceSheetsDirect(jobs: DirectSheetJob[]) {
     if (job.template === "opiu" && !job.sheet.startsWith("Финансовый отчёт WB ")) {
       throw new Error("Выгрузка финансового отчёта WB не может перезаписывать служебные финансовые листы");
     }
+    if (job.template === "opiu_monthly" && !job.sheet.startsWith("ОПиУ ")) {
+      throw new Error("Выгрузка ОПиУ не может перезаписывать служебные финансовые листы");
+    }
     let sheet = findSheet(job.sheet, sheets);
-    if (!sheet && (job.template === "dds" || job.template === "opiu")) {
+    if (!sheet && (job.template === "dds" || job.template === "opiu" || job.template === "opiu_monthly")) {
       await batchUpdate(token, spreadsheetId, [{ addSheet: { properties: { title: job.sheet, gridProperties: { rowCount: Math.max(1000, job.rows.length + 20), columnCount: Math.max(30, job.rows[0]?.length ?? 13) } } } }]);
       await writeValues(token, spreadsheetId, [{ range: `${quoteSheet(job.sheet)}!A1`, values: [job.rows[0] ?? []] }]);
       const refreshed = await googleRequest<{ sheets?: Array<{ properties?: SheetProperties }> }>(
@@ -492,7 +520,7 @@ export async function syncFinanceSheetsDirect(jobs: DirectSheetJob[]) {
     if (!sheet) throw new Error(`В Google Таблице не найден лист «${job.sheet}»`);
     results.push(job.template === "loans"
       ? await syncLoans(token, spreadsheetId, sheet, job.rows, job.rowIds)
-      : job.template === "opiu"
+      : job.template === "opiu" || job.template === "opiu_monthly"
         ? await syncOpiu(token, spreadsheetId, sheet, job.rows)
         : await syncRegister(token, spreadsheetId, sheet, job.rows, job.rowIds));
   }

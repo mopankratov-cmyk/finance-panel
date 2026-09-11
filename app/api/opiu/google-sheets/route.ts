@@ -53,8 +53,12 @@ export async function POST(request: Request) {
     if (sheet.rowIds && sheet.rowIds.length !== Math.max(0, sheet.rows.length - 1)) {
       return NextResponse.json({ error: "Количество служебных ID не совпадает с количеством строк" }, { status: 400 });
     }
-    if (sheet.template?.trim() === "opiu" && !sheet.sheetName?.trim().startsWith("Финансовый отчёт WB ")) {
+    const template = sheet.template?.trim();
+    if (template === "opiu" && !sheet.sheetName?.trim().startsWith("Финансовый отчёт WB ")) {
       return NextResponse.json({ error: "Лист финансового отчёта WB должен иметь отдельное имя с префиксом «Финансовый отчёт WB»" }, { status: 400 });
+    }
+    if (template === "opiu_monthly" && !sheet.sheetName?.trim().startsWith("ОПиУ ")) {
+      return NextResponse.json({ error: "Лист ОПиУ должен иметь отдельное имя с префиксом «ОПиУ»" }, { status: 400 });
     }
   }
   const exportSheets = sheets.map((sheet) => ({
