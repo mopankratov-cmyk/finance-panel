@@ -122,6 +122,9 @@ export function PayrollRegister({ accounts, companies, payments, onCalendarUpdat
       const remaining = Math.abs(payment.amount) - payrollAllocated;
       if (remaining <= 0.009) return false;
       const haystack = `${payment.name} ${payment.category} ${payment.counterparty} ${payment.comment ?? ""}`.toLowerCase();
+      // Налог по ведомости — самостоятельный расход ФНС. Он не может попасть
+      // в очередь подтверждения зарплаты и уменьшить долг сотрудника.
+      if (/(налог|ндфл|взнос|фнс)/.test(haystack)) return false;
       return /(зарплат|аванс|зп|сотрудник)/.test(haystack) || employeeWords.some((word) => word.length > 3 && haystack.includes(word));
     }).sort((left, right) => right.date.localeCompare(left.date));
   }, [data.allocations, data.employees, payments]);
@@ -132,7 +135,7 @@ export function PayrollRegister({ accounts, companies, payments, onCalendarUpdat
     const settlement = entry ? settlementByEntry.get(entry.id) : undefined;
     result.salary += payrollSalaryAmount(draft);
     result.tax += payrollTaxAmount(employee, draft);
-    result.total += payrollEntryTotal(employee, draft);
+    result.total += payrollSalaryAmount(draft);
     result.paid += settlement?.paid ?? 0;
     return result;
   }, { salary: 0, tax: 0, total: 0, paid: 0 }), [drafts, employeesForPeriod, existingEntryByEmployee, settlementByEntry]);
@@ -234,9 +237,9 @@ export function PayrollRegister({ accounts, companies, payments, onCalendarUpdat
           <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <Metric label="Зарплата" value={formatMoney(summary.salary)} />
             <Metric label="Налоги" value={formatMoney(summary.tax)} tone="amber" />
-            <Metric label="Всего начислено" value={formatMoney(summary.total)} tone="violet" />
+            <Metric label="Начислено сотрудникам" value={formatMoney(summary.total)} tone="violet" />
             <Metric label="Оплачено по ДДС" value={formatMoney(summary.paid)} tone="green" />
-            <Metric label="Осталось выплатить" value={formatMoney(Math.max(0, summary.total - summary.paid))} tone={summary.total > summary.paid ? "rose" : "green"} />
+            <Metric label="Осталось выплатить сотрудникам" value={formatMoney(Math.max(0, summary.total - summary.paid))} tone={summary.total > summary.paid ? "rose" : "green"} />
           </div>
           {missingTax.length > 0 && (
             <div role="alert" className="mb-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -312,7 +315,7 @@ function PayrollTab({ active, icon, label, description, onClick }: { active: boo
 function PayrollSummary({ data, debtByEmployee, debtByYear }: { data: PayrollData; debtByEmployee: Map<string, number>; debtByYear: Map<number, number> }) {
   const accrued = data.entries.reduce((total, entry) => {
     const employee = data.employees.find((item) => item.id === entry.employeeId);
-    return total + (employee ? payrollEntryTotal(employee, draftFromEntry(entry)) : 0);
+    return total + (employee ? payrollSalaryAmount(draftFromEntry(entry)) : 0);
   }, 0);
   const paid = data.allocations.reduce((total, allocation) => total + allocation.amount, 0);
   const debt = [...debtByEmployee.values()].reduce((total, amount) => total + amount, 0);
@@ -340,7 +343,7 @@ function SummaryEmployeeSection({ title, employees, data, payments, debtByEmploy
   const debtForYear = (employeeId: string, year: number) => {
     const entryDebt = data.entries.filter((entry) => entry.employeeId === employeeId && data.periods.find((period) => period.id === entry.periodId)?.payDate.startsWith(String(year))).reduce((sum, entry) => {
       const employee = data.employees.find((item) => item.id === employeeId);
-      return sum + (employee ? Math.max(0, payrollEntryTotal(employee, draftFromEntry(entry)) - data.allocations.filter((item) => item.entryId === entry.id).reduce((paid, item) => paid + item.amount, 0)) : 0);
+      return sum + (employee ? Math.max(0, payrollSalaryAmount(draftFromEntry(entry)) - data.allocations.filter((item) => item.entryId === entry.id).reduce((paid, item) => paid + item.amount, 0)) : 0);
     }, 0);
     return entryDebt + data.debts.filter((debt) => debt.employeeId === employeeId && debt.debtYear === year).reduce((sum, debt) => sum + Math.max(0, debt.amount - allocatedToDebt(debt.id, data.allocations)), 0);
   };
@@ -383,13 +386,13 @@ function PaymentAllocationRow({ payment, data, disabled, onAllocate }: { payment
     const employee = data.employees.find((item) => item.id === employeeId);
     if (!employee) return items;
     if (entry.lines.length === 0) {
-      const due = payrollEntryTotal(employee, draftFromEntry(entry));
+      const due = payrollSalaryAmount(draftFromEntry(entry));
       const paid = data.allocations.filter((item) => item.entryId === entry.id && !item.payrollLineId).reduce((sum, item) => sum + item.amount, 0);
       items.push({ entry, period, line: null, remaining: Math.max(0, due - paid) });
       return items;
     }
     for (const line of entry.lines) {
-      const due = line.amount + (line.kind === "unofficial" || line.paymentMethod === "cash" ? 0 : line.taxAmount);
+      const due = line.amount;
       const paid = data.allocations.filter((item) => item.entryId === entry.id && item.payrollLineId === line.id).reduce((sum, item) => sum + item.amount, 0);
       items.push({ entry, period, line, remaining: Math.max(0, due - paid) });
     }
@@ -417,13 +420,13 @@ function EmployeeProfile({ employee, data, payments, preview, onSaveDebt }: { em
   const entries = data.entries.filter((entry) => entry.employeeId === employee.id).map((entry) => ({ entry, period: data.periods.find((period) => period.id === entry.periodId) })).sort((a, b) => (b.period?.payDate ?? "").localeCompare(a.period?.payDate ?? ""));
   const allocations = data.allocations.filter((item) => item.employeeId === employee.id);
   const currentYear = new Date().getFullYear();
-  const entryOutstanding = entries.map(({ entry, period }) => ({ year: Number(period?.payDate.slice(0, 4) ?? currentYear), amount: Math.max(0, payrollEntryTotal(employee, draftFromEntry(entry)) - data.allocations.filter((item) => item.entryId === entry.id).reduce((sum, item) => sum + item.amount, 0)) }));
+  const entryOutstanding = entries.map(({ entry, period }) => ({ year: Number(period?.payDate.slice(0, 4) ?? currentYear), amount: Math.max(0, payrollSalaryAmount(draftFromEntry(entry)) - data.allocations.filter((item) => item.entryId === entry.id).reduce((sum, item) => sum + item.amount, 0)) }));
   const debtOutstanding = data.debts.filter((debt) => debt.employeeId === employee.id).map((debt) => ({ year: debt.debtYear, amount: Math.max(0, debt.amount - allocatedToDebt(debt.id, data.allocations)) }));
   const previousDebt = [...entryOutstanding, ...debtOutstanding].filter((item) => item.year < currentYear).reduce((sum, item) => sum + item.amount, 0);
   const currentDebt = [...entryOutstanding, ...debtOutstanding].filter((item) => item.year === currentYear).reduce((sum, item) => sum + item.amount, 0);
   return <div className="mb-5 space-y-4 rounded-xl bg-slate-50 p-4">
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Metric label="Оклад" value={formatMoney(employee.monthlySalary)} /><Metric label="Долг прошлых лет" value={formatMoney(previousDebt)} tone="rose" /><Metric label="Долг текущего года" value={formatMoney(currentDebt)} tone="amber" /><Metric label="Подтверждено оплат" value={formatMoney(allocations.reduce((sum, item) => sum + item.amount, 0))} tone="green" /></div>
-    <div><h3 className="text-sm font-bold text-slate-900">Начисления и остатки</h3>{entries.length ? <div className="mt-2 max-h-44 overflow-auto rounded-lg border bg-white">{entries.map(({ entry, period }) => { const due = payrollEntryTotal(employee, draftFromEntry(entry)); const paid = data.allocations.filter((item) => item.entryId === entry.id).reduce((sum, item) => sum + item.amount, 0); return <div key={entry.id} className="flex justify-between gap-3 border-b px-3 py-2 text-xs last:border-0"><span>{period ? `${formatDate(period.periodStart)}–${formatDate(period.periodEnd)}` : "Период"}</span><span>Начислено {formatMoney(due)} · оплачено {formatMoney(paid)} · <strong>осталось {formatMoney(Math.max(0, due - paid))}</strong></span></div>; })}</div> : <p className="mt-1 text-xs text-slate-500">Начислений пока нет.</p>}</div>
+    <div><h3 className="text-sm font-bold text-slate-900">Начисления и остатки</h3>{entries.length ? <div className="mt-2 max-h-44 overflow-auto rounded-lg border bg-white">{entries.map(({ entry, period }) => { const draft = draftFromEntry(entry); const due = payrollSalaryAmount(draft); const tax = payrollTaxAmount(employee, draft); const paid = data.allocations.filter((item) => item.entryId === entry.id).reduce((sum, item) => sum + item.amount, 0); return <div key={entry.id} className="flex justify-between gap-3 border-b px-3 py-2 text-xs last:border-0"><span>{period ? `${formatDate(period.periodStart)}–${formatDate(period.periodEnd)}` : "Период"}</span><span>Зарплата {formatMoney(due)} · налог {formatMoney(tax)} · оплачено {formatMoney(paid)} · <strong>осталось {formatMoney(Math.max(0, due - paid))}</strong></span></div>; })}</div> : <p className="mt-1 text-xs text-slate-500">Начислений пока нет.</p>}</div>
     <div><h3 className="text-sm font-bold text-slate-900">История подтверждённых оплат</h3>{allocations.length ? <div className="mt-2 space-y-1">{allocations.map((item) => { const payment = payments.find((row) => row.id === item.paymentId); return <p key={item.id} className="text-xs text-slate-600">{payment ? formatDate(payment.date) : formatDate(item.confirmedAt.slice(0, 10))} · {formatMoney(item.amount)} · {item.allocationKind === "prior_year_debt" ? "долг прошлых лет" : item.allocationKind === "current_year_debt" ? "долг текущего года" : "текущая зарплата"}{item.confirmedBy ? ` · подтвердил ${item.confirmedBy}` : ""}</p>; })}</div> : <p className="mt-1 text-xs text-slate-500">Подтверждённых оплат пока нет.</p>}</div>
     {!preview && employee.id && <div className="grid gap-2 sm:grid-cols-[120px_1fr_auto] sm:items-end"><label className="text-xs font-semibold">Год долга<input type="number" value={year} onChange={(event) => setYear(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border px-3" /></label><MoneyInput label="Начальный долг" value={amount} onChange={setAmount} /><button type="button" disabled={amount < 0} onClick={() => void onSaveDebt(year, amount, "Начальный долг по зарплате")} className="min-h-11 rounded-lg border border-violet-300 px-3 text-sm font-semibold text-violet-700">Сохранить долг</button></div>}
   </div>;
@@ -541,7 +544,7 @@ function EmployeeForm({ employee, companies, canViewPrivate, onChange, onSave, o
       <label className="text-sm font-semibold text-slate-700">Город<input value={employee.city} onChange={(event) => patch({ city: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3" /></label>
       <fieldset className="sm:col-span-2"><legend className="text-sm font-semibold text-slate-700">Компании, на которые работает сотрудник</legend><p className="mt-1 text-xs text-slate-500">Можно выбрать несколько. Первая выбранная компания станет основной для новой строки ведомости.</p><div className="mt-2 grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-2">{companies.filter((company) => company.isActive).map((company) => { const checked = employee.companyIds.includes(company.id); return <label key={company.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-slate-800 hover:bg-slate-50"><input type="checkbox" checked={checked} onChange={() => { const companyIds = checked ? employee.companyIds.filter((id) => id !== company.id) : [...employee.companyIds, company.id]; patch({ companyIds, companyId: companyIds[0] ?? null, employerName: companyIds.map((id) => companies.find((item) => item.id === id)?.name).filter(Boolean).join(", ") }); }} className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" />{company.name}</label>; })}</div></fieldset>
       <label className="text-sm font-semibold text-slate-700">Способ выплаты<select value={employee.defaultPaymentMethod} onChange={(event) => patch({ defaultPaymentMethod: event.target.value as PayrollPaymentMethod })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3">{Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label className="text-sm font-semibold text-slate-700">Ставка налога, %<input type="number" min="0" max="100" step="0.01" value={employee.taxRate ?? ""} onChange={(event) => patch({ taxRate: event.target.value === "" ? null : Number(event.target.value) })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3" /></label>
+      <label className="text-sm font-semibold text-slate-700">Ставка налога для ведомости, %<input type="number" min="0" max="100" step="0.01" value={employee.taxRate ?? ""} onChange={(event) => patch({ taxRate: event.target.value === "" ? null : Number(event.target.value) })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3" /></label>
       {canViewPrivate && <label className="text-sm font-semibold text-slate-700">Банк<input value={employee.bankName} onChange={(event) => patch({ bankName: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3" /></label>}
       {canViewPrivate && <label className="text-sm font-semibold text-slate-700">Телефон<input value={employee.phone} onChange={(event) => patch({ phone: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3" /></label>}
       {canViewPrivate && <label className="text-sm font-semibold text-slate-700">Рабочая почта<input type="email" value={employee.workEmail} onChange={(event) => patch({ workEmail: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3" /></label>}

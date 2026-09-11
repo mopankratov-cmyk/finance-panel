@@ -327,8 +327,8 @@ async function handlePayroll(request: NextRequest) {
     }
     const targetTotal = entryId
       ? targetLine
-        ? money(Number(targetLine.amount ?? 0) + Number(targetLine.taxAmount ?? 0))
-        : money(Number(target.official_amount ?? 0) + Number(target.unofficial_amount ?? 0) + Number(target.contractor_amount ?? 0) + Number(target.tax_amount ?? 0))
+      ? money(Number(targetLine.amount ?? 0))
+        : money(Number(target.official_amount ?? 0) + Number(target.unofficial_amount ?? 0) + Number(target.contractor_amount ?? 0))
       : money(target.amount);
     const targetAllocated = money((targetAllocations.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0));
     if (targetAllocated + amount > targetTotal) {
