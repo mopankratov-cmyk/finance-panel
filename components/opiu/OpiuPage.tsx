@@ -182,7 +182,7 @@ function BrandMultiSelect({
 export function OpiuPage() {
   const [brands, setBrands] = useState<string[]>([DEFAULT_OPIU_BRAND_ID]);
   const [endDate, setEndDate] = useState(todayParam);
-  const [tab, setTab] = useState<OpiuTab>("sale_date");
+  const [tab, setTab] = useState<OpiuTab>("report_date");
   const [data, setData] = useState<OpiuResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
