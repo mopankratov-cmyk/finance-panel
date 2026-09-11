@@ -1,12 +1,10 @@
 "use client";
 
-import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { FinanceTabs } from "@/components/FinanceTabs";
 import { Hint } from "@/components/ui/Hint";
 import { formatPct, formatRub } from "@/lib/analytics/format";
 import { buildMonthlyOpiuStatement, type MonthlyOpiuAmount, type MonthlyOpiuRow, type MonthlyOpiuStatus } from "@/lib/opiu/monthlyStatement";
 import { buildMonthlyOpiuSheetPayload, exportMonthlyOpiuToGoogleSheets } from "@/lib/opiu/monthlySheetExport";
-import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { Check, ExternalLink, FileSpreadsheet, LineChart, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -85,15 +83,10 @@ export function MonthlyOpiuPage() {
   const [exporting, setExporting] = useState(false);
   const [exportedUrl, setExportedUrl] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [ozonCab, setOzonCab, ozonReady] = useActiveCabinet("ozon");
-  const [wbCab, setWbCab, wbReady] = useActiveCabinet("wb");
 
   useEffect(() => {
-    if (!ozonReady || !wbReady) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ month });
-    if (ozonCab) params.set("cabinet", ozonCab);
-    if (wbCab) params.set("wb_cabinet", wbCab);
     setLoading(true);
     setError(null);
     setExportedUrl(null);
@@ -120,7 +113,7 @@ export function MonthlyOpiuPage() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [month, ozonCab, wbCab, ozonReady, wbReady]);
+  }, [month]);
 
   const statement = useMemo(() => data ? buildMonthlyOpiuStatement({ wb: data.wb, ozon: data.ozon, shared: data.shared }) : null, [data]);
 
@@ -163,8 +156,6 @@ export function MonthlyOpiuPage() {
             className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
         </label>
-        <CabinetSwitcher mp="wb" accent="violet" onChange={setWbCab} />
-        <CabinetSwitcher mp="ozon" accent="sky" onChange={setOzonCab} />
         <button
           type="button"
           onClick={() => void handleExport()}

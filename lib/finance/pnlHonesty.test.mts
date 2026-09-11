@@ -34,4 +34,11 @@ test("общий ОПиУ выбирается только по календа�
   assert.doesNotMatch(monthlyPage, /\[2, 4, 8\]/);
   assert.doesNotMatch(monthlyPage, />Налог</);
   assert.doesNotMatch(monthlyPage, /ОПиУ маркетплейсов/);
+  assert.doesNotMatch(monthlyPage, /CabinetSwitcher|useActiveCabinet/);
+});
+
+test("недоступный WB-кабинет не блокирует весь месячный ОПиУ", () => {
+  assert.match(route, /wbAllowed/);
+  assert.match(route, /Promise\.resolve\(\{ error: "Нет доступа к WB-кабинету" \}\)/);
+  assert.doesNotMatch(route, /return NextResponse\.json\(\{ error: "Нет доступа к WB-кабинету" \}, \{ status: 403 \}\)/);
 });

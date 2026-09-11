@@ -26,9 +26,7 @@ export async function GET(request: NextRequest) {
   const to = `${month}-${String(lastDay).padStart(2, "0")}`;
   const taxPct = 0;
   const wbCabinetId = cabinetIdFromParam(sp.get("wb_cabinet"));
-  if (!(await hasCabinetAccess(wbCabinetId))) {
-    return NextResponse.json({ error: "Нет доступа к WB-кабинету" }, { status: 403 });
-  }
+  const wbAllowed = await hasCabinetAccess(wbCabinetId);
 
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
@@ -37,7 +35,8 @@ export async function GET(request: NextRequest) {
   if (costs.error) return NextResponse.json({ error: costs.error.message }, { status: 502 });
   for (const row of costs.data ?? []) costByArt.set(String(row.article || "").trim().toUpperCase(), num(row.cost_rub));
 
-  const wbPromise = loadWbCachedFinance({ dateFrom: from, dateTo: to, cabinetId: wbCabinetId, taxPct })
+  const wbPromise = wbAllowed
+    ? loadWbCachedFinance({ dateFrom: from, dateTo: to, cabinetId: wbCabinetId, taxPct })
     // Кэш продаж не содержит логистику, хранение, штрафы и соинвест. Раньше они
     // отдавались нулём, страница рисовала «Логистика — 0 ₽», а прибыль считалась
     // без них — то есть завышалась на всю логистику. null = «не считается»:
@@ -65,7 +64,8 @@ export async function GET(request: NextRequest) {
       updatedAt: value.updatedAt,
       warnings: value.warnings,
     }))
-    .catch((error) => ({ error: error instanceof Error ? error.message : "Не удалось загрузить WB" }));
+      .catch((error) => ({ error: error instanceof Error ? error.message : "Не удалось загрузить WB" }))
+    : Promise.resolve({ error: "Нет доступа к WB-кабинету" });
 
   const ozonPromise = (async () => {
     const resolved = await getOzonCabinetScope(sp.get("cabinet"));
