@@ -5,8 +5,9 @@ import { currentWeekStartParam, mondayOfWeek, todayParam } from "@/lib/opiu/week
 import type { MonthWeek } from "@/lib/opiu/weeks";
 import { DEFAULT_OPIU_BRAND_ID, OPIU_BRANDS } from "@/lib/opiu/constants";
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
+import { buildOpiuSheetPayload, exportOpiuToGoogleSheets, OPIU_SECTION_BEFORE } from "@/lib/opiu/googleSheetExport";
 import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type OpiuTab = "sale_date" | "report_date";
@@ -84,6 +85,11 @@ function defaultRangeTo(): string {
   return toLocalISODate(new Date());
 }
 
+function humanDate(value: string): string {
+  const [year, month, day] = value.split("-");
+  return [day, month, year].filter(Boolean).join(".");
+}
+
 function OpiuTableSkeleton({ cols }: { cols: number }) {
   return (
     <div className="animate-pulse overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -140,7 +146,7 @@ function BrandMultiSelect({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex h-10 min-w-[180px] items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+        className="flex h-11 min-w-[180px] items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
       >
         <span className="truncate">{label}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -198,6 +204,8 @@ export function OpiuPage() {
   const [rangeLoading, setRangeLoading] = useState(true);
   const [rangeRefreshing, setRangeRefreshing] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const [googleSyncing, setGoogleSyncing] = useState(false);
+  const [googleResult, setGoogleResult] = useState<{ message: string; url?: string; error?: boolean } | null>(null);
 
   const fetchReport = useCallback(async (
     m: string,
@@ -320,6 +328,7 @@ export function OpiuPage() {
     });
     setError(null);
     setRangeError(null);
+    setGoogleResult(null);
   };
 
   const handleRefresh = () => {
@@ -381,37 +390,73 @@ export function OpiuPage() {
   const activeError = isRangeTab ? rangeError : error;
   const activeTimestamp = isRangeTab ? rangeData?.timestamp : data?.timestamp;
   const activeMeta = isRangeTab ? rangeData?.meta : data?.meta;
+  const periodLabel = isRangeTab
+    ? `${humanDate(rangeFrom)}–${humanDate(rangeTo)}`
+    : report?.weeks.map((week) => week.label).join(", ") || humanDate(endDate);
+  const totalFor = (id: string) => {
+    const values = report?.rows.find((row) => row.id === id)?.values;
+    return values?.[values.length - 1] ?? null;
+  };
+  const displayRows: Array<OpiuTableRow | { id: string; label: string; kind: "section" }> = [];
+  for (const row of report?.rows ?? []) {
+    if (!otherDeductionsExpanded && OTHER_DEDUCTIONS_CHILD_IDS.has(row.id)) continue;
+    const section = OPIU_SECTION_BEFORE[row.id];
+    if (section) displayRows.push({ id: `section:${row.id}`, label: section, kind: "section" });
+    displayRows.push(row);
+  }
+
+  const handleGoogleExport = async () => {
+    if (!report) return;
+    setGoogleSyncing(true);
+    setGoogleResult(null);
+    try {
+      const payload = buildOpiuSheetPayload(report, {
+        brandLabel: currentBrandLabel,
+        periodLabel,
+        generatedAt: new Date(activeTimestamp ?? Date.now()).toLocaleString("ru-RU"),
+      });
+      const result = await exportOpiuToGoogleSheets(payload);
+      setGoogleResult({ message: `Лист «${payload.sheetName}» обновлён`, url: result.spreadsheetUrl });
+    } catch (exportError) {
+      setGoogleResult({
+        message: exportError instanceof Error ? exportError.message : "Не удалось выгрузить финансовый отчёт WB",
+        error: true,
+      });
+    } finally {
+      setGoogleSyncing(false);
+    }
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6 px-4 pb-8 sm:px-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">ОПиУ</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Финансовый отчёт WB</h1>
         <p className="mt-1 text-sm text-slate-500">
           {currentBrandLabel} · Wildberries · недели пн–вс
         </p>
       </div>
 
-      <div className="flex flex-wrap items-start gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:flex-wrap lg:items-end">
         <BrandMultiSelect selected={brands} onToggle={handleBrandToggle} label={currentBrandLabel} />
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:flex-none">
           <label className="text-sm font-medium text-slate-500">Период</label>
           {isRangeTab ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
                 type="date"
                 value={rangeFrom}
                 max={rangeTo}
                 onChange={(e) => setRangeFrom(e.target.value)}
-                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
               />
-              <span className="text-slate-400">–</span>
+              <span className="hidden text-slate-400 sm:inline">–</span>
               <input
                 type="date"
                 value={rangeTo}
                 min={rangeFrom}
                 onChange={(e) => setRangeTo(e.target.value)}
-                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
               />
             </div>
           ) : (
@@ -420,7 +465,7 @@ export function OpiuPage() {
               value={endDate}
               max={todayParam()}
               onChange={(e) => handleEndDateChange(e.target.value)}
-              className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+              className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
             />
           )}
         </div>
@@ -429,7 +474,7 @@ export function OpiuPage() {
           type="button"
           onClick={handleRefresh}
           disabled={activeRefreshing || activeLoading || (isRangeTab && !isValidRange)}
-          className="mt-[26px] inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
         >
           {activeRefreshing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -438,7 +483,27 @@ export function OpiuPage() {
           )}
           Обновить
         </button>
+        <button
+          type="button"
+          onClick={() => void handleGoogleExport()}
+          disabled={!report || activeLoading || googleSyncing}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {googleSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+          {googleSyncing ? "Выгружаю…" : "Google Таблица"}
+        </button>
       </div>
+
+      {googleResult && (
+        <div className={`rounded-lg border px-4 py-3 text-sm ${googleResult.error ? "border-red-300 bg-red-50 text-red-700" : "border-emerald-300 bg-emerald-50 text-emerald-800"}`}>
+          {googleResult.message}
+          {googleResult.url && (
+            <a href={googleResult.url} target="_blank" rel="noreferrer" className="ml-2 font-semibold underline underline-offset-2">
+              Открыть таблицу
+            </a>
+          )}
+        </div>
+      )}
 
       {isRangeTab && !isValidRange && (
         <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -484,7 +549,25 @@ export function OpiuPage() {
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-slate-200">
+      {report && !activeLoading && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            { label: "Выручка без СПП", value: totalFor("revenue_without_spp"), percent: false },
+            { label: "Маржинальный доход", value: totalFor("marginal"), percent: false },
+            { label: "Валовая прибыль", value: totalFor("gross"), percent: false },
+            { label: "Рентабельность", value: totalFor("gross_pct"), percent: true },
+          ].map((item) => (
+            <div key={item.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</p>
+              <p className={`mt-2 text-xl font-bold tabular-nums ${item.value == null ? "text-slate-400" : item.value < 0 ? "text-red-600" : "text-slate-950"}`}>
+                {item.value == null ? "—" : item.percent ? formatPct(item.value) : formatRub(item.value)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="scroll-x flex gap-1 border-b border-slate-200">
         {(
           [
             { id: "report_date", label: "Свод по дате продажи" },
@@ -495,7 +578,7 @@ export function OpiuPage() {
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
+            className={`min-h-11 shrink-0 px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.id
                 ? "border-b-2 border-violet-600 text-violet-600"
                 : "text-slate-500 hover:text-slate-700"
@@ -581,10 +664,16 @@ export function OpiuPage() {
                 <tbody>
                   {(() => {
                     let stripeIndex = 0;
-                    const visibleRows = report.rows.filter(
-                      (row) => otherDeductionsExpanded || !OTHER_DEDUCTIONS_CHILD_IDS.has(row.id),
-                    );
-                    return visibleRows.map((row) => {
+                    return displayRows.map((row) => {
+                      if (row.kind === "section") {
+                        return (
+                          <tr key={row.id} className="border-y border-amber-300 bg-amber-300 text-slate-800">
+                            <td colSpan={colCount} className="sticky left-0 z-10 bg-amber-300 px-4 py-2 text-xs font-bold uppercase tracking-wide">
+                              {row.label}
+                            </td>
+                          </tr>
+                        );
+                      }
                       if (row.kind === "separator") {
                         return (
                           <tr key={row.id}>

@@ -27,6 +27,7 @@ import {
   PieChart,
   Search,
   Settings2,
+  Scale,
   Sigma,
   Table2,
   Tag,
@@ -84,7 +85,9 @@ const NAV_GROUPS: NavGroup[] = [
     id: "finres",
     label: "Финрезультат",
     items: [
-      { href: "/pnl", label: "ОПиУ / P&L", icon: LineChart },
+      { href: "/pnl", label: "ОПиУ", icon: LineChart },
+      { href: "/pnl/balance", label: "Баланс", icon: Scale },
+      { href: "/opiu", label: "Финансовый отчёт WB", icon: Table2 },
       { href: "/losses", label: "Где теряем", icon: TrendingDown },
     ],
   },
@@ -126,7 +129,9 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
     id: "finres",
     label: "Финрезультат",
     items: [
-      { href: "/opiu", label: "WB недельный", icon: Table2 },
+      { href: "/pnl", label: "ОПиУ", icon: LineChart },
+      { href: "/pnl/balance", label: "Баланс", icon: Scale },
+      { href: "/opiu", label: "Финансовый отчёт WB", icon: Table2 },
       { href: "/opiu/margin", label: "Маржа по артикулам", icon: PieChart },
     ],
   },
@@ -181,6 +186,7 @@ const DASHBOARD: NavLink = {
 
 function isActive(pathname: string, href: string): boolean {
   const hrefPath = href.split(/[?#]/, 1)[0] || href;
+  if (hrefPath === "/pnl" || hrefPath === "/opiu") return pathname === hrefPath;
   return hrefPath === "/" ? pathname === "/" : pathname.startsWith(hrefPath);
 }
 
