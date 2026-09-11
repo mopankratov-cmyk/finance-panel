@@ -34,6 +34,7 @@ export interface MarketplaceMonthlyActual {
     ad: number;
     other: number;
     cogs: number;
+    packaging: number;
     logistics: number | null;
     storage: number | null;
     penalty: number | null;
@@ -198,6 +199,10 @@ export function buildMonthlyOpiuStatement(actual: MarketplaceMonthlyActual): Mon
     wbReady ? (wbCogsIncomplete ? partial(actual.wb!.cogs, "Часть SKU WB без себестоимости") : complete(actual.wb!.cogs)) : unavailableWb,
     ozonReady ? (ozonWarning ? partial(actual.ozon!.cogs, "Себестоимость Ozon рассчитана не по всем кабинетам") : complete(actual.ozon!.cogs)) : unavailableOzon,
   ));
+  articleAmounts.set("warehouse_packaging", marketplace(
+    wbReady ? complete(actual.wb!.packaging) : unavailableWb,
+    ozonReady ? missing("Подготовка и упаковка Ozon пока не подключены") : unavailableOzon,
+  ));
   articleAmounts.set("marketplace_commission", marketplace(
     wbReady ? (wbRatesIncomplete ? partial(actual.wb!.commission, "Комиссия WB частично оценена по доступным ставкам") : complete(actual.wb!.commission)) : unavailableWb,
     ozonReady ? (ozonWarning ? partial(actual.ozon!.commission, "Не все кабинеты Ozon вернули данные") : complete(actual.ozon!.commission)) : unavailableOzon,
@@ -208,7 +213,7 @@ export function buildMonthlyOpiuStatement(actual: MarketplaceMonthlyActual): Mon
   ));
   articleAmounts.set("marketplace_other", marketplace(
     wbReady
-      ? partial(actual.wb!.acquiring + actual.wb!.other + (actual.wb!.storage ?? 0) + (actual.wb!.penalty ?? 0), "В месячном кэше WB пока нет полного хранения и штрафов")
+      ? complete(actual.wb!.acquiring + actual.wb!.other + (actual.wb!.storage ?? 0) + (actual.wb!.penalty ?? 0))
       : unavailableWb,
     ozonReady ? partial(actual.ozon!.services, "Ozon отдаёт рекламу, хранение и услуги одной суммой") : unavailableOzon,
   ));

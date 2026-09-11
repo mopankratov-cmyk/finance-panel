@@ -41,7 +41,6 @@ const DDS_TO_OPIU: Readonly<Record<string, string>> = {
   "Доставка до маркеплейса": "transport",
   "Доставка до МСК": "transport",
   "Доставка по МСК": "transport",
-  "Упаковочные материалы": "warehouse_packaging",
   "Поиск и найм персонала": "recruitment",
   "Расходы на персонал": "personnel",
   "Маркетинговые подрядчики": "marketing_contractors",

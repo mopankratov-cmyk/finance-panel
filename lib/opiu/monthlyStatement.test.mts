@@ -10,6 +10,7 @@ const actual = {
     ad: 50,
     other: 10,
     cogs: 300,
+    packaging: 20,
     logistics: null,
     storage: null,
     penalty: null,

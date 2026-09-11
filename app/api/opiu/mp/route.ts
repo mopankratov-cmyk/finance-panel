@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
-import { loadWbCachedFinance } from "@/lib/finance/wbCachedFinance";
+import { OPIU_BRANDS } from "@/lib/opiu/constants";
+import { loadOpiuSalePeriod } from "@/lib/opiu/loadMonth";
+import { monthlyWbActualFromOpiu } from "@/lib/opiu/monthlyWbActual";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { ozonAnalytics, ozonImages, ozonTransactionTotals } from "@/lib/ozon/api";
-import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +13,8 @@ export const maxDuration = 60;
 const num = (value: unknown) => Number(value ?? 0) || 0;
 const r0 = (value: number) => Math.round(value);
 
-// Общий ОПиУ WB+Ozon. WB читается из почасового факта синхронизации, а Ozon
-// агрегируется по выбранному кабинету, группе или честному контуру «все».
+// Общий ОПиУ WB+Ozon. WB читается из синхронизированного финансового отчёта,
+// Ozon агрегируется по честному контуру доступных кабинетов.
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const now = new Date();
@@ -25,8 +26,12 @@ export async function GET(request: NextRequest) {
   const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
   const to = `${month}-${String(lastDay).padStart(2, "0")}`;
   const taxPct = 0;
-  const wbCabinetId = cabinetIdFromParam(sp.get("wb_cabinet"));
-  const wbAllowed = await hasCabinetAccess(wbCabinetId);
+  const wbCabinetIds = [...new Set(OPIU_BRANDS.map((brand) => brand.cabinetId))];
+  const accessPairs = await Promise.all(wbCabinetIds.map(async (cabinetId) => [cabinetId, await hasCabinetAccess(cabinetId)] as const));
+  const accessByCabinet = new Map(accessPairs);
+  const accessibleBrandIds = OPIU_BRANDS
+    .filter((brand) => accessByCabinet.get(brand.cabinetId))
+    .map((brand) => brand.id);
 
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
@@ -35,37 +40,11 @@ export async function GET(request: NextRequest) {
   if (costs.error) return NextResponse.json({ error: costs.error.message }, { status: 502 });
   for (const row of costs.data ?? []) costByArt.set(String(row.article || "").trim().toUpperCase(), num(row.cost_rub));
 
-  const wbPromise = wbAllowed
-    ? loadWbCachedFinance({ dateFrom: from, dateTo: to, cabinetId: wbCabinetId, taxPct })
-    // Кэш продаж не содержит логистику, хранение, штрафы и соинвест. Раньше они
-    // отдавались нулём, страница рисовала «Логистика — 0 ₽», а прибыль считалась
-    // без них — то есть завышалась на всю логистику. null = «не считается»:
-    // строка не рисуется, а страница честно говорит, чего в прибыли нет.
-    .then((value) => ({
-      revenue_before_spp: value.revenueBeforeSpp,
-      coinvest: null,
-      revenue: value.revenue,
-      commission: value.commission,
-      logistics: null,
-      storage: null,
-      penalty: null,
-      notComputed: ["логистика", "хранение", "штрафы", "соинвест"],
-      acquiring: value.acquiring,
-      ad: value.ad,
-      other: value.marketplaceOther,
-      cogs: value.cogs,
-      tax: value.tax,
-      profit: value.profit,
-      margin: value.margin,
-      units: value.units,
-      payout: value.payout,
-      returns: value.returns,
-      source: value.source,
-      updatedAt: value.updatedAt,
-      warnings: value.warnings,
-    }))
+  const wbPromise = accessibleBrandIds.length
+    ? loadOpiuSalePeriod(from, to, accessibleBrandIds)
+      .then(monthlyWbActualFromOpiu)
       .catch((error) => ({ error: error instanceof Error ? error.message : "Не удалось загрузить WB" }))
-    : Promise.resolve({ error: "Нет доступа к WB-кабинету" });
+    : Promise.resolve({ error: "Нет доступа к кабинетам WB из состава ОПиУ" });
 
   const ozonPromise = (async () => {
     const resolved = await getOzonCabinetScope(sp.get("cabinet"));
