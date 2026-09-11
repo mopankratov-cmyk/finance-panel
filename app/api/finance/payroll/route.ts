@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { payrollLineTaxIsPayable, payrollPeriodForDate, payrollSalaryAmount, payrollTaxAmount, type PayrollAccrualLine, type PayrollDraftEntry, type PayrollEmployee, type PayrollEmploymentStatus, type PayrollEmploymentType, type PayrollLineKind, type PayrollPaymentMethod } from "@/components/payments/payroll";
+import { payrollLineTaxIsPayable, payrollPeriodForDate, payrollSalaryAmount, payrollTaxAmount, payrollTaxRate, type PayrollAccrualLine, type PayrollDraftEntry, type PayrollEmployee, type PayrollEmploymentStatus, type PayrollEmploymentType, type PayrollLineKind, type PayrollPaymentMethod } from "@/components/payments/payroll";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { auditedMutation, redactSecrets } from "@/lib/audit/log";
@@ -434,7 +434,11 @@ async function handlePayroll(request: NextRequest) {
       const accountId = nullableId(line.accountId);
       const companyId = nullableId(line.companyId);
       if (amount + requestedTax > 0 && (!companyId || !accountId)) throw new Error(`Выберите компанию и кошелёк для строки сотрудника ${employee.fullName}`);
-      const taxAmount = payrollLineTaxIsPayable(employee, { kind, paymentMethod: method }) ? requestedTax : 0;
+      const taxLine = { kind, paymentMethod: method };
+      const taxRate = payrollTaxRate(employee, taxLine);
+      const taxAmount = payrollLineTaxIsPayable(employee, taxLine)
+        ? taxRate === null ? requestedTax : money(amount * taxRate / 100)
+        : 0;
       const previous = oldLineById.get(id);
       return {
         id,
@@ -489,9 +493,6 @@ async function handlePayroll(request: NextRequest) {
     };
   });
 
-  const savedEntries = await db.from("payroll_entries").upsert(entryRows.map(({ employee: _employee, salaryAmount: _salary, effectiveTaxAmount: _tax, ...row }) => row), { onConflict: "period_id,employee_id" });
-  if (savedEntries.error) return NextResponse.json({ error: savedEntries.error.message }, { status: 500 });
-
   const paymentIds = entryRows.flatMap((entry) => entry.allocation_lines.flatMap((line) => [line.salaryPaymentId, line.taxPaymentId])).filter((id): id is string => Boolean(id));
   const financeState = await loadFinanceStateServer();
   const existingPaymentById = new Map(financeState.payments.map((payment) => [payment.id, payment]));
@@ -544,6 +545,11 @@ async function handlePayroll(request: NextRequest) {
     if (existing?.status === "planned") actions.push({ type: "UPDATE_PAYMENT", payload: { ...existing, status: "cancelled" } });
   }
   await persistFinanceActions(actions);
+  // payment ids are foreign keys from payroll_entries. The calendar rows must
+  // exist before the entry is inserted; otherwise a new or restored plan fails
+  // with payroll_entries_salary_payment_id_fkey.
+  const savedEntries = await db.from("payroll_entries").upsert(entryRows.map(({ employee: _employee, salaryAmount: _salary, effectiveTaxAmount: _tax, ...row }) => row), { onConflict: "period_id,employee_id" });
+  if (savedEntries.error) return NextResponse.json({ error: savedEntries.error.message }, { status: 500 });
   return NextResponse.json({ ok: true, periodId, calendarPayments: paymentRows.length });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось сохранить зарплатную ведомость" }, { status: 400 });

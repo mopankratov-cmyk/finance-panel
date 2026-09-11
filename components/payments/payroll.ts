@@ -241,13 +241,33 @@ export function payrollLineTaxIsPayable(
   return line.kind === "official";
 }
 
+/**
+ * Ставка, которую ведомость может применить без ручной настройки карточки.
+ * ИП и самозанятый, получающие деньги от компании на расчётный счёт, учитываются
+ * по обычной ставке 6 %. Для остальных случаев не выдумываем ставку.
+ */
+export function payrollTaxRate(
+  employee: PayrollEmployee,
+  line: Pick<PayrollAccrualLine, "kind" | "paymentMethod">,
+): number | null {
+  if (!payrollLineTaxIsPayable(employee, line)) return null;
+  if (employee.taxRate !== null) return employee.taxRate;
+  return employee.employmentType === "individual_entrepreneur" || employee.employmentType === "self_employed" ? 6 : null;
+}
+
+export function payrollLineTaxAmount(employee: PayrollEmployee, line: PayrollAccrualLine): number {
+  if (!payrollLineTaxIsPayable(employee, line)) return 0;
+  const rate = payrollTaxRate(employee, line);
+  return rate === null ? roundMoney(line.taxAmount) : roundMoney(line.amount * rate / 100);
+}
+
 export function payrollSalaryAmount(entry: Pick<PayrollDraftEntry, "officialAmount" | "unofficialAmount" | "contractorAmount"> & { lines?: PayrollAccrualLine[] }): number {
   if (entry.lines?.length) return roundMoney(entry.lines.reduce((sum, line) => sum + line.amount, 0));
   return roundMoney(entry.officialAmount + entry.unofficialAmount + entry.contractorAmount);
 }
 
 export function payrollTaxAmount(employee: PayrollEmployee, entry: PayrollDraftEntry): number {
-  if (entry.lines.length) return roundMoney(entry.lines.reduce((sum, line) => sum + (payrollLineTaxIsPayable(employee, line) ? line.taxAmount : 0), 0));
+  if (entry.lines.length) return roundMoney(entry.lines.reduce((sum, line) => sum + payrollLineTaxAmount(employee, line), 0));
   return taxIsPayable(employee, entry) ? roundMoney(entry.taxAmount) : 0;
 }
 

@@ -7,6 +7,8 @@ import {
   payrollEntryTotal,
   payrollDebtByYear,
   payrollLineTaxIsPayable,
+  payrollLineTaxAmount,
+  payrollTaxRate,
   payrollPeriodForDate,
   payrollSalaryAmount,
   settlementFromAllocations,
@@ -87,6 +89,13 @@ test("tax column is active for official salary and bank payments to IP or self-e
   assert.equal(payrollLineTaxIsPayable(employee, { kind: "contractor", paymentMethod: "bank_account" }), true);
   assert.equal(payrollLineTaxIsPayable(employee, { kind: "contractor", paymentMethod: "cash" }), false);
   assert.equal(payrollLineTaxIsPayable(official, { kind: "unofficial", paymentMethod: "card" }), false);
+});
+
+test("bank payment to an IP or self-employed gets the default 6% tax rate", () => {
+  const line = { id: "line-1", kind: "contractor" as const, amount: 15_000, taxAmount: 0, companyId: "company-1", accountId: "account-1", paymentMethod: "bank_account" as const, salaryPaymentId: null, taxPaymentId: null, comment: "" };
+  assert.equal(payrollTaxRate(employee, line), 6);
+  assert.equal(payrollLineTaxAmount(employee, line), 900);
+  assert.equal(payrollTaxRate(employee, { ...line, paymentMethod: "cash" }), null);
 });
 
 test("partially official employee starts with separate official and card accruals", () => {
