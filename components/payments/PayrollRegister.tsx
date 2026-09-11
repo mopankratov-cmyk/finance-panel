@@ -8,6 +8,7 @@ import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import { consumedFactIds } from "@/lib/finance/factLinks";
 import { paymentIsPayrollCandidate } from "@/lib/payroll/model";
 import type { Account, Payment } from "@/lib/types";
+import { defaultCalendarAccountId } from "@/components/calendar/defaultCalendarAccount";
 import type { DdsCompany } from "./ddsCompanies";
 import {
   EMPLOYMENT_LABELS,
@@ -493,10 +494,10 @@ function suggestPayrollAccount(companyId: string | null | undefined, currentAcco
   if (currentAccountId && accounts.some((account) => account.id === currentAccountId)) return currentAccountId;
   if (accounts.length === 1) return accounts[0].id;
   const company = companies.find((item) => item.id === companyId);
-  if (!company) return null;
+  if (!company) return defaultCalendarAccountId(accounts) || null;
   const words = company.name.toLowerCase().replace(/[^а-яa-z0-9 ]/gi, " ").split(/\s+/).filter((word) => word.length > 2 && !["ооо", "ип"].includes(word));
   const matches = accounts.filter((account) => words.some((word) => account.name.toLowerCase().includes(word)));
-  return matches.length === 1 ? matches[0].id : null;
+  return matches.length === 1 ? matches[0].id : defaultCalendarAccountId(accounts) || null;
 }
 
 function MoneyInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
