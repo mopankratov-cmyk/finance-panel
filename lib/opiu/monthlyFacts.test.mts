@@ -58,3 +58,27 @@ test("несколько внутренних источников одной с
   assert.equal(result.fulfillment.amount, 125);
   assert.equal(result.fulfillment.status, "partial");
 });
+
+test("зарплата выбранной компании берётся из строк распределения", () => {
+  const result = aggregatePayrollMonthlyFacts({
+    from: "2026-09-01",
+    to: "2026-09-30",
+    companyId: "company-a",
+    periods: [{ id: "p1", periodStart: "2026-09-01", periodEnd: "2026-09-30" }],
+    employees: [{ id: "e1", position: "Финансовый директор" }],
+    entries: [{
+      periodId: "p1",
+      employeeId: "e1",
+      officialAmount: 300,
+      unofficialAmount: 0,
+      contractorAmount: 0,
+      taxAmount: 39,
+      lines: [
+        { amount: 100, taxAmount: 13, companyId: "company-a" },
+        { amount: 200, taxAmount: 26, companyId: "company-b" },
+      ],
+    }],
+  });
+  assert.equal(result.admin_salary.amount, 100);
+  assert.equal(result.payroll_taxes.amount, 13);
+});

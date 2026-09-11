@@ -21,7 +21,7 @@ test("несчитанные статьи WB не выдаются за ноль
   assert.match(wbActual, /requiredTotal\(report, "warehouse"\)/);
   assert.match(wbActual, /requiredTotal\(report, "penalties"\)/);
   assert.doesNotMatch(route, /logistics:\s*null/);
-  assert.match(monthlyPage, /По известным статьям/);
+  assert.doesNotMatch(monthlyPage, /По известным статьям|Источник<|Полнота</);
   assert.doesNotMatch(monthlyPage, /\+ соинвест, как принято/);
 });
 
@@ -34,6 +34,8 @@ test("общий ОПиУ выбирается только по календа�
   assert.doesNotMatch(monthlyPage, />Налог</);
   assert.doesNotMatch(monthlyPage, /ОПиУ маркетплейсов/);
   assert.doesNotMatch(monthlyPage, /CabinetSwitcher|useActiveCabinet/);
+  assert.match(monthlyPage, /Компания\s*<select/);
+  assert.match(route, /sp\.get\("company"\)/);
 });
 
 test("недоступный WB-кабинет не блокирует весь месячный ОПиУ", () => {

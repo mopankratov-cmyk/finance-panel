@@ -1,30 +1,17 @@
 import type { MonthlyOpiuAmount, MonthlyOpiuRow, MonthlyOpiuStatement } from "./monthlyStatement";
 
-const STATUS_LABELS = {
-  complete: "Полные данные",
-  partial: "Частично",
-  missing: "Нет данных",
-  na: "Не применяется",
-} as const;
-
 function safeSheetName(value: string): string {
   return value.replace(/[\\/?*\[\]:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31) || "ОПиУ";
 }
 
 function directionValue(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string | number {
-  if (amount.status === "na" || amount.status === "missing") return "";
-  const value = amount.value ?? amount.known;
-  return row.kind === "percent" ? value / 100 : value;
+  if (amount.value == null) return "";
+  return row.kind === "percent" ? amount.value / 100 : amount.value;
 }
 
 function totalValue(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string | number {
   if (amount.value == null) return "";
   return row.kind === "percent" ? amount.value / 100 : amount.value;
-}
-
-function knownValue(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string | number {
-  if (amount.status !== "partial") return "";
-  return row.kind === "percent" ? amount.known / 100 : amount.known;
 }
 
 export interface MonthlyOpiuSheetPayload {
@@ -34,19 +21,20 @@ export interface MonthlyOpiuSheetPayload {
 
 export function buildMonthlyOpiuSheetPayload(
   statement: MonthlyOpiuStatement,
-  context: { monthLabel: string; generatedAt: string },
+  context: { monthLabel: string; generatedAt: string; companyLabel?: string },
 ): MonthlyOpiuSheetPayload {
+  const companyLabel = context.companyLabel?.trim() || "Все компании";
   const rows: Array<Array<string | number>> = [
-    [`ОПиУ · ${context.monthLabel}`, "", "", "", "", "", "", ""],
-    ["ФАКТ", "", "", "", "", "", "", ""],
-    ["Период", context.monthLabel, "", "", "", "", "", ""],
-    ["Обновлено", context.generatedAt, "", "", "", "", "", ""],
-    ["", "", "", "", "", "", "", ""],
-    ["Статья", "WB", "Ozon", "Общие", "Итого", "Известная часть", "Источник", "Полнота"],
+    [`ОПиУ · ${companyLabel} · ${context.monthLabel}`, "", "", "", ""],
+    ["ФАКТ", "", "", "", ""],
+    ["Период", context.monthLabel, "", "", ""],
+    ["Компания", companyLabel, "", "", ""],
+    ["Обновлено", context.generatedAt, "", "", ""],
+    ["Статья", "WB", "Ozon", "Общие", "Итого"],
   ];
   for (const row of statement.rows) {
     if (row.kind === "section") {
-      rows.push([row.label, "", "", "", "", "", "", ""]);
+      rows.push([row.label, "", "", "", ""]);
       continue;
     }
     rows.push([
@@ -55,12 +43,9 @@ export function buildMonthlyOpiuSheetPayload(
       directionValue(row.amounts.ozon, row),
       directionValue(row.amounts.shared, row),
       totalValue(row.amounts.total, row),
-      knownValue(row.amounts.total, row),
-      row.source ?? "Расчёт",
-      STATUS_LABELS[row.amounts.total.status],
     ]);
   }
-  return { sheetName: safeSheetName(`ОПиУ ${context.monthLabel}`), rows };
+  return { sheetName: safeSheetName(`ОПиУ ${companyLabel} ${context.monthLabel}`), rows };
 }
 
 export async function exportMonthlyOpiuToGoogleSheets(payload: MonthlyOpiuSheetPayload): Promise<{ spreadsheetUrl?: string }> {

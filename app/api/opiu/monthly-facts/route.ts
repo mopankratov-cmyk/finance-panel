@@ -11,6 +11,7 @@ import {
 } from "@/lib/opiu/monthlyFacts";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
 
 export const dynamic = "force-dynamic";
 
@@ -27,23 +28,37 @@ function monthRange(requestedMonth: string | null) {
 
 export async function GET(request: NextRequest) {
   const { month, from, to } = monthRange(request.nextUrl.searchParams.get("month"));
+  const requestedCompanyId = request.nextUrl.searchParams.get("company")?.trim() || null;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
+
+  const companiesResult = await db.from("companies").select("id,name,group_name,is_active").order("group_name").order("name");
+  if (companiesResult.error) return NextResponse.json({ error: companiesResult.error.message }, { status: 502 });
+  const companies: OpiuCompanyOption[] = (companiesResult.data ?? [])
+    .filter((row) => row.is_active)
+    .map((row) => ({ id: String(row.id), name: String(row.name), groupName: String(row.group_name ?? "") }));
+  if (requestedCompanyId && !companies.some((company) => company.id === requestedCompanyId)) {
+    return NextResponse.json({ error: "Компания не найдена" }, { status: 400 });
+  }
 
   const warnings: string[] = [];
   let ddsFacts: Record<string, MonthlySharedFact> = {};
   let payrollFacts: Record<string, MonthlySharedFact> = {};
 
   try {
-    const payments = await loadAllSupabasePages<DdsFactRow>((pageFrom, pageTo) => db
-      .from("payments")
-      .select("amount,category,comment,date,id")
-      .eq("status", "done")
-      .gte("date", from)
-      .lte("date", to)
-      .order("date", { ascending: true })
-      .order("id", { ascending: true })
-      .range(pageFrom, pageTo), { label: "ОПиУ: подтверждённые расходы ДДС", maxPages: 100 });
+    const payments = await loadAllSupabasePages<DdsFactRow>((pageFrom, pageTo) => {
+      let query = db
+        .from("payments")
+        .select("amount,category,comment,date,id,company_id")
+        .eq("status", "done")
+        .gte("date", from)
+        .lte("date", to);
+      if (requestedCompanyId) query = query.eq("company_id", requestedCompanyId);
+      return query
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(pageFrom, pageTo);
+    }, { label: "ОПиУ: подтверждённые расходы ДДС", maxPages: 100 });
     ddsFacts = aggregateDdsMonthlyFacts(payments);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить ДДС";
@@ -71,7 +86,7 @@ export async function GET(request: NextRequest) {
     if (periodIds.length) {
       const entriesRaw = await loadAllSupabasePages<Record<string, unknown>>((pageFrom, pageTo) => db
         .from("payroll_entries")
-        .select("id,period_id,employee_id,official_amount,unofficial_amount,contractor_amount,tax_amount,allocation_lines")
+        .select("id,period_id,employee_id,official_amount,unofficial_amount,contractor_amount,tax_amount,company_id,allocation_lines")
         .in("period_id", periodIds)
         .order("period_id", { ascending: true })
         .order("id", { ascending: true })
@@ -83,7 +98,8 @@ export async function GET(request: NextRequest) {
         unofficialAmount: num(row.unofficial_amount),
         contractorAmount: num(row.contractor_amount),
         taxAmount: num(row.tax_amount),
-        lines: Array.isArray(row.allocation_lines) ? row.allocation_lines as Array<{ amount?: number }> : null,
+        companyId: row.company_id ? String(row.company_id) : null,
+        lines: Array.isArray(row.allocation_lines) ? row.allocation_lines as Array<{ amount?: number; taxAmount?: number; companyId?: string | null }> : null,
       }));
       const employeeIds = [...new Set(entries.map((entry) => entry.employeeId))];
       if (employeeIds.length) {
@@ -96,7 +112,7 @@ export async function GET(request: NextRequest) {
         employees = employeesRaw.map((row) => ({ id: String(row.id), position: String(row.position ?? "") }));
       }
     }
-    payrollFacts = aggregatePayrollMonthlyFacts({ periods, entries, employees, from, to });
+    payrollFacts = aggregatePayrollMonthlyFacts({ periods, entries, employees, from, to, companyId: requestedCompanyId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить зарплатную ведомость";
     console.error("[monthly opiu] payroll facts:", message);
@@ -105,6 +121,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     period: { from, to, month },
+    companies,
     shared: mergeMonthlySharedFacts(ddsFacts, payrollFacts),
     warnings,
   });

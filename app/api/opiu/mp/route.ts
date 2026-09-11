@@ -6,6 +6,7 @@ import { monthlyWbActualFromOpiu } from "@/lib/opiu/monthlyWbActual";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { ozonAnalytics, ozonImages, ozonTransactionTotals } from "@/lib/ozon/api";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { marketplaceCabinetIdsForCompany } from "@/lib/opiu/companyScope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,15 +27,35 @@ export async function GET(request: NextRequest) {
   const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
   const to = `${month}-${String(lastDay).padStart(2, "0")}`;
   const taxPct = 0;
+  const requestedCompanyId = sp.get("company")?.trim() || null;
+  const db = getSupabaseAdmin();
+  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
+
+  let companyCabinetIds: Set<string> | null = null;
+  if (requestedCompanyId) {
+    const companyResult = await db.from("companies").select("id,name,is_active").eq("id", requestedCompanyId).maybeSingle();
+    if (companyResult.error) return NextResponse.json({ error: companyResult.error.message }, { status: 502 });
+    if (!companyResult.data?.is_active) return NextResponse.json({ error: "Компания не найдена" }, { status: 400 });
+    const [entitiesResult, linksResult] = await Promise.all([
+      db.from("legal_entities").select("id,name"),
+      db.from("legal_entity_cabinets").select("legal_entity_id,cabinet_id"),
+    ]);
+    if (entitiesResult.error || linksResult.error) {
+      return NextResponse.json({ error: entitiesResult.error?.message ?? linksResult.error?.message ?? "Связи компаний не загружены" }, { status: 502 });
+    }
+    companyCabinetIds = marketplaceCabinetIdsForCompany(
+      String(companyResult.data.name),
+      (entitiesResult.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })),
+      (linksResult.data ?? []).map((row) => ({ legalEntityId: String(row.legal_entity_id), cabinetId: String(row.cabinet_id) })),
+    );
+  }
   const wbCabinetIds = [...new Set(OPIU_BRANDS.map((brand) => brand.cabinetId))];
   const accessPairs = await Promise.all(wbCabinetIds.map(async (cabinetId) => [cabinetId, await hasCabinetAccess(cabinetId)] as const));
   const accessByCabinet = new Map(accessPairs);
   const accessibleBrandIds = OPIU_BRANDS
-    .filter((brand) => accessByCabinet.get(brand.cabinetId))
+    .filter((brand) => accessByCabinet.get(brand.cabinetId) && (!companyCabinetIds || companyCabinetIds.has(brand.cabinetId)))
     .map((brand) => brand.id);
 
-  const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   const costByArt = new Map<string, number>();
   const costs = await db.from("product_costs").select("article, cost_rub");
   if (costs.error) return NextResponse.json({ error: costs.error.message }, { status: 502 });
@@ -47,9 +68,13 @@ export async function GET(request: NextRequest) {
     : Promise.resolve({ error: "Нет доступа к кабинетам WB из состава ОПиУ" });
 
   const ozonPromise = (async () => {
-    const resolved = await getOzonCabinetScope(sp.get("cabinet"));
+    const resolved = await getOzonCabinetScope(companyCabinetIds ? "all" : sp.get("cabinet"));
     if (!resolved.ok) return { error: resolved.error, noCabinet: true };
-    const results = await Promise.all(resolved.scope.cabinets.map(async (cabinet) => {
+    const ozonCabinets = companyCabinetIds
+      ? resolved.scope.cabinets.filter((cabinet) => companyCabinetIds.has(cabinet.id))
+      : resolved.scope.cabinets;
+    if (!ozonCabinets.length) return { error: "У компании нет связанного кабинета Ozon", noCabinet: true };
+    const results = await Promise.all(ozonCabinets.map(async (cabinet) => {
       const totals = await ozonTransactionTotals(cabinet.creds, new Date(from).toISOString(), new Date(to).toISOString());
       if (!totals.ok) return { cabinet: cabinet.name, ok: false as const, error: totals.error };
       const [analytics, images] = await Promise.all([
