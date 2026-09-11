@@ -7,21 +7,20 @@ const page = readFileSync(new URL("../../app/pnl/page.tsx", import.meta.url), "u
 const monthlyPage = readFileSync(new URL("../../components/opiu/MonthlyOpiuPage.tsx", import.meta.url), "utf8");
 const monthlyModel = readFileSync(new URL("../opiu/monthlyStatement.ts", import.meta.url), "utf8");
 
-const cached = readFileSync(new URL("./wbCachedFinance.ts", import.meta.url), "utf8");
+const wbActual = readFileSync(new URL("../opiu/monthlyWbActual.ts", import.meta.url), "utf8");
 
-test("возвраты уменьшают выручку и комиссии WB, а не только копятся в отдельном поле", () => {
-  assert.match(cached, /const sign = isReturn\(row\) \? -1 : 1;/);
-  assert.match(cached, /revenueBeforeSpp \+= sign \* amount;/);
-  assert.match(cached, /commission \+= sign \* amount \* pct \/ 100;/);
+test("месячный ОПиУ использует сверенный финансовый отчёт WB", () => {
+  assert.match(route, /loadOpiuSalePeriod/);
+  assert.match(route, /monthlyWbActualFromOpiu/);
+  assert.match(wbActual, /revenue_without_spp/);
   assert.match(monthlyModel, /revenue_before_spp/);
 });
 
 test("несчитанные статьи WB не выдаются за ноль", () => {
-  assert.doesNotMatch(route, /logistics:\s*0,/);
-  assert.doesNotMatch(route, /storage:\s*0,/);
-  assert.doesNotMatch(route, /penalty:\s*0,/);
-  assert.match(route, /notComputed:\s*\[/);
-  assert.match(monthlyModel, /monthly cache|месячный кэш/i);
+  assert.match(wbActual, /requiredTotal\(report, "logistics"\)/);
+  assert.match(wbActual, /requiredTotal\(report, "warehouse"\)/);
+  assert.match(wbActual, /requiredTotal\(report, "penalties"\)/);
+  assert.doesNotMatch(route, /logistics:\s*null/);
   assert.match(monthlyPage, /По известным статьям/);
   assert.doesNotMatch(monthlyPage, /\+ соинвест, как принято/);
 });
@@ -38,7 +37,7 @@ test("общий ОПиУ выбирается только по календа�
 });
 
 test("недоступный WB-кабинет не блокирует весь месячный ОПиУ", () => {
-  assert.match(route, /wbAllowed/);
-  assert.match(route, /Promise\.resolve\(\{ error: "Нет доступа к WB-кабинету" \}\)/);
+  assert.match(route, /accessibleBrandIds/);
+  assert.match(route, /Promise\.resolve\(\{ error: "Нет доступа к кабинетам WB из состава ОПиУ" \}\)/);
   assert.doesNotMatch(route, /return NextResponse\.json\(\{ error: "Нет доступа к WB-кабинету" \}, \{ status: 403 \}\)/);
 });
