@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { parseCompanyTaxSystem, parseCompanyVatMode } from "@/lib/finance/companyTax";
+
+const COMPANY_COLUMNS = "id,name,group_name,is_active,tax_system,vat_mode";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +18,7 @@ export async function GET() {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const [companies, links] = await Promise.all([
-    db.from("companies").select("id,name,group_name,is_active").order("group_name").order("name"),
+    db.from("companies").select(COMPANY_COLUMNS).order("group_name").order("name"),
     loadAllSupabasePages<{ id: string; company_id: string | null }>((from, to) => db
       .from("payments")
       .select("id,company_id")
@@ -47,7 +50,7 @@ export async function POST(request: NextRequest) {
     if ((existing.data ?? []).length) return NextResponse.json({ error: "Юрлицо с таким названием уже существует" }, { status: 409 });
     const result = await db.from("companies")
       .insert({ name, group_name: groupName, is_active: true })
-      .select("id,name,group_name,is_active")
+      .select(COMPANY_COLUMNS)
       .single();
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
     return NextResponse.json({ company: result.data });
@@ -83,7 +86,24 @@ export async function PATCH(request: NextRequest) {
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const body = await request.json().catch(() => ({})) as { payment_id?: string; company_id?: string | null };
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  if (body.action === "company") {
+    const companyId = String(body.company_id ?? "").trim();
+    const taxSystem = parseCompanyTaxSystem(body.tax_system);
+    const vatMode = parseCompanyVatMode(body.vat_mode);
+    if (!companyId) return NextResponse.json({ error: "Не указана компания" }, { status: 400 });
+    if (typeof body.is_active !== "boolean") return NextResponse.json({ error: "Некорректный статус компании" }, { status: 400 });
+    if (taxSystem === undefined) return NextResponse.json({ error: "Некорректная система налогообложения" }, { status: 400 });
+    if (vatMode === undefined) return NextResponse.json({ error: "Некорректная настройка НДС" }, { status: 400 });
+    const result = await db.from("companies")
+      .update({ is_active: body.is_active, tax_system: taxSystem, vat_mode: vatMode })
+      .eq("id", companyId)
+      .select(COMPANY_COLUMNS)
+      .maybeSingle();
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
+    if (!result.data) return NextResponse.json({ error: "Компания не найдена" }, { status: 404 });
+    return NextResponse.json({ company: result.data });
+  }
   const paymentId = String(body.payment_id ?? "");
   if (!paymentId) return NextResponse.json({ error: "Не указан платёж" }, { status: 400 });
   const result = await db.from("payments")

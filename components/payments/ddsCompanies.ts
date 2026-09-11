@@ -1,10 +1,14 @@
 "use client";
 
+import type { CompanyTaxSystem, CompanyVatMode } from "@/lib/finance/companyTax";
+
 export interface DdsCompany {
   id: string;
   name: string;
   groupName: string;
   isActive: boolean;
+  taxSystem?: CompanyTaxSystem | null;
+  vatMode?: CompanyVatMode | null;
 }
 
 // До применения миграции в старых данных могла остаться техническая запись
@@ -19,10 +23,19 @@ export interface PaymentCompanyLink {
   companyId: string | null;
 }
 
+interface CompanyRow {
+  id: string;
+  name: string;
+  group_name: string;
+  is_active: boolean;
+  tax_system: CompanyTaxSystem | null;
+  vat_mode: CompanyVatMode | null;
+}
+
 interface CompaniesResponse {
-  companies?: Array<{ id: string; name: string; group_name: string; is_active: boolean }>;
+  companies?: CompanyRow[];
   payment_links?: Array<{ id: string; company_id: string | null }>;
-  company?: { id: string; name: string; group_name: string; is_active: boolean };
+  company?: CompanyRow;
   error?: string;
 }
 
@@ -38,7 +51,7 @@ async function load(): Promise<CompaniesResponse> {
 
 export async function loadDdsCompanies(): Promise<DdsCompany[]> {
   const body = await load();
-  return (body.companies ?? []).map((row) => ({ id: row.id, name: companyLabel(row.name), groupName: row.group_name, isActive: row.is_active }));
+  return (body.companies ?? []).map(companyFromRow);
 }
 
 export async function loadPaymentCompanyLinks(): Promise<PaymentCompanyLink[]> {
@@ -53,7 +66,34 @@ export async function createDdsCompany(name: string, groupName: string): Promise
     body: JSON.stringify({ action: "create", name, group_name: groupName }),
   }).then(json<CompaniesResponse>);
   if (!body.company) throw new Error("Юрлицо не вернулось после сохранения");
-  return { id: body.company.id, name: body.company.name, groupName: body.company.group_name, isActive: body.company.is_active };
+  return companyFromRow(body.company);
+}
+
+function companyFromRow(row: CompanyRow): DdsCompany {
+  return {
+    id: row.id,
+    name: companyLabel(row.name),
+    groupName: row.group_name,
+    isActive: row.is_active,
+    taxSystem: row.tax_system ?? null,
+    vatMode: row.vat_mode ?? null,
+  };
+}
+
+export async function updateDdsCompany(company: DdsCompany): Promise<DdsCompany> {
+  const body = await fetch("/api/finance/companies", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "company",
+      company_id: company.id,
+      is_active: company.isActive,
+      tax_system: company.taxSystem,
+      vat_mode: company.vatMode,
+    }),
+  }).then(json<CompaniesResponse>);
+  if (!body.company) throw new Error("Юрлицо не вернулось после сохранения");
+  return companyFromRow(body.company);
 }
 
 export async function savePaymentWithCompany(
