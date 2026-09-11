@@ -277,7 +277,7 @@ async function loadBrandMonthData(
 
   const loanTransferBySaleWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), weeks, brand);
   const loanTransferByReportWeek = sharedLoanTransferByWeek(reportDateRowsRaw, weeks, brand);
-  const paidStorageByWeek = await fetchPaidStorageByWeek(brand, weeks);
+  const paidStorageByWeek = await fetchPaidStorageByWeek(brand, weeks, nmIdWhitelist);
   const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, weeks);
 
   const costLookup = buildCostLookup(costs);
@@ -447,7 +447,7 @@ async function loadBrandSalePeriodData(
   const nmIdWhitelist = brandNmIdWhitelist(brand, orders, saleDateRows);
   const adStats = await fetchAdStats(dateFrom, dateTo, brand, nmIdWhitelist);
   const loanTransferByWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), [period], brand);
-  const paidStorageByWeek = await fetchPaidStorageByWeek(brand, [period]);
+  const paidStorageByWeek = await fetchPaidStorageByWeek(brand, [period], nmIdWhitelist);
   const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, [period]);
 
   const costLookup = buildCostLookup(costs);

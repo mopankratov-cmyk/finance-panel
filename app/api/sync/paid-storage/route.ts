@@ -208,18 +208,20 @@ async function processCabinet(
     throw new Error(`скачивание WB ${download.status}: ${download.body}`);
   }
 
-  // Только то, что реально используется: lib/opiu/paidStorage.ts считает
-  // "Хранение" по date/vendor_code/warehouse_price, а gi_id/chrt_id/
-  // office_id/calc_type/barcode нужны исключительно для rowId (WB не даёт
-  // свой id строки). subject/brand/warehouse(текст)/size/volume/
-  // barcodes_count нигде не читаются — не отправляем их в payload вообще:
-  // WB всё равно генерирует и качает отчёт целиком (сократить сам download
-  // так нельзя, это его сторона), но payload на upsert в базу становится
-  // заметно легче на тысячах строк.
+  // nm_id обязателен: lib/opiu/paidStorage.ts сопоставляет "Хранение" с
+  // товаром именно по nm_id (как и эталонная таблица владельца — формула
+  // там матчит SUMIFS по nmId, а не по артикулу поставщика). Раньше это
+  // поле считали неиспользуемым и не писали — из-за этого суб-бренды на
+  // общем кабинете (Norvia/Heaton) сопоставлялись по префиксу vendor_code
+  // на весь каталог, что дало сильно другие (и неверные) суммы.
+  // subject/brand/warehouse(текст)/size/volume/barcodes_count по-прежнему
+  // нигде не читаются — их не отправляем: WB всё равно качает отчёт целиком,
+  // но upsert в базу так легче на тысячах строк.
   const mappedRows = download.rows.map((row) => ({
     id: rowId(cabinetId, row),
     cabinet_id: cabinetId,
     date: String(row.date ?? "").slice(0, 10),
+    nm_id: row.nmId ?? null,
     vendor_code: row.vendorCode ?? null,
     barcode: row.barcode ?? null,
     office_id: row.officeId ?? null,
