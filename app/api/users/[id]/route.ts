@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isPanelOwner } from "@/lib/auth/owner";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
+import { audit } from "@/lib/audit/log";
+import { isExternalRole, isRole } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -55,9 +57,14 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   }
 
   const patch: Record<string, unknown> = {};
-  if (b.role && ["director", "finance", "manager", "ozon_manager", "seller", "warehouse"].includes(b.role)) {
+  // Роль сверяется со словарём: список, написанный здесь руками, отстал сразу
+  // же, как роли разделили, и смена роли на менеджера WB молча не применялась
+  // бы — форма показала бы «сохранено», а роль осталась прежней.
+  if (isRole(b.role)) {
     patch.role = b.role;
-    if (b.role === "seller") {
+    // Роли пишутся списком тоже: сотрудник может держать несколько.
+    patch.roles = [b.role];
+    if (isExternalRole(b.role)) {
       // Своя организация у селлера обязана быть — через неё он видит свой
       // кабинет и никакие чужие. Но если она у него уже есть и она селлерская,
       // новую заводить нельзя: человек тут же потеряет кабинет, к которому его
@@ -71,15 +78,13 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
         if (organizationError || !organization) return NextResponse.json({ error: organizationError?.message ?? "Не удалось создать организацию" }, { status: 500 });
         patch.organization_id = organization.id;
       }
-    } else if (currentUser.role === "seller" || !currentUser.organization_id) {
+    } else if (isExternalRole(currentUser.role) || !currentUser.organization_id) {
       const { data: organization, error: organizationError } = await resolveInternalOrganization(db, directorSession.organization_id);
       if (organizationError || !organization) return NextResponse.json({ error: organizationError?.message ?? "Не удалось найти внутреннюю организацию" }, { status: 500 });
       patch.organization_id = organization.id;
     }
   }
-  const effectiveRole = b.role && ["director", "finance", "manager", "ozon_manager", "seller", "warehouse"].includes(b.role)
-    ? b.role
-    : String(currentUser.role);
+  const effectiveRole = isRole(b.role) ? b.role : String(currentUser.role);
   // Список кабинетов селлеру не обнуляем, а заполняем кабинетами его
   // организации. Доступ селлера требует ОБОИХ условий — совпадения организации
   // и наличия кабинета в списке (lib/auth/cabinetAccess.ts), поэтому пустой
@@ -105,12 +110,23 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if (typeof b.is_active === "boolean") patch.is_active = b.is_active;
   if (b.password && b.password.length >= 10) patch.password_hash = await hashPassword(b.password);
   if (!Object.keys(patch).length) return NextResponse.json({ error: "Нечего обновлять" }, { status: 400 });
+  // «Было» читаем ДО записи: без этого журнал знает новое значение и не
+  // знает старого, а §17 требует оба.
+  const { data: before } = await db.from("app_users").select("email, role, roles, cabinet_ids, is_active").eq("id", id).maybeSingle();
   const { error } = await db.from("app_users").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Пароль в журнал не попадает: хеш — такой же секрет, как сам пароль.
+  const { password_hash: _hidden, ...visible } = patch as Record<string, unknown>;
+  await audit(request, directorSession, {
+    action: typeof b.is_active === "boolean" && !b.is_active ? "user.block" : visible.role || visible.roles ? "user.role.assign" : "user.update",
+    subject: String(before?.email ?? id),
+    before,
+    after: visible,
+  });
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const s = await director();
   if (!s) return NextResponse.json({ error: "Доступ только для директора" }, { status: 403 });
   const { id } = await ctx.params;
@@ -123,5 +139,6 @@ export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id:
   }
   const { error } = await db.from("app_users").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await audit(request, s, { action: "user.block", subject: String(victim?.email ?? id), before: victim, after: { deleted: true } });
   return NextResponse.json({ ok: true });
 }

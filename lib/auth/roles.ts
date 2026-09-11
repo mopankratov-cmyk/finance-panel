@@ -25,12 +25,14 @@ export const ROLE_HOME: Record<Role, string> = {
  * — он уходит в аналитику. Раньше карта была статической, и селлер с уже
  * подключённым кабинетом каждый раз упирался в «Подключение WB».
  */
-export function roleHome(session: { role: Role; cabinet_ids?: string[] } | null | undefined): string {
+export function roleHome(session: { role: Role; roles?: Role[]; cabinet_ids?: string[] } | null | undefined): string {
   if (!session) return "/login";
-  if (session.role === "seller") {
+  // У сотрудника с двумя ролями стартовый экран один — по первой роли.
+  const role = session.roles?.length ? session.roles[0] : session.role;
+  if (role === "seller" || role === "seller_owner") {
     return (session.cabinet_ids?.length ?? 0) > 0 ? "/wb/rnp" : "/wb/connect";
   }
-  return ROLE_HOME[session.role] || "/";
+  return ROLE_HOME[role] || "/";
 }
 
 
@@ -43,7 +45,7 @@ export function roleHome(session: { role: Role; cabinet_ids?: string[] } | null 
  * правами внутри него, и потому что прокси должен уметь отвечать до запуска
  * роута.
  */
-const FINANCE_PATHS = ["/", "/calendar", "/payments", "/payroll", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"];
+const FINANCE_PATHS = ["/", "/audit", "/calendar", "/payments", "/payroll", "/accounts", "/loans", "/opiu", "/pnl", "/summary", "/losses", "/costs", "/supplies", "/warehouse", "/repricer", "/price-solver", "/agent", "/sync", "/ozon", "/wb", "/adverts", "/rnp", "/seo", "/sklejki", "/reviews", "/product", "/unit", "/ctrtest", "/planning", "/abc", "/trends", "/market", "/card-editor", "/uniquizer"];
 
 // Товарный контур менеджера. Маркетплейс отсекается отдельной осью
 // (ROLE_MARKETPLACES), поэтому здесь перечислены общие для обоих экраны.
@@ -75,19 +77,34 @@ const ACCESS: Record<Role, string[]> = {
   // юрлица внешнему пользователю видны только те, чьи кабинеты принадлежат его
   // организации (lib/warehouse/entityAccess.ts). Чужой склад он не увидит даже
   // по прямой ссылке — юрлицо не пройдёт resolveEntity.
-  seller_owner: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
-  seller: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team"],
+  // По решению владельца внешнему контуру открыты три модуля: WB, Ozon и
+  // склад. Прежде Ozon был закрыт вовсе — селлер не мог вести свои
+  // ozon-кабинеты, даже когда они принадлежали его юрлицу. Какие из трёх
+  // модулей открыты конкретному сотруднику, решает главный пользователь
+  // клиента (lib/auth/modules.ts).
+  seller_owner: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team", "/ozon"],
+  seller: ["/warehouse", "/wb/rnp", "/wb/planning", "/wb/funnel", "/wb/adverts", "/wb/rk", "/wb/supplies", "/wb/unit", "/wb/product", "/wb/seo", "/wb/sklejki", "/wb/reviews", "/wb/ctr", "/wb/shelf", "/wb/market", "/wb/trends", "/wb/abc", "/wb/health", "/wb/connect", "/wb/team", "/ozon"],
 };
 
 
-export function canAccess(role: Role, path: string): boolean {
-  const rules = ACCESS[role] ?? [];
-  if (rules.includes("*")) return true;
-  // точное «/» только для лаунчера
-  if (path === "/") return rules.includes("/");
-  return rules.some((p) => p !== "/" && (path === p || path.startsWith(p + "/")));
+/**
+ * Открыт ли путь.
+ *
+ * Принимает и одну роль, и набор: сотрудник может вести оба маркетплейса,
+ * и тогда экран открыт, если его открывает ХОТЯ БЫ одна из ролей. Вторая
+ * роль обязана добавлять доступ, а не отнимать.
+ */
+export function canAccess(role: Role | readonly Role[], path: string): boolean {
+  const roles: readonly Role[] = Array.isArray(role) ? role : [role as Role];
+  return roles.some((one: Role) => {
+    const rules = ACCESS[one] ?? [];
+    if (rules.includes("*")) return true;
+    // точное «/» только для лаунчера
+    if (path === "/") return rules.includes("/");
+    return rules.some((p: string) => p !== "/" && (path === p || path.startsWith(p + "/")));
+  });
 }
 
-export function allowedNav(role: Role, href: string): boolean {
+export function allowedNav(role: Role | readonly Role[], href: string): boolean {
   return canAccess(role, href);
 }

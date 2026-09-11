@@ -8,7 +8,10 @@ import { readFileSync } from "node:fs";
 const proxy = readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
 
 test("роль warehouse отсекается на /api/*, а не только на страницах", () => {
-  assert.match(proxy, /session\.role === "warehouse" && !isWarehouseApiAllowed/);
+  // Узкие списки API писались на одну роль и применяются к сотруднику
+  // РОВНО с этой ролью: вторая роль обязана добавлять доступ, а не
+  // упираться в чужой запрет.
+  assert.match(proxy, /roles\.length === 1 && roles\[0\] === "warehouse" && !isWarehouseApiAllowed/);
 });
 
 test("оператору открыт модуль склада и отметка факта приёмки — и ничего больше", () => {

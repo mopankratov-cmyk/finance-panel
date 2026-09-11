@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { canManageStock } from "@/lib/warehouse/operatorScope";
 import { recordWarehouseEvent } from "@/lib/warehouse/events";
+import { auditedMutation, redactSecrets } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
@@ -340,6 +341,14 @@ export async function GET(request: NextRequest) {
 
 /** Завести ожидаемую поставку: строки по товарам справочника, без обращения к «Закупкам». */
 export async function PUT(request: NextRequest) {
+  // Приёмка: одна запись на запрос, только на успех.
+  return auditedMutation(request, "warehouse.receipt", await getServerSession(), () => handlePut(request), (body) => ({
+    subject: typeof body.docId === "string" ? body.docId : typeof body.id === "string" ? body.id : null,
+    after: redactSecrets(body),
+  }));
+}
+
+async function handlePut(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as
@@ -502,6 +511,14 @@ export async function PUT(request: NextRequest) {
  *  где она встала. Здесь партия — один документ: либо принята вся, либо ни одной
  *  строки. */
 export async function PATCH(request: NextRequest) {
+  // Правка приёмки и расхождения: одна запись на запрос, только на успех.
+  return auditedMutation(request, "warehouse.discrepancy", await getServerSession(), () => handlePatch(request), (body) => ({
+    subject: typeof body.docId === "string" ? body.docId : typeof body.id === "string" ? body.id : null,
+    after: redactSecrets(body),
+  }));
+}
+
+async function handlePatch(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as

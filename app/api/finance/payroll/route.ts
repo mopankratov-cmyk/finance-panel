@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { payrollLineTaxIsPayable, payrollPeriodForDate, payrollSalaryAmount, payrollTaxAmount, type PayrollAccrualLine, type PayrollDraftEntry, type PayrollEmployee, type PayrollEmploymentStatus, type PayrollEmploymentType, type PayrollLineKind, type PayrollPaymentMethod } from "@/components/payments/payroll";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { auditedMutation, redactSecrets } from "@/lib/audit/log";
 import { PAYROLL_CATEGORIES } from "@/lib/finance/categories";
 import { consumedFactIds, preservedLoanMarkers } from "@/lib/finance/factLinks";
 import { loadFinanceStateServer, persistFinanceActionServer } from "@/lib/finance/dbServer";
@@ -89,6 +90,15 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  // Запись в журнал — вокруг обработчика: у него полсотни точек выхода, и
+  // расставлять её в каждую значит забыть одну.
+  return auditedMutation(request, "payroll.change", await getServerSession(), () => handlePayroll(request), (body) => ({
+    subject: String(body.action ?? "payroll"),
+    after: redactSecrets(body),
+  }));
+}
+
+async function handlePayroll(request: NextRequest) {
   const gate = await authorize();
   if (gate) return gate;
   const db = dbOrError();

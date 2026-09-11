@@ -3,6 +3,8 @@ import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isPanelOwner } from "@/lib/auth/owner";
+import { isExternalModule } from "@/lib/auth/modules";
+import { audit } from "@/lib/audit/log";
 
 // Команда своей организации: главный пользователь кабинета заводит сотрудников.
 //
@@ -224,12 +226,32 @@ export async function POST(request: NextRequest) {
     // означает «доступа нет». Шире собственных кабинетов не выдаём: админ
     // одного кабинета не должен заводить людей в соседние.
     const cabinetIds = [...caller.cabinetIds];
-    // Роль всегда seller: заводить директоров и менеджеров панели отсюда нельзя.
-    const patch = { role: "seller", cabinet_ids: cabinetIds, organization_id: caller.organizationId, password_hash, is_active: true };
-    const { error } = existing
-      ? await db.from("app_users").update(patch).eq("id", existing.id)
-      : await db.from("app_users").insert({ email, ...patch });
-    if (error) return NextResponse.json({ ok: false, error: "Не удалось сохранить сотрудника" }, { status: 502 });
+    /**
+     * Роль всегда внешняя: заводить директоров и менеджеров панели отсюда
+     * нельзя — это чужая компания и чужие данные.
+     *
+     * А вот модули клиент раздаёт сам: ему открыты Wildberries, Ozon и склад,
+     * и сотруднику можно выдать не все три. Пустой список означает «все» —
+     * так работают уже заведённые учётки, и читать пустоту как запрет значило
+     * бы отключить живых людей в день выкладки.
+     */
+    const modules = Array.isArray(body?.modules) ? (body.modules as unknown[]).map(String).filter(isExternalModule) : [];
+    const patch: Record<string, unknown> = {
+      role: "seller", cabinet_ids: cabinetIds, organization_id: caller.organizationId, password_hash, is_active: true,
+    };
+    // Колонка появляется миграцией, которую применяет владелец, а код
+    // выкладывается раньше: до неё модули просто не сохраняются.
+    const save = async (payload: Record<string, unknown>) => existing
+      ? db.from("app_users").update(payload).eq("id", existing.id)
+      : db.from("app_users").insert({ email, ...payload });
+    let saved = await save({ ...patch, modules });
+    if (/column .*modules.* does not exist/i.test(saved.error?.message ?? "")) saved = await save(patch);
+    if (saved.error) return NextResponse.json({ ok: false, error: "Не удалось сохранить сотрудника" }, { status: 502 });
+    await audit(request, { uid: caller.uid, email: caller.email, role: "seller_owner", roles: ["seller_owner"] }, {
+      action: existing ? "user.update" : "user.create",
+      subject: email,
+      after: { modules, cabinets: cabinetIds.length },
+    });
     return NextResponse.json({ ok: true });
   }
 

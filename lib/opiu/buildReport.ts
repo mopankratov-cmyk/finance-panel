@@ -111,6 +111,22 @@ export function buildOpiuReport(
     ),
   );
 
+  return buildOpiuReportFromWeekMetrics(weeks, weekMetrics, missingCostArticles, warehouseByWeek);
+}
+
+/**
+ * Сборка строк отчёта из уже готовых недельных метрик — вынесено отдельно
+ * от buildOpiuReport, чтобы при выборе нескольких брендов можно было сначала
+ * сложить их WeekRawMetrics (по неделям, см. mergeWeekMetrics в loadMonth.ts),
+ * а потом один раз посчитать проценты/производные от уже просуммированных
+ * чисел — усреднять сами проценты по брендам было бы математически неверно.
+ */
+export function buildOpiuReportFromWeekMetrics(
+  weeks: MonthWeek[],
+  weekMetrics: WeekRawMetrics[],
+  missingCostArticles: MissingCostArticle[],
+  warehouseByWeek: Record<string, number>,
+): OpiuReport {
   const cols = (fn: (m: WeekRawMetrics) => number) =>
     rowValues(weekMetrics, (m) => fn(m));
 
@@ -129,15 +145,15 @@ export function buildOpiuReport(
     { id: "for_pay",        label: "К перечислению продавцу, руб",                    kind: "metric",  values: cols((m) => m.forPay) },
     sep("sep0"),
     { id: "commission",     label: "Комиссия ВБ, руб",                                kind: "metric",  expense: true, values: cols((m) => m.commission) },
-    { id: "commission_pct", label: "% комиссии",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.commission, m.revenue)) },
+    { id: "commission_pct", label: "% комиссии",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.commission, m.revenueWithoutSpp)) },
     { id: "logistics",      label: "Логистика, руб",                                  kind: "metric",  expense: true, values: cols((m) => m.logistics) },
-    { id: "logistics_pct",  label: "% логистики",                                     kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.logistics, m.revenue)) },
+    { id: "logistics_pct",  label: "% логистики",                                     kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.logistics, m.revenueWithoutSpp)) },
     { id: "cogs",           label: "Себестоимость, руб",                              kind: "metric",  expense: true, values: cols((m) => m.cogs) },
-    { id: "cogs_pct",       label: "% себестоимости",                                 kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.cogs, m.revenue)) },
+    { id: "cogs_pct",       label: "% себестоимости",                                 kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.cogs, m.revenueWithoutSpp)) },
     { id: "packaging",      label: "Подготовка (упаковка, маркировка, отгрузка), руб", kind: "metric",  expense: true, values: cols((m) => m.packaging) },
     { id: "penalties",      label: "Штрафы и доплаты, руб",                           kind: "metric",  expense: true, values: cols((m) => m.penalties) },
     { id: "warehouse",      label: "Хранение, руб",                                   kind: "metric",  expense: true, values: cols((m) => m.warehousePackaging) },
-    { id: "storage_pct",    label: "% хранения",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.warehousePackaging, m.revenue)) },
+    { id: "storage_pct",    label: "% хранения",                                      kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.warehousePackaging, m.revenueWithoutSpp)) },
     { id: "other",          label: "Прочие удержания, руб",                           kind: "metric",  expense: true, values: cols((m) => m.otherDeductions) },
     { id: "jem",            label: "Подписка «Джем», руб",                            kind: "metric",  expense: true, values: cols((m) => m.subscriptionJem) },
     { id: "withdraw_now",   label: "Вывести сейчас, руб",                             kind: "metric",  expense: true, values: cols((m) => m.withdrawNow) },
@@ -151,7 +167,7 @@ export function buildOpiuReport(
     // Расход, списанный промо-бонусами WB (не реальные деньги) — справочно,
     // в валовую прибыль не входит (та считается по m.adsSpend — только баланс).
     { id: "ads_bonus",      label: "Бонусы, руб",                                     kind: "metric",  expense: true, values: cols((m) => m.adsBonus) },
-    { id: "drr",            label: "ДРР, %",                                          kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.adsSpend, m.revenue)) },
+    { id: "drr",            label: "ДРР, %",                                          kind: "percent", values: rowValues(weekMetrics, (m) => pct(m.adsSpend + m.adsBonus, m.revenueWithoutSpp)) },
     sep("sep3"),
     { id: "gross",          label: "Валовая прибыль",                                 kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.gross) },
     { id: "gross_pct",      label: "Рентабельность, %",                               kind: "percent", values: pctCols((d) => d.grossPct) },
@@ -161,4 +177,30 @@ export function buildOpiuReport(
   ];
 
   return { weeks, rows, warehouseByWeek, missingCostArticles };
+}
+
+/**
+ * Складывает списки "нет карточки в /costs" нескольких брендов в один — по
+ * артикулу (qty/revenue суммируются). Один и тот же артикул может продаваться
+ * под разными брендами (например, суб-бренды одного кабинета), тогда объём
+ * недостающей себестоимости в сводном отчёте должен быть суммой по всем.
+ */
+export function mergeMissingCostArticles(
+  lists: MissingCostArticle[][],
+): MissingCostArticle[] {
+  const byArticle = new Map<string, MissingCostArticle>();
+  for (const list of lists) {
+    for (const item of list) {
+      const existing = byArticle.get(item.article);
+      if (existing) {
+        existing.qty += item.qty;
+        existing.revenue += item.revenue;
+      } else {
+        byArticle.set(item.article, { ...item });
+      }
+    }
+  }
+  return [...byArticle.values()]
+    .filter((r) => r.qty !== 0)
+    .sort((a, b) => b.qty - a.qty);
 }

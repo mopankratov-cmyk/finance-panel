@@ -1,14 +1,19 @@
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveOpiuBrand, siblingBrandCount, type OpiuBrand } from "./constants";
-import { buildOpiuReport, type OpiuReport } from "./buildReport";
+import { resolveOpiuBrand, resolveOpiuBrands, siblingBrandCount, type OpiuBrand } from "./constants";
+import { buildOpiuReportFromWeekMetrics, mergeMissingCostArticles, type OpiuReport } from "./buildReport";
 import { loadReadyFunnelFacts } from "./loadFunnelOrders";
-import { periodFromRange, weeksInMonth, type MonthWeek } from "./weeks";
+import { periodFromRange, weeksEndingAt, type MonthWeek } from "./weeks";
 import {
+  aggregateWeek,
+  buildCostLookup,
+  findMissingCostArticles,
   loanTransferRub,
   overlayFunnelOrders,
   rowDate,
+  sumWeeks,
+  type MissingCostArticle,
   type OpiuOrder,
   type ProductCostRow,
 } from "./metrics";
@@ -162,18 +167,23 @@ export async function fetchProductCosts(brand: OpiuBrand): Promise<ProductCostRo
   return rows.filter((r) => matchesArticlePrefix(r.article, brand.articlePrefixes));
 }
 
+/**
+ * Фильтруем по конкретным week_start, а не по одному "месяцу" — в скользящем
+ * окне (weeksEndingAt) недели могут относиться к двум разным календарным
+ * месяцам сразу, единого "month" для всего запроса может не быть.
+ */
 async function fetchWarehouseCosts(
-  month: string,
   weeks: MonthWeek[],
   brand: OpiuBrand,
 ): Promise<Record<string, number>> {
   const map: Record<string, number> = {};
+  if (weeks.length === 0) return map;
   const client = financeDb();
   const { data, error } = await client
     .from("opiu_warehouse_costs")
     .select("week_start, amount")
     .eq("entity", brand.entity)
-    .eq("month", month);
+    .in("week_start", weeks.map((w) => w.weekStart));
 
   if (error) {
     console.error("[opiu] warehouse costs read:", error.message);
@@ -228,33 +238,25 @@ export interface OpiuLoadMeta {
   adCampaigns: number;
 }
 
-export async function loadOpiuMonth(
-  year: number,
-  monthIndex: number,
-  refresh = false,
-  brandId?: string,
-): Promise<{
-  month: string;
-  report: OpiuReport;
-  reportByReportDate: OpiuReport;
-  timestamp: string;
-  meta: OpiuLoadMeta;
-}> {
-  const brand = resolveOpiuBrand(brandId);
-  const month = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
-  const weeks = weeksInMonth(year, monthIndex);
-  if (weeks.length === 0) {
-    return {
-      month,
-      report: { weeks: [], rows: [], warehouseByWeek: {}, missingCostArticles: [] },
-      reportByReportDate: { weeks: [], rows: [], warehouseByWeek: {}, missingCostArticles: [] },
-      timestamp: new Date().toISOString(),
-      meta: { salesRows: 0, ordersCount: 0, costsCount: 0, adCampaigns: 0 },
-    };
-  }
+interface BrandMonthData {
+  saleDateWeekMetrics: ReturnType<typeof aggregateWeek>[];
+  reportDateWeekMetrics: ReturnType<typeof aggregateWeek>[];
+  missingCostArticlesSale: MissingCostArticle[];
+  missingCostArticlesReport: MissingCostArticle[];
+  warehouseByWeek: Record<string, number>;
+  reportRowIds: Set<number>;
+  ordersCount: number;
+  costs: ProductCostRow[];
+  adCampaigns: number;
+}
 
-  const dateFrom = weeks[0]!.rangeFrom;
-  const dateTo = weeks[weeks.length - 1]!.rangeTo;
+async function loadBrandMonthData(
+  brand: OpiuBrand,
+  weeks: MonthWeek[],
+  dateFrom: string,
+  dateTo: string,
+  refresh: boolean,
+): Promise<BrandMonthData> {
   const [
     saleDateRowsRaw,
     reportDateRowsRaw,
@@ -266,7 +268,7 @@ export async function loadOpiuMonth(
     fetchReportRows(dateFrom, dateTo, "report", brand.cabinetId),
     fetchOrders(dateFrom, dateTo, refresh, brand),
     fetchProductCosts(brand),
-    fetchWarehouseCosts(month, weeks, brand),
+    fetchWarehouseCosts(weeks, brand),
   ]);
   const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
   const reportDateRows = reportDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
@@ -278,28 +280,36 @@ export async function loadOpiuMonth(
   const paidStorageByWeek = await fetchPaidStorageByWeek(brand, weeks);
   const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, weeks);
 
-  const report = buildOpiuReport(
-    weeks,
-    rowsBySaleDate(saleDateRows),
-    orders,
-    adStats,
-    costs,
-    warehouseByWeek,
-    loanTransferBySaleWeek,
-    paidStorageByWeek,
-    adsSpendBySourceByWeek,
+  const costLookup = buildCostLookup(costs);
+  const saleDateSales = rowsBySaleDate(saleDateRows);
+
+  const saleDateWeekMetrics = weeks.map((w) =>
+    aggregateWeek(
+      w,
+      saleDateSales,
+      orders,
+      adStats,
+      costLookup,
+      warehouseByWeek[w.weekStart] ?? 0,
+      loanTransferBySaleWeek[w.weekStart] ?? 0,
+      paidStorageByWeek ? (paidStorageByWeek[w.weekStart] ?? 0) : null,
+      adsSpendBySourceByWeek ? (adsSpendBySourceByWeek[w.weekStart] ?? { balance: 0, bonus: 0 }) : null,
+    ),
   );
-  const reportByReportDate = buildOpiuReport(
-    weeks,
-    reportDateRows,
-    orders,
-    adStats,
-    costs,
-    warehouseByWeek,
-    loanTransferByReportWeek,
-    paidStorageByWeek,
-    adsSpendBySourceByWeek,
+  const reportDateWeekMetrics = weeks.map((w) =>
+    aggregateWeek(
+      w,
+      reportDateRows,
+      orders,
+      adStats,
+      costLookup,
+      warehouseByWeek[w.weekStart] ?? 0,
+      loanTransferByReportWeek[w.weekStart] ?? 0,
+      paidStorageByWeek ? (paidStorageByWeek[w.weekStart] ?? 0) : null,
+      adsSpendBySourceByWeek ? (adsSpendBySourceByWeek[w.weekStart] ?? { balance: 0, bonus: 0 }) : null,
+    ),
   );
+
   const reportRowIds = new Set(
     [...saleDateRows, ...reportDateRows]
       .map((row) => Number(row.rrd_id))
@@ -307,31 +317,127 @@ export async function loadOpiuMonth(
   );
 
   return {
-    month,
+    saleDateWeekMetrics,
+    reportDateWeekMetrics,
+    missingCostArticlesSale: findMissingCostArticles(saleDateSales, costLookup),
+    missingCostArticlesReport: findMissingCostArticles(reportDateRows, costLookup),
+    warehouseByWeek,
+    reportRowIds,
+    ordersCount: orders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
+    costs,
+    adCampaigns: adStats.length,
+  };
+}
+
+function mergeWarehouseByWeek(
+  perBrand: Record<string, number>[],
+  weeks: MonthWeek[],
+): Record<string, number> {
+  const merged: Record<string, number> = {};
+  for (const w of weeks) {
+    merged[w.weekStart] = perBrand.reduce((sum, byWeek) => sum + (byWeek[w.weekStart] ?? 0), 0);
+  }
+  return merged;
+}
+
+/** Число уникальных артикулов в объединении себестоимостей нескольких брендов (артикул — уникальный ключ на весь каталог, см. fetchProductCosts). */
+function uniqueCostsCount(perBrandCosts: ProductCostRow[][]): number {
+  const seen = new Set<string>();
+  for (const costs of perBrandCosts) {
+    for (const c of costs) seen.add(c.article.trim().toUpperCase());
+  }
+  return seen.size;
+}
+
+async function loadOpiuForWeeks(
+  weeks: MonthWeek[],
+  refresh: boolean,
+  brandIds?: string[],
+): Promise<{
+  report: OpiuReport;
+  reportByReportDate: OpiuReport;
+  timestamp: string;
+  meta: OpiuLoadMeta;
+}> {
+  if (weeks.length === 0) {
+    return {
+      report: { weeks: [], rows: [], warehouseByWeek: {}, missingCostArticles: [] },
+      reportByReportDate: { weeks: [], rows: [], warehouseByWeek: {}, missingCostArticles: [] },
+      timestamp: new Date().toISOString(),
+      meta: { salesRows: 0, ordersCount: 0, costsCount: 0, adCampaigns: 0 },
+    };
+  }
+
+  const brands = resolveOpiuBrands(brandIds);
+  const dateFrom = weeks[0]!.rangeFrom;
+  const dateTo = weeks[weeks.length - 1]!.rangeTo;
+
+  const perBrand = await Promise.all(
+    brands.map((brand) => loadBrandMonthData(brand, weeks, dateFrom, dateTo, refresh)),
+  );
+
+  const saleDateWeekMetrics = weeks.map((_, i) => sumWeeks(perBrand.map((p) => p.saleDateWeekMetrics[i]!)));
+  const reportDateWeekMetrics = weeks.map((_, i) => sumWeeks(perBrand.map((p) => p.reportDateWeekMetrics[i]!)));
+  const warehouseByWeek = mergeWarehouseByWeek(perBrand.map((p) => p.warehouseByWeek), weeks);
+  const missingCostArticlesSale = mergeMissingCostArticles(perBrand.map((p) => p.missingCostArticlesSale));
+  const missingCostArticlesReport = mergeMissingCostArticles(perBrand.map((p) => p.missingCostArticlesReport));
+
+  const report = buildOpiuReportFromWeekMetrics(weeks, saleDateWeekMetrics, missingCostArticlesSale, warehouseByWeek);
+  const reportByReportDate = buildOpiuReportFromWeekMetrics(weeks, reportDateWeekMetrics, missingCostArticlesReport, warehouseByWeek);
+
+  const reportRowIds = new Set<number>();
+  for (const p of perBrand) for (const id of p.reportRowIds) reportRowIds.add(id);
+
+  return {
     report,
     reportByReportDate,
     timestamp: new Date().toISOString(),
     meta: {
       salesRows: reportRowIds.size,
-      ordersCount: orders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
-      costsCount: costs.length,
-      adCampaigns: adStats.length,
+      ordersCount: perBrand.reduce((sum, p) => sum + p.ordersCount, 0),
+      costsCount: uniqueCostsCount(perBrand.map((p) => p.costs)),
+      adCampaigns: perBrand.reduce((sum, p) => sum + p.adCampaigns, 0),
     },
   };
 }
 
-/** ОПиУ по дате продажи за произвольный диапазон дат — один агрегат, без разбивки по неделям. */
-export async function loadOpiuSalePeriod(
-  dateFrom: string,
-  dateTo: string,
-  brandId?: string,
+/**
+ * ОПиУ "по дате продажи" — скользящее окно из `weeksCount` полных недель
+ * пн–вс, заканчивающееся неделей, в которую попадает `endDate`. Заменяет
+ * прежнюю привязку к календарному месяцу (weeksInMonth) — см. обсуждение
+ * в PR: месяц резал недели по своей границе и показывал пустые будущие
+ * недели, мешая увидеть непрерывную динамику на одном экране.
+ */
+export async function loadOpiuRollingWeeks(
+  endDate: string,
+  weeksCount: number,
+  refresh = false,
+  brandIds?: string[],
 ): Promise<{
   report: OpiuReport;
+  reportByReportDate: OpiuReport;
   timestamp: string;
   meta: OpiuLoadMeta;
 }> {
-  const brand = resolveOpiuBrand(brandId);
-  const period = periodFromRange(dateFrom, dateTo);
+  const weeks = weeksEndingAt(endDate, weeksCount);
+  return loadOpiuForWeeks(weeks, refresh, brandIds);
+}
+
+interface BrandSalePeriodData {
+  weekMetrics: ReturnType<typeof aggregateWeek>;
+  missingCostArticles: MissingCostArticle[];
+  salesRows: number;
+  ordersCount: number;
+  costs: ProductCostRow[];
+  adCampaigns: number;
+}
+
+async function loadBrandSalePeriodData(
+  brand: OpiuBrand,
+  period: MonthWeek,
+  dateFrom: string,
+  dateTo: string,
+): Promise<BrandSalePeriodData> {
   const [saleDateRowsRaw, orders, costs] = await Promise.all([
     fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
     fetchOrders(dateFrom, dateTo, false, brand),
@@ -344,26 +450,59 @@ export async function loadOpiuSalePeriod(
   const paidStorageByWeek = await fetchPaidStorageByWeek(brand, [period]);
   const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, [period]);
 
-  const report = buildOpiuReport(
-    [period],
-    rowsBySaleDate(saleDateRows),
+  const costLookup = buildCostLookup(costs);
+  const saleDateSales = rowsBySaleDate(saleDateRows);
+  const weekMetrics = aggregateWeek(
+    period,
+    saleDateSales,
     orders,
     adStats,
-    costs,
-    {},
-    loanTransferByWeek,
-    paidStorageByWeek,
-    adsSpendBySourceByWeek,
+    costLookup,
+    0,
+    loanTransferByWeek[period.weekStart] ?? 0,
+    paidStorageByWeek ? (paidStorageByWeek[period.weekStart] ?? 0) : null,
+    adsSpendBySourceByWeek ? (adsSpendBySourceByWeek[period.weekStart] ?? { balance: 0, bonus: 0 }) : null,
   );
+
+  return {
+    weekMetrics,
+    missingCostArticles: findMissingCostArticles(saleDateSales, costLookup),
+    salesRows: saleDateRows.length,
+    ordersCount: orders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
+    costs,
+    adCampaigns: adStats.length,
+  };
+}
+
+/** ОПиУ по дате продажи за произвольный диапазон дат — один агрегат, без разбивки по неделям. */
+export async function loadOpiuSalePeriod(
+  dateFrom: string,
+  dateTo: string,
+  brandIds?: string[],
+): Promise<{
+  report: OpiuReport;
+  timestamp: string;
+  meta: OpiuLoadMeta;
+}> {
+  const brands = resolveOpiuBrands(brandIds);
+  const period = periodFromRange(dateFrom, dateTo);
+
+  const perBrand = await Promise.all(
+    brands.map((brand) => loadBrandSalePeriodData(brand, period, dateFrom, dateTo)),
+  );
+
+  const weekMetrics = sumWeeks(perBrand.map((p) => p.weekMetrics));
+  const missingCostArticles = mergeMissingCostArticles(perBrand.map((p) => p.missingCostArticles));
+  const report = buildOpiuReportFromWeekMetrics([period], [weekMetrics], missingCostArticles, {});
 
   return {
     report,
     timestamp: new Date().toISOString(),
     meta: {
-      salesRows: saleDateRows.length,
-      ordersCount: orders.reduce((sum, order) => sum + (order.ordersCount ?? 1), 0),
-      costsCount: costs.length,
-      adCampaigns: adStats.length,
+      salesRows: perBrand.reduce((sum, p) => sum + p.salesRows, 0),
+      ordersCount: perBrand.reduce((sum, p) => sum + p.ordersCount, 0),
+      costsCount: uniqueCostsCount(perBrand.map((p) => p.costs)),
+      adCampaigns: perBrand.reduce((sum, p) => sum + p.adCampaigns, 0),
     },
   };
 }

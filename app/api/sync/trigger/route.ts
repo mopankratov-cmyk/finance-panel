@@ -3,6 +3,8 @@ import { asSyncPayload, syncPayloadOk } from "@/lib/sync/result";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveSyncBase } from "@/lib/sync/orchestrator";
+import { auditedMutation, redactSecrets } from "@/lib/audit/log";
+import { getServerSession } from "@/lib/auth/server";
 
 // Пользовательский триггер синков из UI: секрет подставляется на сервере,
 // клиент его не видит. Допустимые задания фиксированы.
@@ -14,6 +16,14 @@ const ALLOWED = ["orders", "sales", "stocks", "adverts", "advert-stats", "funnel
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
+  // Журнал пишется вокруг обработчика: одна запись на запрос, и только
+  // на успех — неудавшийся запрос данных не менял.
+  return auditedMutation(request, "mp_report.sync", await getServerSession(), () => handlePost(request), (body) => ({
+    after: redactSecrets(body),
+  }));
+}
+
+async function handlePost(request: NextRequest) {
   const gate = await requireApiSession(["director", "wb_manager", "ozon_manager"]);
   if (gate) return gate;
   const { searchParams } = new URL(request.url);

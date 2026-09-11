@@ -6,6 +6,10 @@ export interface AppUser {
   id: string;
   email: string;
   role: Role;
+  /** Все роли сотрудника. Пусто, пока миграция не применена. */
+  roles?: Role[];
+  /** Модули внешнего контура. Пусто — открыты все три. */
+  modules?: string[];
   cabinet_ids: string[];
   organization_id: string | null;
   is_active: boolean;
@@ -61,10 +65,24 @@ export async function authenticate(
     return { ok: true, user: data as AppUser };
   }
 
-  const primary = await db
+  /**
+   * Колонок бывает три поколения, и вход обязан работать на каждом.
+   *
+   * `roles` появляется миграцией, которую применяет владелец, а код
+   * выкладывается раньше; `organization_id` появился так же когда-то. Код
+   * 42703 у Postgres значит «нет такой колонки», и на него мы спускаемся на
+   * поколение ниже, а не роняем вход всей компании.
+   */
+  const withRoles = await db
     .from("app_users")
-    .select("id, email, role, cabinet_ids, organization_id, is_active, password_hash")
+    .select("id, email, role, roles, modules, cabinet_ids, organization_id, is_active, password_hash")
     .eq("email", email).maybeSingle();
+  const primary = withRoles.error?.code === "42703"
+    ? await db
+      .from("app_users")
+      .select("id, email, role, cabinet_ids, organization_id, is_active, password_hash")
+      .eq("email", email).maybeSingle()
+    : withRoles;
   let u = primary.data as Record<string, unknown> | null;
   if (primary.error?.code === "42703") {
     const legacy = await db
@@ -80,5 +98,5 @@ export async function authenticate(
   if (!u || !u.is_active) return { ok: false, error: "Неверный email или пароль" };
   const match = await bcrypt.compare(password, u.password_hash as string);
   if (!match) return { ok: false, error: "Неверный email или пароль" };
-  return { ok: true, user: { id: u.id, email: u.email, role: u.role, cabinet_ids: u.cabinet_ids ?? [], organization_id: u.organization_id ?? null, is_active: u.is_active } as AppUser };
+  return { ok: true, user: { id: u.id, email: u.email, role: u.role, roles: (u.roles as Role[] | null) ?? undefined, modules: (u.modules as string[] | null) ?? undefined, cabinet_ids: u.cabinet_ids ?? [], organization_id: u.organization_id ?? null, is_active: u.is_active } as AppUser };
 }

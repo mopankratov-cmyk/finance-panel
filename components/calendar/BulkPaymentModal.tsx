@@ -9,6 +9,7 @@ import { categoryOptions } from "@/lib/finance/categories";
 import { generateId } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import { PRIORITY_META, setPaymentPriorityComment, suggestPaymentPriority, type PaymentPriority } from "./paymentPriority";
+import { defaultCalendarAccountId } from "./defaultCalendarAccount";
 
 interface DraftRow {
   id: string;
@@ -30,7 +31,7 @@ const emptyRow = (accounts: Account[], flow: "expense" | "income"): DraftRow => 
   amount: "",
   name: "",
   category: flow === "income" ? "Продажи на МП" : "",
-  accountId: accounts[0]?.id ?? "",
+  accountId: defaultCalendarAccountId(accounts),
   counterparty: "",
   status: "planned",
   priority: flow === "income" ? suggestPaymentPriority("Продажи на МП") : "C",
@@ -109,7 +110,7 @@ export function BulkPaymentModal({
           amount: String(Math.abs(rawAmount)),
           name: source[columns.name]?.trim() || source[columns.category]?.trim() || "Платёж",
           category: source[columns.category]?.trim() || (flow === "income" ? "Продажи на МП" : "Прочее"),
-          accountId: accountByName.get(wallet) ?? accounts[0]?.id ?? "",
+          accountId: accountByName.get(wallet) ?? defaultCalendarAccountId(accounts),
           counterparty: source[columns.counterparty]?.trim() || "",
           status: normalized(source[columns.status] ?? "").includes("факт") ? "done" : "planned",
           priority: (["A", "B", "C"].includes((source[columns.priority] ?? "").trim().toUpperCase())
@@ -128,7 +129,7 @@ export function BulkPaymentModal({
   const downloadTemplate = () => {
     const sample = [
       ["Дата", "Тип", "Сумма", "Название", "Назначение платежа", "Кошелёк", "Контрагент", "Статус", "Приоритет"],
-      ["01.08.2026", initialFlow === "expense" ? "Расход" : "Поступление", "10000", initialFlow === "expense" ? "Прочее" : "Продажи на МП", "Пример назначения или комментария", accounts[0]?.name ?? "", "", "План", "B"],
+      ["01.08.2026", initialFlow === "expense" ? "Расход" : "Поступление", "10000", initialFlow === "expense" ? "Прочее" : "Продажи на МП", "Пример назначения или комментария", accounts.find((account) => account.id === defaultCalendarAccountId(accounts))?.name ?? "", "", "План", "B"],
     ];
     const csv = sample.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\r\n");
     const link = document.createElement("a");

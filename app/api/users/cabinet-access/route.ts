@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { audit } from "@/lib/audit/log";
 
 // Выдача уровней доступа сотрудникам по кабинетам.
 //
@@ -68,6 +69,9 @@ export async function POST(request: NextRequest) {
   if (!level) {
     const { error } = await db.from("cabinet_access").delete().eq("user_id", userId).eq("cabinet_id", cabinetId);
     if (error) return NextResponse.json({ ok: false, error: "Не удалось снять уровень" }, { status: 502 });
+    await audit(request, gate.session ?? null, {
+      action: "user.scope.assign", subject: userId, cabinetId, before: { level: "был" }, after: { level: null },
+    });
     return NextResponse.json({ ok: true, level: null });
   }
 
@@ -80,5 +84,8 @@ export async function POST(request: NextRequest) {
   }, { onConflict: "user_id,cabinet_id" });
   if (error) return NextResponse.json({ ok: false, error: "Не удалось выдать уровень" }, { status: 502 });
 
+  await audit(request, gate.session ?? null, {
+    action: "user.scope.assign", subject: userId, cabinetId, after: { level },
+  });
   return NextResponse.json({ ok: true, level });
 }

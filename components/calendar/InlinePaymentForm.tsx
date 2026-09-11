@@ -5,6 +5,7 @@ import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { editablePaymentComment, getPaymentPriority, PRIORITY_META, setPaymentPriorityComment, type PaymentPriority } from "./paymentPriority";
 import type { RecurrenceRule } from "./recurringPayments";
+import { defaultCalendarAccountId } from "./defaultCalendarAccount";
 
 interface InlinePaymentFormProps {
   flowType: "income" | "expense";
@@ -159,7 +160,7 @@ export function InlinePaymentForm({
         <select
           name="accountId"
           required
-          defaultValue={payment?.accountId ?? accounts[0]?.id}
+          defaultValue={payment?.accountId ?? defaultCalendarAccountId(accounts)}
           className={inputClass}
         >
           {accounts.map((acc) => (

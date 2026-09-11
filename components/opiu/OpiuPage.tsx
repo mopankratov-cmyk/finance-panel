@@ -1,16 +1,19 @@
 "use client";
 
 import { formatPct, formatRub, formatTime } from "@/lib/analytics/format";
-import { currentMonthParam } from "@/lib/opiu/weeks";
+import { currentWeekStartParam, mondayOfWeek, todayParam } from "@/lib/opiu/weeks";
 import type { MonthWeek } from "@/lib/opiu/weeks";
 import { DEFAULT_OPIU_BRAND_ID, OPIU_BRANDS } from "@/lib/opiu/constants";
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
 import { buildOpiuSheetPayload, exportOpiuToGoogleSheets, OPIU_SECTION_BEFORE } from "@/lib/opiu/googleSheetExport";
 import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
-import { FileSpreadsheet, Loader2, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type OpiuTab = "sale_date" | "report_date";
+
+/** Строки-подпункты "Прочие удержания" — сворачиваются/разворачиваются вместе, спрятаны по умолчанию. */
+const OTHER_DEDUCTIONS_CHILD_IDS = new Set(["jem", "withdraw_now", "transit", "acceptance"]);
 
 interface OpiuMeta {
   salesRows: number;
@@ -20,7 +23,6 @@ interface OpiuMeta {
 }
 
 interface OpiuResponse {
-  month: string;
   report: OpiuReport;
   reportByReportDate?: OpiuReport;
   timestamp: string;
@@ -67,6 +69,12 @@ function toLocalISODate(d: Date): string {
   ].join("-");
 }
 
+function shiftDate(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return toLocalISODate(d);
+}
+
 function defaultRangeFrom(): string {
   const d = new Date();
   d.setDate(d.getDate() - 6);
@@ -80,14 +88,6 @@ function defaultRangeTo(): string {
 function humanDate(value: string): string {
   const [year, month, day] = value.split("-");
   return [day, month, year].filter(Boolean).join(".");
-}
-
-function humanMonth(value: string): string {
-  const [year, month] = value.split("-").map(Number);
-  if (!year || !month) return value;
-  const label = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" })
-    .format(new Date(year, month - 1, 1));
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function OpiuTableSkeleton({ cols }: { cols: number }) {
@@ -110,9 +110,84 @@ function OpiuTableSkeleton({ cols }: { cols: number }) {
   );
 }
 
+function BrandMultiSelect({
+  selected,
+  onToggle,
+  label,
+}: {
+  selected: string[];
+  onToggle: (brandId: string) => void;
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-slate-500">Бренд</label>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex h-11 min-w-[180px] items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          className="absolute left-0 top-full z-20 mt-1 min-w-[220px] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {OPIU_BRANDS.map((b) => {
+            const checked = selected.includes(b.id);
+            return (
+              <button
+                key={b.id}
+                type="button"
+                role="option"
+                aria-selected={checked}
+                onClick={() => onToggle(b.id)}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    checked ? "border-violet-600 bg-violet-600" : "border-slate-300 bg-white"
+                  }`}
+                >
+                  {checked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+                </span>
+                {b.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OpiuPage() {
-  const [brand, setBrand] = useState(DEFAULT_OPIU_BRAND_ID);
-  const [month, setMonth] = useState(currentMonthParam);
+  const [brands, setBrands] = useState<string[]>([DEFAULT_OPIU_BRAND_ID]);
+  const [endDate, setEndDate] = useState(todayParam);
   const [tab, setTab] = useState<OpiuTab>("sale_date");
   const [data, setData] = useState<OpiuResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,6 +196,7 @@ export function OpiuPage() {
   const [savingWeeks, setSavingWeeks] = useState<Set<string>>(() => new Set());
   const [resyncingWeeks, setResyncingWeeks] = useState<Set<string>>(() => new Set());
   const [resyncError, setResyncError] = useState<string | null>(null);
+  const [otherDeductionsExpanded, setOtherDeductionsExpanded] = useState(false);
 
   const [rangeFrom, setRangeFrom] = useState(defaultRangeFrom);
   const [rangeTo, setRangeTo] = useState(defaultRangeTo);
@@ -136,13 +212,14 @@ export function OpiuPage() {
     refresh = false,
     signal?: AbortSignal,
   ) => {
-    const params = new URLSearchParams({ month: m, brand });
+    const params = new URLSearchParams({ endDate: m });
+    for (const b of brands) params.append("brand", b);
     if (refresh) params.set("refresh", "1");
     const res = await fetch(`/api/opiu?${params}`, { signal });
     const json = (await res.json()) as OpiuResponse & { error?: string };
     if (!res.ok) throw new Error(json.error ?? "Ошибка загрузки");
     return json;
-  }, [brand]);
+  }, [brands]);
 
   const fetchReportRef = useRef(fetchReport);
   fetchReportRef.current = fetchReport;
@@ -190,10 +267,10 @@ export function OpiuPage() {
 
   useEffect(() => {
     if (tab !== "report_date") return;
-    coordinator.setMonth(month);
+    coordinator.setMonth(endDate);
     setData(null);
-    void coordinator.loadReport(month, false);
-  }, [coordinator, month, tab, brand]);
+    void coordinator.loadReport(endDate, false);
+  }, [coordinator, endDate, tab, brands]);
 
   useEffect(() => () => coordinator.dispose(), [coordinator]);
 
@@ -204,12 +281,13 @@ export function OpiuPage() {
     to: string,
     signal?: AbortSignal,
   ): Promise<OpiuRangeResponse> => {
-    const params = new URLSearchParams({ dateFrom: from, dateTo: to, brand });
+    const params = new URLSearchParams({ dateFrom: from, dateTo: to });
+    for (const b of brands) params.append("brand", b);
     const res = await fetch(`/api/opiu?${params}`, { signal });
     const json = (await res.json()) as OpiuRangeResponse & { error?: string };
     if (!res.ok) throw new Error(json.error ?? "Ошибка загрузки");
     return json;
-  }, [brand]);
+  }, [brands]);
 
   useEffect(() => {
     if (tab !== "sale_date" || !isValidRange) return;
@@ -226,18 +304,31 @@ export function OpiuPage() {
     return () => controller.abort();
   }, [tab, rangeFrom, rangeTo, isValidRange, fetchRange]);
 
-  const handleMonthChange = (nextMonth: string) => {
+  const handleEndDateChange = (nextEndDate: string) => {
     setError(null);
     setRefreshing(false);
     setLoading(true);
-    setMonth(nextMonth);
+    setEndDate(nextEndDate);
   };
 
-  const handleBrandChange = (nextBrand: string) => {
+  const handleShiftWeeks = (weeks: number) => {
+    handleEndDateChange(shiftDate(endDate, weeks * 7));
+  };
+
+  // Последняя (правая) неделя окна уже текущая — двигаться дальше в будущее некуда, там нет данных.
+  const isAtLatestWeek = mondayOfWeek(endDate) >= currentWeekStartParam();
+
+  const handleBrandToggle = (brandId: string) => {
+    setBrands((current) => {
+      const next = current.includes(brandId)
+        ? current.filter((b) => b !== brandId)
+        : [...current, brandId];
+      // всегда должен быть выбран хотя бы один бренд
+      return next.length > 0 ? next : current;
+    });
     setError(null);
     setRangeError(null);
     setGoogleResult(null);
-    setBrand(nextBrand);
   };
 
   const handleRefresh = () => {
@@ -250,21 +341,33 @@ export function OpiuPage() {
         .finally(() => setRangeRefreshing(false));
       return;
     }
-    void coordinator.loadReport(month, true);
+    void coordinator.loadReport(endDate, true);
   };
 
   const handleResyncWeek = async (week: MonthWeek) => {
     setResyncError(null);
     setResyncingWeeks((current) => new Set(current).add(week.weekStart));
     try {
-      const res = await fetch("/api/opiu/report-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dateFrom: week.rangeFrom, dateTo: week.rangeTo, brand }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Ошибка пересинка");
-      await coordinator.loadReport(month, true);
+      // Пересинк идёт по WB-кабинету, а не по бренду — при нескольких выбранных
+      // брендах на одном кабинете (Norvia/Heaton) достаточно одного запроса.
+      const cabinetBrandIds = new Map<string, string>();
+      for (const id of brands) {
+        const b = OPIU_BRANDS.find((x) => x.id === id);
+        if (b && !cabinetBrandIds.has(b.cabinetId)) cabinetBrandIds.set(b.cabinetId, b.id);
+      }
+      await Promise.all(
+        [...cabinetBrandIds.values()].map((brand) =>
+          fetch("/api/opiu/report-sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dateFrom: week.rangeFrom, dateTo: week.rangeTo, brand }),
+          }).then(async (res) => {
+            const json = (await res.json()) as { error?: string };
+            if (!res.ok) throw new Error(json.error ?? "Ошибка пересинка");
+          }),
+        ),
+      );
+      await coordinator.loadReport(endDate, true);
     } catch (e) {
       setResyncError(e instanceof Error ? e.message : "Ошибка пересинка");
     } finally {
@@ -276,8 +379,9 @@ export function OpiuPage() {
     }
   };
 
-  const currentBrandLabel = OPIU_BRANDS.find((b) => b.id === brand)?.label ?? brand;
-  const report = tab === "report_date" ? data?.reportByReportDate : rangeData?.report;
+  const selectedBrandLabels = OPIU_BRANDS.filter((b) => brands.includes(b.id)).map((b) => b.label);
+  const currentBrandLabel = selectedBrandLabels.join(", ") || "—";
+  const report = tab === "report_date" ? data?.report : rangeData?.report;
   const isRangeTab = tab === "sale_date";
   const weekCount = report?.weeks.length ?? 4;
   const colCount = isRangeTab ? 2 : weekCount + 2;
@@ -288,13 +392,14 @@ export function OpiuPage() {
   const activeMeta = isRangeTab ? rangeData?.meta : data?.meta;
   const periodLabel = isRangeTab
     ? `${humanDate(rangeFrom)}–${humanDate(rangeTo)}`
-    : humanMonth(month);
+    : report?.weeks.map((week) => week.label).join(", ") || humanDate(endDate);
   const totalFor = (id: string) => {
     const values = report?.rows.find((row) => row.id === id)?.values;
     return values?.[values.length - 1] ?? null;
   };
   const displayRows: Array<OpiuTableRow | { id: string; label: string; kind: "section" }> = [];
   for (const row of report?.rows ?? []) {
+    if (!otherDeductionsExpanded && OTHER_DEDUCTIONS_CHILD_IDS.has(row.id)) continue;
     const section = OPIU_SECTION_BEFORE[row.id];
     if (section) displayRows.push({ id: `section:${row.id}`, label: section, kind: "section" });
     displayRows.push(row);
@@ -332,18 +437,7 @@ export function OpiuPage() {
       </div>
 
       <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:flex-wrap lg:items-end">
-        <div className="flex min-w-0 flex-col gap-1.5 sm:min-w-48">
-          <label className="text-sm font-medium text-slate-500">Бренд</label>
-          <select
-            value={brand}
-            onChange={(e) => handleBrandChange(e.target.value)}
-            className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-          >
-            {OPIU_BRANDS.map((b) => (
-              <option key={b.id} value={b.id}>{b.label}</option>
-            ))}
-          </select>
-        </div>
+        <BrandMultiSelect selected={brands} onToggle={handleBrandToggle} label={currentBrandLabel} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:flex-none">
           <label className="text-sm font-medium text-slate-500">Период</label>
@@ -367,9 +461,10 @@ export function OpiuPage() {
             </div>
           ) : (
             <input
-              type="month"
-              value={month}
-              onChange={(e) => handleMonthChange(e.target.value)}
+              type="date"
+              value={endDate}
+              max={todayParam()}
+              onChange={(e) => handleEndDateChange(e.target.value)}
               className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
             />
           )}
@@ -475,8 +570,8 @@ export function OpiuPage() {
       <div className="scroll-x flex gap-1 border-b border-slate-200">
         {(
           [
-            { id: "sale_date", label: "Свод по произвольной дате" },
             { id: "report_date", label: "Свод по дате продажи" },
+            { id: "sale_date", label: "Свод по произвольной дате" },
           ] as { id: OpiuTab; label: string }[]
         ).map((t) => (
           <button
@@ -494,196 +589,244 @@ export function OpiuPage() {
         ))}
       </div>
 
-      {activeLoading ? (
-        <OpiuTableSkeleton cols={colCount} />
-      ) : tab === "report_date" && !report ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-800">
-          Данные по дате продажи пока недоступны: источник не синхронизирован
-        </div>
-      ) : report ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table
-            className={`w-full border-collapse text-[14px] ${
-              isRangeTab ? "table-fixed" : "min-w-[720px]"
-            }`}
+      <div className={isRangeTab ? undefined : "flex items-start gap-2"}>
+        {!isRangeTab && (
+          <button
+            type="button"
+            onClick={() => handleShiftWeeks(-1)}
+            title="Неделя назад"
+            aria-label="Неделя назад"
+            className="tap-hit sticky top-[50vh] -translate-y-1/2 shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-500 shadow-sm hover:bg-slate-50 hover:text-violet-600"
           >
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
-                <th
-                  className={`sticky left-0 z-10 bg-slate-50 px-4 py-3.5 text-sm font-medium ${
-                    isRangeTab ? "w-1/2" : "min-w-[220px]"
-                  }`}
-                >
-                  Показатель
-                </th>
-                {isRangeTab ? (
-                  <th className="w-1/2 px-4 py-3.5 text-center text-sm font-medium">
-                    {report.weeks[0]?.label ?? "Период"}
-                  </th>
-                ) : (
-                  <>
-                    {report.weeks.map((w) => (
-                      <th
-                        key={w.weekStart}
-                        className="w-[120px] px-3 py-3.5 text-center text-sm font-medium"
-                      >
-                        <div className="flex items-center justify-center gap-1">
-                          <span>{w.label}</span>
-                          <button
-                            type="button"
-                            onClick={() => void handleResyncWeek(w)}
-                            disabled={resyncingWeeks.has(w.weekStart)}
-                            title="Пересинкать финотчёт WB за эту неделю"
-                            aria-label="Пересинкать неделю"
-                            className="tap-hit shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50"
-                          >
-                            {resyncingWeeks.has(w.weekStart) ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </th>
-                    ))}
-                    <th className="w-[120px] px-4 py-3.5 text-center text-sm font-semibold text-slate-900">
-                      Итого
-                    </th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {(() => {
-                let stripeIndex = 0;
-                return displayRows.map((row) => {
-                  if (row.kind === "section") {
-                    return (
-                      <tr key={row.id} className="border-y border-amber-300 bg-amber-300 text-slate-800">
-                        <td colSpan={colCount} className="sticky left-0 z-10 bg-amber-300 px-4 py-2 text-xs font-bold uppercase tracking-wide">
-                          {row.label}
-                        </td>
-                      </tr>
-                    );
-                  }
-                  if (row.kind === "separator") {
-                    return (
-                      <tr key={row.id}>
-                        <td
-                          colSpan={colCount}
-                          className="h-2 border-y border-slate-100 bg-slate-50 px-4"
-                        />
-                      </tr>
-                    );
-                  }
-
-                  const isPercent = row.kind === "percent";
-                  const isTotal = row.id === "marginal" || row.id === "gross";
-                  const rowBg = isTotal
-                    ? "bg-violet-50"
-                    : stripeIndex % 2 === 1 ? "bg-slate-50" : "bg-white";
-                  stripeIndex += 1;
-                  const rowPad = isPercent ? "py-1.5" : "py-3";
-                  const labelClass = isPercent
-                    ? "text-xs text-slate-400"
-                    : isTotal
-                      ? "text-[14px] font-semibold text-slate-900"
-                      : "text-[14px] text-slate-700";
-                  const valueSizeClass = isPercent
-                    ? "text-xs"
-                    : isTotal
-                      ? "text-[14px] font-semibold"
-                      : "text-[14px] font-medium";
-
-                  if (isRangeTab) {
-                    const val = row.values[row.values.length - 1] ?? null;
-                    return (
-                      <tr
-                        key={row.id}
-                        className={`border-b border-slate-100 transition-colors hover:bg-violet-50 ${rowBg} ${
-                          isTotal ? "border-t-2 border-t-violet-200" : ""
-                        }`}
-                      >
-                        <td className={`sticky left-0 z-10 px-4 ${rowPad} ${rowBg} ${labelClass}`}>
-                          {row.label}
-                        </td>
-                        <td
-                          className={`px-4 ${rowPad} text-center tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
-                        >
-                          {formatCell(val, row)}
-                        </td>
-                      </tr>
-                    );
-                  }
-
-                  return (
-                    <tr
-                      key={row.id}
-                      className={`border-b border-slate-100 transition-colors hover:bg-violet-50 ${rowBg} ${
-                        isTotal ? "border-t-2 border-t-violet-200" : ""
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        )}
+        <div className="min-w-0 flex-1">
+          {activeLoading ? (
+            <OpiuTableSkeleton cols={colCount} />
+          ) : tab === "report_date" && !report ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-800">
+              Данные по дате продажи пока недоступны: источник не синхронизирован
+            </div>
+          ) : report ? (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table
+                className={`w-full border-collapse text-[14px] ${
+                  isRangeTab ? "table-fixed" : "min-w-[720px]"
+                }`}
+              >
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+                    <th
+                      className={`sticky left-0 z-10 bg-slate-50 px-4 py-3.5 text-sm font-medium ${
+                        isRangeTab ? "w-1/2" : "min-w-[220px]"
                       }`}
                     >
-                      <td className={`sticky left-0 z-10 px-4 ${rowPad} ${rowBg} ${labelClass}`}>
-                        {row.label}
-                      </td>
-                      {row.values.slice(0, -1).map((val, i) => {
-                        const week = report.weeks[i];
-                        const isEditable = row.editable && week;
-
-                        if (isEditable && week) {
-                          return (
-                            <td key={week.weekStart} className="px-2 py-1.5 text-center">
-                              <input
-                                key={`${week.weekStart}-${val}`}
-                                type="text"
-                                defaultValue={val != null ? String(Math.round(val)) : "0"}
-                                disabled={savingWeeks.has(`${month}:${week.weekStart}`)}
-                                onBlur={(e) => {
-                                  const next = e.target.value;
-                                  const prev = val != null ? String(Math.round(val)) : "0";
-                                  if (next !== prev) {
-                                    void coordinator.saveWarehouse({
-                                      month,
-                                      weekStart: week.weekStart,
-                                      amount: Number(next.replace(/\s/g, "").replace(",", ".")) || 0,
-                                    });
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    (e.target as HTMLInputElement).blur();
-                                  }
-                                }}
-                                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-center text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                              />
-                            </td>
-                          );
-                        }
-
-                        return (
-                          <td
-                            key={week?.weekStart ?? i}
-                            className={`px-3 ${rowPad} text-center tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
+                      Показатель
+                    </th>
+                    {isRangeTab ? (
+                      <th className="w-1/2 px-4 py-3.5 text-center text-sm font-medium">
+                        {report.weeks[0]?.label ?? "Период"}
+                      </th>
+                    ) : (
+                      <>
+                        {report.weeks.map((w) => (
+                          <th
+                            key={w.weekStart}
+                            className="w-[120px] px-3 py-3.5 text-center text-sm font-medium"
                           >
-                            {formatCell(val, row)}
-                          </td>
+                            <div className="flex items-center justify-center gap-1">
+                              <span>{w.label}</span>
+                              <button
+                                type="button"
+                                onClick={() => void handleResyncWeek(w)}
+                                disabled={resyncingWeeks.has(w.weekStart)}
+                                title="Пересинкать финотчёт WB за эту неделю"
+                                aria-label="Пересинкать неделю"
+                                className="tap-hit shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50"
+                              >
+                                {resyncingWeeks.has(w.weekStart) ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </th>
+                        ))}
+                        <th className="w-[120px] px-4 py-3.5 text-center text-sm font-semibold text-slate-900">
+                          Итого
+                        </th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    let stripeIndex = 0;
+                    return displayRows.map((row) => {
+                      if (row.kind === "section") {
+                        return (
+                          <tr key={row.id} className="border-y border-amber-300 bg-amber-300 text-slate-800">
+                            <td colSpan={colCount} className="sticky left-0 z-10 bg-amber-300 px-4 py-2 text-xs font-bold uppercase tracking-wide">
+                              {row.label}
+                            </td>
+                          </tr>
                         );
-                      })}
-                      <td
-                        className={`px-4 ${rowPad} text-center tabular-nums ${
-                          isTotal ? "text-[14px] font-bold" : isPercent ? "text-xs font-medium" : "text-[14px] font-semibold"
-                        } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
-                      >
-                        {formatCell(row.values[row.values.length - 1] ?? null, row)}
-                      </td>
-                    </tr>
-                  );
-                });
-              })()}
-            </tbody>
-          </table>
+                      }
+                      if (row.kind === "separator") {
+                        return (
+                          <tr key={row.id}>
+                            <td
+                              colSpan={colCount}
+                              className="h-2 border-y border-slate-100 bg-slate-50 px-4"
+                            />
+                          </tr>
+                        );
+                      }
+    
+                      const isPercent = row.kind === "percent";
+                      const isTotal = row.id === "marginal" || row.id === "gross";
+                      const isOtherRow = row.id === "other";
+                      const isOtherChildRow = OTHER_DEDUCTIONS_CHILD_IDS.has(row.id);
+                      const rowBg = isTotal
+                        ? "bg-violet-50"
+                        : stripeIndex % 2 === 1 ? "bg-slate-50" : "bg-white";
+                      stripeIndex += 1;
+                      const rowPad = isPercent ? "py-1.5" : "py-3";
+                      const labelClass = isPercent
+                        ? "text-xs text-slate-400"
+                        : isTotal
+                          ? "text-[14px] font-semibold text-slate-900"
+                          : "text-[14px] text-slate-700";
+                      const valueSizeClass = isPercent
+                        ? "text-xs"
+                        : isTotal
+                          ? "text-[14px] font-semibold"
+                          : "text-[14px] font-medium";
+
+                      const labelContent = isOtherRow ? (
+                        <button
+                          type="button"
+                          onClick={() => setOtherDeductionsExpanded((v) => !v)}
+                          className="flex w-full items-center gap-1 text-left"
+                        >
+                          <ChevronRight
+                            className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${
+                              otherDeductionsExpanded ? "rotate-90" : ""
+                            }`}
+                          />
+                          {row.label}
+                        </button>
+                      ) : isOtherChildRow ? (
+                        <span className="pl-[18px]">{row.label}</span>
+                      ) : (
+                        row.label
+                      );
+
+                      if (isRangeTab) {
+                        const val = row.values[row.values.length - 1] ?? null;
+                        return (
+                          <tr
+                            key={row.id}
+                            className={`border-b border-slate-100 transition-colors hover:bg-violet-50 ${rowBg} ${
+                              isTotal ? "border-t-2 border-t-violet-200" : ""
+                            }`}
+                          >
+                            <td className={`sticky left-0 z-10 px-4 ${rowPad} ${rowBg} ${labelClass}`}>
+                              {labelContent}
+                            </td>
+                            <td
+                              className={`px-4 ${rowPad} text-center tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
+                            >
+                              {formatCell(val, row)}
+                            </td>
+                          </tr>
+                        );
+                      }
+    
+                      return (
+                        <tr
+                          key={row.id}
+                          className={`border-b border-slate-100 transition-colors hover:bg-violet-50 ${rowBg} ${
+                            isTotal ? "border-t-2 border-t-violet-200" : ""
+                          }`}
+                        >
+                          <td className={`sticky left-0 z-10 px-4 ${rowPad} ${rowBg} ${labelClass}`}>
+                            {labelContent}
+                          </td>
+                          {row.values.slice(0, -1).map((val, i) => {
+                            const week = report.weeks[i];
+                            const isEditable = row.editable && week;
+    
+                            if (isEditable && week) {
+                              return (
+                                <td key={week.weekStart} className="px-2 py-1.5 text-center">
+                                  <input
+                                    key={`${week.weekStart}-${val}`}
+                                    type="text"
+                                    defaultValue={val != null ? String(Math.round(val)) : "0"}
+                                    disabled={savingWeeks.has(`${endDate}:${week.weekStart}`)}
+                                    onBlur={(e) => {
+                                      const next = e.target.value;
+                                      const prev = val != null ? String(Math.round(val)) : "0";
+                                      if (next !== prev) {
+                                        void coordinator.saveWarehouse({
+                                          month: endDate,
+                                          weekStart: week.weekStart,
+                                          amount: Number(next.replace(/\s/g, "").replace(",", ".")) || 0,
+                                        });
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        (e.target as HTMLInputElement).blur();
+                                      }
+                                    }}
+                                    className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-center text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                  />
+                                </td>
+                              );
+                            }
+    
+                            return (
+                              <td
+                                key={week?.weekStart ?? i}
+                                className={`px-3 ${rowPad} text-center tabular-nums ${valueSizeClass} ${valueClass(val, row)}`}
+                              >
+                                {formatCell(val, row)}
+                              </td>
+                            );
+                          })}
+                          <td
+                            className={`px-4 ${rowPad} text-center tabular-nums ${
+                              isTotal ? "text-[14px] font-bold" : isPercent ? "text-xs font-medium" : "text-[14px] font-semibold"
+                            } ${valueClass(row.values[row.values.length - 1] ?? null, row)}`}
+                          >
+                            {formatCell(row.values[row.values.length - 1] ?? null, row)}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+        {!isRangeTab && (
+          <button
+            type="button"
+            onClick={() => handleShiftWeeks(1)}
+            disabled={isAtLatestWeek}
+            title="Неделя вперёд"
+            aria-label="Неделя вперёд"
+            className="tap-hit sticky top-[50vh] -translate-y-1/2 shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-500 shadow-sm hover:bg-slate-50 hover:text-violet-600 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-slate-500"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -5,12 +5,16 @@ import { Loader2, LineChart } from "lucide-react";
 import { useActiveCabinet } from "@/lib/useActiveCabinet";
 import { CabinetSwitcher } from "@/components/CabinetSwitcher";
 import { FinanceTabs } from "@/components/FinanceTabs";
-import { currentMonthParam } from "@/lib/opiu/weeks";
 
 type WB = { revenue_before_spp: number; returns?: number; coinvest: number | null; revenue: number; commission: number; logistics: number | null; storage: number | null; penalty: number | null; notComputed?: string[]; acquiring: number; ad: number; other: number; cogs: number; profit: number; margin: number; error?: string };
 type OZ = { revenue: number; commission: number; delivery: number; services: number; cogs: number; profit: number; margin: number; error?: string; noCabinet?: boolean };
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
+
+function currentMonthParam(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
 
 function Line({ label, v, kind }: { label: string; v: number | null | undefined; kind?: "minus" | "sum" | "head" }) {
   if (v == null) return null;

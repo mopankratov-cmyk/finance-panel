@@ -9,13 +9,13 @@ const source = readFileSync(
 
 test("Opiu page delegates request ordering to the behavioral coordinator", () => {
   assert.match(source, /createOpiuRequestCoordinator/);
-  assert.match(source, /coordinator\.loadReport\(month, false\)/);
-  assert.match(source, /coordinator\.loadReport\(month, true\)/);
+  assert.match(source, /coordinator\.loadReport\(endDate, false\)/);
+  assert.match(source, /coordinator\.loadReport\(endDate, true\)/);
 });
 
 test("auto-load and refresh share the guarded report loader", () => {
-  assert.match(source, /coordinator\.loadReport\(month, false\)/);
-  assert.match(source, /coordinator\.loadReport\(month, true\)/);
+  assert.match(source, /coordinator\.loadReport\(endDate, false\)/);
+  assert.match(source, /coordinator\.loadReport\(endDate, true\)/);
   assert.doesNotMatch(source, /const handleRefresh = async \(\) =>/);
 });
 
@@ -25,9 +25,9 @@ test("warehouse POST wiring captures its payload and has no abort signal", () =>
   assert.doesNotMatch(source, /warehouseAbort/);
 });
 
-test("warehouse saving state is scoped by report month and boundary week", () => {
+test("warehouse saving state is scoped by report anchor date and boundary week", () => {
   assert.match(source, /const key = `\$\{payload\.month\}:\$\{payload\.weekStart\}`/);
-  assert.match(source, /savingWeeks\.has\(`\$\{month\}:\$\{week\.weekStart\}`\)/);
+  assert.match(source, /savingWeeks\.has\(`\$\{endDate\}:\$\{week\.weekStart\}`\)/);
 });
 
 test("report activity wiring always establishes mutually exclusive flags", () => {

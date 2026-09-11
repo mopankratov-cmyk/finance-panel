@@ -82,6 +82,9 @@ export type Permission =
   | "users.roles.assign"
 
   // ── Прочее ──
+  /** Задавать пороги, за которыми нужна чужая подпись. У компании их ставит
+   *  руководство, у внешнего клиента — он сам, в своём юрлице. */
+  | "limits.manage"
   | "audit.view"
   | "settings.manage"
   /** Показать секрет маркетплейса в открытом виде. Не выдано никому: ТЗ §2.9
@@ -195,7 +198,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "warehouse.view", "warehouse.task.execute", "warehouse.request.create", "warehouse.approve", "warehouse.stock.adjust",
     "hr.view", "hr.edit", "payroll.view", "payroll.edit", "payroll.approve",
     "users.manage", "users.roles.assign",
-    "audit.view", "settings.manage",
+    "limits.manage", "audit.view", "settings.manage",
   ],
 
   // §5. Полный финансовый контур и сотрудники — но не товарный контур.
@@ -205,10 +208,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "finance.view", "finance.edit", "finance.approve", "finance.period.close",
     ...MP_REPORTS_FULL, ...ANALYTICS,
     "cost.view", "cost.edit",
-    "warehouse.view",
+    // Склад — на просмотр по всем юрлицам, плюс подпись под внутренними
+    // списаниями, расхождениями и стоимостными корректировками. Приёмку и
+    // комплектацию за складских он не делает: этих прав здесь нет.
+    "warehouse.view", "warehouse.approve", "warehouse.stock.adjust",
     "hr.view", "hr.edit", "payroll.view", "payroll.edit", "payroll.approve",
     "users.manage", "users.roles.assign",
-    "audit.view",
+    "limits.manage", "audit.view",
   ],
 
   // §6. Ежедневная финансовая работа. Утверждение и закрытие периода —
@@ -217,7 +223,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "finance.view", "finance.edit",
     ...MP_REPORTS_FULL, ...ANALYTICS,
     "cost.view", "cost.edit",
-    "warehouse.view",
+    // Корректировку он готовит, подписывает её финдиректор — поэтому заявка
+    // есть, а подтверждения нет.
+    "warehouse.view", "warehouse.request.create",
   ],
 
   // §7. Кадры. Зарплату готовит, но не утверждает; системные права не
@@ -227,14 +235,16 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "payroll.view", "payroll.edit",
   ],
 
-  // §8. Менеджер WB. Себестоимость видит, но не правит (§13).
+  // §8. Менеджер WB. Себестоимость видит, но не правит (§13). Склад — на
+  // просмотр: он открыт менеджеру и сегодня, ТЗ его не запрещает, а
+  // планировать потребность в поставках, не видя остатков, нельзя.
   wb_manager: [
-    ...ANALYTICS, "cost.view", ...MERCHANDISING,
+    ...ANALYTICS, "cost.view", "warehouse.view", ...MERCHANDISING,
   ],
 
   // §9. Менеджер Ozon — те же права в своём контуре.
   ozon_manager: [
-    ...ANALYTICS, "cost.view", ...MERCHANDISING,
+    ...ANALYTICS, "cost.view", "warehouse.view", ...MERCHANDISING,
   ],
 
   // §10. Закупки, поставщики, себестоимость и приёмка на складе.
@@ -243,7 +253,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     ...ANALYTICS,
     "cost.view", "cost.edit",
     "purchase.manage", "supply.manage",
-    "warehouse.view", "warehouse.request.create", "warehouse.approve",
+    // Списание закупщику разрешено, но не любое: пороги по документу и по
+    // месяцу считает lib/auth/approvals.ts. Право отвечает «вправе ли», лимит
+    // — «на сколько», и это разные вопросы.
+    "warehouse.view", "warehouse.request.create", "warehouse.approve", "warehouse.stock.adjust",
   ],
 
   // §11. Только своя часть склада. Себестоимости, цен, финансов и аналитики
@@ -260,7 +273,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "cost.view", "cost.edit",
     ...MERCHANDISING,
     "warehouse.view", "warehouse.request.create",
-    "users.manage",
+    "users.manage", "limits.manage",
   ],
 
   // Сотрудник клиента. Тот же контур, но команду не набирает.
@@ -269,6 +282,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "cost.view", "cost.edit",
     ...MERCHANDISING,
     "warehouse.view", "warehouse.request.create",
+    "limits.manage",
   ],
 };
 
@@ -305,6 +319,53 @@ export function roleAllowsMarketplace(
 ): boolean {
   if (!isRole(role)) return false;
   return ROLE_MARKETPLACES[role].includes(marketplace);
+}
+
+/**
+ * Сотрудник может держать несколько ролей сразу.
+ *
+ * Решение владельца: человек, ведущий оба маркетплейса, получает обе роли
+ * менеджера, а не третью «менеджер МП». Так набор прав остаётся суммой
+ * понятных ролей, и не приходится заводить роль на каждое сочетание —
+ * иначе их станет больше, чем людей.
+ *
+ * Права складываются: достаточно, чтобы действие разрешала ХОТЯ БЫ одна
+ * роль. Запрет из другой роли не отнимает уже выданного — иначе вторая
+ * роль отбирала бы доступ вместо того, чтобы добавлять, и выдача роли
+ * оборачивалась бы поражением в правах.
+ */
+export function rolesCan(roles: readonly (Role | string)[] | null | undefined, permission: Permission): boolean {
+  return (roles ?? []).some((role) => roleCan(role, permission));
+}
+
+/** Контур маркетплейса — тоже сумма: две роли менеджера дают оба. */
+export function rolesAllowMarketplace(
+  roles: readonly (Role | string)[] | null | undefined,
+  marketplace: Marketplace,
+): boolean {
+  return (roles ?? []).some((role) => roleAllowsMarketplace(role, marketplace));
+}
+
+/** Первая известная роль: ею подписывают журнал и по ней выбирают стартовый экран. */
+export function primaryRole(roles: readonly (Role | string)[] | null | undefined): Role | null {
+  return (roles ?? []).find((role): role is Role => isRole(role)) ?? null;
+}
+
+/**
+ * Роли работают в выданном списке кабинетов, только если ВСЕ они такие.
+ *
+ * Достаточно одной роли без ограничения по кабинетам — и ограничивать
+ * нечего: человек и так видит всё. Проверять «хотя бы одна ограничена»
+ * значило бы урезать доступ, который сам же и выдан другой ролью.
+ */
+export function rolesAreCabinetScoped(roles: readonly (Role | string)[] | null | undefined): boolean {
+  const list = roles ?? [];
+  return list.length > 0 && list.every((role) => isCabinetScopedRole(role));
+}
+
+/** Внешний контур не смешивается с внутренним: одна внешняя роль — весь набор внешний. */
+export function rolesAreExternal(roles: readonly (Role | string)[] | null | undefined): boolean {
+  return (roles ?? []).some((role) => isExternalRole(role));
 }
 
 /** Роли, которым разрешено действие — для тестов и экрана прав. */

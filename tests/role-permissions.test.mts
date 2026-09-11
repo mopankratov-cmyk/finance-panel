@@ -181,10 +181,16 @@ test("настройки системы остаются за руководит
   assert.deepEqual(rolesWith("settings.manage"), ["director"]);
 });
 
-test("изменение учётного остатка вручную — только у руководителя", () => {
-  // Списание и правку инвентаризации ТЗ не отдаёт ни фулфилменту, ни
-  // внешнему менеджеру, ни закупщику.
-  assert.deepEqual(rolesWith("warehouse.stock.adjust"), ["director"]);
+test("учётный остаток правят трое, и ни фулфилмент, ни внешний менеджер", () => {
+  // Решение владельца от 09.09.2026: закупщик списывает сам в пределах
+  // порога (10 000 ₽ на документ и 30 000 ₽ за месяц — lib/auth/approvals.ts),
+  // финдиректор подписывает внутренние корректировки компании. Право говорит
+  // «вправе ли», лимит — «на сколько»; без права закупщик не списал бы вовсе,
+  // без лимита списал бы что угодно.
+  assert.deepEqual(rolesWith("warehouse.stock.adjust").sort(), ["buyer", "director", "fin_director"]);
+  for (const role of ["warehouse", "seller", "seller_owner", "financier", "wb_manager", "hr"] as Role[]) {
+    assert.equal(roleCan(role, "warehouse.stock.adjust"), false, `${role} правит остаток руками`);
+  }
 });
 
 test("неизвестная роль не получает ничего", () => {

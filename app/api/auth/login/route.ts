@@ -2,20 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticate } from "@/lib/auth/users";
 import { signSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
 import { roleHome } from "@/lib/auth/roles";
+import { audit } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   const { email, password } = (await request.json().catch(() => ({}))) as { email?: string; password?: string };
   const res = await authenticate(email || "", password || "");
-  if (!res.ok) return NextResponse.json({ error: res.error }, { status: 401 });
+  if (!res.ok) {
+    // Неудачные попытки журналируются тоже: по одному отказу видно опечатку,
+    // по сотне за минуту — подбор пароля. Пароль в журнал не попадает никогда,
+    // только почта, с которой пробовали войти.
+    await audit(request, null, { action: "auth.login.failed", subject: (email || "").trim().toLowerCase() || null });
+    return NextResponse.json({ error: res.error }, { status: 401 });
+  }
 
   const token = await signSession({
-    uid: res.user.id, email: res.user.email, role: res.user.role, cabinet_ids: res.user.cabinet_ids,
+    uid: res.user.id, email: res.user.email, role: res.user.role, roles: res.user.roles, modules: res.user.modules, cabinet_ids: res.user.cabinet_ids,
     organization_id: res.user.organization_id,
   });
   // Куда вести после входа: селлеру с подключённым кабинетом — в аналитику,
   // а не на экран подключения, который ему уже не нужен.
+  await audit(request, { uid: res.user.id, email: res.user.email, role: res.user.role, roles: res.user.roles }, {
+    action: "auth.login",
+    organizationId: res.user.organization_id,
+  });
   const out = NextResponse.json({ ok: true, role: res.user.role, home: roleHome(res.user) });
   out.cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
   return out;

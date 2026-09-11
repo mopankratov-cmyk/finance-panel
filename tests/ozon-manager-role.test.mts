@@ -61,7 +61,10 @@ test("скоуп кабинетов применяется к новой рол�
 
 test("на /api/* новой роли открыты Ozon (только чтение) и склад, остальное закрыто", () => {
   const proxy = readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
-  assert.match(proxy, /session\.role === "ozon_manager" && !isOzonManagerApiAllowed/);
+  // Узкие списки API писались на одну роль и применяются к сотруднику
+  // РОВНО с этой ролью: вторая роль обязана добавлять доступ, а не
+  // упираться в чужой запрет.
+  assert.match(proxy, /roles\.length === 1 && roles\[0\] === "ozon_manager" && !isOzonManagerApiAllowed/);
   const body = proxy.slice(proxy.indexOf("function isOzonManagerApiAllowed"), proxy.indexOf("// Менеджер маркетплейсов ведёт кабинеты"));
   // Склад — тем же набором, что у оператора фулфилмента: модуль один и тот же.
   assert.match(body, /isWarehouseApiAllowed/);
@@ -75,9 +78,21 @@ test("на /api/* новой роли открыты Ozon (только чтен
 
 test("роль принимается формой сотрудников и сервером", () => {
   const page = readFileSync(new URL("../app/users/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /\["ozon_manager", "Менеджер Ozon"\]/);
+  // Список ролей руками из формы убран: она строит его из общего словаря,
+  // и «Менеджер Ozon» появляется потому, что роль есть в словаре, а не
+  // потому, что кто-то не забыл дописать строку. Прежний список отстал сразу
+  // же, как роли разделили, и предлагал несуществующие.
+  assert.match(page, /Object\.keys\(ROLE_LABEL\)/);
+  assert.equal(ROLE_LABEL.ozon_manager, "Менеджер Ozon");
   // Кабинеты выдаются так же, как менеджеру МП: без списка роль бессмысленна.
-  assert.match(page, /role === "manager" \|\| role === "ozon_manager"/);
+  // Выбор кабинетов включается признаком роли, а не перечислением двух имён:
+  // перечисление молча пропускало бы каждую следующую роль со списком
+  // кабинетов, и человеку не дали бы выбрать ни одного.
+  assert.match(page, /isCabinetScopedRole\(role\) && !isExternalRole\(role\)/);
   const create = readFileSync(new URL("../app/api/users/route.ts", import.meta.url), "utf8");
-  assert.match(create, /"ozon_manager"/);
+  // Список ролей руками из формы убран: роли проверяются общим словарём,
+  // и «ozon_manager» проходит потому, что он в словаре, а не потому, что
+  // кто-то не забыл дописать строку.
+  assert.match(create, /roles = requested\.filter\(isRole\)/);
+  assert.equal(isRole("ozon_manager"), true);
 });
