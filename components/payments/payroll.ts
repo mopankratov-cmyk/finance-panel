@@ -140,7 +140,7 @@ export function payrollDebtByYear(data: Pick<PayrollData, "employees" | "periods
     const employee = employees.get(entry.employeeId);
     const period = periods.get(entry.periodId);
     if (!employee || !period) continue;
-    add(Number(period.payDate.slice(0, 4)), payrollEntryTotal(employee, draftFromEntry(entry)) - allocatedToEntry(entry.id, data.allocations));
+    add(Number(period.payDate.slice(0, 4)), payrollSalaryAmount(draftFromEntry(entry)) - allocatedToEntry(entry.id, data.allocations));
   }
   for (const debt of data.debts) add(debt.debtYear, debt.amount - allocatedToDebt(debt.id, data.allocations));
   return totals;
@@ -151,7 +151,9 @@ export function settlementFromAllocations(
   entry: PayrollEntry,
   allocations: PayrollPaymentAllocation[],
 ): PayrollEntrySettlement {
-  const total = payrollEntryTotal(employee, draftFromEntry(entry));
+  // Налог оплачивается в ФНС отдельным платежом. Долг сотрудника — только его
+  // зарплата, поэтому налог не увеличивает свод и не закрывается оплатой сотруднику.
+  const total = payrollSalaryAmount(draftFromEntry(entry));
   const matching = allocations.filter((item) => item.entryId === entry.id);
   const paid = Math.min(total, roundMoney(matching.reduce((sum, item) => sum + item.amount, 0)));
   return {
@@ -272,7 +274,9 @@ export function payrollTaxAmount(employee: PayrollEmployee, entry: PayrollDraftE
 }
 
 export function payrollEntryTotal(employee: PayrollEmployee, entry: PayrollDraftEntry): number {
-  return roundMoney(payrollSalaryAmount(entry) + payrollTaxAmount(employee, entry));
+  // Сумма, причитающаяся сотруднику. Налог — отдельный платёж в ФНС и не
+  // должен увеличивать зарплатный долг, хотя остаётся отдельным расходом ДДС.
+  return payrollSalaryAmount(entry);
 }
 
 export function blankPayrollEntry(employee: PayrollEmployee): PayrollDraftEntry {

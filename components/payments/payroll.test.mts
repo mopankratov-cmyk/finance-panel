@@ -8,6 +8,7 @@ import {
   payrollDebtByYear,
   payrollLineTaxIsPayable,
   payrollLineTaxAmount,
+  payrollTaxAmount,
   payrollTaxRate,
   payrollPeriodForDate,
   payrollSalaryAmount,
@@ -78,9 +79,10 @@ test("terminated employee without a date stays out of a new payroll period", () 
   assert.equal(employeeBelongsToPeriod(former, "2026-08-16", "2026-08-31"), false);
 });
 
-test("contractor tax is added for bank account and removed for cash", () => {
-  assert.equal(payrollEntryTotal(employee, draft), 15_900);
+test("contractor tax is counted separately from the employee payout", () => {
+  assert.equal(payrollEntryTotal(employee, draft), 15_000);
   assert.equal(payrollEntryTotal(employee, { ...draft, paymentMethod: "cash" }), 15_000);
+  assert.equal(payrollTaxAmount(employee, draft), 900);
 });
 
 test("tax column is active for official salary and bank payments to IP or self-employed", () => {
@@ -115,13 +117,13 @@ test("salary is summed across different companies and payment methods", () => {
     ],
   };
   assert.equal(payrollSalaryAmount(split), 50_000);
-  assert.equal(payrollEntryTotal(employee, split), 52_400);
+  assert.equal(payrollEntryTotal(employee, split), 50_000);
 });
 
-test("DDS payment reduces debt only after an explicit allocation", () => {
+test("DDS payment reduces only the employee salary debt, not the separate tax", () => {
   const period: PayrollPeriod = { id: "period-1", payDate: "2026-09-05", periodStart: "2026-08-16", periodEnd: "2026-08-31", status: "planned" };
   const entry: PayrollEntry = { id: "entry-1", periodId: period.id, salaryPaymentId: "salary-plan", taxPaymentId: "tax-plan", ...draft };
-  assert.equal(settlementFromAllocations(employee, entry, []).debt, 15_900);
+  assert.equal(settlementFromAllocations(employee, entry, []).debt, 15_000);
   assert.deepEqual(settlementFromAllocations(employee, entry, [{
     id: "allocation-1",
     paymentId: "salary-fact",
@@ -138,7 +140,7 @@ test("DDS payment reduces debt only after an explicit allocation", () => {
     salaryPaid: 10_000,
     taxPaid: 0,
     paid: 10_000,
-    debt: 5_900,
+    debt: 5_000,
     matchedPaymentIds: ["salary-fact"],
   });
 });
@@ -160,5 +162,5 @@ test("долг в своде разделяется по году ведомос
       { id: "opening-payment", paymentId: "payment-2", employeeId: employee.id, entryId: null, payrollLineId: null, debtOpeningId: "opening-2026", amount: 2_000, allocationKind: "current_year_debt", comment: "", confirmedBy: "", confirmedAt: "2026-01-01T00:00:00Z" },
     ],
   };
-  assert.deepEqual([...payrollDebtByYear(data)], [[2025, 10_000], [2026, 33_900]]);
+  assert.deepEqual([...payrollDebtByYear(data)], [[2025, 9_100], [2026, 33_000]]);
 });
