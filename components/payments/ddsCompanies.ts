@@ -7,6 +7,13 @@ export interface DdsCompany {
   isActive: boolean;
 }
 
+// До применения миграции в старых данных могла остаться техническая запись
+// «Общая группа РИО». Для пользователя это одна и та же «Основная группа»;
+// нормализуем подпись сразу, чтобы интерфейс не зависел от времени деплоя БД.
+export function companyLabel(name: string): string {
+  return name === "Общая группа РИО" ? "Основная группа" : name;
+}
+
 export interface PaymentCompanyLink {
   paymentId: string;
   companyId: string | null;
@@ -31,7 +38,7 @@ async function load(): Promise<CompaniesResponse> {
 
 export async function loadDdsCompanies(): Promise<DdsCompany[]> {
   const body = await load();
-  return (body.companies ?? []).map((row) => ({ id: row.id, name: row.name, groupName: row.group_name, isActive: row.is_active }));
+  return (body.companies ?? []).map((row) => ({ id: row.id, name: companyLabel(row.name), groupName: row.group_name, isActive: row.is_active }));
 }
 
 export async function loadPaymentCompanyLinks(): Promise<PaymentCompanyLink[]> {
