@@ -4,7 +4,7 @@ import { isPanelOwner } from "@/lib/auth/owner";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
 import { audit } from "@/lib/audit/log";
-import { isExternalRole, isRole } from "@/lib/auth/permissions";
+import { isExternalRole, isRole, type Role } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   const { id } = await ctx.params;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const b = (await request.json().catch(() => ({}))) as { role?: string; cabinet_ids?: string[]; is_active?: boolean; password?: string };
+  const b = (await request.json().catch(() => ({}))) as { role?: string; roles?: string[]; cabinet_ids?: string[]; is_active?: boolean; password?: string };
   const { data: currentUser, error: currentUserError } = await db
     .from("app_users")
     .select("email,role,organization_id")
@@ -48,7 +48,28 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   // промах по своей строке стоил директору всех прав: вернуть их можно было
   // только запросом в базу мимо приложения. Понижение — не та операция, где
   // цена ошибки должна лежать на внимательности.
-  const touchesRights = typeof b.role === "string" || typeof b.is_active === "boolean";
+  /**
+   * Набор ролей. Сотрудник может держать несколько — права складываются.
+   *
+   * Раньше здесь стояло `patch.roles = [b.role]`: набор схлопывался в одну
+   * роль при любой правке, и выдать вторую было нечем. Теперь экран шлёт
+   * `roles`, а одиночное `role` остаётся для старых вызовов и для совместимости
+   * со сторонним кодом — оно означает набор из одной роли.
+   */
+  const requestedRoles = Array.isArray(b.roles)
+    ? b.roles.map(String)
+    : typeof b.role === "string" ? [b.role] : null;
+  if (requestedRoles && (!requestedRoles.length || !requestedRoles.every(isRole))) {
+    return NextResponse.json({ error: "Неизвестная роль" }, { status: 400 });
+  }
+  const nextRoles = requestedRoles as Role[] | null;
+  // Внешние роли не смешиваются с внутренними: это граница между нашей
+  // компанией и компанией клиента, а не удобная комбинация прав. Проверка
+  // была только на заведении — правка обходила её стороной.
+  if (nextRoles && nextRoles.some(isExternalRole) && nextRoles.some((role) => !isExternalRole(role))) {
+    return NextResponse.json({ error: "Внешнюю роль нельзя совмещать с внутренней" }, { status: 400 });
+  }
+  const touchesRights = Boolean(nextRoles) || typeof b.is_active === "boolean";
   if (touchesRights && directorSession.uid === id) {
     return NextResponse.json({ error: "Свою роль и доступ менять нельзя" }, { status: 400 });
   }
@@ -60,11 +81,12 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   // Роль сверяется со словарём: список, написанный здесь руками, отстал сразу
   // же, как роли разделили, и смена роли на менеджера WB молча не применялась
   // бы — форма показала бы «сохранено», а роль осталась прежней.
-  if (isRole(b.role)) {
-    patch.role = b.role;
-    // Роли пишутся списком тоже: сотрудник может держать несколько.
-    patch.roles = [b.role];
-    if (isExternalRole(b.role)) {
+  if (nextRoles) {
+    // Первая роль остаётся в `role`: по ней считается стартовый экран, и на неё
+    // смотрит код, который до разделения ролей знал только одну.
+    patch.role = nextRoles[0];
+    patch.roles = nextRoles;
+    if (nextRoles.some(isExternalRole)) {
       // Своя организация у селлера обязана быть — через неё он видит свой
       // кабинет и никакие чужие. Но если она у него уже есть и она селлерская,
       // новую заводить нельзя: человек тут же потеряет кабинет, к которому его
@@ -84,7 +106,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       patch.organization_id = organization.id;
     }
   }
-  const effectiveRole = isRole(b.role) ? b.role : String(currentUser.role);
+  const effectiveRole = nextRoles ? nextRoles[0] : String(currentUser.role);
   // Список кабинетов селлеру не обнуляем, а заполняем кабинетами его
   // организации. Доступ селлера требует ОБОИХ условий — совпадения организации
   // и наличия кабинета в списке (lib/auth/cabinetAccess.ts), поэтому пустой
@@ -93,7 +115,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   // этом оставался виден на экране подключений, а вся аналитика говорила
   // «подключите хотя бы один кабинет». У новой организации кабинетов ещё нет —
   // там список честно пуст, и селлер подключает свой кабинет сам.
-  const roleChanging = typeof b.role === "string";
+  const roleChanging = Boolean(nextRoles);
   if (effectiveRole === "seller" && (roleChanging || Array.isArray(b.cabinet_ids))) {
     const organizationId = String(patch.organization_id ?? currentUser.organization_id ?? "");
     const { data: organizationCabinets } = organizationId

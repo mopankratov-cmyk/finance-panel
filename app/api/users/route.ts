@@ -32,12 +32,15 @@ export async function GET() {
   if (!(await requireDirector())) return NextResponse.json({ error: "Доступ только для директора" }, { status: 403 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ users: [] });
-  const primary = await db.from("app_users").select("id, email, role, cabinet_ids, organization_id, is_active, created_at").order("created_at");
-  let data = primary.data;
+  // `roles` отдаём экрану: сотрудник может держать несколько, и без этого поля
+  // интерфейс показывал бы одну роль там, где их две, — а первая же правка
+  // схлопывала бы набор до показанного.
+  const primary = await db.from("app_users").select("id, email, role, roles, cabinet_ids, organization_id, is_active, created_at").order("created_at");
+  let data = primary.data as Array<Record<string, unknown>> | null;
   if (primary.error?.code === "42703") {
     const legacy = await db.from("app_users").select("id, email, role, cabinet_ids, is_active, created_at").order("created_at");
     if (legacy.error) return NextResponse.json({ error: legacy.error.message }, { status: 500 });
-    data = (legacy.data ?? []).map((user) => ({ ...user, organization_id: null }));
+    data = (legacy.data ?? []).map((user) => ({ ...user, organization_id: null, roles: null }));
   } else if (primary.error) {
     return NextResponse.json({ error: primary.error.message }, { status: 500 });
   }
@@ -59,6 +62,12 @@ export async function GET() {
 
   const withAccess = (data ?? []).map((user) => {
     const own = Array.isArray(user.cabinet_ids) ? user.cabinet_ids.map(String) : [];
+    // Колонки `roles` может не быть, пока владелец не применил миграцию, и у
+    // старых учёток она пустая. В обоих случаях единственная роль — это набор
+    // из одного элемента, а не «ролей нет».
+    const roles = Array.isArray(user.roles) && user.roles.length
+      ? (user.roles as unknown[]).map(String)
+      : [String(user.role)];
     let access: string[];
     if (user.role === "seller") {
       // Организация задаёт границу, список — фактический доступ. Показываем
@@ -69,7 +78,7 @@ export async function GET() {
     }
     else if (user.role === "director") access = [];   // директор и так может всё — уровень ему не нужен
     else access = own.length ? own : allCabinetIds;   // пустой список у менеджера означает «все»
-    return { ...user, access_cabinet_ids: access };
+    return { ...user, roles, access_cabinet_ids: access };
   });
 
   const session = await getServerSession();
