@@ -278,6 +278,9 @@ export function WbRkJournalPage() {
     off: "bg-rose-100/80 text-rose-700",
     round: "bg-emerald-100/80 text-emerald-700",
     evening: "bg-amber-100/80 text-amber-800",
+    // Бюджет — это про деньги, а не про режим работы: свой цвет, чтобы в
+    // столбце было видно, где сегодня меняли сумму, а где расписание.
+    budget: "bg-sky-100/80 text-sky-800",
     custom: "bg-violet-100 text-violet-700",
   };
 
