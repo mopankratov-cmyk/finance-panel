@@ -106,14 +106,14 @@ test("«сначала рабочие» меряет рубли, а не пок�
   assert.doesNotMatch(page, /workingFirst \? ordered\.filter/);
 });
 
-test("предложения алгоритма можно найти, а не искать глазами", () => {
-  // Вопрос «где посмотреть, что там заполнил ИИ» задавали прямо: предложения
-  // стоят в клетках пунктиром с самого начала, но среди сотен строк их не
-  // видно.
+test("счётчика предложений в шапке больше нет", () => {
+  // Он отвечал на вопрос «где посмотреть, что заполнил ИИ», пока предложения
+  // были редкими советами про ставку. Теперь ночной прогон переносит вчерашние
+  // решения, и предложением помечена почти каждая клетка: число стало
+  // счётчиком строк таблицы, а не подсказкой. Совет и так виден пунктиром.
   const page = read("../components/wb/WbRkJournalPage.tsx");
-  assert.match(page, /const autoCount = useMemo/);
-  assert.match(page, /note\.source === "auto"/);
-  assert.match(page, /Предложений алгоритма/);
+  assert.doesNotMatch(page, /Предложений алгоритма: \{autoCount\}/);
+  assert.doesNotMatch(page, /const autoCount = useMemo/);
 });
 
 test("окно пометки CTR закрывается после сохранения", () => {
@@ -161,4 +161,26 @@ test("длинное предупреждение не занимает экра
   assert.match(page, /почему это важно/);
   // Сам факт остаётся на виду — прячется только объяснение.
   assert.match(page, /Вне карточек осталось \{count\(outsideCards\.orders\)\}/);
+});
+
+test("плотные строки помещают вдвое больше товаров", () => {
+  // Строка артикула — 87 пикселей: фото, артикул, номер WB и название в четыре
+  // яруса. На экране в 1000 пикселей это пять строк из двух с половиной сотен.
+  // Замер после: строка 37 пикселей, видно 12 строк, а со свёрнутыми
+  // карточками — 17.
+  const page = read("../components/wb/WbRkJournalPage.tsx");
+  assert.match(page, /const \[dense, setDense\] = useState\(false\)/);
+  assert.match(page, /localStorage\.setItem\("wb-rk-dense"/);
+  // Фото меньше, название уходит в подсказку, номер встаёт рядом с артикулом.
+  assert.match(page, /dense \? "h-7 w-6" : "h-11 w-9"/);
+  assert.match(page, /\{name && !dense \?/);
+  assert.match(page, /dense \? "flex-wrap sm:flex-nowrap" : "flex-wrap"/);
+  // Товар по-прежнему опознаётся: артикул и номер остаются на виду всегда.
+  assert.match(page, /dense \? <span className="hidden shrink-0 text-\[10px\][^>]*>\{item\.nm\}<\/span>/);
+});
+
+test("ярлык не распирает строку переносом", () => {
+  // «+ ярлык» переносился на второе слово, и часть строк была выше соседних
+  // ровно на эту высоту — в плотном режиме это сразу видно.
+  assert.match(read("../components/wb/useRnpTags.tsx"), /tap-hit whitespace-nowrap rounded-md border border-dashed/);
 });

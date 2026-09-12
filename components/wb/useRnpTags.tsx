@@ -203,7 +203,10 @@ export function WbTagPicker({ tags, assignedIds, onToggle }: {
         }}
         aria-expanded={open}
         aria-label="Ярлыки артикула"
-        className="tap-hit rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+        // Без `whitespace-nowrap` «+ ярлык» переносится на второе слово и
+        // распирает строку таблицы: в плотном режиме журнала это сразу видно —
+        // часть строк выше соседних ровно на эту высоту.
+        className="tap-hit whitespace-nowrap rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
       >
         {assignedIds.length ? `ярлыков: ${assignedIds.length}` : "+ ярлык"}
       </button>
