@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronLeft, ChevronRight, Loader2, PencilLine, Trash2, Wallet } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { useIsPhone } from "@/hooks/useMediaQuery";
@@ -54,6 +54,41 @@ export function WbRkNoteQuickPick({
   const isPhone = useIsPhone();
 
   useEffect(() => setMounted(true), []);
+
+  /**
+   * Куда и какой высоты раскрывать список.
+   *
+   * Высота раньше задавалась числом на глаз, и список обрезался снизу: пунктов
+   * стало больше, «Своя задача…» и «Убрать задачу» уезжали за край экрана без
+   * всякого признака, что там что-то есть. Число на глаз ошибётся снова на
+   * следующем добавленном пункте, поэтому теперь высота МЕРЯЕТСЯ после отрисовки.
+   *
+   * Правило простое: пытаемся раскрыть вниз; не помещается — вверх; не
+   * помещается ни туда, ни туда — прижимаем к верху и отдаём остаток высоты под
+   * прокрутку. Обрезать список молча нельзя ни при каком размере окна.
+   */
+  const [placed, setPlaced] = useState<{ top: number; maxHeight: number }>({ top: anchor.y + 8, maxHeight: 0 });
+  useLayoutEffect(() => {
+    if (!mounted || isPhone) return;
+    const gap = 8;
+    const measure = () => {
+      const box = boxRef.current;
+      if (!box) return;
+      const viewport = window.innerHeight;
+      const wanted = box.scrollHeight;
+      const below = viewport - anchor.y - gap * 2;
+      const above = anchor.y - gap * 2;
+      if (wanted <= below) { setPlaced({ top: anchor.y + gap, maxHeight: below }); return; }
+      if (wanted <= above) { setPlaced({ top: anchor.y - gap - wanted, maxHeight: above }); return; }
+      // Не помещается нигде — отдаём всю высоту экрана под прокрутку.
+      setPlaced({ top: gap, maxHeight: viewport - gap * 2 });
+    };
+    measure();
+    // Второй экран списка ниже первого: после переключения меряем заново.
+    const frame = requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", measure); };
+  }, [anchor.y, budgetMode, isPhone, mounted, note]);
   // Escape, ловушка фокуса и неподвижный фон. Последнее важно и на мыши:
   // список привязан к координатам клика, и прокрутка страницы под ним
   // оставляла его висеть над соседней клеткой.
@@ -80,14 +115,8 @@ export function WbRkNoteQuickPick({
 
   if (!mounted) return null;
 
-  // Держим список в пределах экрана: у правого края и внизу он раскрывается
-  // в другую сторону, иначе часть задач оказалась бы за краем.
   const width = 232;
-  const height = budgetMode ? 300 : note ? 400 : 348;
   const left = Math.min(Math.max(8, anchor.x - width / 2), window.innerWidth - width - 8);
-  const top = anchor.y + height > window.innerHeight - 8
-    ? Math.max(8, anchor.y - height - 12)
-    : anchor.y + 8;
 
   // Пункт списка: на телефоне цель в 44px, на мыши прежняя плотность.
   const itemClass = "flex w-full min-h-11 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[14px] transition-colors disabled:opacity-50 sm:min-h-0 sm:text-[12px]";
@@ -102,10 +131,10 @@ export function WbRkNoteQuickPick({
         role="dialog"
         aria-label="Выбор задачи"
         tabIndex={-1}
-        style={isPhone ? undefined : { left, top, width }}
+        style={isPhone ? undefined : { left, top: placed.top, width, maxHeight: placed.maxHeight }}
         className={isPhone
           ? "fixed inset-x-0 bottom-0 z-[96] max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-slate-200 bg-white p-2 pb-[calc(0.5rem+var(--safe-b))] shadow-[0_-12px_32px_rgba(15,23,42,0.16)] focus:outline-none"
-          : "fixed z-[96] rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.16)] focus:outline-none"}
+          : "fixed z-[96] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.16)] focus:outline-none"}
       >
         <div className="flex items-center gap-1 px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
           {budgetMode ? (

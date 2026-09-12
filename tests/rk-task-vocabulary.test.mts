@@ -114,3 +114,19 @@ test("список остался коротким", () => {
     assert.ok(preset.note.trim().length > 0);
   }
 });
+
+test("список задач не обрезается ни при каком размере окна", () => {
+  // Высота поповера задавалась числом на глаз, и с ростом списка нижние пункты
+  // уезжали за край без всякого признака, что там что-то есть. Число на глаз
+  // ошибётся снова на следующем добавленном пункте — поэтому меряем.
+  const pick = read("../components/wb/WbRkNoteQuickPick.tsx");
+  assert.doesNotMatch(pick, /const height = .*\d{3}/, "высота списка снова задана числом");
+  assert.match(pick, /useLayoutEffect/);
+  assert.match(pick, /box\.scrollHeight/);
+  // Вниз, вверх, а если не помещается нигде — прокрутка на всю высоту экрана.
+  assert.match(pick, /setPlaced\(\{ top: gap, maxHeight: viewport - gap \* 2 \}\)/);
+  assert.match(pick, /overflow-y-auto overscroll-contain rounded-xl/);
+  // Пересчёт при смене экрана списка и при изменении окна.
+  assert.match(pick, /\[anchor\.y, budgetMode, isPhone, mounted, note\]/);
+  assert.match(pick, /addEventListener\("resize", measure\)/);
+});
