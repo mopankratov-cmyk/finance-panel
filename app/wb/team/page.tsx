@@ -4,6 +4,8 @@ import { Loader2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { Hint } from "@/components/ui/Hint";
+import { LimitsCard } from "@/components/access/LimitsCard";
+import { EXTERNAL_MODULES, MODULE_LABEL, type ExternalModule } from "@/lib/auth/modules";
 
 /**
  * Команда кабинета — экран для главного пользователя организации.
@@ -29,6 +31,18 @@ export default function TeamPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
+  /**
+   * Модули нового сотрудника.
+   *
+   * Сервер их принимал с самого начала, а экран не отправлял — и на каждом
+   * сохранении писал пустой список. Пустой список означает «все три», так что
+   * сузить доступ было нельзя в принципе, а у того, кому его когда-то сузили,
+   * следующая правка открывала всё обратно.
+   *
+   * По умолчанию отмечены все три: так вели себя уже заведённые учётки, и
+   * менять их поведение молча нельзя.
+   */
+  const [modules, setModules] = useState<ExternalModule[]>([...EXTERNAL_MODULES]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,9 +115,9 @@ export default function TeamPage() {
 
   const create = async () => {
     setSaving(true);
-    const ok = await send({ action: "create", email, password }, `Сотрудник ${email} сохранён`);
+    const ok = await send({ action: "create", email, password, modules }, `Сотрудник ${email} сохранён`);
     setSaving(false);
-    if (ok) { setEmail(""); setPassword(""); await load(); }
+    if (ok) { setEmail(""); setPassword(""); setModules([...EXTERNAL_MODULES]); await load(); }
   };
 
   return (
@@ -156,11 +170,43 @@ export default function TeamPage() {
             {saving ? "Сохраняем…" : "Добавить"}
           </button>
         </div>
+        <div className="mt-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Какие модули ему открыть</div>
+          <div className="flex flex-wrap gap-1.5">
+            {EXTERNAL_MODULES.map((module) => {
+              const on = modules.includes(module);
+              return (
+                <button
+                  key={module}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  onClick={() => setModules((current) => {
+                    const next = current.includes(module) ? current.filter((item) => item !== module) : [...current, module];
+                    // Ни одного модуля — это не «ничего», а «все три»: так
+                    // читает пустой список сервер. Чтобы отметки не врали,
+                    // последнюю снять нельзя.
+                    return next.length ? next : current;
+                  })}
+                  className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-xs font-medium transition-colors ${
+                    on
+                      ? "border-violet-600 bg-violet-600 text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  {MODULE_LABEL[module]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <p className="mt-2 text-xs text-slate-400">
           Пароль передайте лично или через менеджер паролей — не в переписке. Сотрудник
           сможет сменить его ниже, на этой же странице, после входа.
         </p>
       </section>
+
+      <section className="mt-4"><LimitsCard /></section>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-700">Сменить свой пароль</h2>

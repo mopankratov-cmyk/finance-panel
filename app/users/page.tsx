@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { Loader2, Users as UsersIcon, Plus, Trash2 } from "lucide-react";
 import { Hint } from "@/components/ui/Hint";
+import { LimitsCard } from "@/components/access/LimitsCard";
+import { RoleSelector } from "@/components/access/RoleSelector";
 import { ROLE_LABEL, ROLE_MARKETPLACES, isCabinetScopedRole, isExternalRole, type Role } from "@/lib/auth/permissions";
 
-interface U { id: string; email: string; role: string; cabinet_ids: string[]; access_cabinet_ids?: string[]; is_active: boolean }
+interface U { id: string; email: string; role: string; roles?: string[]; cabinet_ids: string[]; access_cabinet_ids?: string[]; is_active: boolean }
 interface Cab { id: string; name: string; marketplace: string }
 /**
  * Роли берутся из общего словаря, а не из списка рядом.
@@ -16,8 +18,9 @@ interface Cab { id: string; name: string; marketplace: string }
  * получал отказ «Неизвестная роль» — форма обещала то, чего сервер не
  * принимает.
  */
-const ROLES = (Object.keys(ROLE_LABEL) as Role[]).map((role) => [role, ROLE_LABEL[role]] as const);
 const roleLabel = (r: string) => ROLE_LABEL[r as Role] ?? r;
+/** Роли строки списком: у старых учёток набора нет, там роль одна. */
+const rolesOf = (u: U): Role[] => ((u.roles?.length ? u.roles : [u.role]) as Role[]);
 /**
  * Кабинеты, в которых человеку есть что делать. Сервер считает их по роли:
  * у селлера доступ идёт через организацию, и собственный список кабинетов у
@@ -34,16 +37,20 @@ export default function UsersPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   // По умолчанию — самая частая роль, а не первая в списке.
-  const [role, setRole] = useState<Role>("wb_manager");
+  const [roles, setRoles] = useState<Role[]>(["wb_manager"]);
+  const role = roles[0];
   const [sel, setSel] = useState<string[]>([]);
-  // Контур роли: у менеджера WB — только wb, у менеджера Ozon — только ozon.
-  const roleMarketplaces: readonly string[] = ROLE_MARKETPLACES[role] ?? [];
+  // Контур ролей: кабинет предлагаем, если его маркетплейс открыт хотя бы
+  // одной из выбранных ролей — иначе вторая роль молча теряла бы свои кабинеты.
+  const roleMarketplaces: readonly string[] = [...new Set(roles.flatMap((item) => ROLE_MARKETPLACES[item] ?? []))];
+  const editable = (u: U) => u.id !== me;
   /**
    * Уровни доступа по кабинетам: ключ «пользователь|кабинет».
    * Глобальная роль отвечает, КУДА пускать; уровень — ЧТО там можно.
    */
   const [access, setAccess] = useState<Record<string, string>>({});
   const [openAccess, setOpenAccess] = useState<string | null>(null);
+  const [openRoles, setOpenRoles] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(null);
   /**
    * Подтверждение рядом со строкой, а не только вверху страницы.
@@ -110,8 +117,8 @@ export default function UsersPage() {
       body: JSON.stringify({
         email,
         password,
-        role,
-        cabinet_ids: isCabinetScopedRole(role) && !isExternalRole(role) ? sel : [],
+        roles,
+        cabinet_ids: roles.some(isCabinetScopedRole) && !roles.some(isExternalRole) ? sel : [],
         ...(replace ? { replace_existing: true } : {}),
       }),
     });
@@ -144,7 +151,7 @@ export default function UsersPage() {
     <div className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700"><UsersIcon className="h-5 w-5" /></div>
-        <div><h1 className="text-2xl font-bold text-gray-900">Пользователи</h1><p className="text-sm text-gray-500">Сотрудники и внешние WB-селлеры</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">Сотрудники</h1><p className="text-sm text-gray-500">Кто работает в панели, с какими правами и в каких кабинетах</p></div>
       </div>
 
       <div className="mb-5 rounded-xl border border-gray-200 bg-white p-5">
@@ -152,14 +159,17 @@ export default function UsersPage() {
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="email" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
           <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="пароль (≥10)" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" />
-          <select value={role} onChange={(e) => { setRole(e.target.value as Role); setSel([]); }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none">
-            {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+        </div>
+        <div className="mt-3">
+          <RoleSelector value={roles} onChange={(next) => { setRoles(next); setSel([]); }} />
         </div>
         {isExternalRole(role) ? <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">После первого входа клиент сам подключит свой кабинет проверенным API-токеном. Модули — Wildberries, Ozon и склад — раздаёт его главный пользователь на экране «Команда».</div> : null}
         {isCabinetScopedRole(role) && !isExternalRole(role) && cabs.length > 0 && (
           <div className="mt-2">
-            <div className="mb-1 text-xs text-gray-500">Кабинеты менеджера (пусто = все):</div>
+            {/* «Пусто = все» верно только для внутренней роли. У внешнего
+                человека тот же пустой список означает «ни одного кабинета», и
+                одна подпись на две противоположности сбивала с толку. */}
+            <div className="mb-1 text-xs text-gray-500">Кабинеты менеджера — не отметить ни одного значит «все»:</div>
             <div className="flex flex-wrap gap-1.5">
               {/* Только кабинеты своего маркетплейса. Менеджер WB в контур Ozon
                   не пускается ролью, и предлагать ему ozon-кабинет значит
@@ -182,36 +192,38 @@ export default function UsersPage() {
         </div>
       </div>
 
+      <div className="mb-5"><LimitsCard /></div>
+
       <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-100 px-5 py-3 text-sm font-semibold text-gray-700">Пользователи {!loading && `(${users.length})`}</div>
+        <div className="border-b border-gray-100 px-5 py-3 text-sm font-semibold text-gray-700">Сотрудники {!loading && `(${users.length})`}</div>
         {loading ? <div className="py-10 text-center text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
           : <div className="divide-y divide-gray-100">
               {users.map((u) => (
                 <div key={u.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
                   <span className={`h-2.5 w-2.5 rounded-full ${u.is_active ? "bg-emerald-500" : "bg-gray-300"}`} />
-                  <div className="min-w-0 flex-1"><div className="font-medium text-gray-900">{u.email}</div><div className="text-xs text-gray-400">{roleLabel(u.role)}{isCabinetScopedRole(u.role) && accessCabs(u).length ? ` · ${accessCabs(u).length} каб.` : ""}</div></div>
-                  <select
-                    value={u.role}
-                    disabled={u.id === me}
-                    title={u.id === me ? "Свою роль менять нельзя" : undefined}
-                    onChange={(e) => {
-                      // Директор всей панели видит все кабинеты и финансы всех
-                      // юрлиц. Это не «главный в своём кабинете» — для этого
-                      // ниже есть уровень «админ кабинета».
-                      if (e.target.value === "director" && !confirm(
-                        `${u.email} получит доступ ко ВСЕМ кабинетам и финансам всех юрлиц.\n\n` +
-                        "Если нужен хозяин одного кабинета — закройте это окно и выдайте " +
-                        "ему «админ кабинета» в «Доступ по кабинетам».",
-                      )) { e.target.value = u.role; return; }
-                      void patch(u.id, { role: e.target.value });
-                    }}
-                    className="min-h-11 rounded-md border border-gray-200 px-2 py-1 text-xs disabled:bg-gray-50 disabled:text-gray-400 lg:min-h-0"
-                  >
-                    {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                  </select>
-                  {/* Почему у себя список ролей серый, объяснял только `title`;
-                      на телефоне это выглядело поломкой экрана. */}
-                  {u.id === me ? <Hint label="Почему роль нельзя изменить">Свою роль менять нельзя.</Hint> : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-gray-900">{u.email}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                      {/* Роли показываем ВСЕ. Одна подпись вместо набора
+                          скрывала вторую роль так же надёжно, как её отсутствие. */}
+                      {rolesOf(u).map((r) => (
+                        <span key={r} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">{roleLabel(r)}</span>
+                      ))}
+                      {isCabinetScopedRole(u.role) && accessCabs(u).length
+                        ? <span className="text-[11px] text-gray-400">· {accessCabs(u).length} каб.</span>
+                        : null}
+                    </div>
+                  </div>
+                  {editable(u) ? (
+                    <button
+                      onClick={() => setOpenRoles(openRoles === u.id ? null : u.id)}
+                      className={`inline-flex min-h-11 items-center rounded-md px-3 py-1 text-xs lg:min-h-0 lg:px-2 ${openRoles === u.id ? "bg-violet-100 text-violet-700" : "text-gray-500 hover:bg-gray-100"}`}
+                    >Роли</button>
+                  ) : (
+                    /* Почему у себя роли не меняются, объяснял только `title`;
+                       на телефоне это выглядело поломкой экрана. */
+                    <Hint label="Почему роль нельзя изменить">Свою роль менять нельзя.</Hint>
+                  )}
                   <button onClick={() => patch(u.id, { is_active: !u.is_active })} className="inline-flex min-h-11 items-center rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 lg:min-h-0 lg:px-2">{u.is_active ? "Выключить" : "Включить"}</button>
                   {accessCabs(u).length ? (
                     <button
@@ -223,6 +235,29 @@ export default function UsersPage() {
                     <span className={`text-xs ${rowMsg[u.id].ok ? "text-emerald-600" : "text-red-600"}`}>{rowMsg[u.id].t}</span>
                   ) : null}
                   <button onClick={() => remove(u.id, u.email)} aria-label={`Удалить ${u.email}`} className="tap ml-auto shrink-0 rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+
+                  {openRoles === u.id ? (
+                    <div className="w-full rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <RoleSelector
+                        value={rolesOf(u)}
+                        onChange={(next) => {
+                          // Директор всей панели видит все кабинеты и финансы всех
+                          // юрлиц. Это не «главный в своём кабинете» — для этого
+                          // ниже есть уровень «админ кабинета».
+                          if (next.includes("director") && !rolesOf(u).includes("director") && !confirm(
+                            `${u.email} получит доступ ко ВСЕМ кабинетам и финансам всех юрлиц.\n\n` +
+                            "Если нужен хозяин одного кабинета — закройте это окно и выдайте " +
+                            "ему «админ кабинета» в «Доступ по кабинетам».",
+                          )) return;
+                          void patch(u.id, { roles: next });
+                        }}
+                      />
+                      <div className="mt-2.5 text-[11px] leading-5 text-gray-500">
+                        Ролей может быть несколько — права складываются: разрешено то, что разрешает
+                        хотя бы одна. Снять последнюю нельзя, для этого есть «Выключить».
+                      </div>
+                    </div>
+                  ) : null}
 
                   {openAccess === u.id ? (
                     <div className="w-full rounded-lg border border-gray-200 bg-gray-50 p-3">

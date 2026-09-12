@@ -41,6 +41,7 @@ import {
   Users,
   Wallet,
   X,
+  ScrollText,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -118,6 +119,9 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/cabinets", label: "Кабинеты", icon: Building2 },
       { href: "/users", label: "Сотрудники", icon: Users },
+      // Журнал был сделан и никуда не выведен: попасть в него можно было
+      // только набрав адрес руками.
+      { href: "/audit", label: "Журнал действий", icon: ScrollText },
       { href: "/agent", label: "AI-агент", icon: Bot },
       { href: "/sync", label: "Синхронизация", icon: RefreshCw },
     ],
@@ -163,6 +167,9 @@ const SYSTEM_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/cabinets", label: "Кабинеты", icon: Building2 },
       { href: "/users", label: "Сотрудники", icon: Users },
+      // Журнал был сделан и никуда не выведен: попасть в него можно было
+      // только набрав адрес руками.
+      { href: "/audit", label: "Журнал действий", icon: ScrollText },
       { href: "/sync", label: "Синхронизация", icon: RefreshCw },
     ],
   },
