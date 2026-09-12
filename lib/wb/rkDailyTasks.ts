@@ -100,6 +100,13 @@ export function planDailyRkTask(input: RkDailyTaskInput): RkDailyTask | null {
     return { note: RK_BACK_IN_STOCK_NOTE, reason: `Остаток появился (${stock} шт.) — вчера реклама была выключена до отгрузки` };
   }
 
+  // ── «Вкл» не переносится ──────────────────────────────────────────────────
+  // Это разовое действие, а не режим работы: включили — дальше решает человек,
+  // с каким бюджетом и расписанием товар живёт. Перенос превращал бы его в
+  // ежедневное «включи ещё раз»: первый же прогон по пяти дням дал 96 таких
+  // задач на 48 товаров.
+  if (yesterday.note.trim() === RK_BACK_IN_STOCK_NOTE) return null;
+
   // ── Совет, который никто не открывал, не живёт вечно ──────────────────────
   if (yesterday.source === "auto" && yesterday.carriedDays >= RK_MAX_CARRY_DAYS) return null;
 

@@ -246,9 +246,23 @@ export async function GET(request: NextRequest) {
       candidates.set(key, { cabinetId: parts[0], nmId: Number(parts[1]), advertId, advertised: Boolean(task) });
     }
 
+    /**
+     * За какие дни остаток вообще что-то значит.
+     *
+     * Остатки мы храним одним срезом — на сейчас, истории по датам нет. Для
+     * вчерашнего и сегодняшнего дня это годная замена: за сутки склад меняется
+     * мало. Для позапрошлой недели — нет, и правило написало бы в те дни
+     * неправду: сухой прогон 12.09.2026 давал 42 задачи «Вкл» на 10 сентября
+     * только потому, что остаток есть СЕГОДНЯ.
+     *
+     * Поэтому при прогоне за прошедшие дни остаток считается неизвестным, и
+     * работает один перенос. Ночной прогон идёт за вчера и этого не замечает.
+     */
+    const stockKnown = date >= shiftIso(moscowYesterday(), 0);
+
     for (const candidate of candidates.values()) {
       const key = cellKey(candidate.cabinetId, candidate.nmId, candidate.advertId);
-      const stock = candidate.advertId === null && stockByKey.has(`${candidate.cabinetId}|${candidate.nmId}`)
+      const stock = stockKnown && candidate.advertId === null && stockByKey.has(`${candidate.cabinetId}|${candidate.nmId}`)
         ? stockByKey.get(`${candidate.cabinetId}|${candidate.nmId}`)!
         : null;
       const task = planDailyRkTask({

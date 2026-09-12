@@ -148,3 +148,25 @@ test("перенос не зависит от ночного снимка", () =
   assert.ok(notes > 0 && guard > notes, "история задач должна читаться до проверки на пустоту");
   assert.match(route, /\.\.\.noteRows\.map\(\(row\) => row\.cabinet_id\)/);
 });
+
+test("остаток говорит только за вчера и сегодня", () => {
+  // Остатки хранятся одним срезом — на сейчас. За сутки склад меняется мало, а
+  // за неделю меняется, и правило написало бы в прошедшие дни неправду: сухой
+  // прогон 12.09.2026 давал 42 задачи «Вкл» на 10 сентября только потому, что
+  // остаток есть сегодня. При прогоне за прошлое работает один перенос.
+  const route = read("../app/api/sync/rk-autotask/route.ts");
+  assert.match(route, /const stockKnown = date >= shiftIso\(moscowYesterday\(\), 0\)/);
+  assert.match(route, /stockKnown && candidate\.advertId === null/);
+});
+
+test("«Вкл» не превращается в ежедневное «включи ещё раз»", () => {
+  // Это разовое действие, а не режим работы. Первый прогон по пяти дням дал 96
+  // таких задач на 48 товаров: перенос тащил включение изо дня в день.
+  assert.equal(planDailyRkTask({ yesterday: yesterday(RK_BACK_IN_STOCK_NOTE, "auto", 1), stock: 200, advertised: true }), null);
+  assert.equal(planDailyRkTask({ yesterday: yesterday(RK_BACK_IN_STOCK_NOTE, "human", 1), stock: 200, advertised: true }), null);
+  // А нулевой остаток всё равно сильнее: товар кончился — выключаем.
+  assert.equal(
+    planDailyRkTask({ yesterday: yesterday(RK_BACK_IN_STOCK_NOTE), stock: 0, advertised: true })?.note,
+    RK_OUT_OF_STOCK_NOTE,
+  );
+});
