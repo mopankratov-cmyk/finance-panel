@@ -127,3 +127,38 @@ test("окно пометки CTR закрывается после сохран
   // цвете иначе мелькнёт и исчезнет вместе с окном.
   assert.match(popup, /colorSkipped\) \{ setError\([\s\S]{0,140}return; \}/);
 });
+
+test("шапка журнала сворачивается, чтобы таблице осталось место", () => {
+  // Семь карточек по восемь строк занимали 230 пикселей, и вместе с
+  // подсказкой, предупреждением и шапкой таблица начиналась на 520-м пикселе:
+  // при окне в 1000 пикселей видно четыре строки из двух с половиной сотен.
+  // После свёртки таблица начинается с 294-го, строк видно семь.
+  const page = read("../components/wb/WbRkJournalPage.tsx");
+  assert.match(page, /const \[cardsOpen, setCardsOpen\] = useState\(true\)/);
+  // Выбор запоминается: свернул один раз — экран остаётся таким завтра.
+  assert.match(page, /localStorage\.setItem\("wb-rk-cards-open"/);
+  assert.match(page, /localStorage\.getItem\("wb-rk-cards-open"\)/);
+  // Приватное окно бросает на самом доступе к хранилищу — экран от этого
+  // падать не должен.
+  assert.match(page, /try \{[\s\S]{0,220}wb-rk-cards-open[\s\S]{0,120}\} catch/);
+});
+
+test("свёрнутые виды остаются рабочим фильтром, а не картинкой", () => {
+  // Иначе свёртка отнимала бы функцию: выбрать вид размещения можно было бы
+  // только развернув карточки обратно.
+  const page = read("../components/wb/WbRkJournalPage.tsx");
+  const collapsed = page.slice(page.indexOf("Свёрнутый вид"), page.indexOf("grid-cols-2 gap-2"));
+  assert.match(collapsed, /setBlockFilter\(blockFilter === summary\.block \? "all" : summary\.block\)/);
+  assert.match(collapsed, /money\(summary\.spent\)/);
+  // Пустой вид не кликается и в свёрнутом виде тоже.
+  assert.match(collapsed, /disabled=\{summary\.empty\}/);
+});
+
+test("длинное предупреждение не занимает экран постоянно", () => {
+  // Три строки объяснения читают один раз, а место они занимали всегда.
+  const page = read("../components/wb/WbRkJournalPage.tsx");
+  assert.match(page, /<details className="mb-2 rounded-lg border border-amber-200/);
+  assert.match(page, /почему это важно/);
+  // Сам факт остаётся на виду — прячется только объяснение.
+  assert.match(page, /Вне карточек осталось \{count\(outsideCards\.orders\)\}/);
+});

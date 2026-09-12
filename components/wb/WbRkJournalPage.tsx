@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpNarrowWide, ChevronRight, CopyPlus, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { ArrowUpNarrowWide, ChevronDown, ChevronRight, CopyPlus, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, useRef } from "react";
 import { Hint } from "@/components/ui/Hint";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
@@ -230,6 +230,29 @@ export function WbRkJournalPage() {
    */
   const [notes, setNotes] = useState<Map<string, RkNote>>(new Map());
   const [showNotes, setShowNotes] = useState(true);
+  /**
+   * Развёрнуты ли карточки видов размещения.
+   *
+   * Семь карточек с восемью строками каждая занимают 230 пикселей, а вместе с
+   * подсказкой, предупреждением и шапкой таблица начиналась на 510-м пикселе:
+   * при окне в 1000 пикселей видно четыре строки из двух с половиной сотен.
+   * Экраном работают каждый день и смотрят в него таблицу, а не сводку.
+   *
+   * Свёрнутые карточки остаются рабочими: та же сумма, тот же клик-фильтр,
+   * одна строка вместо четырёх рядов.
+   */
+  const [cardsOpen, setCardsOpen] = useState(true);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("wb-rk-cards-open");
+      if (saved != null) setCardsOpen(saved === "1");
+    } catch { /* приватное окно — остаёмся на умолчании */ }
+  }, []);
+  const toggleCards = () => setCardsOpen((open) => {
+    const next = !open;
+    try { window.localStorage.setItem("wb-rk-cards-open", next ? "1" : "0"); } catch { /* не беда */ }
+    return next;
+  });
   const [noteEdit, setNoteEdit] = useState<{ nm: number; advertId: number | null; date: string; title: string; subtitle: string } | null>(null);
   // Быстрый выбор задачи открывается у самой клетки, поэтому носит с собой
   // координаты клика: список повторяющихся задач должен появляться там, где
@@ -853,13 +876,28 @@ export function WbRkJournalPage() {
           </div>
         ) : null}
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          {/* Карточки видов размещения выглядели как сводка. Тихая серая строка
-              подсказки терялась, поэтому она стала заметным блоком с иконкой —
-              её задача не украшать, а объяснить, что по карточкам можно кликать. */}
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[12px] font-medium text-violet-800">
-            <MousePointerClick className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            Нажмите на карточку вида размещения — в таблице останутся только его кампании
-          </span>
+          {/* Свёртка карточек — первое, что видно в строке: место на экране
+              просили именно здесь. */}
+          <button
+            type="button"
+            onClick={toggleCards}
+            aria-expanded={cardsOpen}
+            title={cardsOpen
+              ? "Свернуть виды размещения в одну строку — таблица поднимется примерно на 230 пикселей"
+              : "Развернуть виды размещения: CPO, CPL, CPC, CPM, ДРР и корзины по каждому"}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-semibold text-slate-600 hover:border-violet-300 sm:min-h-0"
+          >
+            {cardsOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+            Виды размещения
+          </button>
+          {/* Подсказку держим только при развёрнутых карточках: в свёрнутом
+              виде кликабельность видна по самим чипам, а строка чистая. */}
+          {cardsOpen ? (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[12px] font-medium text-violet-800">
+              <MousePointerClick className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Нажмите на карточку — в таблице останутся только его кампании
+            </span>
+          ) : null}
           {blockFilter !== "all" ? (
             <button
               type="button"
@@ -946,7 +984,35 @@ export function WbRkJournalPage() {
             {/* Видов размещения семь, а сетка была на шесть колонок — ЕРК уезжала на
                 вторую строку и таблица уходила ниже экрана. Держим все семь в один
                 ряд на широком экране; на узких переносим по-прежнему. */}
-            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+            {cardsOpen ? null : (
+              // Свёрнутый вид: та же сумма и тот же клик-фильтр, одна строка
+              // вместо четырёх рядов. Прокручивается вбок на узком экране.
+              <div className="scroll-x mb-2 flex gap-1.5 pb-1">
+                {blockSummary.map((summary) => (
+                  <button
+                    key={summary.block}
+                    type="button"
+                    onClick={() => { if (!summary.empty) setBlockFilter(blockFilter === summary.block ? "all" : summary.block); }}
+                    disabled={summary.empty}
+                    title={summary.empty
+                      ? `«${summary.label}»: ${emptyBlockHint(summary.existsInCabinet)}`
+                      : `${summary.label}: ${money(summary.spent)} ₽ · CPO ${money2(summary.cpo)} · ДРР ${summary.drr == null ? "—" : `${summary.drr.toFixed(1)}%`} · артикулов ${count(summary.skus)}. Нажмите, чтобы оставить в таблице только эти кампании.`}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition ${
+                      summary.empty
+                        ? "border-dashed border-slate-200 bg-slate-50/50 text-slate-400"
+                        : blockFilter === summary.block
+                          ? "border-violet-500 bg-violet-50 text-violet-800 ring-1 ring-violet-200"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-violet-300"
+                    }`}
+                  >
+                    <span className="font-semibold uppercase tracking-wide">{summary.label}</span>
+                    <span className="font-bold tabular-nums">{summary.empty ? "—" : `${money(summary.spent)} ₽`}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className={`mb-3 grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 ${cardsOpen ? "grid" : "hidden"}`}>
               {blockSummary.map((summary) => (
                 <div key={summary.block} className="relative">
                   {/* Почему вид пуст — объяснение висело на ОТКЛЮЧЁННОЙ кнопке:
@@ -1013,12 +1079,19 @@ export function WbRkJournalPage() {
                 карточек завышены, и молчать об этом нельзя: красный CPO читается
                 как «реклама дорогая», а не как «знаменатель неполный». */}
             {outsideCards.orders > 0 ? (
-              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
-                Вне карточек осталось {count(outsideCards.orders)} заказов и {count(outsideCards.carts)} корзин
-                {outsideCards.share > 0 ? ` — ${Math.round(outsideCards.share * 100)}% заказов периода` : ""}: WB приписал их
-                кампаниям, которые этот артикул не показывали. Вида размещения у таких строк нет, поэтому CPO и ДРР
-                в карточках выше настоящих. Полные цифры — в строке артикула и в «Итого».
-              </div>
+              // Три строки объяснения занимали 54 пикселя постоянно, а читают
+              // их один раз. Оставляем факт, объяснение — по требованию.
+              <details className="mb-2 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-1.5 text-[11px] leading-relaxed text-amber-800">
+                <summary className="cursor-pointer list-none marker:content-none">
+                  Вне карточек осталось {count(outsideCards.orders)} заказов и {count(outsideCards.carts)} корзин
+                  {outsideCards.share > 0 ? ` — ${Math.round(outsideCards.share * 100)}% заказов периода` : ""}
+                  <span className="ml-1 font-semibold underline decoration-dotted">почему это важно</span>
+                </summary>
+                <p className="mt-1">
+                  WB приписал их кампаниям, которые этот артикул не показывали. Вида размещения у таких строк нет,
+                  поэтому CPO и ДРР в карточках выше настоящих. Полные цифры — в строке артикула и в «Итого».
+                </p>
+              </details>
             ) : null}
 
             {/* Ярлыки показываем даже пустыми: их вешают тут же, в строке
