@@ -134,7 +134,7 @@ test("шапка журнала сворачивается, чтобы табл�
   // при окне в 1000 пикселей видно четыре строки из двух с половиной сотен.
   // После свёртки таблица начинается с 294-го, строк видно семь.
   const page = read("../components/wb/WbRkJournalPage.tsx");
-  assert.match(page, /const \[cardsOpen, setCardsOpen\] = useState\(true\)/);
+  assert.match(page, /const \[cardsOpen, setCardsOpen\] = useState\(false\)/);
   // Выбор запоминается: свернул один раз — экран остаётся таким завтра.
   assert.match(page, /localStorage\.setItem\("wb-rk-cards-open"/);
   assert.match(page, /localStorage\.getItem\("wb-rk-cards-open"\)/);
@@ -163,20 +163,25 @@ test("длинное предупреждение не занимает экра
   assert.match(page, /Вне карточек осталось \{count\(outsideCards\.orders\)\}/);
 });
 
-test("плотные строки помещают вдвое больше товаров", () => {
-  // Строка артикула — 87 пикселей: фото, артикул, номер WB и название в четыре
-  // яруса. На экране в 1000 пикселей это пять строк из двух с половиной сотен.
-  // Замер после: строка 37 пикселей, видно 12 строк, а со свёрнутыми
-  // карточками — 17.
+test("плотная строка — единственная, переключателя нет", () => {
+  // Строка артикула была 87 пикселей: фото, артикул, номер WB и название в
+  // четыре яруса — пять строк на экране из двух с половиной сотен. Плотный вид
+  // сначала жил под кнопкой, но выбирать тут нечего: 37 пикселей против 87 при
+  // том же опознании товара. Кнопку сняли, вид оставили.
   const page = read("../components/wb/WbRkJournalPage.tsx");
-  assert.match(page, /const \[dense, setDense\] = useState\(false\)/);
-  assert.match(page, /localStorage\.setItem\("wb-rk-dense"/);
-  // Фото меньше, название уходит в подсказку, номер встаёт рядом с артикулом.
-  assert.match(page, /dense \? "h-7 w-6" : "h-11 w-9"/);
-  assert.match(page, /\{name && !dense \?/);
-  assert.match(page, /dense \? "flex-wrap sm:flex-nowrap" : "flex-wrap"/);
-  // Товар по-прежнему опознаётся: артикул и номер остаются на виду всегда.
-  assert.match(page, /dense \? <span className="hidden shrink-0 text-\[10px\][^>]*>\{item\.nm\}<\/span>/);
+  assert.doesNotMatch(page, /setDense|toggleDense|wb-rk-dense/, "вернулся переключатель плотности");
+  assert.match(page, /className="h-7 w-6 shrink-0 rounded-md/);
+  assert.match(page, /<div className="flex flex-wrap items-center gap-1\.5 sm:flex-nowrap">/);
+  // Товар опознаётся: артикул и номер на виду, название — в подсказке.
+  assert.match(page, /title=\{\[article \|\| `WB \$\{item\.nm\}`, name\]\.filter\(Boolean\)/);
+});
+
+test("виды размещения свёрнуты по умолчанию", () => {
+  // Сводка нужна изредка, таблица — каждый день. Развернуть по-прежнему можно
+  // кнопкой, и выбор запоминается.
+  const page = read("../components/wb/WbRkJournalPage.tsx");
+  assert.match(page, /const \[cardsOpen, setCardsOpen\] = useState\(false\)/);
+  assert.match(page, /localStorage\.getItem\("wb-rk-cards-open"\)/);
 });
 
 test("ярлык не распирает строку переносом", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpNarrowWide, ChevronDown, ChevronRight, CopyPlus, Rows3, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { ArrowUpNarrowWide, ChevronDown, ChevronRight, CopyPlus, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, useRef } from "react";
 import { Hint } from "@/components/ui/Hint";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
@@ -239,29 +239,10 @@ export function WbRkJournalPage() {
    * Экраном работают каждый день и смотрят в него таблицу, а не сводку.
    *
    * Свёрнутые карточки остаются рабочими: та же сумма, тот же клик-фильтр,
-   * одна строка вместо четырёх рядов.
+   * одна строка вместо четырёх рядов. Поэтому по умолчанию они свёрнуты:
+   * сводка нужна изредка, таблица — каждый день.
    */
-  const [cardsOpen, setCardsOpen] = useState(true);
-  /**
-   * Плотные строки.
-   *
-   * Строка артикула — 87 пикселей: фото, артикул, номер WB и название товара в
-   * четыре яруса. На экране в 1000 пикселей это семь строк из двух с половиной
-   * сотен. В плотном режиме остаются артикул и номер — по ним товар и
-   * опознают, — фото уменьшается, название уходит в подсказку.
-   */
-  const [dense, setDense] = useState(false);
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("wb-rk-dense");
-      if (saved != null) setDense(saved === "1");
-    } catch { /* приватное окно — остаёмся на умолчании */ }
-  }, []);
-  const toggleDense = () => setDense((value) => {
-    const next = !value;
-    try { window.localStorage.setItem("wb-rk-dense", next ? "1" : "0"); } catch { /* не беда */ }
-    return next;
-  });
+  const [cardsOpen, setCardsOpen] = useState(false);
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("wb-rk-cards-open");
@@ -908,18 +889,6 @@ export function WbRkJournalPage() {
             {cardsOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
             Виды размещения
           </button>
-          <button
-            type="button"
-            onClick={toggleDense}
-            aria-pressed={dense}
-            title={dense
-              ? "Вернуть просторные строки: фото крупнее и название товара под номером"
-              : "Плотные строки: остаются артикул и номер WB, название уходит в подсказку. На экране помещается вдвое больше товаров"}
-            className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-semibold sm:min-h-0 ${dense ? "border-violet-500 bg-violet-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-violet-300"}`}
-          >
-            <Rows3 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            Плотнее
-          </button>
           {/* Подсказку держим только при развёрнутых карточках: в свёрнутом
               виде кликабельность видна по самим чипам, а строка чистая. */}
           {cardsOpen ? (
@@ -1224,7 +1193,7 @@ export function WbRkJournalPage() {
                             {/* Фон закреплённой колонки только сплошной: под ней проезжают колонки
                                 дней, и через полупрозрачный фон их цифры просвечивали прямо
                                 поверх артикула — выглядело как наложение строк. */}
-                            <td className={`sticky left-0 z-20 px-2 sm:px-3 ${dense ? "py-1" : "py-2"} ${STICKY_EDGE} ${open ? "bg-violet-100" : "bg-white group-hover/row:bg-violet-50"}`}>
+                            <td className={`sticky left-0 z-20 px-2 py-1 sm:px-3 ${STICKY_EDGE} ${open ? "bg-violet-100" : "bg-white group-hover/row:bg-violet-50"}`}>
                               <div className="flex items-center gap-1.5 sm:gap-2.5">
                                 <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
                                 {/* Картинка WB лежит на одном из нескольких «баскетов», и по
@@ -1238,22 +1207,22 @@ export function WbRkJournalPage() {
                                   <WbProductImage
                                     nm={item.nm}
                                     label={article}
-                                    className={`shrink-0 rounded-md bg-slate-100 object-cover ring-1 ring-slate-200/60 ${dense ? "h-7 w-6" : "h-11 w-9"}`}
+                                    className="h-7 w-6 shrink-0 rounded-md bg-slate-100 object-cover ring-1 ring-slate-200/60"
                                   />
                                 </span>
                                 {/* Ширина колонки на телефоне задана жёстко: иначе её
                                     растягивает самый длинный артикул, и таблица начинается
                                     за краем экрана. */}
                                 <div className="w-[104px] sm:w-auto sm:min-w-0">
-                                  {/* В плотном режиме артикул, номер и ярлык идут одной
-                                      строкой: перенос ярлыка на второй ярус и был тем,
-                                      что держало строку в 62 пикселя. На телефоне
-                                      перенос остаётся — там ширины нет. */}
-                                  <div className={`flex items-center gap-1.5 ${dense ? "flex-wrap sm:flex-nowrap" : "flex-wrap"}`}>
+                                  {/* Артикул, номер и ярлык идут одной строкой: перенос
+                                      ярлыка на второй ярус и был тем, что держало строку
+                                      в 62 пикселя вместо 37. На телефоне перенос
+                                      остаётся — там ширины нет. */}
+                                  <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
                                     {/* Обрезанный артикул на телефоне бесполезен ровно
                                         так же, как обрезанный номер WB ниже: по нему
                                         товар в кабинете не найти. До sm переносим. */}
-                                    <span className="break-anywhere max-w-[104px] text-[13px] font-bold tracking-[-0.01em] text-slate-800 sm:max-w-[150px] sm:truncate" title={[article || `WB ${item.nm}`, dense ? name : null].filter(Boolean).join(" · ")}>{article || `WB ${item.nm}`}</span>
+                                    <span className="break-anywhere max-w-[104px] text-[13px] font-bold tracking-[-0.01em] text-slate-800 sm:max-w-[150px] sm:truncate" title={[article || `WB ${item.nm}`, name].filter(Boolean).join(" · ")}>{article || `WB ${item.nm}`}</span>
                                     {canWrite && hasExactCabinet ? (
                                       <WbTagPicker
                                         tags={tags}
@@ -1266,15 +1235,11 @@ export function WbRkJournalPage() {
                                         }}
                                       />
                                     ) : null}
-                                    {/* Номер WB в плотном режиме встаёт рядом с
-                                        артикулом, а не под ним. */}
-                                    {dense ? <span className="hidden shrink-0 text-[10px] font-normal tabular-nums text-slate-400 sm:inline">{item.nm}</span> : null}
+                                    {/* Номер WB стоит рядом с артикулом, а не под ним:
+                                        это второй ярус строки, а ярусов было четыре. */}
+                                    <span className="hidden shrink-0 text-[10px] font-normal tabular-nums text-slate-400 sm:inline">{item.nm}</span>
                                   </div>
-                                  {dense ? null : <div className="break-anywhere max-w-[104px] text-[11px] font-normal tabular-nums text-slate-400 sm:max-w-[168px] sm:truncate">WB {item.nm}</div>}
-                                  {/* Название — третий ярус строки. В плотном режиме
-                                      оно уходит в подсказку артикула: товар опознают по
-                                      артикулу и номеру, а название читают редко. */}
-                                  {name && !dense ? <div className="max-w-[104px] truncate text-[11px] font-normal text-slate-500 sm:max-w-[168px]" title={name}>{name}</div> : null}
+
                                 </div>
                               </div>
                             </td>
