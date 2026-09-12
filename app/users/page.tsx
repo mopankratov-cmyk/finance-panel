@@ -7,7 +7,7 @@ import { LimitsCard } from "@/components/access/LimitsCard";
 import { RoleSelector } from "@/components/access/RoleSelector";
 import { ROLE_LABEL, ROLE_MARKETPLACES, isCabinetScopedRole, isExternalRole, type Role } from "@/lib/auth/permissions";
 
-interface U { id: string; email: string; role: string; roles?: string[]; cabinet_ids: string[]; access_cabinet_ids?: string[]; is_active: boolean }
+interface U { id: string; email: string; role: string; roles?: string[]; cabinet_ids: string[]; access_cabinet_ids?: string[]; scope_cabinet_ids?: string[]; is_active: boolean }
 interface Cab { id: string; name: string; marketplace: string }
 /**
  * Роли берутся из общего словаря, а не из списка рядом.
@@ -28,6 +28,12 @@ const rolesOf = (u: U): Role[] => ((u.roles?.length ? u.roles : [u.role]) as Rol
  * селлера не появлялась вовсе.
  */
 const accessCabs = (u: U) => (u.access_cabinet_ids ?? u.cabinet_ids ?? []);
+/**
+ * Из чего можно выбирать. Раньше экран показывал только уже выданные кабинеты,
+ * и набор замерзал в момент заведения: добавить кабинет было нечем, убрать —
+ * тоже. Здесь — вся область, доступная человеку по его принадлежности.
+ */
+const scopeCabs = (u: U) => (u.scope_cabinet_ids ?? accessCabs(u));
 
 export default function UsersPage() {
   const [users, setUsers] = useState<U[]>([]);
@@ -225,7 +231,9 @@ export default function UsersPage() {
                     <Hint label="Почему роль нельзя изменить">Свою роль менять нельзя.</Hint>
                   )}
                   <button onClick={() => patch(u.id, { is_active: !u.is_active })} className="inline-flex min-h-11 items-center rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100 lg:min-h-0 lg:px-2">{u.is_active ? "Выключить" : "Включить"}</button>
-                  {accessCabs(u).length ? (
+                  {/* Кнопка показывалась только тому, у кого кабинет уже есть, —
+                      и человеку без кабинетов выдать их было нечем вовсе. */}
+                  {rolesOf(u).some(isCabinetScopedRole) ? (
                     <button
                       onClick={() => setOpenAccess(openAccess === u.id ? null : u.id)}
                       className={`inline-flex min-h-11 items-center rounded-md px-3 py-1 text-xs lg:min-h-0 lg:px-2 ${openAccess === u.id ? "bg-violet-100 text-violet-700" : "text-gray-500 hover:bg-gray-100"}`}
@@ -270,24 +278,66 @@ export default function UsersPage() {
                         соседние кабинеты и чужие юрлица ему не видны. Не задано — работает роль
                         «{roleLabel(u.role)}».
                       </div>
-                      <div className="space-y-1.5">
-                        {cabs.filter((c) => accessCabs(u).includes(c.id)).map((c) => {
-                          const level = access[`${u.id}|${c.id}`] ?? "";
+                      <div className="space-y-1">
+                        {(() => {
+                          const marketplaces = [...new Set(rolesOf(u).flatMap((r) => ROLE_MARKETPLACES[r] ?? []))];
+                          const offered = cabs.filter((c) =>
+                            scopeCabs(u).includes(c.id)
+                            && marketplaces.includes(c.marketplace === "ozon" ? "ozon" : "wb"));
+                          // Отмечено — то, куда человек ходит сейчас. У внутреннего
+                          // менеджера пустой список означает «все», поэтому снятая
+                          // последняя отметка равна «открыты все» — и об этом ниже
+                          // написано прямо, а не оставлено на догадку.
+                          const granted = u.cabinet_ids ?? [];
+                          const toggle = (cabinetId: string) => {
+                            const next = granted.includes(cabinetId)
+                              ? granted.filter((id) => id !== cabinetId)
+                              : [...granted, cabinetId];
+                            void patch(u.id, { cabinet_ids: next });
+                          };
+                          if (!offered.length) {
+                            return <div className="text-xs text-gray-400">Кабинетов для этой роли нет.</div>;
+                          }
                           return (
-                            <div key={c.id} className="flex items-center gap-2 text-xs">
-                              <span className="min-w-0 flex-1 truncate text-gray-700">{c.name}</span>
-                              <select
-                                value={level}
-                                onChange={(e) => void setLevel(u.id, c.id, e.target.value)}
-                                className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs"
-                              >
-                                <option value="">не задано</option>
-                                <option value="manager">менеджер кабинета</option>
-                                <option value="lead">админ кабинета</option>
-                              </select>
-                            </div>
+                            <>
+                              {offered.map((c) => {
+                                const on = granted.length ? granted.includes(c.id) : !isExternalRole(u.role);
+                                const level = access[`${u.id}|${c.id}`] ?? "";
+                                return (
+                                  <label key={c.id} className="flex min-h-11 items-center gap-2.5 rounded-md px-1 text-xs hover:bg-white lg:min-h-9">
+                                    <input
+                                      type="checkbox"
+                                      checked={on}
+                                      onChange={() => toggle(c.id)}
+                                      className="h-4 w-4 shrink-0 accent-violet-600"
+                                    />
+                                    <span className={`min-w-0 flex-1 truncate ${on ? "text-gray-800" : "text-gray-400"}`}>
+                                      {c.marketplace === "ozon" ? "Ozon" : "WB"}: {c.name}
+                                    </span>
+                                    {on ? (
+                                      <select
+                                        value={level}
+                                        onChange={(e) => void setLevel(u.id, c.id, e.target.value)}
+                                        className="min-h-9 rounded-md border border-gray-200 bg-white px-2 text-xs lg:min-h-0 lg:py-1"
+                                      >
+                                        <option value="">не задано</option>
+                                        <option value="manager">менеджер кабинета</option>
+                                        <option value="lead">админ кабинета</option>
+                                      </select>
+                                    ) : null}
+                                  </label>
+                                );
+                              })}
+                              {!granted.length ? (
+                                <div className="pt-1 text-[11px] text-gray-500">
+                                  {isExternalRole(u.role)
+                                    ? "Ни одного не отмечено — доступ идёт по организации, человек видит все её кабинеты."
+                                    : "Ни одного не отмечено — открыты все. Отметьте кабинеты, чтобы сузить."}
+                                </div>
+                              ) : null}
+                            </>
                           );
-                        })}
+                        })()}
                       </div>
                     </div>
                   ) : null}
