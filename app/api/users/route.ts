@@ -78,7 +78,19 @@ export async function GET() {
     }
     else if (user.role === "director") access = [];   // директор и так может всё — уровень ему не нужен
     else access = own.length ? own : allCabinetIds;   // пустой список у менеджера означает «все»
-    return { ...user, roles, access_cabinet_ids: access };
+    /**
+     * Из чего вообще можно выбирать этому человеку.
+     *
+     * `access` отвечает «куда он ходит сейчас», и на экране этого не хватало:
+     * список кабинетов был виден только по тем, что уже выданы, а добавить
+     * новый было нечем — набор кабинетов замерзал в момент заведения учётки.
+     * Границу задаёт не экран, а принадлежность: у внешнего человека это
+     * кабинеты его организации и ничьи больше.
+     */
+    const scope = user.role === "seller"
+      ? (byOrganization.get(String(user.organization_id ?? "")) ?? [])
+      : user.role === "director" ? [] : allCabinetIds;
+    return { ...user, roles, access_cabinet_ids: access, scope_cabinet_ids: scope };
   });
 
   const session = await getServerSession();
