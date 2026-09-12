@@ -3,27 +3,35 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { moscowYesterday } from "@/lib/wb/rkJournalDates";
-import { computeRkTaskBounds, RK_DEFAULT_BOUNDS, suggestRkTask } from "@/lib/wb/rkAutoTask";
+import { isPlannerSuggestion, planDailyRkTask, RK_MAX_CARRY_DAYS, type RkYesterdayTask } from "@/lib/wb/rkDailyTasks";
 
-// Автозаполнение задач журнала РК за вчерашний день.
+// Ежедневная простановка задач журнала РК за вчерашний день.
 //
-// Идёт ПОСЛЕ ночного снимка (sync/rk-journal, 03:00 МСК): снимок фиксирует
-// ставку и вид размещения того дня, а без них советовать нечего.
+// Идёт ПОСЛЕ ночного снимка (sync/rk-journal, 03:00 МСК): снимок говорит, по
+// каким товарам реклама вчера вообще шла.
+//
+// Правила живут в lib/wb/rkDailyTasks.ts и выведены из рабочей таблицы
+// «Показы CTR CPC» — 6 213 решений менеджеров за 120 дней. Коротко: переносим
+// вчерашнее решение, а перебиваем его только нулевым остатком. Сверка
+// 12.09.2026 показала, что прежний советчик двигал ставку, а ставку руками в
+// августе меняли 26 раз из 4 401 решения, и направление совпадало раз на 491.
 //
 // Три правила, которые здесь важнее самих правил совета:
 //
 //   1. Никогда не затирать человека. Если на клетке уже есть задача — чужая
 //      она или наша вчерашняя, — трогать её нельзя. Совет появляется только
 //      там, где пусто.
-//   2. Молчание — штатный ответ. По разбору рабочей таблицы владельца решения
-//      принимаются в 39% дней, а крупные — в 4%. Советчик, пишущий что-то
-//      каждый день по каждой строке, превращается в шум и его выключают.
-//   3. Границы «дорого» и «дёшево» берутся из истории САМОГО кабинета, а не
-//      зашиты числом: у Оптимы и у СЛОЁНО они разные.
+//   2. Молчание — штатный ответ. Товар, по которому вчера задачи не было и
+//      остаток в порядке, остаётся без совета: журнал в сотни строк, где
+//      подписана каждая, читать перестают.
+//   3. Совет, к которому человек не притрагивался, не живёт дольше двух недель.
 export const maxDuration = 120;
 
-/** Сколько дней истории берём, чтобы посчитать границы кабинета. */
-const HISTORY_DAYS = 30;
+/**
+ * Сколько дней назад смотрим, чтобы понять, сколько дней задача уже переносится.
+ * Чуть больше потолка переноса — иначе длину серии не измерить.
+ */
+const HISTORY_DAYS = RK_MAX_CARRY_DAYS + 2;
 
 interface SnapshotRow {
   cabinet_id: string;
@@ -37,14 +45,22 @@ interface SnapshotRow {
   orders_sum: number | string | null;
 }
 
-interface HistoryRow {
+interface NoteRow {
+  cabinet_id: string;
   nm_id: number;
+  advert_id: number | null;
   date: string;
-  spent: number | string | null;
-  spent_allocated: number | string | null;
-  orders: number | null;
-  orders_sum: number | string | null;
+  note: string | null;
+  source: string | null;
+  suggested_reason: string | null;
 }
+
+/** Сдвиг календарной даты. Считаем в UTC: зона сервера не должна двигать день. */
+const shiftIso = (iso: string, days: number): string => {
+  const at = new Date(`${iso}T00:00:00.000Z`);
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+};
 
 const num = (value: number | string | null | undefined) => {
   const parsed = typeof value === "string" ? Number(value) : value;
@@ -74,6 +90,8 @@ export async function GET(request: NextRequest) {
   const errors: string[] = [];
   let suggested = 0;
   let skippedTaken = 0;
+  /** Сколько задач перенеслось со вчера — по нему видно, живёт ли цепочка. */
+  let carried = 0;
 
   try {
     // Снимок нужного дня — источник ставки и вида размещения. Без снимка
@@ -90,12 +108,37 @@ export async function GET(request: NextRequest) {
         .range(from, to),
       { maxPages: 60, label: "Автозадачи: снимок дня", concurrency: 4 },
     );
-    if (!snapshots.length) {
-      await writeSyncLog("rk-autotask", "ok", 0, `Снимка за ${date} нет — советовать не по чему`, startedAt);
-      return NextResponse.json({ ok: true, date, suggested: 0, note: "нет снимка" });
-    }
+    /**
+     * История задач за две недели с хвостиком.
+     *
+     * Читается ДО проверки снимка намеренно. Перенос вчерашнего решения не
+     * зависит от вчерашних цифр: задача говорит, что делать сегодня, а не
+     * объясняет прошедший день. Если ночной снимок не собрался, цепочка задач
+     * рваться не должна — люди свою работу из-за нашего сбоя не прекращают.
+     */
+    const noteRows = await loadAllSupabasePages<NoteRow>(
+      (from, to) => db
+        .from("wb_rk_notes")
+        .select("cabinet_id, nm_id, advert_id, date, note, source, suggested_reason")
+        .gte("date", historyFromIso)
+        .lt("date", date)
+        .order("date", { ascending: true })
+        .order("nm_id", { ascending: true })
+        .range(from, to),
+      { maxPages: 60, label: "Автозадачи: история задач", concurrency: 4 },
+    ).catch((error) => {
+      errors.push(`история задач: ${error instanceof Error ? error.message : String(error)}`);
+      return [] as NoteRow[];
+    });
 
-    const cabinets = [...new Set(snapshots.map((row) => row.cabinet_id).filter(Boolean))];
+    const cabinets = [...new Set([
+      ...snapshots.map((row) => row.cabinet_id),
+      ...noteRows.map((row) => row.cabinet_id),
+    ].filter(Boolean))];
+    if (!cabinets.length) {
+      await writeSyncLog("rk-autotask", "ok", 0, `Ни снимка, ни задач за ${date} — ставить нечего`, startedAt);
+      return NextResponse.json({ ok: true, date, suggested: 0, note: "нет ни снимка, ни вчерашних задач" });
+    }
 
     // Остатки: рекламировать то, чего нет на складе, советовать нельзя, а
     // пустой остаток — сам по себе задача «Откл до отгрузки».
@@ -131,86 +174,105 @@ export async function GET(request: NextRequest) {
     ).catch(() => [] as { cabinet_id: string; nm_id: number; advert_id: number | null }[]);
     for (const row of takenRows) taken.add(`${row.cabinet_id}|${row.nm_id}|${row.advert_id ?? "-"}`);
 
-    // Границы считаются на кабинет и по артикуло-дням: задача ставится на
-    // товар, а не на отдельную кампанию, и мерить надо на том же уровне.
-    const boundsByCabinet = new Map<string, ReturnType<typeof computeRkTaskBounds>>();
-    for (const cabinetId of cabinets) {
-      const history = await loadAllSupabasePages<HistoryRow>(
-        (from, to) => db
-          .from("wb_advert_nm_campaign_daily")
-          .select("nm_id, date, spent, spent_allocated, orders, orders_sum")
-          .eq("cabinet_id", cabinetId)
-          .gte("date", historyFromIso)
-          .lt("date", date)
-          .order("date", { ascending: true })
-          .order("nm_id", { ascending: true })
-          .range(from, to),
-        { maxPages: 60, label: `Автозадачи: история ${cabinetId}`, concurrency: 4 },
-      ).catch((error) => {
-        errors.push(`история кабинета: ${error instanceof Error ? error.message : String(error)}`);
-        return [] as HistoryRow[];
-      });
-      const byArticleDay = new Map<string, { spend: number; orders: number; ordersSum: number }>();
-      for (const row of history) {
-        const key = `${row.nm_id}|${row.date}`;
-        const acc = byArticleDay.get(key) ?? { spend: 0, orders: 0, ordersSum: 0 };
-        acc.spend += num(row.spent) + num(row.spent_allocated);
-        acc.orders += num(row.orders);
-        acc.ordersSum += num(row.orders_sum);
-        byArticleDay.set(key, acc);
+    const cellKey = (cabinetId: string, nmId: number, advertId: number | null) =>
+      `${cabinetId}|${nmId}|${advertId ?? "-"}`;
+    const byCell = new Map<string, NoteRow[]>();
+    for (const row of noteRows) {
+      if (!String(row.note ?? "").trim()) continue;
+      // Предложения отменённых правил про ставку не переносим: иначе прогон
+      // сам себя бы и поддерживал в том, от чего мы уходим.
+      if (row.source === "auto" && !isPlannerSuggestion(row.suggested_reason)) continue;
+      const key = cellKey(row.cabinet_id, row.nm_id, row.advert_id);
+      const list = byCell.get(key) ?? [];
+      list.push(row);
+      byCell.set(key, list);
+    }
+
+    const yesterdayIso = shiftIso(date, -1);
+    const yesterdayByCell = new Map<string, RkYesterdayTask>();
+    for (const [key, list] of byCell) {
+      const sorted = [...list].sort((left, right) => left.date.localeCompare(right.date));
+      const last = sorted.at(-1);
+      // Только ВЧЕРАШНЯЯ задача переносится: разрыв в днях означает, что товар
+      // выпал из работы, и тянуть недельной давности решение нельзя.
+      if (!last || last.date !== yesterdayIso) continue;
+      const note = String(last.note).trim();
+      // Длина серии: сколько дней подряд стоит тот же текст и его не трогал
+      // человек. Прерывается и сменой текста, и любым днём без задачи.
+      let carriedDays = 0;
+      let cursor = yesterdayIso;
+      for (let index = sorted.length - 1; index >= 0; index--) {
+        const row = sorted[index];
+        if (row.date !== cursor || String(row.note).trim() !== note || row.source === "human") break;
+        carriedDays += 1;
+        cursor = shiftIso(cursor, -1);
       }
-      boundsByCabinet.set(cabinetId, computeRkTaskBounds([...byArticleDay.values()]));
+      yesterdayByCell.set(key, {
+        note,
+        source: last.source === "auto" ? "auto" : "human",
+        carriedDays,
+      });
     }
 
     const now = new Date().toISOString();
     const rows: Record<string, unknown>[] = [];
-    /** Одна клетка — одна задача, даже если совет пришёл от нескольких кампаний. */
-    const written = new Set<string>();
     const preview: { nm: number; advert: number | null; note: string; reason: string }[] = [];
 
+    /**
+     * Клетки-кандидаты.
+     *
+     * Две группы. Первая — товары, по которым вчера шла реклама: по ним
+     * работает правило остатка. Вторая — все клетки, где вчера стояла задача,
+     * включая клетки кампаний: если человек вчера написал задачу конкретной
+     * кампании, перенести её надо туда же, а не на товар целиком.
+     *
+     * Правило остатка при этом остаётся ТОВАРНЫМ: остаток общий, и задача
+     * «Откл до отгрузки», продублированная по каждой кампании, превращается в
+     * шум — прогон по 01.09 давал четыре одинаковых задачи на один артикул.
+     */
+    interface Candidate { cabinetId: string; nmId: number; advertId: number | null; advertised: boolean }
+    const candidates = new Map<string, Candidate>();
     for (const snapshot of snapshots) {
-      // Занятость проверяем ПОСЛЕ совета: у задачи про товар ключ другой
-      // (advert_id = null), и ранняя проверка по ключу кампании отсекала бы
-      // «Откл до отгрузки» из-за занятой соседней клетки.
-      const bounds = boundsByCabinet.get(snapshot.cabinet_id) ?? RK_DEFAULT_BOUNDS;
-      const stock = stockByKey.has(`${snapshot.cabinet_id}|${snapshot.nm_id}`)
-        ? stockByKey.get(`${snapshot.cabinet_id}|${snapshot.nm_id}`)!
+      const key = cellKey(snapshot.cabinet_id, snapshot.nm_id, null);
+      const current = candidates.get(key)
+        ?? { cabinetId: snapshot.cabinet_id, nmId: snapshot.nm_id, advertId: null, advertised: false };
+      current.advertised = current.advertised || num(snapshot.views) > 0 || num(snapshot.spent) > 0;
+      candidates.set(key, current);
+    }
+    for (const [key, task] of yesterdayByCell) {
+      if (candidates.has(key)) continue;
+      const parts = key.split("|");
+      const advertId = parts[2] === "-" ? null : Number(parts[2]);
+      candidates.set(key, { cabinetId: parts[0], nmId: Number(parts[1]), advertId, advertised: Boolean(task) });
+    }
+
+    for (const candidate of candidates.values()) {
+      const key = cellKey(candidate.cabinetId, candidate.nmId, candidate.advertId);
+      const stock = candidate.advertId === null && stockByKey.has(`${candidate.cabinetId}|${candidate.nmId}`)
+        ? stockByKey.get(`${candidate.cabinetId}|${candidate.nmId}`)!
         : null;
-      const suggestion = suggestRkTask({
-        block: snapshot.block,
-        spent: num(snapshot.spent),
-        orders: num(snapshot.orders),
-        ordersSum: num(snapshot.orders_sum),
-        views: num(snapshot.views),
-        bid: snapshot.bid == null ? null : num(snapshot.bid),
+      const task = planDailyRkTask({
+        yesterday: yesterdayByCell.get(key) ?? null,
         stock,
-        bounds,
-        // День уже снят — снимок за него и есть доказательство, что он закрыт.
-        dayClosed: true,
+        advertised: candidate.advertised,
       });
-      if (!suggestion) continue;
-      // Задача про ТОВАР пишется один раз, с advert_id = null. Иначе «Откл до
-      // отгрузки» дублируется по каждой кампании: прогон по 01.09 дал четыре
-      // одинаковых задачи на один артикул только у Retail Family.
-      const advertId = suggestion.scope === "article" ? null : snapshot.advert_id;
-      const rowKey = `${snapshot.cabinet_id}|${snapshot.nm_id}|${advertId ?? "-"}`;
-      if (written.has(rowKey)) continue;
-      if (taken.has(rowKey)) { skippedTaken++; continue; }
-      written.add(rowKey);
+      if (!task) continue;
+      if (taken.has(key)) { skippedTaken++; continue; }
       suggested++;
+      if (task.reason.startsWith("Перенос")) carried++;
       if (preview.length < 20) {
-        preview.push({ nm: snapshot.nm_id, advert: snapshot.advert_id, note: suggestion.note, reason: suggestion.reason });
+        preview.push({ nm: candidate.nmId, advert: candidate.advertId, note: task.note, reason: task.reason });
       }
       rows.push({
-        cabinet_id: snapshot.cabinet_id,
-        nm_id: snapshot.nm_id,
-        advert_id: advertId,
+        cabinet_id: candidate.cabinetId,
+        nm_id: candidate.nmId,
+        advert_id: candidate.advertId,
         date,
-        note: suggestion.note,
+        note: task.note,
         done: false,
         source: "auto",
-        suggested_note: suggestion.note,
-        suggested_reason: suggestion.reason,
+        suggested_note: task.note,
+        suggested_reason: task.reason,
         suggested_at: now,
         updated_at: now,
         updated_by: "автозадачи",
@@ -225,6 +287,7 @@ export async function GET(request: NextRequest) {
     const note = [
       `дней в снимке ${snapshots.length}`,
       `советов ${suggested}`,
+      `перенесено ${carried}`,
       `клеток занято ${skippedTaken}`,
       ...errors,
     ].join("; ");
@@ -236,7 +299,10 @@ export async function GET(request: NextRequest) {
       scanned: snapshots.length,
       suggested,
       skippedTaken,
-      bounds: Object.fromEntries(boundsByCabinet),
+      // Сколько задач перенеслось со вчера, а сколько поставил остаток —
+      // по этим двум числам видно, работает ли прогон вообще.
+      carried,
+      byStock: suggested - carried,
       preview,
       errors,
     });
