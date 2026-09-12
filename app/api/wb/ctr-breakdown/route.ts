@@ -4,6 +4,15 @@ import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { CTR_MIN_VIEWS, reliableCtr } from "@/lib/wb/ctrQuality";
+import {
+  CTR_MIN_CAMPAIGN_SPEND,
+  buildCtrDayPick,
+  ctrOfPick,
+  ctrPaymentModel,
+  pickCtrCampaign,
+  type CtrPaymentModel,
+} from "@/lib/wb/ctrCampaignPick";
+import type { WbAdvertBlockInput } from "@/lib/wb/advertBlocks";
 
 // Из чего сложился CTR артикула за день: разбивка по кампаниям.
 //
@@ -24,6 +33,12 @@ export interface CtrCampaignRow {
   /** null — показов слишком мало, чтобы доля что-то значила. */
   ctr: number | null;
   spent: number;
+  /** Модель оплаты: cpc, cpm, erk. null — WB о кампании ничего не сообщает. */
+  model: CtrPaymentModel | "erk" | null;
+  /** Та самая, по которой посчитан CTR клетки. */
+  chosen: boolean;
+  /** Почему кампания в расчёт не пошла. null — пошла. */
+  excluded: "erk" | "unknown" | "idle" | "smaller" | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -58,25 +73,55 @@ export async function GET(request: NextRequest) {
   const advertIds = [...new Set(rows.map((row) => Number(row.advert_id)).filter(Number.isFinite))];
 
   // Имена кампаний справочные: если их нет, показываем номер — он всё равно
-  // опознаёт кампанию в кабинете WB.
+  // опознаёт кампанию в кабинете WB. А вид ставки и модель оплаты уже не
+  // справка: по ним клетка выбирает кампанию, и разбор обязан считать тем же
+  // правилом — иначе окно спорит с числом, которое объясняет.
   const names = new Map<number, string>();
+  const models = new Map<number, CtrPaymentModel | "erk" | null>();
   if (advertIds.length) {
-    const { data: adverts } = await db.from("wb_adverts").select("advert_id, name").in("advert_id", advertIds);
-    for (const advert of adverts ?? []) names.set(Number(advert.advert_id), String(advert.name ?? ""));
+    const { data: adverts } = await db
+      .from("wb_adverts")
+      .select("advert_id, name, bid_type, payment_type, placement_search, placement_shelf, bid_cpm_rub, bid_search_rub, bid_shelf_rub, block_override")
+      .in("advert_id", advertIds);
+    for (const advert of (adverts ?? []) as Array<WbAdvertBlockInput & { advert_id: number; name?: string | null }>) {
+      names.set(Number(advert.advert_id), String(advert.name ?? ""));
+      models.set(Number(advert.advert_id), ctrPaymentModel(advert));
+    }
   }
+
+  const pick = buildCtrDayPick(
+    rows.map((row) => ({ advertId: Number(row.advert_id), views: Number(row.views ?? 0), clicks: Number(row.clicks ?? 0), spent: Number(row.spent ?? 0) })),
+    (advertId) => models.get(advertId) ?? null,
+  );
+  const chosenCampaign = pickCtrCampaign(pick, "any");
 
   const campaigns: CtrCampaignRow[] = rows
     .map((row) => {
       const views = Number(row.views ?? 0);
       const clicks = Number(row.clicks ?? 0);
       const advertId = Number(row.advert_id);
+      const spent = Number(row.spent ?? 0);
+      const model = models.get(advertId) ?? null;
+      const chosen = chosenCampaign?.advertId === advertId;
+      const excluded: CtrCampaignRow["excluded"] = chosen
+        ? null
+        : model === "erk"
+          ? "erk"
+          : model == null
+            ? "unknown"
+            : spent < CTR_MIN_CAMPAIGN_SPEND
+              ? "idle"
+              : "smaller";
       return {
         advertId,
         name: names.get(advertId) || `Кампания ${advertId}`,
         views,
         clicks,
         ctr: reliableCtr(views, clicks),
-        spent: Number(row.spent ?? 0),
+        spent,
+        model,
+        chosen,
+        excluded,
       };
     })
     .filter((row) => row.views > 0 || row.clicks > 0 || row.spent > 0)
@@ -86,10 +131,14 @@ export async function GET(request: NextRequest) {
   const clicks = campaigns.reduce((sum, row) => sum + row.clicks, 0);
 
   return NextResponse.json({
-    meta: { cabinetId, nmId, date, minViews: CTR_MIN_VIEWS },
+    meta: { cabinetId, nmId, date, minViews: CTR_MIN_VIEWS, minSpend: CTR_MIN_CAMPAIGN_SPEND },
     data: {
       campaigns,
+      // Итог остаётся суммой: показы случились, деньги потрачены. А CTR клетки
+      // считается по выбранной кампании — это два разных ответа, и окно
+      // показывает оба, чтобы разница была видна, а не спрятана.
       total: { views, clicks, ctr: reliableCtr(views, clicks) },
+      chosen: chosenCampaign ? { advertId: chosenCampaign.advertId, ctr: ctrOfPick(pick, "any") } : null,
     },
   });
 }

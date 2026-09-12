@@ -3,6 +3,16 @@
 import { ArrowUpNarrowWide, ChevronDown, ChevronRight, Filter, MessageSquare, Package, Search, X } from "lucide-react";
 import { WbCtrDayPopup } from "./WbCtrDayPopup";
 import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
+import {
+  CTR_MIN_CAMPAIGN_SPEND,
+  CTR_MODEL_LABEL,
+  ctrOfPick,
+  ctrPickFromWire,
+  ctrPickModel,
+  pickCtrCampaign,
+  type CtrDayPickWire,
+  type CtrModelFilter,
+} from "@/lib/wb/ctrCampaignPick";
 import { ctrNoteCellClass, ctrNoteColor, ctrNoteColorLabel, type CtrNoteColor } from "@/lib/wb/ctrNoteColors";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
@@ -43,7 +53,27 @@ interface FunnelSku {
 
 interface SkusData { skus: FunnelSku[]; metrics_period: string; error?: string }
 type DayCell = Record<string, number | null>;
-interface DayMetricsData { metrics: Record<string, Record<string, DayCell>>; error?: string }
+interface DayMetricsData {
+  metrics: Record<string, Record<string, DayCell>>;
+  /** Выбранная кампания по клетке. Нет — снимок старой схемы, CTR в нём сумма. */
+  ctrPicks?: Record<string, Record<string, CtrDayPickWire>>;
+  error?: string;
+}
+
+/**
+ * Вид размещения, по которому смотрим CTR.
+ *
+ * Правило отбора убирает смешение ВНУТРИ артикула, но колонку между артикулами
+ * сравнимой не делает: на живых данных за 14 дней CPM идёт по 4,32%, CPC по
+ * 3,77%. Сравнивая их взглядом, человек сравнивал бы вид кампании, а не
+ * обложку. Фильтр приводит столбец к одной шкале — тот же приём, что «вид
+ * размещения» в Журнале РК.
+ */
+const CTR_MODELS: Array<{ value: CtrModelFilter; label: string; hint: string }> = [
+  { value: "any", label: "Любой", hint: "Из кампаний дня берём ту, что потратила больше. Виды смешиваются между артикулами: CPM и CPC идут по разным шкалам." },
+  { value: "cpm", label: "CPM", hint: "Только кампании с оплатой за показы. Столбец приведён к одной шкале, и артикулы сравнимы между собой." },
+  { value: "cpc", label: "CPC", hint: "Только кампании с оплатой за клик. Столбец приведён к одной шкале, и артикулы сравнимы между собой." },
+];
 type MetricKey = "views" | "ctr" | "open_card" | "carts" | "cart_cr" | "cr" | "orders_sum" | "advert_sum" | "drr";
 
 const METRICS: Array<{ key: MetricKey; label: string; kind: "int" | "money" | "pct"; definition: string; metricId?: MarketplaceMetricId }> = [
@@ -114,6 +144,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
   const [customTo, setCustomTo] = useDashboardFilter<string>("date_to", "");
   const [periodClamped, setPeriodClamped] = useState(false);
   const [metric, setMetric] = useDashboardFilter<MetricKey>("metric", "views", METRICS.map((item) => item.key));
+  const [ctrModel, setCtrModel] = useDashboardFilter<CtrModelFilter>("ctr_model", "any", CTR_MODELS.map((item) => item.value));
   const [skus, setSkus] = useState<SkusData | null>(null);
   const [daily, setDaily] = useState<DayMetricsData | null>(null);
   const [query, setQuery] = useDashboardFilter<string>("q", "", undefined, 300);
@@ -442,6 +473,31 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
             <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-violet-400 lg:ml-auto lg:w-72 lg:min-h-8"><Search className="h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="nm, артикул, название" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />{query ? <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white"><X className="h-3.5 w-3.5" /></button> : null}</label>
           </div>
           <div className="scroll-x flex min-w-0 gap-2 pb-1 sm:gap-1 lg:pb-0" role="tablist" aria-label="Метрика воронки">{METRICS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={metric === item.key} title={item.definition} onClick={() => setMetric(item.key)} className={`min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-8 ${metric === item.key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item.label}</button>)}</div>
+          {/* Появляется только на CTR: остальным метрикам вид размещения
+              безразличен, а постоянный переключатель занимал бы строку зря. */}
+          {metric === "ctr" ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">Вид размещения</span>
+              <div className="flex shrink-0 gap-1" role="tablist" aria-label="Вид размещения для CTR">
+                {CTR_MODELS.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={ctrModel === item.value}
+                    title={item.hint}
+                    onClick={() => setCtrModel(item.value)}
+                    className={`min-h-8 shrink-0 rounded-lg px-2.5 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${ctrModel === item.value ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <span className="min-w-0 text-[10px] leading-tight text-slate-400">
+                ЕРК из расчёта исключён, из параллельных кампаний берётся та, что потратила больше {CTR_MIN_CAMPAIGN_SPEND} ₽ и больше остальных.
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {ctrPopup && cabinetId ? (
@@ -536,10 +592,16 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                 {rowWindow.start > 0 ? <tr aria-hidden="true" style={{ height: rowWindow.start * ROW_HEIGHT }}><td colSpan={2 + adsCols + funnelCols + stockCols + dates.length} /></tr> : null}
                 {filtered.slice(rowWindow.start, rowWindow.end).map((sku) => <tr key={sku.nm} className="h-12 hover:bg-violet-50/20"><td className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-3"><div className="flex items-center gap-2"><div className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-100 bg-slate-50 text-slate-300"><Package className="h-4 w-4" /><WbProductImage nm={sku.nm} src={sku.img_url} label={sku.art} className="absolute inset-0 h-full w-full rounded-md object-cover" /></div><WbSkuIdentityCell article={sku.art} nm={sku.nm} serverName={sku.name} directory={skuNames} width="max-w-[110px] sm:max-w-[185px]" /></div></td><td className={`border-b border-slate-100 px-2 text-right tabular-nums${collapsed.ads ? " border-r" : ""}`}>{fmt(sku.shows_window)}</td>{collapsed.ads ? null : <td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.ctr_window)}</td>}{collapsed.funnel ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.open_card_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{pct(sku.cv_cart_window)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.orders_count_window)}</td></>}<td className="border-b border-r border-slate-100 px-2 text-right font-semibold tabular-nums">{fmt(sku.orders_sum_window)} ₽</td>{collapsed.stocks ? null : <><td className="border-b border-slate-100 px-2 text-right tabular-nums">{fmt(sku.stock_fbo)}</td><td className="border-b border-slate-100 px-2 text-right tabular-nums">{sku.stock_fbs == null ? <span className="text-slate-300" title="Остатки склада продавца ещё не собирались">—</span> : fmt(sku.stock_fbs)}</td></>}<td className={`border-b border-r border-slate-100 px-2 text-right tabular-nums ${sku.stock === 0 ? "font-semibold text-rose-600" : "text-slate-700"}`}>{fmt(sku.stock)}</td><td className="border-b border-r border-slate-100 px-2 text-right tabular-nums">{pct(sku.drr_window)}</td>{dates.map((date) => {
                   const cell = daily?.metrics[String(sku.nm)]?.[date];
-                  const value = cell?.[metric];
                   const isCtr = metric === "ctr";
-                  const views = cell?.views ?? 0;
+                  // Клетка знает про кампании — считаем CTR по выбранной, а не
+                  // по сумме разных шкал. Старый снимок кэша их не знает: там
+                  // остаётся прежнее число, иначе экран опустел бы на час.
+                  const pick = isCtr ? ctrPickFromWire(daily?.ctrPicks?.[String(sku.nm)]?.[date]) : null;
+                  const chosen = pick ? pickCtrCampaign(pick, ctrModel) : null;
+                  const value = isCtr && pick ? ctrOfPick(pick, ctrModel) : cell?.[metric];
+                  const views = pick ? (chosen?.views ?? 0) : (cell?.views ?? 0);
                   const тонкийЗамер = isCtr && views < CTR_MIN_VIEWS;
+                  const pickModel = pick ? ctrPickModel(pick, ctrModel) : null;
                   const mark = notes.get(noteKey(sku.nm, date));
                   const hasNote = Boolean(mark?.note);
                   // Цвет пометки перебивает служебную окраску по порогам: его
@@ -556,12 +618,29 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                           title={[
                             markLabel ? `Пометка: ${markLabel.toLowerCase()}` : null,
                             mark?.note || null,
+                            // Из чего собрано число — иначе оно снова обманет:
+                            // в столбце показов сумма всех кампаний, а доля
+                            // клика посчитана по одной.
+                            chosen && pickModel
+                              ? `Кампания ${chosen.advertId} · ${CTR_MODEL_LABEL[pickModel]} · ${fmt(chosen.views)} показов, ${fmt(chosen.spent)} ₽`
+                              : null,
+                            pick && !chosen
+                              ? `Рабочей кампании нет: ${ctrModel === "any" ? "ни одна не потратила" : `${CTR_MODEL_LABEL[ctrModel as "cpc" | "cpm"]} не потратила`} ${CTR_MIN_CAMPAIGN_SPEND} ₽ за день`
+                              : null,
+                            pick && pick.dropped > 0 ? `Отброшено кампаний: ${pick.dropped} (ЕРК, неразмеченные и нерабочие)` : null,
                             тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит` : null,
                             "Нажмите: разбор по кампаниям, заметка и цвет",
                           ].filter(Boolean).join(" · ")}
                           className={`tap-hit inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 max-lg:underline max-lg:decoration-violet-300 max-lg:decoration-dotted max-lg:underline-offset-2 ${markClass ?? (тонкийЗамер ? "text-slate-300" : cellTone(metric, shown))}`}
                         >
                           {тонкийЗамер ? "—" : formatCell(shown)}
+                          {/* Подпись вида кампании: без неё число снова читается
+                              как «CTR товара», хотя это CTR одной кампании.
+                              При включённом фильтре она лишняя — вид один на
+                              весь столбец и назван в переключателе. */}
+                          {!тонкийЗамер && pickModel && ctrModel === "any"
+                            ? <span className="shrink-0 rounded bg-slate-100 px-0.5 text-[7px] font-bold uppercase leading-tight text-slate-500">{CTR_MODEL_LABEL[pickModel]}</span>
+                            : null}
                           {hasNote ? <MessageSquare className="h-2.5 w-2.5 shrink-0 text-violet-500" aria-label="есть заметка" /> : null}
                         </button>
                       ) : (

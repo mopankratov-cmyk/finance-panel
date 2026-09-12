@@ -1,3 +1,12 @@
+import {
+  buildCtrDayPick,
+  ctrOfPick,
+  ctrPickToWire,
+  type CtrCampaignRowInput,
+  type CtrDayPickWire,
+  type CtrPaymentModel,
+} from "./ctrCampaignPick";
+
 export interface WbFunnelMetricRow {
   nm_id: number;
   date: string;
@@ -15,7 +24,27 @@ export interface WbAdMetricRow {
   spent: number;
 }
 
+/**
+ * Та же реклама, но в разрезе кампаний.
+ *
+ * Отдельным источником, а не заменой витрины по артикулам: по-кампанийный слой
+ * за 30 дней у крупного кабинета — 46 тысяч строк против 6,7 тысячи, и читать
+ * его ради сумм, которые уже посчитаны, значит платить всемеро за то же самое.
+ * Сюда приходят только строки, где кампания что-то сделала: пустые для выбора
+ * бесполезны, а в суммы они и так не добавляют ничего.
+ */
+export interface WbAdCampaignRow {
+  nm_id: number;
+  date: string;
+  views: number;
+  clicks: number;
+  spent: number;
+  advert_id: number;
+}
+
 type DayMetrics = Record<number, Record<string, Record<string, number | null>>>;
+/** Выбор кампании по клетке: [артикул][дата]. Компактная форма для ответа API. */
+export type DayCtrPicks = Record<number, Record<string, CtrDayPickWire>>;
 type Accumulator = {
   views: number;
   clicks: number;
@@ -38,7 +67,30 @@ export function percentRatio(numerator: number, denominator: number): number | n
 export function buildWbFunnelDayMetrics(
   funnelRows: WbFunnelMetricRow[],
   adRows: WbAdMetricRow[],
-): DayMetrics {
+  /**
+   * Разрез по кампаниям. Не передан — CTR считается по-старому, суммой: так
+   * ведут себя вызовы и снимки кэша, собранные до разведения шкал.
+   */
+  campaigns?: {
+    rows: readonly WbAdCampaignRow[];
+    modelOf: (advertId: number) => CtrPaymentModel | "erk" | null;
+  },
+): { metrics: DayMetrics; ctrPicks: DayCtrPicks } {
+  // Кампании собираем отдельной картой: витрина по артикулам остаётся
+  // единственным источником сумм, и подмешивать в неё вторую таблицу нельзя —
+  // показы удвоились бы.
+  const campaignsByCell = new Map<string, CtrCampaignRowInput[]>();
+  for (const row of campaigns?.rows ?? []) {
+    const key = `${row.nm_id}:${String(row.date).slice(0, 10)}`;
+    const list = campaignsByCell.get(key) ?? [];
+    list.push({
+      advertId: Number(row.advert_id),
+      views: finiteNumber(row.views),
+      clicks: finiteNumber(row.clicks),
+      spent: finiteNumber(row.spent),
+    });
+    campaignsByCell.set(key, list);
+  }
   const accumulators = new Map<string, Accumulator>();
   const accumulator = (nmId: number, date: string) => {
     const iso = String(date).slice(0, 10);
@@ -68,6 +120,7 @@ export function buildWbFunnelDayMetrics(
   }
 
   const metrics: DayMetrics = {};
+  const ctrPicks: DayCtrPicks = {};
   for (const [key, value] of accumulators) {
     const separator = key.indexOf(":");
     const nmId = Number(key.slice(0, separator));
@@ -77,7 +130,18 @@ export function buildWbFunnelDayMetrics(
       cell.views = value.views;
       cell.clicks = value.clicks;
       cell.advert_sum = Math.round(value.spent);
-      cell.ctr = percentRatio(value.clicks, value.views);
+      // Показы, клики и расход остаются суммой по всем кампаниям: деньги
+      // потрачены, показы случились, и вычитать из них нечего. А CTR —
+      // утверждение о рекламе конкретного вида, и складывать разные шкалы в
+      // одну долю значит отвечать не на тот вопрос.
+      const dayCampaigns = campaigns ? campaignsByCell.get(key) : undefined;
+      if (campaigns && dayCampaigns?.length) {
+        const pick = buildCtrDayPick(dayCampaigns, campaigns.modelOf);
+        cell.ctr = ctrOfPick(pick, "any");
+        (ctrPicks[nmId] ||= {})[iso] = ctrPickToWire(pick);
+      } else {
+        cell.ctr = percentRatio(value.clicks, value.views);
+      }
     }
     if (value.hasFunnel) {
       cell.open_card = value.openCard;
@@ -97,7 +161,7 @@ export function buildWbFunnelDayMetrics(
     if (advertised && value.hasFunnel) cell.drr = percentRatio(value.spent, value.ordersSum);
     (metrics[nmId] ||= {})[iso] = cell;
   }
-  return metrics;
+  return { metrics, ctrPicks };
 }
 
 export const FUNNEL_MAX_PERIOD_DAYS = 90;

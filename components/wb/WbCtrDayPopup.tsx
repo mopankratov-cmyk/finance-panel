@@ -8,9 +8,35 @@ import { Hint } from "@/components/ui/Hint";
 import { CTR_NOTE_COLORS, ctrNoteColor, type CtrNoteColor } from "@/lib/wb/ctrNoteColors";
 
 interface Breakdown {
-  meta: { minViews: number };
-  data: { campaigns: CtrCampaignRow[]; total: { views: number; clicks: number; ctr: number | null } };
+  meta: { minViews: number; minSpend?: number };
+  data: {
+    campaigns: CtrCampaignRow[];
+    total: { views: number; clicks: number; ctr: number | null };
+    /** Кампания, по которой посчитан CTR клетки. null — рабочей не нашлось. */
+    chosen?: { advertId: number; ctr: number | null } | null;
+  };
 }
+
+/**
+ * Почему кампания не пошла в расчёт CTR.
+ *
+ * Отброшенную строку нельзя просто убрать: человек видит её показы в столбце
+ * клетки и должен понимать, куда они делись. Поэтому кампания остаётся на
+ * месте, приглушённая, с причиной рядом.
+ */
+const EXCLUDED_LABEL: Record<NonNullable<CtrCampaignRow["excluded"]>, string> = {
+  erk: "ЕРК",
+  unknown: "вид не определён",
+  idle: "не работала",
+  smaller: "меньше расход",
+};
+
+const EXCLUDED_HINT: Record<NonNullable<CtrCampaignRow["excluded"]>, string> = {
+  erk: "Единая ставка смешивает поиск, полки и рекомендации в одну кампанию — её доля клика несравнима с обычными. В расчёт CTR не идёт.",
+  unknown: "WB о виде этой кампании ничего не сообщает: обычно это завершённые или удалённые кампании, оставившие статистику. Принять её за CPM было бы догадкой.",
+  idle: "За день кампания потратила меньше порога — она крутилась остатками бюджета, и её доля клика описывает обрывок показа, а не обложку.",
+  smaller: "В этот день параллельно работала кампания того же вида с большим расходом — рабочей считаем её.",
+};
 
 const fmt = (value: number) => value.toLocaleString("ru-RU");
 const pct = (value: number | null) => (value == null ? "—" : `${value.toFixed(1)}%`);
@@ -181,6 +207,7 @@ export function WbCtrDayPopup({
                           CTR
                           <Hint label="Что такое CTR и почему бывает прочерк">
                             CTR — клики, делённые на показы. Прочерк вместо числа стоит там, где показов меньше {data?.meta.minViews ?? 0}: на таком объёме доля клика ничего не значит.
+                            {" "}В таблице воронки стоит CTR одной кампании — той, что помечена «в расчёте»: ЕРК и обычные кампании идут по разным шкалам, и складывать их в одну долю значит отвечать не на тот вопрос.
                           </Hint>
                         </span>
                       </th>
@@ -189,7 +216,7 @@ export function WbCtrDayPopup({
                   </thead>
                   <tbody>
                     {data.data.campaigns.map((row) => (
-                      <tr key={row.advertId} className="border-t border-slate-100">
+                      <tr key={row.advertId} className={`border-t border-slate-100 ${row.excluded ? "text-slate-400" : ""}`}>
                         <td className="py-1.5 pr-3">
                           {/*
                             Название кампании на узком экране переносится, а не
@@ -197,8 +224,19 @@ export function WbCtrDayPopup({
                             открыть, и от «Автоматическая кампания…» оставалось
                             два слова. С планшета и шире — прежняя одна строка.
                           */}
-                          <div className="break-anywhere line-clamp-2 text-slate-700 sm:line-clamp-none sm:truncate" title={row.name}>{row.name}</div>
-                          <div className="text-[10px] tabular-nums text-slate-400">№ {row.advertId}</div>
+                          <div className={`break-anywhere line-clamp-2 sm:line-clamp-none sm:truncate ${row.excluded ? "text-slate-400" : "text-slate-700"}`} title={row.name}>{row.name}</div>
+                          <div className="flex flex-wrap items-center gap-1 text-[10px] tabular-nums text-slate-400">
+                            <span>№ {row.advertId}</span>
+                            {row.chosen ? (
+                              <span className="rounded bg-violet-100 px-1 font-bold uppercase text-violet-700" title="По этой кампании посчитан CTR в таблице">
+                                в расчёте
+                              </span>
+                            ) : row.excluded ? (
+                              <span className="rounded bg-slate-100 px-1 font-semibold text-slate-500" title={EXCLUDED_HINT[row.excluded]}>
+                                {EXCLUDED_LABEL[row.excluded]}
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="py-1.5 text-right tabular-nums text-slate-600">{fmt(row.views)}</td>
                         <td className="py-1.5 text-right tabular-nums text-slate-600">{fmt(row.clicks)}</td>
@@ -214,7 +252,23 @@ export function WbCtrDayPopup({
                       <td className="py-2 text-slate-700">Итого</td>
                       <td className="py-2 text-right tabular-nums text-slate-800">{fmt(data.data.total.views)}</td>
                       <td className="py-2 text-right tabular-nums text-slate-800">{fmt(data.data.total.clicks)}</td>
-                      <td className="py-2 text-right tabular-nums text-slate-900">{pct(data.data.total.ctr)}</td>
+                      {/* Сумма всех кампаний — та самая смесь шкал, ради ухода
+                          от которой всё и затевалось. Она остаётся видна, но
+                          названа тем, чем является, и не выдаётся за CTR дня. */}
+                      <td className="py-2 text-right tabular-nums text-slate-400" title="Доля клика по всем кампаниям сразу, включая ЕРК. Шкалы разные, поэтому в таблицу идёт не эта цифра.">{pct(data.data.total.ctr)}</td>
+                      <td />
+                    </tr>
+                    <tr className="font-semibold">
+                      <td className="py-2 text-violet-700">
+                        В таблице
+                        <div className="text-[10px] font-normal text-slate-400">
+                          {data.data.chosen
+                            ? "по кампании «в расчёте»"
+                            : `рабочей кампании нет: ни одна не потратила ${data.meta.minSpend ?? 0} ₽`}
+                        </div>
+                      </td>
+                      <td colSpan={2} />
+                      <td className="py-2 text-right tabular-nums text-violet-700">{pct(data.data.chosen?.ctr ?? null)}</td>
                       <td />
                     </tr>
                   </tbody>

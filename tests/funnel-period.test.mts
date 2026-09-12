@@ -95,15 +95,23 @@ test("оба API воронки разбирают ?date_from/?date_to общи�
 
 test("посуточный API держит верхнюю границу и не теряет прогретый снимок", async () => {
   const route = await source("../app/api/design/day-metrics/route.ts");
-  // Верхняя граница появляется только вместе с запрошенным периодом — обе выборки.
-  assert.equal((route.match(/if \(until\) query = query\.lte\("date", until\);/g) ?? []).length, 2);
-  assert.match(route, /\{ cabinetId: p_cabinet, since, until, schema: 4 \}/);
+  // Верхняя граница появляется только вместе с запрошенным периодом, и она
+  // нужна КАЖДОЙ выборке: выборок стало три (воронка, реклама по артикулам,
+  // реклама по кампаниям), и пропущенная граница в одной из них тихо
+  // расширила бы период только для неё.
+  const reads = (route.match(/loadAllSupabasePages</g) ?? []).length;
+  assert.equal(reads, 3);
+  assert.equal((route.match(/if \(until\) query = query\.lte\("date", until\);/g) ?? []).length, reads);
+  // Номер схемы растёт вместе со смыслом снимка: на 5 CTR перестал быть суммой
+  // всех кампаний сразу. Сверяем, что он вообще задан, а не прибит к цифре —
+  // иначе тест ломается на каждом честном изменении расчёта.
+  assert.match(route, /\{ cabinetId: p_cabinet, since, until, schema: \d+ \}/);
   // Крон греет /api/design/day-metrics без дат: until=undefined обязан давать
   // ровно тот же ключ, что и до появления периода, иначе снимок собирается заново.
-  const warmed = hourlyDashboardIdentity({ cabinetId: "cab-a", since: "2026-07-19", schema: 4 });
-  const requested = hourlyDashboardIdentity({ cabinetId: "cab-a", since: "2026-07-19", until: undefined, schema: 4 });
+  const warmed = hourlyDashboardIdentity({ cabinetId: "cab-a", since: "2026-07-19", schema: 5 });
+  const requested = hourlyDashboardIdentity({ cabinetId: "cab-a", since: "2026-07-19", until: undefined, schema: 5 });
   assert.equal(requested, warmed);
-  assert.notEqual(hourlyDashboardIdentity({ cabinetId: "cab-a", since: "2026-07-19", until: "2026-08-01", schema: 4 }), warmed);
+  assert.notEqual(hourlyDashboardIdentity({ cabinetId: "cab-a", since: "2026-07-19", until: "2026-08-01", schema: 5 }), warmed);
 });
 
 test("оборачиваемость считается по длине периода, а не по ?window=", async () => {

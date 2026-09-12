@@ -14,7 +14,7 @@ test("percentRatio считает CR просмотра карточки в ко
 });
 
 test("дневной агрегатор сначала суммирует кабинеты и затем считает rates", () => {
-  const metrics = buildWbFunnelDayMetrics(
+  const { metrics } = buildWbFunnelDayMetrics(
     [
       { nm_id: 123, date: "2026-07-17", open_card: 100, add_to_cart: 10, orders: 2, orders_sum: 200 },
       { nm_id: 123, date: "2026-07-17T03:00:00Z", open_card: 300, add_to_cart: 60, orders: 12, orders_sum: 800 },
@@ -58,7 +58,7 @@ test("routes и UI подключают production helper и новый конт
 
   assert.match(skuRoute, /cv_cart_7d:\s*percentRatio\(w\.cart, w\.open\)/);
   assert.match(skuRoute, /schema:\s*\d+/);
-  assert.match(dayRoute, /buildWbFunnelDayMetrics\(scopedFunnelRows, scopedAdRows\)/);
+  assert.match(dayRoute, /buildWbFunnelDayMetrics\(\s*scopedFunnelRows,/);
   assert.match(dayRoute, /schema:\s*\d+/);
   assert.match(ui, /cv_cart_window:\s*number\s*\|\s*null/);
   assert.match(ui, /MetricKey[^;]+"cart_cr"/);
@@ -68,7 +68,7 @@ test("routes и UI подключают production helper и новый конт
 });
 
 test("ДРР за день без рекламы не превращается в ноль", () => {
-  const metrics = buildWbFunnelDayMetrics(
+  const { metrics } = buildWbFunnelDayMetrics(
     [{ nm_id: 777, date: "2026-09-01", open_card: 400, add_to_cart: 40, orders: 8, orders_sum: 12_000 }],
     [],
   );
@@ -82,5 +82,5 @@ test("ДРР за день без рекламы не превращается �
     [{ nm_id: 777, date: "2026-09-01", open_card: 400, add_to_cart: 40, orders: 8, orders_sum: 12_000 }],
     [{ nm_id: 777, date: "2026-09-01", views: 5_000, clicks: 100, spent: 600 }],
   );
-  assert.equal(withAd[777]["2026-09-01"].drr, 5);
+  assert.equal(withAd.metrics[777]["2026-09-01"].drr, 5);
 });
