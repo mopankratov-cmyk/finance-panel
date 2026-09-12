@@ -12,8 +12,11 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 
 test("совет алгоритма отличим от решения человека", () => {
   const page = read("../components/wb/WbRkJournalPage.tsx");
-  // Совет — пунктиром и приглушённо, решение — заливкой.
-  assert.match(page, /entry\.source === "auto"\s*\n\s*\? `w-\[80px\] border border-dashed border-violet-300/);
+  // Совет — пунктиром и приглушённо, решение — заливкой. Ширину чипа не
+  // проверяем: она менялась вместе со столбцом задач, а различие держится на
+  // пунктире, и именно оно тут важно.
+  assert.match(page, /entry\.source === "auto"\s*\n\s*\? `w-\[\d+px\][^`]*border border-dashed border-violet-300/);
+  assert.match(page, /: `w-\[\d+px\][^`]*\$\{NOTE_TONE\[rkNoteTone\(entry\.note\)\]\}/);
   // И причина совета видна при наведении: совет без основания принимают
   // вслепую или отвергают не глядя, и сверять потом нечего.
   assert.match(page, /Предложил алгоритм: \$\{entry\.suggestedReason\}/);

@@ -1,12 +1,14 @@
 "use client";
 
-import { ChevronRight, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
+import { ArrowUpNarrowWide, ChevronRight, CopyPlus, Filter, MousePointerClick, Plus, ClipboardList, Download, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, useRef } from "react";
 import { Hint } from "@/components/ui/Hint";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { PeriodRangePicker } from "@/components/ui/PeriodRangePicker";
 import { moscowToday } from "@/lib/ui/calendarGrid";
 import {
+  blockMatchesFilter,
+  bothBlockFor,
   WB_RK_BLOCKS,
   WB_RK_BLOCK_ATTRIBUTED,
   WB_RK_BLOCK_ATTRIBUTED_LABEL,
@@ -24,6 +26,7 @@ import { displaySkuArticle, displaySkuName, useWbSkuNames } from "./useWbSkuName
 import { WbRkNoteQuickPick } from "./WbRkNoteQuickPick";
 import { WbRkNotePopup } from "./WbRkNotePopup";
 import { rkNoteKey, rkNoteShort, rkNoteTone, type RkNote } from "@/lib/wb/rkNotes";
+import { CTR_MIN_CAMPAIGN_SPEND } from "@/lib/wb/ctrCampaignPick";
 import { canRunSyncManually } from "@/lib/sync/manualRunRoles";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
@@ -205,6 +208,20 @@ export function WbRkJournalPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [blockFilter, setBlockFilter] = useState<string>("all");
+  /**
+   * Включать ли в фильтр кампании «поиск + полки».
+   *
+   * WB отдаёт у такой кампании обе площадки, а расход между ними не делит,
+   * поэтому она живёт отдельной карточкой — приписать её деньги к полкам
+   * значило бы сложить чужие рубли в чужой блок. Но человек, выбравший
+   * «CPC полки», ищет кампании, которые крутятся НА ПОЛКАХ, и не находил их:
+   * кампания «ОТГРУЗКА CPC 1099(150)/бирюзовая» стоит на обеих площадках и в
+   * список не попадала. Переключатель отвечает на его вопрос, не трогая
+   * деньги в карточках: они считаются до фильтра и остаются раздельными.
+   */
+  const [withBoth, setWithBoth] = useState(false);
+  /** Наверх — артикулы, по которым в последний день реклама работала. */
+  const [workingFirst, setWorkingFirst] = useState(false);
 
   /**
    * Заметки менеджеру: что сделать с товаром или кампанией в этот день.
@@ -238,7 +255,16 @@ export function WbRkJournalPage() {
   // Ширина столбца задач задана жёстко. Иначе её определяла самая длинная
   // задача дня — «Работа с 17:00 - 24:00 + ЕРК» раздвигала колонку, «Откл»
   // сжимала, и сетка гуляла от дня ко дню, утаскивая за собой соседний CPL.
-  const TASK_COL = "w-[92px] min-w-[92px]";
+  /**
+   * Ширина столбца задачи.
+   *
+   * Было 92px под чип в 80px с обрезкой: «Круглосуточно (ЕРК запущена)»
+   * превращалось в «24 ч · ЕРК», а своя формулировка — в многоточие. Чтобы
+   * прочитать назначенное, менеджеру приходилось открывать клетку и жать
+   * «Изменить текст». В рабочей таблице владельца та же колонка показывает
+   * строку целиком, и люди читают лист глазами, а не кликами.
+   */
+  const TASK_COL = "w-[150px] min-w-[150px]";
   // Правый край липкого столбца. Без него уезжающий под столбец текст
   // обрывается посреди слова и числа: «СТАВКА» превращается в «ВКА», «333,00»
   // в «3,00» — и это читается как поломка вёрстки, а не как слой поверх
@@ -279,13 +305,15 @@ export function WbRkJournalPage() {
           // одинаково: иначе непонятно, что уже решено, а с чем можно спорить.
           // Совет — пунктиром и приглушённо, решение — заливкой.
           ? entry.source === "auto"
-            ? `w-[80px] border border-dashed border-violet-300 bg-violet-50/60 px-2 text-violet-700${entry.done ? " opacity-60" : ""}`
-            : `w-[80px] px-2 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-60" : ""}`
+            ? `w-[138px] rounded-lg border border-dashed border-violet-300 bg-violet-50/60 px-2 text-violet-700${entry.done ? " opacity-60" : ""}`
+            : `w-[138px] rounded-lg px-2 ${NOTE_TONE[rkNoteTone(entry.note)]}${entry.done ? " opacity-60" : ""}`
           : "min-w-11 border border-dashed border-slate-200 px-1 text-slate-300 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 sm:min-w-0"
       }`}
     >
       {entry
-        ? <span className={`truncate ${entry.done ? "line-through" : ""}`}>{rkNoteShort(entry.note)}</span>
+        // Две строки, а не обрезка: короткая подпись пресета помещалась и
+        // раньше, а своя формулировка — нет, и именно её важнее всего прочесть.
+        ? <span className={`line-clamp-2 whitespace-normal break-words text-left ${entry.done ? "line-through" : ""}`}>{rkNoteShort(entry.note)}</span>
         : <Plus className="h-3 w-3" />}
     </button>
   );
@@ -336,21 +364,68 @@ export function WbRkJournalPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Заметки грузим окном сразу: значки должны стоять с первого показа, а не
-  // появляться по клику.
-  useEffect(() => {
+
+  /**
+   * Задачи окном.
+   *
+   * Отдельной функцией, а не только эффектом: «Обновить» обязана перечитывать
+   * и их. Раньше кнопка тянула лишь цифры журнала, а журнал — ночной снимок,
+   * который за день не меняется. Со стороны это выглядело как «жму, и ничего
+   * не происходит»: чужие задачи, поставленные за это время, не появлялись.
+   */
+  const loadNotes = useCallback(async () => {
     if (!hasExactCabinet || !cabinetId) { setNotes(new Map()); return; }
-    const controller = new AbortController();
-    fetch(`/api/wb/rk-notes?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store", signal: controller.signal })
-      .then((response) => response.ok ? response.json() : { notes: [] })
-      .then((body) => {
-        if (controller.signal.aborted) return;
-        setNotes(new Map((body.notes ?? []).map((row: RkNote) => [rkNoteKey(row.nmId, row.advertId, row.date), row])));
-      })
+    try {
+      const response = await fetch(`/api/wb/rk-notes?cabinet=${encodeURIComponent(cabinetId)}`, { cache: "no-store" });
+      const body = response.ok ? await response.json() : { notes: [] };
+      setNotes(new Map((body.notes ?? []).map((row: RkNote) => [rkNoteKey(row.nmId, row.advertId, row.date), row])));
+    } catch {
       // Заметки — надстройка: без них журнал работает как раньше.
-      .catch(() => {});
-    return () => controller.abort();
+    }
   }, [cabinetId, hasExactCabinet]);
+
+  useEffect(() => { void loadNotes(); }, [loadNotes]);
+  /** Когда последний раз перечитывали. Пусто — ещё ни разу вручную. */
+  const [refreshedAt, setRefreshedAt] = useState<string | null>(null);
+  const refreshAll = useCallback(async () => {
+    await Promise.all([load(), loadNotes()]);
+    setRefreshedAt(new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
+  }, [load, loadNotes]);
+
+  /**
+   * Перенос вчерашних задач на последний день окна.
+   *
+   * Менеджер ставит одни и те же задачи изо дня в день, а артикулов полторы
+   * сотни: по клетке это полтораста кликов. Сервер заполняет только пустые
+   * клетки — уже стоящее решение не затирается ни своё, ни чужое.
+   */
+  const [copying, setCopying] = useState(false);
+  const [copyResult, setCopyResult] = useState<string | null>(null);
+  const copyYesterday = useCallback(async () => {
+    const list = data?.dates ?? [];
+    if (list.length < 2 || !cabinetId) return;
+    const to = list[list.length - 1];
+    const from = list[list.length - 2];
+    setCopying(true);
+    setCopyResult(null);
+    try {
+      const response = await fetch("/api/wb/rk-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cabinetId, copyFrom: from, copyTo: to }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.ok) throw new Error(body?.error || `Ошибка ${response.status}`);
+      await loadNotes();
+      setCopyResult(body.copied
+        ? `Перенесено задач: ${body.copied}${body.skipped ? `, пропущено занятых: ${body.skipped}` : ""}`
+        : body.skipped ? `Все ${body.skipped} задач уже стоят на ${dayLabel(to)}` : `За ${dayLabel(from)} задач нет`);
+    } catch (cause) {
+      setCopyResult(cause instanceof Error ? cause.message : "Не удалось перенести задачи");
+    } finally {
+      setCopying(false);
+    }
+  }, [cabinetId, data?.dates, loadNotes]);
 
   const applyNote = useCallback((nm: number, advertId: number | null, date: string, note: string, done: boolean) => {
     setNotes((prev) => {
@@ -423,7 +498,7 @@ export function WbRkJournalPage() {
           const campaigns = item.campaigns
             .map((campaign) => {
               const days = Object.fromEntries(
-                Object.entries(campaign.days).filter(([date]) => campaignBlockAt(campaign, date) === blockFilter),
+                Object.entries(campaign.days).filter(([date]) => blockMatchesFilter(campaignBlockAt(campaign, date), blockFilter, withBoth)),
               );
               return Object.keys(days).length ? { ...campaign, days } : null;
             })
@@ -448,8 +523,53 @@ export function WbRkJournalPage() {
           return { ...item, campaigns, days };
         })
         .filter((item): item is JournalItem => item !== null);
-    return sortByCustomSkuOrder(byBlock, (item) => item.nm, orderIndex);
-  }, [blockFilter, orderIndex, taggedItems]);
+    const ordered = sortByCustomSkuOrder(byBlock, (item) => item.nm, orderIndex);
+    if (!workingFirst) return ordered;
+    /**
+     * Наверх — артикулы, по которым в последний день реклама реально работала.
+     *
+     * Порог в рублях, а не в показах: решение владельца. Кампания, потратившая
+     * за сутки три рубля, показов могла набрать сколько угодно, но решать по
+     * ней нечего — глаз цепляется, а работы нет. Порог общий с воронкой
+     * (CTR_MIN_CAMPAIGN_SPEND): «кампания в этот день работала» — один вопрос,
+     * и ответ на него должен быть один на всю панель.
+     *
+     * Остальные не прячутся, а опускаются вниз: спрятанная строка выглядит как
+     * потерянный товар, и её начинают искать.
+     */
+    const lastDay = (data?.dates ?? []).at(-1);
+    if (!lastDay) return ordered;
+    const spentLastDay = (item: JournalItem) => item.days[lastDay]?.spent ?? 0;
+    return [...ordered].sort((left, right) => {
+      const leftWorks = spentLastDay(left) >= CTR_MIN_CAMPAIGN_SPEND ? 0 : 1;
+      const rightWorks = spentLastDay(right) >= CTR_MIN_CAMPAIGN_SPEND ? 0 : 1;
+      return leftWorks - rightWorks;
+    });
+  }, [blockFilter, data?.dates, orderIndex, taggedItems, withBoth, workingFirst]);
+
+  /** Сколько артикулов реально работали в последний день окна. */
+  const workingCount = useMemo(() => {
+    const lastDay = (data?.dates ?? []).at(-1);
+    if (!lastDay) return null;
+    return taggedItems.filter((item) => (item.days[lastDay]?.spent ?? 0) >= CTR_MIN_CAMPAIGN_SPEND).length;
+  }, [data?.dates, taggedItems]);
+
+  /**
+   * Сколько задач предложил алгоритм и человек их ещё не трогал.
+   *
+   * Вопрос «где посмотреть, что там заполнил ИИ» задавали прямо: предложения
+   * давно стоят в клетках пунктиром, но найти их среди сотен строк глазами
+   * нельзя. Счётчик отвечает, есть ли что смотреть, и ведёт к ним фильтром.
+   */
+  const autoCount = useMemo(
+    () => [...notes.values()].filter((note) => note.source === "auto" && note.note.trim()).length,
+    [notes],
+  );
+
+  /** Парный вид «обе площадки» для выбранного. null — такого не бывает. */
+  const pairedBlock = blockFilter !== "all" && WB_RK_BLOCKS.includes(blockFilter as WbRkBlock)
+    ? bothBlockFor(blockFilter as WbRkBlock)
+    : null;
 
   // Виды, которые есть у кабинета в справочнике WB. null — справочник не
   // прочитался: «таких кампаний нет» тогда не факт, а домысел.
@@ -672,12 +792,17 @@ export function WbRkJournalPage() {
             </button>
             <button
               type="button"
-              onClick={() => void load()}
+              onClick={() => void refreshAll()}
               disabled={loading}
+              // Отметка времени рядом — потому что журнал это ночной снимок:
+              // цифры за день не меняются, и без неё нажатие выглядит как
+              // отказ кнопки. Теперь видно, что обновление прошло.
+              title={refreshedAt ? `Данные перечитаны в ${refreshedAt}. Журнал — снимок за предыдущий день, цифры за сутки не меняются; обновление подтягивает задачи, поставленные другими.` : "Перечитать журнал и задачи"}
               className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 sm:min-h-0"
             >
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Обновить
+              {refreshedAt ? <span className="hidden font-normal text-slate-400 sm:inline">· {refreshedAt}</span> : null}
             </button>
           </>
         )}
@@ -735,11 +860,67 @@ export function WbRkJournalPage() {
           {blockFilter !== "all" ? (
             <button
               type="button"
-              onClick={() => setBlockFilter("all")}
+              onClick={() => { setBlockFilter("all"); setWithBoth(false); }}
               className="inline-flex min-h-11 items-center gap-1 rounded-full border border-violet-300 bg-white px-2.5 py-1 text-[12px] font-semibold text-violet-700 hover:bg-violet-50 sm:min-h-0"
             >
               Показаны только «{WB_RK_BLOCK_LABELS[blockFilter as WbRkBlock] ?? blockFilter}» · сбросить ✕
             </button>
+          ) : null}
+          {/* Кампания, которую WB держит и в поиске, и на полках, живёт
+              отдельным видом: расход между площадками он не делит. Искать её
+              в «полках» человек всё равно будет — переключатель её туда
+              добавляет, не смешивая деньги в карточках. */}
+          {pairedBlock ? (
+            <button
+              type="button"
+              onClick={() => setWithBoth((value) => !value)}
+              aria-pressed={withBoth}
+              title={`Кампании, которые WB держит и в поиске, и на полках, считаются отдельным видом «${WB_RK_BLOCK_LABELS[pairedBlock]}»: расход между площадками он не делит. Здесь их можно показать вместе с выбранным видом — деньги в карточках при этом остаются раздельными.`}
+              className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-semibold sm:min-h-0 ${withBoth ? "border-violet-500 bg-violet-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-violet-300"}`}
+            >
+              {withBoth ? "✓ " : "+ "}«{WB_RK_BLOCK_LABELS[pairedBlock]}»
+            </button>
+          ) : null}
+          {/* Наверх — те, по кому вчера реально жгли бюджет. Остальные не
+              прячутся, а опускаются: спрятанная строка выглядит как потерянный
+              товар, и её начинают искать. */}
+          <button
+            type="button"
+            onClick={() => setWorkingFirst((value) => !value)}
+            aria-pressed={workingFirst}
+            disabled={!data}
+            title={`Наверх — артикулы, на которые в последний день окна ушло не меньше ${CTR_MIN_CAMPAIGN_SPEND} ₽. Порог в рублях, а не в показах: кампания на трёх рублях показов набрать могла, а решать по ней нечего. Остальные остаются ниже.`}
+            className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-semibold disabled:opacity-40 sm:min-h-0 ${workingFirst ? "border-violet-500 bg-violet-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-violet-300"}`}
+          >
+            <ArrowUpNarrowWide className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            Сначала рабочие
+            {workingFirst && workingCount != null ? <span className="rounded bg-white/20 px-1 tabular-nums">{workingCount}</span> : null}
+          </button>
+          {/* Перенос вчерашних задач: заполняет только пустые клетки, чужое
+              решение не трогает. */}
+          {canWrite && hasExactCabinet && (data?.dates?.length ?? 0) >= 2 ? (
+            <button
+              type="button"
+              onClick={() => void copyYesterday()}
+              disabled={copying}
+              title={`Поставить задачи с ${dayLabel((data?.dates ?? []).at(-2) ?? "")} на ${dayLabel((data?.dates ?? []).at(-1) ?? "")} там, где на ${dayLabel((data?.dates ?? []).at(-1) ?? "")} ещё пусто. Уже стоящие задачи не трогаются, отметка «сделано» не переносится.`}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-semibold text-slate-600 hover:border-violet-300 disabled:opacity-40 sm:min-h-0"
+            >
+              {copying ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <CopyPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+              Перенести задачи со вчера
+            </button>
+          ) : null}
+          {copyResult ? <span className="text-[12px] text-slate-500">{copyResult}</span> : null}
+          {/* Ответ на вопрос «где посмотреть, что заполнил алгоритм»:
+              предложения стоят в клетках пунктиром, но найти их глазами среди
+              сотен строк нельзя. */}
+          {autoCount > 0 ? (
+            <span
+              title="Задачи, которые предложил алгоритм ночью и которых человек ещё не касался. В клетках они нарисованы пунктиром — в отличие от решений человека, залитых цветом. Алгоритм никогда не переписывает уже стоящую задачу."
+              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-violet-300 bg-violet-50/60 px-2.5 py-1 text-[12px] font-semibold text-violet-700"
+            >
+              Предложений алгоритма: {autoCount}
+            </span>
           ) : null}
           <button
             type="button"

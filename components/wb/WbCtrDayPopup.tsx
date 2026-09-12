@@ -142,13 +142,18 @@ export function WbCtrDayPopup({
       onNoteSaved(nmId, date, body.note ?? "", nextColor);
       // Сервер принял текст, но не цвет: колонка ещё не заведена в базе.
       // Говорим об этом прямо — иначе цвет «пропадёт» после перезагрузки.
-      if (body.colorSkipped) setError("Текст сохранён, а цвет пока не сохраняется: колонка цветов ещё не заведена в базе");
+      if (body.colorSkipped) { setError("Текст сохранён, а цвет пока не сохраняется: колонка цветов ещё не заведена в базе"); return; }
+      // Сохранил — значит закончил. Отдельное нажатие «Закрыть» после
+      // «Сохранить» было лишним шагом на каждой пометке, а пометок за день
+      // ставят десятки. Окно не закрываем только когда есть что сказать про
+      // неполное сохранение — иначе предупреждение мелькнёт и исчезнет.
+      onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось сохранить");
     } finally {
       setSaving(false);
     }
-  }, [cabinetId, nmId, date, note, color, onNoteSaved]);
+  }, [cabinetId, nmId, date, note, color, onNoteSaved, onClose]);
 
   const dirty = note.trim() !== savedNote.trim() || color !== savedColor;
   const empty = !note.trim() && !color;

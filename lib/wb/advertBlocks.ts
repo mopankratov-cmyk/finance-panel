@@ -125,3 +125,36 @@ export function wbAdvertBlockBid(advert: WbAdvertBlockInput, block: WbRkBlock | 
   if (block === "cpc_search" || block === "cpm_search") return search ?? null;
   return search ?? shelf ?? null;
 }
+
+/**
+ * Кампания «поиск + полки» для выбранного вида.
+ *
+ * `null` — у вида нет парного «обе площадки»: ЕРК крутится везде сразу по
+ * своей природе, а «поиск + полки» сам себе пара.
+ */
+export function bothBlockFor(block: WbRkBlock): WbRkBlock | null {
+  if (block === "cpc_search" || block === "cpc_shelf") return "cpc_both";
+  if (block === "cpm_search" || block === "cpm_shelf") return "cpm_both";
+  return null;
+}
+
+/**
+ * Подходит ли кампания под выбранный вид размещения.
+ *
+ * Обычно — точное совпадение. Но кампания, которую WB держит и в поиске, и на
+ * полках, по строгому сравнению не попадала ни в «полки», ни в «поиск»: она
+ * живёт отдельным видом, потому что расход между площадками WB не делит.
+ * Человек при этом ищет на полках все кампании, которые там крутятся, и не
+ * находил их. `withBoth` включает их в выборку; деньги в карточках видов при
+ * этом не смешиваются — они считаются до фильтра.
+ */
+export function blockMatchesFilter(
+  block: string | null | undefined,
+  filter: string,
+  withBoth: boolean,
+): boolean {
+  if (block === filter) return true;
+  if (!withBoth || !isBlock(filter)) return false;
+  const both = bothBlockFor(filter);
+  return both != null && block === both;
+}
