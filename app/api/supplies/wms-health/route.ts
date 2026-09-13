@@ -37,10 +37,8 @@ export async function GET(request: NextRequest) {
   if (connection?.token) {
     try {
       references = await getMoySkladContext(String(connection.token));
-      await db.from("moysklad_connection").update({ last_sync_at: new Date().toISOString(), last_sync_error: null }).eq("id", connection.id);
     } catch (error) {
       connectionError = error instanceof Error ? error.message : "МойСклад недоступен";
-      await db.from("moysklad_connection").update({ last_sync_at: new Date().toISOString(), last_sync_error: connectionError }).eq("id", connection.id);
     }
   }
   const organizationSelected = Boolean(connection?.organization_href && references.organizations.some((item) => item.meta.href === connection.organization_href));
