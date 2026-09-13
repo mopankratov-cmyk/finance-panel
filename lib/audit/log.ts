@@ -35,6 +35,7 @@ export type AuditAction =
   | "ads.budget.change"
   | "ads.token.change"
   | "supply.change"
+  | "cabinet.update"
   | "cabinet.delete"
   | "mp_report.sync"
   | "mp_report.reclassify"
