@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import type { Session } from "@/lib/auth/session";
 import { cabinetRights } from "@/lib/auth/cabinetLevel";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -72,7 +73,8 @@ export async function resolveAdvertCabinetAccess(
 ): Promise<{ access: AdvertCabinetAccess; response?: never } | { access?: never; response: NextResponse }> {
   const session = await getServerSession();
   if (!session) return { response: error("Требуется вход", 401) };
-  if (session.role !== "director" && session.role !== "wb_manager", "ozon_manager") {
+  const roles = sessionRoles(session);
+  if (!roles.some((r) => r === "director" || r === "wb_manager" || r === "ozon_manager")) {
     return { response: error("Недостаточно прав для управления рекламой", 403) };
   }
   const cabinetId = typeof cabinetIdInput === "string" ? cabinetIdInput.trim() : "";
