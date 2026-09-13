@@ -60,6 +60,15 @@ export async function POST(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
+  // hasCabinetAccess подтверждает только то, что человек вообще состоит в
+  // ЭТОМ кабинете, — не то, что nmId из тела запроса принадлежит ему. Без
+  // этой проверки человек с доступом к своему кабинету мог бы прицепить
+  // загрузку к чужому товару, подставив в теле запроса чужой cabinetId/nmId.
+  // Проверяем тем же способом, что и DELETE ниже: товар должен реально стоять
+  // в карточках ИМЕННО этого кабинета.
+  const card = await db.from("wb_cards").select("nm_id").eq("cabinet_id", cabinetId).eq("nm_id", nmId).limit(1).maybeSingle();
+  if (!card.data) return fail("Товар не найден в этом кабинете", 403);
+
   const path = objectPath(cabinetId, nmId, extension);
   const upload = await db.storage.from(BUCKET).upload(path, new Uint8Array(await file.arrayBuffer()), {
     contentType: file.type,
@@ -130,7 +139,19 @@ export async function DELETE(request: NextRequest) {
    * нечем, а «не смог проверить» не то же самое, что «можно».
    */
   if (isPanelUpload(target)) {
-    if (!target.includes(`/${PREFIX}/${cabinetId}/`)) return fail("Файл принадлежит другому кабинету", 403);
+    // Раньше сверяли подстроку где угодно в строке target — чужой урл,
+    // содержащий нужный кусок ГДЕ УГОДНО (не обязательно как настоящий
+    // сегмент пути, например дальше по строке после реального пути),
+    // проходил проверку. Разбираем target как настоящий URL и сверяем
+    // pathname ровно по границе сегмента, а не по вхождению подстроки.
+    let pathname: string;
+    try {
+      pathname = new URL(target).pathname;
+    } catch {
+      return fail("Файл принадлежит другому кабинету", 403);
+    }
+    const ownPrefix = `/storage/v1/object/public/${BUCKET}/${PREFIX}/${cabinetId}/`;
+    if (!pathname.startsWith(ownPrefix)) return fail("Файл принадлежит другому кабинету", 403);
   } else {
     const asset = await db.from("content_assets").select("article").eq("url", target).limit(1).maybeSingle();
     const article = String(asset.data?.article ?? "").trim();
@@ -145,8 +166,16 @@ export async function DELETE(request: NextRequest) {
   // Сначала каталог, потом хранилище: пропавшая запись делает файл невидимым,
   // а осиротевший файл в бакете безвреден. Обратный порядок оставил бы в
   // библиотеке строку с битой ссылкой.
-  const removed = await db.from("content_assets").delete().eq("url", target);
+  const removed = await db.from("content_assets").delete().eq("url", target).select("id");
   if (removed.error) return fail(`Каталог не отпустил запись: ${removed.error.message}`, 502);
+  if (!removed.data || removed.data.length === 0) {
+    // Запись не нашлась — значит, в каталоге такого файла и не было. Ошибка
+    // подстрочной проверки выше как раз и позволяла в этом случае снести
+    // ЧУЖОЙ объект хранилища только потому, что target на него указывал:
+    // трогать storage.remove() можно только когда каталог реально что-то
+    // удалил, а не просто «путь совпал».
+    return fail("Файл не найден в каталоге — из хранилища ничего не удалено", 404);
+  }
   const storage = await db.storage.from(BUCKET).remove([path]);
   if (storage.error) {
     return NextResponse.json({ ok: true, note: "Из библиотеки убрано; сам файл в хранилище удалить не удалось" });
