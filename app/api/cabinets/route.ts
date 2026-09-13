@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const session = await getServerSession();
   if (!session) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ cabinets: [] });
+  if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
   const cols = "id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, brand_filters, organization_id, is_active, created_at";
   const legacyCols = "id, name, marketplace, trade_mark, seller_id, client_id, inn, token, token_advert, token_content, token_feedbacks, is_active, created_at";
   type CabinetRow = Record<string, unknown> & { brand_filters?: unknown };
@@ -35,7 +35,10 @@ export async function GET(request: NextRequest) {
     data = legacy.data as CabinetRow[] | null;
     error = legacy.error;
   }
-  if (error) return NextResponse.json({ cabinets: [], error: error.message });
+  // Раньше ошибка чтения БД отдавалась с 200 и пустым списком кабинетов —
+  // вызывающий код, проверяющий response.ok, не мог отличить «кабинетов
+  // нет» от «чтение упало». Теперь статус честно отражает сбой.
+  if (error) return NextResponse.json({ cabinets: [], error: error.message }, { status: 500 });
   const { data: scopeRows } = await db.from("wb_cabinet_product_scope").select("cabinet_id, nm_id").limit(10_000);
   const scopeCount = new Map<string, number>();
   for (const row of scopeRows ?? []) {
@@ -124,6 +127,12 @@ export async function POST(request: NextRequest) {
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
     const perfId = (b.perf_client_id || "").trim();
     const perfSecret = (b.perf_secret || "").trim();
+    // Client-Id и Secret Performance API работают только парой: сохранённая
+    // половина без другой — рабочий, но всегда молча падающий набор для
+    // любой фичи, читающей Performance API.
+    if ((perfId && !perfSecret) || (!perfId && perfSecret)) {
+      return NextResponse.json({ error: "Укажите оба поля Performance API или ни одного" }, { status: 400 });
+    }
     if (perfId && perfSecret) {
       const { validatePerf } = await import("@/lib/ozon/performance");
       if (!(await validatePerf({ clientId: perfId, secret: perfSecret })))
