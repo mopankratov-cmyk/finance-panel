@@ -170,7 +170,6 @@ export function LoansPage() {
   const formPanel = useRef<HTMLDivElement>(null);
   const closeForm = useCallback(() => { setModalOpen(false); setEditing(null); }, []);
   useDialogBehavior(modalOpen, closeForm, formPanel);
-  const reconciledRef = useRef(false);
   const contractNumberBackfillRef = useRef(false);
   const today = todayISO();
   const next30Date = addDays(today, 30);
@@ -342,12 +341,8 @@ export function LoansPage() {
     }
   }, [dispatch]);
 
-  useEffect(() => {
-    if (reconciledRef.current || state.loans.length === 0 || state.payments.length === 0 || companyByPayment.size === 0) return;
-    reconciledRef.current = true;
-    void reconcileWithDds(false);
-  }, [companyByPayment.size, reconcileWithDds, state.loans.length, state.payments.length]);
-
+  // Сверка с ДДС пишет в базу (закрывает строки графика и платежи), поэтому
+  // не запускается сама при открытии экрана — только по кнопке «Сверить с ДДС».
   useEffect(() => {
     if (contractNumberBackfillRef.current || state.loans.length === 0 || state.payments.length === 0) return;
     const loan = state.loans.find((item) => item.startDate === "2026-02-08" && /вб\s*финанс/i.test(item.creditorName));
