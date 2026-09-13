@@ -261,7 +261,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ insights, count: insights.length });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Сырой err.message сюда попадать не должен: это может быть текст ошибки
+    // Supabase (схема/колонки/RLS) из gatherAgentContext или внутренности SDK
+    // Anthropic — внутренние детали наружу клиенту. MVP-ветка этого файла уже
+    // отдаёт клиенту фиксированное сообщение через mvpAgentRouteError; здесь —
+    // тот же принцип для non-MVP fallback-ветки.
+    console.error("[api/agent] fallback route failed:", err);
+    return NextResponse.json({ error: "Ошибка обработки запроса агента" }, { status: 500 });
   }
 }
