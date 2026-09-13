@@ -65,10 +65,16 @@ function toRule(row: RuleRow): BidRule {
 }
 
 interface Gate {
-  /** Разрешён ли боевой прогон (запись ставок в WB). */
+  /** Разрешён ли боевой прогон (запись ставок в WB) в принципе. */
   live: boolean;
   /** Ограничение по кабинету: null — все (только крон). */
   cabinetId: string | null;
+  /**
+   * true — доступ дан по Bearer CRON_SECRET (машина), false — по сессии
+   * (человек). См. пояснение у GET/POST ниже: это единственная причина, по
+   * которой боевой прогон вообще может случиться на GET.
+   */
+  isMachine: boolean;
 }
 
 /**
@@ -95,7 +101,7 @@ async function resolveGate(request: NextRequest): Promise<{ gate: Gate; response
   const auth = request.headers.get("authorization");
   if (secret && auth === `Bearer ${secret}`) {
     const only = request.nextUrl.searchParams.get("cabinet");
-    return { gate: { live: true, cabinetId: only || null } };
+    return { gate: { live: true, cabinetId: only || null, isMachine: true } };
   }
 
   const cabinetId = request.nextUrl.searchParams.get("cabinet");
@@ -112,7 +118,7 @@ async function resolveGate(request: NextRequest): Promise<{ gate: Gate; response
 
   const access = await resolveAdvertCabinetAccess(cabinetId);
   if (access.response) return { response: access.response };
-  return { gate: { live: true, cabinetId: access.access.cabinet.id } };
+  return { gate: { live: true, cabinetId: access.access.cabinet.id, isMachine: false } };
 }
 
 /**
@@ -160,13 +166,31 @@ async function currentBids(token: string, host: string) {
  * `?dry=1` считает и показывает решения, ничего не отправляя в WB. Это не
  * отладочный режим, а нормальный способ работы с автоматикой: прежде чем
  * доверить правилу деньги, полезно неделю посмотреть, что оно собиралось делать.
+ *
+ * GET живой сессией больше не боевой ни при каких query-параметрах (P2/CSRF).
+ * GET — «безопасный» метод по правилам fetch/браузера: SameSite=Lax-куку
+ * сессии браузер отправляет и на верхнеуровневую cross-site навигацию тоже —
+ * значит, подготовленная ссылка `/api/adverts/rules/run?cabinet=X`, открытая
+ * директором или wb_manager в новой вкладке, без единой строчки JS у
+ * атакующего меняла бы боевые ставки в WB. На cross-site POST браузер эту
+ * куку уже не шлёт — ни через форму, ни через fetch, — поэтому боевой прогон
+ * по сессии требует именно POST. Заодно это чинит и завышенное право: карта
+ * `lib/auth/apiPermissions.ts` даёт GET по `/api/adverts/` только
+ * analytics.view, а запись денег обязана требовать ads.manage — POST его и
+ * требует через тот же гейт.
+ *
+ * Крона это не касается: Bearer CRON_SECRET браузерная навигация подделать не
+ * может (это не кука, а заголовок), поэтому машинный прогон остаётся на GET —
+ * иначе его нечем было бы вызвать: планировщик Vercel умеет звать только GET
+ * (см. `tests/advert-rules-schedule.test.mts` и разбор в ctrtest/rotate).
  */
-export async function GET(request: NextRequest) {
+async function runRules(request: NextRequest) {
   const gated = await resolveGate(request);
   if (gated.response) return gated.response;
   const gate = gated.gate;
 
-  const dryRun = request.nextUrl.searchParams.get("dry") === "1" || !gate.live;
+  const sessionMustUsePost = !gate.isMachine && request.method !== "POST";
+  const dryRun = request.nextUrl.searchParams.get("dry") === "1" || !gate.live || sessionMustUsePost;
 
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
@@ -367,4 +391,23 @@ export async function GET(request: NextRequest) {
     applied: results.filter((item) => item.applied === true).length,
     results,
   });
+}
+
+/**
+ * Предпросмотр. По сессии — всегда сухой прогон, чем бы ни был `?dry`: смотреть,
+ * что сделали бы правила, можно как угодно часто без последствий. По Bearer
+ * CRON_SECRET (крон Vercel умеет звать только GET) поведение прежнее — боевой
+ * прогон по расписанию, если только не передан явный `?dry=1`.
+ */
+export async function GET(request: NextRequest) {
+  return runRules(request);
+}
+
+/**
+ * Боевой прогон по сессии. `resolveGate` требует явный `cabinet` и право
+ * canOperate в нём — один человек отвечает за один кабинет, а не за все.
+ * Bearer CRON_SECRET тоже проходит сюда без изменений в поведении.
+ */
+export async function POST(request: NextRequest) {
+  return runRules(request);
 }
