@@ -15,13 +15,13 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ shop: s
   }
   const month = new URL(request.url).searchParams.get("month") || "";
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ plan: {} });
+  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   const { data, error } = await db
     .from("rnp_plan")
     .select("nm, field, value")
     .eq("shop", shop)
     .eq("month", month);
-  if (error) return NextResponse.json({ plan: {} });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const plan: Record<string, Record<string, number>> = {};
   for (const r of data ?? []) {
     (plan[String(r.nm)] ||= {})[r.field as string] = Number(r.value);
