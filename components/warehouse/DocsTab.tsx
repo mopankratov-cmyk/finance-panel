@@ -170,17 +170,32 @@ export function DocsTab({ entityId, refreshKey, onChanged }: { entityId: string;
                         голым текстом: пальцем промах по «Печать» попадал в
                         отмену документа. Разводим на 44 px и на gap-3. */}
                     <div className="flex flex-wrap items-center justify-end gap-3">
-                      <a
-                        // У партии приёмки своя печатная форма: она собирается по
-                        // строкам приёмки, а не по проводке в stock_docs.
-                        href={row.batchId ? `/warehouse/print/receipt/${row.batchId}` : `/warehouse/print/${row.id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Печатная форма: бумага под подпись для фулфилмента"
-                        className="inline-flex min-h-11 items-center gap-1 text-xs text-slate-500 hover:text-violet-600 lg:min-h-0"
-                      >
-                        <Printer className="h-3.5 w-3.5" /> Печать
-                      </a>
+                      {/* У партии приёмки, которую ещё никто не пересчитал
+                          (status="draft" — stock_receipt_batches.counted_at
+                          пуст), акт расхождений печатать рано: строки в нём
+                          покажут 0 принято там, где на деле факта ещё нет.
+                          Тот же гейт, что уже стоит в ReceiptsTab у «Акт
+                          расхождений» (`counted`), — здесь для «Печать». */}
+                      {row.batchId && status === "draft" ? (
+                        <span
+                          title="Партию ещё не пересчитали — печатать акт по ней рано"
+                          className="inline-flex min-h-11 items-center gap-1 text-xs text-slate-300 lg:min-h-0"
+                        >
+                          <Printer className="h-3.5 w-3.5" /> Печать
+                        </span>
+                      ) : (
+                        <a
+                          // У партии приёмки своя печатная форма: она собирается по
+                          // строкам приёмки, а не по проводке в stock_docs.
+                          href={row.batchId ? `/warehouse/print/receipt/${row.batchId}` : `/warehouse/print/${row.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Печатная форма: бумага под подпись для фулфилмента"
+                          className="inline-flex min-h-11 items-center gap-1 text-xs text-slate-500 hover:text-violet-600 lg:min-h-0"
+                        >
+                          <Printer className="h-3.5 w-3.5" /> Печать
+                        </a>
+                      )}
                       {/* Приёмку сторнируют коррекцией прихода на своей вкладке,
                           а не отменой документа: у неё другая механика. */}
                       {status === "posted" && !row.batchId && !row.reversedByNumber && (

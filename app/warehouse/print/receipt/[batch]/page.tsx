@@ -25,7 +25,7 @@ export default async function Page({ params }: { params: Promise<{ batch: string
 
   const receipts = await db
     .from("purchase_receipts")
-    .select("id, cabinet_id, product_id, variant_id, nm_id, article, expected_qty, received_qty, defect_qty, expected_at, received_at, warehouse_id, note, created_by")
+    .select("id, cabinet_id, product_id, variant_id, nm_id, article, expected_qty, received_qty, defect_qty, status, expected_at, received_at, warehouse_id, note, created_by")
     .eq("batch_id", batch)
     .order("id");
   const rows = receipts.data ?? [];
@@ -59,6 +59,12 @@ export default async function Page({ params }: { params: Promise<{ batch: string
       expectedQty: Number(row.expected_qty ?? 0),
       receivedQty: Number(row.received_qty ?? 0),
       defectQty: Number(row.defect_qty ?? 0),
+      // status='expected' — строку ещё никто не пересчитал (received_qty IS
+      // NULL), а не то, что приехало 0 шт. Партия считается «пересчитанной»
+      // в DocsTab по шапке (stock_receipt_batches.counted_at), но пересчёт
+      // может идти по частям — счётчик ставит отметку в шапку уже по первой
+      // сохранённой строке. Поэтому здесь смотрим статус САМОЙ строки.
+      counted: row.status !== "expected",
     };
   });
 
