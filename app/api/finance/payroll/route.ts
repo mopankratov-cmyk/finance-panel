@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { payrollLineTaxIsPayable, payrollPeriodForDate, payrollSalaryAmount, payrollTaxAmount, payrollTaxRate, type PayrollAccrualLine, type PayrollDraftEntry, type PayrollEmployee, type PayrollEmploymentStatus, type PayrollEmploymentType, type PayrollLineKind, type PayrollPaymentMethod } from "@/components/payments/payroll";
-import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { rolesCan, type Permission } from "@/lib/auth/permissions";
+import { sessionRoles } from "@/lib/auth/session";
 import { auditedMutation, redactSecrets } from "@/lib/audit/log";
 import { PAYROLL_CATEGORIES } from "@/lib/finance/categories";
 import { consumedFactIds, preservedLoanMarkers } from "@/lib/finance/factLinks";
@@ -30,8 +31,16 @@ const nullableId = (value: unknown) => {
   return result || null;
 };
 
-async function authorize() {
-  return requireApiSession(["director", "fin_director", "financier"]);
+// Проверяем по карте прав (lib/auth/permissions.ts), а не по ручному списку
+// ролей: список расходился с матрицей и держал HR — единственную роль с
+// payroll.view/payroll.edit — вне её же экрана (403 на GET и POST).
+async function authorize(permission: Permission) {
+  const session = await getServerSession();
+  if (!session) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
+  if (!rolesCan(sessionRoles(session), permission)) {
+    return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
+  }
+  return null;
 }
 
 function dbOrError() {
@@ -50,7 +59,7 @@ async function persistFinanceActions(actions: FinanceAction[]): Promise<FinanceS
 }
 
 export async function GET() {
-  const gate = await authorize();
+  const gate = await authorize("payroll.view");
   if (gate) return gate;
   const db = dbOrError();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
@@ -99,7 +108,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function handlePayroll(request: NextRequest) {
-  const gate = await authorize();
+  const gate = await authorize("payroll.edit");
   if (gate) return gate;
   const db = dbOrError();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
