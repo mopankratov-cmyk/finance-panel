@@ -13,6 +13,17 @@ export const maxDuration = 120;
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
+// Первые байты файла — то, что реально в нём лежит, а не имя файла или
+// Content-Type, которые сообщает клиент и подделывает любой HTTP-клиент
+// одной строкой. PDF начинается с `%PDF`, XLSX — это ZIP-контейнер и
+// начинается с сигнатуры локального файла ZIP `PK\x03\x04`.
+const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46];
+const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
+
+function startsWithBytes(bytes: Buffer, signature: number[]): boolean {
+  return signature.every((byte, i) => bytes[i] === byte);
+}
+
 export async function POST(request: Request) {
   const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
@@ -35,8 +46,22 @@ export async function POST(request: Request) {
       upload = { name: file.name, bytes: Buffer.from(await file.arrayBuffer()), mimeType: file.type };
     }
     const lower = upload.name.toLowerCase();
-    if (!lower.endsWith(".xlsx") && !lower.endsWith(".pdf") && upload.mimeType !== "application/pdf") {
+    const claimedFormat = lower.endsWith(".xlsx")
+      ? "xlsx"
+      : lower.endsWith(".pdf") || upload.mimeType === "application/pdf"
+        ? "pdf"
+        : null;
+    if (!claimedFormat) {
       return NextResponse.json({ error: "Поддерживаются банковские выписки XLSX и PDF" }, { status: 415 });
+    }
+    // Имя файла и заявленный тип выше — это то, что сообщил клиент, не факт о
+    // содержимом. Сверяем реальные первые байты с тем форматом, за который
+    // файл себя выдал.
+    const matchesSignature = claimedFormat === "pdf"
+      ? startsWithBytes(upload.bytes, PDF_MAGIC)
+      : startsWithBytes(upload.bytes, ZIP_MAGIC);
+    if (!matchesSignature) {
+      return NextResponse.json({ error: "Файл не похож на заявленный формат — содержимое не совпадает" }, { status: 415 });
     }
     const statement = await recognizeBankStatementUpload(upload);
     const suggestions = await suggestForStatement(db, statement);

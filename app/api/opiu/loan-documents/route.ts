@@ -78,6 +78,49 @@ function normalizedMimeType(file: File) {
   return MIME_BY_EXTENSION[extension(file.name)] ?? "";
 }
 
+/**
+ * Сигнатуры первых байт — то, что реально лежит в файле, а не то, что клиент
+ * написал в Content-Type или в расширении имени. Оба подделываются в любом
+ * HTTP-клиенте одной строкой; сервер их до сих пор не проверял.
+ *
+ * DOCX и XLSX — это один и тот же ZIP-контейнер снаружи, отличить их по
+ * байтам нельзя (различие — в содержимом архива, не в заголовке), поэтому обе
+ * сигнатуры — общий признак «это вообще ZIP». То же для DOC/XLS — оба это
+ * OLE-контейнер с одним и тем же заголовком.
+ */
+const MAGIC_PREFIX: Record<string, number[]> = {
+  "application/pdf": [0x25, 0x50, 0x44, 0x46], // %PDF
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [0x50, 0x4b, 0x03, 0x04], // ZIP
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [0x50, 0x4b, 0x03, 0x04], // ZIP
+  "application/msword": [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1], // OLE
+  "application/vnd.ms-excel": [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1], // OLE
+  "image/jpeg": [0xff, 0xd8, 0xff],
+  "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  "image/gif": [0x47, 0x49, 0x46, 0x38], // "GIF8", общий для GIF87a и GIF89a
+};
+
+/** WebP — контейнер RIFF: `RIFF` в начале, 4 байта длины блока, затем `WEBP`. */
+function isWebpContainer(bytes: Buffer): boolean {
+  const isRiff = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46;
+  const isWebp = bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  return bytes.length >= 12 && isRiff && isWebp;
+}
+
+/**
+ * Заявленный тип против реальных байт — там, где у формата вообще есть
+ * надёжная сигнатура.
+ *
+ * У CSV сигнатуры нет: это обычный текст, и «похоже на CSV» ничем не
+ * подтвердить и незачем изображать проверку там, где её структурно не может
+ * быть — поэтому для text/csv сверку сознательно пропускаем.
+ */
+function matchesMagicBytes(mimeType: string, bytes: Buffer): boolean {
+  if (mimeType === "text/csv") return true;
+  if (mimeType === "image/webp") return isWebpContainer(bytes);
+  const prefix = MAGIC_PREFIX[mimeType];
+  return prefix ? prefix.every((byte, i) => bytes[i] === byte) : true;
+}
+
 function storageSetupError(message: string) {
   return /finance_loan_documents|schema cache|relation .* does not exist/i.test(message);
 }
@@ -146,10 +189,19 @@ export async function POST(request: Request) {
     if (!mimeType) throw new DocumentStorageError("Формат файла не поддерживается", 415);
     if (!DOCUMENT_KINDS.has(documentKind)) throw new DocumentStorageError("Некорректный тип документа", 400);
 
+    // Дальше договор с хранилищем строим на реальных байтах, а не на
+    // заголовке: читаем файл один раз и этот же bytes уходит в storage.upload
+    // ниже — без заявленного типа, подделанного поверх произвольного
+    // содержимого, файл прошёл бы проверку выше и лёг в приватный бакет как
+    // будто это настоящий договор.
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (!matchesMagicBytes(mimeType, bytes)) {
+      throw new DocumentStorageError("Файл не похож на заявленный формат — содержимое не совпадает", 415);
+    }
+
     const db = await database();
     await ensurePrivateBucket(db);
     const objectPath = `${loanId}/${randomUUID()}${extension(file.name)}`;
-    const bytes = Buffer.from(await file.arrayBuffer());
     const { error: uploadError } = await db.storage.from(BUCKET).upload(objectPath, bytes, {
       contentType: mimeType,
       upsert: false,
