@@ -1,3 +1,8 @@
+// Тип-импорт: стирается компилятором и не тянет рантайм в браузер (см. тест
+// «модуль списка ролей не тянет серверные импорты» — он разрешает именно
+// `import type`, а не любой импорт).
+import type { Role } from "@/lib/auth/permissions";
+
 /**
  * Кому можно дёргать синхронизацию руками, помимо крона.
  *
@@ -12,8 +17,14 @@
  * Почему список именно такой: прогон только читает у маркетплейса и пишет в
  * нашу базу — необратимого здесь нет, — но он нагружает лимиты токенов
  * кабинета, и решать, когда их тратить, дело владельца.
+ *
+ * "finance" здесь стоял до разделения ролей в сентябре 2026 и в текущем
+ * словаре `Role` не существует — ни у одной сессии такой роли нет, поэтому
+ * запись была мёртвой веткой, а финдиректор и финансист (те самые «финансы»
+ * из комментария) прогнать синхронизацию руками не могли. `satisfies
+ * readonly Role[]` не даёт списку снова разойтись со словарём ролей молча.
  */
-export const MANUAL_RUN_ROLES = ["director", "finance"] as const;
+export const MANUAL_RUN_ROLES = ["director", "fin_director", "financier"] as const satisfies readonly Role[];
 
 export function canRunSyncManually(role: string | null | undefined): boolean {
   return !!role && (MANUAL_RUN_ROLES as readonly string[]).includes(role);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+import { SESSION_COOKIE, sessionRoles, verifySession } from "@/lib/auth/session";
 // Тот же список читает кнопка в браузере — иначе она снова разойдётся с сервером.
 import { canRunSyncManually } from "@/lib/sync/manualRunRoles";
 
@@ -13,7 +13,12 @@ export async function checkCronAuth(request: NextRequest): Promise<NextResponse 
   if (auth === `Bearer ${secret}`) return null;
 
   const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value);
-  if (session && canRunSyncManually(session.role)) return null;
+  // Раньше здесь смотрели только на session.role — основную роль сессии.
+  // У сотрудника с несколькими ролями (например wb_manager + financier)
+  // нужная могла быть не первой, и та проверка такого молча отказывала.
+  // sessionRoles() — единственное место, где «одна роль» и «несколько»
+  // сводятся вместе (см. lib/auth/session.ts).
+  if (session && sessionRoles(session).some((role) => canRunSyncManually(role))) return null;
 
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }

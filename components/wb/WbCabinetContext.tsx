@@ -31,6 +31,11 @@ export interface WbCabinet {
 interface SessionUser {
   email: string;
   role: Role;
+  /**
+   * Все роли сотрудника (см. Session.roles в lib/auth/session.ts). Пусто у
+   * тех, кому не выдавали вторую роль — тогда решает одна `role`.
+   */
+  roles?: Role[];
   cabinet_ids: string[];
   organization_id?: string | null;
 }

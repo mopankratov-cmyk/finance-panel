@@ -201,7 +201,12 @@ export function WbRkJournalPage() {
   // селлера с уровнем. Прогон синхронизации гейтится не им, а ролью — тем же
   // списком, что и на сервере (checkCronAuth). Пока кнопка висела на canWrite,
   // она была активна у тех, кому роут отвечает 401.
-  const canRunSync = canRunSyncManually(user?.role);
+  // user?.role — только основная роль сессии. У сотрудника с несколькими
+  // ролями (например wb_manager + financier) нужная могла быть не первой, и
+  // кнопка гасла молча ровно как на сервере до починки checkCronAuth —
+  // поэтому смотрим на весь user.roles, а не только на основную.
+  const userRoles = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
+  const canRunSync = userRoles.some((role) => canRunSyncManually(role));
   const [range, setRange] = useState(() => ({ ...rangeForPreset("5d"), preset: "5d" as string }));
   const [data, setData] = useState<JournalData | null>(null);
   const [loading, setLoading] = useState(false);
