@@ -37,3 +37,13 @@ test("помесячный свод разделяет начислено, ос�
     { month: "2026-10", interestAccrued: 18_000, principalBalance: 400_000, scheduledTotal: 118_000, paidTotal: 0 },
   ]);
 });
+
+test("пустой или неполный период не роняет свод — отдаётся пустой список", () => {
+  const schedule = [row({ date: "2026-09-10", principal: 100_000, interest: 20_000, status: "done" })];
+  const loans = [{ id: "L", principalAmount: 500_000 }];
+  const schedules = new Map([["L", schedule]]);
+  // Поле "Год"/"С месяца" очищено на середине правки — periodStart/periodEnd
+  // приходят пустой строкой или без месяца, а не полноценной датой.
+  assert.deepEqual(buildMonthlyLoanSummary(loans, schedules, "", ""), []);
+  assert.deepEqual(buildMonthlyLoanSummary(loans, schedules, "-01-01", "-12-31"), []);
+});

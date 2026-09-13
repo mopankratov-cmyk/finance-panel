@@ -70,6 +70,11 @@ export function buildMonthlyLoanSummary(
 ): MonthlyLoanSummary[] {
   const months: string[] = [];
   const cursor = new Date(`${periodStart.slice(0, 7)}-01T12:00:00`);
+  // Пустой/неполный период (поле фильтра очищено на середине правки) даёт
+  // Invalid Date — cursor.toISOString() ниже на нём бросает исключение и
+  // роняет весь экран /loans. Это последний рубеж защиты: даже если вызывающий
+  // код не подставил безопасный год/месяц, здесь просто отдаём пустой свод.
+  if (Number.isNaN(cursor.getTime())) return [];
   const last = periodEnd.slice(0, 7);
   while (cursor.toISOString().slice(0, 7) <= last && months.length < 240) {
     months.push(cursor.toISOString().slice(0, 7));

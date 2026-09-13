@@ -209,10 +209,18 @@ export function LoansPage() {
     .filter(({ row }) => row.status === "planned" && row.date >= today && row.date <= next30Date);
   const overdue = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
     .filter(({ row }) => row.status === "planned" && row.date < today);
-  const periodStart = periodMode === "year" ? `${periodYear}-01-01` : `${monthFrom}-01`;
+  // Поля "Год" и "С месяца" — контролируемые инпуты: при обычном редактировании
+  // (стереть, чтобы вписать новое значение) они на мгновение становятся пустыми
+  // или неполными. Это нормальное промежуточное состояние UI, а не ошибка ввода —
+  // строить из него Date нельзя (Invalid Date роняет весь экран), поэтому для
+  // расчёта периода подставляем текущий год/месяц, а не то, что сейчас в поле.
+  const safePeriodYear = /^\d{4}$/.test(periodYear) ? periodYear : today.slice(0, 4);
+  const safeMonthFrom = /^\d{4}-\d{2}$/.test(monthFrom) ? monthFrom : today.slice(0, 7);
+  const safeMonthTo = /^\d{4}-\d{2}$/.test(monthTo) ? monthTo : today.slice(0, 7);
+  const periodStart = periodMode === "year" ? `${safePeriodYear}-01-01` : `${safeMonthFrom}-01`;
   const periodEnd = periodMode === "year"
-    ? `${periodYear}-12-31`
-    : `${monthTo}-${String(new Date(Number(monthTo.slice(0, 4)), Number(monthTo.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
+    ? `${safePeriodYear}-12-31`
+    : `${safeMonthTo}-${String(new Date(Number(safeMonthTo.slice(0, 4)), Number(safeMonthTo.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
   const periodSchedule = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
     .filter(({ row }) => row.status !== "cancelled" && row.date >= periodStart && row.date <= periodEnd);
   const periodInterest = periodSchedule.reduce((sum, item) => sum + item.row.interest + item.row.penalty + item.row.fine, 0);
