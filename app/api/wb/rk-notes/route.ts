@@ -82,13 +82,13 @@ async function copyDay(
   cabinetId: string,
   from: string,
   to: string,
-): Promise<{ ok: true; copied: number; skipped: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; copied: number; skipped: number } | { ok: false; error: string; copied: number }> {
   const source = await db.from("wb_rk_notes")
     .select("nm_id, advert_id, note")
     .eq("cabinet_id", cabinetId)
     .eq("date", from)
     .limit(5_000);
-  if (source.error) return { ok: false, error: "Не удалось прочитать задачи исходного дня" };
+  if (source.error) return { ok: false, error: "Не удалось прочитать задачи исходного дня", copied: 0 };
   const rows = (source.data ?? []).filter((row) => String(row.note ?? "").trim());
   if (!rows.length) return { ok: true, copied: 0, skipped: 0 };
 
@@ -97,7 +97,7 @@ async function copyDay(
     .eq("cabinet_id", cabinetId)
     .eq("date", to)
     .limit(5_000);
-  if (target.error) return { ok: false, error: "Не удалось прочитать задачи целевого дня" };
+  if (target.error) return { ok: false, error: "Не удалось прочитать задачи целевого дня", copied: 0 };
   const taken = new Set((target.data ?? [])
     .filter((row) => String(row.note ?? "").trim())
     .map((row) => `${row.nm_id}|${row.advert_id ?? "-"}`));
@@ -107,8 +107,13 @@ async function copyDay(
   const skipped = rows.length - fresh.length;
   if (!fresh.length) return { ok: true, copied: 0, skipped };
 
+  // Чанки не атомарны: если упадёт не первый, часть задач уже уйдёт в базу.
+  // Возвращаем, сколько успело записаться, — чтобы экран перечитал реальное
+  // состояние базы вместо того, чтобы молча показывать «было до переноса».
+  let copied = 0;
   for (let index = 0; index < fresh.length; index += 500) {
-    const { error } = await db.from("wb_rk_notes").upsert(fresh.slice(index, index + 500).map((row) => ({
+    const chunk = fresh.slice(index, index + 500);
+    const { error } = await db.from("wb_rk_notes").upsert(chunk.map((row) => ({
       cabinet_id: cabinetId,
       nm_id: row.nm_id,
       advert_id: row.advert_id,
@@ -120,9 +125,10 @@ async function copyDay(
       source: "human",
       updated_at: stamp,
     })), { onConflict: "cabinet_id,nm_id,advert_id,date" });
-    if (error) return { ok: false, error: "Не удалось перенести задачи" };
+    if (error) return { ok: false, error: "Не удалось перенести задачи", copied };
+    copied += chunk.length;
   }
-  return { ok: true, copied: fresh.length, skipped };
+  return { ok: true, copied, skipped };
 }
 
 export async function POST(request: NextRequest) {

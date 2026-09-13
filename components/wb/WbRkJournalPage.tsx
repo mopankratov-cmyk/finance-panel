@@ -447,7 +447,13 @@ export function WbRkJournalPage() {
         body: JSON.stringify({ cabinetId, copyFrom: from, copyTo: to }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body?.ok) throw new Error(body?.error || `Ошибка ${response.status}`);
+      if (!response.ok || !body?.ok) {
+        // Чанки на сервере не атомарны: часть задач могла уйти в базу до
+        // сбоя. Перечитываем реальное состояние, а не оставляем экран при
+        // «было до переноса», иначе он молча спорит с базой.
+        if (body?.copied) await loadNotes();
+        throw new Error(body?.error || `Ошибка ${response.status}`);
+      }
       await loadNotes();
       setCopyResult(body.copied
         ? `Перенесено задач: ${body.copied}${body.skipped ? `, пропущено занятых: ${body.skipped}` : ""}`
