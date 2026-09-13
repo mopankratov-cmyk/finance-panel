@@ -56,12 +56,31 @@ export async function GET() {
 
   // воронка по этим nm для расчёта эффекта — nmIds уже отфильтрован по
   // доступным кабинетам выше, поэтому wb_funnel_daily наследует ту же границу.
+  //
+  // Раньше запрос шёл по nm_id вовсе без .gte/.lte по дате: на кабинете или
+  // товаре с длинной историей воронки (или когда среди последних 200 правок
+  // много разных nm_id) выборка могла молча упереться в лимит строк и
+  // обрезаться, из-за чего реальный эффект правки карточки превращался в 0.
+  // avgAround ниже читает не больше WINDOW дней до и после даты правки —
+  // этого же отступа достаточно и для границ запроса.
   const byNmDate = new Map<string, number>();
   if (nmIds.length) {
+    const shiftDate = (iso: string, days: number) => {
+      const d = new Date(iso);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+    const dates = rows.map((r) => String(r.date).slice(0, 10));
+    const minDate = shiftDate(dates.reduce((a, b) => (a < b ? a : b)), -WINDOW);
+    const maxDate = shiftDate(dates.reduce((a, b) => (a > b ? a : b)), WINDOW);
+
     const { data: funnel } = await db
       .from("wb_funnel_daily")
       .select("nm_id, date, orders")
-      .in("nm_id", nmIds);
+      .in("nm_id", nmIds)
+      .gte("date", minDate)
+      .lte("date", maxDate)
+      .order("date");
     for (const f of funnel ?? []) {
       byNmDate.set(`${f.nm_id}|${String(f.date).slice(0, 10)}`, Number(f.orders ?? 0));
     }
