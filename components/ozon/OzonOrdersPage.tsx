@@ -34,7 +34,9 @@ const statusTone = (row: OrderRow) => row.delayed
           : "bg-sky-50 text-sky-700";
 
 export function OzonOrdersPage() {
-  const { noCabinets } = useOzonCabinet();
+  // Ошибка загрузки самих кабинетов (сеть/сервер) — это не «кабинет не
+  // подключён»: путать их значило отправлять человека чинить не то.
+  const { noCabinets, error: cabinetError, refreshCabinets } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [query, setQuery] = useOzonUrlFilter<string>("q", "");
   const [scheme, setScheme] = useState<"all" | "FBO" | "FBS">("all");
@@ -67,7 +69,7 @@ export function OzonOrdersPage() {
   return <div>
     <OzonModuleHeader eyebrow="Ozon · Операции" title="Заказы и возвраты" subtitle="FBO и FBS отправления, активные статусы, просрочки, отмены и сумма возвратов по финансовым транзакциям." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
     <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
-      {loading && !data ? <OzonLoading rows={10} /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет заказов" detail="Проверьте период и Seller API." /> : <>
+      {cabinetError ? <OzonError message={cabinetError} onRetry={refreshCabinets} /> : loading && !data ? <OzonLoading rows={10} /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет заказов" detail="Проверьте период и Seller API." /> : <>
         <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div>{error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8"><MetricCard label="Отправления" value={formatNumber(data.summary.postings)} /><MetricCard label="Товаров" value={formatNumber(data.summary.units)} /><MetricCard label="Сумма" value={formatMoney(data.summary.amount)} /><MetricCard label="В работе" value={formatNumber(data.summary.active)} detail={`${formatNumber(data.summary.awaitingShipment)} ждут отгрузки`} tone={data.summary.awaitingShipment ? "amber" : "sky"} /><MetricCard label="Доставлено" value={formatNumber(data.summary.delivered)} tone="emerald" /><MetricCard label="Отменено" value={formatNumber(data.summary.cancelled)} tone={data.summary.cancelled ? "amber" : "emerald"} /><MetricCard label="Просрочено" value={formatNumber(data.summary.delayed)} tone={data.summary.delayed ? "red" : "emerald"} /><MetricCard label="Возвраты" value={formatMoney(data.summary.refunds)} detail={data.summary.refunds == null ? "Ozon не отдал финансы" : undefined} tone={data.summary.refunds == null || data.summary.refunds > 0 ? "amber" : "emerald"} /></div>
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">

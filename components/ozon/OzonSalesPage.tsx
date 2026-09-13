@@ -44,7 +44,9 @@ function MiniBars({ values }: { values: number[] }) {
 }
 
 export function OzonSalesPage() {
-  const { noCabinets } = useOzonCabinet();
+  // Ошибка загрузки самих кабинетов (сеть/сервер) — это не «кабинет не
+  // подключён»: путать их значило отправлять человека чинить не то.
+  const { noCabinets, error: cabinetError, refreshCabinets } = useOzonCabinet();
   const { period, preset, applyPreset, applyRange } = useOzonPeriod();
   const [tab, setTab] = useState<"rnp" | "funnel">("rnp");
   const [query, setQuery] = useOzonUrlFilter<string>("q", "");
@@ -87,7 +89,7 @@ export function OzonSalesPage() {
     <div>
       <OzonModuleHeader eyebrow="Ozon · Продажи" title="Продажи и воронка" subtitle="РНП по SKU, дневная динамика, реклама и доступные Ozon-метрики воронки без подмены отсутствующих данных." period={period} preset={preset} onApplyPreset={applyPreset} onApplyRange={applyRange} onRefresh={refresh} refreshing={loading} />
       <div className={`mx-auto max-w-[1600px] space-y-4 px-4 py-4 transition-opacity sm:px-5 ${updating ? "opacity-60" : ""}`}>
-        {loading && !data ? <OzonLoading rows={9} /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет данных о продажах" detail="Проверьте выбранный кабинет и Seller API." /> : <>
+        {cabinetError ? <OzonError message={cabinetError} onRetry={refreshCabinets} /> : loading && !data ? <OzonLoading rows={9} /> : noCabinets ? <EmptyState title="Кабинет Ozon не подключён" detail="Добавьте кабинет с ключами Seller API и Performance API — после этого экраны наполнятся данными." href="/cabinets" /> : error && !data ? <OzonError message={error} onRetry={reload} /> : !data ? <EmptyState title="Нет данных о продажах" detail="Проверьте выбранный кабинет и Seller API." /> : <>
           <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-600">{data.scope.label} · {data.period.from} — {data.period.to}</div><Freshness generatedAt={data.generatedAt} /></div>
           {error ? <OzonStaleNotice message={error} onRetry={reload} /> : null}<OzonWarnings warnings={data.warnings} /><OzonAdCoverageNotice coverage={data.adCoverage} />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">

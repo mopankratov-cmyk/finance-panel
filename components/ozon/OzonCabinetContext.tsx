@@ -37,7 +37,9 @@ interface OzonCabinetContextValue {
   activeGroup: OzonCabinetGroup | null;
   user: SessionUser | null;
   ready: boolean;
-  /** Кабинетов нет вовсе: экрану нечего показывать, и это не ошибка. */
+  /** Кабинетов нет вовсе: экрану нечего показывать, и это не ошибка.
+   *  Если загрузка кабинетов упала с ошибкой — это не «кабинетов нет», а
+   *  сбой сети/сервера; noCabinets в этом случае должен остаться false. */
   noCabinets: boolean;
   loading: boolean;
   error: string | null;
@@ -74,7 +76,11 @@ export function OzonCabinetProvider({ children }: { children: React.ReactNode })
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
         return body as { cabinets?: OzonCabinet[] };
       }),
-      fetch("/api/cabinet-groups?mp=ozon", { cache: "no-store", signal: controller.signal }).then((response) => response.json() as Promise<{ groups?: OzonCabinetGroup[] }>),
+      fetch("/api/cabinet-groups?mp=ozon", { cache: "no-store", signal: controller.signal }).then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
+        return body as { groups?: OzonCabinetGroup[] };
+      }),
       fetch("/api/auth/me", { cache: "no-store", signal: controller.signal }).then((response) => response.json() as Promise<{ user?: SessionUser | null }>),
     ])
       .then(([cabinetResponse, groupResponse, meResponse]) => {
@@ -163,7 +169,7 @@ export function OzonCabinetProvider({ children }: { children: React.ReactNode })
     activeGroup,
     user,
     ready,
-    noCabinets: !loading && cabinets.length === 0 && groups.length === 0,
+    noCabinets: !loading && !error && cabinets.length === 0 && groups.length === 0,
     loading,
     error,
     canUseAll,
