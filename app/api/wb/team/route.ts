@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth/server";
+import type { Session } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/users";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isPanelOwner } from "@/lib/auth/owner";
@@ -33,6 +34,13 @@ interface Caller {
    * соседних. Для директора панели — все кабинеты организации.
    */
   cabinetIds: string[];
+  /**
+   * Настоящая сессия вызывающего — для журнала. Раньше все три записи audit()
+   * в этом файле подписывались фиктивной ролью "seller_owner", и когда
+   * сотрудника заводил директор панели или fin_director, журнал лгал о том,
+   * кто это сделал.
+   */
+  session: Pick<Session, "uid" | "email" | "role" | "roles">;
 }
 
 /** Кто вправе управлять командой организации. */
@@ -55,6 +63,7 @@ async function resolveCaller(): Promise<{ caller: Caller } | { error: NextRespon
         organizationId: session.organization_id ?? "",
         isPanelDirector: true,
         cabinetIds: (all ?? []).map((row) => String(row.id)),
+        session,
       },
     };
   }
@@ -102,6 +111,7 @@ async function resolveCaller(): Promise<{ caller: Caller } | { error: NextRespon
       organizationId: session.organization_id,
       isPanelDirector: false,
       cabinetIds: allowed,
+      session,
     },
   };
 }
@@ -247,7 +257,7 @@ export async function POST(request: NextRequest) {
     let saved = await save({ ...patch, modules });
     if (/column .*modules.* does not exist/i.test(saved.error?.message ?? "")) saved = await save(patch);
     if (saved.error) return NextResponse.json({ ok: false, error: "Не удалось сохранить сотрудника" }, { status: 502 });
-    await audit(request, { uid: caller.uid, email: caller.email, role: "seller_owner", roles: ["seller_owner"] }, {
+    await audit(request, caller.session, {
       action: existing ? "user.update" : "user.create",
       subject: email,
       after: { modules, cabinets: cabinetIds.length },
@@ -271,15 +281,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Нельзя понизить самого себя" }, { status: 400 });
     }
 
+    // Старое значение — для журнала: без него запись "выдали уровень" не
+    // говорит, был ли человек раньше без доступа или его просто перевели.
+    const { data: before } = await db
+      .from("cabinet_access")
+      .select("level")
+      .eq("user_id", userId)
+      .eq("cabinet_id", cabinetId)
+      .maybeSingle();
+    const oldLevel = before?.level ? String(before.level) : null;
+
     if (!level) {
       const { error } = await db.from("cabinet_access").delete().eq("user_id", userId).eq("cabinet_id", cabinetId);
       if (error) return NextResponse.json({ ok: false, error: "Не удалось снять уровень" }, { status: 502 });
+      await audit(request, caller.session, {
+        action: "user.scope.assign",
+        subject: userId,
+        cabinetId,
+        before: { userId, cabinetId, level: oldLevel },
+        after: { userId, cabinetId, level: null },
+      });
       return NextResponse.json({ ok: true, level: null });
     }
     const { error } = await db.from("cabinet_access").upsert({
       user_id: userId, cabinet_id: cabinetId, level, updated_at: new Date().toISOString(), updated_by: caller.email,
     }, { onConflict: "user_id,cabinet_id" });
     if (error) return NextResponse.json({ ok: false, error: "Не удалось выдать уровень" }, { status: 502 });
+    await audit(request, caller.session, {
+      action: "user.scope.assign",
+      subject: userId,
+      cabinetId,
+      before: { userId, cabinetId, level: oldLevel },
+      after: { userId, cabinetId, level },
+    });
     return NextResponse.json({ ok: true, level });
   }
 
@@ -290,9 +324,16 @@ export async function POST(request: NextRequest) {
     }
     const target = await ownUser(userId);
     if (!target) return NextResponse.json({ ok: false, error: "Сотрудник не из вашей организации" }, { status: 403 });
-    const { error } = await db.from("app_users").update({ is_active: !target.is_active }).eq("id", userId);
+    const nextActive = !target.is_active;
+    const { error } = await db.from("app_users").update({ is_active: nextActive }).eq("id", userId);
     if (error) return NextResponse.json({ ok: false, error: "Не удалось изменить статус" }, { status: 502 });
-    return NextResponse.json({ ok: true, isActive: !target.is_active });
+    await audit(request, caller.session, {
+      action: "user.block",
+      subject: String(target.email ?? userId),
+      before: { isActive: target.is_active },
+      after: { isActive: nextActive },
+    });
+    return NextResponse.json({ ok: true, isActive: nextActive });
   }
 
   return NextResponse.json({ ok: false, error: "Неизвестное действие" }, { status: 400 });
