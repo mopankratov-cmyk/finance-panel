@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAdvertCabinetAccess } from "@/lib/adverts/cabinetGuard";
+import { audit } from "@/lib/audit/log";
 import { getAdvertConfig, probeWriteAbility } from "@/lib/wb/advertApi";
 import { decodeWbToken } from "@/lib/wb/token";
 
@@ -91,15 +92,17 @@ async function verify(token: string): Promise<Verdict> {
  * побочный: чаще всего человек приходит сюда не менять ключ, а понять, почему
  * кнопка не сработала.
  *
- * Ключ не возвращается наружу ни в каком виде, только маска. И не пишется в
- * журнал операций: журнал читают люди, а секрет, попавший в читаемую строку,
- * перестаёт быть секретом.
+ * Ключ не возвращается наружу ни в каком виде, только маска. В журнал
+ * действий (`access_audit_log`) при сохранении нового ключа тоже уходит
+ * только маска старого и нового значения — сам токен ворочает рекламные
+ * деньги, и без следа о его замене владелец при разборе инцидента не узнает,
+ * кто и когда подменил ключ кабинета.
  */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const gate = await resolveAdvertCabinetAccess(body.cabinetId);
   if (gate.response) return gate.response;
-  const { db, cabinet, token: currentToken } = gate.access;
+  const { session, db, cabinet, token: currentToken } = gate.access;
 
   const incoming = typeof body.token === "string" ? body.token.trim() : "";
 
@@ -139,6 +142,17 @@ export async function POST(request: NextRequest) {
 
   const { error } = await db.from("wb_cabinets").update({ token_advert: incoming }).eq("id", cabinet.id).eq("marketplace", "wb");
   if (error) return NextResponse.json({ error: `Не удалось сохранить ключ: ${error.message}` }, { status: 500 });
+
+  // Токен Продвижения распоряжается рекламным бюджетом кабинета — кто и когда
+  // его подменил, должно остаться в журнале действий, даже если сам ключ там
+  // никогда не появится: только маска до и после, как и везде в этом файле.
+  await audit(request, session, {
+    action: "ads.token.change",
+    subject: cabinet.name,
+    cabinetId: cabinet.id,
+    before: mask(currentToken),
+    after: mask(incoming),
+  });
 
   return NextResponse.json({
     ...verdict,
