@@ -217,6 +217,10 @@ test("своё фото можно загрузить и убрать", () => {
   // переданного cabinetId — иначе доступ к своему кабинету позволял бы
   // прицепить загрузку к чужому товару подменой cabinetId/nmId в запросе.
   assert.match(route, /from\("wb_cards"\)[\s\S]{0,80}eq\("cabinet_id", cabinetId\)[\s\S]{0,40}eq\("nm_id", nmId\)/, "POST проверяет nmId именно в этом кабинете перед загрузкой");
+  // file.type — это Content-Type, который сообщил клиент, а не факт о файле:
+  // подделывается в любом HTTP-клиенте. Принятие решается по первым байтам.
+  assert.match(route, /function sniffImageMime\(bytes: Uint8Array\)/, "тип файла должен сверяться по байтам, а не только по file.type");
+  assert.match(route, /sniffImageMime\(bytes\) !== file\.type/, "загрузка отклоняет файл, чьи байты не совпадают с заявленным типом");
 });
 
 /**

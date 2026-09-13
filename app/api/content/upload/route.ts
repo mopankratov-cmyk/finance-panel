@@ -30,6 +30,37 @@ const ALLOWED = new Map([
   ["image/webp", "webp"],
 ]);
 
+/** Сигнатуры первых байт — то, что реально лежит в файле, а не то, что клиент
+ *  написал в Content-Type. */
+const MAGIC_PREFIX: Record<string, number[]> = {
+  "image/jpeg": [0xff, 0xd8, 0xff],
+  "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+};
+
+/**
+ * Настоящий тип файла по его байтам — а не по `file.type`.
+ *
+ * `file.type` в multipart-запросе — это Content-Type, который сообщил
+ * клиент. Это не факт о файле, а строка, которую прислал вызывающий, и
+ * подделывается в любом HTTP-клиенте одной строкой: сервер эту часть запроса
+ * никак не проверяет. Без сверки по байтам файл с фальшивым `image/jpeg`
+ * поверх произвольного содержимого прошёл бы ALLOWED и лёг в публичный бакет
+ * как будто это настоящий JPEG.
+ *
+ * JPEG и PNG узнаём по фиксированному префиксу байт. WebP — по контейнеру
+ * RIFF: `RIFF` в начале, затем 4 байта длины блока, затем `WEBP` — проверяем
+ * оба куска сигнатуры, пропуская длину.
+ */
+function sniffImageMime(bytes: Uint8Array): string | null {
+  for (const [mime, prefix] of Object.entries(MAGIC_PREFIX)) {
+    if (prefix.every((byte, i) => bytes[i] === byte)) return mime;
+  }
+  const isRiff = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46;
+  const isWebp = bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  if (bytes.length >= 12 && isRiff && isWebp) return "image/webp";
+  return null;
+}
+
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
 /** Путь внутри бакета: по нему видно кабинет, товар и что это наша загрузка. */
@@ -57,6 +88,13 @@ export async function POST(request: NextRequest) {
     return fail(`Файл ${(file.size / 1024 / 1024).toFixed(1)} МБ, а можно до ${MAX_BYTES / 1024 / 1024} МБ`, 413);
   }
 
+  // Дальше договор с бакетом строим на реальных байтах, а не на заголовке:
+  // читаем файл один раз и этот же bytes потом уходит в storage.upload ниже.
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (sniffImageMime(bytes) !== file.type) {
+    return fail("Файл не похож на JPEG/PNG/WebP — заявленный формат не совпадает с содержимым", 415);
+  }
+
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
@@ -70,7 +108,7 @@ export async function POST(request: NextRequest) {
   if (!card.data) return fail("Товар не найден в этом кабинете", 403);
 
   const path = objectPath(cabinetId, nmId, extension);
-  const upload = await db.storage.from(BUCKET).upload(path, new Uint8Array(await file.arrayBuffer()), {
+  const upload = await db.storage.from(BUCKET).upload(path, bytes, {
     contentType: file.type,
     upsert: false,
   });
