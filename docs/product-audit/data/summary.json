@@ -1,0 +1,14 @@
+{
+  "commit": "ed0ab735",
+  "tsc": { "exit": 2, "errors": 128, "ts5097_importExtensionInTests": 124, "realTypeErrors": 4, "realTypeErrorsInProductionCode": 0,
+    "realTypeErrorFiles": ["components/calendar/marketplaceDestination.test.mts:6", "tests/content-displayable-items.regression.test.mts:14", "tests/warehouse-walkthrough-fixes.test.mts:33", "tests/warehouse-walkthrough-fixes.test.mts:34"] },
+  "lint": { "exit": 1, "errors": 2, "warnings": 4,
+    "errorsDetail": ["components/warehouse/BalancesTab.tsx:169 impure function during render (Date.now)", "lib/xlsx/write.ts:28 assign to variable module"] },
+  "tests": { "total": 2043, "pass": 2040, "fail": 3, "durationSec": 17,
+    "failures": [
+      "tests/full-data-audit-regression.test.mts — ожидает loadWbCachedFinance в роуте финансов (regex по исходнику)",
+      "tests/unit-group-ui.test.mts — ищет пункт меню { href: \"/opiu/margin\", label: \"Маржа по артикулам\" }",
+      "tests/unit-margin-safety.regression.test.mts — ищет тот же пункт меню /opiu/margin"
+    ] },
+  "build": "не запускалась в рабочей копии: пишет в .next рядом с работающим dev-сервером; прод-сборка Vercel с main проходит (последний деплой READY)"
+}

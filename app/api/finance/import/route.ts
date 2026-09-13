@@ -17,8 +17,6 @@ type ImportPlanBody = {
   duplicatePayments?: number;
 };
 
-const DEMO_ACCOUNT_NAMES = ["WB Счёт 1", "WB Счёт 2", "Ozon", "Банковский счёт", "Наличные"];
-
 async function authorize() {
   return requireApiSession(["director", "fin_director", "financier"]);
 }
@@ -112,21 +110,37 @@ export async function DELETE() {
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const accounts = await db.from("accounts").select("id").in("name", DEMO_ACCOUNT_NAMES);
-  if (accounts.error) return NextResponse.json({ error: accounts.error.message }, { status: 500 });
-  const ids = (accounts.data ?? []).map((row) => String(row.id));
-  if (!ids.length) return NextResponse.json({ accountsDeleted: 0, paymentsDeleted: 0, accountsKept: 0 });
-  // Импорт переиспользует счета по имени, поэтому на «Наличных» или «Банковском
-  // счёте» могут лежать боевые платежи. Демо — только то, что не пришло из файла
-  // или выписки и не привязано к компании; раньше удалялось всё на этих счетах.
-  const demoPayments = await db.from("payments").select("id").in("account_id", ids).is("import_source", null).is("company_id", null);
-  if (demoPayments.error) return NextResponse.json({ error: demoPayments.error.message }, { status: 500 });
+  // Демо — строго то, что помечено is_demo при посеве (lib/finance/dbServer.ts
+  // seed()), а не то, что «похоже на демо» по имени счёта или по отсутствию
+  // import_source/company_id: такое совпадение по форме бывает у боевых
+  // платежей ровно на этих же именах счетов ("Наличные", "Банковский счёт" —
+  // это естественные названия, которые заводит и живой пользователь), и раньше
+  // это стирало их безвозвратно.
+  const demoPayments = await db.from("payments").select("id").eq("is_demo", true);
+  if (demoPayments.error) {
+    if (demoPayments.error.code === "42703") {
+      // Миграция 202609130004 (колонка is_demo) ещё не накатана — безопасный
+      // no-op вместо отката на прежний угадывающий heuristic.
+      return NextResponse.json({ accountsDeleted: 0, paymentsDeleted: 0, accountsKept: 0 });
+    }
+    return NextResponse.json({ error: demoPayments.error.message }, { status: 500 });
+  }
   const demoIds = (demoPayments.data ?? []).map((row) => String(row.id));
   if (demoIds.length) {
     const paymentsDelete = await db.from("payments").delete().in("id", demoIds);
     if (paymentsDelete.error) return NextResponse.json({ error: paymentsDelete.error.message }, { status: 500 });
   }
-  // Счёт удаляем, только если на нём не осталось ни одного платежа.
+  const demoAccounts = await db.from("accounts").select("id").eq("is_demo", true);
+  if (demoAccounts.error) {
+    if (demoAccounts.error.code === "42703") {
+      return NextResponse.json({ accountsDeleted: 0, paymentsDeleted: demoIds.length, accountsKept: 0 });
+    }
+    return NextResponse.json({ error: demoAccounts.error.message }, { status: 500 });
+  }
+  const ids = (demoAccounts.data ?? []).map((row) => String(row.id));
+  if (!ids.length) return NextResponse.json({ accountsDeleted: 0, paymentsDeleted: demoIds.length, accountsKept: 0 });
+  // Счёт удаляем, только если на нём не осталось ни одного платежа (в том
+  // числе боевого, добавленного на демо-счёт уже после посева).
   const deletable: string[] = [];
   for (const id of ids) {
     const rest = await db.from("payments").select("id").eq("account_id", id).limit(1);

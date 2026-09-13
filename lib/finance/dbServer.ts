@@ -87,10 +87,23 @@ function buildSeedState(): FinanceState {
 
 async function seed(db: Db) {
   const state = buildSeedState();
-  const accounts = await db.from("accounts").insert(state.accounts.map(accountToRow));
+  // is_demo — единственная метка, по которой «Удалить демо-данные»
+  // (app/api/finance/import/route.ts DELETE) отличает эти строки от боевых.
+  // До миграции 202609130004 колонки может не быть (42703) — тогда сеем без
+  // метки, чтобы посев не сломался; кнопка удаления при этом просто ничего
+  // не найдёт и ничего не удалит (безопасный no-op), пока миграцию не накатят.
+  const accountRows = state.accounts.map((account) => ({ ...accountToRow(account), is_demo: true }));
+  let accounts = await db.from("accounts").insert(accountRows);
+  if (accounts.error?.code === "42703") {
+    accounts = await db.from("accounts").insert(state.accounts.map(accountToRow));
+  }
   if (accounts.error) throw accounts.error;
   if (state.payments.length) {
-    const payments = await db.from("payments").insert(state.payments.map(paymentToRow));
+    const paymentRows = state.payments.map((payment) => ({ ...paymentToRow(payment), is_demo: true }));
+    let payments = await db.from("payments").insert(paymentRows);
+    if (payments.error?.code === "42703") {
+      payments = await db.from("payments").insert(state.payments.map(paymentToRow));
+    }
     if (payments.error) throw payments.error;
   }
   if (state.loans.length) {
