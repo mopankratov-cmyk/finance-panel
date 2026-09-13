@@ -104,11 +104,18 @@ export async function PUT(request: Request) {
   const keep = existing.filter((row) => row.status !== "planned");
   const removedPlanned = existing.filter((row) => row.status === "planned");
   const keepIds = new Set(keep.map((row) => row.id));
+  // Клиент шлёт график целиком без стабильных id (форма собирает черновик по датам,
+  // не по строкам БД) — уже сохранённые оплаченные/отменённые строки приходят обратно
+  // тем же телом запроса. Если не отсеять их по естественному ключу, ниже им присвоится
+  // новый randomUUID и upsert вставит дубликат рядом с оригиналом из `keep` (P1: график
+  // "распухал" при каждом ре-сейве после сверки). Естественный ключ — дата+вид строки.
+  const keepKeys = new Set(keep.map((row) => `${row.dueDate}|${row.kind}`));
   const incoming: ScheduleRowRecord[] = body.rows.flatMap((row) => {
     const dueDate = isoDate(row.dueDate);
     const kind = String(row.kind ?? "") as ScheduleRowKind;
     const amountRub = Math.round(Number(row.amountRub ?? 0) * 100) / 100;
     if (!dueDate || !KINDS.has(kind) || !(amountRub > 0)) return [];
+    if (keepKeys.has(`${dueDate}|${kind}`)) return []; // уже закрыта — эхо той же строки, не новая
     const reuse = row.id ? removedPlanned.find((item) => item.id === row.id) : undefined;
     return [{
       id: reuse ? reuse.id : randomUUID(),
