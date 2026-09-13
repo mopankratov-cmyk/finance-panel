@@ -374,6 +374,12 @@ export async function POST(request: NextRequest) {
   if (returns.error) return fail(returns.error, 400);
 
   const cabinetId = String(form.get("cabinetId") ?? "").trim() || null;
+  // cabinetId приходит прямо из формы — прежде чем класть его в строку реестра,
+  // сверяем с кабинетами, которые сессия вообще видит: иначе чужой или опечатанный
+  // id тихо ляжет в cabinet_id без проверки.
+  if (cabinetId && !list.rows.some((row) => row.cabinets.some((link) => link.cabinetId === cabinetId))) {
+    return fail("Нет доступа к кабинету", 400);
+  }
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
