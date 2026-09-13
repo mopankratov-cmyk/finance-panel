@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoanForm, type LoanFormResult, type LoanScheduleDraft } from "./LoanForm";
 import { deleteLoanDocument, downloadLoanDocument, listLoanDocuments, openListedLoanDocument, saveLoanDocument, type LoanDocumentInfo } from "./loanDocuments";
 import { useFinance } from "@/components/providers/FinanceProvider";
-import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
+import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
 import { downloadSimpleXlsx } from "@/components/payments/ddsExport";
 import { Card, CardContent } from "@/components/ui/Card";
 import { LOAN_CATEGORIES } from "@/lib/finance/categories";
@@ -376,13 +376,16 @@ export function LoansPage() {
       status: existing.find((payment) => payment.comment?.includes(receiptMarker(loan.id)))?.status ?? "planned",
       counterparty: loan.creditorName,
       comment: `${receiptMarker(loan.id)}${currencyMeta}${result.contractFileName ? ` [contract:${result.contractFileName}]` : ""}`,
+      // Кладём companyId прямо в платёж: иначе фоновая запись из dispatch
+      // (UPDATE_PAYMENT) пишет company_id=null и гонится с явным PATCH ниже —
+      // кто последний, тот и выигрывает, и юрлицо может тихо обнулиться.
+      companyId: result.companyId || null,
     }];
     // Приход кредита — обычный платёж; график — строки loan_schedule_rows,
     // плановые платежи календаря сервер строит из них сам (PR-C по ТЗ).
     for (const payment of desired) {
       if (state.payments.some((item) => item.id === payment.id)) {
         dispatch({ type: "UPDATE_PAYMENT", payload: payment });
-        await updatePaymentCompany(payment.id, result.companyId);
       } else {
         await savePaymentWithCompany(payment, result.companyId);
         dispatch({ type: "ADD_PAYMENT", payload: payment });
