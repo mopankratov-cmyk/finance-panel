@@ -71,6 +71,15 @@ export interface KizUploadResult {
   soldColumns: Record<string, string>;
   returnColumns: Record<string, string>;
   withoutPrice: number;
+  /**
+   * Пачки записи в реестр, которые не прошли (сеть, таймаут, конфликт по одной
+   * строке партии). Раньше такая ошибка проглатывалась молча: счётчики
+   * added/updatedByReturn просто получались меньше, чем должны быть, и никакого
+   * сигнала наружу не было.
+   */
+  writeErrors: { batch: string; message: string }[];
+  /** true, если хотя бы одна пачка не записалась — added/updatedByReturn занижены. */
+  partial: boolean;
   summary: KizWithdrawalSummary;
 }
 
@@ -439,13 +448,23 @@ export async function POST(request: NextRequest) {
     ...plan.excludedByReturn.map((line) => ({ ...row(line, "returned"), returned_at: null })),
   ].filter((item) => !known.has(String(item.code)));
 
+  // Пачка может не записаться (сетевой сбой, таймаут, конфликт по одной строке) —
+  // такую ошибку нельзя проглатывать: без неё added окажется тише правды, а
+  // вызывающий не узнает, что часть файла в реестр не попала.
+  const writeErrors: { batch: string; message: string }[] = [];
+
   let added = 0;
   for (let offset = 0; offset < fresh.length; offset += 500) {
     const { data, error } = await db
       .from("kiz_withdrawals")
       .upsert(fresh.slice(offset, offset + 500), { onConflict: "code", ignoreDuplicates: true })
       .select("code");
-    if (!error) added += (data ?? []).length;
+    if (error) {
+      console.error("[warehouse/kiz] upsert-пачка не записалась", { offset, message: error.message });
+      writeErrors.push({ batch: `upsert ${offset}-${offset + 500}`, message: error.message });
+      continue;
+    }
+    added += (data ?? []).length;
   }
 
   // Возвраты по кодам, которые уже лежат в реестре как проданные: переводим в
@@ -455,18 +474,27 @@ export async function POST(request: NextRequest) {
   // Пачки короткие: код длинный, фильтр по сотне кодов не влезает в URL запроса.
   for (let offset = 0; offset < returnedCodes.length; offset += 40) {
     const chunk = returnedCodes.slice(offset, offset + 40);
-    const { data } = await db
+    const { data, error } = await db
       .from("kiz_withdrawals")
       .update({ status: "returned", updated_at: stamp })
       .in("code", chunk)
       .eq("status", "sold")
       .select("code");
-    updatedByReturn += (data ?? []).length;
-    await db
+    if (error) {
+      console.error("[warehouse/kiz] update returned-пачка не записалась", { offset, message: error.message });
+      writeErrors.push({ batch: `returned ${offset}-${offset + 40}`, message: error.message });
+    } else {
+      updatedByReturn += (data ?? []).length;
+    }
+    const { error: sentError } = await db
       .from("kiz_withdrawals")
       .update({ status: "returned_after_sent", updated_at: stamp })
       .in("code", chunk)
       .eq("status", "sent");
+    if (sentError) {
+      console.error("[warehouse/kiz] update returned_after_sent-пачка не записалась", { offset, message: sentError.message });
+      writeErrors.push({ batch: `returned_after_sent ${offset}-${offset + 40}`, message: sentError.message });
+    }
   }
 
   // Загруженным кодам сразу проставляем владельца — по тому же правилу, что и
@@ -484,8 +512,15 @@ export async function POST(request: NextRequest) {
     soldColumns: soldParsed.columns,
     returnColumns: returnsParsed.columns,
     withoutPrice: soldParsed.withoutPrice,
+    writeErrors,
+    partial: writeErrors.length > 0,
     summary: await summarize(db, null),
   };
   void session;
-  return NextResponse.json({ data: result, error: null }, { status: 201 });
+  // 207: часть пачек не записалась в реестр — added/updatedByReturn занижены,
+  // и это не тихий успех, а сигнал разобраться (см. writeErrors).
+  return NextResponse.json(
+    { data: result, error: writeErrors.length > 0 ? "Часть пачек не записалась в реестр — см. writeErrors" : null },
+    { status: writeErrors.length > 0 ? 207 : 201 },
+  );
 }
