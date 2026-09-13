@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { withOzonCabinetScope } from "@/lib/ozon/navigation";
-import { isCabinetScopedRole, type Role } from "@/lib/auth/permissions";
+import { isCabinetScopedRole, rolesCan, type Role } from "@/lib/auth/permissions";
 import { confirmDiscardUnsavedChanges } from "@/lib/planning/unsavedChangesGuard";
 
 export interface OzonCabinet {
@@ -27,6 +27,11 @@ interface SessionUser {
   // Список ролей не дублируем: копия разъезжается с оригиналом молча. Здесь
   // она уже разъехалась — оператора склада и менеджера Ozon в ней не было.
   role: Role;
+  /**
+   * Все роли сотрудника (см. Session.roles в lib/auth/session.ts). Пусто у
+   * тех, кому не выдавали вторую роль — тогда решает одна `role`.
+   */
+  roles?: Role[];
   cabinet_ids: string[];
 }
 
@@ -178,7 +183,10 @@ export function OzonCabinetProvider({ children }: { children: React.ReactNode })
     loading,
     error,
     canUseAll,
-    canWrite: Boolean(activeCabinet),
+    // canWrite — «есть выбранный кабинет» это ещё не «можно писать»: ставки
+    // юнит-экономики меняет только finance.edit, а кнопка «Сохранить» не
+    // должна включаться для тех, кому сервер всё равно ответит 403.
+    canWrite: Boolean(activeCabinet) && rolesCan(user?.roles?.length ? user.roles : user?.role ? [user.role] : [], "finance.edit"),
     setCabinetId,
     refreshCabinets: () => setRefreshKey((key) => key + 1),
   }), [activeCabinet, activeGroup, cabinetId, cabinets, canUseAll, error, groups, loading, ready, setCabinetId, user]);
