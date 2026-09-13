@@ -36,8 +36,8 @@ const toneMargin = (v: number | null): [string, string] => (v == null ? ["", ""]
 // эквайринг, налог и реклама ещё не вычтены). Два экрана не должны спорить об
 // одних и тех же цифрах.
 const COLS: { key: keyof SeoSku; label: string; kind: "num" | "pct" | "drr" | "margin"; hint?: string }[] = [
-  { key: "shows_window", label: "Показы", kind: "num" },
-  { key: "ctr_window", label: "CTR", kind: "pct" },
+  { key: "shows_window", label: "Показы", kind: "num", hint: MARKETPLACE_METRICS.views.definition },
+  { key: "ctr_window", label: "CTR", kind: "pct", hint: MARKETPLACE_METRICS.ctr.definition },
   { key: "cart_window", label: "В корзину", kind: "num" },
   { key: "cv_cart_window", label: "CV корзины", kind: "pct" },
   { key: "cv_order_window", label: "CV заказа", kind: "pct" },
