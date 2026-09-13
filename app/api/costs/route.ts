@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   // теми, что совпали с каталогом маркетплейса ниже — без фильтра по
   // организации сюда попадали название, себестоимость и фулфилмент чужих
   // организаций по артикулам, которых даже нет в собственном каталоге сессии.
-  if (error) return NextResponse.json({ rows: [], error: error.message });
+  if (error) return NextResponse.json({ rows: [], error: error.message }, { status: 500 });
   const products: MarketplaceCostProduct[] = [];
   const warnings: string[] = [];
 
