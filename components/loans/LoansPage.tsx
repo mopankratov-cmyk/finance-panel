@@ -414,11 +414,14 @@ export function LoansPage() {
       const [fresh, schedule] = await Promise.all([loadFinanceState(), loadLoanScheduleRows()]);
       dispatch({ type: "LOAD", payload: fresh });
       setScheduleRows(schedule.rows);
+      // Форму закрываем только после того, как график реально сохранился —
+      // иначе при 500/сетевой ошибке модалка закрывалась как при успехе,
+      // и всё введённое пользователем терялось без возможности повторить попытку.
+      setModalOpen(false);
+      setEditing(null);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Не удалось сохранить график кредита");
     }
-    setModalOpen(false);
-    setEditing(null);
   };
 
   const handleDelete = async (loan: Loan) => {
