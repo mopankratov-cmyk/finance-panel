@@ -18,6 +18,13 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// Разумный потолок для одного аналитического вопроса — живой вопрос
+// оператора укладывается в пару абзацев. Выше этого только целенаправленная
+// накрутка токенов: без лимита любой авторизованный вызывающий (включая
+// seller_owner) мог отправить вопрос произвольной длины и либо сжечь квоту
+// LLM, либо утянуть обработку за maxDuration=60 этого роута.
+const MAX_QUESTION_LENGTH = 4000;
+
 const SYSTEM = `Ты — аналитик маркетплейс-бизнеса на Wildberries. Тебе дают компактный срез данных по SKU: темп заказов, остатки, оборачиваемость, расход рекламы и ДРР.
 
 Твоя задача — находить аномалии и давать конкретные рекомендации на русском языке. Ориентиры (бенчмарки):
@@ -138,6 +145,12 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const mode: "analyze" | "chat" = body.mode === "chat" ? "chat" : "analyze";
   const question: string = typeof body.question === "string" ? body.question : "";
+  if (question.length > MAX_QUESTION_LENGTH) {
+    return NextResponse.json(
+      { error: `Вопрос длиннее ${MAX_QUESTION_LENGTH} символов — сформулируйте короче` },
+      { status: 400 },
+    );
+  }
 
   if (isMvpAgentEnabled()) {
     const config = resolveMvpAgentConfig();
