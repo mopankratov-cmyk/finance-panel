@@ -229,19 +229,19 @@ export async function DELETE(request: NextRequest) {
     .eq("cabinet_id", cabinet.id)
     .maybeSingle();
 
+  if (!before) return NextResponse.json({ error: "Правило не найдено" }, { status: 404 });
+
   const { error } = await db.from("advert_rules").delete().eq("id", id).eq("cabinet_id", cabinet.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  if (before) {
-    await auditAdvertOperation({
-      context: { session, db, cabinet, token: gate.access.token, adverts: new Map() },
-      advertId: Number(before.advert_id),
-      action: "rule_delete",
-      status: "ok",
-      oldValue: before,
-      newValue: null,
-      wbResult: { ruleId: id },
-    });
-  }
+  await auditAdvertOperation({
+    context: { session, db, cabinet, token: gate.access.token, adverts: new Map() },
+    advertId: Number(before.advert_id),
+    action: "rule_delete",
+    status: "ok",
+    oldValue: before,
+    newValue: null,
+    wbResult: { ruleId: id },
+  });
   return NextResponse.json({ ok: true });
 }
