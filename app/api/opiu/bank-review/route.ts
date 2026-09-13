@@ -369,6 +369,20 @@ export async function PATCH(request: Request) {
     patch.status = status;
   }
   if (!Object.keys(patch).length) return jsonError("Нет разрешённых полей для изменения", 400);
+
+  // Тот же риск, что и в POST "batch": стейл или опечатанный id иначе тихо
+  // привязывает строку очереди к несуществующей компании/счёту.
+  if (typeof patch.company_id === "string" && patch.company_id) {
+    const { data: company, error: companyError } = await db.from("companies").select("id").eq("id", patch.company_id).maybeSingle();
+    if (companyError) return jsonError(companyError.message, 500);
+    if (!company) return jsonError(`Компания не найдена в справочнике: ${patch.company_id}`, 400);
+  }
+  if (typeof patch.account_id === "string" && patch.account_id) {
+    const { data: account, error: accountError } = await db.from("accounts").select("id").eq("id", patch.account_id).maybeSingle();
+    if (accountError) return jsonError(accountError.message, 500);
+    if (!account) return jsonError(`Счёт не найден в справочнике: ${patch.account_id}`, 400);
+  }
+
   const { error } = await db
     .from("bank_review_items")
     .update(patch)
