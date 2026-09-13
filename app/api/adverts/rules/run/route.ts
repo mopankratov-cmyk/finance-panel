@@ -361,7 +361,7 @@ async function runRules(request: NextRequest) {
       // Действие автомата попадает в тот же журнал, что и действие человека.
       // Отдельная история для правил означала бы два места, где надо искать
       // ответ на вопрос «кто трогал эту ставку».
-      await db.from("advert_bid_changes").insert({
+      const auditInsert = await db.from("advert_bid_changes").insert({
         advert_id: item.rule.advertId,
         cabinet_id: cabinetId,
         user_email: "автоправило",
@@ -374,6 +374,17 @@ async function runRules(request: NextRequest) {
         detail: `${item.decision.reason}`.slice(0, 500),
         wb_result: applied.ok ? applied.data : applied.raw ?? applied.message,
       });
+      // Ставка в WB к этому моменту уже применена (или отклонена WB) — запись
+      // здесь только фиксирует след в журнале. Если insert не лёг (снос схемы,
+      // непринятая миграция, ограничение), ставка всё равно изменилась, а
+      // журнал об этом промолчит. Сообщаем в ответе, а не глотаем ошибку.
+      if (auditInsert.error) {
+        results.push({
+          cabinetId,
+          ruleId: item.rule.id,
+          warning: `Ставка применена в WB, но запись в журнал advert_bid_changes не удалась: ${auditInsert.error.message}`,
+        });
+      }
     }
 
     if (bids.error) results.push({ cabinetId, warning: `Ставки WB прочитаны не полностью: ${bids.error}` });
@@ -382,7 +393,13 @@ async function runRules(request: NextRequest) {
   }
 
   if (!dryRun && runLog.length) {
-    await db.from("advert_rule_runs").insert(runLog);
+    const runLogInsert = await db.from("advert_rule_runs").insert(runLog);
+    // Как и выше: решения правил (включая уже применённые ставки) существуют
+    // фактически, даже если эта запись в advert_rule_runs не удалась. Без
+    // предупреждения в ответе прогон выглядит полностью зафиксированным.
+    if (runLogInsert.error) {
+      results.push({ warning: `Прогон правил выполнен, но запись в журнал advert_rule_runs не удалась: ${runLogInsert.error.message}` });
+    }
   }
 
   return NextResponse.json({

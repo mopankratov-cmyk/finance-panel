@@ -169,12 +169,25 @@ export async function auditAdvertOperation(input: AdvertAuditInput): Promise<voi
     wb_result: input.wbResult ?? null,
   });
   if (extended.error?.code === "42703" || extended.error?.code === "PGRST204") {
-    await input.context.db.from("advert_bid_changes").insert({
+    const fallback = await input.context.db.from("advert_bid_changes").insert({
       advert_id: input.advertId,
       old_bid: oldBid,
       new_bid: newBid,
       status: input.status,
       detail: `${input.action}: ${detail}`.slice(0, 500),
     });
+    // Само действие (ставка/статус/бюджет) в WB уже применено — эта запись
+    // только его след в журнале. Если не лёг и упрощённый набор колонок,
+    // теряется не действие, а возможность его найти. Молчать нельзя: без лога
+    // расхождение факта и журнала всплывёт только при ручном разборе инцидента.
+    if (fallback.error) {
+      console.error(
+        `[auditAdvertOperation] запись в advert_bid_changes не удалась (advert ${input.advertId}, action ${input.action}): ${fallback.error.message}`,
+      );
+    }
+  } else if (extended.error) {
+    console.error(
+      `[auditAdvertOperation] запись в advert_bid_changes не удалась (advert ${input.advertId}, action ${input.action}): ${extended.error.message}`,
+    );
   }
 }
