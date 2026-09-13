@@ -262,6 +262,7 @@ async function runRules(request: NextRequest) {
       db
         .from("wb_advert_stats")
         .select("advert_id, date, sum_spent")
+        .eq("cabinet_id", cabinetId)
         .in("advert_id", advertIds)
         .gte("date", from)
         .lte("date", to),
