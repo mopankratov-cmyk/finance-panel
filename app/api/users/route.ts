@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
 import { isExternalRole, isRole } from "@/lib/auth/permissions";
+import { isPanelOwner } from "@/lib/auth/owner";
 import { audit } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
@@ -69,7 +70,12 @@ export async function GET() {
       ? (user.roles as unknown[]).map(String)
       : [String(user.role)];
     let access: string[];
-    if (user.role === "seller") {
+    // Внешний контур целиком (seller И seller_owner — раньше здесь стояло
+    // буквальное "seller", и главный пользователь клиента с пустым own
+    // отображался с access_cabinet_ids = allCabinetIds, то есть директор в
+    // этом экране видел его как имеющего доступ ко всем кабинетам всех
+    // организаций, а не только своей).
+    if (isExternalRole(user.role as string)) {
       // Организация задаёт границу, список — фактический доступ. Показываем
       // пересечение: уровень бессмысленно выдавать в кабинете, куда человек
       // всё равно не войдёт.
@@ -87,7 +93,7 @@ export async function GET() {
      * Границу задаёт не экран, а принадлежность: у внешнего человека это
      * кабинеты его организации и ничьи больше.
      */
-    const scope = user.role === "seller"
+    const scope = isExternalRole(user.role as string)
       ? (byOrganization.get(String(user.organization_id ?? "")) ?? [])
       : user.role === "director" ? [] : allCabinetIds;
     return { ...user, roles, access_cabinet_ids: access, scope_cabinet_ids: scope };
@@ -146,6 +152,19 @@ export async function POST(request: NextRequest) {
       },
       { status: 409 },
     );
+  }
+  // Те же гарды, что в PATCH /api/users/[id]: этот путь заводит сотрудника
+  // «с нуля» через ту же форму, а при replace_existing=true фактически
+  // выполняет ту же перезапись роли/пароля/кабинетов — но раньше делал это
+  // без единой проверки, хотя штатная форма «Добавить сотрудника» уходит
+  // именно сюда, а не в PATCH.
+  if (existing && b.replace_existing) {
+    if (existing.id === directorSession.uid) {
+      return NextResponse.json({ error: "Свою учётку нельзя переписать формой добавления" }, { status: 400 });
+    }
+    if (isPanelOwner(email)) {
+      return NextResponse.json({ error: "Владелец панели не понижается" }, { status: 400 });
+    }
   }
   let organizationId: string | null = null;
   if (roles.some(isExternalRole)) {

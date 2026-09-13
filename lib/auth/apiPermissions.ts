@@ -76,7 +76,14 @@ const RULES: readonly ApiRule[] = [
   ["/api/opiu/sync-report", { permission: "mp_reports.sync" }],
   ["/api/opiu/report-sync", { permission: "mp_reports.sync" }],
   ["/api/opiu/wb-payout-status", { read: "mp_reports.view", write: "mp_reports.sync" }],
-  ["/api/opiu/margin", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
+  // Прибыль и себестоимость по артикулам НАШИХ юрлиц (ИП Панкратов/ИП
+  // Кучеренко/Retail Family) — это финансовые данные компании, а не витрина
+  // товарного контура. Раньше здесь стоял READ_ANALYTICS — то же право, что
+  // и у каталога/отзывов/рекламы, — и его получают buyer, wb_manager,
+  // ozon_manager и внешний seller_owner: чужой главный клиент читал маржу
+  // владельца по каждому артикулу. У роута нет собственной проверки сессии
+  // (в отличие от соседних /api/opiu/*), поэтому единственная граница — здесь.
+  ["/api/opiu/margin", { read: "finance.view", write: "finance.view" }],
   // Не склад, а строка склада В ОПиУ: роут пишет стоимость хранения в
   // финансовый отчёт. Первым заходом он был помечен складским правом — и
   // тест поймал, что так к ОПиУ получал доступ оператор фулфилмента.

@@ -4,17 +4,25 @@ import { SESSION_COOKIE } from "./session";
 import type { Session } from "./session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isCabinetScopedRole } from "@/lib/auth/roles";
+import { isExternalRole } from "@/lib/auth/permissions";
 
 // Пустой cabinet_ids у менеджера исторически означает «все кабинеты».
 // Непустой список — жёсткое ограничение. В таком режиме агрегат "all" запрещён,
 // потому что текущие RPC не умеют агрегировать только разрешённое подмножество.
+//
+// Внешний контур (seller и seller_owner — обе роли клиента, а не только
+// рядовой сотрудник) отделён стеной организации: пустой cabinet_ids у него
+// всегда значит «ни одного», а не «все». Раньше здесь стояло буквальное
+// `role === "seller"`, и seller_owner (главный пользователь клиента) в эту
+// ветку не попадал вовсе — проваливался в общую с пустым cabinet_ids
+// и получал «нет ограничения», то есть видел кабинеты чужих организаций.
 export function sessionHasCabinetAccess(
   session: Pick<Session, "role" | "cabinet_ids"> | null,
   cabinetId: string | null,
 ): boolean {
   if (!session) return true; // cron и локальная разработка уже проверяются в proxy.
-  if (session.role === "seller") {
-    // Для внешнего селлера пустой список всегда означает «нет кабинетов»,
+  if (isExternalRole(session.role)) {
+    // Для внешнего контура пустой список всегда означает «нет кабинетов»,
     // а агрегаты all/group запрещены: они не должны пересечь tenant-границу.
     return cabinetId !== null
       && cabinetId !== "all"
@@ -44,7 +52,7 @@ export async function hasCabinetAccess(cabinetId: string | null): Promise<boolea
   const session = await getServerSession();
   if (!session && !(await looksLikeMachineCall())) return false;
   if (!sessionHasCabinetAccess(session, cabinetId)) return false;
-  if (!session || session.role !== "seller") return true;
+  if (!session || !isExternalRole(session.role)) return true;
   if (!cabinetId || !session.organization_id) return false;
   const db = getSupabaseAdmin();
   if (!db) return false;

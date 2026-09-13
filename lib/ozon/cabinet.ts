@@ -2,6 +2,21 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerSession } from "@/lib/auth/server";
 import type { OzonCreds } from "@/lib/ozon/api";
 import { isCabinetScopedRole } from "@/lib/auth/roles";
+import { isExternalRole } from "@/lib/auth/permissions";
+
+/**
+ * Есть ли у сессии ограничение по кабинетам здесь и сейчас.
+ *
+ * У внутренней cabinet-scoped роли (wb_manager/ozon_manager) пустой
+ * cabinet_ids исторически значит «все кабинеты компании» — это осталось.
+ * У внешнего контура (seller/seller_owner) пустой cabinet_ids ВСЕГДА значит
+ * «ни одного»: там нет права трактовать пустоту как «нет ограничения», иначе
+ * только что заведённый клиент до подключения первого кабинета видел бы
+ * Ozon-кабинеты всех остальных организаций.
+ */
+function hasCabinetRestriction(role: string, cabinetIdsLength: number): boolean {
+  return cabinetIdsLength > 0 || isExternalRole(role);
+}
 
 export interface OzonCabinetAccess {
   id: string;
@@ -100,7 +115,7 @@ export async function getOzonCabinetScope(
   if (error) return { ok: false, error: error.message };
 
   const session = await getServerSession();
-  const allowedIds = session && isCabinetScopedRole(session.role) && session.cabinet_ids.length
+  const allowedIds = session && isCabinetScopedRole(session.role) && hasCabinetRestriction(session.role, session.cabinet_ids.length)
     ? new Set(session.cabinet_ids)
     : null;
   const cabinets = ((data ?? []) as OzonCabinetRow[])
@@ -202,7 +217,12 @@ export async function getActiveOzonCreds(cabinetId?: string | null): Promise<
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, error: "Supabase не настроен" };
   const session = await getServerSession();
-  if (session && isCabinetScopedRole(session.role) && session.cabinet_ids.length > 0 && (!cabinetId || !session.cabinet_ids.includes(cabinetId))) {
+  if (
+    session
+    && isCabinetScopedRole(session.role)
+    && hasCabinetRestriction(session.role, session.cabinet_ids.length)
+    && (!cabinetId || !session.cabinet_ids.includes(cabinetId))
+  ) {
     return { ok: false, error: "Нет доступа к Ozon-кабинету" };
   }
   let q = db.from("wb_cabinets").select("id, name, client_id, token, perf_client_id, perf_secret").eq("marketplace", "ozon").eq("is_active", true);

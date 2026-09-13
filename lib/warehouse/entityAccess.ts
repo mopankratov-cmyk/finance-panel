@@ -2,6 +2,7 @@ import { cache } from "react";
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isExternalRole } from "@/lib/auth/permissions";
 
 export interface EntityCabinetLink {
   cabinetId: string;
@@ -113,10 +114,12 @@ export const listAccessibleEntities = cache(async function listAccessibleEntitie
   // Права считаются по одной прочитанной сессии, а не запросом на каждый кабинет:
   // раньше на девять юрлиц набегал десяток обращений к базе, и экран ждал секунды.
   const session = await getServerSession();
-  // Внешнему селлеру доступен только его собственный кабинет, и это единственный
-  // случай, где нужна проверка владельца кабинета — одним запросом на все сразу.
+  // Внешнему контуру (seller и seller_owner — раньше здесь стояло буквальное
+  // "seller", и главный пользователь клиента эту проверку обходил стороной)
+  // доступен только его собственный кабинет, и это единственный случай, где
+  // нужна проверка владельца кабинета — одним запросом на все сразу.
   let sellerCabinets: Set<string> | null = null;
-  if (session?.role === "seller") {
+  if (session && isExternalRole(session.role)) {
     const ids = [...new Set((linksResult.data ?? []).map((link) => String(link.cabinet_id)))];
     if (ids.length === 0 || !session.organization_id) {
       sellerCabinets = new Set();

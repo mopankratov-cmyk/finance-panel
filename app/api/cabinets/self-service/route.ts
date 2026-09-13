@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveSyncBase } from "@/lib/sync/orchestrator";
 import { validateWbToken } from "@/lib/wb/sellerInfo";
 import { decodeWbToken, probeWbScopes, WB_SCOPE_LABEL, type WbScope } from "@/lib/wb/token";
+import { isExternalRole } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -53,8 +54,12 @@ function scheduleInitialSync(origin: string, cabinetId: string) {
 
 export async function GET() {
   const session = await getServerSession();
-  if (!session || session.role !== "seller") {
-    return NextResponse.json({ error: "Доступно только внешнему селлеру" }, { status: 403 });
+  // Обе внешние роли: seller_owner (главный пользователь клиента) — тот же
+  // /wb/connect, что и у seller (roleHome в lib/auth/roles.ts не различает их
+  // при пустом cabinet_ids), а до этой правки роут пускал только буквальное
+  // "seller" и seller_owner получал 403 на собственной странице подключения.
+  if (!session || !isExternalRole(session.role)) {
+    return NextResponse.json({ error: "Доступно только внешнему контуру" }, { status: 403 });
   }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
@@ -82,8 +87,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession();
-  if (!session || session.role !== "seller") {
-    return NextResponse.json({ error: "Доступно только внешнему селлеру" }, { status: 403 });
+  // Обе внешние роли: seller_owner (главный пользователь клиента) — тот же
+  // /wb/connect, что и у seller (roleHome в lib/auth/roles.ts не различает их
+  // при пустом cabinet_ids), а до этой правки роут пускал только буквальное
+  // "seller" и seller_owner получал 403 на собственной странице подключения.
+  if (!session || !isExternalRole(session.role)) {
+    return NextResponse.json({ error: "Доступно только внешнему контуру" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({})) as { token?: string; name?: string };
   const token = String(body.token ?? "").trim();

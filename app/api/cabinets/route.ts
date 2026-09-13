@@ -8,6 +8,7 @@ import { getServerSession } from "@/lib/auth/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { claimMarketplaceSeller } from "@/lib/auth/tenantClaim";
 import { isCabinetScopedRole } from "@/lib/auth/roles";
+import { isExternalRole } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -60,7 +61,12 @@ export async function GET(request: NextRequest) {
     organization_id: typeof c.organization_id === "string" ? c.organization_id : null,
   }));
   const accessibleOnly = new URL(request.url).searchParams.get("accessible") === "1";
-  const cabinets = session.role === "seller"
+  // Внешний контур (seller И seller_owner — раньше здесь стояло буквальное
+  // "seller", и главный пользователь клиента проваливался в общую ветку ниже,
+  // где пустой cabinet_ids или отсутствие ?accessible=1 отдавали ВСЕ кабинеты
+  // всех организаций) всегда фильтруется по организации, а не только по
+  // списку кабинетов и не только когда его явно попросили.
+  const cabinets = isExternalRole(session.role)
     ? allCabinets.filter((cabinet) => (
       session.organization_id !== null
       && cabinet.organization_id === session.organization_id

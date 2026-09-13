@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { OPIU_ENTITY } from "@/lib/opiu/constants";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { mergeCostCatalog, type MarketplaceCostProduct } from "@/lib/costs/catalog";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { describeOzonScope, getOzonCabinetScope } from "@/lib/ozon/cabinet";
@@ -17,6 +18,7 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
+  const session = await getServerSession();
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ rows: [] });
   const q = (new URL(request.url).searchParams.get("q") || "").toLowerCase().trim();
@@ -29,7 +31,13 @@ export async function GET(request: NextRequest) {
   const products: MarketplaceCostProduct[] = [];
   const warnings: string[] = [];
 
-  const wbCabinetIds = wbCabinets.map((cabinet) => cabinet.id);
+  // getActiveWbCabinets() отдаёт ВСЕ активные кабинеты компании без разбора —
+  // это годится для крона, но не для этого ответа: без фильтра по сессии
+  // менеджер с ограниченными cabinet_ids и внешний seller_owner получали
+  // номенклатуру чужих кабинетов по одним названиям артикулов.
+  const wbCabinetIds = wbCabinets
+    .filter((cabinet) => sessionHasCabinetAccess(session, cabinet.id))
+    .map((cabinet) => cabinet.id);
   if (wbCabinetIds.length) {
     try {
       const scopeRows = await loadAllSupabasePages<{ article: string | null; brand: string | null }>(

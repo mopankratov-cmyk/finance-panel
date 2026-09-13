@@ -1,4 +1,5 @@
 import type { Role } from "@/lib/auth/session";
+import { isExternalRole } from "@/lib/auth/permissions";
 
 /** Оператор фулфилмента — сотрудник чужой компании. По ТЗ команды ему открыты
  *  действия руками (принять, пересчитать, отметить брак, отгрузить по заданию),
@@ -21,9 +22,16 @@ export function canManageStock(role: Role | string | null | undefined): boolean 
 
 /** Внешняя компания: ей видна только своя часть склада, а общие справочники и
  *  чужие кабинеты закрыты. Отдельно от canManageStock, потому что это не про
- *  «сколько прав», а про «чьи данные». */
+ *  «сколько прав», а про «чьи данные».
+ *
+ *  Обе внешние роли (рядовой seller И главный пользователь клиента
+ *  seller_owner) — раньше здесь стояло буквальное `role === "seller"`, и
+ *  seller_owner проходил как внутренний: `ownEntities` во всех восьми роутах
+ *  склада (products, variants, warehouses, balances, stock), которые зовут
+ *  эту функцию, оставался `null` — «без ограничения» — и главный пользователь
+ *  клиента видел склад ЛЮБОГО юрлица, а не только своего. */
 export function isExternalSeller(role: Role | string | null | undefined): boolean {
-  return role === "seller";
+  return isExternalRole(role);
 }
 
 export const OPERATOR_FORBIDDEN = "Это действие доступно администратору и менеджеру; оператору склада — нет";

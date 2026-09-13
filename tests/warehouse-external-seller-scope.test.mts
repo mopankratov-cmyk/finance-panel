@@ -51,7 +51,9 @@ test("вкладка маркировки скрыта у внешней ком�
 
 test("доступ к юрлицу селлера считается по его организации, а не по роли", () => {
   const access = read("lib/warehouse/entityAccess.ts");
-  assert.match(access, /session\?\.role === "seller"/, "селлер не выделен в расчёте доступа");
+  // Обе внешние роли (seller и seller_owner — главный пользователь клиента)
+  // проверяются одним признаком isExternalRole, а не буквальным "seller".
+  assert.match(access, /session && isExternalRole\(session\.role\)/, "внешний контур не выделен в расчёте доступа");
   assert.match(access, /organization_id/, "доступ не привязан к организации");
   // Юрлицо без кабинетов не должно быть видно чужой компании.
   assert.match(access, /cabinets\.length === 0\s*\?\s*canSee\(null\)/, "юрлицо без кабинетов не проверяется");

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerSession } from "@/lib/auth/server";
 import { isCabinetScopedRole } from "@/lib/auth/roles";
+import { isExternalRole } from "@/lib/auth/permissions";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import {
   resolveProductCategories,
@@ -29,7 +30,7 @@ export async function GET() {
   // держать здесь же: у селлера пустой список кабинетов значит «ни одного», а
   // не «все», иначе он увидел бы каталог соседа по названиям артикулов.
   const scopedCabinets =
-    session.role === "seller" || (isCabinetScopedRole(session.role) && session.cabinet_ids.length > 0)
+    isExternalRole(session.role) || (isCabinetScopedRole(session.role) && session.cabinet_ids.length > 0)
       ? session.cabinet_ids
       : null;
   if (scopedCabinets && scopedCabinets.length === 0) {
