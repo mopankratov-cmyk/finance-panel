@@ -28,16 +28,21 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireApiSession(["director"]);
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const body = (await req.json().catch(() => ({}))) as { name?: string; marketplace?: string; memberIds?: string[] };
   const name = (body.name || "").trim();
   const marketplace = body.marketplace === "ozon" ? "ozon" : "wb";
-  const memberIds = (body.memberIds || []).filter(Boolean);
+  const memberIds = [...new Set((body.memberIds || []).filter(Boolean))];
   if (!name) return NextResponse.json({ error: "Укажите название группы" }, { status: 400 });
   if (memberIds.length < 2) return NextResponse.json({ error: "Выберите минимум 2 кабинета" }, { status: 400 });
 
   const { data, error } = await db.from("cabinet_groups").insert({ name, marketplace, member_ids: memberIds }).select("id, name, marketplace, member_ids").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[cabinet-groups] insert:", error.message);
+    return NextResponse.json({ error: "Сервис групп временно недоступен" }, { status: 503 });
+  }
   return NextResponse.json({ ok: true, group: { id: data.id, name: data.name, marketplace: data.marketplace, memberIds: data.member_ids } });
 }
