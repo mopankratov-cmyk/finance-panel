@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw, Warehouse } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { formatNumber } from "@/lib/analytics/format";
@@ -39,24 +39,45 @@ export function SuppliesPage() {
   const panel = useKeepAliveTabs<Tab>(tab, cabId);
   const elapsed = useElapsedSeconds(loading);
 
+  // Переключение кабинета через CabinetSwitcher бьёт запрос почти сразу, а
+  // групповой фетч ("group:...") — это N параллельных RPC по членам группы и
+  // сам по себе тянет 8-10 секунд; быстрый ответ по НОВОМУ кабинету мог прийти
+  // раньше медленного по старому, и тот полотном ложился поверх свежих данных.
+  // Счётчик отсекает всё, что пришло не к последнему запросу, а ошибка (сеть,
+  // 500) больше не оставляет на экране цифры чужого, уже покинутого кабинета —
+  // некому действовать по остаткам кабинета, из которого уже ушли.
+  const requestId = useRef(0);
+
   const load = useCallback(async () => {
     if (!cabReady) return;
+    const current = ++requestId.current;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/supplies${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store" });
+      const res = await fetch(`/api/supplies${cabId ? `?cabinet=${cabId}` : ""}`, { cache: "no-store", signal: controller.signal });
+      if (current !== requestId.current) return;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      if (json.error) setError(json.error);
-      else {
+      if (current !== requestId.current) return;
+      if (json.error) {
+        setError(json.error);
+        setSkus([]);
+        setWarehouses([]);
+        setCatalog([]);
+      } else {
         setSkus(json.data?.skus ?? []);
         setWarehouses(json.data?.warehouses ?? []);
         setCatalog(json.data?.catalog ?? []);
       }
     } catch {
+      if (current !== requestId.current || controller.signal.aborted) return;
       setError("Не удалось загрузить данные");
+      setSkus([]);
+      setWarehouses([]);
+      setCatalog([]);
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
   }, [cabId, cabReady]);
 
