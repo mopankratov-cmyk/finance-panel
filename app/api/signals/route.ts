@@ -105,8 +105,18 @@ export async function GET(request: NextRequest) {
         title: i.signal,
         body: `${i.article}: ${i.reason}`,
         data: { nm: i.nm, article: i.article, date: today, signal: i.signal, metrics: i.metrics },
+        // cabinetId уже проверен через hasCabinetAccess выше — без этой
+        // привязки GET /api/agent/insights отдавал сигналы по ЛЮБОМУ
+        // кабинету любой сессии с analytics.view (аудит P0).
+        cabinet_id: cabinetId,
       }));
-    if (toInsert.length) await db.from("agent_insights").insert(toInsert);
+    if (toInsert.length) {
+      const withCabinet = await db.from("agent_insights").insert(toInsert);
+      if (withCabinet.error?.code === "42703") {
+        // Миграция 202609130001_agent_insights_cabinet_scope ещё не применена.
+        await db.from("agent_insights").insert(toInsert.map(({ cabinet_id: _cabinet_id, ...rest }) => rest));
+      }
+    }
   }
 
   // Сводка по типам

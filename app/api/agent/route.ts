@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { gatherAgentContext } from "@/lib/agent/gatherContext";
 import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
@@ -56,6 +57,35 @@ interface Insight {
   body: string;
 }
 
+/**
+ * Пишет инсайты с привязкой к кабинету, который уже прошёл hasCabinetAccess
+ * выше по коду того же запроса. Раньше вставка не проставляла cabinet_id
+ * вовсе, и GET /api/agent/insights отдавал эти строки любой сессии с
+ * analytics.view — межарендная утечка (аудит P0).
+ *
+ * cabinetId === null (агрегат «все кабинеты» у внутренней роли) пишется как
+ * cabinet_id: null — общий инсайт по компании, что и означает NULL в схеме.
+ * Внешний контур сюда с null не доходит: hasCabinetAccess(null) для него
+ * уже отказал бы выше по коду.
+ */
+async function insertInsights(db: SupabaseClient, insights: Insight[], cabinetId: string | null): Promise<void> {
+  if (!insights.length) return;
+  const rows = insights.map((i) => ({
+    module: i.module,
+    severity: i.severity,
+    title: i.title,
+    body: i.body,
+    data: null,
+    cabinet_id: cabinetId,
+  }));
+  const withCabinet = await db.from("agent_insights").insert(rows);
+  if (withCabinet.error?.code === "42703") {
+    // Миграция 202609130001_agent_insights_cabinet_scope ещё не применена —
+    // колонки нет. Пишем как раньше, без разреза, а не роняем запрос.
+    await db.from("agent_insights").insert(rows.map(({ cabinet_id: _cabinet_id, ...rest }) => rest));
+  }
+}
+
 export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
@@ -92,19 +122,7 @@ export async function POST(request: NextRequest) {
       }
 
       const db = getSupabaseAdmin();
-      if (db && insights.length) {
-        await db
-          .from("agent_insights")
-          .insert(
-            insights.map((i) => ({
-              module: i.module,
-              severity: i.severity,
-              title: i.title,
-              body: i.body,
-              data: null,
-            })),
-          );
-      }
+      if (db) await insertInsights(db, insights, cabinetId);
 
       return NextResponse.json({ insights, count: insights.length, mvp: true, audit: completion.audit });
     } catch (err) {
@@ -174,19 +192,7 @@ export async function POST(request: NextRequest) {
 
     // сохраняем в agent_insights
     const db = getSupabaseAdmin();
-    if (db && insights.length) {
-      await db
-        .from("agent_insights")
-        .insert(
-          insights.map((i) => ({
-            module: i.module,
-            severity: i.severity,
-            title: i.title,
-            body: i.body,
-            data: null,
-          })),
-        );
-    }
+    if (db) await insertInsights(db, insights, cabinetId);
 
     return NextResponse.json({ insights, count: insights.length });
   } catch (err) {
