@@ -47,7 +47,9 @@ export type AuditAction =
   | "warehouse.writeoff"
   | "warehouse.discrepancy"
   | "data.export"
-  | "bank_review.clear";
+  | "bank_review.clear"
+  | "finance_import.commit"
+  | "finance_import.clear";
 
 export interface AuditEvent {
   action: AuditAction;
