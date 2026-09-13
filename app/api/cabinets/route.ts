@@ -104,6 +104,17 @@ export async function POST(request: NextRequest) {
   if (!organizationId) return NextResponse.json({ error: "У директора не задана организация" }, { status: 409 });
 
   let row: Record<string, unknown>;
+  // Необязательные поля (доп. токены WB, ключи Performance Ozon): при
+  // обновлении СУЩЕСТВУЮЩЕГО кабинета их нельзя слепо перезаписывать —
+  // форма может прийти без них (например, просто перевалидировали основной
+  // токен), и тогда `|| null` в `row` ниже тихо стирал бы уже сохранённые
+  // token_advert/token_content/token_feedbacks или perf_client_id/perf_secret,
+  // ломая синхронизацию рекламы/контента/отзывов и доступ к Ozon Performance
+  // API. Здесь фиксируем, какие из них реально пришли в запросе — при update
+  // отсутствующие ключи вырезаются из payload (см. ниже), а Supabase partial
+  // update не трогает столбец, если его нет в объекте. При INSERT (нового
+  // кабинета ещё нет) отличать нечего — пишем как пришло, включая null.
+  let optionalUpdateFields: Record<string, boolean> = {};
   // Отчёт по WB-токену для формы: какие категории доступны + срок действия.
   let scopeReport: { scopes: ScopeStatus; expiresAt: string | null; daysLeft: number | null; isTest: boolean } | undefined;
   if (marketplace === "ozon") {
@@ -129,6 +140,7 @@ export async function POST(request: NextRequest) {
       is_active: true,
       organization_id: organizationId,
     };
+    optionalUpdateFields = { perf_client_id: !!perfId, perf_secret: !!perfSecret };
   } else {
     if (!token) return NextResponse.json({ error: "Укажите API-токен WB" }, { status: 400 });
     const v = await validateWbToken(token);
@@ -156,6 +168,7 @@ export async function POST(request: NextRequest) {
       is_active: true,
       organization_id: organizationId,
     };
+    optionalUpdateFields = { token_advert: !!advTok, token_content: !!contTok, token_feedbacks: !!feedbTok };
     const cabinetName = String(row.name ?? "");
     if (b.brand_filters !== undefined || cabinetBrandFilters(cabinetName, []).length > 0) {
       row.brand_filters = cabinetBrandFilters(cabinetName, b.brand_filters);
@@ -177,8 +190,16 @@ export async function POST(request: NextRequest) {
 
   let data, error;
   if (existing?.id) {
+    // Обновление существующего кабинета: необязательные токены/ключи,
+    // которые в этот раз не пришли, вырезаем из payload вместо записи null —
+    // иначе перевалидация основного токена без доп. токенов стирала бы уже
+    // сохранённые (см. optionalUpdateFields выше).
+    const updateRow = { ...row };
+    for (const [key, supplied] of Object.entries(optionalUpdateFields)) {
+      if (!supplied) delete updateRow[key];
+    }
     ({ data, error } = await db
-      .from("wb_cabinets").update(row).eq("id", existing.id)
+      .from("wb_cabinets").update(updateRow).eq("id", existing.id)
       .select("id, name, marketplace, seller_id, is_active, created_at").single());
   } else {
     ({ data, error } = await db
