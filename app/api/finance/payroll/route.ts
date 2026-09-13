@@ -15,7 +15,7 @@ import type { FinanceAction, FinanceState, Payment } from "@/lib/types";
 import { PAYROLL_PREVIEW_EMPLOYEES } from "@/components/payments/payrollPreview";
 import { xlsxGrid } from "@/lib/finance/xlsxGrid";
 import { publicStaffFields, staffFromGrid } from "@/lib/payroll/staffSheet";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +30,19 @@ const nullableId = (value: unknown) => {
   const result = text(value, 80);
   return result || null;
 };
+
+// Id платежа за строку начисления считаем из (период, сотрудник, строка, вид
+// платежа), а не crypto.randomUUID(): при повторе save_period после обрыва
+// между записью платежей и записью payroll_entries (сеть, таймаут Supabase,
+// рестарт деплоя) те же входные данные обязаны дать тот же id платежа —
+// иначе повтор заводит в ДДС второй факт вместо того, чтобы попасть в уже
+// вставленную строку. Формат — валидный UUID (v5-подобный), нужен для
+// колонки payments.id типа uuid.
+function deterministicPaymentId(...parts: string[]): string {
+  const hex = createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 32);
+  const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
 
 // Проверяем по карте прав (lib/auth/permissions.ts), а не по ручному списку
 // ролей: список расходился с матрицей и держал HR — единственную роль с
@@ -52,7 +65,16 @@ async function persistFinanceActions(actions: FinanceAction[]): Promise<FinanceS
   let state = await loadFinanceStateServer();
   for (const action of actions) {
     const nextState = financeReducer(state, action);
-    await persistFinanceActionServer(action, state, nextState);
+    try {
+      await persistFinanceActionServer(action, state, nextState);
+    } catch (error) {
+      // Id платежа теперь детерминированный (deterministicPaymentId): повтор
+      // save_period, запущенный, пока предыдущий запрос ещё дописывает эту же
+      // строку, может застать её уже вставленной. 23505 на ADD_PAYMENT в этом
+      // случае значит «уже сделано», а не сбой сохранения ведомости.
+      const code = error instanceof Error ? (error as Error & { code?: string }).code : undefined;
+      if (action.type !== "ADD_PAYMENT" || code !== "23505") throw error;
+    }
     state = nextState;
   }
   return state;
@@ -457,8 +479,8 @@ async function handlePayroll(request: NextRequest) {
         companyId,
         accountId,
         paymentMethod: method,
-        salaryPaymentId: amount > 0 ? nullableId(previous?.salaryPaymentId) ?? crypto.randomUUID() : null,
-        taxPaymentId: taxAmount > 0 ? nullableId(previous?.taxPaymentId) ?? crypto.randomUUID() : null,
+        salaryPaymentId: amount > 0 ? nullableId(previous?.salaryPaymentId) ?? deterministicPaymentId(periodId, employeeId, id, "salary") : null,
+        taxPaymentId: taxAmount > 0 ? nullableId(previous?.taxPaymentId) ?? deterministicPaymentId(periodId, employeeId, id, "tax") : null,
         comment: text(line.comment, 500),
       };
     });

@@ -180,7 +180,7 @@ export async function persistFinanceActionServer(
   _nextState: FinanceState,
 ) {
   const db = requireDb();
-  let result: { error: { message: string } | null } | null = null;
+  let result: { error: { message: string; code?: string } | null } | null = null;
   switch (action.type) {
     case "LOAD": return;
     case "ADD_ACCOUNT":
@@ -211,5 +211,7 @@ export async function persistFinanceActionServer(
       result = await db.from("loans").delete().eq("id", action.payload);
       break;
   }
-  if (result?.error) throw new Error(result.error.message);
+  // Код ошибки сохраняем на объекте: save_period у зарплатной ведомости
+  // отличает по нему «уже вставлено» (23505) от настоящего сбоя.
+  if (result?.error) throw Object.assign(new Error(result.error.message), { code: result.error.code });
 }
