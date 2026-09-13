@@ -89,7 +89,12 @@ export async function resolveAdvertCabinetAccess(
   }
   const cabinet = await getWbCabinet(cabinetId);
   if (!cabinet || !cabinet.is_active) return { response: error("WB-кабинет не найден", 404) };
-  const token = resolveWbToken(cabinet, "advert") || process.env.WB_TOKEN_ADVERT || "";
+  // Без ENV-фолбэка: если у кабинета нет ни token_advert, ни общего token, доступ
+  // закрыт, а не тихо подменяется общим окружением деплоя. Иначе кампания
+  // создаётся не в том кабинете, что выбрал пользователь, а в том, чей ключ лежит
+  // в WB_TOKEN_ADVERT — см. lib/wb/cabinetTokens.ts, где ENV — фолбэк только когда
+  // в базе вообще нет кабинетов, а не когда у конкретного нет своего токена.
+  const token = resolveWbToken(cabinet, "advert");
   if (!token) return { response: error("У кабинета нет токена Продвижения", 400) };
   const db = getSupabaseAdmin();
   if (!db) return { response: error("Supabase не настроен", 500) };
