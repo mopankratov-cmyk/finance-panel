@@ -22,8 +22,10 @@ export const WB_HOURLY_CORE_SYNC_OPTIONS = {
 export function resolveSyncBase(
   base: string,
   productionUrl = process.env.BASE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  forceProductionUrl = true,
 ): string {
   const fallback = base.replace(/\/$/, "");
+  if (!forceProductionUrl) return fallback;
   const configured = productionUrl?.trim();
   if (!configured) return fallback;
   try {

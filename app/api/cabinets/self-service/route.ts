@@ -35,7 +35,11 @@ async function ensureSellerOrganization(userId: string, currentId: string | null
 function scheduleInitialSync(origin: string, cabinetId: string) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
-  const base = resolveSyncBase(origin);
+  // false: фан-аут идёт сразу после самообслуживаемого подключения кабинета —
+  // должен уйти на тот же origin, что принял запрос, а не на прод-URL из
+  // BASE_URL/VERCEL_PROJECT_PRODUCTION_URL (в dev/preview с общим CRON_SECRET
+  // это были бы боевые вызовы синка из непрод-окружения).
+  const base = resolveSyncBase(origin, undefined, false);
   const headers = { Authorization: `Bearer ${secret}` };
   const firstWave = ["orders", "sales", "stocks", "adverts", "feedbacks"];
   const secondWave = ["advert-stats", "funnel", "commissions"];
@@ -72,7 +76,10 @@ export async function GET() {
     .eq("organization_id", session.organization_id)
     .eq("marketplace", "wb")
     .order("created_at");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[cabinets/self-service] GET:", error.message);
+    return NextResponse.json({ error: "Не удалось получить список кабинетов" }, { status: 500 });
+  }
   return NextResponse.json({
     cabinets: (data ?? []).map((row) => ({
       id: row.id,
@@ -122,6 +129,24 @@ export async function POST(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   try {
+    // Организация создаётся ensureSellerOrganization только когда у сессии
+    // ещё нет своей (первое подключение). Раньше её вставляли ДО проверки
+    // claimMarketplaceSeller — отказ по чужому seller_id оставлял организацию
+    // висеть без единого кабинета. Проверяем занятость seller_id заранее и
+    // только для этого случая: у уже существующей организации создания нет,
+    // порядок ей не важен.
+    if (!session.organization_id) {
+      const { data: existingClaim, error: claimLookupError } = await db
+        .from("marketplace_tenant_claims")
+        .select("organization_id")
+        .eq("marketplace", "wb")
+        .eq("seller_id", validation.seller.sid)
+        .maybeSingle();
+      if (claimLookupError) throw new Error(claimLookupError.message);
+      if (existingClaim) {
+        return NextResponse.json({ error: "Этот кабинет уже подключён к другой организации" }, { status: 409 });
+      }
+    }
     const organizationId = await ensureSellerOrganization(session.uid, session.organization_id, session.email);
     const claim = await claimMarketplaceSeller(db, "wb", validation.seller.sid, organizationId);
     if (!claim.ok) return NextResponse.json({ error: claim.error }, { status: claim.status });
@@ -175,6 +200,7 @@ export async function POST(request: NextRequest) {
     response.cookies.set(SESSION_COOKIE, await signSession(refreshedSession), sessionCookieOptions);
     return response;
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось подключить кабинет" }, { status: 500 });
+    console.error("[cabinets/self-service] POST:", error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: "Не удалось подключить кабинет" }, { status: 500 });
   }
 }
