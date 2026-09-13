@@ -25,6 +25,11 @@ function validUuid(value: unknown) {
   return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
 }
 
+// Функции ещё нет (миграция 202609130007 не накатана) — прежний
+// нетранзакционный путь как безопасный фолбэк. Тот же список кодов, что
+// missingMigration(...) в app/api/warehouse/transfers/route.ts.
+const MISSING_COMMIT_RPC = new Set(["42883", "42P01", "PGRST202", "PGRST204", "PGRST205"]);
+
 async function insertChunked(table: "accounts" | "payments", rows: object[], size: number) {
   const db = getSupabaseAdmin()!;
   let inserted = 0;
@@ -79,20 +84,41 @@ export async function POST(request: NextRequest) {
   }
   const accepted = new Set((body.accepted_suspected_ids ?? []).filter(validUuid));
   const acceptedRows = suspectedRows.filter((entry) => validUuid(entry?.row?.id) && accepted.has(entry.row.id)).map((entry) => entry.row);
+  const validCompanyUpdates = companyUpdates.filter((update) => validUuid(update.paymentId) && validUuid(update.companyId));
+  const paymentRows = [...newPaymentRows, ...acceptedRows];
   try {
-    const accountsCreated = await insertChunked("accounts", accountRows, 100);
-    for (let index = 0; index < companyUpdates.length; index += 100) {
-      const byCompany = new Map<string, string[]>();
-      for (const update of companyUpdates.slice(index, index + 100)) {
-        if (!validUuid(update.paymentId) || !validUuid(update.companyId)) continue;
-        byCompany.set(update.companyId, [...(byCompany.get(update.companyId) ?? []), update.paymentId]);
+    let accountsCreated: number;
+    let paymentsCreated: number;
+    // Один RPC — одна транзакция Postgres: счета, привязка к юрлицу и сами
+    // платежи или проходят все вместе, или откатываются все вместе (аудит
+    // P2 — раньше это были три отдельных, ничем не связанных шага, и обрыв
+    // посередине оставлял импорт в частично применённом состоянии).
+    const rpc = await db.rpc("commit_finance_import", {
+      p_accounts: accountRows,
+      p_payments: paymentRows,
+      p_company_updates: validCompanyUpdates,
+    });
+    if (!rpc.error) {
+      const counts = (rpc.data ?? {}) as { accountsCreated?: number; paymentsCreated?: number };
+      accountsCreated = Number(counts.accountsCreated ?? 0);
+      paymentsCreated = Number(counts.paymentsCreated ?? 0);
+    } else if (MISSING_COMMIT_RPC.has(rpc.error.code ?? "")) {
+      accountsCreated = await insertChunked("accounts", accountRows, 100);
+      for (let index = 0; index < companyUpdates.length; index += 100) {
+        const byCompany = new Map<string, string[]>();
+        for (const update of companyUpdates.slice(index, index + 100)) {
+          if (!validUuid(update.paymentId) || !validUuid(update.companyId)) continue;
+          byCompany.set(update.companyId, [...(byCompany.get(update.companyId) ?? []), update.paymentId]);
+        }
+        for (const [companyId, ids] of byCompany) {
+          const result = await db.from("payments").update({ company_id: companyId }).in("id", ids);
+          if (result.error) throw new Error(`Не удалось назначить компанию платежам: ${result.error.message}`);
+        }
       }
-      for (const [companyId, ids] of byCompany) {
-        const result = await db.from("payments").update({ company_id: companyId }).in("id", ids);
-        if (result.error) throw new Error(`Не удалось назначить компанию платежам: ${result.error.message}`);
-      }
+      paymentsCreated = await insertChunked("payments", paymentRows, 500);
+    } else {
+      throw new Error(rpc.error.message);
     }
-    const paymentsCreated = await insertChunked("payments", [...newPaymentRows, ...acceptedRows], 500);
     return NextResponse.json({
       accountsCreated,
       paymentsCreated,
