@@ -19,7 +19,13 @@ export function CabinetSwitcher({ mp, accent = "sky", onChange }: { mp: "ozon" |
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/cabinets?accessible=1", { cache: "no-store" }).then((r) => r.json())
+    // Смена mp запускает новый эффект, но старый запрос кабинетов мог уже
+    // лететь по сети — без signal его ответ приходил ПОЗЖЕ нового и тихо
+    // перезаписывал setCabs списком не того маркетплейса (список верный
+    // для СВОЕГО mp, но устаревший к моменту прихода). Групповой запрос
+    // ниже уже был на controller.signal — теперь оба запроса одного
+    // эффекта отменяются вместе при смене mp/размонтировании.
+    fetch("/api/cabinets?accessible=1", { cache: "no-store", signal: controller.signal }).then((r) => r.json())
       .then((j) => setCabs((j.cabinets ?? []).filter((c: Cab) => c.marketplace === mp))).catch(() => {});
     setGroupsError("");
     fetch(`/api/cabinet-groups?mp=${mp}`, { cache: "no-store", signal: controller.signal }).then(async (r) => {
