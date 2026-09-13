@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { withOzonCabinetScope } from "@/lib/ozon/navigation";
 import { isCabinetScopedRole, type Role } from "@/lib/auth/permissions";
+import { confirmDiscardUnsavedChanges } from "@/lib/planning/unsavedChangesGuard";
 
 export interface OzonCabinet {
   id: string;
@@ -153,11 +154,15 @@ export function OzonCabinetProvider({ children }: { children: React.ReactNode })
 
   const setCabinetId = useCallback((nextCabinetId: string) => {
     if (!isAllowed(nextCabinetId)) return;
+    // Экран с несохранёнными правками (сейчас — план продаж) может
+    // зарегистрировать здесь проверку и спросить подтверждение вместо того,
+    // чтобы молча терять черновик при переключении кабинета.
+    if (nextCabinetId !== cabinetId && !confirmDiscardUnsavedChanges()) return;
     pendingCabinet.current = nextCabinetId;
     setCabinetIdState(nextCabinetId);
     remember(nextCabinetId);
     replaceCabinetInUrl(nextCabinetId);
-  }, [isAllowed, remember, replaceCabinetInUrl]);
+  }, [cabinetId, isAllowed, remember, replaceCabinetInUrl]);
 
   const activeCabinet = useMemo(() => cabinets.find((cabinet) => cabinet.id === cabinetId) ?? null, [cabinetId, cabinets]);
   const activeGroup = useMemo(() => groups.find((group) => `group:${group.id}` === cabinetId) ?? null, [cabinetId, groups]);

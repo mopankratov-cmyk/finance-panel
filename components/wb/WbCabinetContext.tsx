@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { Role } from "@/lib/auth/session";
 import { isCabinetScopedRole } from "@/lib/auth/permissions";
+import { confirmDiscardUnsavedChanges } from "@/lib/planning/unsavedChangesGuard";
 
 export interface WbCabinet {
   id: string;
@@ -191,12 +192,16 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
   const setCabinetId = useCallback(
     (nextCabinetId: string) => {
       if (!isAllowed(nextCabinetId)) return;
+      // Экран с несохранёнными правками (сейчас — план продаж) может
+      // зарегистрировать здесь проверку и спросить подтверждение вместо того,
+      // чтобы молча терять черновик при переключении кабинета.
+      if (nextCabinetId !== cabinetId && !confirmDiscardUnsavedChanges()) return;
       pendingCabinet.current = nextCabinetId;
       setCabinetIdState(nextCabinetId);
       remember(nextCabinetId);
       replaceCabinetInUrl(nextCabinetId);
     },
-    [isAllowed, remember, replaceCabinetInUrl],
+    [cabinetId, isAllowed, remember, replaceCabinetInUrl],
   );
 
   const activeCabinet = useMemo(

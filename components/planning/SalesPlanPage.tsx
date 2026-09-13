@@ -47,6 +47,7 @@ import {
   validateSalesPlanMonth,
   visibleSalesPlanMonths,
 } from "@/lib/planning/salesPlan";
+import { setUnsavedChangesGuard } from "@/lib/planning/unsavedChangesGuard";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { SalesPlanAddSkuModal, type SalesPlanCatalogSku } from "./SalesPlanAddSkuModal";
 import { SalesPlanFactView } from "./SalesPlanFactView";
@@ -77,6 +78,11 @@ interface SalesPlanUser {
 
 const number = (value: number) => Math.round(value || 0).toLocaleString("ru-RU");
 const money = (value: number) => `${number(value)} ₽`;
+// После стольких провалов автосохранения подряд перестаём долбить сервер сами
+// и ждём ручного «Повторить» — вживую наблюдали 84 POST за один визит при
+// зависшей ошибке (не конфликт), это трафик и батарея на телефоне/планшете,
+// где панель и живёт основную часть времени.
+const AUTOSAVE_MAX_ATTEMPTS = 4;
 
 export function SalesPlanPage({
   marketplace,
@@ -141,6 +147,16 @@ export function SalesPlanPage({
   currentCatalogContextScope.current = catalogContextScope;
   const editSerial = useRef(0);
   const serverRevision = useRef(0);
+  // Контекст документа (не месяца — весь план кабинета/года). Ответ на
+  // сохранение, начатое ДО смены кабинета или года, может прийти уже ПОСЛЕ:
+  // без этой проверки он молча перезаписывает план и ревизию уже другого
+  // документа (гонка автосохранения).
+  const planContextScope = `${marketplace}:${cabinetId}:${year}`;
+  const currentPlanContextScope = useRef(planContextScope);
+  currentPlanContextScope.current = planContextScope;
+  const persistAbortRef = useRef<AbortController | null>(null);
+  const autosaveFailures = useRef(0);
+  const [autosaveBlocked, setAutosaveBlocked] = useState(false);
   const exactCabinet = (canRead ?? canWrite) && Boolean(cabinetId) && cabinetId !== "all" && !cabinetId.startsWith("group:");
   const elevated = canModerateSalesPlan(user);
   const accent = marketplace === "wb" ? "violet" : "sky";
@@ -171,6 +187,8 @@ export function SalesPlanPage({
     setActionError(null);
     setIssues([]);
     setConflict(false);
+    autosaveFailures.current = 0;
+    setAutosaveBlocked(false);
     const params = new URLSearchParams({ marketplace, cabinet: cabinetId, year: String(year) });
     fetch(`/api/sales-plan?${params.toString()}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
@@ -188,12 +206,27 @@ export function SalesPlanPage({
       })
       .catch((cause: unknown) => { if (!controller.signal.aborted) setLoadError(cause instanceof Error ? cause.message : "Не удалось загрузить план"); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+    // Автосохранение для прежнего кабинета/года могло остаться в полёте: если
+    // его ответ придёт уже после переключения, он молча перепишет план и
+    // ревизию другого документа (см. planContextScope в persist).
+    return () => {
+      controller.abort();
+      persistAbortRef.current?.abort();
+    };
   }, [cabinetId, exactCabinet, marketplace, ready, reloadKey, year]);
 
   const persist = useCallback(async (action: SaveAction, source: SalesPlanDocument | null, autosave = false, options?: { comment?: string }) => {
     if (!exactCabinet || !canWrite || saving) return null;
     const serial = editSerial.current;
+    // Снимок «для какого документа этот запрос» — берём один раз, до await.
+    // Если к моменту ответа кабинет/год уже другие (planContextScope
+    // изменился), результат этого запроса относится к чужому документу и
+    // применять его к текущему состоянию нельзя (см. комментарий у
+    // planContextScope выше).
+    const requestScope = planContextScope;
+    persistAbortRef.current?.abort();
+    const controller = new AbortController();
+    persistAbortRef.current = controller;
     setSaving(true);
     if (!autosave) {
       setActionError(null);
@@ -206,8 +239,10 @@ export function SalesPlanPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, expectedRevision: serverRevision.current, monthKey: activeMonth, plan: source, comment: options?.comment }),
+        signal: controller.signal,
       });
       const body = await response.json() as SalesPlanApiResponse;
+      if (requestScope !== currentPlanContextScope.current) return null;
       if (!response.ok || !body.plan) {
         if (body.conflict) setConflict(true);
         if (body.issues) setIssues(body.issues);
@@ -224,21 +259,44 @@ export function SalesPlanPage({
         setPlan((current) => current ? { ...current, revision: body.plan!.revision, updatedAt: body.plan!.updatedAt } : body.plan);
       }
       setConflict(false);
+      autosaveFailures.current = 0;
+      setAutosaveBlocked(false);
       return body.plan;
     } catch (cause) {
+      if (controller.signal.aborted || requestScope !== currentPlanContextScope.current) return null;
       const message = cause instanceof Error ? cause.message : "Не удалось сохранить план";
-      if (autosave) setSaveError(message); else setActionError(message);
+      if (autosave) {
+        setSaveError(message);
+        // Не конфликт ревизии, но та же логика паузы: без предела автосейв
+        // ретраит без остановки при устойчивой ошибке (500, сеть, 422 без
+        // конфликта) — вживую насчитали 84 POST за визит. После нескольких
+        // провалов подряд останавливаемся и ждём ручного «Повторить».
+        autosaveFailures.current += 1;
+        if (autosaveFailures.current >= AUTOSAVE_MAX_ATTEMPTS) setAutosaveBlocked(true);
+      } else {
+        setActionError(message);
+      }
       return null;
     } finally {
-      setSaving(false);
+      // Более свежий вызов persist уже мог начаться и занять persistAbortRef
+      // (например, следующая автосохранённая попытка) — тогда saving ему и
+      // принадлежит, гасить его этим (устаревшим) finally нельзя.
+      if (persistAbortRef.current === controller) {
+        persistAbortRef.current = null;
+        setSaving(false);
+      }
     }
-  }, [activeMonth, cabinetId, canWrite, exactCabinet, marketplace, saving, year]);
+  }, [activeMonth, cabinetId, canWrite, exactCabinet, marketplace, planContextScope, saving, year]);
 
   useEffect(() => {
-    if (!dirty || !plan || getSalesPlanMonthState(plan, activeMonth).status !== "draft" || saving || conflict) return;
-    const timer = window.setTimeout(() => { void persist("save", plan, true); }, 850);
+    if (!dirty || !plan || getSalesPlanMonthState(plan, activeMonth).status !== "draft" || saving || conflict || autosaveBlocked) return;
+    // Экспоненциальная пауза между попытками: 850мс на первую, дальше вдвое на
+    // каждый провал подряд, потолок 15с — пока после AUTOSAVE_MAX_ATTEMPTS
+    // цикл не остановится совсем (см. persist и кнопку «Повторить»).
+    const delay = Math.min(850 * 2 ** autosaveFailures.current, 15_000);
+    const timer = window.setTimeout(() => { void persist("save", plan, true); }, delay);
     return () => window.clearTimeout(timer);
-  }, [activeMonth, conflict, dirty, persist, plan, saving]);
+  }, [activeMonth, autosaveBlocked, conflict, dirty, persist, plan, saving]);
 
   const editPlan = useCallback((mutate: (current: SalesPlanDocument) => SalesPlanDocument) => {
     setPlan((current) => {
@@ -269,9 +327,13 @@ export function SalesPlanPage({
         asOf: new Date().toISOString(),
       });
       if (next === current) return current;
-      editSerial.current += 1;
-      setDirty(true);
-      setSaveError(null);
+      // Снимок остатков маркетплейса обновляет прогноз на экране, но это не
+      // правка пользователя: раньше здесь же трогали editSerial/dirty, и
+      // автосохранение писало новую ревизию и событие "saved" при обычном
+      // открытии месяца в черновике — на Ozon при каждом открытии, на WB при
+      // первом (и при смене месяца/года) — без единого действия человека.
+      // Свежий снимок уедет на сервер вместе со следующим настоящим
+      // сохранением (правкой, отправкой на согласование), а не раньше.
       return next;
     });
   }, [activeMonth, cabinetId, catalogContextScope, marketplace, year]);
@@ -496,6 +558,43 @@ export function SalesPlanPage({
     if (saved) setMode("edit");
   };
 
+  const retryAutosave = () => {
+    autosaveFailures.current = 0;
+    setAutosaveBlocked(false);
+    if (plan) void persist("save", plan, true);
+  };
+
+  // Тот же вопрос, что уже стоит перед «На согласование» (там ждём чистого
+  // автосохранения или блокируем кнопку) — но год и кабинет переключаются не
+  // кнопкой на этой странице, а значит промолчать нельзя: без явного да/нет
+  // правки просто исчезают. Год гасим здесь; кабинет переключается глобальным
+  // селектором в шапке — тот же вопрос см. lib/planning/unsavedChangesGuard.
+  const confirmDiscardUnsavedChanges = useCallback(() => {
+    if (!dirty && !saveError) return true;
+    return window.confirm(
+      saveError
+        ? "План не сохранён из-за ошибки автосохранения. Всё равно продолжить и потерять изменения?"
+        : "Есть несохранённые изменения плана. Всё равно продолжить и потерять их?",
+    );
+  }, [dirty, saveError]);
+
+  useEffect(() => {
+    setUnsavedChangesGuard(confirmDiscardUnsavedChanges);
+    return () => setUnsavedChangesGuard(null);
+  }, [confirmDiscardUnsavedChanges]);
+
+  // Закрытие вкладки/обновление страницы — тот же риск потери, что и смена
+  // года/кабинета, только браузерным путём; здесь предупреждает сам браузер.
+  useEffect(() => {
+    if (!dirty && !saveError) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [dirty, saveError]);
+
   if (cabinetLoading || !ready) return <PageLoading marketplace={marketplace} />;
   if (cabinetError) return <PageError message={cabinetError} onRetry={() => setReloadKey((value) => value + 1)} />;
   if (!exactCabinet) return <CabinetRequired marketplace={marketplace} />;
@@ -608,9 +707,9 @@ export function SalesPlanPage({
             {/* Плотность привязана к lg, а не к sm: sm — это как раз iPad Pro 11",
                 устройство сенсорное, и ужимать на нём кнопки до 28px нельзя. */}
             <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1 lg:h-9">
-              <button type="button" onClick={() => setYear((value) => value - 1)} aria-label="Предыдущий год" className="grid h-11 w-11 place-items-center rounded-md text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:h-7 lg:w-7"><ChevronLeft className="h-4 w-4" /></button>
+              <button type="button" onClick={() => { if (confirmDiscardUnsavedChanges()) setYear((value) => value - 1); }} aria-label="Предыдущий год" className="grid h-11 w-11 place-items-center rounded-md text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:h-7 lg:w-7"><ChevronLeft className="h-4 w-4" /></button>
               <span className="min-w-12 text-center text-xs font-bold tabular-nums text-slate-700">{year}</span>
-              <button type="button" onClick={() => setYear((value) => value + 1)} aria-label="Следующий год" className="grid h-11 w-11 place-items-center rounded-md text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:h-7 lg:w-7"><ChevronRight className="h-4 w-4" /></button>
+              <button type="button" onClick={() => { if (confirmDiscardUnsavedChanges()) setYear((value) => value + 1); }} aria-label="Следующий год" className="grid h-11 w-11 place-items-center rounded-md text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 lg:h-7 lg:w-7"><ChevronRight className="h-4 w-4" /></button>
             </div>
             <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 lg:h-9" role="tablist" aria-label="Режим плана">
               <ModeButton active={mode === "edit"} selectedClass={selectedTab} onClick={() => setMode("edit")}>Редактирование</ModeButton>
@@ -632,7 +731,7 @@ export function SalesPlanPage({
             {activeApprovedMonthState?.approvedAt && mode !== "edit" ? <span className="inline-flex items-center gap-1 text-emerald-700"><LockKeyhole className="h-3.5 w-3.5" /> {activeApprovedMonthState.approvedBy} · {new Date(activeApprovedMonthState.approvedAt).toLocaleString("ru-RU")}</span> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {plan ? <span aria-live="polite" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium ${saveError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : dirty ? <Clock3 className="h-3.5 w-3.5 text-amber-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}{saving ? "Сохраняем…" : saveError ? "Ошибка автосохранения" : dirty ? "Есть изменения" : "Сохранено автоматически"}</span> : null}
+            {plan ? <span aria-live="polite" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium ${saveError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : dirty ? <Clock3 className="h-3.5 w-3.5 text-amber-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}{saving ? "Сохраняем…" : saveError ? (autosaveBlocked ? "Автосохранение остановлено" : "Ошибка автосохранения") : dirty ? "Есть изменения" : "Сохранено автоматически"}</span> : null}
             {activeMonthState?.status === "review" && elevated ? <button type="button" disabled={saving} onClick={() => { setReturnComment(""); setReturnOpen(true); }} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 lg:min-h-9">Вернуть</button> : null}
             {canWrite && mode === "edit" ? !plan ? <ActionButton primary={primary} disabled={saving} onClick={() => void createPlan()} icon={PackagePlus}>Создать план</ActionButton>
               : activeMonthState?.status === "draft" ? <ActionButton primary={primary} disabled={submitDisabled} title={submitDisabledHint} onClick={() => void submitPlan()} icon={Send}>На согласование</ActionButton>
@@ -643,7 +742,7 @@ export function SalesPlanPage({
         </section>
 
         {activeMonthState?.status === "draft" && activeMonthState.returnComment ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><span className="font-semibold">Месяц возвращён на доработку</span>{activeMonthState.returnedBy ? ` · ${activeMonthState.returnedBy}` : ""}{activeMonthState.returnedAt ? ` · ${new Date(activeMonthState.returnedAt).toLocaleString("ru-RU")}` : ""}: {activeMonthState.returnComment}</div> : null}
-        {saveError || actionError ? <div role="alert" className="flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"><span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{saveError || actionError}</span>{conflict ? <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="min-h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold hover:bg-rose-100">Загрузить серверную версию</button> : null}</div> : null}
+        {saveError || actionError || autosaveBlocked ? <div role="alert" className="flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"><span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{saveError || actionError || "Автосохранение остановлено после нескольких неудачных попыток."}</span>{conflict ? <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="min-h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold hover:bg-rose-100">Загрузить серверную версию</button> : autosaveBlocked ? <button type="button" onClick={retryAutosave} className="min-h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold hover:bg-rose-100">Повторить</button> : null}</div> : null}
         {issues.length > 0 ? <ValidationSummary issues={issues} /> : null}
         {events.length > 0 ? <SalesPlanHistory events={events} activeMonth={activeMonth} year={year} /> : null}
 
