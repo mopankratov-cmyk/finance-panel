@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
   if (!Number.isFinite(minBid) || minBid <= 0) return NextResponse.json({ error: "Нужен минимум ставки" }, { status: 400 });
   if (!Number.isFinite(maxBid) || maxBid <= 0) return NextResponse.json({ error: "Нужен максимум ставки" }, { status: 400 });
   if (minBid > maxBid) return NextResponse.json({ error: "Минимум ставки больше максимума" }, { status: 400 });
+  if (!Number.isInteger(minOrders) || minOrders < 0) return NextResponse.json({ error: "Порог заказов — целое число от 0" }, { status: 400 });
   if (nmId != null && (!Number.isInteger(nmId) || nmId <= 0)) return NextResponse.json({ error: "Неверный артикул" }, { status: 400 });
 
   const row = {
@@ -151,7 +152,20 @@ export async function POST(request: NextRequest) {
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = typeof body.id === "string" && body.id
+  const isUpdate = typeof body.id === "string" && body.id;
+  // Читаем строку ДО правки: отсюда же берём и «было включено» (нужно понять,
+  // выключает ли это сохранение автоматику), и сам факт, что строка вообще
+  // существует в этом кабинете — id мог оказаться чужим, уже удалённым кем-то
+  // ещё или опечатанным, и апдейт нуля строк не должен выглядеть успехом.
+  let previousEnabled: boolean | null = null;
+  if (isUpdate) {
+    const existing = await db.from("advert_rules").select("enabled").eq("id", body.id).eq("cabinet_id", cabinet.id).maybeSingle();
+    if (existing.error) return NextResponse.json({ error: existing.error.message }, { status: 500 });
+    if (!existing.data) return NextResponse.json({ error: "Правило не найдено" }, { status: 404 });
+    previousEnabled = existing.data.enabled;
+  }
+
+  const { data, error } = isUpdate
     ? await db.from("advert_rules").update(row).eq("id", body.id).eq("cabinet_id", cabinet.id).select("id").maybeSingle()
     : await db.from("advert_rules").insert(row).select("id").maybeSingle();
 
@@ -177,6 +191,18 @@ export async function POST(request: NextRequest) {
       status: "ok",
       oldValue: null,
       newValue: { goal, target, stepPercent, minBid, maxBid, minOrders, windowDays, placement, nmId },
+      wbResult: { ruleId: data?.id ?? null },
+    });
+  } else if (previousEnabled === true) {
+    // Симметрично включению: с этой секунды ставку больше не двигает
+    // автоматика, и это такое же изменение поведения кампании, как и включение.
+    await auditAdvertOperation({
+      context: resolved.context,
+      advertId,
+      action: "rule_disable",
+      status: "ok",
+      oldValue: { enabled: true },
+      newValue: { enabled: false },
       wbResult: { ruleId: data?.id ?? null },
     });
   }
