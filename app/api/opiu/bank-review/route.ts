@@ -40,6 +40,11 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
+// Миграция ещё не применена в этом окружении — та же проверка кодов, что и в
+// соседних роутах (см. app/api/warehouse/receipts/correct/route.ts).
+const missingMigration = (code?: string) =>
+  ["42P01", "42703", "42883", "PGRST202", "PGRST204", "PGRST205"].includes(code ?? "");
+
 function marker(reasons: unknown, prefix: string) {
   if (!Array.isArray(reasons)) return "";
   const value = reasons.find((reason) => typeof reason === "string" && reason.startsWith(prefix));
@@ -189,6 +194,26 @@ export async function POST(request: Request) {
     }];
   });
   if (!rows.length) return NextResponse.json({ queued: 0 });
+
+  // Стейл или опечатанный id (например, у клиента с устаревшим кэшем списка
+  // компаний) иначе тихо создаёт строку очереди со ссылкой на несуществующую
+  // компанию/счёт — платёж повиснет без ошибки и без объяснения почему.
+  const distinctCompanyIds = Array.from(new Set(rows.map((row) => row.company_id).filter((id): id is string => Boolean(id))));
+  const distinctAccountIds = Array.from(new Set(rows.map((row) => row.account_id).filter((id): id is string => Boolean(id))));
+  if (distinctCompanyIds.length) {
+    const { data: foundCompanies, error: companiesError } = await db.from("companies").select("id").in("id", distinctCompanyIds);
+    if (companiesError) return jsonError(companiesError.message, 500);
+    const foundCompanyIds = new Set((foundCompanies ?? []).map((row) => row.id));
+    const missingCompanyIds = distinctCompanyIds.filter((id) => !foundCompanyIds.has(id));
+    if (missingCompanyIds.length) return jsonError(`Компания не найдена в справочнике: ${missingCompanyIds.join(", ")}`, 400);
+  }
+  if (distinctAccountIds.length) {
+    const { data: foundAccounts, error: accountsError } = await db.from("accounts").select("id").in("id", distinctAccountIds);
+    if (accountsError) return jsonError(accountsError.message, 500);
+    const foundAccountIds = new Set((foundAccounts ?? []).map((row) => row.id));
+    const missingAccountIds = distinctAccountIds.filter((id) => !foundAccountIds.has(id));
+    if (missingAccountIds.length) return jsonError(`Счёт не найден в справочнике: ${missingAccountIds.join(", ")}`, 400);
+  }
 
   const { data, error } = await db
     .from("bank_review_items")
@@ -374,8 +399,8 @@ export async function DELETE(request: Request) {
   const reviewIds = reviewRows.map((row) => row.id);
   const dates = reviewRows.map((row) => row.date).filter(Boolean).sort();
 
-  // Пишем журнал ДО удаления: если операция оборвётся на середине (например, на второй
-  // петле), запись о том, что и в каком объёме сносили, всё равно останется.
+  // Пишем журнал ДО удаления: если сам rpc-вызов не дойдёт или оборвётся сеть,
+  // запись о том, что и в каком объёме собирались снести, всё равно останется.
   await audit(request, await getServerSession(), {
     action: "bank_review.clear",
     subject: `выписки: ${reviewIds.length}, платежи ДДС: ${paymentIds.length}`,
@@ -386,14 +411,21 @@ export async function DELETE(request: Request) {
     },
   });
 
-  // Удаляем пачками: .in() на тысячи id упирается в длину URL PostgREST.
-  for (let index = 0; index < paymentIds.length; index += 300) {
-    const deletedPayments = await db.from("payments").delete().in("id", paymentIds.slice(index, index + 300));
-    if (deletedPayments.error) return jsonError(deletedPayments.error.message, 500);
-  }
-  for (let index = 0; index < reviewIds.length; index += 300) {
-    const deletedReview = await db.from("bank_review_items").delete().in("id", reviewIds.slice(index, index + 300));
-    if (deletedReview.error) return jsonError(deletedReview.error.message, 500);
+  // Обе фазы одним вызовом: bank_review_clear_import — SQL-функция, значит одна
+  // неявная транзакция. Раньше здесь было два отдельных цикла .delete().in(...)
+  // (сначала payments, потом bank_review_items, пачками по 300 из-за длины URL
+  // PostgREST) — обрыв сети/базы между ними или между пачками оставлял чистку
+  // наполовину применённой. Список id теперь едет параметром массива в теле
+  // rpc-вызова, а не в query string, так что батчинг по 300 тоже не нужен.
+  const cleared = await db.rpc("bank_review_clear_import", {
+    p_payment_ids: paymentIds,
+    p_review_ids: reviewIds,
+  });
+  if (cleared.error) {
+    if (missingMigration(cleared.error.code) || /does not exist|schema cache/i.test(cleared.error.message)) {
+      return jsonError("Примените миграцию 202609130008_bank_review_clear_import_atomic.sql", 503);
+    }
+    return jsonError(cleared.error.message, 500);
   }
   return NextResponse.json({ reviewItemsDeleted: reviewIds.length, paymentsDeleted: paymentIds.length });
 }
