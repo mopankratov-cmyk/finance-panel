@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
+import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { findCertainTransferPairs } from "@/lib/opiu/bankTransferMatching";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { transferCategories } from "@/lib/opiu/bankTransferClassification";
+import { audit } from "@/lib/audit/log";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
 type SuggestionInput = {
@@ -351,19 +353,39 @@ export async function PATCH(request: Request) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return jsonError("Серверная база не настроена", 503);
+  const body = await request.json().catch(() => null) as { confirm?: string } | null;
+  // Необратимая массовая зачистка импорта — без явного подтверждения от вызывающего не выполняем.
+  if (body?.confirm !== "CLEAR_BANK_IMPORT") {
+    return jsonError("Подтвердите удаление", 400);
+  }
   let paymentIds: string[];
-  let reviewIds: string[];
+  let reviewRows: { id: string; date: string }[];
   try {
     paymentIds = (await loadAllSupabasePages<{ id: string }>((from, to) => db.from("payments").select("id").like("import_source", "bank-review:%").order("id", { ascending: true }).range(from, to), { label: "Платежи из выписок", maxPages: 60 })).map((row) => row.id);
-    reviewIds = (await loadAllSupabasePages<{ id: string }>((from, to) => db.from("bank_review_items").select("id").order("id", { ascending: true }).range(from, to), { label: "Очередь выписок", maxPages: 60 })).map((row) => row.id);
+    reviewRows = await loadAllSupabasePages<{ id: string; date: string }>((from, to) => db.from("bank_review_items").select("id,date").order("id", { ascending: true }).range(from, to), { label: "Очередь выписок", maxPages: 60 });
   } catch (error) {
     return jsonError(error instanceof Error ? error.message : "Не удалось прочитать очередь", 500);
   }
+  const reviewIds = reviewRows.map((row) => row.id);
+  const dates = reviewRows.map((row) => row.date).filter(Boolean).sort();
+
+  // Пишем журнал ДО удаления: если операция оборвётся на середине (например, на второй
+  // петле), запись о том, что и в каком объёме сносили, всё равно останется.
+  await audit(request, await getServerSession(), {
+    action: "bank_review.clear",
+    subject: `выписки: ${reviewIds.length}, платежи ДДС: ${paymentIds.length}`,
+    before: {
+      reviewItemsCount: reviewIds.length,
+      paymentsCount: paymentIds.length,
+      dateRange: dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null,
+    },
+  });
+
   // Удаляем пачками: .in() на тысячи id упирается в длину URL PostgREST.
   for (let index = 0; index < paymentIds.length; index += 300) {
     const deletedPayments = await db.from("payments").delete().in("id", paymentIds.slice(index, index + 300));

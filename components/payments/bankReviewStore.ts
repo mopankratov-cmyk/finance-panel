@@ -155,7 +155,10 @@ export async function markReviewItems(ids: string[], status: "approved" | "rejec
 }
 
 export async function clearBankImport(): Promise<{ reviewItemsDeleted: number; paymentsDeleted: number }> {
-  return api<{ reviewItemsDeleted: number; paymentsDeleted: number }>("/api/opiu/bank-review", { method: "DELETE" });
+  return api<{ reviewItemsDeleted: number; paymentsDeleted: number }>("/api/opiu/bank-review", {
+    method: "DELETE",
+    body: JSON.stringify({ confirm: "CLEAR_BANK_IMPORT" }),
+  });
 }
 
 export async function rememberBankAccount(
