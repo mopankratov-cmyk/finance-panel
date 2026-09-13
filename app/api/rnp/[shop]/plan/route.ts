@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
+import { RNP_METRIC_FIELDS } from "@/lib/rnp/operatingMatrix";
 
 export const dynamic = "force-dynamic";
+
+const PLAN_FIELDS = new Set<string>(RNP_METRIC_FIELDS);
 
 // План по SKU в режиме планирования РНП. GET → {plan:{<nm>:{<field>:value}}}; POST сохраняет одну ячейку.
 export async function GET(request: NextRequest, ctx: { params: Promise<{ shop: string }> }) {
@@ -41,6 +44,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ shop: 
   const b = await request.json().catch(() => ({}));
   const { month, nm, field, value } = b as { month?: string; nm?: string; field?: string; value?: number | null };
   if (!month || !nm || !field) return NextResponse.json({ error: "month/nm/field обязательны" }, { status: 400 });
+  const nmNumber = Number(nm);
+  if (!Number.isInteger(nmNumber) || nmNumber <= 0) return NextResponse.json({ error: "nm должен быть положительным числом" }, { status: 400 });
+  if (!PLAN_FIELDS.has(field)) return NextResponse.json({ error: "Недопустимое поле плана" }, { status: 400 });
   if (value != null && !Number.isFinite(Number(value))) return NextResponse.json({ error: "value должен быть числом" }, { status: 400 });
 
   if (value == null) {
