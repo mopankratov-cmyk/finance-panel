@@ -20,7 +20,7 @@ export const getServerSession = cache(async function getServerSession(): Promise
   if (!db || !signed.uid) return signed;
   const primary = await db
     .from("app_users")
-    .select("id,email,role,roles,modules,cabinet_ids,organization_id,is_active")
+    .select("id,email,role,roles,modules,cabinet_ids,organization_id,is_active,password_changed_at")
     .eq("id", signed.uid)
     .maybeSingle();
   let data = primary.data as Record<string, unknown> | null;
@@ -34,10 +34,21 @@ export const getServerSession = cache(async function getServerSession(): Promise
       .select("id,email,role,cabinet_ids,is_active")
       .eq("id", signed.uid)
       .maybeSingle();
-    data = legacy.data ? { ...legacy.data, organization_id: null, roles: null, modules: null } : null;
+    data = legacy.data ? { ...legacy.data, organization_id: null, roles: null, modules: null, password_changed_at: null } : null;
     error = legacy.error;
   }
   if (error || !data?.is_active) return null;
+  // Смена пароля отзывает уже выданные токены: если пароль сменили ПОСЛЕ
+  // того, как был подписан текущий JWT, токен больше не годится — иначе
+  // украденная или забытая на общем компьютере кука работала бы ещё неделю
+  // после того, как человек сменил пароль именно из-за подозрения на утечку.
+  // NULL (пароль ни разу не меняли после этой миграции) и токены без iat
+  // (подписаны до появления Session.issuedAt) не отзываются — так миграция
+  // не разлогинивает всех живых пользователей мгновенно при накатке.
+  if (typeof data.password_changed_at === "string" && typeof signed.issuedAt === "number") {
+    const changedAtMs = Date.parse(data.password_changed_at);
+    if (Number.isFinite(changedAtMs) && signed.issuedAt * 1000 < changedAtMs) return null;
+  }
   /**
    * Роль сверяется со СЛОВАРЁМ, а не со списком, написанным здесь.
    *

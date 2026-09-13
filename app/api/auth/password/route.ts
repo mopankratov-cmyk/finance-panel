@@ -4,6 +4,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { hashPassword } from "@/lib/auth/users";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { SESSION_COOKIE, sessionCookieOptions, signSession } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,20 @@ export async function POST(request: NextRequest) {
   }
 
   const password_hash = await hashPassword(newPassword);
-  const updated = await db.from("app_users").update({ password_hash }).eq("id", session.uid);
+  // password_changed_at отзывает уже выданные сессии (см. getServerSession):
+  // без него смена пароля не мешала утёкшей куке работать ещё неделю.
+  let updated = await db.from("app_users").update({ password_hash, password_changed_at: new Date().toISOString() }).eq("id", session.uid);
+  if (updated.error?.code === "42703") {
+    // Миграция 202609130003_app_users_password_changed_at ещё не применена.
+    updated = await db.from("app_users").update({ password_hash }).eq("id", session.uid);
+  }
   if (updated.error) return NextResponse.json({ ok: false, error: "Не удалось сохранить пароль" }, { status: 502 });
-  return NextResponse.json({ ok: true });
+
+  // Отзыв бьёт и по кухе ЭТОГО же запроса (её iat старше свежего
+  // password_changed_at) — переподписываем сессию сразу, чтобы автор смены
+  // пароля не вылетел из своей же вкладки, а вылетели только чужие копии
+  // токена (украденные, забытые на общем компьютере).
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(SESSION_COOKIE, await signSession(session), sessionCookieOptions);
+  return response;
 }

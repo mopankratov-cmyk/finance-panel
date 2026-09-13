@@ -29,6 +29,14 @@ export interface Session {
   modules?: string[];
   cabinet_ids: string[];
   organization_id: string | null;
+  /**
+   * Когда подписан ЭТОТ токен (unix-секунды, из claim'а iat). Заполняется
+   * только verifySession() при чтении — signSession() всегда выставляет
+   * реальное время подписи сам (jose .setIssuedAt()) и игнорирует это поле
+   * во входном объекте, поэтому переносить его вручную между сессиями
+   * бессмысленно и не нужно.
+   */
+  issuedAt?: number;
 }
 
 /**
@@ -57,7 +65,13 @@ function secret(): Uint8Array {
 }
 
 export async function signSession(s: Session): Promise<string> {
-  return new SignJWT({ ...s })
+  // issuedAt — производное поле, читаемое только из уже подписанного токена
+  // (см. Session.issuedAt). Если s пришёл из verifySession() (типичный кейс:
+  // self-service переподписывает сессию со свежими cabinet_ids), в нём может
+  // лежать СТАРОЕ значение — не даём ему просочиться в новый токен рядом с
+  // настоящим iat, который проставит .setIssuedAt() ниже.
+  const { issuedAt: _issuedAt, ...payload } = s;
+  return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${MAX_AGE}s`)
@@ -84,6 +98,7 @@ export async function verifySession(token: string | undefined | null): Promise<S
       organization_id: typeof payload.organization_id === "string" && payload.organization_id
         ? payload.organization_id
         : null,
+      issuedAt: typeof payload.iat === "number" ? payload.iat : undefined,
     };
   } catch {
     return null;
