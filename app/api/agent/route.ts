@@ -58,6 +58,24 @@ interface Insight {
 }
 
 /**
+ * cabinetIdFromParam понимает только UUID: "group:5" из переключателя групп
+ * кабинетов (components/CabinetSwitcher) для неё — мусор, и она тихо отдаёт
+ * null. Для неограниченной роли (director/fin_director/financier) null —
+ * это «разбери ВСЕ кабинеты», а не ту группу, что человек выбрал на экране
+ * (аудит P2, silently wrong scope). У агента нет своего понятия «группа» —
+ * разбор ведётся по одному кабинету или по всем сразу, — поэтому вместо
+ * тихой подмены охвата отказываем явно, тем же способом, что уже принят для
+ * недоступного группового селектора в app/api/cover-test и app/api/sales-plan.
+ */
+function rejectCabinetGroupSelector(raw: string | null): NextResponse | null {
+  if (!raw?.startsWith("group:")) return null;
+  return NextResponse.json(
+    { error: "Разбор агента не умеет анализировать группу кабинетов — выберите один кабинет или «Все кабинеты»" },
+    { status: 400 },
+  );
+}
+
+/**
  * Удаляет предыдущий батч AI-инсайтов для того же кабинета перед вставкой
  * свежего. Раньше «Запустить разбор» только добавлял строки — при повторном
  * запуске одни и те же повторяющиеся аномалии (просевший ДРР, риск
@@ -128,7 +146,10 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const cabinetId = cabinetIdFromParam(typeof body.cabinet === "string" ? body.cabinet : null);
+      const rawCabinet = typeof body.cabinet === "string" ? body.cabinet : null;
+      const groupError = rejectCabinetGroupSelector(rawCabinet);
+      if (groupError) return groupError;
+      const cabinetId = cabinetIdFromParam(rawCabinet);
       // Разбор агента собирает те же факты, что и экраны, — значит и доступ к
       // кабинету обязан проверяться так же. Без этого менеджер с урезанным
       // списком кабинетов получал сводку по всем.
@@ -165,7 +186,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const cabinetId = cabinetIdFromParam(typeof body.cabinet === "string" ? body.cabinet : null);
+    const rawCabinet = typeof body.cabinet === "string" ? body.cabinet : null;
+    const groupError = rejectCabinetGroupSelector(rawCabinet);
+    if (groupError) return groupError;
+    const cabinetId = cabinetIdFromParam(rawCabinet);
     if (!(await hasCabinetAccess(cabinetId))) {
       return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
     }

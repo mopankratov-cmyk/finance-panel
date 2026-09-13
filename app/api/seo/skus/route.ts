@@ -113,8 +113,25 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ skus: [], metrics_period: "" });
 
   const params = new URL(request.url).searchParams;
+  const rawCabinet = params.get("cabinet");
+  // resolveShopCabinet понимает только UUID: "group:5" из переключателя групп
+  // кабинетов (components/CabinetSwitcher, тот же, что и на /reviews) для неё —
+  // мусор, и она тихо отдаёт cabinetId: null — то есть «посчитать по ВСЕМ
+  // кабинетам» вместо выбранной человеком группы (аудит P2, silently wrong
+  // scope). Ниже по коду девять источников читаются каждый по одному
+  // cabinetId (или без фильтра совсем), а снимок кэшируется по нему же
+  // (loadHourlyDashboard ключом "wb-seo-skus"+cabinetId) — честно
+  // агрегировать здесь произвольную группу непросто, поэтому вместо тихой
+  // подмены охвата отказываем явно, тем же способом, что уже принят для
+  // недоступного группового селектора в app/api/cover-test и app/api/sales-plan.
+  if (rawCabinet?.startsWith("group:")) {
+    return NextResponse.json(
+      { error: "Воронка SEO не умеет считать группу кабинетов — выберите один кабинет или «Все кабинеты»" },
+      { status: 400 },
+    );
+  }
   // Кабинет из ?cabinet=<uuid|all> — фильтруем все источники по нему (или все, если "all").
-  const { cabinetId, label } = await resolveShopCabinet(params.get("cabinet") ?? undefined);
+  const { cabinetId, label } = await resolveShopCabinet(rawCabinet ?? undefined);
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }

@@ -54,7 +54,21 @@ export async function GET(req: NextRequest) {
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
 
   const sp = new URL(req.url).searchParams;
-  const p_cabinet = cabinetIdFromParam(sp.get("cabinet"));
+  const rawCabinet = sp.get("cabinet");
+  // cabinetIdFromParam понимает только UUID: "group:5" из переключателя групп
+  // кабинетов (components/CabinetSwitcher, тот же, что и на /seo) для неё —
+  // мусор, и она тихо отдаёт null — то есть «показать отзывы по ВСЕМ
+  // кабинетам» вместо выбранной человеком группы (аудит P2, silently wrong
+  // scope). У ленты отзывов нет своего понятия «группа кабинетов» — отказываем
+  // явно, а не подменяем охват тем же способом, что уже принят для
+  // недоступного группового селектора в app/api/cover-test и app/api/sales-plan.
+  if (rawCabinet?.startsWith("group:")) {
+    return NextResponse.json(
+      { ok: false, error: "Отзывы не умеют показывать группу кабинетов — выберите один кабинет или «Все кабинеты»" },
+      { status: 400 },
+    );
+  }
+  const p_cabinet = cabinetIdFromParam(rawCabinet);
   if (!(await hasCabinetAccess(p_cabinet))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
   }
