@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
 import {
   deleteClusterBids,
+  getAdvertConfig,
   getClusterBids,
   getClusterList,
   setClusterBids,
@@ -10,6 +11,11 @@ import {
 } from "@/lib/wb/advertApi";
 
 export const dynamic = "force-dynamic";
+
+// Тот же предохранитель, что и у ставки на кампанию целиком (см.
+// app/api/adverts/bid/route.ts): разовый рост больше чем в два раза почти
+// всегда лишний ноль, а не намерение. Снижения не ограничены.
+const MAX_GROWTH_FACTOR = 2;
 
 function parsePair(source: { get(key: string): string | null }) {
   const advertId = Number(source.get("advertId"));
@@ -105,7 +111,17 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   const bidType = String(advertRow?.bid_type ?? "").toLowerCase();
   const paymentType = String(advertRow?.payment_type ?? "").toLowerCase();
-  if (bidType && bidType !== "manual" && bidType !== "cpm" && bidType !== "auction") {
+  // Список разрешённых, а не запрещённых типов: пустой bid_type (кампания ещё
+  // не синхронизирована или строка от старой миграции) не должен молча
+  // проезжать проверку — такие кампании с высокой вероятностью «единые», и
+  // ручная правка ставки по кластеру им ломает автоведение.
+  if (!bidType) {
+    return NextResponse.json(
+      { error: "Тип ставки кампании ещё не синхронизирован, повторите позже." },
+      { status: 400 },
+    );
+  }
+  if (bidType !== "manual" && bidType !== "cpm" && bidType !== "auction") {
     return NextResponse.json(
       { error: "Ставки по кластерам доступны только кампаниям с ручной ставкой. У этой ставка единая — местами и запросами распоряжается WB." },
       { status: 400 },
@@ -118,13 +134,62 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Шаг ставки — свой у кабинета (валюта не обязательно рубль), берём у WB, а
+  // не константой. Тот же справочник и тот же запасной шаг 100, что и у
+  // одиночной ставки.
+  const config = await getAdvertConfig(context.token);
+  const stepKopecks = config.ok && config.data.cpmStep > 0 ? config.data.cpmStep : 100;
+
+  // Прежние ставки по этим же кластерам — тем же чтением, что отдаёт GET этого
+  // файла. Без них не от чего считать рост, и защита от опечатки (лишний ноль
+  // в ставке) была бы нечем прикрыть — этот путь до сих пор был совсем без неё.
+  const prevBids = await getClusterBids(context.token, [{ advertId, nmId }]);
+  const prevBidByQuery = new Map<string, number>();
+  if (prevBids.ok) {
+    for (const row of prevBids.data.bids ?? []) {
+      if (row.advert_id === advertId && row.nm_id === nmId) prevBidByQuery.set(row.norm_query, row.bid);
+    }
+  }
+
   const bids: ClusterBidInput[] = [];
+  // Сработала ли защита от роста ×2 хотя бы для одного кластера. Если у
+  // кластера ещё нет своей ставки, считать рост не от чего — молчать об этом
+  // нельзя, как и в одиночной ставке.
+  let unguarded = false;
   for (const item of items) {
     const query = typeof item.query === "string" ? item.query.trim() : "";
     const bid = Number(item.bid);
     if (!query) return NextResponse.json({ error: "У ставки не указан кластер" }, { status: 400 });
     if (!Number.isFinite(bid) || bid <= 0 || !Number.isInteger(bid)) {
       return NextResponse.json({ error: `Ставка по кластеру «${query}» должна быть целым числом больше нуля` }, { status: 400 });
+    }
+    const kopecks = Math.round(bid * 100);
+    if (kopecks % stepKopecks !== 0) {
+      const stepRub = stepKopecks / 100;
+      return NextResponse.json(
+        { error: `Ставка по кластеру «${query}» должна быть кратна шагу ${stepRub} ${config.ok ? config.data.currency : ""}`.trim() },
+        { status: 400 },
+      );
+    }
+    const oldBid = prevBidByQuery.get(query) ?? null;
+    if (oldBid == null || !(oldBid > 0)) {
+      unguarded = true;
+    } else if (bid > oldBid * MAX_GROWTH_FACTOR) {
+      await auditAdvertOperation({
+        context,
+        advertId,
+        action: "cluster_bid",
+        status: "rejected",
+        oldValue: { nmId, query, bid: oldBid },
+        newValue: { nmId, query, bid },
+        wbResult: `рост >×${MAX_GROWTH_FACTOR} (было ${oldBid})`,
+      });
+      return NextResponse.json(
+        {
+          error: `Защита: ставку по кластеру «${query}» нельзя поднять больше чем в ${MAX_GROWTH_FACTOR}× за раз (было ${oldBid}, лимит ${oldBid * MAX_GROWTH_FACTOR})`,
+        },
+        { status: 400 },
+      );
     }
     bids.push({ advertId, nmId, normQuery: query, bid });
   }
@@ -143,7 +208,14 @@ export async function POST(request: NextRequest) {
   });
 
   if (!result.ok) return NextResponse.json({ error: result.message }, { status: result.status === 0 ? 500 : 502 });
-  return NextResponse.json({ ok: true, advertId, nmId, bids: summary });
+  return NextResponse.json({
+    ok: true,
+    advertId,
+    nmId,
+    unguarded,
+    note: unguarded ? "У части кластеров ещё нет собственной ставки — защита от роста ×2 для них не применялась." : null,
+    bids: summary,
+  });
 }
 
 /** Снятие собственных ставок с кластеров — они возвращаются к ставке кампании. */
