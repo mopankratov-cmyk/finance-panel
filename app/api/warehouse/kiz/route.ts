@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiSession } from "@/lib/auth/apiGuard";
+import { isMachineReadRequest, requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { rolesCan } from "@/lib/auth/permissions";
+import { sessionRoles } from "@/lib/auth/session";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities, resolveEntity } from "@/lib/warehouse/entityAccess";
@@ -76,17 +78,13 @@ const fail = (error: string, status: number) => NextResponse.json({ data: null, 
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST202", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграцию 202608240023_kiz_withdrawal.sql";
 
-/**
- * Состояние реестра — считает база.
- *
- * Раньше это делал JS: тянул весь реестр страницами по тысяче и складывал
- * статусы в памяти. Одиннадцать тысяч строк — дюжина запросов на каждое
- * открытие вкладки, и потолок, за которым экран перестал бы работать.
- */
-async function summarize(
+type KizSummaryRow = Omit<KizWithdrawalSummary, "lastBatch" | "lastRunAt" | "lastRunStatus" | "lastRunError">;
+
+/** Сырая сводка по одному юрлицу (или по всему реестру, если p_entity — null). */
+async function fetchKizSummaryRow(
   db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   entityId: string | null,
-): Promise<KizWithdrawalSummary> {
+): Promise<KizSummaryRow> {
   const { data, error } = await db.rpc("kiz_summary", { p_entity: entityId });
   if (error) throw error;
   const row = (data ?? {}) as Record<string, number | string | null>;
@@ -112,7 +110,78 @@ async function summarize(
       fresh: num("ageFresh"),
     },
     noEntity: num("noEntity"),
+  };
+}
+
+/**
+ * Сложить сводки по нескольким юрлицам в одну.
+ *
+ * `noEntity` — не построчный счётчик, а число кодов без владельца по ВСЕМУ
+ * реестру: функция в базе считает его одинаково при любом p_entity. Сложить
+ * его N раз значило бы умножить одно и то же число на количество юрлиц.
+ */
+function mergeKizSummaryRows(rows: KizSummaryRow[]): KizSummaryRow {
+  const sum = (pick: (row: KizSummaryRow) => number) => rows.reduce((acc, row) => acc + pick(row), 0);
+  const dates = (pick: (row: KizSummaryRow) => string | null) =>
+    rows.map(pick).filter((value): value is string => Boolean(value)).sort();
+  const sold = dates((row) => row.firstSoldAt);
+  const soldDesc = dates((row) => row.lastSoldAt);
+  return {
+    pending: sum((row) => row.pending),
+    pendingAmount: sum((row) => row.pendingAmount),
+    sent: sum((row) => row.sent),
+    returned: sum((row) => row.returned),
+    returnedAfterSent: sum((row) => row.returnedAfterSent),
+    withoutPrice: sum((row) => row.withoutPrice),
+    firstSoldAt: sold[0] ?? null,
+    lastSoldAt: soldDesc[soldDesc.length - 1] ?? null,
+    overdue: sum((row) => row.overdue),
+    fbw: sum((row) => row.fbw),
+    withdrawn: sum((row) => row.withdrawn),
+    unknown: sum((row) => row.unknown),
+    withoutPriceCount: sum((row) => row.withoutPriceCount),
+    ageBuckets: {
+      overdue: sum((row) => row.ageBuckets.overdue),
+      lastDay: sum((row) => row.ageBuckets.lastDay),
+      twoDays: sum((row) => row.ageBuckets.twoDays),
+      fresh: sum((row) => row.ageBuckets.fresh),
+    },
+    noEntity: rows[0]?.noEntity ?? 0,
+  };
+}
+
+/**
+ * Состояние реестра — считает база.
+ *
+ * Раньше это делал JS: тянул весь реестр страницами по тысяче и складывал
+ * статусы в памяти. Одиннадцать тысяч строк — дюжина запросов на каждое
+ * открытие вкладки, и потолок, за которым экран перестал бы работать.
+ */
+async function summarize(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  entityId: string | null,
+): Promise<KizWithdrawalSummary> {
+  return {
+    ...(await fetchKizSummaryRow(db, entityId)),
     lastBatch: await lastSentBatch(db, entityId),
+    ...(await lastNightlyRun(db)),
+  };
+}
+
+/**
+ * Сводка без ?entity= для роли без полного доступа: не весь реестр, а сумма
+ * ТОЛЬКО тех юрлиц, что видит сессия. `kiz_summary` умеет считать лишь одно
+ * юрлицо за раз — сшиваем результаты сами; юрлиц у сессии обычно одно-два, и
+ * лишний десяток RPC-вызовов дешевле, чем чужие коды маркировки на экране.
+ */
+async function summarizeAccessible(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  entityIds: string[],
+): Promise<KizWithdrawalSummary> {
+  const rows = await Promise.all(entityIds.map((entityId) => fetchKizSummaryRow(db, entityId)));
+  return {
+    ...mergeKizSummaryRows(rows),
+    lastBatch: await lastSentBatchForEntities(db, entityIds),
     ...(await lastNightlyRun(db)),
   };
 }
@@ -150,6 +219,32 @@ async function lastSentBatch(
   return { id: String(row.batch_id), count: count ?? 0, at: row.sent_at ?? null };
 }
 
+/** То же самое, но для нескольких юрлиц сразу — сводка без ?entity= сужена
+ *  списком доступных сессии юрлиц, а не одним. */
+async function lastSentBatchForEntities(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  entityIds: string[],
+) {
+  if (entityIds.length === 0) return null;
+  const { data } = await db
+    .from("kiz_withdrawals")
+    .select("batch_id, sent_at")
+    .eq("status", "sent")
+    .not("batch_id", "is", null)
+    .in("legal_entity_id", entityIds)
+    .order("sent_at", { ascending: false })
+    .limit(1);
+  const row = (data ?? [])[0] as { batch_id?: string; sent_at?: string } | undefined;
+  if (!row?.batch_id) return null;
+
+  const { count } = await db
+    .from("kiz_withdrawals")
+    .select("code", { count: "exact", head: true })
+    .eq("batch_id", row.batch_id)
+    .in("legal_entity_id", entityIds);
+  return { id: String(row.batch_id), count: count ?? 0, at: row.sent_at ?? null };
+}
+
 /** Отметка последнего ночного прогона. Без неё «собирается само» — обещание,
  *  которое человеку нечем проверить. */
 async function lastNightlyRun(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>) {
@@ -170,7 +265,16 @@ async function lastNightlyRun(db: NonNullable<ReturnType<typeof getSupabaseAdmin
   };
 }
 
-/** Состояние реестра. Без юрлица в адресе — весь реестр, как и было. */
+/**
+ * Состояние реестра. Юрлицо в адресе сужает и сводку, и список «к выводу».
+ *
+ * Без ?entity= раньше уходило null прямо в агрегацию — «весь реестр» любой
+ * сессии с warehouse.view, включая кабинетного менеджера и внешний контур:
+ * коды маркировки чужих юрлиц утекали одним запросом без параметра. Директору
+ * и машинному чтению (прогрев, крон) весь реестр положен по праву — они и так
+ * видят всё; остальным сессиям без явного юрлица отдаём сумму только тех
+ * юрлиц, что видит сама сессия, а не весь справочник.
+ */
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
@@ -178,9 +282,17 @@ export async function GET(request: NextRequest) {
   const wanted = new URL(request.url).searchParams.get("entity");
   const scope = await resolveEntity(wanted);
   if (wanted && !scope.ok) return fail(scope.error, scope.status);
+
+  // null здесь означает «доступ подтверждён без ограничения списком» —
+  // director-сессия или машинное чтение. Пустой массив — сессия без единого
+  // видимого юрлица, а не «фильтра нет».
+  let accessibleIds: string[] | null = null;
   if (!wanted) {
     const list = await listAccessibleEntities();
     if (!list.ok) return fail(list.error, list.status);
+    const session = await getServerSession();
+    const fullAccess = isMachineReadRequest(request) || rolesCan(sessionRoles(session), "settings.manage");
+    accessibleIds = fullAccess ? null : list.rows.map((row) => row.id);
   }
 
   const db = getSupabaseAdmin();
@@ -191,6 +303,9 @@ export async function GET(request: NextRequest) {
     // Менеджеру нужно видеть, ЧТО именно лежит в реестре: артикул, цену,
     // дату продажи и откуда строка пришла. Сводка отвечала лишь «сколько».
     if (new URL(request.url).searchParams.get("list") === "pending") {
+      if (accessibleIds && accessibleIds.length === 0) {
+        return NextResponse.json({ data: { rows: [] }, error: null });
+      }
       let query = db
         .from("kiz_withdrawals")
         .select("code, nm_id, price, sold_at, scheme, source, cabinet_id, legal_entity_id")
@@ -198,11 +313,17 @@ export async function GET(request: NextRequest) {
         .order("sold_at", { ascending: false })
         .limit(500);
       if (scope.ok) query = query.eq("legal_entity_id", scope.entity.id);
+      else if (accessibleIds) query = query.in("legal_entity_id", accessibleIds);
       const { data: rows, error } = await query;
       if (error) return fail(String(error.message), 500);
       return NextResponse.json({ data: { rows: rows ?? [] }, error: null });
     }
-    return NextResponse.json({ data: await summarize(db, scope.ok ? scope.entity.id : null), error: null });
+    const summary = scope.ok
+      ? await summarize(db, scope.entity.id)
+      : accessibleIds
+        ? await summarizeAccessible(db, accessibleIds)
+        : await summarize(db, null);
+    return NextResponse.json({ data: summary, error: null });
   } catch (error) {
     const code = (error as { code?: string })?.code;
     const hint = missingMigration(code) ? "Примените миграции 202608250030 и 202608250031" : String(error);
