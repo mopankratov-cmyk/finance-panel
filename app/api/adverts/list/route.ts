@@ -6,6 +6,8 @@ import { getWbCommissionForCabinet } from "@/lib/wb/commissions";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { getActiveWbCabinets, getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { getServerSession } from "@/lib/auth/server";
+import { isExternalRole } from "@/lib/auth/permissions";
 import { requestAllowedNmIds, requestAllowsNm } from "@/lib/wb/requestProductScope";
 import { buildAdvertWorkingDaySummary, type AdvertDayPoint } from "@/lib/adverts/daySummary";
 import { loadScopedAdvertReportRows } from "@/lib/adverts/scopedReport";
@@ -149,7 +151,7 @@ async function loadAllCampaignPages<Row>(
 // Контракт inferno: {ok, articles:[{nm,art,photo,spend,campaigns:[{...}]}], balance, count, spend_today_total, spend_yest_total, today, yest, cap_rub}
 export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" });
+  if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 500 });
 
   // ?cabinet=<uuid|all> — срез рекламы по выбранному кабинету (данные уже синканы с cabinet_id)
   const searchParams = new URL(request.url).searchParams;
@@ -157,6 +159,11 @@ export async function GET(request: NextRequest) {
   if (!(await hasCabinetAccess(cabinetId))) {
     return NextResponse.json({ ok: false, error: "Нет доступа к кабинету" }, { status: 403 });
   }
+  // Внешний контур (seller/seller_owner) видит журнал ставок в общем
+  // allowlist аналитики, но email внутреннего сотрудника, менявшего ставку, —
+  // это уже не аналитика по кампании, а чужая рабочая почта.
+  const session = await getServerSession();
+  const isExternal = isExternalRole(session?.role);
   const [allowedNmIds, activeCabinets] = await Promise.all([
     requestAllowedNmIds(cabinetId),
     cabinetId ? Promise.resolve([]) : getActiveWbCabinets(),
@@ -596,7 +603,7 @@ export async function GET(request: NextRequest) {
         // ровно в час утреннего обхода, — и менеджер видит ставку, которую не
         // ставил. Без этого признака он идёт выяснять в другой раздел.
         by_rule: latestChange.action === "rule_apply",
-        by: latestChange.user_email,
+        by: isExternal ? null : latestChange.user_email,
       } : null,
       comparison,
     };
