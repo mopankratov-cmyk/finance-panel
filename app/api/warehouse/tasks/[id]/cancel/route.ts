@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { recordWarehouseEvent } from "@/lib/warehouse/events";
@@ -36,7 +37,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   if (!scope.ok) return fail(scope.error, scope.status);
   const session = await getServerSession();
   if (!session) return fail("Требуется вход", 401);
-  if (!canManageStock(session.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  // Роль одна — у сессии их может быть несколько (multi-role): человек с
+  // основной ролью warehouse и вторым правом всё равно должен пройти.
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);

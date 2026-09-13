@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { recordWarehouseEvent } from "@/lib/warehouse/events";
@@ -38,8 +39,10 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   if (!db) return fail("Supabase не настроен", 500);
   const session = await getServerSession();
   // Сторно меняет историю — это администратор и менеджер, оператору ФФ нельзя
-  // (ТЗ команды: «вернуть в остаток» — не его кнопка).
-  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  // (ТЗ команды: «вернуть в остаток» — не его кнопка). Роль одна — у сессии их
+  // может быть несколько (multi-role): человек с основной ролью warehouse и
+  // вторым правом всё равно должен пройти.
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
 
   const docResult = await db
     .from("stock_docs")

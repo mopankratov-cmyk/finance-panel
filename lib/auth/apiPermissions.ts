@@ -233,12 +233,33 @@ const SORTED = [...RULES].sort((left, right) => right[0].length - left[0].length
 export const API_RULES = RULES;
 
 /**
+ * Правило со вставкой `[id]` совпадает по сегментам, а не по буквам строки.
+ *
+ * Так называет свою папку сам Next.js для динамического сегмента, и здесь
+ * этим же способом писали `/api/warehouse/tasks/[id]/cancel`, ожидая, что
+ * `[id]` — это подстановка. Но `pathname === path` требует буквального
+ * совпадения строк, а в РЕАЛЬНОМ запросе на месте `[id]` стоит настоящий id
+ * (`/api/warehouse/tasks/abc-123/cancel`) — правило не совпадало никогда, и
+ * запрос молча утекал к более общему `/api/warehouse/` (см. коммент ниже).
+ */
+function matchesIdPlaceholder(rulePath: string, pathname: string): boolean {
+  const ruleSegments = rulePath.split("/");
+  const pathSegments = pathname.split("/");
+  if (ruleSegments.length !== pathSegments.length) return false;
+  return ruleSegments.every((segment, i) => segment === "[id]" || segment === pathSegments[i]);
+}
+
+/**
  * Что требуется для запроса. `null` — роут не описан, и это ошибка карты, а
  * не разрешение: неизвестный эндпоинт должен закрываться, а не открываться.
  */
 export function apiAccessFor(pathname: string): ApiAccess | null {
   for (const [path, access] of SORTED) {
-    if (path.endsWith("/") ? pathname.startsWith(path) : pathname === path) return access;
+    if (path.endsWith("/")) {
+      if (pathname.startsWith(path)) return access;
+    } else if (path.includes("[id]") ? matchesIdPlaceholder(path, pathname) : pathname === path) {
+      return access;
+    }
   }
   return null;
 }
