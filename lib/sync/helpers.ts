@@ -7,7 +7,13 @@ import { canRunSyncManually } from "@/lib/sync/manualRunRoles";
 
 export async function checkCronAuth(request: NextRequest): Promise<NextResponse | null> {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return null; // dev: skip check
+  if (!secret) {
+    // Обход только для локальной разработки: если CRON_SECRET не задан в
+    // проде (операционная ошибка), это не должно молча открывать cron-роуты
+    // всем подряд — как AUTH_SECRET в session.ts, падаем в отказ.
+    if (process.env.NODE_ENV !== "production") return null;
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const auth = request.headers.get("authorization");
   if (auth === `Bearer ${secret}`) return null;
