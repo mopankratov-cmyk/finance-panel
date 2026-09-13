@@ -58,6 +58,33 @@ interface Insight {
 }
 
 /**
+ * Удаляет предыдущий батч AI-инсайтов для того же кабинета перед вставкой
+ * свежего. Раньше «Запустить разбор» только добавлял строки — при повторном
+ * запуске одни и те же повторяющиеся аномалии (просевший ДРР, риск
+ * out-of-stock и т.п.) копились в ленте как новые записи вместо замены
+ * предыдущего разбора. Тег data.src="ai" отличает эти строки от rules-набора
+ * (app/api/agent/insights/generate/route.ts, src="rules") и от wb_signal
+ * (app/api/signals/route.ts) — удаление своего src не задевает чужие.
+ *
+ * Скоуп по cabinet_id обязателен: иначе повторный разбор ОДНОГО кабинета стёр
+ * бы AI-инсайты ВСЕХ остальных. cabinetId === null (агрегат «все кабинеты» у
+ * внутренней роли) — свой собственный скоуп, «cabinet_id is null», а не
+ * «фильтра нет».
+ */
+async function deleteAiInsights(db: SupabaseClient, cabinetId: string | null): Promise<void> {
+  const scoped = cabinetId
+    ? db.from("agent_insights").delete().filter("data->>src", "eq", "ai").eq("cabinet_id", cabinetId)
+    : db.from("agent_insights").delete().filter("data->>src", "eq", "ai").is("cabinet_id", null);
+  const { error } = await scoped;
+  if (error?.code === "42703") {
+    // Миграция 202609130001_agent_insights_cabinet_scope ещё не применена —
+    // колонки cabinet_id нет, значит и разреза по кабинетам в старых строках
+    // нет. Чистим весь src="ai" без скоупа, как единственный доступный вариант.
+    await db.from("agent_insights").delete().filter("data->>src", "eq", "ai");
+  }
+}
+
+/**
  * Пишет инсайты с привязкой к кабинету, который уже прошёл hasCabinetAccess
  * выше по коду того же запроса. Раньше вставка не проставляла cabinet_id
  * вовсе, и GET /api/agent/insights отдавал эти строки любой сессии с
@@ -70,12 +97,13 @@ interface Insight {
  */
 async function insertInsights(db: SupabaseClient, insights: Insight[], cabinetId: string | null): Promise<void> {
   if (!insights.length) return;
+  await deleteAiInsights(db, cabinetId);
   const rows = insights.map((i) => ({
     module: i.module,
     severity: i.severity,
     title: i.title,
     body: i.body,
-    data: null,
+    data: { src: "ai" },
     cabinet_id: cabinetId,
   }));
   const withCabinet = await db.from("agent_insights").insert(rows);
