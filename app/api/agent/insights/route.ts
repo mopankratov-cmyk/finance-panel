@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerSession } from "@/lib/auth/server";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { isExternalRole } from "@/lib/auth/permissions";
+import { requireApiSession } from "@/lib/auth/apiGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,8 @@ async function readInsightIds(db: SupabaseClient, userId: string, ids: number[])
 }
 
 export async function GET(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) {
     return NextResponse.json({ data: null, error: "Supabase не настроен" }, { status: 500 });
@@ -130,22 +133,28 @@ export async function GET(request: NextRequest) {
 
 // Пометить инсайты прочитанными (все или по id) — только те, что сессия видит.
 export async function PATCH(request: NextRequest) {
+  const gate = await requireApiSession();
+  if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) {
     return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   }
   const session = await getServerSession();
   const body = await request.json().catch(() => ({}));
-  const byIds = Array.isArray(body.ids) && body.ids.length;
+  // body.ids приходит от клиента как есть — без фильтра сюда мог попасть
+  // произвольный мусор (строки, дроби, объекты), уронив запрос в Supabase
+  // 500-й ошибкой. Оставляем только то, что действительно похоже на id.
+  const ids = Array.isArray(body.ids) ? body.ids.filter((id: unknown): id is number => Number.isInteger(id)) : [];
+  const byIds = ids.length > 0;
 
   let selectQuery = db.from("agent_insights").select("id, cabinet_id");
-  selectQuery = byIds ? selectQuery.in("id", body.ids) : selectQuery.eq("is_read", false);
+  selectQuery = byIds ? selectQuery.in("id", ids) : selectQuery.eq("is_read", false);
   const { data: candidates, error: selectError } = await selectQuery;
 
   if (selectError?.code === "42703") {
     // Миграция ещё не применена — колонки нет, отмечаем как раньше, без разреза.
     const q = db.from("agent_insights").update({ is_read: true });
-    const { error } = byIds ? await q.in("id", body.ids) : await q.eq("is_read", false);
+    const { error } = byIds ? await q.in("id", ids) : await q.eq("is_read", false);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
