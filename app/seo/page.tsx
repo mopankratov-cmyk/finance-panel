@@ -10,6 +10,8 @@ import { useCategoryMap } from "@/lib/useCategoryMap";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { useSort, sortGlyph } from "@/lib/useSort";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { Hint } from "@/components/ui/Hint";
+import { MARKETPLACE_METRICS } from "@/lib/analytics/marketplaceMetrics";
 
 interface SeoSku {
   nm: number; art: string; name: string; img_url: string;
@@ -28,16 +30,21 @@ const pc = (v: number | null) => (v == null ? "—" : v + "%");
 const toneDrr = (v: number | null): [string, string] => (v == null ? ["", ""] : v <= 10 ? ["text-emerald-600", ""] : v <= 20 ? ["text-amber-600", "△ "] : ["text-rose-600", "▲ "]);
 const toneMargin = (v: number | null): [string, string] => (v == null ? ["", ""] : v >= 20 ? ["text-emerald-600", ""] : v >= 10 ? ["text-amber-600", "△ "] : ["text-rose-600", "▲ "]);
 
-const COLS: { key: keyof SeoSku; label: string; kind: "num" | "pct" | "drr" | "margin" }[] = [
+// Заказы и маржа переиспользуют формулировки lib/analytics/marketplaceMetrics.ts —
+// на /wb/seo та же метрика честно названа «Заказы» (не «Выручка», это сумма
+// оформленных заказов до выкупа) и «Маржа до расходов МП» (комиссия, логистика,
+// эквайринг, налог и реклама ещё не вычтены). Два экрана не должны спорить об
+// одних и тех же цифрах.
+const COLS: { key: keyof SeoSku; label: string; kind: "num" | "pct" | "drr" | "margin"; hint?: string }[] = [
   { key: "shows_window", label: "Показы", kind: "num" },
   { key: "ctr_window", label: "CTR", kind: "pct" },
   { key: "cart_window", label: "В корзину", kind: "num" },
   { key: "cv_cart_window", label: "CV корзины", kind: "pct" },
   { key: "cv_order_window", label: "CV заказа", kind: "pct" },
   { key: "orders_count_window", label: "Заказы, шт", kind: "num" },
-  { key: "orders_sum_window", label: "Выручка, ₽", kind: "num" },
+  { key: "orders_sum_window", label: `${MARKETPLACE_METRICS.ordersRevenue.label}, ₽`, kind: "num", hint: MARKETPLACE_METRICS.ordersRevenue.definition },
   { key: "drr_window", label: "ДРР, %", kind: "drr" },
-  { key: "margin_before_drr_window", label: "Маржа, %", kind: "margin" },
+  { key: "margin_before_drr_window", label: `${MARKETPLACE_METRICS.marginBeforeAds.label}, %`, kind: "margin", hint: MARKETPLACE_METRICS.marginBeforeAds.definition },
   { key: "stock", label: "Остаток", kind: "num" },
 ];
 
@@ -121,6 +128,8 @@ export default function SeoPage() {
                   {COLS.map((c) => (
                     <th key={String(c.key)} onClick={() => toggleSort(c.key)} className="cursor-pointer select-none px-3 py-2 text-right font-semibold whitespace-nowrap hover:text-violet-700">
                       {c.label}{sortGlyph(sortField === c.key, sortDir)}
+                      {/* stopPropagation — иначе клик по значку пояснения ещё и переключает сортировку колонки. */}
+                      {c.hint ? <span onClick={(e) => e.stopPropagation()}><Hint label={c.label}>{c.hint}</Hint></span> : null}
                     </th>
                   ))}
                 </tr>
