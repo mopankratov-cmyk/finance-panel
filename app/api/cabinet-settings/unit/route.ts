@@ -88,8 +88,10 @@ export async function PUT(request: NextRequest) {
   try {
     const saved = await saveCabinetUnitSettings(db, {
       cabinetId,
-      taxPct: normalizeCabinetPct(body.taxPct),
-      extraCommissionPct: normalizeCabinetPct(body.extraCommissionPct),
+      // Поле отсутствует в теле — не трогаем колонку; JSON не может прислать
+      // сам undefined, так что это отличимо от явного null (аудит P3).
+      taxPct: body.taxPct !== undefined ? normalizeCabinetPct(body.taxPct) : undefined,
+      extraCommissionPct: body.extraCommissionPct !== undefined ? normalizeCabinetPct(body.extraCommissionPct) : undefined,
       updatedBy: session?.email ?? session?.role ?? null,
     });
     return NextResponse.json({ settings: saved, cabinet: { id: cabinet.data.id, name: cabinet.data.name } });

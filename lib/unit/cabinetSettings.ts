@@ -94,16 +94,27 @@ export async function loadCabinetUnitSetting(
 
 export async function saveCabinetUnitSettings(
   db: SupabaseClient,
-  input: { cabinetId: string; taxPct: number | null; extraCommissionPct: number | null; updatedBy?: string | null },
+  input: {
+    cabinetId: string;
+    /** undefined — поле не пришло в запросе: колонку не трогаем вовсе. null — прислали явно, значит «сбросить». */
+    taxPct: number | null | undefined;
+    extraCommissionPct: number | null | undefined;
+    updatedBy?: string | null;
+  },
 ): Promise<CabinetUnitSettings> {
+  // Партial-апдейт: отсутствующее поле не попадает в payload и не участвует в
+  // upsert, иначе оно молча превращалось бы в null и затирало бы то, что уже
+  // сохранил владелец (аудит P3) — при том что колонки друг с другом не связаны.
+  const payload: Record<string, unknown> = {
+    cabinet_id: input.cabinetId,
+    updated_at: new Date().toISOString(),
+    updated_by: input.updatedBy ?? null,
+  };
+  if (input.taxPct !== undefined) payload.tax_pct = input.taxPct;
+  if (input.extraCommissionPct !== undefined) payload.extra_commission_pct = input.extraCommissionPct;
+
   const { data, error } = await db.from(CABINET_UNIT_SETTINGS_TABLE)
-    .upsert({
-      cabinet_id: input.cabinetId,
-      tax_pct: input.taxPct,
-      extra_commission_pct: input.extraCommissionPct,
-      updated_at: new Date().toISOString(),
-      updated_by: input.updatedBy ?? null,
-    }, { onConflict: "cabinet_id" })
+    .upsert(payload, { onConflict: "cabinet_id" })
     .select("cabinet_id, tax_pct, extra_commission_pct, updated_at, updated_by")
     .maybeSingle();
   if (error) throw new Error(error.message);
