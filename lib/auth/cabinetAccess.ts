@@ -56,11 +56,14 @@ export async function hasCabinetAccess(cabinetId: string | null): Promise<boolea
   if (!cabinetId || !session.organization_id) return false;
   const db = getSupabaseAdmin();
   if (!db) return false;
+  // Кабинет ищем по id независимо от маркетплейса: раньше здесь стоял
+  // .eq("marketplace", "wb"), и внешний контур со своим Ozon-кабинетом всегда
+  // получал «нет доступа» на любом роуте, идущем через hasCabinetAccess —
+  // /api/sales-plan и подобные (аудит P1). wb_cabinets хранит и WB, и Ozon.
   const { data, error } = await db
     .from("wb_cabinets")
     .select("organization_id")
     .eq("id", cabinetId)
-    .eq("marketplace", "wb")
     .maybeSingle();
   return !error && String(data?.organization_id ?? "") === session.organization_id;
 }

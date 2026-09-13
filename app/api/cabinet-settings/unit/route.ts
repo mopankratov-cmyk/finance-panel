@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { hasCabinetAccess, sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { isCabinetScopedRole } from "@/lib/auth/roles";
 import {
   isRejectedCabinetPct,
   loadCabinetUnitSettings,
@@ -20,11 +22,31 @@ const WRITE_ROLES = ["director", "fin_director", "financier"] as const;
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession([...READ_ROLES]);
   if (gate) return gate;
+  const session = await getServerSession();
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Сервис данных временно недоступен" }, { status: 503 });
 
   const cabinet = new URL(request.url).searchParams.get("cabinet");
-  const ids = cabinet && cabinet !== "all" ? [cabinet] : null;
+  let ids: string[] | null;
+  if (cabinet && cabinet !== "all") {
+    // Раньше конкретный кабинет отдавался без единой проверки — внешний
+    // seller мог прочитать налог/комиссию чужого кабинета и чужой
+    // организации, просто подставив id в запрос (аудит P1).
+    if (!(await hasCabinetAccess(cabinet))) {
+      return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+    }
+    ids = [cabinet];
+  } else if (session && isCabinetScopedRole(session.role)) {
+    // Агрегат «все кабинеты» для cabinet-scoped роли (wb_manager/ozon_manager
+    // с урезанным cabinet_ids, seller, seller_owner) — не вся таблица
+    // настроек, а только те кабинеты, что сессия реально видит.
+    const { data: allCabinets } = await db.from("wb_cabinets").select("id");
+    ids = (allCabinets ?? [])
+      .map((row) => String(row.id))
+      .filter((id) => sessionHasCabinetAccess(session, id));
+  } else {
+    ids = null;
+  }
   try {
     const settings = await loadCabinetUnitSettings(db, ids);
     return NextResponse.json({ settings: [...settings.values()] });

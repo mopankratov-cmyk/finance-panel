@@ -88,7 +88,10 @@ test("manager cabinet metadata listing fails closed and the switcher requests ac
   // строкой «manager» пропускало мимо ограничения каждую новую роль. Внешний
   // контур целиком (isExternalRole) проверяется отдельно от cabinet-scoped
   // менеджеров — сравнение с буквальным "seller" пропускало seller_owner.
-  assert.match(cabinetsGet, /isExternalRole\(session\.role\)[\s\S]+accessibleOnly && isCabinetScopedRole\(session\.role\)/);
+  // Сужение для cabinet-scoped ролей обязательно и без ?accessible=1 —
+  // параметр раньше делал фильтрацию опциональной (аудит P1).
+  assert.match(cabinetsGet, /isExternalRole\(session\.role\)[\s\S]+isCabinetScopedRole\(session\.role\)/);
+  assert.doesNotMatch(cabinetsGet, /accessibleOnly/);
   assert.match(cabinetsGet, /session\.cabinet_ids\.includes\(String\(cabinet\.id\)\)/);
   assert.match(cabinetsGet, /session\.organization_id !== null/);
   assert.match(groupsRoute, /const groups = filterCabinetGroups\([\s\S]+session\);/);

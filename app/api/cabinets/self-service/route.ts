@@ -1,6 +1,6 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth/server";
-import { SESSION_COOKIE, sessionCookieOptions, signSession } from "@/lib/auth/session";
+import { SESSION_COOKIE, sessionCookieOptions, sessionRoles, signSession } from "@/lib/auth/session";
 import { claimMarketplaceSeller } from "@/lib/auth/tenantClaim";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveSyncBase } from "@/lib/sync/orchestrator";
@@ -58,7 +58,9 @@ export async function GET() {
   // /wb/connect, что и у seller (roleHome в lib/auth/roles.ts не различает их
   // при пустом cabinet_ids), а до этой правки роут пускал только буквальное
   // "seller" и seller_owner получал 403 на собственной странице подключения.
-  if (!session || !isExternalRole(session.role)) {
+  // Проверка по sessionRoles(), а не по одиночному session.role — у
+  // многоролевого внешнего сотрудника нужная роль может быть не первой.
+  if (!session || !sessionRoles(session).some(isExternalRole)) {
     return NextResponse.json({ error: "Доступно только внешнему контуру" }, { status: 403 });
   }
   const db = getSupabaseAdmin();
@@ -91,7 +93,9 @@ export async function POST(request: NextRequest) {
   // /wb/connect, что и у seller (roleHome в lib/auth/roles.ts не различает их
   // при пустом cabinet_ids), а до этой правки роут пускал только буквальное
   // "seller" и seller_owner получал 403 на собственной странице подключения.
-  if (!session || !isExternalRole(session.role)) {
+  // Проверка по sessionRoles(), а не по одиночному session.role — у
+  // многоролевого внешнего сотрудника нужная роль может быть не первой.
+  if (!session || !sessionRoles(session).some(isExternalRole)) {
     return NextResponse.json({ error: "Доступно только внешнему контуру" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({})) as { token?: string; name?: string };

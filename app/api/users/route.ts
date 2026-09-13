@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/users";
 import { isExternalRole, isRole } from "@/lib/auth/permissions";
 import { isPanelOwner } from "@/lib/auth/owner";
@@ -10,7 +11,11 @@ export const dynamic = "force-dynamic";
 
 async function requireDirector() {
   const s = await getServerSession();
-  return s && s.role === "director" ? s : null;
+  // Сотрудник может держать несколько ролей (решение владельца 09.09.2026):
+  // сравнение с одиночным s.role отсекало директора, у которого "director"
+  // лежит не первым в списке ролей — весь экран «Пользователи» отвечал 403
+  // человеку, которого proxy-гейт уже пропустил (аудит P1).
+  return s && sessionRoles(s).includes("director") ? s : null;
 }
 
 async function createSellerOrganization(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, email: string) {

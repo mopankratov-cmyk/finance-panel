@@ -87,9 +87,11 @@ test("seller API policy is GET allowlisted and all other mutations are denied", 
 test("self-service validates scopes, binds organization and never returns the raw token", async () => {
   const source = await readFile(new URL("../app/api/cabinets/self-service/route.ts", import.meta.url), "utf8");
   // Открыто обеим внешним ролям (seller и seller_owner) через общий признак
-  // isExternalRole — точечная проверка буквального "seller" оставляла
-  // seller_owner без способа подключить свой первый кабинет.
-  assert.match(source, /isExternalRole\(session\.role\)/);
+  // isExternalRole, проверенный по ПОЛНОМУ набору ролей сессии — точечная
+  // проверка буквального "seller" оставляла seller_owner без способа
+  // подключить свой первый кабинет, а проверка одного session.role вместо
+  // sessionRoles() отсекала многоролевого внешнего сотрудника.
+  assert.match(source, /sessionRoles\(session\)\.some\(isExternalRole\)/);
   assert.match(source, /missingScopes\.length > 0/);
   assert.match(source, /organization_id: organizationId/);
   assert.match(source, /claimMarketplaceSeller\(db, "wb"/);

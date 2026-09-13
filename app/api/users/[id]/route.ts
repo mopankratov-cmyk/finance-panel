@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isPanelOwner } from "@/lib/auth/owner";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/users";
 import { audit } from "@/lib/audit/log";
 import { isExternalRole, isRole, type Role } from "@/lib/auth/permissions";
@@ -10,7 +11,11 @@ export const dynamic = "force-dynamic";
 
 async function director() {
   const s = await getServerSession();
-  return s && s.role === "director" ? s : null;
+  // Многоролевой директор (например roles: ["financier","director"]) не
+  // должен получать 403 только из-за того, что "director" не первый в
+  // списке — proxy-гейт его уже пропустил (аудит P1, тот же корень, что и
+  // requireDirector в app/api/users/route.ts).
+  return s && sessionRoles(s).includes("director") ? s : null;
 }
 
 async function createSellerOrganization(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, email: string) {

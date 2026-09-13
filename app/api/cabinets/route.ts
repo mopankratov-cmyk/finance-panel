@@ -60,19 +60,26 @@ export async function GET(request: NextRequest) {
     product_scope_count: scopeCount.get(String(c.id)) ?? 0,
     organization_id: typeof c.organization_id === "string" ? c.organization_id : null,
   }));
-  const accessibleOnly = new URL(request.url).searchParams.get("accessible") === "1";
   // Внешний контур (seller И seller_owner — раньше здесь стояло буквальное
   // "seller", и главный пользователь клиента проваливался в общую ветку ниже,
   // где пустой cabinet_ids или отсутствие ?accessible=1 отдавали ВСЕ кабинеты
   // всех организаций) всегда фильтруется по организации, а не только по
   // списку кабинетов и не только когда его явно попросили.
+  //
+  // Cabinet-scoped внутренние роли (wb_manager/ozon_manager с непустым
+  // cabinet_ids) раньше сужались только при ?accessible=1 — то есть звонок
+  // без этого параметра (components/supplies/ReceivingTab.tsx,
+  // app/cabinets/page.tsx, app/users/page.tsx звали именно так) отдавал ВСЕ
+  // кабинеты компании менеджеру с урезанным доступом. Сужение теперь
+  // обязательно на сервере, параметр ?accessible оставлен для совместимости
+  // и ни на что не влияет.
   const cabinets = isExternalRole(session.role)
     ? allCabinets.filter((cabinet) => (
       session.organization_id !== null
       && cabinet.organization_id === session.organization_id
       && session.cabinet_ids.includes(String(cabinet.id))
     ))
-    : accessibleOnly && isCabinetScopedRole(session.role) && session.cabinet_ids.length > 0
+    : isCabinetScopedRole(session.role) && session.cabinet_ids.length > 0
       ? allCabinets.filter((cabinet) => session.cabinet_ids.includes(String(cabinet.id)))
       : allCabinets;
   return NextResponse.json({ cabinets, count: cabinets.length });
