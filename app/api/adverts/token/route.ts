@@ -115,6 +115,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Это не похоже на токен WB. Ожидается ключ из трёх частей через точку." }, { status: 400 });
   }
 
+  // Ключ может быть рабочим и при этом чужим: у директора/менеджера с доступом
+  // к нескольким кабинетам легко вставить из буфера токен другого кабинета —
+  // WB его примет, а расходы и кампании с этого момента тихо запишутся не за
+  // тем юрлицом. sid в токене и seller_id кабинета — это факт, а не догадка,
+  // сверяем его до похода в WB. Если какой-то из sid не удалось определить —
+  // не блокируем: это позитивная проверка на несовпадение, а не белый список.
+  const incomingSeller = decodeWbToken(incoming).sid?.trim();
+  const cabinetSeller = cabinet.seller_id?.trim();
+  if (incomingSeller && cabinetSeller && incomingSeller !== cabinetSeller) {
+    return NextResponse.json(
+      { error: "Ключ выпущен для другого продавца (ожидался seller_id кабинета)." },
+      { status: 400 },
+    );
+  }
+
   const verdict = await verify(incoming);
   // Ключ, который не читает кабинет, не сохраняем вовсе: подменить рабочий
   // ключ нерабочим значит сломать и то, что работало до сих пор.
