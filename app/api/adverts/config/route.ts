@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAdvertCabinetAccess } from "@/lib/adverts/cabinetGuard";
 import { depositAllowance } from "@/lib/adverts/depositLimits";
-import { advertHost, getAdvertBalance, getAdvertConfig } from "@/lib/wb/advertApi";
+import { advertHost, getAdvertBalance, getAdvertConfig, type AdvertApiResult, type AdvertBalance } from "@/lib/wb/advertApi";
+import { cabinetProductScope } from "@/lib/wb/cabinetTokens";
+import { isScoped } from "@/lib/wb/productScope";
 import { decodeWbToken } from "@/lib/wb/token";
 
 export const dynamic = "force-dynamic";
@@ -33,9 +35,16 @@ export async function GET(request: NextRequest) {
   const { db, cabinet, token } = gate.access;
 
   const info = decodeWbToken(token);
+  // Кабинет с товарным контуром (Оптима и подобные) видит WB-баланс как
+  // кошелёк ВСЕГО аккаунта, а не своей части товаров. Внешнему продавцу,
+  // которому такой кабинет отдан под срез SKU, эта сумма показывать нельзя —
+  // в ней деньги чужих брендов и владельца. Прикинуть баланс по контуру
+  // тоже нельзя, поэтому контурный кабинет получает money: null вместо
+  // похода в WB за цифрой, которую всё равно придётся спрятать.
+  const scoped = isScoped(cabinetProductScope(cabinet));
   const [config, balance, allowance] = await Promise.all([
     getAdvertConfig(token),
-    getAdvertBalance(token),
+    scoped ? Promise.resolve(null as AdvertApiResult<AdvertBalance> | null) : getAdvertBalance(token),
     depositAllowance(db, cabinet.id),
   ]);
 
@@ -60,7 +69,7 @@ export async function GET(request: NextRequest) {
           minTopUpRub: config.data.minTopUp / 100,
         }
       : null,
-    money: balance.ok
+    money: balance?.ok
       ? {
           account: balance.data.balance,
           net: balance.data.net,
@@ -73,7 +82,8 @@ export async function GET(request: NextRequest) {
           ...(Number.isFinite(balance.data.bonus) ? { bonus: balance.data.bonus } : {}),
         }
       : null,
-    moneyError: balance.ok ? null : balance.message,
+    // scoped: балансу неоткуда взяться — не ошибка WB, а осознанный пропуск.
+    moneyError: balance && !balance.ok ? balance.message : null,
     depositAllowance: allowance,
   });
 }

@@ -269,7 +269,15 @@ export async function GET(request: NextRequest) {
 
   // Баланс продвижения зависит только от cabinetId — считаем его цепочку параллельно
   // с тяжёлыми БД-запросами, а не после них (иначе латентность складывается).
-  const balancePromise: Promise<number | null> = cabinetId
+  //
+  // У кабинета с товарным контуром (Оптима и подобные) баланс кошелька — это
+  // касса ВСЕГО аккаунта WB, а не среза его товаров. Показать его внешнему
+  // продавцу, которому кабинет отдан только под свою часть SKU, значит
+  // раскрыть деньги чужих брендов и владельца аккаунта. Разнести кошелёк по
+  // SKU нельзя даже приблизительно — контурный кабинет получает null, а не
+  // прикидку. `allowedNmIds` — тот же контур, что уже фильтрует расход по SKU,
+  // воронку и каталог товаров ниже.
+  const balancePromise: Promise<number | null> = cabinetId && allowedNmIds === null
     ? getWbCabinet(cabinetId).then(async (cab) => {
         const advToken = cab ? resolveWbToken(cab, "advert") : null;
         if (!advToken) return null;
