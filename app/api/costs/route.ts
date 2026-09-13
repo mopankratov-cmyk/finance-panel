@@ -4,6 +4,7 @@ import { OPIU_ENTITY } from "@/lib/opiu/constants";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { sessionHasCabinetAccess } from "@/lib/auth/cabinetAccess";
+import { isExternalRole } from "@/lib/auth/permissions";
 import { mergeCostCatalog, type MarketplaceCostProduct } from "@/lib/costs/catalog";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { describeOzonScope, getOzonCabinetScope } from "@/lib/ozon/cabinet";
@@ -22,11 +23,23 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ rows: [] });
   const q = (new URL(request.url).searchParams.get("q") || "").toLowerCase().trim();
-  const [{ data, error }, wbCabinets, ozonScope] = await Promise.all([
-    db.from("product_costs").select("article, name, cost_rub, warehouse_expenses, brand, category").order("article"),
+  const organizationId = session?.organization_id ?? null;
+  const storedCostsQuery = db.from("product_costs").select("article, name, cost_rub, warehouse_expenses, brand, category").order("article");
+  const [storedCosts, wbCabinets, ozonScope] = await Promise.all([
+    organizationId ? storedCostsQuery.eq("organization_id", organizationId) : storedCostsQuery,
     getActiveWbCabinets(),
     getOzonCabinetScope("all"),
   ]);
+  let { data, error } = storedCosts;
+  if (error?.code === "42703") {
+    // Миграция 202609130002_product_costs_tenant_key ещё не применена —
+    // колонки нет, фильтровать нечем. Ведём себя как раньше.
+    ({ data, error } = await db.from("product_costs").select("article, name, cost_rub, warehouse_expenses, brand, category").order("article"));
+  }
+  // mergeCostCatalog сеет карту ВСЕМИ строками product_costs, а не только
+  // теми, что совпали с каталогом маркетплейса ниже — без фильтра по
+  // организации сюда попадали название, себестоимость и фулфилмент чужих
+  // организаций по артикулам, которых даже нет в собственном каталоге сессии.
   if (error) return NextResponse.json({ rows: [], error: error.message });
   const products: MarketplaceCostProduct[] = [];
   const warnings: string[] = [];
@@ -107,6 +120,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
+  const session = await getServerSession();
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const b = (await request.json().catch(() => ({}))) as {
@@ -114,6 +128,14 @@ export async function POST(request: NextRequest) {
   };
   const article = (b.article || "").trim();
   if (!article) return NextResponse.json({ error: "Укажите артикул" }, { status: 400 });
+
+  // Тенантная граница: артикул уникален В ГРАНИЦАХ организации, а не глобально.
+  // Раньше строка искалась и обновлялась по одному только article — и
+  // seller, и seller_owner (оба держат cost.edit) могли переписать чужую
+  // себестоимость одним POST, если их артикул текстуально совпал с чужим,
+  // включая себестоимость самого владельца панели (аудит P0).
+  const organizationId = session?.organization_id ?? null;
+  if (!organizationId) return NextResponse.json({ error: "У сессии не задана организация" }, { status: 409 });
 
   // Деньги: только конечное неотрицательное число. Отрицательный себес — не
   // «скидка», а опечатка, и он молча испортит маржу всюду, куда попадёт.
@@ -134,8 +156,18 @@ export async function POST(request: NextRequest) {
 
   // Читаем «было» целиком, а не только признак существования: §17 требует в
   // журнале старое значение, и после записи его уже не достать.
-  const { data: existing } = await db.from("product_costs")
-    .select("article, name, cost_rub, warehouse_expenses, category").eq("article", article).maybeSingle();
+  let existingQuery = db.from("product_costs")
+    .select("article, name, cost_rub, warehouse_expenses, category").eq("article", article);
+  let { data: existing, error: existingError } = await existingQuery.eq("organization_id", organizationId).maybeSingle();
+  let hasTenantColumn = true;
+  if (existingError?.code === "42703") {
+    // Миграция 202609130002_product_costs_tenant_key ещё не применена —
+    // колонки нет. Ведём себя как раньше (без границы), а не роняем запись.
+    hasTenantColumn = false;
+    ({ data: existing, error: existingError } = await existingQuery.maybeSingle());
+  }
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+
   let error;
   if (existing) {
     // Патчим ТОЛЬКО присланное. Раньше cost_rub записывался всегда, поэтому
@@ -147,16 +179,22 @@ export async function POST(request: NextRequest) {
     if (b.name) patch.name = b.name.trim();
     if (b.category !== undefined) patch.category = b.category.trim() || null;
     if (!Object.keys(patch).length) return NextResponse.json({ ok: true });
-    ({ error } = await db.from("product_costs").update(patch).eq("article", article));
+    let updateQuery = db.from("product_costs").update(patch).eq("article", article);
+    if (hasTenantColumn) updateQuery = updateQuery.eq("organization_id", organizationId);
+    ({ error } = await updateQuery);
   } else {
-    ({ error } = await db.from("product_costs").insert({
+    // entity — юрлицо ОПиУ владельца панели; у внешнего контура его нет
+    // вовсе (это не одно из его юрлиц), поэтому null, а не OPIU_ENTITY.
+    const insertRow: Record<string, unknown> = {
       article,
       cost_rub: cost ?? 0,
       warehouse_expenses: fulfillment ?? 0,
       name: (b.name || "").trim() || article,
       category: (b.category || "").trim() || null,
-      entity: OPIU_ENTITY,
-    }));
+      entity: isExternalRole(session?.role) ? null : OPIU_ENTITY,
+    };
+    if (hasTenantColumn) insertRow.organization_id = organizationId;
+    ({ error } = await db.from("product_costs").insert(insertRow));
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   await audit(request, await getServerSession(), {
