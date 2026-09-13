@@ -44,6 +44,42 @@ function deterministicPaymentId(...parts: string[]): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+// ФИО, зарплата и заметки — HR-PII, а не история финансовых сумм: у
+// access_audit_log есть отдельное право audit.view (директор и фин.директор),
+// шире, чем у самой зарплатной ведомости, и строки там не удаляются никогда.
+// Поэтому для правки сотрудника в журнал идёт факт «эти поля тронули», а не
+// значения: имя и текст заметки не пишутся вовсе, сумма — тоже, только её
+// присутствие в правке. Остальные поля правки (оформление, компания, город)
+// PII не считаются и остаются как есть.
+const PAYROLL_EMPLOYEE_PII_FIELDS = ["fullName", "monthlySalary", "notes"] as const;
+
+function sanitizePayrollEmployeeForAudit(source: Record<string, unknown>): Record<string, unknown> {
+  const { fullName: _fullName, monthlySalary: _monthlySalary, notes: _notes, id, ...rest } = source;
+  const changedFields = PAYROLL_EMPLOYEE_PII_FIELDS.filter((field) => {
+    const value = source[field];
+    return value !== undefined && value !== null && value !== "";
+  });
+  return { ...(id !== undefined ? { employeeId: id } : {}), ...rest, changedFields };
+}
+
+/** Что реально пишется в журнал для тела запроса /api/payroll. Сужено только
+ *  до save_employee/import_employees — у остальных действий этого роута
+ *  (долги, распределение оплат, удаление) PII в теле нет, и их тело идёт в
+ *  журнал как раньше, через redactSecrets. */
+function payrollAuditPayload(body: Record<string, unknown>): unknown {
+  if (body.action === "save_employee" && body.employee && typeof body.employee === "object") {
+    return { action: body.action, employee: sanitizePayrollEmployeeForAudit(body.employee as Record<string, unknown>) };
+  }
+  if (body.action === "import_employees" && Array.isArray(body.records)) {
+    return {
+      action: body.action,
+      recordCount: body.records.length,
+      records: body.records.map((record) => sanitizePayrollEmployeeForAudit(record as Record<string, unknown>)),
+    };
+  }
+  return redactSecrets(body);
+}
+
 // Проверяем по карте прав (lib/auth/permissions.ts), а не по ручному списку
 // ролей: список расходился с матрицей и держал HR — единственную роль с
 // payroll.view/payroll.edit — вне её же экрана (403 на GET и POST).
@@ -125,7 +161,7 @@ export async function POST(request: NextRequest) {
   // расставлять её в каждую значит забыть одну.
   return auditedMutation(request, "payroll.change", await getServerSession(), () => handlePayroll(request), (body) => ({
     subject: String(body.action ?? "payroll"),
-    after: redactSecrets(body),
+    after: payrollAuditPayload(body),
   }));
 }
 
