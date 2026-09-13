@@ -1,10 +1,9 @@
 import { cookies } from "next/headers";
 import { getServerSession } from "./server";
-import { SESSION_COOKIE } from "./session";
+import { SESSION_COOKIE, sessionRoles } from "./session";
 import type { Session } from "./session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { isCabinetScopedRole } from "@/lib/auth/roles";
-import { isExternalRole } from "@/lib/auth/permissions";
+import { isExternalRole, rolesAreCabinetScoped } from "@/lib/auth/permissions";
 
 // Пустой cabinet_ids у менеджера исторически означает «все кабинеты».
 // Непустой список — жёсткое ограничение. В таком режиме агрегат "all" запрещён,
@@ -17,7 +16,7 @@ import { isExternalRole } from "@/lib/auth/permissions";
 // ветку не попадал вовсе — проваливался в общую с пустым cabinet_ids
 // и получал «нет ограничения», то есть видел кабинеты чужих организаций.
 export function sessionHasCabinetAccess(
-  session: Pick<Session, "role" | "cabinet_ids"> | null,
+  session: Pick<Session, "role" | "roles" | "cabinet_ids"> | null,
   cabinetId: string | null,
 ): boolean {
   if (!session) return true; // cron и локальная разработка уже проверяются в proxy.
@@ -29,7 +28,15 @@ export function sessionHasCabinetAccess(
       && !cabinetId.startsWith("group:")
       && session.cabinet_ids.includes(cabinetId);
   }
-  if (!isCabinetScopedRole(session.role) || session.cabinet_ids.length === 0) return true;
+  // Скоуп смотрит на ВЕСЬ набор ролей, а не только на основную (session.role).
+  // Раньше здесь стояло isCabinetScopedRole(session.role), и это ломалось в
+  // обе стороны: строго ограниченный wb_manager/ozon_manager с непустым
+  // cabinet_ids не мог понять, что агрегат "all" ему запрещён (это как раз
+  // и проверяет эта функция дальше), а сотрудник с второй ролью без скоупа
+  // (например, ещё и director) неверно считался ограниченным, потому что
+  // session.role — только первая из его ролей. Вторая роль обязана
+  // добавлять доступ, а не отниматься проверкой одной лишь первой.
+  if (!rolesAreCabinetScoped(sessionRoles(session)) || session.cabinet_ids.length === 0) return true;
   return cabinetId !== null && session.cabinet_ids.includes(cabinetId);
 }
 

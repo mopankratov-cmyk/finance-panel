@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sessionRoles } from "../lib/auth/session.ts";
 import { canAccess } from "../lib/auth/roles.ts";
+import { sessionHasCabinetAccess } from "../lib/auth/cabinetAccess.ts";
 import {
   isRole,
   primaryRole,
@@ -56,6 +57,29 @@ test("ограничение по кабинетам снимается толь
   assert.equal(rolesAreCabinetScoped(["wb_manager", "ozon_manager"]), true);
   assert.equal(rolesAreCabinetScoped(["wb_manager", "buyer"]), false);
   assert.equal(rolesAreCabinetScoped([]), false);
+});
+
+test("доступ к кабинету по сессии считает СУММУ ролей, а не только основную", () => {
+  // Раньше sessionHasCabinetAccess звал isCabinetScopedRole(session.role) —
+  // только по первой роли. Второй ограничивающий эффект тут не при чём:
+  // вторая роль обязана добавлять доступ, а не теряться за session.role.
+  const OWN = "00000000-0000-4000-8000-000000000001";
+  const FOREIGN = "00000000-0000-4000-8000-000000000002";
+
+  // Один менеджер с непустым списком кабинетов — ограничение остаётся.
+  const scoped = { role: "wb_manager" as const, cabinet_ids: [OWN] };
+  assert.equal(sessionHasCabinetAccess(scoped, OWN), true);
+  assert.equal(sessionHasCabinetAccess(scoped, FOREIGN), false);
+
+  // Вторая роль — тоже ограниченная (ozon_manager): сумма всё ещё ограничена.
+  const twoScoped = { role: "wb_manager" as const, roles: ["wb_manager", "ozon_manager"] as const, cabinet_ids: [OWN] };
+  assert.equal(sessionHasCabinetAccess(twoScoped, FOREIGN), false);
+
+  // Основная роль (session.role) — ограниченная, но среди ролей есть
+  // director: сумма ролей не ограничена, и это обязано снять запрет.
+  const withDirector = { role: "wb_manager" as const, roles: ["wb_manager", "director"] as const, cabinet_ids: [OWN] };
+  assert.equal(sessionHasCabinetAccess(withDirector, FOREIGN), true);
+  assert.equal(sessionHasCabinetAccess(withDirector, "all"), true);
 });
 
 test("внешний контур определяется по любой внешней роли", () => {

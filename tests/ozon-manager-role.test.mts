@@ -50,7 +50,11 @@ test("скоуп кабинетов применяется к новой рол�
   ];
   for (const file of files) {
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
-    assert.match(source, /isCabinetScopedRole/, `${file} должен спрашивать общий признак, а не сравнивать роль со строкой`);
+    // lib/auth/cabinetAccess.ts спрашивает сумму ролей через
+    // rolesAreCabinetScoped(sessionRoles(session)) — так второй роли можно
+    // добавить доступ, а не потерять его из-за одной лишь session.role.
+    // Остальные места пока смотрят на одну роль через isCabinetScopedRole.
+    assert.match(source, /isCabinetScopedRole|rolesAreCabinetScoped/, `${file} должен спрашивать общий признак, а не сравнивать роль со строкой`);
     assert.equal(
       /role\s*===\s*"manager"/.test(source),
       false,
