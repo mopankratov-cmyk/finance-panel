@@ -148,7 +148,24 @@ export interface MoySkladInternalOrderInput {
   positions: { quantity: number; assortment: MoySkladMeta }[];
 }
 
+/**
+ * Заказ уже мог быть создан в МойСклад предыдущей попыткой — например, если
+ * ответ на POST потерялся из-за сетевого сбоя или функция перезапустилась до
+ * записи факта в Supabase (см. wms_order_runs.external_orders). syncId у нас
+ * уникален на заказ, поэтому ретрай ищет документ по нему, прежде чем создавать
+ * новый: так повтор становится идемпотентным, а не плодит дубли в МойСклад.
+ */
+async function findMoySkladInternalOrderBySyncId(token: string, syncId: string): Promise<{ id: string; name: string; meta: MoySkladMeta } | null> {
+  const filter = new URLSearchParams({ filter: `syncId=${syncId}`, limit: "1" });
+  const page = await request<{ rows?: { id?: string; name?: string; meta?: Partial<MoySkladMeta> }[] }>(token, `entity/internalorder?${filter}`);
+  const row = page.rows?.[0];
+  if (!row?.id || !row.meta?.href || !row.meta?.type) return null;
+  return { id: row.id, name: row.name ?? "Без названия", meta: { href: row.meta.href, type: row.meta.type, mediaType: row.meta.mediaType ?? "application/json" } };
+}
+
 export async function createMoySkladInternalOrder(token: string, input: MoySkladInternalOrderInput) {
+  const existing = await findMoySkladInternalOrderBySyncId(token, input.syncId);
+  if (existing) return existing;
   return request<{ id: string; name: string; syncId?: string; meta: MoySkladMeta }>(token, "entity/internalorder", {
     method: "POST",
     body: JSON.stringify({

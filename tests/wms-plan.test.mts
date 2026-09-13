@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { allocateWholeContainers, restrictTaraLines } from "../lib/supplies/wms";
-import { mapTaraToAssortment, type MoySkladAssortment } from "../lib/moysklad/api";
+import { createMoySkladInternalOrder, mapTaraToAssortment, type MoySkladAssortment, type MoySkladInternalOrderInput } from "../lib/moysklad/api";
 import type { TaraLine } from "../lib/supplies/tara";
 
 const line = (container: string, nmId: number | null, article: string, quantity: number): TaraLine => ({ lineNumber: 2, container, nmId, article, barcode: "", quantity, volumeLiters: null });
@@ -38,4 +38,57 @@ test("a box containing an excluded SKU is excluded as a whole", () => {
   const plan = allocateWholeContainers(mapped, [{ name: "Коледино", pct: 100 }], new Set([2]), ["a"]);
   assert.deepEqual(plan.excludedContainers, ["MIXED"]);
   assert.equal(plan.orders.length, 0);
+});
+
+const orderInput = (syncId: string): MoySkladInternalOrderInput => ({
+  syncId,
+  name: "WMS WB 1 · Коледино",
+  description: "test",
+  organization: { href: "https://api.moysklad.ru/api/remap/1.2/entity/organization/org-1", type: "organization", mediaType: "application/json" },
+  positions: [{ quantity: 1, assortment: { href: "https://api.moysklad.ru/api/remap/1.2/entity/product/p-1", type: "product", mediaType: "application/json" } }],
+});
+
+test("a retry after a lost response finds the already-created order by syncId instead of posting a duplicate", async () => {
+  const originalFetch = globalThis.fetch;
+  let postCount = 0;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (init?.method === "POST" && url.includes("/entity/internalorder")) {
+      postCount += 1;
+      return new Response(JSON.stringify({ id: "created-1", name: "WMS WB 1", meta: { href: "https://api.moysklad.ru/api/remap/1.2/entity/internalorder/created-1", type: "internalorder", mediaType: "application/json" } }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/entity/internalorder?")) {
+      // Ретрай: документ с этим syncId уже существует в МойСклад с прошлой попытки.
+      return new Response(JSON.stringify({ rows: [{ id: "created-1", name: "WMS WB 1", meta: { href: "https://api.moysklad.ru/api/remap/1.2/entity/internalorder/created-1", type: "internalorder", mediaType: "application/json" } }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error(`unexpected request: ${url}`);
+  }) as typeof fetch;
+  try {
+    const result = await createMoySkladInternalOrder("token", orderInput("sync-1"));
+    assert.equal(result.id, "created-1");
+    assert.equal(postCount, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a first attempt with no existing order posts exactly once", async () => {
+  const originalFetch = globalThis.fetch;
+  let postCount = 0;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (init?.method === "POST" && url.includes("/entity/internalorder")) {
+      postCount += 1;
+      return new Response(JSON.stringify({ id: "created-2", name: "WMS WB 2", meta: { href: "https://api.moysklad.ru/api/remap/1.2/entity/internalorder/created-2", type: "internalorder", mediaType: "application/json" } }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/entity/internalorder?")) return new Response(JSON.stringify({ rows: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    throw new Error(`unexpected request: ${url}`);
+  }) as typeof fetch;
+  try {
+    const result = await createMoySkladInternalOrder("token", orderInput("sync-2"));
+    assert.equal(result.id, "created-2");
+    assert.equal(postCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
