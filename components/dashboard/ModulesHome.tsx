@@ -108,8 +108,13 @@ export function ModulesHome() {
 
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }).catch(() => {}); router.push("/login"); router.refresh(); };
   const visiblePrimary = PRIMARY_MODULES.filter((m) => !me || canAccess(me.role, m.href));
+  // Блок «Что требует внимания» и ссылки в нём ведут в /agent — ролям без
+  // доступа к этому модулю (закупщик и любая другая роль без /agent в ACCESS)
+  // сам блок показывать нельзя: клик по своему же виджету на дашборде не
+  // должен упираться в отказ.
+  const canSeeAgent = !me || canAccess(me.role, "/agent");
   const tourSteps: TourStep[] = [
-    ...(attention.length > 0 ? [{ selector: '[data-tour="attention"]', title: "Что требует внимания", text: "Топ-5 самых срочных сигналов из правил и WB-аналитики — критичные вверху. Клик открывает полный список в AI-агенте." }] : []),
+    ...(canSeeAgent && attention.length > 0 ? [{ selector: '[data-tour="attention"]', title: "Что требует внимания", text: "Топ-5 самых срочных сигналов из правил и WB-аналитики — критичные вверху. Клик открывает полный список в AI-агенте." }] : []),
     { selector: '[data-tour="modules"]', title: "Модули", text: "Основные кабинеты доступны сразу. Остальные инструменты сгруппированы в компактные раскрывающиеся разделы." },
     { selector: '[data-tour="user"]', title: "Ваш аккаунт", text: "Email и роль видны здесь же — тут и кнопка выхода." },
   ];
@@ -157,7 +162,7 @@ export function ModulesHome() {
       </div>
 
       <main className="mx-auto max-w-6xl pl-[calc(1rem+var(--safe-l))] pr-[calc(1rem+var(--safe-r))] sm:pl-[calc(1.5rem+var(--safe-l))] sm:pr-[calc(1.5rem+var(--safe-r))] py-8">
-        {attention.length > 0 && (
+        {canSeeAgent && attention.length > 0 && (
           <details
             data-tour="attention"
             open={attentionOpen}
