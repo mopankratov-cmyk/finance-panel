@@ -149,7 +149,23 @@ export async function resolveAdvertCabinetContext(input: {
   };
 }
 
-export async function auditAdvertOperation(input: AdvertAuditInput): Promise<void> {
+export interface AdvertAuditResult {
+  ok: boolean;
+  /** Заполнено только при ok:false — сообщение из последней неудавшейся попытки записи. */
+  error?: string;
+}
+
+/**
+ * Возвращает результат записи, а не глотает его: большинство вызывающих действий
+ * (ставка, статус, бюджет) уже применены в WB, и для них потерянная строка
+ * журнала — не более чем неудобство при ручном разборе. Но пополнение
+ * (app/api/adverts/deposit/route.ts) — особый случай: этот журнал единственный
+ * источник данных для суточного лимита (depositAllowance в depositLimits.ts), и
+ * если запись не легла, лимит начинает тихо недосчитывать реально потраченные
+ * деньги. Поэтому вызывающий код обязан уметь узнать об ошибке, а не только
+ * увидеть её в логе.
+ */
+export async function auditAdvertOperation(input: AdvertAuditInput): Promise<AdvertAuditResult> {
   const oldBid = input.action === "bid" && typeof input.oldValue === "number" ? input.oldValue : null;
   const newBid = input.action === "bid" && typeof input.newValue === "number" ? input.newValue : null;
   const detail = safeDetail(input.wbResult);
@@ -184,10 +200,14 @@ export async function auditAdvertOperation(input: AdvertAuditInput): Promise<voi
       console.error(
         `[auditAdvertOperation] запись в advert_bid_changes не удалась (advert ${input.advertId}, action ${input.action}): ${fallback.error.message}`,
       );
+      return { ok: false, error: fallback.error.message };
     }
+    return { ok: true };
   } else if (extended.error) {
     console.error(
       `[auditAdvertOperation] запись в advert_bid_changes не удалась (advert ${input.advertId}, action ${input.action}): ${extended.error.message}`,
     );
+    return { ok: false, error: extended.error.message };
   }
+  return { ok: true };
 }

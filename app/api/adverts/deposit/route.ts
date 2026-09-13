@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.message }, { status: result.status === 0 ? 500 : 502 });
   }
 
-  await auditAdvertOperation({
+  const audit = await auditAdvertOperation({
     context,
     reason,
     advertId,
@@ -90,6 +90,24 @@ export async function POST(request: NextRequest) {
     newValue: { sum, type: source, source: DEPOSIT_SOURCE_LABEL[source] },
     wbResult: result.data,
   });
+
+  // Деньги уже ушли в WB — эту операцию не отменить. Но если строка журнала не
+  // легла, depositAllowance (lib/adverts/depositLimits.ts) на следующем запросе
+  // недосчитает именно эту сумму: журнал — единственный источник суточного
+  // лимита. Тихо вернуть ok:true значит скрыть, что предохранитель по кабинету
+  // больше не заслуживает доверия, пока кто-то не сверит его руками.
+  if (!audit.ok) {
+    return NextResponse.json(
+      {
+        error:
+          `Пополнение на ${sum} прошло в WB, но запись в журнал не удалась (${audit.error ?? "неизвестная ошибка"}). ` +
+          "Суточный лимит по кабинету больше не считается верно — до ручной проверки новые пополнения этого кабинета делать нельзя.",
+        depositOk: true,
+        auditFailed: true,
+      },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json({
     ok: true,
