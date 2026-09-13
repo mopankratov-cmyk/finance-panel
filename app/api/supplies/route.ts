@@ -74,6 +74,28 @@ async function fetchAllStocks(db: SupabaseClient, single: string | null, members
   }, { label: "Остатки WB", concurrency: 6 });
 }
 
+// Открытые (заказаны, но ещё не приняты) партии закупки — «уже в пути от
+// поставщика» в терминах need(). received_at IS NULL — тот же критерий
+// открытой партии, что и openNmIds в components/supplies/ReceivingTab.tsx.
+// Без этого вычитания need() считает потребность по остатку и в пути от WB
+// клиенту, но не видит уже оформленный заказ поставщику — покупатель дозаказывает
+// то, что и так едет.
+async function fetchOpenPurchaseReceipts(db: SupabaseClient, single: string | null, members: string[] | null) {
+  type OpenReceiptRow = { nm_id: number; cabinet_id: string | null; expected_qty: number | null };
+  let q = db.from("purchase_receipts").select("nm_id, cabinet_id, expected_qty").is("received_at", null);
+  if (members) q = q.in("cabinet_id", members);
+  else if (single) q = q.eq("cabinet_id", single);
+  const { data, error } = await q;
+  if (error) {
+    // purchase_receipts — не то, из-за чего должен падать весь экран «Поставки»:
+    // при отсутствии таблицы/колонки (42703/42P01, ещё не применённая миграция)
+    // просто не вычитаем уже заказанное, как и с необязательными габаритами
+    // WB (pimRowsPromise) ниже.
+    return [] as OpenReceiptRow[];
+  }
+  return (data ?? []) as OpenReceiptRow[];
+}
+
 // rnp_report принимает один p_cabinet — для группы вызываем по каждому участнику
 // и суммируем аддитивные поля по nm_id (заказы/остаток/в пути — простые суммы,
 // без пересчёта долей/ставок, поэтому merge безопасен).
@@ -157,24 +179,34 @@ export async function GET(req: NextRequest) {
       members: members ? [...members].sort().join(",") : "",
       schema: 1,
     };
-    const [rpcRows, allStockRowsRaw, costsRes, pimSnapshot] = await Promise.all([
+    const [rpcRows, allStockRowsRaw, costsRes, pimSnapshot, openReceiptsRaw] = await Promise.all([
       loadHourlyDashboard("wb-supplies-rows", snapshotIdentity, () => fetchRpcRows(db, p_cabinet, members), { forceRefresh }),
       loadHourlyDashboard("wb-supplies-stocks", snapshotIdentity, () => fetchAllStocks(db, p_cabinet, members), { forceRefresh }),
       db.from("product_costs").select("article, name"),
       pimRowsPromise,
+      fetchOpenPurchaseReceipts(db, p_cabinet, members),
     ]);
     if (costsRes.error) throw new Error(costsRes.error.message);
     const pimRows = pimSnapshot.rows;
     const allStockRows = allStockRowsRaw.filter(stockAllowed);
     const stockRows = allStockRows;
+    // Открытые партии закупки живьём (без часового снимка) — важно увидеть
+    // «уже заказано» сразу после оформления поставки, а не через час.
+    const openPurchaseQtyByNm = new Map<number, number>();
+    for (const r of openReceiptsRaw.filter(stockAllowed)) {
+      const qty = Number(r.expected_qty ?? 0);
+      if (qty <= 0) continue;
+      openPurchaseQtyByNm.set(r.nm_id, (openPurchaseQtyByNm.get(r.nm_id) ?? 0) + qty);
+    }
 
-    const need = (avgDaily: number, stock: number, inWay: number, horizon: number) =>
-      Math.max(0, Math.ceil(avgDaily * horizon - stock - inWay));
+    const need = (avgDaily: number, stock: number, inWay: number, horizon: number, onOrder: number) =>
+      Math.max(0, Math.ceil(avgDaily * horizon - stock - inWay - onOrder));
 
     const skus: SupplyRow[] = rpcRows.map((r) => {
       const avgDaily = r.orders_month / 30;
       const stock = Number(r.stock);
       const inWay = Number(r.in_way_to_client);
+      const onOrder = openPurchaseQtyByNm.get(r.nm_id) ?? 0;
       return {
         nmId: r.nm_id,
         article: r.article,
@@ -182,9 +214,9 @@ export async function GET(req: NextRequest) {
         stock,
         inWay,
         daysLeft: avgDaily > 0 ? Math.round(stock / avgDaily) : null,
-        need30: need(avgDaily, stock, inWay, 30),
-        need45: need(avgDaily, stock, inWay, 45),
-        need60: need(avgDaily, stock, inWay, 60),
+        need30: need(avgDaily, stock, inWay, 30, onOrder),
+        need45: need(avgDaily, stock, inWay, 45, onOrder),
+        need60: need(avgDaily, stock, inWay, 60, onOrder),
       };
     });
 
