@@ -3,6 +3,7 @@
 import { Download, Loader2, Play, Search, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingBanner, SkeletonTableRows, useElapsedSeconds } from "@/components/ui/LoadingState";
+import { rolesCan } from "@/lib/auth/permissions";
 import { WbEmptyState, WbErrorState } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -80,7 +81,14 @@ function explanation(decision: Decision) {
 }
 
 export function WbRepricerPage() {
-  const { cabinetId, activeCabinet, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, canWrite } = useWbCabinet();
+  const { cabinetId, activeCabinet, cabinets, ready, loading: cabinetsLoading, error: cabinetsError, canWrite, user } = useWbCabinet();
+  // canWrite здесь означает лишь «не внешний селлер» (см. WbCabinetContext) —
+  // сам прогон меняет цены и на сервере требует price.edit (apiPermissions
+  // для /api/repricer/), которого нет у fin_director/financier. Без этой
+  // проверки кнопка «Прогнать сейчас» была живой у ролей, которым сервер
+  // отвечает 403.
+  const userRoles = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
+  const canRunRepricer = canWrite && rolesCan(userRoles, "price.edit");
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [signals, setSignals] = useState<Map<number, string>>(new Map());
@@ -138,7 +146,7 @@ export function WbRepricerPage() {
   }, [load, retryKey]);
 
   const run = async () => {
-    if (!canWrite || running) return;
+    if (!canRunRepricer || running) return;
     const confirmed = window.confirm(`Сформировать новые предложения цены для кабинета «${activeCabinet?.name ?? "WB"}»? Цены на WB автоматически не изменятся.`);
     if (!confirmed) return;
     setRunning(true);
@@ -187,7 +195,7 @@ export function WbRepricerPage() {
         </label>
 
         <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
-          <button type="button" onClick={run} disabled={!canWrite || running} title={canWrite ? "Сформировать предложения" : "Выберите один кабинет"} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-9">
+          <button type="button" onClick={run} disabled={!canRunRepricer || running} title={canRunRepricer ? "Сформировать предложения" : canWrite ? "Нет права менять цены" : "Выберите один кабинет"} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:min-h-9">
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Play className="h-3.5 w-3.5" aria-hidden="true" />}
             {running ? "Считаем…" : "Прогнать сейчас"}
           </button>
