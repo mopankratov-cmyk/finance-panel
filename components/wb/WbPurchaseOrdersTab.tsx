@@ -3,6 +3,7 @@
 import {
   CalendarClock,
   Factory,
+  FileWarning,
   History,
   Loader2,
   PackagePlus,
@@ -32,6 +33,8 @@ import {
 import type { SupplierView } from "@/lib/purchases/suppliers";
 import { SHIPMENT_STATUSES, type ShipmentStatus } from "@/lib/purchases/shipments";
 import type { SupplierShipmentView } from "@/lib/purchases/shipmentsDb";
+import { DISCREPANCY_RESOLUTIONS, type DiscrepancyResolution } from "@/lib/purchases/discrepancyActs";
+import type { DiscrepancyActView } from "@/lib/purchases/discrepancyActsDb";
 import { WbEmptyState, WbErrorState } from "./WbModuleHeader";
 
 interface Props {
@@ -56,6 +59,17 @@ interface HistoryEntry {
   createdAt: string;
   before: unknown;
   after: unknown;
+}
+
+interface DiscrepancySummary {
+  batchId: string | null;
+  counted: boolean;
+  expectedQty: number;
+  receivedQty: number;
+  defectQty: number;
+  short: number;
+  over: number;
+  act: DiscrepancyActView | null;
 }
 
 const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
@@ -92,6 +106,14 @@ const SHIPMENT_STATUS_STYLES: Record<ShipmentStatus, string> = {
   arrived: "border-violet-200 bg-violet-50 text-violet-700",
   received: "border-emerald-200 bg-emerald-50 text-emerald-700",
   cancelled: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+const RESOLUTION_LABELS: Record<DiscrepancyResolution, string> = {
+  wait_restock: "Ждать допоставку",
+  reduce_debt: "Уменьшить долг",
+  refund: "Запросить возврат денег",
+  accept_replacement: "Принять замену",
+  claim: "Оформить претензию",
 };
 
 const formatMoney = (value: number, currency = "RUB") => new Intl.NumberFormat("ru-RU", {
@@ -194,8 +216,14 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
   const [shipmentDraft, setShipmentDraft] = useState<{ carrier: string; route: string; eta: string; quantities: Record<number, string> } | null>(null);
   const [shipmentSaving, setShipmentSaving] = useState(false);
   const [shipmentError, setShipmentError] = useState<string | null>(null);
+  const [discrepancy, setDiscrepancy] = useState<DiscrepancySummary | null>(null);
+  const [discrepancyLoading, setDiscrepancyLoading] = useState(false);
+  const [discrepancySaving, setDiscrepancySaving] = useState(false);
+  const [discrepancyError, setDiscrepancyError] = useState<string | null>(null);
+  const [discrepancyNote, setDiscrepancyNote] = useState("");
   const requestId = useRef(0);
   const shipmentRequestId = useRef(0);
+  const discrepancyRequestId = useRef(0);
   const version = useRef(0);
   const savingRef = useRef(false);
 
@@ -270,6 +298,80 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
     void loadShipments(form.id);
   }, [open, form?.id, loadShipments]);
 
+  const loadDiscrepancy = useCallback(async (orderId: string) => {
+    const current = ++discrepancyRequestId.current;
+    setDiscrepancyLoading(true);
+    try {
+      const response = await fetch(`/api/purchase-orders/${orderId}/discrepancy`, { cache: "no-store" });
+      const body = await response.json() as { data: DiscrepancySummary | null; error: string | null };
+      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+      if (current === discrepancyRequestId.current) {
+        setDiscrepancy(body.data);
+        setDiscrepancyNote(body.data?.act?.note ?? "");
+      }
+    } catch (error) {
+      if (current === discrepancyRequestId.current) setDiscrepancyError(error instanceof Error ? error.message : "Не удалось загрузить расхождения");
+    } finally {
+      if (current === discrepancyRequestId.current) setDiscrepancyLoading(false);
+    }
+  }, []);
+
+  // Расхождение есть, только если приёмка вообще создана — до этого спрашивать
+  // /discrepancy бессмысленно (у заказа ещё нет receiptBatchId). discrepancySaving
+  // сбрасываем тут же на каждую смену заказа (а не только когда у нового заказа
+  // ещё нет receiptBatchId) — иначе кнопки решения на только что открытом заказе
+  // B остаются заблокированы, пока не долетит забытый запрос от заказа A.
+  useEffect(() => {
+    discrepancyRequestId.current += 1;
+    setDiscrepancySaving(false);
+    if (!open || !form?.id || !form.receiptBatchId) { setDiscrepancy(null); setDiscrepancyError(null); return; }
+    void loadDiscrepancy(form.id);
+  }, [open, form?.id, form?.receiptBatchId, loadDiscrepancy]);
+
+  const submitDiscrepancyResolution = async (resolution: DiscrepancyResolution) => {
+    if (!form?.id || discrepancySaving) return;
+    setDiscrepancySaving(true);
+    setDiscrepancyError(null);
+    try {
+      const response = await fetch(`/api/purchase-orders/${form.id}/discrepancy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resolution, status: "open", note: discrepancyNote }),
+      });
+      const body = await response.json() as { data: unknown; error: string | null };
+      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+      await loadDiscrepancy(form.id);
+    } catch (error) {
+      setDiscrepancyError(error instanceof Error ? error.message : "Не удалось сохранить решение");
+    } finally {
+      setDiscrepancySaving(false);
+    }
+  };
+
+  const patchDiscrepancyAct = async (patch: { status?: "open" | "resolved"; resolution?: DiscrepancyResolution; note?: string }) => {
+    if (!form?.id || !discrepancy?.act || discrepancySaving) return;
+    setDiscrepancySaving(true);
+    setDiscrepancyError(null);
+    try {
+      // Шлём только то, что реально меняется — не весь акт целиком: иначе
+      // устаревший локальный снимок (вкладка не перечитала после чужого
+      // PATCH) мог бы прислать старый status и молча переоткрыть уже
+      // решённый кем-то другим акт при простом сохранении комментария.
+      const response = await fetch(`/api/discrepancy-acts/${discrepancy.act.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const body = await response.json() as { data: unknown; error: string | null };
+      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+      await loadDiscrepancy(form.id);
+    } catch (error) {
+      setDiscrepancyError(error instanceof Error ? error.message : "Не удалось обновить акт");
+    } finally {
+      setDiscrepancySaving(false);
+    }
+  };
+
   const mutate = useCallback((change: (current: EditableOrder) => EditableOrder) => {
     version.current += 1;
     setForm((current) => current ? change(current) : current);
@@ -337,6 +439,7 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
     setPickerNm("");
     setShipmentDraft(null);
     setShipmentError(null);
+    setDiscrepancyError(null);
     setOpen(true);
   };
 
@@ -351,6 +454,7 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
     setPickerNm("");
     setShipmentDraft(null);
     setShipmentError(null);
+    setDiscrepancyError(null);
     setOpen(true);
   };
 
@@ -575,6 +679,43 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
               </div>
             )}
           </EditorSection>
+
+          {form.receiptBatchId ? <EditorSection icon={FileWarning} title="Расхождения">
+            {discrepancyError ? <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">{discrepancyError}</div> : null}
+            {discrepancyLoading && !discrepancy ? <div className="py-4 text-center text-[11px] text-slate-400">Загрузка…</div> : !discrepancy ? null : !discrepancy.counted ? (
+              <div className="py-4 text-center text-[11px] text-slate-400">Приёмка ещё не пересчитана — расхождение станет видно после пересчёта на складе.</div>
+            ) : discrepancy.short === 0 && discrepancy.over === 0 && discrepancy.defectQty === 0 ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-700">Принято точно как заказано — расхождений нет.</div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-4 text-[11px]">
+                  {discrepancy.short > 0 ? <div><div className="text-[9px] uppercase tracking-wide text-slate-400">Недовоз</div><div className="font-semibold text-rose-600">−{discrepancy.short.toLocaleString("ru-RU")} шт</div></div> : null}
+                  {discrepancy.over > 0 ? <div><div className="text-[9px] uppercase tracking-wide text-slate-400">Излишек</div><div className="font-semibold text-amber-600">+{discrepancy.over.toLocaleString("ru-RU")} шт</div></div> : null}
+                  {discrepancy.defectQty > 0 ? <div><div className="text-[9px] uppercase tracking-wide text-slate-400">Брак</div><div className="font-semibold text-rose-600">{discrepancy.defectQty.toLocaleString("ru-RU")} шт</div></div> : null}
+                </div>
+                {discrepancy.act ? (
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-[11px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-slate-700">{RESOLUTION_LABELS[discrepancy.act.resolution]}</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${discrepancy.act.status === "resolved" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{discrepancy.act.status === "resolved" ? "Решено" : "Открыт"}</span>
+                    </div>
+                    <textarea aria-label="Комментарий к акту" value={discrepancyNote} onChange={(event) => setDiscrepancyNote(event.target.value)} placeholder="Комментарий" rows={2} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void patchDiscrepancyAct({ note: discrepancyNote })} disabled={discrepancySaving} className={smallButton}>Сохранить комментарий</button>
+                      {discrepancy.act.status === "open"
+                        ? <button type="button" onClick={() => void patchDiscrepancyAct({ status: "resolved" })} disabled={discrepancySaving} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Отметить решённым</button>
+                        : <button type="button" onClick={() => void patchDiscrepancyAct({ status: "open" })} disabled={discrepancySaving} className={smallButton}>Переоткрыть</button>}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="mb-1.5 text-[10px] font-medium text-slate-500">Решение закупщика</div>
+                    <div className="flex flex-wrap gap-2">{DISCREPANCY_RESOLUTIONS.map((resolution) => <button key={resolution} type="button" onClick={() => void submitDiscrepancyResolution(resolution)} disabled={discrepancySaving} className={smallButton}>{RESOLUTION_LABELS[resolution]}</button>)}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </EditorSection> : null}
 
           {history ? <EditorSection icon={History} title="История изменений"><div className="space-y-2">{history.length === 0 ? <div className="text-[11px] text-slate-400">История пока пуста.</div> : history.map((entry) => {
             const changes = historyChanges.get(entry.id) ?? [];

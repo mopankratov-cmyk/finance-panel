@@ -148,6 +148,7 @@ const RULES: readonly ApiRule[] = [
   ["/api/suppliers/", { permission: "purchase.manage" }],
   ["/api/supplier-shipments", { permission: "purchase.manage" }],
   ["/api/supplier-shipments/", { permission: "purchase.manage" }],
+  ["/api/discrepancy-acts/", { permission: "purchase.manage" }],
   ["/api/moysklad", { permission: "purchase.manage" }],
 
   // ── Поставки ──
