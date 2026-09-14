@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
 import { parseCsv, parseRussianAmount, parseRussianDate } from "@/components/payments/ddsCsv";
 import { Modal } from "@/components/ui/Modal";
-import { categoryOptions } from "@/lib/finance/categories";
+import { useDdsCategories } from "@/components/providers/FinanceProvider";
 import { generateId } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import { PRIORITY_META, setPaymentPriorityComment, suggestPaymentPriority, type PaymentPriority } from "./paymentPriority";
@@ -67,6 +67,7 @@ export function BulkPaymentModal({
   existingPayments: Payment[];
   onAddMany: (payments: Payment[]) => void;
 }) {
+  const { categoryOptions } = useDdsCategories();
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);

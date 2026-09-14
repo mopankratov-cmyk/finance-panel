@@ -125,9 +125,12 @@ export function isKnownCategory(category: string | null | undefined): boolean {
   return SECTION_BY_CATEGORY.has((category ?? "").trim());
 }
 
-export function sectionForCategory(category: string | null | undefined): DdsSection {
+export function sectionForCategory(category: string | null | undefined, customExpenseNames: readonly string[] = []): DdsSection {
   const value = (category ?? "").trim();
-  return SECTION_BY_CATEGORY.get(value) ?? LEGACY_SECTIONS[value] ?? "Прочее";
+  const existing = SECTION_BY_CATEGORY.get(value) ?? LEGACY_SECTIONS[value];
+  if (existing) return existing;
+  if (customExpenseNames.includes(value)) return "Операционная";
+  return "Прочее";
 }
 
 /**
@@ -135,7 +138,8 @@ export function sectionForCategory(category: string | null | undefined): DdsSect
  * в справочнике нет. Иначе браузер, не найдя значения среди опций, выбирает
  * первую — и сохранение молча меняет статью.
  */
-export function categoryOptions(current?: string | null): string[] {
+export function categoryOptions(current?: string | null, customExpenseNames: readonly string[] = []): string[] {
   const value = (current ?? "").trim();
-  return value && !SECTION_BY_CATEGORY.has(value) ? [value, ...DDS_CATEGORIES] : [...DDS_CATEGORIES];
+  const options = [...new Set([...DDS_CATEGORIES, ...customExpenseNames])];
+  return value && !options.includes(value) ? [value, ...options] : options;
 }

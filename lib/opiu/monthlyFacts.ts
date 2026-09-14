@@ -1,5 +1,6 @@
 import { LOAN_CATEGORIES } from "@/lib/finance/categories";
 import { payrollCategoryForEmployee } from "@/lib/payroll/model";
+import { DDS_OPIU_EXPENSE_TARGETS, type DdsExpenseCategory } from "@/lib/finance/expenseCategories";
 
 export interface MonthlySharedFact {
   amount: number;
@@ -59,11 +60,13 @@ function add(target: Map<string, number>, id: string, value: number) {
   target.set(id, Math.round(((target.get(id) ?? 0) + value) * 100) / 100);
 }
 
-export function aggregateDdsMonthlyFacts(rows: readonly DdsFactRow[]): Record<string, MonthlySharedFact> {
+export function aggregateDdsMonthlyFacts(rows: readonly DdsFactRow[], customCategories: readonly DdsExpenseCategory[] = []): Record<string, MonthlySharedFact> {
   const totals = new Map<string, number>();
+  const allowedTargets = new Set(DDS_OPIU_EXPENSE_TARGETS.map((article) => article.id));
+  const customMapping = new Map(customCategories.filter((category) => category.opiuArticleId && allowedTargets.has(category.opiuArticleId)).map((category) => [category.name, category.opiuArticleId!]));
   for (const row of rows) {
     const category = String(row.category ?? "").trim();
-    const id = DDS_TO_OPIU[category];
+    const id = DDS_TO_OPIU[category] ?? customMapping.get(category);
     if (!id || row.amount >= 0) continue;
     // Зарплатная ведомость сама создаёт платежи в ДДС. Начисление берём из
     // ведомости ниже, поэтому её платежи здесь исключаем, иначе ФОТ удвоится.

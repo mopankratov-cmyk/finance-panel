@@ -14,6 +14,7 @@ import {
 import { buildDdsSummary } from "./ddsSummary";
 import { Modal } from "@/components/ui/Modal";
 import type { Account, Payment } from "@/lib/types";
+import { useDdsCategories } from "@/components/providers/FinanceProvider";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const money = (n: number) => `${n < 0 ? "−" : "+"}${fmt(Math.abs(n))} ₽`;
@@ -35,6 +36,7 @@ export function ImportDdsModal({
   companies,
   onCompanyCreated,
 }: Props) {
+  const { customCategoryNames } = useDdsCategories();
   const [result, setResult] = useState<DdsParseResult | null>(null);
   const [fileName, setFileName] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -94,7 +96,7 @@ export function ImportDdsModal({
     }
   };
 
-  const summary = useMemo(() => (result ? buildDdsSummary(result.drafts) : null), [result]);
+  const summary = useMemo(() => (result ? buildDdsSummary(result.drafts, undefined, undefined, customCategoryNames) : null), [result, customCategoryNames]);
   const assignment = useMemo<CompanyAssignment>(() => {
     if (companyMode === "from-file") return { companies };
     if (companyMode === "unassigned") return { companies, overrideCompanyId: null };

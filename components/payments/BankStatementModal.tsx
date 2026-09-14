@@ -7,13 +7,12 @@ import type { BankSuggestion } from "./bankAutoClassify";
 import type { DdsCompany } from "./ddsCompanies";
 import { rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
 import { needsDirectUpload, uploadViaStorage } from "./uploadViaStorage";
-import { DDS_CATEGORIES } from "@/lib/finance/categories";
+import { useDdsCategories } from "@/components/providers/FinanceProvider";
 import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 
 // Статьи — из единого справочника; отдельного списка «для выписки» больше нет.
-const BANK_CATEGORIES = DDS_CATEGORIES;
 
 interface Props {
   open: boolean;
@@ -25,6 +24,7 @@ interface Props {
 }
 
 export function BankStatementModal({ open, onClose, accounts, companies, onQueued }: Props) {
+  const { categories: BANK_CATEGORIES } = useDdsCategories();
   const [statement, setStatement] = useState<BankStatement | null>(null);
   const [fileName, setFileName] = useState("");
   const [companyId, setCompanyId] = useState("");
