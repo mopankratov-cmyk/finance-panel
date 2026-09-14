@@ -2,11 +2,15 @@
 
 import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Pencil, Plus, RefreshCw, Save, Trash2, Upload, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
+import { PaymentChainModal, type PaymentChainSeed } from "./PaymentChainModal";
+import { PaymentChainList } from "./PaymentChainList";
+import { chainMetadata, chainIdForPayment } from "@/lib/finance/paymentChains";
+import { loadFinanceState } from "@/lib/db";
 import { BankReviewPanel } from "./BankReviewPanel";
 import { loadBankGoogleSyncData } from "./bankReviewStore";
 import { BankReconciliationPanel } from "./BankReconciliationPanel";
 import { DdsOverview } from "./DdsOverview";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { DdsReport } from "./DdsReport";
 import {
   loadDdsCompanies,
@@ -36,10 +40,13 @@ export function PaymentsPage() {
   const { categories: DDS_CATEGORIES, customCategoryNames } = useDdsCategories();
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const { state, dispatch } = useFinance();
+  const [chainVersion, setChainVersion] = useState(0);
+  const [chainSeed, setChainSeed] = useState<PaymentChainSeed | null>(null);
+  const closeChain = useCallback(()=>setChainSeed(null),[]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Payment | null>(null);
-  const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation">("overview");
-  const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation">(mode);
+  const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">("overview");
+  const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">(mode);
   const [importOpen, setImportOpen] = useState(false);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [companiesOpen, setCompaniesOpen] = useState(false);
@@ -84,7 +91,7 @@ export function PaymentsPage() {
     () =>
       state.payments.map((payment) => ({
         ...payment,
-        companyId: companyByPayment.get(payment.id) ?? null,
+        companyId: payment.companyId ?? companyByPayment.get(payment.id) ?? null,
       })),
     [state.payments, companyByPayment],
   );
@@ -130,6 +137,7 @@ export function PaymentsPage() {
   };
 
   const openEdit = (payment: Payment) => {
+    if(chainIdForPayment(payment)){setChainSeed({paymentId:payment.id});return;}
     setEditing(payment);
     setModalOpen(true);
   };
@@ -147,6 +155,8 @@ export function PaymentsPage() {
   };
 
   const handleDelete = (id: string) => {
+    const payment=state.payments.find(p=>p.id===id);
+    if(payment && chainMetadata(payment.comment)){setChainSeed({paymentId:id});return;}
     if (confirm("Удалить этот платёж?")) {
       dispatch({ type: "DELETE_PAYMENT", payload: id });
     }
@@ -257,6 +267,7 @@ export function PaymentsPage() {
             {([
               ["overview", "Обзор", LayoutDashboard],
               ["ledger", "Платежи", ListChecks],
+              ["chains", "Цепочки сумм", ListChecks],
               ["dds", "Отчёт ДДС", BarChart3],
               ["review", "На проверке", FileSpreadsheet],
               ["reconciliation", "Сверка банка", Landmark],
@@ -360,6 +371,7 @@ export function PaymentsPage() {
         <BankReconciliationPanel accounts={state.accounts} onImportStatement={() => setBankImportOpen(true)} />
       </TabPanel>
 
+      {mode === "chains" && <PaymentChainList onOpen={setChainSeed} version={chainVersion}/>}
       {mode === "ledger" && (
         <>
       <Card>
@@ -515,9 +527,11 @@ export function PaymentsPage() {
                     </td>
                     <td data-label="Название" className="px-5 py-3 font-medium text-slate-900">
                       {p.category}
+                      {chainIdForPayment(p)&&<button type="button" onClick={()=>setChainSeed({paymentId:p.id})} className="mt-1 block min-h-11 text-left text-xs font-medium text-violet-700 underline">{chainMetadata(p.comment)?'Из исходной суммы '+formatMoney(chainMetadata(p.comment)!.amount):'Показать всю исходную сумму и её части'}</button>}
                     </td>
                     <td data-cell="actions" className="px-5 py-3">
                       <div className="flex items-center justify-end gap-2">
+                        {p.amount<0&&<button type="button" onClick={()=>setChainSeed({paymentId:p.id})} className="min-h-11 rounded-lg border border-violet-200 px-2 text-xs text-violet-700">Цепочка</button>}
                         <button
                           onClick={() => openEdit(p)}
                           aria-label="Редактировать платёж"
@@ -544,6 +558,7 @@ export function PaymentsPage() {
         </>
       )}
 
+      {chainSeed&&<PaymentChainModal seed={chainSeed} accounts={state.accounts} companies={companies} onClose={closeChain} onSaved={async()=>{dispatch({type:"LOAD",payload:await loadFinanceState()});const links=await loadPaymentCompanyLinks();setCompanyByPayment(new Map(links.map(l=>[l.paymentId,l.companyId])));setChainVersion(v=>v+1);}}/>}
       <Modal
         open={modalOpen}
         onClose={() => {

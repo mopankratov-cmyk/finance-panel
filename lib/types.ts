@@ -23,6 +23,7 @@ export interface Payment {
   category: string;
   accountId: string;
   companyId?: string | null;
+  importSource?: string | null;
   status: PaymentStatus;
   counterparty: string;
   comment?: string;

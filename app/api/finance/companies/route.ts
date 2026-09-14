@@ -1,3 +1,4 @@
+import { listPaymentChains, loadPaymentChain, savePaymentChain } from "@/lib/finance/paymentChainsServer";
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -19,11 +20,19 @@ async function authorize() {
   return requireApiSession(["director", "fin_director", "financier"]);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const gate = await authorize();
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
+  if (request.nextUrl.searchParams.get("resource") === "payment-chain-index") {
+    try {return NextResponse.json({chains:await listPaymentChains()});}
+    catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Не удалось загрузить исходные суммы"},{status:500});}
+  }
+  if (request.nextUrl.searchParams.get("resource") === "payment-chain") {
+    try {return NextResponse.json(await loadPaymentChain({paymentId:request.nextUrl.searchParams.get("payment_id")??undefined,reviewId:request.nextUrl.searchParams.get("review_id")??undefined,chainId:request.nextUrl.searchParams.get("chain_id")??undefined}));}
+    catch(error) {return NextResponse.json({error:error instanceof Error?error.message:"Не удалось загрузить цепочку"},{status:(error as {status?:number}).status??500});}
+  }
   const [loaded, links] = await Promise.all([
     readCompaniesCompat((columns) => db.from("companies").select(columns).order("group_name").order("name")),
     loadAllSupabasePages<{ id: string; company_id: string | null }>((from, to) => db
@@ -48,6 +57,10 @@ export async function POST(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const action = String(body.action ?? "");
+  if (action === "payment-chain") {
+    try {return NextResponse.json(await savePaymentChain(body));}
+    catch(error) {return NextResponse.json({error:error instanceof Error?error.message:"Не удалось сохранить цепочку"},{status:(error as {status?:number}).status??500});}
+  }
   if (action === "create") {
     const name = String(body.name ?? "").trim();
     const groupName = String(body.group_name ?? "").trim();

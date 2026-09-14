@@ -1,4 +1,5 @@
 import "server-only";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 import { DEFAULT_STATE } from "@/lib/constants";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -6,7 +7,7 @@ import type { Account, FinanceAction, FinanceState, Loan, Payment } from "@/lib/
 
 type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 type AccountRow = { id: string; name: string; type: string; currency: string; balance: number; opening_balance?: number | null; opening_date?: string | null; created_at?: string };
-type PaymentRow = { id: string; name: string; amount: number; type: string; category: string; account_id: string; company_id?: string | null; date: string; status: string; counterparty: string; comment: string | null; created_at?: string };
+type PaymentRow = { id: string; name: string; amount: number; type: string; category: string; account_id: string; company_id?: string | null; date: string; status: string; counterparty: string; comment: string | null; import_source?: string | null; created_at?: string };
 type LoanRow = { id: string; creditor: string; principal: number; rate_per_day: number; start_date: string; due_date: string; status: string; created_at?: string; annual_rate?: number | null; monthly_rate?: number | null; interest_frequency?: string | null; rate_mode?: string | null; day_count_basis?: number | null; interest_payout?: string | null; reinvest_every_periods?: number | null; extra_contributions?: unknown; tranches?: unknown };
 
 const datedAmounts = (value: unknown): Array<{ date: string; amount: number }> => Array.isArray(value)
@@ -116,7 +117,7 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
   const db = requireDb();
   const [accountsResult, paymentsResult, loansResult] = await Promise.all([
     db.from("accounts").select("*").order("created_at"),
-    db.from("payments").select("*").order("date", { ascending: false }),
+    loadAllSupabasePages<PaymentRow>((from,to) => db.from("payments").select("*").order("date", { ascending: false }).order("id").range(from,to), {label: "Платежи и история цепочек ДДС"}).then(data => ({data,error:null})),
     db.from("loans").select("*").order("created_at"),
   ]);
   if (accountsResult.error) throw accountsResult.error;
@@ -144,6 +145,7 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
       status: row.status as Payment["status"],
       counterparty: row.counterparty ?? "",
       comment: row.comment ?? undefined,
+      importSource: row.import_source ?? null,
     })),
     loans: ((loansResult.data ?? []) as LoanRow[]).map((row) => ({
       id: row.id,

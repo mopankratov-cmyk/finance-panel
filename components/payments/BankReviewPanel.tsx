@@ -2,6 +2,8 @@
 
 import { Check, HelpCircle, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PaymentChainModal } from "./PaymentChainModal";
+import { chainMetadata, requiresKorovkinLoan } from "@/lib/finance/paymentChains";
 import { loadDdsCompanies, type DdsCompany } from "./ddsCompanies";
 import type { DdsDraft, DdsParseResult } from "./ddsCsv";
 import { commitImport, planImport } from "./ddsImport";
@@ -76,6 +78,8 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
   }, [providedCompanies.length]);
   const { categories: REVIEW_CATEGORIES } = useDdsCategories();
   const { state, dispatch } = useFinance();
+  const [chainReviewId, setChainReviewId] = useState<string | null>(null);
+  const closeChain = useCallback(() => setChainReviewId(null), []);
   const [items, setItems] = useState<BankReviewItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -146,8 +150,9 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
 
   const readySelected = items.filter((item) => selected.has(item.id));
   const itemIsReady = (item: BankReviewItem) => {
+    if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id))return false;
     const splits = decodeBankSplits(item.managerAnswer);
-    if (splits) return splitsAreReady(item, splits);
+    if (splits) return !splits.some(split => !split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) && splitsAreReady(item, splits);
     const sourceCompany = companies.find((company) => company.id === item.companyId);
     const mustBeIntercompanyLoan = item.amount < 0
       && isRioCompany(sourceCompany)
@@ -159,6 +164,12 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
   const invalidSelected = readySelected.filter((item) => !itemIsReady(item));
 
   const approveItems = async (targetItems: BankReviewItem[]) => {
+    const loanItem = targetItems.find(item=>{
+      if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id))return true;
+      const splits=decodeBankSplits(item.managerAnswer);
+      return splits?.some(split=>!split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) || (item.amount<0 && isRioCompany(companies.find(c=>c.id===item.companyId)) && mentionedCompanyId(item,companies));
+    });
+    if(loanItem){setChainReviewId(loanItem.id);return;}
     if (targetItems.length === 0 || targetItems.some((item) => !itemIsReady(item))) return;
     setSaving(true);
     setError(null);
@@ -315,6 +326,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
   };
 
   const saveAndApproveSplits = async (item: BankReviewItem, splits: BankInstructionSplit[]) => {
+    if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id) || splits.some(split=>!split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))) {setChainReviewId(item.id);return;}
     if (!splitsAreReady(item, splits)) return;
     const prepared = { ...item, managerAnswer: encodeBankSplits(splits), status: "ready" as const };
     try {
@@ -380,6 +392,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                     {item.reasons.filter((reason) => !reason.startsWith("__")).length > 0 && <p className="mt-1 text-xs text-violet-700">{item.reasons.filter((reason) => !reason.startsWith("__")).join(" · ")}</p>}
                     {item.matchedTransferId && <p className="mt-1 text-xs font-medium text-emerald-700">Найдена встречная операция в другой выписке — платежи связаны</p>}
                   </div>
+                  {item.amount<0 && <button type="button" onClick={()=>setChainReviewId(item.id)} className="min-h-11 rounded-lg border border-violet-300 px-3 text-xs text-violet-800">Сумма {formatMoney(Math.abs(item.amount))} и вся цепочка</button>}
                   <button onClick={() => openManagerQuestion(item)} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs text-slate-600"><HelpCircle className="h-4 w-4" /> Спросить</button>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -398,6 +411,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                   </select>
                 </div>
                 {!companies.length && <p role="status" className="text-xs text-amber-800">Список компаний пуст или не загрузился. <button type="button" onClick={() => void reloadCompanies()} className="min-h-11 underline">Загрузить компании повторно</button></p>}
+                {decodeBankSplits(item.managerAnswer)?.some(split=>!split.excluded&&requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">В разбиении есть расход основной группы на Коровкина. Откройте «Сумма и вся цепочка»: выдача и получение займа будут оформлены через наличные вместе с расходом.</p>}
                 {item.category && !categoryMatchesDirection(item.category, item.amount) && <p role="alert" className="text-xs font-medium text-red-700">Статья противоречит знаку операции: расход нельзя отнести к поступлениям, а поступление — к расходам.</p>}
                 {requiresCounterparty(item.category) && !item.counterparty.trim() && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                   Для зарплаты обязательно укажите получателя. Без контрагента строку подтвердить нельзя.
@@ -500,6 +514,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
           ))}
         </div>
       )}
+      {chainReviewId&&<PaymentChainModal seed={{reviewId:chainReviewId}} accounts={accounts} companies={companies} onClose={closeChain} onSaved={async()=>{dispatch({type:"LOAD",payload:await loadFinanceState()});setSelected(current=>{const next=new Set(current);next.delete(chainReviewId);return next;});await refresh();}}/>}
       {/* Общее окно вместо самодельного: Escape, ловушка фокуса, неподвижный
           фон и кнопки, которые не уезжают под экранную клавиатуру. */}
       <Modal
