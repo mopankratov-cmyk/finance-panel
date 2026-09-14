@@ -107,10 +107,10 @@ export async function listPaymentChains(): Promise<PaymentChainSummary[]> {
  const legacy=await loadAllSupabasePages<Record<string,unknown>>((from,to)=>db.from('payments').select('id,date,import_source').like('import_source','bank-review:%').lt('amount',0).eq('status','done').order('id').range(from,to),{label:'Ранее разбитые суммы ДДС'});
  const groups=new Map<string,Array<Record<string,unknown>>>();
  for(const p of legacy){const id=String(p.import_source).match(/^bank-review:([0-9a-f-]{36})(?::|$)/i)?.[1];if(id&&!heads.some(h=>h.id===id)){const group=groups.get(id)??[];group.push(p);groups.set(id,group);}}
- const bank=new Map<string,{amount:number;date:string;purpose:string}>();
+ const bank=new Map<string,{amount:number;date:string;purpose:string;account_id:string|null;company_id:string|null}>();
  const ids=[...groups.keys()];
- for(let i=0;i<ids.length;i+=300){const r=await db.from('bank_review_items').select('id,amount,date,purpose').in('id',ids.slice(i,i+300));if(r.error)throw fail(r.error.message,500);for(const row of r.data??[])bank.set(row.id,row);}
- const current=heads.map(h=>({id:h.id,chainId:h.id,label:h.draft.label,amount:h.draft.sourceAmount,date:h.draft.sourceDate,lastDate:[h.draft.sourceDate,...h.draft.allocations.map(a=>a.date)].sort().at(-1)!,count:h.draft.allocations.length,revision:h.revision,status:h.status}));
- const old=[...groups].map(([id,parts])=>{const b=bank.get(id);return {id,paymentId:String(parts[0].id),label:b?.purpose??'Исходная выписка недоступна',amount:b?Math.abs(Number(b.amount)):null,date:b?.date??String(parts[0].date),lastDate:parts.map(p=>String(p.date)).sort().at(-1)!,count:parts.length,revision:0,status:'active' as const};});
+ for(let i=0;i<ids.length;i+=300){const r=await db.from('bank_review_items').select('id,amount,date,purpose,account_id,company_id').in('id',ids.slice(i,i+300));if(r.error)throw fail(r.error.message,500);for(const row of r.data??[])bank.set(row.id,row);}
+ const current=heads.map(h=>({id:h.id,chainId:h.id,sourceAccountId:h.draft.sourceAccountId,sourceCompanyId:h.draft.sourceCompanyId,label:h.draft.label,amount:h.draft.sourceAmount,date:h.draft.sourceDate,lastDate:[h.draft.sourceDate,...h.draft.allocations.map(a=>a.date)].sort().at(-1)!,count:h.draft.allocations.length,revision:h.revision,status:h.status}));
+ const old=[...groups].map(([id,parts])=>{const b=bank.get(id);return {id,paymentId:String(parts[0].id),sourceAccountId:b?.account_id,sourceCompanyId:b?.company_id,label:b?.purpose??'Исходная выписка недоступна',amount:b?Math.abs(Number(b.amount)):null,date:b?.date??String(parts[0].date),lastDate:parts.map(p=>String(p.date)).sort().at(-1)!,count:parts.length,revision:0,status:'active' as const};});
  return [...current,...old].sort((a,b)=>b.date.localeCompare(a.date));
 }

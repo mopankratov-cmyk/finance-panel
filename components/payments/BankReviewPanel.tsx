@@ -392,7 +392,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                     {item.reasons.filter((reason) => !reason.startsWith("__")).length > 0 && <p className="mt-1 text-xs text-violet-700">{item.reasons.filter((reason) => !reason.startsWith("__")).join(" · ")}</p>}
                     {item.matchedTransferId && <p className="mt-1 text-xs font-medium text-emerald-700">Найдена встречная операция в другой выписке — платежи связаны</p>}
                   </div>
-                  {item.amount<0 && <button type="button" onClick={()=>setChainReviewId(item.id)} className="min-h-11 rounded-lg border border-violet-300 px-3 text-xs text-violet-800">Сумма {formatMoney(Math.abs(item.amount))} и вся цепочка</button>}
+                  {item.amount<0 && <button type="button" onClick={()=>setChainReviewId(item.id)} className="min-h-11 rounded-lg border border-violet-300 px-3 text-xs text-violet-800">Разбивка внутри операции · {formatMoney(Math.abs(item.amount))}</button>}
                   <button onClick={() => openManagerQuestion(item)} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs text-slate-600"><HelpCircle className="h-4 w-4" /> Спросить</button>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -429,11 +429,11 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                     {suggestLoanSplits(item, state.payments) && <button type="button" onClick={() => updateSplitsLocal(item.id, suggestLoanSplits(item, state.payments)!)} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                       Разбить по графику кредита
                     </button>}
-                    <button type="button" onClick={() => updateSplitsLocal(item.id, [{
+                    <button type="button" onClick={() => {if(item.amount<0){setChainReviewId(item.id);return;}updateSplitsLocal(item.id, [{
                       id: crypto.randomUUID(), amount: Math.abs(item.amount), description: item.purpose || "Часть платежа",
                       category: item.category, companyId: item.companyId, excluded: false, needsClarification: false,
                       flow: item.amount < 0 ? "expense" : "income", accountId: item.accountId, countsTowardBank: true,
-                    }])} className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-medium text-violet-700">
+                    }]);}} className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-medium text-violet-700">
                       Разбить на несколько частей
                     </button>
                     {item.amount < 0 && <button type="button" onClick={() => updateSplitsLocal(item.id, [

@@ -98,4 +98,4 @@ export function buildChainEntries(d: PaymentChainDraft, companies: ChainCompany[
   return entries;
 }
 
-export interface PaymentChainSummary {id:string;label:string;amount:number|null;date:string;lastDate:string;count:number;revision:number;status:"active"|"cancelled";paymentId?:string;chainId?:string}
+export interface PaymentChainSummary {id:string;label:string;amount:number|null;date:string;lastDate:string;count:number;revision:number;status:"active"|"cancelled";paymentId?:string;chainId?:string;sourceAccountId?:string|null;sourceCompanyId?:string|null}
