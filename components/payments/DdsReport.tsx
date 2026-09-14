@@ -5,6 +5,7 @@ import type { DdsCompany } from "./ddsCompanies";
 import { buildDdsSummary, sectionForCategory, TECHNICAL_SECTION } from "./ddsSummary";
 import { Card, CardContent } from "@/components/ui/Card";
 import type { Payment } from "@/lib/types";
+import { useDdsCategories } from "@/components/providers/FinanceProvider";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const net = (n: number) => (n >= 0 ? "text-emerald-700" : "text-red-600");
@@ -18,6 +19,7 @@ export function DdsReport({
   payments: PaymentWithCompany[];
   companies: DdsCompany[];
 }) {
+  const { customCategoryNames } = useDdsCategories();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [scope, setScope] = useState("all");
@@ -44,8 +46,8 @@ export function DdsReport({
   }, [payments, scope, companyById]);
 
   const summary = useMemo(
-    () => buildDdsSummary(scopedPayments, from || undefined, to || undefined),
-    [scopedPayments, from, to],
+    () => buildDdsSummary(scopedPayments, from || undefined, to || undefined, customCategoryNames),
+    [scopedPayments, from, to, customCategoryNames],
   );
 
   const expenseRows = useMemo(() => {
@@ -65,7 +67,7 @@ export function DdsReport({
       const company = payment.companyId ? companyById.get(payment.companyId) : undefined;
       const row = ensure(payment.companyId ?? "unassigned", company?.name ?? "Общее по группе");
       const amount = -payment.amount;
-      const section = sectionForCategory(payment.category);
+      const section = sectionForCategory(payment.category, customCategoryNames);
       if (section === "Операционная") row.operating += amount;
       else if (section === "Финансовая") row.financial += amount;
       else if (section === "Инвестиционная") row.investing += amount;
@@ -75,7 +77,7 @@ export function DdsReport({
     return [...rows.values()]
       .map((row) => ({ ...row, total: row.operating + row.financial + row.investing + row.other }))
       .sort((a, b) => b.total - a.total);
-  }, [payments, from, to, companyById]);
+  }, [payments, from, to, companyById, customCategoryNames]);
 
   return (
     <div className="space-y-5">

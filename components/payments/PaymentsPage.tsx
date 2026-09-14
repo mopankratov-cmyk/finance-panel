@@ -23,15 +23,17 @@ import { ddsSheetNameForCompany } from "./ddsSheetGroups";
 import { ImportDdsModal } from "./ImportDdsModal";
 import { PaymentForm } from "./PaymentForm";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
-import { useFinance } from "@/components/providers/FinanceProvider";
+import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
+import { ExpenseCategoryManager } from "./ExpenseCategoryManager";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
-import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { COMPANY_TAX_SYSTEMS, COMPANY_VAT_MODES, type CompanyTaxSystem, type CompanyVatMode } from "@/lib/finance/companyTax";
 import { formatDate, formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
 
 export function PaymentsPage() {
+  const { categories: DDS_CATEGORIES, customCategoryNames } = useDdsCategories();
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const { state, dispatch } = useFinance();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Payment | null>(null);
@@ -116,7 +118,7 @@ export function PaymentsPage() {
     const extra = [...new Set(state.payments.map((payment) => payment.category).filter((category) => category && !known.has(category)))]
       .sort((a, b) => a.localeCompare(b, "ru"));
     return [...DDS_CATEGORIES, ...extra];
-  }, [state.payments]);
+  }, [state.payments, DDS_CATEGORIES]);
 
   const getAccountName = (id: string) =>
     state.accounts.find((a) => a.id === id)?.name ?? "—";
@@ -180,7 +182,7 @@ export function PaymentsPage() {
           .filter((payment) => payment.status === "done" && ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === name)
           .sort((a, b) => a.date.localeCompare(b.date));
         const reviewItems = bankSync.items.filter((item) => ddsSheetNameForCompany(item.companyId ? companyById.get(item.companyId) : null) === name);
-        const confirmed = ddsTemplateRows({ payments: facts, accountNameById, companyNameById });
+        const confirmed = ddsTemplateRows({ payments: facts, accountNameById, companyNameById, customExpenseNames: customCategoryNames });
         const review = ddsReviewTemplateRows(reviewItems, accountNameById, companyNameById);
         return {
           name,
@@ -210,6 +212,7 @@ export function PaymentsPage() {
 
   return (
     <div className="space-y-5">
+      <ExpenseCategoryManager open={categoriesOpen} onClose={() => setCategoriesOpen(false)} />
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-5">
         <div>
@@ -238,6 +241,7 @@ export function PaymentsPage() {
             <Building2 className="h-4 w-4" />
             Компании
           </button>
+          <button type="button" onClick={() => setCategoriesOpen(true)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-violet-300"><ListChecks className="h-4 w-4" />Статьи расходов</button>
           <button
             onClick={() => setBankImportOpen(true)}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"
@@ -275,7 +279,7 @@ export function PaymentsPage() {
 
       <div className="flex flex-wrap items-center justify-end gap-2">
           <button
-            onClick={() => downloadDdsCsv({ payments: paymentsWithCompany, accountNameById, companyNameById })}
+            onClick={() => downloadDdsCsv({ payments: paymentsWithCompany, accountNameById, companyNameById, customExpenseNames: customCategoryNames })}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
           >
             <Download className="h-4 w-4" /> CSV
@@ -290,6 +294,7 @@ export function PaymentsPage() {
                   payments: paymentsWithCompany.filter((payment) => payment.status === "done" && ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === name),
                   accountNameById,
                   companyNameById,
+                  customExpenseNames: customCategoryNames,
                 }),
               })));
             }}

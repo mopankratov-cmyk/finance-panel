@@ -48,6 +48,7 @@ export function buildDdsSummary(
   payments: DdsSummaryInput[],
   from?: string,
   to?: string,
+  customExpenseNames: readonly string[] = [],
 ): DdsSummary {
   // category -> {section, income, expense}
   const byCat = new Map<string, DdsCategoryRow>();
@@ -69,7 +70,7 @@ export function buildDdsSummary(
 
   const groupMap = new Map<DdsSection, DdsSectionGroup>();
   for (const row of byCat.values()) {
-    const section = sectionForCategory(row.category);
+    const section = sectionForCategory(row.category, customExpenseNames);
     const g =
       groupMap.get(section) ??
       ({ section, rows: [], income: 0, expense: 0, net: 0 } as DdsSectionGroup);

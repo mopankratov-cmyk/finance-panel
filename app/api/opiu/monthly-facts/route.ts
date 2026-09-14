@@ -12,6 +12,7 @@ import {
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
+import { loadDdsExpenseCategories } from "@/lib/finance/expenseCategoriesServer";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,8 @@ export async function GET(request: NextRequest) {
         .order("id", { ascending: true })
         .range(pageFrom, pageTo);
     }, { label: "ОПиУ: подтверждённые расходы ДДС", maxPages: 100 });
-    ddsFacts = aggregateDdsMonthlyFacts(payments);
+    const { categories } = await loadDdsExpenseCategories();
+    ddsFacts = aggregateDdsMonthlyFacts(payments, categories);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить ДДС";
     console.error("[monthly opiu] dds facts:", message);

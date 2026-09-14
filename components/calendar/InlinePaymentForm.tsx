@@ -1,6 +1,7 @@
 "use client";
 
-import { categoryOptions, DDS_CATEGORIES } from "@/lib/finance/categories";
+import { DDS_CATEGORIES } from "@/lib/finance/categories";
+import { useDdsCategories } from "@/components/providers/FinanceProvider";
 import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "@/components/payments/ddsCompanies";
 import { editablePaymentComment, getPaymentPriority, PRIORITY_META, setPaymentPriorityComment, type PaymentPriority } from "./paymentPriority";
@@ -43,6 +44,7 @@ export function InlinePaymentForm({
   onCancel,
   onDelete,
 }: InlinePaymentFormProps) {
+  const { categoryOptions } = useDdsCategories();
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
