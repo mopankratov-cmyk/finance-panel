@@ -134,6 +134,161 @@ export function disallowedPurchaseNmIds(items: Pick<PurchaseOrderItem, "nmId">[]
   return [...new Set(items.map((item) => item.nmId).filter((nmId) => !allowedNmIds.has(nmId)))];
 }
 
+export type OrderRevisionField = "orderNumber" | "supplier" | "orderDate" | "productionDays" | "expectedReadyDate" | "currency" | "exchangeRate" | "status" | "note";
+
+export type OrderRevisionChange =
+  | { kind: "field"; field: OrderRevisionField; before: string; after: string }
+  | { kind: "itemAdded"; nmId: number; article: string; quantity: number; unitPrice: number }
+  | { kind: "itemRemoved"; nmId: number; article: string }
+  | {
+      kind: "itemChanged";
+      nmId: number;
+      article: string;
+      quantityBefore: number;
+      quantityAfter: number;
+      unitPriceBefore: number;
+      unitPriceAfter: number;
+      articleBefore: string;
+      articleAfter: string;
+      nameBefore: string;
+      nameAfter: string;
+    };
+
+interface RevisionItem { nmId: number; article: string; name: string; quantity: number; unitPrice: number }
+
+interface RevisionSnapshot {
+  orderNumber: string;
+  supplier: string;
+  orderDate: string;
+  productionDays: number;
+  expectedReadyDate: string;
+  currency: string;
+  exchangeRate: number;
+  status: string;
+  note: string;
+  /**
+   * `null` — снимок из operation_audit_log, записанный ДО 202609140005
+   * (у него в принципе нет ключа `items`): позиций в нём не было НЕ потому,
+   * что заказ был пуст, а потому что старая версия функции их не снимала.
+   * Раскрывать такой снимок как «было 0 позиций» превратило бы каждую
+   * позицию текущего заказа в фиктивное «добавлено» на всех старых
+   * редакциях — отличаем это от настоящего пустого списка `[]`.
+   */
+  items: RevisionItem[] | null;
+}
+
+function revisionText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function revisionNumber(value: unknown): number {
+  return Number.isFinite(Number(value)) ? Number(value) : 0;
+}
+
+/**
+ * `save_purchase_order` пишет before/after заказа в operation_audit_log сама
+ * (202609140005) — верхний уровень снимка приходит с колонками БД
+ * (snake_case), а items/paymentStages/логистика/расходы — тем же camelCase,
+ * каким их отправляет форма. Здесь просто читаем то, что уже записано, а не
+ * решаем заново, что в снимок класть.
+ */
+function readRevisionSnapshot(raw: unknown): RevisionSnapshot | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const items = "items" in source
+    ? (Array.isArray(source.items)
+        ? source.items
+            .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
+            .map((entry) => ({
+              nmId: revisionNumber(entry.nmId),
+              article: revisionText(entry.article),
+              name: revisionText(entry.name),
+              quantity: revisionNumber(entry.quantity),
+              unitPrice: revisionNumber(entry.unitPrice),
+            }))
+        : [])
+    : null;
+  return {
+    orderNumber: revisionText(source.order_number),
+    supplier: revisionText(source.supplier),
+    orderDate: revisionText(source.order_date),
+    productionDays: revisionNumber(source.production_days),
+    expectedReadyDate: revisionText(source.expected_ready_date),
+    currency: revisionText(source.currency),
+    exchangeRate: revisionNumber(source.exchange_rate),
+    status: revisionText(source.status),
+    note: revisionText(source.note),
+    items,
+  };
+}
+
+/**
+ * Сравнивает два снимка заказа из operation_audit_log (before_data/after_data)
+ * и возвращает список того, что реально изменилось — то, что раньше правка
+ * молча стирала (§6.3 ТЗ), а не просто «заказ изменён» одной строкой.
+ * `before === null` (первое сохранение) — не редакция, вызывающий код это
+ * уже знает по `action === "created"` и сюда обращаться не должен.
+ */
+export function diffPurchaseOrderRevision(before: unknown, after: unknown): OrderRevisionChange[] {
+  const from = readRevisionSnapshot(before);
+  const to = readRevisionSnapshot(after);
+  if (!from || !to) return [];
+
+  const changes: OrderRevisionChange[] = [];
+  const pushField = (field: OrderRevisionField, beforeValue: string, afterValue: string) => {
+    if (beforeValue !== afterValue) changes.push({ kind: "field", field, before: beforeValue, after: afterValue });
+  };
+  pushField("orderNumber", from.orderNumber, to.orderNumber);
+  pushField("supplier", from.supplier, to.supplier);
+  pushField("orderDate", from.orderDate, to.orderDate);
+  pushField("productionDays", String(from.productionDays), String(to.productionDays));
+  pushField("expectedReadyDate", from.expectedReadyDate, to.expectedReadyDate);
+  pushField("currency", from.currency, to.currency);
+  pushField("exchangeRate", String(from.exchangeRate), String(to.exchangeRate));
+  pushField("status", from.status, to.status);
+  pushField("note", from.note, to.note);
+
+  // items === null значит «этот снимок сделан до 202609140005 и позиций в
+  // нём нет вовсе» — сравнивать тут нечего: пустой список означал бы, что
+  // все текущие позиции «добавлены», хотя на самом деле просто не с чем
+  // сверить.
+  if (from.items !== null && to.items !== null) {
+    const beforeItems = new Map(from.items.map((item) => [item.nmId, item]));
+    const afterItems = new Map(to.items.map((item) => [item.nmId, item]));
+    for (const [nmId, itemAfter] of afterItems) {
+      const itemBefore = beforeItems.get(nmId);
+      if (!itemBefore) {
+        changes.push({ kind: "itemAdded", nmId, article: itemAfter.article, quantity: itemAfter.quantity, unitPrice: itemAfter.unitPrice });
+        continue;
+      }
+      if (
+        itemBefore.quantity !== itemAfter.quantity ||
+        itemBefore.unitPrice !== itemAfter.unitPrice ||
+        itemBefore.article !== itemAfter.article ||
+        itemBefore.name !== itemAfter.name
+      ) {
+        changes.push({
+          kind: "itemChanged",
+          nmId,
+          article: itemAfter.article,
+          quantityBefore: itemBefore.quantity,
+          quantityAfter: itemAfter.quantity,
+          unitPriceBefore: itemBefore.unitPrice,
+          unitPriceAfter: itemAfter.unitPrice,
+          articleBefore: itemBefore.article,
+          articleAfter: itemAfter.article,
+          nameBefore: itemBefore.name,
+          nameAfter: itemAfter.name,
+        });
+      }
+    }
+    for (const [nmId, itemBefore] of beforeItems) {
+      if (!afterItems.has(nmId)) changes.push({ kind: "itemRemoved", nmId, article: itemBefore.article });
+    }
+  }
+  return changes;
+}
+
 export function normalizePurchaseOrderPayload(raw: unknown, forced?: { id?: string; cabinetId?: string }): ValidationResult {
   const source = record(raw);
   const cabinetId = text(forced?.cabinetId ?? source.cabinetId, 60);

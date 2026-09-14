@@ -20,9 +20,11 @@ import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
 import type { PurchaseOrderView } from "@/lib/purchases/db";
 import {
   addDays,
+  diffPurchaseOrderRevision,
   PURCHASE_CURRENCIES,
   PURCHASE_ORDER_STATUSES,
   purchaseOrderTotals,
+  type OrderRevisionChange,
   type PurchaseOrderInput,
   type PurchaseOrderStatus,
 } from "@/lib/purchases/order";
@@ -49,6 +51,8 @@ interface HistoryEntry {
   action: string;
   actor: string | null;
   createdAt: string;
+  before: unknown;
+  after: unknown;
 }
 
 const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
@@ -76,6 +80,38 @@ const formatMoney = (value: number, currency = "RUB") => new Intl.NumberFormat("
 }).format(value || 0);
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const revisionDate = (value: string) => {
+  if (!ISO_DATE_RE.test(value)) return value || "—";
+  const parsed = new Date(`${value}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("ru-RU");
+};
+
+function describeRevisionChange(change: OrderRevisionChange): string {
+  if (change.kind === "itemAdded") return `+ ${change.article || change.nmId}: добавлена позиция, ${change.quantity} шт × ${change.unitPrice}`;
+  if (change.kind === "itemRemoved") return `− ${change.article || change.nmId}: позиция удалена`;
+  if (change.kind === "itemChanged") {
+    const parts: string[] = [];
+    if (change.quantityBefore !== change.quantityAfter) parts.push(`количество ${change.quantityBefore} → ${change.quantityAfter}`);
+    if (change.unitPriceBefore !== change.unitPriceAfter) parts.push(`цена ${change.unitPriceBefore} → ${change.unitPriceAfter}`);
+    if (change.articleBefore !== change.articleAfter) parts.push(`артикул ${change.articleBefore || "—"} → ${change.articleAfter || "—"}`);
+    if (change.nameBefore !== change.nameAfter) parts.push("название изменено");
+    return `${change.article || change.nmId}: ${parts.join(", ")}`;
+  }
+  switch (change.field) {
+    case "orderNumber": return `Номер: ${change.before || "—"} → ${change.after || "—"}`;
+    case "supplier": return `Поставщик: ${change.before || "—"} → ${change.after || "—"}`;
+    case "orderDate": return `Дата заказа: ${revisionDate(change.before)} → ${revisionDate(change.after)}`;
+    case "productionDays": return `Срок производства: ${change.before} → ${change.after} дн.`;
+    case "expectedReadyDate": return `Готовность: ${revisionDate(change.before)} → ${revisionDate(change.after)}`;
+    case "currency": return `Валюта: ${change.before} → ${change.after}`;
+    case "exchangeRate": return `Курс: ${change.before} → ${change.after}`;
+    case "status": return `Статус: ${STATUS_LABELS[change.before as PurchaseOrderStatus] ?? change.before} → ${STATUS_LABELS[change.after as PurchaseOrderStatus] ?? change.after}`;
+    case "note": return "Комментарий изменён";
+    default: return "";
+  }
+}
 
 function createDraft(cabinetId: string): EditableOrder {
   const orderDate = today();
@@ -233,6 +269,13 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
 
   const totals = useMemo(() => form ? purchaseOrderTotals(form) : null, [form]);
   const availableSkus = useMemo(() => skus.filter((sku) => !form?.items.some((item) => item.nmId === sku.nmId)), [form?.items, skus]);
+  const historyChanges = useMemo(() => {
+    const map = new Map<number, OrderRevisionChange[]>();
+    for (const entry of history ?? []) {
+      if (entry.action === "updated") map.set(entry.id, diffPurchaseOrderRevision(entry.before, entry.after));
+    }
+    return map;
+  }, [history]);
 
   const startNew = () => {
     version.current += 1;
@@ -390,7 +433,13 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
             <section className="rounded-xl bg-slate-900 p-4 text-white shadow-lg"><div className="text-xs font-semibold">Итог заказа</div><div className="mt-4 space-y-2 text-[11px]"><div className="flex justify-between text-slate-300"><span>Товар</span><span>{formatMoney(totals?.goodsRub ?? 0)}</span></div><div className="flex justify-between text-slate-300"><span>Логистика</span><span>{formatMoney(totals?.logisticsRub ?? 0)}</span></div><div className="flex justify-between text-slate-300"><span>Расходы</span><span>{formatMoney(totals?.expensesRub ?? 0)}</span></div><div className="flex justify-between border-t border-slate-700 pt-3 text-base font-bold"><span>Итого</span><span>{formatMoney(totals?.totalRub ?? 0)}</span></div><div className="flex justify-between text-[10px] text-slate-400"><span>{totals?.quantity.toLocaleString("ru-RU") ?? 0} шт</span><span>{formatMoney(totals?.goodsCurrency ?? 0, form.currency)}</span></div></div></section>
           </div>
 
-          {history ? <EditorSection icon={History} title="История изменений"><div className="space-y-2">{history.length === 0 ? <div className="text-[11px] text-slate-400">История пока пуста.</div> : history.map((entry) => <div key={entry.id} className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2 text-[10px]"><span className="font-semibold text-slate-700">{entry.action === "created" ? "Создан" : entry.action === "receiving_created" ? "Передан в приёмку" : entry.action === "received" ? "Принят полностью" : "Изменён"}</span><span className="text-slate-400">{entry.actor || "система"}</span><span className="ml-auto tabular-nums text-slate-400">{new Date(entry.createdAt).toLocaleString("ru-RU")}</span></div>)}</div></EditorSection> : null}
+          {history ? <EditorSection icon={History} title="История изменений"><div className="space-y-2">{history.length === 0 ? <div className="text-[11px] text-slate-400">История пока пуста.</div> : history.map((entry) => {
+            const changes = historyChanges.get(entry.id) ?? [];
+            return <div key={entry.id} className="rounded-lg bg-slate-50 px-3 py-2 text-[10px]">
+              <div className="flex items-center gap-3"><span className="font-semibold text-slate-700">{entry.action === "created" ? "Создан" : entry.action === "receiving_created" ? "Передан в приёмку" : entry.action === "received" ? "Принят полностью" : "Изменён"}</span><span className="text-slate-400">{entry.actor || "система"}</span><span className="ml-auto tabular-nums text-slate-400">{new Date(entry.createdAt).toLocaleString("ru-RU")}</span></div>
+              {changes.length > 0 ? <ul className="mt-1.5 space-y-0.5 border-t border-slate-200 pt-1.5">{changes.map((change, index) => <li key={index} className="text-slate-500">{describeRevisionChange(change)}</li>)}</ul> : null}
+            </div>;
+          })}</div></EditorSection> : null}
         </div> : null}
       </SlidePanel>
     </div>
