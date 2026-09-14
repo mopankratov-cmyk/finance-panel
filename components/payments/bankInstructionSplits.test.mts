@@ -34,9 +34,13 @@ test("marks a personal withdrawal as excluded and exposes the stated total misma
   assert.equal(parsed[0].splits[2].excluded, true);
 });
 
-test("exposes a mismatch instead of silently changing the bank amount", () => {
+test("exposes an unclassified remainder without changing the stated amounts", () => {
   const parsed = parseBankInstructionList("23.07\n360 - 300р телефон, 50р перевод", [item("p", "2026-07-23", -360)], [], 2026);
-  assert.equal(splitTotal(parsed[0].splits), 350);
+  assert.equal(splitTotal(parsed[0].splits.filter((split) => !split.isRemainder)), 350);
+  assert.equal(parsed[0].splits.at(-1)?.amount, 10);
+  assert.equal(parsed[0].splits.at(-1)?.needsClarification, true);
+  assert.equal(splitBankTotal(item("p", "2026-07-23", -360), parsed[0].splits), -360);
+  assert.equal(splitsAreReady(item("p", "2026-07-23", -360), parsed[0].splits), false);
 });
 
 test("reconciles an intercompany loan against the source bank row and creates two DDS entries", () => {

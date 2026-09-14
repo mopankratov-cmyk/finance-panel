@@ -2,7 +2,7 @@
 
 import { Check, HelpCircle, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { DdsCompany } from "./ddsCompanies";
+import { loadDdsCompanies, type DdsCompany } from "./ddsCompanies";
 import type { DdsDraft, DdsParseResult } from "./ddsCsv";
 import { commitImport, planImport } from "./ddsImport";
 import {
@@ -13,8 +13,8 @@ import {
   updateBankReviewItem,
   type BankReviewItem,
 } from "./bankReviewStore";
-import { parseManagerInstruction } from "./managerInstruction";
 import {
+  balanceBankSplits,
   decodeBankSplits,
   encodeBankSplits,
   parseBankInstructionList,
@@ -60,7 +60,20 @@ function isRioCompany(company: DdsCompany | undefined) {
   return /рио|митриченко|панкратов|кучеренко/.test(value);
 }
 
-export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; companies: DdsCompany[] }) {
+export function BankReviewPanel({ accounts, companies: providedCompanies }: { accounts: Account[]; companies: DdsCompany[] }) {
+  const [loadedCompanies, setLoadedCompanies] = useState<DdsCompany[]>([]);
+  const companies = providedCompanies.length ? providedCompanies : loadedCompanies;
+  const reloadCompanies = async () => {
+    try { setLoadedCompanies(await loadDdsCompanies()); }
+    catch (e) { setError(e instanceof Error ? e.message : "Не удалось загрузить компании"); }
+  };
+  useEffect(() => {
+    if (providedCompanies.length) return;
+    let cancelled = false;
+    loadDdsCompanies().then((loaded) => { if (!cancelled) setLoadedCompanies(loaded); })
+      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Не удалось загрузить компании"); });
+    return () => { cancelled = true; };
+  }, [providedCompanies.length]);
   const { categories: REVIEW_CATEGORIES } = useDdsCategories();
   const { state, dispatch } = useFinance();
   const [items, setItems] = useState<BankReviewItem[]>([]);
@@ -263,8 +276,12 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
   };
 
   const applyManagerText = async () => {
-    if (managerText.includes("\n")) {
+    {
       const parsed = parseBankInstructionList(managerText, items, companies);
+      if (!parsed.length) {
+        setInstructionResult("Не удалось распознать строки. Укажите дату и сумму: например, 11 сентября 10т дивиденды.");
+        return;
+      }
       const matched = parsed.filter((instruction) => instruction.itemId);
       const unresolved = parsed.filter((instruction) => !instruction.itemId);
       setSaving(true);
@@ -277,8 +294,8 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
           await updateBankReviewItem(item.id, { managerAnswer, status });
         }));
         await refresh();
-        setInstructionResult(`Обработано строк: ${parsed.length}. Найдено операций: ${matched.length}. Требуют ручного сопоставления: ${unresolved.length}.`);
-        if (matched.length) setManagerText("");
+        setInstructionResult(`Обработано строк: ${parsed.length}. Найдено операций: ${matched.length}. Требуют ручного сопоставления: ${unresolved.length}. ${unresolved.map((row) => `${row.date} · ${formatMoney(row.bankAmount)}: ${row.message}`).join("; ")}`);
+        if (matched.length && !unresolved.length) setManagerText("");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Не удалось сохранить разбор пояснений");
       } finally {
@@ -286,23 +303,10 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
       }
       return;
     }
-    const parsed = parseManagerInstruction(managerText, items);
-    setInstructionResult(parsed.explanation);
-    if (!parsed.itemId) return;
-    const item = items.find((candidate) => candidate.id === parsed.itemId);
-    if (!item) return;
-    const patch: Partial<BankReviewItem> = {
-      managerAnswer: managerText,
-      status: item.companyId && item.accountId && parsed.category ? "ready" : "needs_info",
-    };
-    if (parsed.category) patch.category = parsed.category;
-    if (parsed.counterparty) patch.counterparty = parsed.counterparty;
-    await updateLocal(item.id, patch);
-    setManagerText("");
   };
 
   const updateSplitsLocal = (itemId: string, splits: BankInstructionSplit[]) => {
-    setItems((current) => current.map((item) => item.id === itemId ? { ...item, managerAnswer: encodeBankSplits(splits) } : item));
+    setItems((current) => current.map((item) => item.id === itemId ? { ...item, managerAnswer: encodeBankSplits(balanceBankSplits(item, splits)) } : item));
   };
 
   const saveSplits = async (item: BankReviewItem, splits: BankInstructionSplit[]) => {
@@ -331,7 +335,7 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <textarea value={managerText} onChange={(e) => setManagerText(e.target.value)} rows={7} className="min-h-28 flex-1 rounded-lg border border-slate-300 px-3 py-2" placeholder="Вставьте пояснения списком: дата, затем суммы и назначения" />
-            <button onClick={applyManagerText} disabled={!managerText.trim()} className="min-h-11 rounded-lg bg-slate-800 px-4 font-medium text-white disabled:opacity-50">Разобрать текст</button>
+            <button onClick={applyManagerText} disabled={saving || !managerText.trim()} className="min-h-11 rounded-lg bg-slate-800 px-4 font-medium text-white disabled:opacity-50">Разобрать текст</button>
           </div>
           {instructionResult && <p className="text-sm text-slate-600">{instructionResult}</p>}
         </CardContent>
@@ -380,7 +384,7 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
                   <select value={item.companyId ?? ""} onChange={(e) => void updateLocal(item.id, { companyId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
-                    <option value="">Компания не определена</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                    <option value="">Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                   </select>
                   <select value={item.accountId ?? ""} onChange={(e) => void updateLocal(item.id, { accountId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
                     <option value="">Кошелёк не определён</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
@@ -393,6 +397,7 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                     <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                   </select>
                 </div>
+                {!companies.length && <p role="status" className="text-xs text-amber-800">Список компаний пуст или не загрузился. <button type="button" onClick={() => void reloadCompanies()} className="min-h-11 underline">Загрузить компании повторно</button></p>}
                 {item.category && !categoryMatchesDirection(item.category, item.amount) && <p role="alert" className="text-xs font-medium text-red-700">Статья противоречит знаку операции: расход нельзя отнести к поступлениям, а поступление — к расходам.</p>}
                 {requiresCounterparty(item.category) && !item.counterparty.trim() && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                   Для зарплаты обязательно укажите получателя. Без контрагента строку подтвердить нельзя.
@@ -445,23 +450,24 @@ export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; 
                           Оборот ДДС: {formatMoney(total)} · Итог ДДС: {formatMoney(netTotal)} · Строка банка: {formatMoney(bankTotal)} из {formatMoney(item.amount)}{matches ? " · сумма сошлась" : " · есть расхождение"}
                         </span>
                       </div>
+                      <p className="text-xs text-slate-600">«Не включать в отчёт ДДС» исключает эту часть из отчёта. Её сумма остаётся в разбиении для сверки с банковской операцией.</p>
                       {splits.map((split, index) => (
                         <div key={split.id} className="grid gap-2 rounded-lg bg-white p-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,7rem)_minmax(0,7.5rem)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]">
-                          <input type="number" min="0" step="0.01" aria-label="Сумма части" placeholder="Сумма" value={split.amount} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, amount: Number(event.target.value) } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2" />
+                          <input type="number" min="0" step="0.01" aria-label="Сумма части" placeholder="Сумма" value={split.amount} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, amount: Number(event.target.value), isRemainder: false } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2" />
                           <select value={split.flow ?? (item.amount < 0 ? "expense" : "income")} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, flow: event.target.value as "income" | "expense" } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50"><option value="expense">Расход</option><option value="income">Поступление</option></select>
-                          <input aria-label="Назначение части" placeholder="Назначение части" value={split.description} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, description: event.target.value } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2" />
+                          <input aria-label="Назначение части" placeholder="Назначение части" value={split.description} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, description: event.target.value, isRemainder: false } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2" />
                           <select value={split.companyId ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, companyId: event.target.value || null } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
-                            <option value="">Компания не определена</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                            <option value="">Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                           </select>
                           <select value={splitAccountId(item, split) ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, accountId: event.target.value || null } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Кошелёк не определён</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
                           </select>
-                          <select value={split.category ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, category: event.target.value || null, needsClarification: false } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
+                          <select value={split.category ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, category: event.target.value || null, needsClarification: false, isRemainder: false } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                           </select>
                           <div className="flex flex-wrap items-center gap-3">
                             <span className={`rounded px-1.5 py-0.5 text-[10px] ${split.countsTowardBank === false ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"}`}>{split.countsTowardBank === false ? "связано" : "банк"}</span>
-                            <label className="tap flex items-center gap-1.5 whitespace-nowrap text-xs"><input type="checkbox" checked={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, excluded: event.target.checked } : part))} /> Не в ДДС</label>
+                            <label className="tap flex items-center gap-1.5 whitespace-nowrap text-xs"><input type="checkbox" checked={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, excluded: event.target.checked, isRemainder: false } : part))} /> Не включать в отчёт ДДС</label>
                             <button type="button" aria-label={`Удалить часть ${index + 1}`} onClick={() => updateSplitsLocal(item.id, splits.filter((_, partIndex) => partIndex !== index))} className="tap rounded-lg text-xl leading-none text-red-500 hover:bg-red-50">×</button>
                           </div>
                         </div>
