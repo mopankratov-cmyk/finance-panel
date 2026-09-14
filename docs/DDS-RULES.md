@@ -21,7 +21,7 @@
 
 | Сущность | Где | Правило |
 |---|---|---|
-| Статьи ДДС и их разделы | `lib/finance/categories.ts` | Единственный список. Новая статья = строка в `REGISTRY` + раздел. Формы — только через `categoryOptions(current)`. Литералы статей в коде запрещены; константы `LOAN_CATEGORIES`, `TRANSFER_CATEGORIES`, `INTERCOMPANY_LOAN_CATEGORIES`. `PAYMENT_CATEGORIES` в `lib/constants.ts` — алиас, deprecated. |
+| Статьи ДДС и их разделы | `lib/finance/categories.ts` + таблица `finance_expense_categories` | `REGISTRY` — базовые статьи. Пользовательские операционные расходы — расширение из таблицы, а не отдельный список формы. Формы — через `useDdsCategories()` и `categoryOptions(current, customNames)`; свод/экспорт — через `sectionForCategory(category, customNames)`. Новая статья включается в ОПиУ только по явному `opiu_article_id`; зарплата, товарные затраты и технические операции не доступны как цели пользовательской статьи. |
 | Счета | таблица `accounts` (`lib/finance/dbServer.ts`) | `finance_accounts` / `finance_payments` — зеркало для Telegram-бота, наполняется `/api/opiu/sync` как побочный эффект открытия календаря. Валидировать по зеркалу нельзя. (Известный долг: `calendar-publish` и `browser-payout-snapshots` пока делают именно это.) |
 | Платежи | таблица `payments`, тип `Payment` в `lib/types.ts` | `status ∈ planned / done / cancelled`; знак `amount` = направление; `comment` несёт служебные метки (§3). `import_source` уникален — ключ идемпотентности импорта. |
 | Связь план → факт | `lib/finance/factLinks.ts` | `consumedFactIds()` — все факты, уже занятые какой-либо меткой. Любой новый сопоставитель обязан её вызывать. |

@@ -1,6 +1,6 @@
 "use client";
 
-import { categoryOptions } from "@/lib/finance/categories";
+import { useDdsCategories } from "@/components/providers/FinanceProvider";
 import type { Payment } from "@/lib/types";
 import type { Account } from "@/lib/types";
 import type { DdsCompany } from "./ddsCompanies";
@@ -24,6 +24,7 @@ export function PaymentForm({
   onSubmit,
   onCancel,
 }: PaymentFormProps) {
+  const { categoryOptions } = useDdsCategories();
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
