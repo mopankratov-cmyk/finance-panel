@@ -11,7 +11,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type StockDocKind = "shipment" | "transfer" | "writeoff" | "return" | "receipt" | "adjustment";
+export type StockDocKind = "shipment" | "transfer" | "writeoff" | "return" | "receipt" | "adjustment" | "opening";
 
 /** Ключ, под которым проводка записала движения, — у каждой функции свой. */
 const MOVEMENT_ID_FIELDS: Record<StockDocKind, string> = {
@@ -22,6 +22,7 @@ const MOVEMENT_ID_FIELDS: Record<StockDocKind, string> = {
   receipt: "batchId",
   // Коррекция прихода: движения-дельты помечены идентификатором коррекции.
   adjustment: "correctionId",
+  opening: "openingId",
 };
 
 export function movementDocIdOf(kind: StockDocKind, result: unknown): string | null {

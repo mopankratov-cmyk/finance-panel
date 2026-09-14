@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, QrCode, PackageX, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, QrCode, PackageX, PackagePlus, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BalancesTab } from "@/components/warehouse/BalancesTab";
 import { DocsTab } from "@/components/warehouse/DocsTab";
@@ -13,6 +13,7 @@ import { DefectsTab } from "@/components/warehouse/DefectsTab";
 import { ProductsTab } from "@/components/warehouse/ProductsTab";
 import { ShipmentTab } from "@/components/warehouse/ShipmentTab";
 import { WarehousesTab } from "@/components/warehouse/WarehousesTab";
+import { OpeningBalanceTab } from "@/components/warehouse/OpeningBalanceTab";
 import { TodoBell } from "@/components/warehouse/TodoBell";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { WarehouseShell, type ShellTab } from "@/components/warehouse/WarehouseShell";
@@ -20,7 +21,7 @@ import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { canManageStock } from "@/lib/warehouse/operatorScope";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 
-type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "events" | "products" | "kiz" | "docs" | "moves" | "warehouses";
+type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "events" | "products" | "kiz" | "docs" | "moves" | "warehouses" | "opening";
 
 /** Порядок — рабочий день склада: сначала то, что делают руками, потом то, чем
  *  сверяются, и в конце то, что настраивают раз в месяц. */
@@ -36,6 +37,7 @@ const TABS: ShellTab<Tab>[] = [
   { key: "moves", label: "Движения", icon: ScrollText, group: "Учёт" },
   { key: "products", label: "Товары", icon: Package, group: "Справочники" },
   { key: "warehouses", label: "Склады", icon: WarehouseIcon, group: "Справочники" },
+  { key: "opening", label: "Начальный остаток", icon: PackagePlus, group: "Справочники" },
 ];
 
 /** Оператор склада приходит работать руками, а не сверять журналы: ему видны
@@ -320,6 +322,9 @@ export function WarehousePage() {
             </TabPanel>
           <TabPanel {...panel("warehouses")}>
               <WarehousesTab entityId={entityId} entity={entity} warehouses={warehouses} onChanged={refresh} />
+            </TabPanel>
+          <TabPanel {...panel("opening")}>
+              <OpeningBalanceTab entityId={entityId} entityName={entity?.name ?? ""} warehouses={warehouses} canManage={canManage} onPosted={refresh} />
             </TabPanel>
         </>
       )}

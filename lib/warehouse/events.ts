@@ -28,7 +28,8 @@ export type WarehouseEventKind =
   | "transfer_posted"
   | "return_posted"
   | "writeoff_created"
-  | "doc_reversed";
+  | "doc_reversed"
+  | "opening_posted";
 
 export const EVENT_LABEL: Record<WarehouseEventKind, string> = {
   receipt_created: "создана приёмка",
@@ -45,6 +46,7 @@ export const EVENT_LABEL: Record<WarehouseEventKind, string> = {
   return_posted: "возврат с МП",
   writeoff_created: "создан брак",
   doc_reversed: "документ отменён",
+  opening_posted: "заведён начальный остаток",
 };
 
 /** Цвет метки в ленте: тревога, правка, обычная работа, готово. */
@@ -63,6 +65,7 @@ export const EVENT_TONE: Record<WarehouseEventKind, "danger" | "warn" | "info" |
   return_posted: "info",
   writeoff_created: "danger",
   doc_reversed: "warn",
+  opening_posted: "ok",
 };
 
 /** Правки — то, что попадает в «журнал изменений» (п. 6 ТЗ). */
