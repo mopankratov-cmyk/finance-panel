@@ -6,6 +6,7 @@ import type { BankReviewItem } from "./bankReviewStore";
 type PaymentWithCompany = Payment & { companyId?: string | null };
 
 interface ExportContext {
+  customExpenseNames?: readonly string[];
   payments: PaymentWithCompany[];
   accountNameById: Map<string, string>;
   companyNameById: Map<string, string>;
@@ -20,7 +21,7 @@ function directionForPayment(payment: Payment): string {
   return payment.amount >= 0 ? "Поступление" : "Выбытие";
 }
 
-export function ddsTemplateRows({ payments, accountNameById, companyNameById }: ExportContext): Array<Array<string | number>> {
+export function ddsTemplateRows({ payments, accountNameById, companyNameById, customExpenseNames = [] }: ExportContext): Array<Array<string | number>> {
   const header = [
     "Месяц", "Мсц (цифрой)", "Дата", "Сумма", "Сумма в валюте", "Кошелек",
     "Направление бизнеса", "Контрагент", "Вид выплаты сотруднику", "Назначение платежа",
@@ -43,7 +44,7 @@ export function ddsTemplateRows({ payments, accountNameById, companyNameById }: 
       payment.name,
       payment.category,
       directionForPayment(payment),
-      `${sectionForCategory(payment.category)}${sectionForCategory(payment.category) === "Техническая" ? " операция" : ""}`,
+      `${sectionForCategory(payment.category, customExpenseNames)}${sectionForCategory(payment.category, customExpenseNames) === "Техническая" ? " операция" : ""}`,
     ];
   })];
 }

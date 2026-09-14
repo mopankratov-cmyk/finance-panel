@@ -27,17 +27,15 @@ import {
 } from "./bankInstructionSplits";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
-import { DDS_CATEGORIES } from "@/lib/finance/categories";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Account } from "@/lib/types";
 import { categoryMatchesDirection, requiresCounterparty } from "./bankAutoClassify";
 import { suggestLoanSplits } from "./loanReviewSuggestion";
-import { useFinance } from "@/components/providers/FinanceProvider";
+import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
 import { loadFinanceState } from "@/lib/db";
 import { companyAliasKeys } from "@/lib/finance/companyAliases";
 
 // Статьи — из единого справочника (раньше свой список дублировал «Получение кредитов и займов»).
-const REVIEW_CATEGORIES = DDS_CATEGORIES;
 
 const normalizeCompanyText = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]+/g, " ").trim();
 
@@ -63,6 +61,7 @@ function isRioCompany(company: DdsCompany | undefined) {
 }
 
 export function BankReviewPanel({ accounts, companies }: { accounts: Account[]; companies: DdsCompany[] }) {
+  const { categories: REVIEW_CATEGORIES } = useDdsCategories();
   const { state, dispatch } = useFinance();
   const [items, setItems] = useState<BankReviewItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());

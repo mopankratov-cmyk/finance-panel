@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -15,8 +16,15 @@ import { needsFinanceHydration } from "@/lib/navigation/financeHydration";
 import { loadFinanceState, persistFinanceAction } from "@/lib/db";
 import { financeReducer } from "@/lib/reducer";
 import type { FinanceAction, FinanceState } from "@/lib/types";
+import type { DdsExpenseCategory } from "@/lib/finance/expenseCategories";
+import { categoryOptions as registryOptions } from "@/lib/finance/categories";
 
 interface FinanceContextValue {
+  expenseCategories: DdsExpenseCategory[];
+  expenseCategoriesReady: boolean;
+  expenseCategoriesLoading: boolean;
+  expenseCategoriesError: string | null;
+  refreshExpenseCategories: () => Promise<void>;
   state: FinanceState;
   dispatch: React.Dispatch<FinanceAction>;
   hydrated: boolean;
@@ -58,6 +66,23 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 }
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
+  const [expenseCategories, setExpenseCategories] = useState<DdsExpenseCategory[]>([]);
+  const [expenseCategoriesReady, setExpenseCategoriesReady] = useState(false);
+  const [expenseCategoriesLoading, setExpenseCategoriesLoading] = useState(false);
+  const [expenseCategoriesError, setExpenseCategoriesError] = useState<string | null>(null);
+  const refreshExpenseCategories = useCallback(async () => {
+    setExpenseCategoriesLoading(true);
+    try {
+      const response = await fetch("/api/finance/expense-categories", { cache: "no-store" });
+      const body = await response.json() as { categories?: DdsExpenseCategory[]; ready?: boolean; error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Не удалось загрузить статьи ДДС");
+      setExpenseCategories(body.categories ?? []);
+      setExpenseCategoriesReady(body.ready === true);
+      setExpenseCategoriesError(null);
+    } catch (error) {
+      setExpenseCategoriesError(error instanceof Error ? error.message : "Не удалось загрузить статьи ДДС");
+    } finally { setExpenseCategoriesLoading(false); }
+  }, []);
   const [state, baseDispatch] = useReducer(financeReducer, {
     accounts: [],
     payments: [],
@@ -85,6 +110,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
    */
   const pathname = usePathname();
   const financeNeeded = needsFinanceHydration(pathname);
+
+  useEffect(() => {
+    if (financeNeeded) void refreshExpenseCategories();
+  }, [financeNeeded, refreshExpenseCategories]);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,7 +174,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   return (
     <FinanceContext.Provider
-      value={{ state, dispatch, hydrated, loadError, persistError, clearPersistError }}
+      value={{ state, dispatch, hydrated, loadError, persistError, clearPersistError, expenseCategories, expenseCategoriesReady, expenseCategoriesLoading, expenseCategoriesError, refreshExpenseCategories }}
     >
       {children}
     </FinanceContext.Provider>
@@ -156,4 +185,12 @@ export function useFinance() {
   const ctx = useContext(FinanceContext);
   if (!ctx) throw new Error("useFinance must be used within FinanceProvider");
   return ctx;
+}
+
+export function useDdsCategories() {
+  const { expenseCategories } = useFinance();
+  const customCategoryNames = useMemo(() => expenseCategories.map((category) => category.name), [expenseCategories]);
+  const categories = useMemo(() => registryOptions(undefined, customCategoryNames), [customCategoryNames]);
+  const categoryOptions = useCallback((current?: string | null) => registryOptions(current, customCategoryNames), [customCategoryNames]);
+  return { categories, customCategoryNames, categoryOptions };
 }
