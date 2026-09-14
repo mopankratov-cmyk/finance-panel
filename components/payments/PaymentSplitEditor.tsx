@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CounterpartySelect } from "./CounterpartySelect";
 import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
 import { balanceLast, splitEvenly } from "@/lib/finance/paymentSplitAmounts";
@@ -12,9 +13,9 @@ import type { DdsCompany } from "./ddsCompanies";
 const field = "min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2 py-2 text-base md:text-sm disabled:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400";
 const columns = "md:grid-cols-[1fr_1.2fr_96px_64px_1fr_128px_44px]";
 
-export function PaymentSplitEditor({ draft, accounts, companies, categories, busy, patch }: {
+export function PaymentSplitEditor({ draft, accounts, companies, categories, counterparties = [], busy, patch }: {
   draft: PaymentChainDraft; accounts: Account[]; companies: DdsCompany[]; categories: readonly string[];
-  busy: boolean; patch: (change: Partial<PaymentChainDraft>) => void;
+  counterparties?: readonly string[]; busy: boolean; patch: (change: Partial<PaymentChainDraft>) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [autoLast, setAutoLast] = useState(false);
@@ -59,7 +60,7 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, bus
           const open = expanded === a.id;
           return <div key={a.id} className={a.excluded ? "bg-slate-50 p-2" : "p-2"}>
             <div className={`grid grid-cols-2 items-start gap-2 ${columns}`}>
-              <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Получатель части {i + 1}</span><input aria-label={`Получатель части ${i + 1}`} className={field} value={a.counterparty} onChange={e => change(a.id, { counterparty: e.target.value, ...(!a.name ? { name: e.target.value } : {}) })}/></label>
+              <CounterpartySelect label="Получатель" ariaLabel={`Получатель части ${i + 1}`} compact value={a.counterparty} options={[...counterparties,...draft.allocations.map(part=>part.counterparty)]} disabled={busy} onChange={name => change(a.id, {counterparty:name,...(!a.name?{name}: {})})}/>
               <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Статья части {i + 1}</span><select aria-label={`Статья части ${i + 1}`} className={field} value={a.category} disabled={a.excluded} onChange={e => change(a.id, { category: e.target.value, ...(!a.name ? { name: e.target.value } : {}) })}><option value="">Выберите статью</option>{[...new Set([...categories, a.category].filter(Boolean))].map(c => <option key={c}>{c}</option>)}</select></label>
               <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Сумма части {i + 1}</span><input aria-label={`Сумма части ${i + 1}`} type="number" inputMode="decimal" min="0.01" step="0.01" className={field} value={a.amount} readOnly={autoLast && i === draft.allocations.length - 1} onChange={e => change(a.id, { amount: Number(e.target.value) })}/></label>
               <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Доля части {i + 1}, %</span><input aria-label={`Доля части ${i + 1}, %`} type="number" inputMode="decimal" min="0" max="100" step="0.01" className={field} value={draft.sourceAmount ? Math.round(a.amount / draft.sourceAmount * 10000) / 100 : 0} readOnly={autoLast && i === draft.allocations.length - 1} onChange={e => change(a.id, { amount: Math.round(draft.sourceAmount * Number(e.target.value)) / 100 })}/></label>

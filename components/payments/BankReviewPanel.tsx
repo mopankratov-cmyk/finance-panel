@@ -2,6 +2,7 @@
 
 import { Check, HelpCircle, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CounterpartySelect } from "./CounterpartySelect";
 import { PaymentChainModal } from "./PaymentChainModal";
 import { chainMetadata, requiresKorovkinLoan } from "@/lib/finance/paymentChains";
 import { loadDdsCompanies, type DdsCompany } from "./ddsCompanies";
@@ -94,6 +95,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
   // пересоздание на каждую букву в поле вопроса возвращало бы фокус в шапку.
   const closeAsk = useCallback(() => setAskItem(null), []);
 
+  const counterparties = useMemo(() => [...new Set([...state.payments.map(p => p.counterparty), ...items.map(item => item.counterparty)].map(name => name.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,"ru")), [state.payments, items]);
   const companyById = useMemo(() => new Map(companies.map((company) => [company.id, company.name])), [companies]);
   const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account.name])), [accounts]);
 
@@ -179,7 +181,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
         if (!splits) return [{
           date: item.date, amount: item.amount, name: item.purpose, category: item.category!,
           wallet: accountById.get(item.accountId!) ?? "", counterparty: item.counterparty, activity: "",
-          company: companyById.get(item.companyId!) ?? "", companyId: item.companyId, comment: `Банковская выписка · ${item.sourceFileName}`,
+          company: companyById.get(item.companyId!) ?? "", companyId: item.companyId, comment: `Банковская выписка · ${item.sourceFileName}${item.matchedTransferId ? ` [dds-bank-transfer:${[item.id,item.matchedTransferId].sort()[0]}]` : ""}`,
           importSource: `bank-review:${item.id}`,
         }];
         return splits.filter((split) => !split.excluded).map((split, index) => ({
@@ -395,7 +397,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                   {item.amount<0 && <button type="button" onClick={()=>setChainReviewId(item.id)} className="min-h-11 rounded-lg border border-violet-300 px-3 text-xs text-violet-800">Разбивка внутри операции · {formatMoney(Math.abs(item.amount))}</button>}
                   <button onClick={() => openManagerQuestion(item)} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs text-slate-600"><HelpCircle className="h-4 w-4" /> Спросить</button>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <select value={item.companyId ?? ""} onChange={(e) => void updateLocal(item.id, { companyId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
                     <option value="">Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                   </select>
@@ -409,13 +411,16 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                   }} className={`min-h-11 rounded-lg border px-2 ${item.category && !categoryMatchesDirection(item.category, item.amount) ? "border-red-400 bg-red-50" : "border-slate-300"}`}>
                     <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                   </select>
+                  <CounterpartySelect ariaLabel={`Контрагент операции от ${item.date} на ${formatMoney(item.amount)}`} value={item.counterparty} options={counterparties} disabled={saving} onChange={counterparty => {
+                    const valid = item.category && item.companyId && item.accountId && categoryMatchesDirection(item.category,item.amount) && (!requiresCounterparty(item.category) || Boolean(counterparty.trim()));
+                    void updateLocal(item.id, {counterparty, status: valid ? "ready" : "needs_info"});
+                  }}/>
                 </div>
                 {!companies.length && <p role="status" className="text-xs text-amber-800">Список компаний пуст или не загрузился. <button type="button" onClick={() => void reloadCompanies()} className="min-h-11 underline">Загрузить компании повторно</button></p>}
-                {decodeBankSplits(item.managerAnswer)?.some(split=>!split.excluded&&requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">В разбиении есть расход основной группы на Коровкина. Откройте «Сумма и вся цепочка»: выдача и получение займа будут оформлены через наличные вместе с расходом.</p>}
+                {decodeBankSplits(item.managerAnswer)?.some(split=>!split.excluded&&requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">В разбиении есть расход основной группы на Коровкина. Откройте «Разбивка внутри операции»: выдача и получение займа будут оформлены через наличные вместе с расходом.</p>}
                 {item.category && !categoryMatchesDirection(item.category, item.amount) && <p role="alert" className="text-xs font-medium text-red-700">Статья противоречит знаку операции: расход нельзя отнести к поступлениям, а поступление — к расходам.</p>}
                 {requiresCounterparty(item.category) && !item.counterparty.trim() && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                   Для зарплаты обязательно укажите получателя. Без контрагента строку подтвердить нельзя.
-                  <input aria-label="Получатель зарплаты" value={item.counterparty} onChange={(event) => void updateLocal(item.id, { counterparty: event.target.value, status: "needs_info" })} placeholder="ФИО сотрудника" className="mt-2 min-h-11 w-full rounded-lg border border-amber-300 bg-white px-3 text-sm" />
                 </div>}
                 {(() => {
                   const splits = decodeBankSplits(item.managerAnswer);

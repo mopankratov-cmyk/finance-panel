@@ -4,7 +4,8 @@ import { Modal } from "@/components/ui/Modal";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Account } from "@/lib/types";
 import type { DdsCompany } from "./ddsCompanies";
-import { useDdsCategories } from "@/components/providers/FinanceProvider";
+import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
+import { paymentTransferBalances } from "@/lib/finance/paymentTransferBalance";
 import { PaymentSplitEditor } from "./PaymentSplitEditor";
 import { buildChainEntries, validateChain, type PaymentChainDetail } from "@/lib/finance/paymentChains";
 export interface PaymentChainSeed {paymentId?: string; reviewId?: string; chainId?: string}
@@ -12,15 +13,19 @@ const roleLabel={source:"Исходная операция", "cash-in":"Пост
 async function json<T>(response: Response) {const body=await response.json();if(!response.ok)throw new Error(body.error??"Не удалось выполнить действие");return body as T;}
 export function PaymentChainModal({seed,accounts,companies,onClose,onSaved}:{seed:PaymentChainSeed;accounts:Account[];companies:DdsCompany[];onClose:()=>void;onSaved:()=>Promise<void>}) {
  const {categories}=useDdsCategories();
+ const {state}=useFinance();
  const [detail,setDetail]=useState<PaymentChainDetail|null>(null);
  const [error,setError]=useState(""); const [message,setMessage]=useState(""); const [busy,setBusy]=useState(false);
  const query=useMemo(()=>new URLSearchParams({resource:"payment-chain",...(seed.paymentId?{payment_id:seed.paymentId}:{}),...(seed.reviewId?{review_id:seed.reviewId}:{}),...(seed.chainId?{chain_id:seed.chainId}:{})}).toString(),[seed.paymentId,seed.reviewId,seed.chainId]);
  useEffect(()=>{let cancelled=false;fetch("/api/finance/companies?"+query,{cache:"no-store"}).then(json<PaymentChainDetail>).then(d=>{if(!cancelled)setDetail(d);}).catch(e=>{if(!cancelled)setError(e.message);});return()=>{cancelled=true;};},[query]);
  const close=useCallback(()=>{if(!busy)onClose();},[busy,onClose]);
  const draft=detail?.draft;
- const errors=draft?validateChain(draft,accounts,companies,categories):[];
+ const draftErrors=draft?validateChain(draft,accounts,companies,categories):[];
  let index=0;
- const entries=draft && !errors.length?buildChainEntries(draft,companies,()=>"preview-"+index++):[];
+ const entries=draft && !draftErrors.length?buildChainEntries(draft,companies,()=>"preview-"+index++):[];
+ const balances=paymentTransferBalances(entries);
+ const recordedIssues=paymentTransferBalances(detail?.history.find(h=>h.revision===draft?.revision)?.entries??[]).filter(group=>!group.balanced);
+ const errors=[...draftErrors,...balances.filter(group=>!group.balanced).map(group=>group.label+": выбытие и поступление не сходятся, разница "+formatMoney(group.net))];
  const patch=(p: Partial<NonNullable<typeof draft>>) => setDetail(d=>d?{...d,draft:{...d.draft,...p}}:d);
  const save=async(cancel=false)=>{
   if(!detail || (!cancel && errors.length))return;
@@ -42,7 +47,9 @@ export function PaymentChainModal({seed,accounts,companies,onClose,onSaved}:{see
    {detail && draft && <>
     {!detail.migrationAvailable && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Сохранение станет доступно после применения владельцем миграции цепочек ДДС.</p>}
     {detail.status === 'cancelled' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Операция отменена. Исправьте разбивку и сохраните, чтобы восстановить её новой версией.</p>}
-    <PaymentSplitEditor draft={draft} accounts={accounts} companies={companies} categories={categories} busy={busy} patch={patch}/>
+    <PaymentSplitEditor draft={draft} accounts={accounts} companies={companies} categories={categories} counterparties={state.payments.map(p=>p.counterparty)} busy={busy} patch={patch}/>
+    {recordedIssues.length>0 && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p className="font-medium">В сохранённых записях выбытия и поступления не сходятся</p>{recordedIssues.map(group=><div key={group.id} className="mt-2"><p>{group.label} · разница {formatMoney(group.net)}</p>{group.entries.map(entry=><p key={entry.payment.id}>{formatDate(entry.payment.date)} · {accountName(entry.payment.accountId)} · {formatMoney(entry.payment.amount)}</p>)}</div>)}</div>}
+    {balances.length>0 && <details className="rounded-lg border border-slate-200 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">Сверка выбытий и поступлений · {balances.every(group=>group.balanced)?"0 ₽ — суммы сходятся":"есть расхождение"}</summary><div className="space-y-3 pb-3">{balances.map(group=><div key={group.id} className={group.balanced?"rounded-lg bg-emerald-50 p-3 text-sm":"rounded-lg bg-red-50 p-3 text-sm"}><p className="font-medium">{group.label} · итог {formatMoney(group.net)}</p>{group.entries.map(entry=><p key={entry.payment.id}>{formatDate(entry.payment.date)} · {companyName(entry.payment.companyId)} · {accountName(entry.payment.accountId)} · {formatMoney(entry.payment.amount)}</p>)}</div>)}</div></details>}
     {errors.length > 0 && <div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{errors.map(e=><p key={e}>{e}</p>)}</div>}
     {entries.length > 0 && <details className="rounded-lg border border-slate-200 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm text-slate-600">Связанные переводы и займы · {entries.length} записей</summary><div className="space-y-2 pb-3">{entries.map(e=><div key={e.payment.id} className="rounded-lg bg-slate-50 p-3 text-sm"><div className="flex flex-wrap justify-between gap-2"><span>{roleLabel[e.role]} · {formatDate(e.payment.date)}</span><b>{formatMoney(e.payment.amount)}</b></div><p className="mt-1 text-slate-600">{companyName(e.payment.companyId)} · {accountName(e.payment.accountId)}</p><p className="text-slate-600">{e.payment.category}</p></div>)}</div></details>}
     <details className="rounded-lg border border-slate-200 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm text-slate-600">История изменений{detail.history.length ? ' · ' + detail.history.length + ' версий' : ''}</summary><div className="space-y-2 pb-3">{detail.history.length ? [...detail.history].reverse().map(h=><details key={h.revision} className="rounded-lg bg-slate-50 p-3"><summary className="min-h-11 cursor-pointer text-sm">Версия {h.revision} · {new Date(h.createdAt).toLocaleString('ru-RU')} · {h.reason}</summary><div className="space-y-2">{h.entries.map(e=><p key={e.payment.id} className="break-anywhere text-sm">{formatDate(e.payment.date)} · {formatMoney(e.payment.amount)} · {e.payment.category} · {companyName(e.payment.companyId)} · {accountName(e.payment.accountId)} · {e.payment.status === 'cancelled' ? 'Отменено' : 'Действует'}</p>)}</div></details>) : <p className="text-sm text-slate-500">История появится после первого сохранения.</p>}</div></details>

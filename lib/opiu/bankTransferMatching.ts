@@ -25,6 +25,10 @@ function evidence(left: TransferMatchRow, right: TransferMatchRow) {
   const rightInn = digits(right.ownerInn);
   const leftCounterpartyInn = digits(left.counterpartyInn);
   const rightCounterpartyInn = digits(right.counterpartyInn);
+  if (!leftAccount || !rightAccount) return false;
+  // Known account numbers take precedence over INN: one company can own many accounts.
+  if (leftCounterpartyAccount && leftCounterpartyAccount !== rightAccount) return false;
+  if (rightCounterpartyAccount && rightCounterpartyAccount !== leftAccount) return false;
   return (leftCounterpartyAccount && leftCounterpartyAccount === rightAccount)
     || (rightCounterpartyAccount && rightCounterpartyAccount === leftAccount)
     || (leftCounterpartyInn && rightInn && leftCounterpartyInn === rightInn)
@@ -37,15 +41,19 @@ function daysBetween(left: string, right: string) {
 
 export function findCertainTransferPairs(rows: TransferMatchRow[]): TransferPair[] {
   const candidates = new Map<string, string[]>();
-  for (let leftIndex = 0; leftIndex < rows.length; leftIndex += 1) {
-    const left = rows[leftIndex];
-    if (!Number.isFinite(left.amount) || left.amount === 0) continue;
-    for (let rightIndex = leftIndex + 1; rightIndex < rows.length; rightIndex += 1) {
-      const right = rows[rightIndex];
-      if (Math.sign(left.amount) === Math.sign(right.amount)) continue;
-      if (cents(left.amount) !== cents(right.amount)) continue;
+  const incomingByAmount = new Map<number, TransferMatchRow[]>();
+  const byId = new Map(rows.map(row=>[row.id,row]));
+  for (const row of rows) {
+    if (!Number.isFinite(row.amount) || row.amount<=0) continue;
+    const key=cents(row.amount);
+    incomingByAmount.set(key,[...(incomingByAmount.get(key) ?? []),row]);
+  }
+  for (const left of rows) {
+    if (!Number.isFinite(left.amount) || left.amount >= 0) continue;
+    for (const right of incomingByAmount.get(cents(left.amount)) ?? []) {
       if (digits(left.bankAccountNumber) === digits(right.bankAccountNumber)) continue;
-      if (daysBetween(left.date, right.date) > 3) continue;
+      const distance = daysBetween(left.date, right.date);
+      if (!Number.isFinite(distance) || distance > 3) continue;
       if (!evidence(left, right)) continue;
       candidates.set(left.id, [...(candidates.get(left.id) ?? []), right.id]);
       candidates.set(right.id, [...(candidates.get(right.id) ?? []), left.id]);
@@ -58,7 +66,7 @@ export function findCertainTransferPairs(rows: TransferMatchRow[]): TransferPair
     if (matches.length !== 1 || used.has(row.id)) continue;
     const otherId = matches[0];
     if ((candidates.get(otherId) ?? []).length !== 1 || used.has(otherId)) continue;
-    const other = rows.find((candidate) => candidate.id === otherId);
+    const other = byId.get(otherId);
     if (!other) continue;
     const outgoing = row.amount < 0 ? row : other;
     const incoming = row.amount > 0 ? row : other;

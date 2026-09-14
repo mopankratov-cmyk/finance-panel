@@ -7,6 +7,7 @@ import { readCompaniesCompat } from "./companySchema";
 import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES } from "./categories";
 import { buildChainEntries, chainIdForPayment, requiresKorovkinLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
 import type { Account, Payment } from "@/lib/types";
+import { paymentTransferBalances } from "./paymentTransferBalance";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const fail = (message: string, status=400) => Object.assign(new Error(message), {status});
 function dbRequired() { const db=getSupabaseAdmin(); if(!db) throw fail("Supabase не настроен",503); return db; }
@@ -95,6 +96,8 @@ export async function savePaymentChain(body: Record<string,unknown>) {
  const reg=await registry();
  if(!cancel) {const errors=validateChain(d,reg.accounts,reg.companies,reg.categories);if(errors.length)throw fail(errors.join(". "));}
  const entries=cancel?[]:buildChainEntries(d,reg.companies);
+ const imbalance=paymentTransferBalances(entries).find(group=>!group.balanced);
+ if(imbalance)throw fail(imbalance.label+": выбытие и поступление не сходятся, разница "+imbalance.net+" ₽");
  const r=await dbRequired().rpc("save_dds_payment_chain",{p_chain_id:d.id,p_expected_revision:d.revision,p_draft:d,p_entries:entries,p_origin_ids:d.originPaymentIds,p_cancel:cancel});
  if(r.error)throw fail(missing(r.error)?CHAIN_MIGRATION_MESSAGE:r.error.message,missing(r.error)?503:r.error.code==='40001'?409:500);
  return r.data;

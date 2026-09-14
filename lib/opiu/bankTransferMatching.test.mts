@@ -32,8 +32,18 @@ test("does not link equal amounts without account or INN evidence", () => {
 test("does not choose when two incoming operations are equally suitable", () => {
   const pairs = findCertainTransferPairs([
     row({ id: "out" }),
-    row({ id: "in-1", amount: 1000, bankAccountNumber: "222", ownerInn: "20" }),
-    row({ id: "in-2", amount: 1000, bankAccountNumber: "222", ownerInn: "20" }),
+    row({ id: "in-1", amount: 1000, bankAccountNumber: "222", ownerInn: "20", counterpartyAccount: "111" }),
+    row({ id: "in-2", amount: 1000, bankAccountNumber: "222", ownerInn: "20", counterpartyAccount: "111" }),
   ]);
   assert.deepEqual(pairs, []);
+});
+
+test("account conflicts cannot be overridden by matching taxpayer IDs",()=>{
+  assert.deepEqual(findCertainTransferPairs([row({id:"out",counterpartyAccount:"999"}),row({id:"in",amount:1000,bankAccountNumber:"222",ownerInn:"20",counterpartyAccount:"111",counterpartyInn:"10"})]),[]);
+});
+test("matches account numbers without INN and rejects malformed dates",()=>{
+  const outgoing=row({id:"out",ownerInn:"",counterpartyInn:""});
+  const incoming=row({id:"in",amount:1000,bankAccountNumber:"222",counterpartyAccount:"111",ownerInn:"",counterpartyInn:""});
+  assert.equal(findCertainTransferPairs([outgoing,incoming]).length,1);
+  assert.deepEqual(findCertainTransferPairs([outgoing,{...incoming,date:"invalid"}]),[]);
 });
