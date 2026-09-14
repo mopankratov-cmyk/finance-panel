@@ -286,7 +286,7 @@ async function loadBrandMonthData(
   // нетто-сумма может ощутимо гулять и даже уходить в минус (см. историю
   // чата/PR) — на storage_fee этого нет.
   const paidStorageByWeek = brand.articlePrefixes?.length
-    ? await fetchPaidStorageByWeek(brand, weeks, nmIdWhitelist)
+    ? await fetchPaidStorageByWeek(brand, weeks)
     : null;
   const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, weeks);
 
@@ -460,7 +460,7 @@ async function loadBrandSalePeriodData(
   // См. комментарий в loadBrandMonthData: гранулярное хранение только для
   // брендов, делящих кабинет с кем-то ещё.
   const paidStorageByWeek = brand.articlePrefixes?.length
-    ? await fetchPaidStorageByWeek(brand, [period], nmIdWhitelist)
+    ? await fetchPaidStorageByWeek(brand, [period])
     : null;
   const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, [period]);
 
