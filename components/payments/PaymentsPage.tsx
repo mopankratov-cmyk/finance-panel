@@ -28,6 +28,7 @@ import { ExpenseCategoryManager } from "./ExpenseCategoryManager";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { COMPANY_TAX_SYSTEMS, COMPANY_VAT_MODES, type CompanyTaxSystem, type CompanyVatMode } from "@/lib/finance/companyTax";
+import { COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
 import { formatDate, formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
 
@@ -640,6 +641,7 @@ function CompaniesModal({ open, companies, onClose, onCreated, onUpdated }: {
           <thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-2.5">Компания</th><th className="px-3 py-2.5">Группа</th><th className="px-3 py-2.5">Статус</th><th className="px-3 py-2.5">Налогообложение</th><th className="px-3 py-2.5">НДС</th><th className="px-3 py-2.5 text-right">Действие</th></tr></thead>
           <tbody className="divide-y divide-slate-100">{companies.length === 0 ? <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">Компаний пока нет</td></tr> : companies.map((company) => <CompanySettingsRow key={company.id} company={company} onUpdated={onUpdated} />)}</tbody>
         </table>
+      {companies.some((company) => company.taxSettingsAvailable === false) && <p role="status" id="company-tax-unavailable" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">{COMPANY_TAX_UNAVAILABLE}</p>}
       </div>
     </div>
   </Modal>;
@@ -672,8 +674,8 @@ function CompanySettingsRow({ company, onUpdated }: { company: DdsCompany; onUpd
     <td data-cell="title" className="px-3 py-3 align-top font-semibold text-slate-900">{company.name}{error && <p role="alert" className="mt-2 max-w-64 text-xs font-normal leading-5 text-rose-700">{error}</p>}</td>
     <td data-label="Группа" className="px-3 py-3 align-top text-slate-600">{company.groupName}</td>
     <td data-label="Статус" className="px-3 py-3 align-top"><select aria-label={`Статус компании ${company.name}`} value={isActive ? "active" : "inactive"} onChange={(event) => setIsActive(event.target.value === "active")} className={controlClass}><option value="active">Активна</option><option value="inactive">Отключена</option></select></td>
-    <td data-label="Налогообложение" className="px-3 py-3 align-top"><select aria-label={`Система налогообложения компании ${company.name}`} value={taxSystem ?? ""} onChange={(event) => setTaxSystem((event.target.value || null) as CompanyTaxSystem | null)} className={controlClass}><option value="">Не указано</option>{COMPANY_TAX_SYSTEMS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
-    <td data-label="НДС" className="px-3 py-3 align-top"><select aria-label={`НДС компании ${company.name}`} value={vatMode ?? ""} onChange={(event) => setVatMode((event.target.value || null) as CompanyVatMode | null)} className={controlClass}><option value="">Не указано</option>{COMPANY_VAT_MODES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
+    <td data-label="Налогообложение" className="px-3 py-3 align-top"><select disabled={saving || company.taxSettingsAvailable === false} aria-describedby={company.taxSettingsAvailable === false ? "company-tax-unavailable" : undefined} aria-label={`Система налогообложения компании ${company.name}`} value={taxSystem ?? ""} onChange={(event) => setTaxSystem((event.target.value || null) as CompanyTaxSystem | null)} className={`${controlClass} disabled:cursor-not-allowed disabled:bg-slate-100`}><option value="">{company.taxSettingsAvailable === false ? "Недоступно до обновления базы" : "Не указано"}</option>{COMPANY_TAX_SYSTEMS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
+    <td data-label="НДС" className="px-3 py-3 align-top"><select disabled={saving || company.taxSettingsAvailable === false} aria-describedby={company.taxSettingsAvailable === false ? "company-tax-unavailable" : undefined} aria-label={`НДС компании ${company.name}`} value={vatMode ?? ""} onChange={(event) => setVatMode((event.target.value || null) as CompanyVatMode | null)} className={`${controlClass} disabled:cursor-not-allowed disabled:bg-slate-100`}><option value="">{company.taxSettingsAvailable === false ? "Недоступно до обновления базы" : "Не указано"}</option>{COMPANY_VAT_MODES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
     <td data-cell="actions" className="px-3 py-3 align-top text-right"><button type="button" onClick={() => void save()} disabled={saving || !dirty} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40">{saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Save className="h-4 w-4" />}Сохранить</button></td>
   </tr>;
 }
