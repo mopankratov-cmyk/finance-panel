@@ -45,6 +45,19 @@ interface PaidStorageJobState extends Record<string, unknown> {
    */
   frontier?: string;
   historyStart?: string;
+  /**
+   * Самая свежая уже загруженная дата — ОТДЕЛЬНО от frontier. Без этого
+   * поля синк, догнав историю один раз, больше никогда не возвращался к
+   * новым дням: frontier умеет идти только назад, и после первого запуска
+   * "сегодня" синкалось один-единственный раз и застывало навсегда, пока
+   * кто-то вручную не сбрасывал frontier. Каждый вызов сначала проверяет,
+   * не отстал ли newestSynced от maxAllowedDate, и если да — досинхронизирует
+   * пропущенные свежие дни (mode: "recent"), не трогая backfill-курсор
+   * frontier; только когда newestSynced догнал maxAllowedDate, продолжается
+   * обычный бэкфилл вглубь истории.
+   */
+  newestSynced?: string;
+  mode?: "recent" | "backfill";
   lastRunAt?: string;
 }
 
@@ -98,19 +111,37 @@ async function processCabinet(
 
   if (!state.taskId) {
     const historyStart = state.historyStart ?? addDays(today, -HISTORY_DEPTH_DAYS);
-    const periodEnd = state.frontier ? addDays(state.frontier, -1) : maxAllowedDate;
-    if (periodEnd < historyStart) {
-      await writeWbSyncState(db, cabinetId, JOB, {
-        cursor: state.frontier ?? null,
-        status: "caught_up",
-        attempts: 0,
-        lastError: null,
-        state: { ...state, historyStart, lastRunAt: new Date().toISOString() },
-      });
-      return { cabinet: target.name, status: "caught_up" };
+    const isRecentCaughtUp = Boolean(state.newestSynced) && state.newestSynced! >= maxAllowedDate;
+
+    let mode: "recent" | "backfill";
+    let periodStart: string;
+    let periodEnd: string;
+
+    if (!isRecentCaughtUp) {
+      // Приоритет — досинхронизировать свежие дни (см. newestSynced),
+      // прежде чем продолжать бэкфилл вглубь истории. Не трогает frontier.
+      mode = "recent";
+      periodEnd = maxAllowedDate;
+      const windowStart = addDays(periodEnd, -(WINDOW_DAYS - 1));
+      periodStart = state.newestSynced && state.newestSynced >= windowStart
+        ? addDays(state.newestSynced, 1)
+        : windowStart;
+    } else {
+      mode = "backfill";
+      periodEnd = state.frontier ? addDays(state.frontier, -1) : maxAllowedDate;
+      if (periodEnd < historyStart) {
+        await writeWbSyncState(db, cabinetId, JOB, {
+          cursor: state.frontier ?? null,
+          status: "caught_up",
+          attempts: 0,
+          lastError: null,
+          state: { ...state, historyStart, lastRunAt: new Date().toISOString() },
+        });
+        return { cabinet: target.name, status: "caught_up" };
+      }
+      const windowStart = addDays(periodEnd, -(WINDOW_DAYS - 1));
+      periodStart = windowStart < historyStart ? historyStart : windowStart;
     }
-    const windowStart = addDays(periodEnd, -(WINDOW_DAYS - 1));
-    const periodStart = windowStart < historyStart ? historyStart : windowStart;
 
     const created = await createPaidStorageTask(target.statsToken, periodStart, periodEnd);
     if (!created.ok) {
@@ -126,7 +157,7 @@ async function processCabinet(
       throw new Error(`создание задачи WB ${created.status}: ${created.body}`);
     }
 
-    state = { ...state, taskId: created.taskId, periodStart, periodEnd, historyStart, createdAt: new Date().toISOString() };
+    state = { ...state, taskId: created.taskId, periodStart, periodEnd, historyStart, mode, createdAt: new Date().toISOString() };
     attempts = 0;
     await writeWbSyncState(db, cabinetId, JOB, {
       cursor: state.frontier ?? null,
@@ -252,15 +283,29 @@ async function processCabinet(
     throw new Error(`запись wb_paid_storage_rows: ${upsertError}`);
   }
 
-  const frontier = state.periodStart ?? state.frontier ?? maxAllowedDate;
   const historyStart = state.historyStart ?? addDays(today, -HISTORY_DEPTH_DAYS);
-  await writeWbSyncState(db, cabinetId, JOB, {
-    cursor: frontier,
-    status: frontier <= historyStart ? "caught_up" : "backfill",
-    attempts: 0,
-    lastError: null,
-    state: { ...state, taskId: undefined, frontier, historyStart, lastRunAt: new Date().toISOString() },
-  });
+
+  if (state.mode === "recent") {
+    // Свежее окно — двигаем ТОЛЬКО newestSynced, frontier (бэкфилл вглубь
+    // истории) этот шаг не трогает вообще.
+    const newestSynced = state.periodEnd ?? maxAllowedDate;
+    await writeWbSyncState(db, cabinetId, JOB, {
+      cursor: state.frontier ?? null,
+      status: state.frontier && state.frontier <= historyStart ? "caught_up" : "backfill",
+      attempts: 0,
+      lastError: null,
+      state: { ...state, taskId: undefined, mode: undefined, newestSynced, historyStart, lastRunAt: new Date().toISOString() },
+    });
+  } else {
+    const frontier = state.periodStart ?? state.frontier ?? maxAllowedDate;
+    await writeWbSyncState(db, cabinetId, JOB, {
+      cursor: frontier,
+      status: frontier <= historyStart ? "caught_up" : "backfill",
+      attempts: 0,
+      lastError: null,
+      state: { ...state, taskId: undefined, mode: undefined, frontier, historyStart, lastRunAt: new Date().toISOString() },
+    });
+  }
 
   return {
     cabinet: target.name,
