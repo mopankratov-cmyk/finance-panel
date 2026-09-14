@@ -1,12 +1,17 @@
 "use client";
 
-import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Pencil, Plus, RefreshCw, Save, Trash2, Upload, WalletCards } from "lucide-react";
+import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Plus, RefreshCw, Save, Trash2, Upload, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
+import { PaymentChainModal, type PaymentChainSeed } from "./PaymentChainModal";
+import { PaymentOperationsTable } from "./PaymentOperationsTable";
+import { PaymentChainList } from "./PaymentChainList";
+import { chainMetadata, chainIdForPayment } from "@/lib/finance/paymentChains";
+import { loadFinanceState } from "@/lib/db";
 import { BankReviewPanel } from "./BankReviewPanel";
 import { loadBankGoogleSyncData } from "./bankReviewStore";
 import { BankReconciliationPanel } from "./BankReconciliationPanel";
 import { DdsOverview } from "./DdsOverview";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { DdsReport } from "./DdsReport";
 import {
   loadDdsCompanies,
@@ -29,17 +34,20 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { COMPANY_TAX_SYSTEMS, COMPANY_VAT_MODES, type CompanyTaxSystem, type CompanyVatMode } from "@/lib/finance/companyTax";
 import { COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
-import { formatDate, formatMoney, generateId } from "@/lib/format";
+import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
 
 export function PaymentsPage() {
   const { categories: DDS_CATEGORIES, customCategoryNames } = useDdsCategories();
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const { state, dispatch } = useFinance();
+  const [chainVersion, setChainVersion] = useState(0);
+  const [chainSeed, setChainSeed] = useState<PaymentChainSeed | null>(null);
+  const closeChain = useCallback(()=>setChainSeed(null),[]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Payment | null>(null);
-  const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation">("overview");
-  const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation">(mode);
+  const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">("overview");
+  const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">(mode);
   const [importOpen, setImportOpen] = useState(false);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [companiesOpen, setCompaniesOpen] = useState(false);
@@ -84,7 +92,7 @@ export function PaymentsPage() {
     () =>
       state.payments.map((payment) => ({
         ...payment,
-        companyId: companyByPayment.get(payment.id) ?? null,
+        companyId: payment.companyId ?? companyByPayment.get(payment.id) ?? null,
       })),
     [state.payments, companyByPayment],
   );
@@ -121,8 +129,6 @@ export function PaymentsPage() {
     return [...DDS_CATEGORIES, ...extra];
   }, [state.payments, DDS_CATEGORIES]);
 
-  const getAccountName = (id: string) =>
-    state.accounts.find((a) => a.id === id)?.name ?? "—";
 
   const openAdd = () => {
     setEditing(null);
@@ -130,6 +136,7 @@ export function PaymentsPage() {
   };
 
   const openEdit = (payment: Payment) => {
+    if(chainIdForPayment(payment)){setChainSeed({paymentId:payment.id});return;}
     setEditing(payment);
     setModalOpen(true);
   };
@@ -147,6 +154,8 @@ export function PaymentsPage() {
   };
 
   const handleDelete = (id: string) => {
+    const payment=state.payments.find(p=>p.id===id);
+    if(payment && chainMetadata(payment.comment)){setChainSeed({paymentId:id});return;}
     if (confirm("Удалить этот платёж?")) {
       dispatch({ type: "DELETE_PAYMENT", payload: id });
     }
@@ -257,6 +266,7 @@ export function PaymentsPage() {
             {([
               ["overview", "Обзор", LayoutDashboard],
               ["ledger", "Платежи", ListChecks],
+              ["chains", "Разбитые операции", ListChecks],
               ["dds", "Отчёт ДДС", BarChart3],
               ["review", "На проверке", FileSpreadsheet],
               ["reconciliation", "Сверка банка", Landmark],
@@ -360,6 +370,7 @@ export function PaymentsPage() {
         <BankReconciliationPanel accounts={state.accounts} onImportStatement={() => setBankImportOpen(true)} />
       </TabPanel>
 
+      {mode === "chains" && <PaymentChainList onOpen={setChainSeed} version={chainVersion}/>}
       {mode === "ledger" && (
         <>
       <Card>
@@ -453,97 +464,12 @@ export function PaymentsPage() {
           прятались три колонки — компания, контрагент и назначение платежа
           были недоступны с телефона и с планшета в портрете вовсе. */}
       <Card>
-        <div className="table-cards-lg overflow-x-auto p-3 lg:p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-xs text-slate-500">
-                <th className="px-5 py-3 font-medium">Дата</th>
-                <th className="px-5 py-3 font-medium text-right">Сумма</th>
-                <th className="px-5 py-3 font-medium">Кошелек</th>
-                <th className="px-5 py-3 font-medium">
-                  Направление бизнеса
-                </th>
-                <th className="px-5 py-3 font-medium">
-                  Контрагент
-                </th>
-                <th className="px-5 py-3 font-medium">
-                  Назначение платежа
-                </th>
-                <th className="px-5 py-3 font-medium">Название</th>
-                <th className="px-5 py-3 font-medium text-right">Действия</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="px-5 py-8 text-center text-slate-400"
-                  >
-                    Нет фактических платежей по выбранным фильтрам
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/50">
-                    <td data-label="Дата" className="px-5 py-3 text-slate-600 whitespace-nowrap">
-                      {formatDate(p.date)}
-                    </td>
-                    <td
-                      data-label="Сумма"
-                      className={`px-5 py-3 text-right font-semibold whitespace-nowrap ${
-                        p.amount >= 0 ? "text-emerald-600" : "text-red-600"
-                      }`}
-                    >
-                      {formatMoney(p.amount)}
-                    </td>
-                    <td data-label="Кошелек" className="px-5 py-3 text-slate-600">
-                      {getAccountName(p.accountId)}
-                    </td>
-                    <td data-label="Направление бизнеса" className="px-5 py-3">
-                      <span className={p.companyId ? "text-slate-700" : "text-slate-400"}>
-                        {p.companyId ? companyNameById.get(p.companyId) ?? "Неизвестная компания" : "Общее по группе"}
-                      </span>
-                    </td>
-                    <td data-label="Контрагент" className="px-5 py-3 text-slate-600 break-anywhere">
-                      {p.counterparty || "—"}
-                    </td>
-                    {/* Назначение обрезано только на десктопе: в карточке оно
-                        переносится целиком — подсказки по наведению на касании нет. */}
-                    <td data-label="Назначение платежа" className="px-5 py-3 text-slate-500 break-anywhere lg:max-w-xs lg:truncate">
-                      {p.name}
-                    </td>
-                    <td data-label="Название" className="px-5 py-3 font-medium text-slate-900">
-                      {p.category}
-                    </td>
-                    <td data-cell="actions" className="px-5 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEdit(p)}
-                          aria-label="Редактировать платёж"
-                          className="tap rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(p.id)}
-                          aria-label="Удалить платёж"
-                          className="tap rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <PaymentOperationsTable visible={filtered} all={paymentsWithCompany} accounts={state.accounts} companies={companies} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed}/>
       </Card>
         </>
       )}
 
+      {chainSeed&&<PaymentChainModal seed={chainSeed} accounts={state.accounts} companies={companies} onClose={closeChain} onSaved={async()=>{dispatch({type:"LOAD",payload:await loadFinanceState()});const links=await loadPaymentCompanyLinks();setCompanyByPayment(new Map(links.map(l=>[l.paymentId,l.companyId])));setChainVersion(v=>v+1);}}/>}
       <Modal
         open={modalOpen}
         onClose={() => {

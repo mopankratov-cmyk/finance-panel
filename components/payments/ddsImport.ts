@@ -162,7 +162,7 @@ export function buildImportPlan(
       date: d.date,
       status: "done",
       counterparty: d.counterparty,
-      comment: null, // «Направление бизнеса» появится отдельным полем на Этапе 2
+      comment: d.comment ?? null,
       company_id: companyId,
       import_source: d.importSource ?? null,
     };
