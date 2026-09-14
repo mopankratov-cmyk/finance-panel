@@ -9,6 +9,7 @@ export interface DdsCompany {
   isActive: boolean;
   taxSystem?: CompanyTaxSystem | null;
   vatMode?: CompanyVatMode | null;
+  taxSettingsAvailable?: boolean;
 }
 
 // До применения миграции в старых данных могла остаться техническая запись
@@ -37,6 +38,7 @@ interface CompaniesResponse {
   payment_links?: Array<{ id: string; company_id: string | null }>;
   company?: CompanyRow;
   error?: string;
+  tax_settings_available?: boolean;
 }
 
 async function json<T extends { error?: string }>(response: Response): Promise<T> {
@@ -51,7 +53,7 @@ async function load(): Promise<CompaniesResponse> {
 
 export async function loadDdsCompanies(): Promise<DdsCompany[]> {
   const body = await load();
-  return (body.companies ?? []).map(companyFromRow);
+  return (body.companies ?? []).map((row) => companyFromRow(row, body.tax_settings_available));
 }
 
 export async function loadPaymentCompanyLinks(): Promise<PaymentCompanyLink[]> {
@@ -66,10 +68,10 @@ export async function createDdsCompany(name: string, groupName: string): Promise
     body: JSON.stringify({ action: "create", name, group_name: groupName }),
   }).then(json<CompaniesResponse>);
   if (!body.company) throw new Error("Юрлицо не вернулось после сохранения");
-  return companyFromRow(body.company);
+  return companyFromRow(body.company, body.tax_settings_available);
 }
 
-function companyFromRow(row: CompanyRow): DdsCompany {
+function companyFromRow(row: CompanyRow, taxSettingsAvailable = true): DdsCompany {
   return {
     id: row.id,
     name: companyLabel(row.name),
@@ -77,6 +79,7 @@ function companyFromRow(row: CompanyRow): DdsCompany {
     isActive: row.is_active,
     taxSystem: row.tax_system ?? null,
     vatMode: row.vat_mode ?? null,
+    taxSettingsAvailable,
   };
 }
 
@@ -88,12 +91,11 @@ export async function updateDdsCompany(company: DdsCompany): Promise<DdsCompany>
       action: "company",
       company_id: company.id,
       is_active: company.isActive,
-      tax_system: company.taxSystem,
-      vat_mode: company.vatMode,
+      ...(company.taxSettingsAvailable === false ? {} : { tax_system: company.taxSystem ?? null, vat_mode: company.vatMode ?? null }),
     }),
   }).then(json<CompaniesResponse>);
   if (!body.company) throw new Error("Юрлицо не вернулось после сохранения");
-  return companyFromRow(body.company);
+  return companyFromRow(body.company, body.tax_settings_available);
 }
 
 export async function savePaymentWithCompany(
