@@ -26,6 +26,7 @@ import {
   type PurchaseOrderInput,
   type PurchaseOrderStatus,
 } from "@/lib/purchases/order";
+import type { SupplierView } from "@/lib/purchases/suppliers";
 import { WbEmptyState, WbErrorState } from "./WbModuleHeader";
 
 interface Props {
@@ -82,6 +83,7 @@ function createDraft(cabinetId: string): EditableOrder {
     cabinetId,
     orderNumber: `Z-${orderDate.slice(0, 4)}-${String(Date.now()).slice(-5)}`,
     supplier: "",
+    supplierId: null,
     orderDate,
     productionDays: 30,
     expectedReadyDate: addDays(orderDate, 30),
@@ -116,6 +118,7 @@ const smallButton = "inline-flex min-h-10 items-center justify-center gap-1.5 ro
 
 export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
   const [orders, setOrders] = useState<PurchaseOrderView[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierView[]>([]);
   const [loading, setLoading] = useState(true);
   const elapsed = useElapsedSeconds(loading);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -164,6 +167,22 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
     setForm(null);
     setDirty(false);
   }, [cabinetId]);
+
+  // Справочник поставщиков общий на компанию, кабинет тут ни при чём —
+  // грузим один раз, а не при каждой смене кабинета (как заказы выше).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/suppliers", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((body: { data: { suppliers?: SupplierView[] } | null }) => {
+        if (!cancelled) setSuppliers(body.data?.suppliers ?? []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.isActive), [suppliers]);
+  const supplierByName = useMemo(() => new Map(activeSuppliers.map((supplier) => [supplier.name, supplier])), [activeSuppliers]);
 
   const mutate = useCallback((change: (current: EditableOrder) => EditableOrder) => {
     version.current += 1;
@@ -320,7 +339,24 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
           <EditorSection icon={CalendarClock} title="Основные параметры">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <label className="space-y-1.5 text-[10px] font-medium text-slate-500">Номер заказа<input value={form.orderNumber} onChange={(event) => mutate((current) => ({ ...current, orderNumber: event.target.value }))} className={inputClass} /></label>
-              <label className="space-y-1.5 text-[10px] font-medium text-slate-500">Поставщик<input value={form.supplier} onChange={(event) => mutate((current) => ({ ...current, supplier: event.target.value }))} placeholder="Название фабрики" className={inputClass} /></label>
+              <label className="space-y-1.5 text-[10px] font-medium text-slate-500">
+                Поставщик
+                <input
+                  list="purchase-order-supplier-options"
+                  value={form.supplier}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    const matched = supplierByName.get(value.trim());
+                    mutate((current) => ({ ...current, supplier: value, supplierId: matched ? matched.id : null }));
+                  }}
+                  placeholder="Название фабрики или выбор из справочника"
+                  className={inputClass}
+                />
+                <datalist id="purchase-order-supplier-options">
+                  {activeSuppliers.map((supplier) => <option key={supplier.id} value={supplier.name} />)}
+                </datalist>
+                {form.supplierId ? <span className="block text-[9px] font-normal text-emerald-600">Привязан к справочнику</span> : null}
+              </label>
               <label className="space-y-1.5 text-[10px] font-medium text-slate-500">Дата заказа<input type="date" value={form.orderDate} onChange={(event) => mutate((current) => ({ ...current, orderDate: event.target.value, expectedReadyDate: addDays(event.target.value, current.productionDays) }))} className={inputClass} /></label>
               <label className="space-y-1.5 text-[10px] font-medium text-slate-500">Срок производства, дней<input type="number" min={0} max={365} value={form.productionDays} onChange={(event) => mutate((current) => ({ ...current, productionDays: Number(event.target.value), expectedReadyDate: addDays(current.orderDate, Number(event.target.value)) }))} className={inputClass} /></label>
               <label className="space-y-1.5 text-[10px] font-medium text-slate-500">Ожидаемая готовность<input type="date" readOnly value={form.expectedReadyDate} className={`${inputClass} bg-slate-50 text-slate-500`} /></label>

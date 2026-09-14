@@ -23,6 +23,7 @@ export function purchaseOrderFromDb(row: DbRecord): PurchaseOrderView {
     cabinetId: string(row.cabinet_id),
     orderNumber: string(row.order_number),
     supplier: string(row.supplier),
+    supplierId: nullableString(row.supplier_id),
     orderDate: string(row.order_date),
     productionDays: number(row.production_days),
     expectedReadyDate: string(row.expected_ready_date),

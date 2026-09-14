@@ -43,6 +43,10 @@ export interface PurchaseOrderInput {
   cabinetId: string;
   orderNumber: string;
   supplier: string;
+  /** Ссылка на suppliers.id, если поставщик выбран из справочника, а не
+   *  вписан руками. `supplier` остаётся источником отображаемого имени — так
+   *  старые заказы без привязки продолжают показывать то, что в них было. */
+  supplierId: string | null;
   orderDate: string;
   productionDays: number;
   expectedReadyDate: string;
@@ -71,6 +75,12 @@ type ValidationResult =
   | { ok: false; error: string };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function nullableId(value: unknown): string | null {
+  const candidate = text(value, 60);
+  return UUID.test(candidate) ? candidate : null;
+}
 const PAYMENT_STATUSES = new Set<PurchasePaymentStatus>(["planned", "paid", "cancelled"]);
 const LOGISTICS_STATUSES = new Set<PurchaseLogisticsStatus>(["planned", "in_progress", "done", "cancelled"]);
 
@@ -129,6 +139,7 @@ export function normalizePurchaseOrderPayload(raw: unknown, forced?: { id?: stri
   const cabinetId = text(forced?.cabinetId ?? source.cabinetId, 60);
   const id = text(forced?.id ?? source.id, 60) || undefined;
   const orderNumber = text(source.orderNumber, 100);
+  const supplierId = nullableId(source.supplierId);
   const orderDate = nullableDate(source.orderDate);
   const productionDays = number(source.productionDays);
   const currency = text(source.currency, 3) as PurchaseCurrency;
@@ -213,6 +224,7 @@ export function normalizePurchaseOrderPayload(raw: unknown, forced?: { id?: stri
       cabinetId,
       orderNumber,
       supplier: text(source.supplier, 300),
+      supplierId,
       orderDate,
       productionDays,
       expectedReadyDate: addDays(orderDate, productionDays),
