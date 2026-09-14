@@ -14,6 +14,17 @@ test("новая статья валидируется без дублей ос�
   for (const input of [{ name: "рко" }, { name: "" }, { name: "Курс", opiuArticleId: "cogs" }, { name: "Курс", opiuArticleId: "admin_salary" }]) assert.throws(() => validateExpenseCategory(input));
 });
 
+test("название и цель не приводятся из объектов, управляющие символы не маскируются пробелами", () => {
+  for (const name of [{}, [], 123, true, "Курс\nкоманды", "Курс\tкоманды", "Курс\rкоманды", "Курс\u007f", "Курс\u0085"]) {
+    assert.throws(() => validateExpenseCategory({ name }));
+  }
+  for (const opiuArticleId of [{}, [], 123, false]) {
+    assert.throws(() => validateExpenseCategory({ name: "Курсы команды", opiuArticleId }));
+  }
+  assert.deepEqual(validateExpenseCategory({ name: "Курсы\u00a0 команды" }), { name: "Курсы команды", opiuArticleId: null });
+  assert.throws(() => validateExpenseCategory({ name: "я".repeat(161) }));
+});
+
 test("новая статья доступна в опциях и относится к операционной деятельности", () => {
   const names = ["Курсы команды"];
   assert.equal(categoryOptions(undefined, names).includes(names[0]), true);
