@@ -13,6 +13,7 @@ import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbPurchaseOrdersTab } from "./WbPurchaseOrdersTab";
 import { WbSuppliersTab } from "./WbSuppliersTab";
+import { WbTransitShipmentsTab } from "./WbTransitShipmentsTab";
 import { WbSupplyDistributionPlanner, type DistributionSkuInput, type DistributionWarehouseInput } from "./WbSupplyDistributionPlanner";
 import { WbSuppliesListTab } from "./WbSuppliesListTab";
 import { WbKizReconcileTab } from "./WbKizReconcileTab";
@@ -26,6 +27,7 @@ type Tab =
   | "wbSupplies"
   | "orders"
   | "suppliers"
+  | "transit"
   | "reorder"
   | "receiving"
   | "kizReconcile"
@@ -96,7 +98,7 @@ export function WbSuppliesPage() {
   // по остаткам). Раньше он грузился всегда — открывая «FBS-заказы», человек ждал
   // два источника вместо одного. Грузим по требованию: только когда открыта
   // вкладка, которой эти данные действительно нужны.
-  const needsSuppliesData = !["wbSupplies", "kizReconcile", "kizExport", "fbsOrders", "fbsStock", "pvzReturns", "penalties"].includes(tab);
+  const needsSuppliesData = !["wbSupplies", "suppliers", "transit", "kizReconcile", "kizExport", "fbsOrders", "fbsStock", "pvzReturns", "penalties"].includes(tab);
 
   const load = useCallback(() => {
     if (!ready || cabinetsLoading || !needsSuppliesData) return undefined;
@@ -150,6 +152,7 @@ export function WbSuppliesPage() {
       ["wbSupplies", "Мои поставки"],
       ["orders", "Заказы фабрике"],
       ["suppliers", "Поставщики"],
+      ["transit", "Товар в пути"],
       ["reorder", "К поставке"],
       ["receiving", "Приёмка"],
       ["kizReconcile", "Сверка оборота"],
@@ -176,6 +179,8 @@ export function WbSuppliesPage() {
       // cabinetId, но данные вкладки от него не зависят вовсе).
       case "suppliers":
         return <WbSuppliersTab canWrite={canWrite} />;
+      case "transit":
+        return <WbTransitShipmentsTab cabinetId={cabinetId} />;
       case "kizReconcile":
         return <WbKizReconcileTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} />;
       case "kizExport":

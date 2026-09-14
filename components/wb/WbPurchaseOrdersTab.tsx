@@ -11,6 +11,7 @@ import {
   Save,
   Ship,
   Trash2,
+  Truck,
   WalletCards,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -29,6 +30,8 @@ import {
   type PurchaseOrderStatus,
 } from "@/lib/purchases/order";
 import type { SupplierView } from "@/lib/purchases/suppliers";
+import { SHIPMENT_STATUSES, type ShipmentStatus } from "@/lib/purchases/shipments";
+import type { SupplierShipmentView } from "@/lib/purchases/shipmentsDb";
 import { WbEmptyState, WbErrorState } from "./WbModuleHeader";
 
 interface Props {
@@ -69,6 +72,24 @@ const STATUS_STYLES: Record<PurchaseOrderStatus, string> = {
   placed: "border-blue-200 bg-blue-50 text-blue-700",
   production: "border-amber-200 bg-amber-50 text-amber-700",
   transit: "border-violet-200 bg-violet-50 text-violet-700",
+  received: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  cancelled: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+const SHIPMENT_STATUS_LABELS: Record<ShipmentStatus, string> = {
+  planned: "Готовится",
+  shipped: "Отгружена",
+  customs: "На таможне",
+  arrived: "Прибыла",
+  received: "Принята",
+  cancelled: "Отменена",
+};
+
+const SHIPMENT_STATUS_STYLES: Record<ShipmentStatus, string> = {
+  planned: "border-slate-200 bg-slate-50 text-slate-600",
+  shipped: "border-blue-200 bg-blue-50 text-blue-700",
+  customs: "border-amber-200 bg-amber-50 text-amber-700",
+  arrived: "border-violet-200 bg-violet-50 text-violet-700",
   received: "border-emerald-200 bg-emerald-50 text-emerald-700",
   cancelled: "border-rose-200 bg-rose-50 text-rose-700",
 };
@@ -169,7 +190,12 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [receiving, setReceiving] = useState(false);
+  const [shipments, setShipments] = useState<SupplierShipmentView[]>([]);
+  const [shipmentDraft, setShipmentDraft] = useState<{ carrier: string; route: string; eta: string; quantities: Record<number, string> } | null>(null);
+  const [shipmentSaving, setShipmentSaving] = useState(false);
+  const [shipmentError, setShipmentError] = useState<string | null>(null);
   const requestId = useRef(0);
+  const shipmentRequestId = useRef(0);
   const version = useRef(0);
   const savingRef = useRef(false);
 
@@ -219,6 +245,30 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
 
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.isActive), [suppliers]);
   const supplierByName = useMemo(() => new Map(activeSuppliers.map((supplier) => [supplier.name, supplier])), [activeSuppliers]);
+
+  const loadShipments = useCallback(async (orderId: string) => {
+    const current = ++shipmentRequestId.current;
+    try {
+      const response = await fetch(`/api/purchase-orders/${orderId}/shipments`, { cache: "no-store" });
+      const body = await response.json() as { data: { shipments?: SupplierShipmentView[] } | null; error: string | null };
+      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+      if (current === shipmentRequestId.current) setShipments(body.data?.shipments ?? []);
+    } catch {
+      if (current === shipmentRequestId.current) setShipments([]);
+    }
+  }, []);
+
+  // Отгрузки — не часть черновика (в отличие от items/paymentStages): это
+  // случившийся логистический факт, а не то, что можно набросать и стереть.
+  // Поэтому грузим отдельным запросом при открытии сохранённого заказа, а не
+  // держим их в form вместе с автосохранением. shipmentRequestId (тот же
+  // приём, что requestId у loadOrders) не даёт ответу по прошлому заказу
+  // перезаписать список уже открытого другого — иначе смена статуса могла
+  // бы уйти не в ту отгрузку.
+  useEffect(() => {
+    if (!open || !form?.id) { shipmentRequestId.current += 1; setShipments([]); return; }
+    void loadShipments(form.id);
+  }, [open, form?.id, loadShipments]);
 
   const mutate = useCallback((change: (current: EditableOrder) => EditableOrder) => {
     version.current += 1;
@@ -285,6 +335,8 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
     setSaveError(null);
     setHistory(null);
     setPickerNm("");
+    setShipmentDraft(null);
+    setShipmentError(null);
     setOpen(true);
   };
 
@@ -297,6 +349,8 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
     setSavedAt(null);
     setHistory(null);
     setPickerNm("");
+    setShipmentDraft(null);
+    setShipmentError(null);
     setOpen(true);
   };
 
@@ -341,6 +395,58 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
       setSaveError(error instanceof Error ? error.message : "Не удалось создать приёмку");
     } finally {
       setReceiving(false);
+    }
+  };
+
+  const startShipmentDraft = () => {
+    if (!form) return;
+    setShipmentError(null);
+    setShipmentDraft({ carrier: "", route: "", eta: "", quantities: Object.fromEntries(form.items.map((item) => [item.nmId, ""])) });
+  };
+
+  const submitShipmentDraft = async () => {
+    if (!form?.id || !shipmentDraft || shipmentSaving) return;
+    const items = form.items
+      .map((item) => ({ nmId: item.nmId, article: item.article, quantity: Number(shipmentDraft.quantities[item.nmId] || 0) }))
+      .filter((item) => item.quantity > 0);
+    if (items.length === 0) { setShipmentError("Укажите количество хотя бы по одной позиции"); return; }
+    setShipmentSaving(true);
+    setShipmentError(null);
+    try {
+      const response = await fetch(`/api/purchase-orders/${form.id}/shipments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: form.id, carrier: shipmentDraft.carrier, route: shipmentDraft.route, status: "planned", eta: shipmentDraft.eta || null, items }),
+      });
+      const body = await response.json() as { data: unknown; error: string | null };
+      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+      await loadShipments(form.id);
+      setShipmentDraft(null);
+    } catch (error) {
+      setShipmentError(error instanceof Error ? error.message : "Не удалось создать отгрузку");
+    } finally {
+      setShipmentSaving(false);
+    }
+  };
+
+  const patchShipmentStatus = async (shipment: SupplierShipmentView, status: ShipmentStatus) => {
+    if (!form?.id) return;
+    const timestampPatch =
+      status === "shipped" ? { shippedAt: new Date().toISOString() }
+      : status === "arrived" ? { arrivedAt: new Date().toISOString() }
+      : status === "received" ? { receivedAt: new Date().toISOString() }
+      : {};
+    try {
+      const response = await fetch(`/api/supplier-shipments/${shipment.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...shipment, status, ...timestampPatch }),
+      });
+      const body = await response.json() as { data: unknown; error: string | null };
+      if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
+      await loadShipments(form.id);
+    } catch (error) {
+      setShipmentError(error instanceof Error ? error.message : "Не удалось обновить статус отгрузки");
     }
   };
 
@@ -432,6 +538,43 @@ export function WbPurchaseOrdersTab({ skus, cabinetId, canWrite }: Props) {
 
             <section className="rounded-xl bg-slate-900 p-4 text-white shadow-lg"><div className="text-xs font-semibold">Итог заказа</div><div className="mt-4 space-y-2 text-[11px]"><div className="flex justify-between text-slate-300"><span>Товар</span><span>{formatMoney(totals?.goodsRub ?? 0)}</span></div><div className="flex justify-between text-slate-300"><span>Логистика</span><span>{formatMoney(totals?.logisticsRub ?? 0)}</span></div><div className="flex justify-between text-slate-300"><span>Расходы</span><span>{formatMoney(totals?.expensesRub ?? 0)}</span></div><div className="flex justify-between border-t border-slate-700 pt-3 text-base font-bold"><span>Итого</span><span>{formatMoney(totals?.totalRub ?? 0)}</span></div><div className="flex justify-between text-[10px] text-slate-400"><span>{totals?.quantity.toLocaleString("ru-RU") ?? 0} шт</span><span>{formatMoney(totals?.goodsCurrency ?? 0, form.currency)}</span></div></div></section>
           </div>
+
+          <EditorSection icon={Truck} title={`Отгрузки${shipments.length ? ` · ${shipments.length}` : ""}`} action={<button type="button" onClick={startShipmentDraft} disabled={!form.id || form.items.length === 0 || Boolean(shipmentDraft)} className={smallButton}><Plus className="h-3.5 w-3.5" /> Отгрузка</button>}>
+            {shipmentError ? <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">{shipmentError}</div> : null}
+            {!form.id ? <div className="py-4 text-center text-[11px] text-slate-400">Сначала сохраните заказ.</div> : shipments.length === 0 && !shipmentDraft ? <div className="py-4 text-center text-[11px] text-slate-400">Отгрузок пока нет. Заказ можно доставлять несколькими партиями — каждая своей отгрузкой.</div> : (
+              <div className="space-y-2">
+                {shipments.map((shipment) => {
+                  const quantity = shipment.items.reduce((sum, item) => sum + item.quantity, 0);
+                  const overdue = shipment.eta && !["arrived", "received", "cancelled"].includes(shipment.status) && shipment.eta < today();
+                  return <div key={shipment.id} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2 text-[10px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-slate-700">{shipment.carrier || "Перевозчик не указан"}</span>
+                      {shipment.route ? <span className="text-slate-400">{shipment.route}</span> : null}
+                      <span className="text-slate-400">{quantity.toLocaleString("ru-RU")} шт</span>
+                      {shipment.eta ? <span className={overdue ? "font-semibold text-rose-600" : "text-slate-400"}>{overdue ? "задержка, план " : "план "}{revisionDate(shipment.eta)}</span> : null}
+                      <select aria-label="Статус отгрузки" value={shipment.status} onChange={(event) => void patchShipmentStatus(shipment, event.target.value as ShipmentStatus)} className={`ml-auto h-8 rounded-full border px-2 text-[9px] font-semibold ${SHIPMENT_STATUS_STYLES[shipment.status]}`}>
+                        {SHIPMENT_STATUSES.map((value) => <option key={value} value={value}>{SHIPMENT_STATUS_LABELS[value]}</option>)}
+                      </select>
+                    </div>
+                  </div>;
+                })}
+                {shipmentDraft ? <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <input aria-label="Перевозчик" value={shipmentDraft.carrier} onChange={(event) => setShipmentDraft((current) => current ? { ...current, carrier: event.target.value } : current)} placeholder="Перевозчик" className={inputClass} />
+                    <input aria-label="Маршрут" value={shipmentDraft.route} onChange={(event) => setShipmentDraft((current) => current ? { ...current, route: event.target.value } : current)} placeholder="Маршрут" className={inputClass} />
+                    <input aria-label="Плановая дата прибытия" type="date" value={shipmentDraft.eta} onChange={(event) => setShipmentDraft((current) => current ? { ...current, eta: event.target.value } : current)} className={inputClass} />
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {form.items.map((item) => <div key={item.nmId} className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-slate-600">{item.article || item.nmId}</span><input aria-label={`Количество в отгрузке ${item.article || item.nmId}`} type="number" min={0} max={item.quantity} value={shipmentDraft.quantities[item.nmId] ?? ""} onChange={(event) => setShipmentDraft((current) => current ? { ...current, quantities: { ...current.quantities, [item.nmId]: event.target.value } } : current)} placeholder="0" className={`${inputClass} w-24 text-right`} /><span className="w-16 shrink-0 text-slate-400">из {item.quantity}</span></div>)}
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => setShipmentDraft(null)} disabled={shipmentSaving} className={smallButton}>Отмена</button>
+                    <button type="button" onClick={() => void submitShipmentDraft()} disabled={shipmentSaving} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{shipmentSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Создать</button>
+                  </div>
+                </div> : null}
+              </div>
+            )}
+          </EditorSection>
 
           {history ? <EditorSection icon={History} title="История изменений"><div className="space-y-2">{history.length === 0 ? <div className="text-[11px] text-slate-400">История пока пуста.</div> : history.map((entry) => {
             const changes = historyChanges.get(entry.id) ?? [];
