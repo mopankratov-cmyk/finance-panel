@@ -277,7 +277,17 @@ async function loadBrandMonthData(
 
   const loanTransferBySaleWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), weeks, brand);
   const loanTransferByReportWeek = sharedLoanTransferByWeek(reportDateRowsRaw, weeks, brand);
-  const paidStorageByWeek = await fetchPaidStorageByWeek(brand, weeks, nmIdWhitelist);
+  // Гранулярное "Платное хранение" (per nm_id) нужно ТОЛЬКО брендам, которые
+  // делят один WB-кабинет с кем-то ещё (Norvia/Heaton) — им обезличенный
+  // storage_fee из финотчёта нечем разложить по суб-бренду. У брендов с
+  // собственным кабинетом (Панкратов, Кучеренко) storage_fee и так корректен
+  // и куда стабильнее: у отчёта "Платное хранение" WB задним числом постоянно
+  // пересчитывает и дробит начисления на пары "начисление/сторно", из-за чего
+  // нетто-сумма может ощутимо гулять и даже уходить в минус (см. историю
+  // чата/PR) — на storage_fee этого нет.
+  const paidStorageByWeek = brand.articlePrefixes?.length
+    ? await fetchPaidStorageByWeek(brand, weeks, nmIdWhitelist)
+    : null;
   const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, weeks);
 
   const costLookup = buildCostLookup(costs);
@@ -447,7 +457,11 @@ async function loadBrandSalePeriodData(
   const nmIdWhitelist = brandNmIdWhitelist(brand, orders, saleDateRows);
   const adStats = await fetchAdStats(dateFrom, dateTo, brand, nmIdWhitelist);
   const loanTransferByWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), [period], brand);
-  const paidStorageByWeek = await fetchPaidStorageByWeek(brand, [period], nmIdWhitelist);
+  // См. комментарий в loadBrandMonthData: гранулярное хранение только для
+  // брендов, делящих кабинет с кем-то ещё.
+  const paidStorageByWeek = brand.articlePrefixes?.length
+    ? await fetchPaidStorageByWeek(brand, [period], nmIdWhitelist)
+    : null;
   const adsSpendBySourceByWeek = await fetchAdsSpendBySourceByWeek(brand, [period]);
 
   const costLookup = buildCostLookup(costs);
