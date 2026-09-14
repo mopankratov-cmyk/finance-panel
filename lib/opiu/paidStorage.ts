@@ -5,21 +5,33 @@ import type { OpiuBrand } from "./constants";
 
 interface PaidStorageRow {
   date: string;
-  nm_id: number | null;
+  vendor_code: string | null;
   warehouse_price: number | null;
 }
 
+function matchesVendorPrefix(vendorCode: string | null | undefined, prefixes: string[] | undefined): boolean {
+  if (!prefixes || prefixes.length === 0) return true;
+  const normalized = String(vendorCode ?? "").trim().toUpperCase();
+  if (!normalized) return false;
+  return prefixes.some((p) => normalized.startsWith(p.toUpperCase()));
+}
+
 /**
- * "Хранение" по данным WB "Платное хранение" (per nmId) — в отличие от
+ * "Хранение" по данным WB "Платное хранение" — в отличие от
  * wb_report_rows.storage_fee, обезличенного на весь кабинет (nm_id: 0),
  * этот отчёт даёт разбивку по товару.
  *
  * Суб-бренды на общем кабинете (Norvia/Heaton — Retail Family) сопоставляем
- * ПО NM_ID, а не по префиксу артикула поставщика — так же, как эталонная
- * таблица владельца (её формула хранения — SUMIFS по nmId). nmIdWhitelist —
- * набор nm_id этого суб-бренда за период (см. brandNmIdWhitelist в
- * loadMonth.ts, тот же whitelist уже используется для рекламных расходов).
- * undefined = бренд без суб-брендов на кабинете, фильтр не нужен.
+ * по префиксу vendor_code — это же поле WB сам присылает в отчёте построчно,
+ * дополнительных join'ов не нужно. Раньше пробовали через whitelist nm_id
+ * (собранный из заказов/продаж за неделю, как эталонная таблица владельца),
+ * но это давало систематическую недостачу: артикул без единой продажи за
+ * неделю (но лежащий на складе и получающий начисление хранения) не попадал
+ * в whitelist и терялся — сверено на реальном расхождении (Norvia 24-30.08:
+ * whitelist давал 7776.80 ₽ вместо верных 9395.80 ₽, ровно на сумму 6
+ * "непроданных" в ту неделю артикулов). Прямой фильтр по vendor_code такой
+ * потери не имеет и сходится с официальным отчётом WB и ручной сверкой
+ * владельца до рубля.
  *
  * Возвращает null, если для кабинета в этом диапазоне дат вообще нет
  * синканных строк — вызывающий код должен в этом случае откатиться на
@@ -29,7 +41,6 @@ interface PaidStorageRow {
 export async function fetchPaidStorageByWeek(
   brand: OpiuBrand,
   weeks: MonthWeek[],
-  nmIdWhitelist?: Set<number>,
 ): Promise<Record<string, number> | null> {
   if (!weeks.length) return {};
   const client = getSupabaseAdmin();
@@ -42,7 +53,7 @@ export async function fetchPaidStorageByWeek(
   try {
     rows = await loadAllSupabasePages<PaidStorageRow>((from, to) => client
       .from("wb_paid_storage_rows")
-      .select("date, nm_id, warehouse_price")
+      .select("date, vendor_code, warehouse_price")
       .eq("cabinet_id", brand.cabinetId)
       .gte("date", dateFrom)
       .lte("date", dateTo)
@@ -60,7 +71,7 @@ export async function fetchPaidStorageByWeek(
   for (const w of weeks) map[w.weekStart] = 0;
 
   for (const row of rows) {
-    if (nmIdWhitelist && (row.nm_id == null || !nmIdWhitelist.has(row.nm_id))) continue;
+    if (brand.articlePrefixes?.length && !matchesVendorPrefix(row.vendor_code, brand.articlePrefixes)) continue;
     const week = weeks.find((w) => row.date >= w.rangeFrom && row.date <= w.rangeTo);
     if (!week) continue;
     map[week.weekStart] = (map[week.weekStart] ?? 0) + Number(row.warehouse_price ?? 0);
