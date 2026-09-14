@@ -248,25 +248,39 @@ async function processCabinet(
   // subject/brand/warehouse(текст)/size/volume/barcodes_count по-прежнему
   // нигде не читаются — их не отправляем: WB всё равно качает отчёт целиком,
   // но upsert в базу так легче на тысячах строк.
-  const mappedRows = download.rows.map((row) => ({
-    id: rowId(cabinetId, row),
-    cabinet_id: cabinetId,
-    date: String(row.date ?? "").slice(0, 10),
-    nm_id: row.nmId ?? null,
-    vendor_code: row.vendorCode ?? null,
-    barcode: row.barcode ?? null,
-    office_id: row.officeId ?? null,
-    gi_id: row.giId ?? null,
-    chrt_id: row.chrtId ?? null,
-    calc_type: row.calcType ?? null,
-    warehouse_price: row.warehousePrice ?? 0,
-    synced_at: new Date().toISOString(),
-  })).filter((r) => r.date);
-
-  // Защита от "ON CONFLICT DO UPDATE command cannot affect row a second
-  // time": если у WB найдётся ещё одно измерение строки, которое rowId не
-  // учитывает, дубль внутри одного upsert уронит всю пачку.
-  const rows = [...new Map(mappedRows.map((r) => [r.id, r])).values()];
+  //
+  // ВАЖНО: WB реально присылает НЕСКОЛЬКО строк с одинаковым набором
+  // date/barcode/giId/chrtId/calcType/officeId за один день (видимо,
+  // отдельные проводки в течение суток) — сверено с официальным отчётом
+  // "Платное хранение" с портала WB (Аналитика → Отчёты → Отчёт по
+  // номенклатурам), там те же дубли по этим полям с разными суммами.
+  // Раньше это было такое же rowId для каждой из них, и "защита от
+  // повторного ON CONFLICT" (Map по id) молча схлопывала их в одну строку,
+  // ТЕРЯЯ реальные деньги (проверено: до трети строк недели пропадало).
+  // Добавляем порядковый номер повтора в id — так каждая настоящая
+  // проводка WB получает свой уникальный id и ничего не теряется.
+  const occurrence = new Map<string, number>();
+  const rows = download.rows
+    .map((row) => {
+      const baseId = rowId(cabinetId, row);
+      const n = occurrence.get(baseId) ?? 0;
+      occurrence.set(baseId, n + 1);
+      return {
+        id: n === 0 ? baseId : `${baseId}|${n}`,
+        cabinet_id: cabinetId,
+        date: String(row.date ?? "").slice(0, 10),
+        nm_id: row.nmId ?? null,
+        vendor_code: row.vendorCode ?? null,
+        barcode: row.barcode ?? null,
+        office_id: row.officeId ?? null,
+        gi_id: row.giId ?? null,
+        chrt_id: row.chrtId ?? null,
+        calc_type: row.calcType ?? null,
+        warehouse_price: row.warehousePrice ?? 0,
+        synced_at: new Date().toISOString(),
+      };
+    })
+    .filter((r) => r.date);
 
   // Крупный chunk (100КБ вместо дефолтных 20КБ) — меньше round-trip'ов к
   // Supabase на тысячах строк; сама запись, а не только скачивание, была
