@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { parseWarehouseKind, warehouseKindLabel, type WarehouseKind } from "@/lib/warehouse/warehouseKind";
@@ -10,17 +10,69 @@ export function WarehousesTab({
   entity,
   warehouses,
   onChanged,
+  canClosePeriod,
 }: {
   entityId: string;
   entity: LegalEntityRow | null;
   warehouses: WarehouseRow[];
   onChanged: () => void;
+  /** Закрытие периода — право финансового контура (finance.period.close), не
+   *  складского canManageStock: реальную проверку делает сервер, это только
+   *  подсказка интерфейса. */
+  canClosePeriod: boolean;
 }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<WarehouseKind>("own");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; name: string; kind: WarehouseKind } | null>(null);
+
+  const [periodLoading, setPeriodLoading] = useState(true);
+  const [periodClosedThrough, setPeriodClosedThrough] = useState<string | null>(null);
+  const [periodDraft, setPeriodDraft] = useState("");
+  const [periodSaving, setPeriodSaving] = useState(false);
+  const [periodError, setPeriodError] = useState<string | null>(null);
+
+  const loadPeriod = useCallback(async () => {
+    setPeriodLoading(true);
+    setPeriodError(null);
+    try {
+      const res = await fetch(`/api/warehouse/entities/${entityId}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось загрузить");
+      setPeriodClosedThrough(json.data?.periodClosedThrough ?? null);
+      setPeriodDraft(json.data?.periodClosedThrough ?? "");
+    } catch (e) {
+      setPeriodError(e instanceof Error ? e.message : "Не удалось загрузить");
+    } finally {
+      setPeriodLoading(false);
+    }
+  }, [entityId]);
+  // Компонент не размонтируется при смене юрлица (useKeepAliveTabs держит
+  // вкладку живой) — без этого сброса старое «закрыто по» на миг оставалось
+  // бы на экране под уже другим юрлицом, пока не отработает загрузка ниже.
+  useEffect(() => { setPeriodLoading(true); setPeriodClosedThrough(null); setPeriodDraft(""); }, [entityId]);
+  useEffect(() => { void loadPeriod(); }, [loadPeriod]);
+
+  const savePeriod = async (value: string | null) => {
+    setPeriodSaving(true);
+    setPeriodError(null);
+    try {
+      const res = await fetch(`/api/warehouse/entities/${entityId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ periodClosedThrough: value }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Не удалось сохранить");
+      setPeriodClosedThrough(json.data?.periodClosedThrough ?? null);
+      setPeriodDraft(json.data?.periodClosedThrough ?? "");
+    } catch (e) {
+      setPeriodError(e instanceof Error ? e.message : "Не удалось сохранить");
+    } finally {
+      setPeriodSaving(false);
+    }
+  };
 
   const patch = async (id: string, body: Record<string, unknown>) => {
     setError(null);
@@ -63,6 +115,44 @@ export function WarehousesTab({
   return (
     <div className="space-y-4">
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-medium text-slate-900">Закрытие периода</p>
+        <p className="mt-1 text-xs text-slate-400">Проводки на складе с датой в этом периоде или раньше запрещены — для всех операций, не только новых.</p>
+        {periodError && <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">{periodError}</div>}
+        {periodLoading ? (
+          <p className="mt-3 text-sm text-slate-400">Загрузка…</p>
+        ) : !canClosePeriod ? (
+          <p className="mt-3 text-sm text-slate-600">
+            {periodClosedThrough ? `Период закрыт по ${periodClosedThrough}.` : "Период не закрывали."} Менять может директор или финдиректор.
+          </p>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={periodDraft}
+              onChange={(e) => setPeriodDraft(e.target.value)}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+            />
+            <button
+              onClick={() => void savePeriod(periodDraft || null)}
+              disabled={periodSaving || !periodDraft}
+              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              {periodSaving ? "Сохраняю…" : "Закрыть по эту дату"}
+            </button>
+            {periodClosedThrough && (
+              <button
+                onClick={() => { if (window.confirm(`Открыть период заново? Проводки на дату ${periodClosedThrough} и раньше снова станут возможны.`)) void savePeriod(null); }}
+                disabled={periodSaving}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:border-rose-300 hover:text-rose-600 disabled:opacity-50"
+              >
+                Переоткрыть (сейчас: {periodClosedThrough})
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <p className="text-sm font-medium text-slate-900">Новый склад</p>

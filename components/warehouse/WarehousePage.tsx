@@ -67,7 +67,7 @@ function readAddress(): { tab: Tab | null; entity: string | null } {
 }
 
 export function WarehousePage() {
-  const [me, setMe] = useState<{ email: string; role: string } | null>(null);
+  const [me, setMe] = useState<{ email: string; role: string; roles?: string[] } | null>(null);
   const [tab, setTab] = useState<Tab>("balances");
   const [entities, setEntities] = useState<LegalEntityRow[]>([]);
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -158,6 +158,11 @@ export function WarehousePage() {
   // Кто ставит задания, правит приход и возвращает брак в остаток. Пока роль не
   // прочитана — «нет»: спрятать кнопку на секунду безопаснее, чем показать чужую.
   const canManage = canManageStock(me?.role);
+  // me.role — только основная роль сессии: у сотрудника с несколькими ролями
+  // (director добавлена не первой) кнопка гасла бы молча, тот же приём, что
+  // уже правили в WbRkJournalPage.tsx — смотрим на весь набор ролей.
+  const myRoles = me?.roles?.length ? me.roles : me?.role ? [me.role] : [];
+  const canClosePeriod = myRoles.includes("director") || myRoles.includes("fin_director");
 
   useEffect(() => {
     let cancelled = false;
@@ -321,7 +326,7 @@ export function WarehousePage() {
               <MovesTab entityId={entityId} refreshKey={refreshKey} />
             </TabPanel>
           <TabPanel {...panel("warehouses")}>
-              <WarehousesTab entityId={entityId} entity={entity} warehouses={warehouses} onChanged={refresh} />
+              <WarehousesTab entityId={entityId} entity={entity} warehouses={warehouses} onChanged={refresh} canClosePeriod={canClosePeriod} />
             </TabPanel>
           <TabPanel {...panel("opening")}>
               <OpeningBalanceTab entityId={entityId} entityName={entity?.name ?? ""} warehouses={warehouses} canManage={canManage} onPosted={refresh} />
