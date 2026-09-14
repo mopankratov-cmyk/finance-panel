@@ -4,7 +4,14 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { parseCompanyTaxSystem, parseCompanyVatMode } from "@/lib/finance/companyTax";
 
-const COMPANY_COLUMNS = "id,name,group_name,is_active,tax_system,vat_mode";
+import { COMPANY_TAX_UNAVAILABLE, isMissingCompanyTaxColumn, readCompaniesCompat } from "@/lib/finance/companySchema";
+
+function companyResponse(row: Record<string, unknown>) {
+  return {
+    company: { id: row.id, name: row.name, group_name: row.group_name, is_active: row.is_active, tax_system: row.tax_system ?? null, vat_mode: row.vat_mode ?? null },
+    tax_settings_available: "tax_system" in row && "vat_mode" in row,
+  };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -17,18 +24,20 @@ export async function GET() {
   if (gate) return gate;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const [companies, links] = await Promise.all([
-    db.from("companies").select(COMPANY_COLUMNS).order("group_name").order("name"),
+  const [loaded, links] = await Promise.all([
+    readCompaniesCompat((columns) => db.from("companies").select(columns).order("group_name").order("name")),
     loadAllSupabasePages<{ id: string; company_id: string | null }>((from, to) => db
       .from("payments")
       .select("id,company_id")
       .order("id", { ascending: true })
       .range(from, to), { label: "Связи платежей с компаниями" }),
   ]);
+  const companies = loaded.result;
   if (companies.error) return NextResponse.json({ error: companies.error.message }, { status: 500 });
   return NextResponse.json({
     companies: companies.data ?? [],
     payment_links: links,
+    tax_settings_available: loaded.taxSettingsAvailable,
   });
 }
 
@@ -50,10 +59,10 @@ export async function POST(request: NextRequest) {
     if ((existing.data ?? []).length) return NextResponse.json({ error: "Юрлицо с таким названием уже существует" }, { status: 409 });
     const result = await db.from("companies")
       .insert({ name, group_name: groupName, is_active: true })
-      .select(COMPANY_COLUMNS)
+      .select("*")
       .single();
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
-    return NextResponse.json({ company: result.data });
+    return NextResponse.json(companyResponse(result.data));
   }
   if (action === "payment") {
     const payment = body.payment && typeof body.payment === "object" ? body.payment as Record<string, unknown> : null;
@@ -89,20 +98,22 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   if (body.action === "company") {
     const companyId = String(body.company_id ?? "").trim();
-    const taxSystem = parseCompanyTaxSystem(body.tax_system);
-    const vatMode = parseCompanyVatMode(body.vat_mode);
+    const hasTaxSettings = "tax_system" in body || "vat_mode" in body;
+    const taxSystem = hasTaxSettings ? parseCompanyTaxSystem(body.tax_system) : null;
+    const vatMode = hasTaxSettings ? parseCompanyVatMode(body.vat_mode) : null;
     if (!companyId) return NextResponse.json({ error: "Не указана компания" }, { status: 400 });
     if (typeof body.is_active !== "boolean") return NextResponse.json({ error: "Некорректный статус компании" }, { status: 400 });
     if (taxSystem === undefined) return NextResponse.json({ error: "Некорректная система налогообложения" }, { status: 400 });
     if (vatMode === undefined) return NextResponse.json({ error: "Некорректная настройка НДС" }, { status: 400 });
     const result = await db.from("companies")
-      .update({ is_active: body.is_active, tax_system: taxSystem, vat_mode: vatMode })
+      .update({ is_active: body.is_active, ...(hasTaxSettings ? { tax_system: taxSystem, vat_mode: vatMode } : {}) })
       .eq("id", companyId)
-      .select(COMPANY_COLUMNS)
+      .select("*")
       .maybeSingle();
+    if (isMissingCompanyTaxColumn(result.error)) return NextResponse.json({ error: COMPANY_TAX_UNAVAILABLE }, { status: 503 });
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
     if (!result.data) return NextResponse.json({ error: "Компания не найдена" }, { status: 404 });
-    return NextResponse.json({ company: result.data });
+    return NextResponse.json(companyResponse(result.data));
   }
   const paymentId = String(body.payment_id ?? "");
   if (!paymentId) return NextResponse.json({ error: "Не указан платёж" }, { status: 400 });
