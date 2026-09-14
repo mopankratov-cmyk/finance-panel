@@ -3,6 +3,8 @@
 import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Plus, RefreshCw, Save, Trash2, Upload, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
 import { PaymentChainModal, type PaymentChainSeed } from "./PaymentChainModal";
+import { TransferBalancePanel } from "./TransferBalancePanel";
+import { BankTransfersPanel } from "./BankTransfersPanel";
 import { PaymentOperationsTable } from "./PaymentOperationsTable";
 import { PaymentChainList } from "./PaymentChainList";
 import { chainMetadata, chainIdForPayment } from "@/lib/finance/paymentChains";
@@ -463,6 +465,8 @@ export function PaymentsPage() {
           разворачивается в карточку (table-cards-lg). Раньше здесь вместо этого
           прятались три колонки — компания, контрагент и назначение платежа
           были недоступны с телефона и с планшета в портрете вовсе. */}
+      <TransferBalancePanel payments={paymentsWithCompany} accounts={state.accounts} onEdit={openEdit}/>
+      <BankTransfersPanel/>
       <Card>
         <PaymentOperationsTable visible={filtered} all={paymentsWithCompany} accounts={state.accounts} companies={companies} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed}/>
       </Card>

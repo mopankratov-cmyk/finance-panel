@@ -1,13 +1,16 @@
 "use client";
 
+import { CounterpartySelect } from "./CounterpartySelect";
+import { applyBankCounterparties } from "./bankCounterpartyOverrides";
 import { AlertTriangle, FileSpreadsheet, Loader2, X } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { BankStatement } from "./bankStatement";
-import type { BankSuggestion } from "./bankAutoClassify";
+import { requiresCounterparty, type BankSuggestion } from "./bankAutoClassify";
 import type { DdsCompany } from "./ddsCompanies";
 import { rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
 import { needsDirectUpload, uploadViaStorage } from "./uploadViaStorage";
-import { useDdsCategories } from "@/components/providers/FinanceProvider";
+import { useDdsCategories, useFinance } from "@/components/providers/FinanceProvider";
+import { loadFinanceState } from "@/lib/db";
 import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
@@ -23,19 +26,22 @@ interface Props {
   onQueued: () => void;
 }
 
-export function BankStatementModal({ open, onClose, accounts, companies, onQueued }: Props) {
+export function BankStatementModal({ open, onClose, accounts, companies, existingPayments, onQueued }: Props) {
+  const { dispatch } = useFinance();
   const { categories: BANK_CATEGORIES } = useDdsCategories();
   const [statement, setStatement] = useState<BankStatement | null>(null);
   const [fileName, setFileName] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [confirmedCategories, setConfirmedCategories] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<Map<string, string>>(new Map());
+  const [counterpartyOverrides, setCounterpartyOverrides] = useState<Map<string,string>>(new Map());
   const [included, setIncluded] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<BankSuggestion[]>([]);
-  const [done, setDone] = useState<{ queued: number } | null>(null);
+  const [done, setDone] = useState<{ queued: number; approved: number; matchedTransfers: number } | null>(null);
   const [controlMismatchAccepted, setControlMismatchAccepted] = useState(false);
 
   const selectedAccount = accounts.find((account) => account.id === accountId);
@@ -50,6 +56,8 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
     setCompanyId("");
     setAccountId("");
     setCategories(new Map());
+    setConfirmedCategories(new Set());
+    setCounterpartyOverrides(new Map());
     setIncluded(new Set());
     setBulkCategory("");
     setSuggestions([]);
@@ -81,6 +89,8 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
       const suggestions = data.suggestions;
       setSuggestions(suggestions);
       setStatement(parsed);
+      setConfirmedCategories(new Set());
+      setCounterpartyOverrides(new Map());
       setFileName(file.name);
       setControlMismatchAccepted(false);
       setIncluded(new Set(parsed.rows.map((row) => row.id)));
@@ -104,6 +114,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
     () => statement?.rows.filter((row) => included.has(row.id)) ?? [],
     [statement, included],
   );
+  const counterparties = useMemo(() => [...new Set([...existingPayments.map(p => p.counterparty), ...(statement?.rows.map(row => row.counterparty) ?? []), ...counterpartyOverrides.values()].map(name => name.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,"ru")), [existingPayments, statement, counterpartyOverrides]);
   const unclassified = selectedRows.filter((row) => !categories.get(row.id)).length;
 
   const toggleIncluded = (id: string) => {
@@ -117,10 +128,12 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
 
   const setCategory = (id: string, category: string) => {
     setCategories((current) => new Map(current).set(id, category));
+    setConfirmedCategories(current => new Set(current).add(id));
   };
 
   const applyBulkCategory = () => {
     if (!bulkCategory) return;
+    setConfirmedCategories(current => new Set([...current,...included]));
     setCategories((current) => {
       const next = new Map(current);
       for (const id of included) next.set(id, bulkCategory);
@@ -137,7 +150,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
     setLoading(true);
     setError(null);
     try {
-      const selectedSuggestions = suggestions
+      const selectedSuggestions = applyBankCounterparties(suggestions, counterpartyOverrides)
         .filter((suggestion) => included.has(suggestion.row.id))
         .map((suggestion) => {
           const category = categories.get(suggestion.row.id) || null;
@@ -147,17 +160,19 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
             companyId: rowCompanyId,
             accountId,
             category,
-            needsReview: !category || !rowCompanyId || suggestion.confidence < 0.85,
+            categoryConfirmed: confirmedCategories.has(suggestion.row.id),
+            needsReview: !category || !rowCompanyId || suggestion.confidence < 0.85 || (requiresCounterparty(category) && !suggestion.row.counterparty.trim()),
           };
         });
-      const queued = await saveBankReviewBatch(statement, selectedSuggestions, fileName);
+      const result = await saveBankReviewBatch(statement, selectedSuggestions, fileName);
       // Сопоставление счёта с компанией запоминаем только когда пользователь
       // явно выбрал одну компанию для всей выписки. Общий счёт нельзя закреплять
       // за случайной компанией из одной операции.
       if (statement.accountNumber && selectedCompany) {
         await rememberBankAccount(statement.accountNumber, statement.ownerInn, companyId, accountId);
       }
-      setDone({ queued });
+      dispatch({type:"LOAD",payload:await loadFinanceState()});
+      setDone(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось отправить операции на проверку");
     } finally {
@@ -179,10 +194,10 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
       {done ? (
         <div className="space-y-4 text-sm">
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-            Готово! В блок «На проверке» отправлено операций: <b>{done.queued}</b>. В фактические платежи они ещё не попали.
+            Добавлено в ДДС: <b>{done.approved}</b>. Требуют проверки: <b>{done.queued}</b>. Связано переводов между выписками: <b>{done.matchedTransfers}</b>.
           </div>
           <button onClick={() => { close(); onQueued(); }} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white">
-            Перейти к проверке
+            Вернуться к операциям
           </button>
         </div>
       ) : (
@@ -242,7 +257,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
                         <td className="p-2"><label className="tap-hit inline-flex cursor-pointer"><input type="checkbox" aria-label={`Добавить операцию от ${row.date} на ${formatMoney(row.amount)}`} checked={included.has(row.id)} onChange={() => toggleIncluded(row.id)} /></label></td>
                         <td className="whitespace-nowrap p-2">{row.date}</td>
                         <td className={`whitespace-nowrap p-2 text-right font-semibold ${row.amount >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatMoney(row.amount)}</td>
-                        <td className="break-anywhere p-2 lg:max-w-48 lg:truncate" title={row.counterparty}>{row.counterparty}</td>
+                        <td className="p-2"><CounterpartySelect ariaLabel={`Контрагент операции от ${row.date} на ${formatMoney(row.amount)}`} value={counterpartyOverrides.get(row.id) ?? row.counterparty} options={counterparties} disabled={loading} onChange={name => setCounterpartyOverrides(current => new Map(current).set(row.id,name))}/></td>
                         <td className="break-anywhere p-2 lg:max-w-72 lg:truncate" title={row.purpose}>{row.purpose}</td>
                         <td className="p-2">
                           <select value={categories.get(row.id) ?? ""} onChange={(e) => setCategory(row.id, e.target.value)} className="min-h-10 w-full rounded border border-slate-300 px-2">
@@ -277,7 +292,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, onQueue
                 </div>
               )}
               <button onClick={handlePrepare} disabled={loading || selectedRows.length === 0 || (hasControlMismatch && !controlMismatchAccepted)} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
-                {loading ? "Отправляю…" : "Отправить на проверку"}
+                {loading ? "Отправляю…" : "Добавить операции"}
               </button>
             </>
           )}

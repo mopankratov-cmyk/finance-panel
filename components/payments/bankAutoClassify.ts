@@ -2,6 +2,7 @@ import type { BankStatement, BankStatementRow } from "./bankStatement";
 import type { DdsCompany } from "./ddsCompanies";
 import type { Account, Payment } from "@/lib/types";
 import { companyAliasKeys, sameCompanyAlias } from "@/lib/finance/companyAliases";
+import { mandatoryBankCategory } from "@/lib/opiu/bankPaymentRules";
 
 export interface BankAccountMapping {
   bankAccountNumber: string;
@@ -187,7 +188,12 @@ export function classifyBankStatement(
     let category: string | null = null;
     let categoryConfidence = 0;
 
-    if (row.counterpartyInn && row.counterpartyInn === statement.ownerInn) {
+    const mandatory = mandatoryBankCategory(row);
+    if (mandatory) {
+      category = mandatory;
+      categoryConfidence = 1;
+      reasons.push("ООО Интернет Решения, ИНН 7704217370: оплата товаров по договору ИР — продажи на МП");
+    } else if (row.counterpartyInn && row.counterpartyInn === statement.ownerInn) {
       category = row.amount >= 0 ? "Поступление — Перевод между счетами" : "Выбытие — Перевод между счетами";
       categoryConfidence = 0.98;
       reasons.push("ИНН совпадает с владельцем: перевод между своими счетами");

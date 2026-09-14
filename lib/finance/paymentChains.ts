@@ -15,7 +15,7 @@ export interface PaymentChainDraft {
 }
 export type ChainRole = "source" | "cash-in" | "loan-out" | "loan-in" | "transfer-in" | "spending";
 export interface ChainEntry { payment: Payment; role: ChainRole; allocationId: string | null }
-export interface ChainMetadata { id: string; revision: number; amount: number; date: string; label: string; role: ChainRole }
+export interface ChainMetadata { id: string; revision: number; amount: number; date: string; label: string; role: ChainRole; allocationId?: string | null }
 export interface ChainHistory { revision: number; createdAt: string; reason: string; entries: ChainEntry[] }
 export interface PaymentChainDetail { draft: PaymentChainDraft; status: "active" | "cancelled"; migrationAvailable: boolean; history: ChainHistory[] }
 const cents = (n: number) => Math.round(n * 100);
@@ -38,7 +38,7 @@ export function chainMetadata(comment: string | undefined | null): ChainMetadata
   if (!match) return null;
   try {
     const m = JSON.parse(decodeURIComponent(match[1]));
-    return typeof m.id === "string" && Number.isInteger(m.revision) && Number.isFinite(m.amount) && typeof m.date === "string" && typeof m.label === "string" && ["source","cash-in","loan-out","loan-in","transfer-in","spending"].includes(m.role) ? m : null;
+    return typeof m.id === "string" && Number.isInteger(m.revision) && Number.isFinite(m.amount) && typeof m.date === "string" && typeof m.label === "string" && (m.allocationId == null || typeof m.allocationId === "string") && ["source","cash-in","loan-out","loan-in","transfer-in","spending"].includes(m.role) ? m : null;
   } catch { return null; }
 }
 export function chainIdForPayment(payment: Payment) {
@@ -79,7 +79,7 @@ export function buildChainEntries(d: PaymentChainDraft, companies: ChainCompany[
   const entries: ChainEntry[] = [];
   const source = companies.find(c => c.id === d.sourceCompanyId);
   const add = (role: ChainRole, amount: number, date: string, name: string, category: string, companyId: string, accountId: string, counterparty: string, allocationId: string | null) => {
-    entries.push({role, allocationId, payment: {id: makeId(), amount, date, name, category, companyId, accountId, counterparty, status: "done", comment: encodeChainMetadata({id:d.id,revision:d.revision+1,amount:d.sourceAmount,date:d.sourceDate,label:d.label,role}, "Исходная сумма: " + d.sourceAmount + " ₽ · " + d.label)}});
+    entries.push({role, allocationId, payment: {id: makeId(), amount, date, name, category, companyId, accountId, counterparty, status: "done", comment: encodeChainMetadata({id:d.id,revision:d.revision+1,amount:d.sourceAmount,date:d.sourceDate,label:d.label,role,allocationId}, "Исходная сумма: " + d.sourceAmount + " ₽ · " + d.label)}});
   };
   if (d.throughCash) {
     add("source", -d.sourceAmount, d.sourceDate, d.label, TRANSFER_CATEGORIES.outgoing, d.sourceCompanyId, d.sourceAccountId, "", null);

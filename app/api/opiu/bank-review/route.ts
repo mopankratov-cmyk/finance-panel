@@ -3,9 +3,13 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { matchBankReviewTransfers } from "@/lib/opiu/bankReviewTransfersServer";
+import { mandatoryBankCategory } from "@/lib/opiu/bankPaymentRules";
+import { categoryMatchesDirection, requiresCounterparty } from "@/components/payments/bankAutoClassify";
+import { companyAliasKeys } from "@/lib/finance/companyAliases";
 import { findCertainTransferPairs } from "@/lib/opiu/bankTransferMatching";
-import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { transferCategories } from "@/lib/opiu/bankTransferClassification";
+import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { audit } from "@/lib/audit/log";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
@@ -25,6 +29,7 @@ type SuggestionInput = {
   confidence?: number;
   reasons?: string[];
   needsReview?: boolean;
+  categoryConfirmed?: boolean;
   transferCandidateId?: string | null;
 };
 
@@ -45,11 +50,6 @@ function jsonError(message: string, status: number) {
 const missingMigration = (code?: string) =>
   ["42P01", "42703", "42883", "PGRST202", "PGRST204", "PGRST205"].includes(code ?? "");
 
-function marker(reasons: unknown, prefix: string) {
-  if (!Array.isArray(reasons)) return "";
-  const value = reasons.find((reason) => typeof reason === "string" && reason.startsWith(prefix));
-  return typeof value === "string" ? value.slice(prefix.length).replace(/\D/g, "") : "";
-}
 
 const telegramHtml = (value: unknown) => String(value ?? "")
   .replace(/&/g, "&amp;")
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     const items = await loadAllSupabasePages<Record<string, unknown>>((from, to) => db
       .from("bank_review_items")
       .select("*")
-      .in("status", ACTIVE_STATUSES)
+      .in("status", resource === "transfers" ? [...ACTIVE_STATUSES,"approved"] : ACTIVE_STATUSES)
       .order("date", { ascending: false })
       .order("id", { ascending: true })
       .range(from, to), { label: "Очередь выписок" });
@@ -116,6 +116,8 @@ export async function POST(request: Request) {
   if (!db) return jsonError("Серверная база не настроена", 503);
   const body = await request.json().catch(() => null) as {
     action?: string;
+    outgoingId?: string;
+    incomingId?: string;
     statement?: {
       documentHash?: string;
       accountNumber?: string;
@@ -131,6 +133,23 @@ export async function POST(request: Request) {
     };
   } | null;
   if (!body) return jsonError("Некорректный JSON", 400);
+
+  if (body.action === "link_transfer") {
+    const found = await db.from("bank_review_items").select("*").in("id",[text(body.outgoingId,100),text(body.incomingId,100)]);
+    if(found.error) return jsonError(found.error.message,500);
+    const rows = found.data ?? [];
+    const pair = findCertainTransferPairs(rows.map(row => ({id:row.id,date:row.date,amount:Number(row.amount),bankAccountNumber:row.bank_account_number ?? "",ownerInn:row.owner_inn ?? "",counterpartyInn:row.counterparty_inn ?? "",counterpartyAccount:(Array.isArray(row.reasons)?row.reasons:[]).find((r:string)=>r.startsWith(COUNTERPARTY_ACCOUNT_MARKER))?.slice(COUNTERPARTY_ACCOUNT_MARKER.length) ?? ""})))[0];
+    if(!pair || pair.outgoingId!==body.outgoingId || pair.incomingId!==body.incomingId) return jsonError("Сумма, даты и реквизиты не подтверждают этот перевод",400);
+    const categories=transferCategories(rows.find(r=>r.id===pair.outgoingId)?.company_id ?? null,rows.find(r=>r.id===pair.incomingId)?.company_id ?? null);
+    const linked=await db.rpc("link_bank_review_transfer",{p_outgoing:pair.outgoingId,p_incoming:pair.incomingId,p_outgoing_category:categories.outgoing,p_incoming_category:categories.incoming});
+    if(linked.error)return jsonError(linked.error.message,400);
+    return NextResponse.json({ok:true});
+  }
+
+  if (body.action === "match_transfers") {
+    try { return NextResponse.json({ matchedTransfers: await matchBankReviewTransfers() }); }
+    catch (error) { return jsonError(error instanceof Error ? error.message : "Не удалось связать выписки", 500); }
+  }
 
   if (body.action === "mapping") {
     const mapping = body.mapping;
@@ -183,7 +202,7 @@ export async function POST(request: Request) {
       counterparty: text(row?.counterparty),
       counterparty_inn: text(row?.counterpartyInn, 20).replace(/\D/g, ""),
       purpose: text(row?.purpose, 5_000),
-      category: text(suggestion.category, 255) || null,
+      category: mandatoryBankCategory({amount,counterpartyInn:row?.counterpartyInn,purpose:row?.purpose}) ?? (text(suggestion.category, 255) || null),
       confidence: Math.min(1, Math.max(0, Number(suggestion.confidence) || 0)),
       reasons: [
         ...(Array.isArray(suggestion.reasons) ? suggestion.reasons.slice(0, 19).map((reason) => text(reason, 500)) : []),
@@ -223,54 +242,28 @@ export async function POST(request: Request) {
     })
     .select("id");
   if (error) return jsonError(error.message, 500);
-  type ActiveRow = { id: string; date: string; amount: number | string; bank_account_number: string | null; owner_inn: string | null; counterparty_inn: string | null; reasons: unknown; company_id: string | null; account_id: string | null; category: string | null; matched_transfer_id: string | null };
-  let activeRows: ActiveRow[];
   try {
-    activeRows = await loadAllSupabasePages<ActiveRow>((from, to) => db.from("bank_review_items")
-      .select("id,date,amount,bank_account_number,owner_inn,counterparty_inn,reasons,company_id,account_id,category,matched_transfer_id")
-      .in("status", ACTIVE_STATUSES)
-      .is("matched_transfer_id", null)
-      .order("date", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, to), { label: "Очередь выписок: встречные переводы" });
-  } catch (error) {
-    return jsonError(error instanceof Error ? error.message : "Не удалось прочитать очередь", 500);
+    const matchedTransfers = await matchBankReviewTransfers();
+    const explicitIds = new Set(body.suggestions.filter(s => s.categoryConfirmed).map(s => text(s.row?.id,500)));
+    const names = await loadAllSupabasePages<{id:string;name:string}>((from,to)=>db.from("companies").select("id,name").order("id").range(from,to),{label:"Компании выписок"});
+    const stored = await loadAllSupabasePages<{id:string;external_id:string;amount:number;counterparty:string;purpose:string;company_id:string|null;account_id:string|null;category:string|null;status:ReviewStatus;manager_answer:string|null}>((from,to)=>db.from("bank_review_items").select("id,external_id,amount,counterparty,purpose,company_id,account_id,category,status,manager_answer").eq("document_hash",documentHash).order("id").range(from,to),{label:"Сохранённые строки выписки"});
+    const selectedExternalIds=new Set(rows.map(row=>row.external_id));
+    const companyNames = new Map(names.map(c => [c.id,c.name]));
+    const confirmIds = stored.filter(row => {
+      const recipientAliases = companyAliasKeys(row.counterparty + " " + row.purpose);
+      const sourceName = companyNames.get(row.company_id ?? "") ?? "";
+      const needsCashChain = row.amount < 0 && /основн|рио|митриченко|панкратов|кучеренко/i.test(sourceName) && recipientAliases.length > 0;
+      return selectedExternalIds.has(row.external_id) && ["ready","needs_info"].includes(row.status) && !row.manager_answer && explicitIds.has(row.external_id) && !needsCashChain
+        && row.company_id && row.account_id && row.category && categoryMatchesDirection(row.category,row.amount)
+        && (!requiresCounterparty(row.category) || row.counterparty.trim());
+    }).map(row => row.id);
+    const confirmed = confirmIds.length ? await db.rpc("confirm_bank_review_items",{p_ids:confirmIds}) : {data:0,error:null};
+    if(confirmed.error) return jsonError(confirmed.error.message,500);
+    const confirmedSet=new Set(confirmIds);
+    return NextResponse.json({ queued: stored.filter(row=>selectedExternalIds.has(row.external_id)&&ACTIVE_STATUSES.includes(row.status)&&!confirmedSet.has(row.id)).length, approved: Number(confirmed.data ?? 0), matchedTransfers });
+  } catch(error) {
+    return jsonError(error instanceof Error ? error.message : "Не удалось связать выписки. Проверьте миграцию 202609140003_bank_review_confirm_and_link.sql",500);
   }
-  const byId = new Map(activeRows.map((row) => [row.id, row]));
-  const pairs = findCertainTransferPairs(activeRows.map((row) => ({
-    id: row.id,
-    date: row.date,
-    amount: Number(row.amount),
-    bankAccountNumber: row.bank_account_number ?? "",
-    ownerInn: row.owner_inn ?? "",
-    counterpartyAccount: marker(row.reasons, COUNTERPARTY_ACCOUNT_MARKER),
-    counterpartyInn: row.counterparty_inn ?? "",
-  })));
-  for (const pair of pairs) {
-    const outgoing = byId.get(pair.outgoingId);
-    const incoming = byId.get(pair.incomingId);
-    if (!outgoing || !incoming) continue;
-    // Между разными юрлицами это выдача/получение займа; между счетами одного — внутренний перевод.
-    const categories = transferCategories(outgoing.company_id, incoming.company_id);
-    const outgoingCategory = categories.outgoing;
-    const incomingCategory = categories.incoming;
-    const updates = await Promise.all([
-      db.from("bank_review_items").update({
-        matched_transfer_id: incoming.id,
-        category: outgoingCategory,
-        status: outgoing.company_id && outgoing.account_id && outgoingCategory ? "ready" : "needs_info",
-      }).eq("id", outgoing.id).is("matched_transfer_id", null),
-      db.from("bank_review_items").update({
-        matched_transfer_id: outgoing.id,
-        category: incomingCategory,
-        status: incoming.company_id && incoming.account_id && incomingCategory ? "ready" : "needs_info",
-      }).eq("id", incoming.id).is("matched_transfer_id", null),
-    ]);
-    const updateError = updates.find((update) => update.error)?.error;
-    if (updateError) return jsonError(updateError.message, 500);
-  }
-
-  return NextResponse.json({ queued: data?.length ?? 0, matchedTransfers: pairs.length });
 }
 
 export async function PATCH(request: Request) {

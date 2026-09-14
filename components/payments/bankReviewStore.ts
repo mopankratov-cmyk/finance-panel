@@ -92,8 +92,8 @@ export async function saveBankReviewBatch(
   statement: BankStatement,
   suggestions: BankSuggestion[],
   sourceFileName: string,
-): Promise<number> {
-  const result = await api<{ queued: number }>("/api/opiu/bank-review", {
+): Promise<{queued:number;approved:number;matchedTransfers:number}> {
+  const result = await api<{ queued: number; approved?: number; matchedTransfers?: number }>("/api/opiu/bank-review", {
     method: "POST",
     body: JSON.stringify({
       action: "batch",
@@ -106,7 +106,7 @@ export async function saveBankReviewBatch(
       sourceFileName,
     }),
   });
-  return result.queued;
+  return {queued:result.queued,approved:result.approved ?? 0,matchedTransfers:result.matchedTransfers ?? 0};
 }
 
 export async function loadBankReviewItems(): Promise<BankReviewItem[]> {
