@@ -144,6 +144,8 @@ const RULES: readonly ApiRule[] = [
   // ── Закупки ──
   ["/api/purchase-orders", { permission: "purchase.manage" }],
   ["/api/purchase-orders/", { permission: "purchase.manage" }],
+  ["/api/suppliers", { permission: "purchase.manage" }],
+  ["/api/suppliers/", { permission: "purchase.manage" }],
   ["/api/moysklad", { permission: "purchase.manage" }],
 
   // ── Поставки ──

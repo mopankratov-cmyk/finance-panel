@@ -12,6 +12,7 @@ import type { StockCatalogRow, SupplyRow, WarehouseSummary } from "@/app/api/sup
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbPurchaseOrdersTab } from "./WbPurchaseOrdersTab";
+import { WbSuppliersTab } from "./WbSuppliersTab";
 import { WbSupplyDistributionPlanner, type DistributionSkuInput, type DistributionWarehouseInput } from "./WbSupplyDistributionPlanner";
 import { WbSuppliesListTab } from "./WbSuppliesListTab";
 import { WbKizReconcileTab } from "./WbKizReconcileTab";
@@ -24,6 +25,7 @@ import { WbPenaltiesTab } from "./WbPenaltiesTab";
 type Tab =
   | "wbSupplies"
   | "orders"
+  | "suppliers"
   | "reorder"
   | "receiving"
   | "kizReconcile"
@@ -147,6 +149,7 @@ export function WbSuppliesPage() {
       // а не с планирования следующей.
       ["wbSupplies", "Мои поставки"],
       ["orders", "Заказы фабрике"],
+      ["suppliers", "Поставщики"],
       ["reorder", "К поставке"],
       ["receiving", "Приёмка"],
       ["kizReconcile", "Сверка оборота"],
@@ -168,6 +171,11 @@ export function WbSuppliesPage() {
     switch (value) {
       case "wbSupplies":
         return <WbSuppliesListTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} />;
+      // Справочник общий на компанию — кабинет ему не нужен, поэтому смена
+      // кабинета его не сбрасывает (эффект ниже перечитывает visitedTabs по
+      // cabinetId, но данные вкладки от него не зависят вовсе).
+      case "suppliers":
+        return <WbSuppliersTab canWrite={canWrite} />;
       case "kizReconcile":
         return <WbKizReconcileTab cabinetId={cabinetId} cabinetName={activeCabinet?.name} />;
       case "kizExport":
