@@ -15,6 +15,7 @@ export interface BankInstructionSplit {
   flow?: "income" | "expense";
   accountId?: string | null;
   countsTowardBank?: boolean;
+  isRemainder?: boolean;
 }
 
 export interface ParsedBankInstruction {
@@ -29,15 +30,16 @@ const normalize = (value: string) => value.toLowerCase().replace(/ё/g, "е").re
 
 function money(value: string, suffix = "") {
   let result = Number(value.replace(/\s/g, "").replace(",", "."));
-  if (/^(?:т|тыс|к)$/i.test(suffix)) result *= 1000;
+  if (/^(?:т|тыс|тысяч[аи]?|к)$/i.test(suffix)) result *= 1000;
   return result;
 }
 
 function categoryFor(description: string) {
   const value = normalize(description);
+  if (/дивиденд/.test(value)) return "Дивиденды";
   if (/комисси/.test(value)) return "РКО";
   if (/рекламн.*(?:кабинет|вб|wb)|пополнил.*реклам/.test(value)) return "Внутренняя реклама на МП";
-  if (/\bзп\b|зарплат/.test(value)) return "Зарплата административного персонала";
+  if (/(?:^|[^а-я])зп(?:$|[^а-я])|зарплат/.test(value)) return "Зарплата административного персонала";
   if (/\bусн\b|налог/.test(value)) return "УСН";
   if (/\bпо\b|программ|марпл|эцп|искусственн.*интеллект|покупка ии|телефон/.test(value)) return "ПО";
   if (/карт|озон банк|т банк|сбербанк|перевод/.test(value)) return "Выбытие — Перевод между счетами";
@@ -56,7 +58,7 @@ function companyFor(description: string, companies: DdsCompany[]) {
 
 function splitDescription(value: string, total: number, companies: DdsCompany[]): BankInstructionSplit[] {
   const clean = value.replace(/^\s*[-—]\s*/, "").trim();
-  const token = /(?:^|,|;)\s*(\d[\d\s]*(?:[.,]\d+)?)\s*(тыс|т|к|руб|р)?(?=\s|$|[-—,;])/gi;
+  const token = /(?:^|,|;)\s*(\d[\d\s]*(?:[.,]\d+)?)\s*(тысяч[аи]?|тыс|т|к|руб|р)?(?=\s|$|[-—,;])/gi;
   const matches = [...clean.matchAll(token)];
   if (matches.length === 0) {
     const excluded = /не вносить в ддс|никак не вносить|забрала свои/.test(normalize(clean));
@@ -87,16 +89,27 @@ export function parseBankInstructionList(
 ): ParsedBankInstruction[] {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   let currentDate = "";
+  const months = ["январ", "феврал", "март", "апрел", "ма", "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр"];
   const result: ParsedBankInstruction[] = [];
-  for (const line of lines) {
-    const date = line.match(/^(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?$/);
+  for (const originalLine of lines) {
+    let line = originalLine;
+    const wordDate = line.match(/^(\d{1,2})\s+([а-я]+)\s*/i);
+    const month = wordDate ? months.findIndex((prefix) => wordDate[2].toLowerCase().startsWith(prefix)) + 1 : 0;
+    if (wordDate && month) {
+      currentDate = [year, String(month).padStart(2, "0"), wordDate[1].padStart(2, "0")].join("-");
+      line = line.slice(wordDate[0].length).trim();
+      if (!line) continue;
+    }
+    const date = line.match(/^(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?=\s|$)\s*/);
     if (date) {
       let parsedYear = Number(date[3] ?? year);
       if (parsedYear < 100) parsedYear += 2000;
       currentDate = `${parsedYear}-${date[2].padStart(2, "0")}-${date[1].padStart(2, "0")}`;
-      continue;
+      line = line.slice(date[0].length).trim();
+      if (!line) continue;
     }
-    const operation = line.match(/^(\d[\d\s]*(?:[.,]\d+)?)\s*(т|тыс|к|р|руб)?\b\s*(.*)$/i);
+    line = line.replace(/^из\s+/i, "");
+    const operation = line.match(/^(\d[\d\s]*(?:[.,]\d+)?)\s*(тысяч[аи]?|тыс|т|к|руб|р)?(?=\s|$|[-—])\s*(.*)$/i);
     if (!operation || !currentDate) continue;
     const bankAmount = money(operation[1], operation[2]);
     const candidates = items.filter((item) => item.date === currentDate && Math.abs(Math.abs(item.amount) - bankAmount) < 0.01);
@@ -105,7 +118,10 @@ export function parseBankInstructionList(
       itemId,
       date: currentDate,
       bankAmount,
-      splits: splitDescription(operation[3], bankAmount, companies),
+      splits: balanceBankSplits(itemId ? candidates[0] : { amount: -bankAmount, companyId: null, accountId: null },
+        splitDescription(operation[3], bankAmount, companies).map((split) => ({
+          ...split, companyId: split.companyId ?? (itemId ? candidates[0].companyId : null),
+        }))),
       message: candidates.length === 1 ? "Найдена операция" : candidates.length > 1 ? `Найдено операций: ${candidates.length}` : "Операция не найдена",
     });
   }
@@ -153,4 +169,19 @@ export function splitsAreReady(item: BankReviewItem, splits: BankInstructionSpli
   return Math.abs(splitBankTotal(item, splits) - item.amount) < 0.01
     && splits.length > 0
     && splits.every((split) => split.excluded || (split.amount > 0 && split.category && split.companyId && splitAccountId(item, split) && !split.needsClarification));
+}
+
+export function balanceBankSplits(item: Pick<BankReviewItem, "amount" | "companyId" | "accountId">, splits: BankInstructionSplit[]): BankInstructionSplit[] {
+  const parts = splits.filter((split) => !split.isRemainder);
+  const remainder = Math.round((item.amount - splitBankTotal(item, parts)) * 100) / 100;
+  if (Math.abs(remainder) < 0.01 || remainder * item.amount <= 0) return parts;
+  return [...parts, {
+    id: splits.find((split) => split.isRemainder)?.id ?? crypto.randomUUID(),
+    description: "Остаток — укажите назначение", category: null,
+    companyId: item.companyId, accountId: item.accountId, excluded: false,
+    needsClarification: true, isRemainder: true, countsTowardBank: true,
+    flow: item.amount < 0 ? "expense" : "income",
+    ...splits.find((split) => split.isRemainder),
+    amount: Math.abs(remainder),
+  }];
 }
