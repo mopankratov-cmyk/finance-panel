@@ -13,6 +13,7 @@ const KIND_LABEL: Record<StockDocRow["kind"], string> = {
   return: "Возврат",
   receipt: "Приёмка",
   adjustment: "Коррекция прихода",
+  opening: "Начальный остаток",
 };
 
 /** Статусы документа с учётом заданий: `cancelled` и `confirmed*` добавляет

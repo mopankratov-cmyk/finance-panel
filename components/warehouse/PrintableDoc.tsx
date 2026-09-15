@@ -12,6 +12,7 @@ const TITLE: Record<StockDocDetail["kind"], string> = {
   return: "Акт приёмки возврата",
   receipt: "Акт приёмки",
   adjustment: "Акт коррекции прихода",
+  opening: "Акт начального остатка",
 };
 
 /** Статусы с учётом заданий: `cancelled` и `confirmed*` добавляет API-1 в
