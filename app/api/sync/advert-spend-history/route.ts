@@ -3,16 +3,46 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsertWithOptionalColumns, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets, type SyncTarget } from "@/lib/sync/cabinets";
 import { OPIU_CABINET_IDS } from "@/lib/opiu/constants";
-import { claimWbSyncJob, writeWbSyncState } from "@/lib/wb/syncState";
+import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { getAdvertSpendHistory, type AdvertSpendHistoryItem } from "@/lib/wb/advertApi";
 
 export const maxDuration = 60;
 
 const JOB = "advert_spend_history";
-// Небольшой объём (десятки-сотни строк на кабинет в неделю) — забираем
-// разом за фиксированное окно, без курсора/бэкфилла по частям, как у
-// более тяжёлых отчётов (funnel, paid-storage). Идемпотентно — upsert.
+// Окно за один шаг: этот отчёт синхронный (не задача-с-опросом, как
+// paid-storage) — можно смело забирать месяц за один запрос.
 const WINDOW_DAYS = 30;
+const HISTORY_DEPTH_DAYS = 180;
+
+/**
+ * Раньше синк держал только скользящее окно "последние 30 дней от сегодня"
+ * без курсора/бэкфилла — как только день выпадал за пределы окна, данные по
+ * нему пропадали из зоны внимания синка навсегда (не были удалены из базы,
+ * но и не обновлялись, а первоначально могли не грузиться вовсе для
+ * периодов старше 30 дней на момент первого запуска). Из-за этого ОПиУ за
+ * прошлые месяцы показывал заниженную "Рекламу" — данных просто не было.
+ *
+ * Два курсора — тот же паттерн, что и в paid-storage (см. её PR):
+ * frontier — бэкфилл вглубь истории; newestSynced — свежие дни всегда
+ * актуальны, синк каждый прогон сначала проверяет их и досинхронизирует
+ * в приоритете, не трогая backfill-прогресс.
+ */
+interface AdvertSpendJobState extends Record<string, unknown> {
+  frontier?: string;
+  newestSynced?: string;
+  historyStart?: string;
+  lastRunAt?: string;
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return isoDate(d);
+}
 
 function rowId(cabinetId: string, item: AdvertSpendHistoryItem): string {
   return [cabinetId, item.advertId ?? "", item.updTime ?? "", item.paymentType ?? "", item.updNum ?? ""].join("|");
@@ -23,38 +53,18 @@ interface CabinetResult {
   status: string;
   scanned?: number;
   rows?: number;
+  period?: { from: string; to: string };
 }
 
-/**
- * Кабинеты — разные токены/аккаунты, друг от друга рейт-лимитом WB не
- * связаны. Раньше обрабатывались последовательно (for), и при нескольких
- * кабинетах суммарное время (до 30с на запрос — TIMEOUT_MS в advertApi.ts —
- * на каждый) легко превышало maxDuration=60 и весь прогон падал по таймауту
- * Vercel, не записав вообще ничего. Обрабатываем параллельно — общее время
- * ограничено самым медленным кабинетом, а не суммой всех.
- */
-async function processCabinet(
+async function fetchAndStore(
   db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   target: SyncTarget,
+  cabinetId: string,
   from: string,
   to: string,
-): Promise<CabinetResult> {
-  const cabinetId = target.cabinetId;
-  if (!cabinetId) return { cabinet: target.name, status: "skipped" };
-
-  if (!(await claimWbSyncJob(db, cabinetId, JOB, 15 * 60))) {
-    return { cabinet: target.name, status: "running" };
-  }
-
+): Promise<{ ok: true; scanned: number; rows: number } | { ok: false; rateLimited: boolean; message: string }> {
   const res = await getAdvertSpendHistory(target.advertToken, from, to);
-  if (!res.ok) {
-    if (res.rateLimited) {
-      await writeWbSyncState(db, cabinetId, JOB, { status: "running", attempts: 0, lastError: null, state: {} });
-      return { cabinet: target.name, status: "deferred" };
-    }
-    await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: res.message, state: {} });
-    throw new Error(res.message);
-  }
+  if (!res.ok) return { ok: false, rateLimited: Boolean(res.rateLimited), message: res.message };
 
   const items = Array.isArray(res.data) ? res.data : [];
   const rows = items
@@ -77,18 +87,114 @@ async function processCabinet(
     .filter((r) => r.advert_id && r.charged_at && r.date && r.payment_type);
 
   const { error: upsertError } = await chunkedUpsertWithOptionalColumns("wb_advert_spend_history", rows, "id", ["raw"]);
-  if (upsertError) {
-    await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: upsertError, state: {} });
-    throw new Error(`запись wb_advert_spend_history: ${upsertError}`);
+  if (upsertError) return { ok: false, rateLimited: false, message: `запись wb_advert_spend_history: ${upsertError}` };
+
+  return { ok: true, scanned: items.length, rows: rows.length };
+}
+
+/**
+ * Кабинеты — разные токены/аккаунты, друг от друга рейт-лимитом WB не
+ * связаны. Раньше обрабатывались последовательно (for), и при нескольких
+ * кабинетах суммарное время (до 30с на запрос — TIMEOUT_MS в advertApi.ts —
+ * на каждый) легко превышало maxDuration=60 и весь прогон падал по таймауту
+ * Vercel, не записав вообще ничего. Обрабатываем параллельно — общее время
+ * ограничено самым медленным кабинетом, а не суммой всех.
+ */
+async function processCabinet(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  target: SyncTarget,
+  today: string,
+): Promise<CabinetResult> {
+  const cabinetId = target.cabinetId;
+  if (!cabinetId) return { cabinet: target.name, status: "skipped" };
+
+  if (!(await claimWbSyncJob(db, cabinetId, JOB, 15 * 60))) {
+    return { cabinet: target.name, status: "running" };
   }
 
+  // Необработанное исключение внутри этого блока раньше (см. paid-storage,
+  // тот же класс бага) оставляло "running" залипшим на все staleAfterSeconds
+  // без единой диагностической записи — оборачиваем в try/catch с явной
+  // перезаписью в "error", сохраняя уже накопленный state.
+  try {
+    return await runCabinetStep(db, target, cabinetId, today);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const saved = await readWbSyncState<AdvertSpendJobState>(db, cabinetId, JOB);
+    await writeWbSyncState(db, cabinetId, JOB, {
+      status: "error",
+      attempts: (saved?.attempts ?? 0) + 1,
+      lastError: message,
+      state: saved?.state ?? {},
+    });
+    throw e;
+  }
+}
+
+async function runCabinetStep(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  target: SyncTarget,
+  cabinetId: string,
+  today: string,
+): Promise<CabinetResult> {
+  const saved = await readWbSyncState<AdvertSpendJobState>(db, cabinetId, JOB);
+  const state: AdvertSpendJobState = saved?.state ?? {};
+  const historyStart = state.historyStart ?? addDays(today, -HISTORY_DEPTH_DAYS);
+
+  const isRecentCaughtUp = Boolean(state.newestSynced) && state.newestSynced! >= today;
+
+  let from: string;
+  let to: string;
+  let mode: "recent" | "backfill" | "done";
+
+  if (!isRecentCaughtUp) {
+    mode = "recent";
+    to = today;
+    from = state.newestSynced ? addDays(state.newestSynced, 1) : addDays(today, -(WINDOW_DAYS - 1));
+  } else {
+    const frontier = state.frontier ?? today;
+    if (frontier <= historyStart) {
+      mode = "done";
+      from = to = frontier;
+    } else {
+      mode = "backfill";
+      to = addDays(frontier, -1);
+      const windowStart = addDays(to, -(WINDOW_DAYS - 1));
+      from = windowStart < historyStart ? historyStart : windowStart;
+    }
+  }
+
+  if (mode === "done") {
+    await writeWbSyncState(db, cabinetId, JOB, {
+      status: "caught_up",
+      attempts: 0,
+      lastError: null,
+      state: { ...state, historyStart, lastRunAt: new Date().toISOString() },
+    });
+    return { cabinet: target.name, status: "caught_up" };
+  }
+
+  const result = await fetchAndStore(db, target, cabinetId, from, to);
+  if (!result.ok) {
+    if (result.rateLimited) {
+      await writeWbSyncState(db, cabinetId, JOB, { status: "running", attempts: 0, lastError: null, state });
+      return { cabinet: target.name, status: "deferred" };
+    }
+    await writeWbSyncState(db, cabinetId, JOB, { status: "error", attempts: 1, lastError: result.message, state });
+    throw new Error(result.message);
+  }
+
+  const nextState: AdvertSpendJobState = mode === "recent"
+    ? { ...state, newestSynced: to, historyStart, lastRunAt: new Date().toISOString() }
+    : { ...state, frontier: from, historyStart, lastRunAt: new Date().toISOString() };
+
   await writeWbSyncState(db, cabinetId, JOB, {
-    status: "caught_up",
+    status: mode === "backfill" && from <= historyStart ? "caught_up" : "backfill",
     attempts: 0,
     lastError: null,
-    state: { lastRunAt: new Date().toISOString(), rowsLoaded: rows.length, scanned: items.length },
+    state: nextState,
   });
-  return { cabinet: target.name, status: "ok", scanned: items.length, rows: rows.length };
+  return { cabinet: target.name, status: "ok", scanned: result.scanned, rows: result.rows, period: { from, to } };
 }
 
 export async function GET(request: NextRequest) {
@@ -108,12 +214,9 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
 
-  const toDate = new Date();
-  const fromDate = new Date(toDate.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  const to = toDate.toISOString().slice(0, 10);
-  const from = fromDate.toISOString().slice(0, 10);
+  const today = isoDate(new Date());
 
-  const settled = await Promise.allSettled(targets.map((target) => processCabinet(db, target, from, to)));
+  const settled = await Promise.allSettled(targets.map((target) => processCabinet(db, target, today)));
 
   let total = 0;
   const errors: string[] = [];
