@@ -1,7 +1,16 @@
 import type { MonthlyOpiuAmount, MonthlyOpiuRow, MonthlyOpiuStatement } from "./monthlyStatement";
 
 function safeSheetName(value: string): string {
-  return value.replace(/[\\/?*\[\]:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31) || "ОПиУ";
+  return value.replace(/[\\/?*\[\]:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100) || "ОПиУ";
+}
+
+function stableSheetKey(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function directionValue(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string | number {
@@ -21,7 +30,7 @@ export interface MonthlyOpiuSheetPayload {
 
 export function buildMonthlyOpiuSheetPayload(
   statement: MonthlyOpiuStatement,
-  context: { monthLabel: string; generatedAt: string; companyLabel?: string },
+  context: { monthKey: string; monthLabel: string; generatedAt: string; companyKey?: string; companyLabel?: string },
 ): MonthlyOpiuSheetPayload {
   const companyLabel = context.companyLabel?.trim() || "Все компании";
   const rows: Array<Array<string | number>> = [
@@ -45,7 +54,8 @@ export function buildMonthlyOpiuSheetPayload(
       totalValue(row.amounts.total, row),
     ]);
   }
-  return { sheetName: safeSheetName(`ОПиУ ${companyLabel} ${context.monthLabel}`), rows };
+  const identity = `${context.monthKey.trim()}|${context.companyKey?.trim() || companyLabel}`;
+  return { sheetName: safeSheetName(`ОПиУ ${context.monthKey} ${stableSheetKey(identity)} ${companyLabel}`), rows };
 }
 
 export async function exportMonthlyOpiuToGoogleSheets(payload: MonthlyOpiuSheetPayload): Promise<{ spreadsheetUrl?: string }> {

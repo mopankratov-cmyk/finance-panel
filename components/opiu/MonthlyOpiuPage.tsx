@@ -110,8 +110,10 @@ export function MonthlyOpiuPage() {
     setExportedUrl(null);
     try {
       const payload = buildMonthlyOpiuSheetPayload(statement, {
+        monthKey: month,
         monthLabel: monthLabel(month),
         generatedAt: new Date().toLocaleString("ru-RU"),
+        companyKey: companyId || "all",
         companyLabel: selectedCompanyLabel,
       });
       const result = await exportMonthlyOpiuToGoogleSheets(payload);
