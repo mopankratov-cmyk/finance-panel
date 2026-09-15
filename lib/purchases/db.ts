@@ -16,6 +16,7 @@ const rows = (value: unknown): DbRecord[] => Array.isArray(value) ? value.filter
 const string = (value: unknown): string => typeof value === "string" ? value : "";
 const nullableString = (value: unknown): string | null => typeof value === "string" && value ? value : null;
 const number = (value: unknown): number => Number.isFinite(Number(value)) ? Number(value) : 0;
+const nullableNumber = (value: unknown): number | null => value === null || value === undefined ? null : (Number.isFinite(Number(value)) ? Number(value) : null);
 
 export function purchaseOrderFromDb(row: DbRecord): PurchaseOrderView {
   const order: PurchaseOrderInput = {
@@ -47,6 +48,7 @@ export function purchaseOrderFromDb(row: DbRecord): PurchaseOrderView {
         title: string(stage.title),
         percent: number(stage.percent),
         amount: number(stage.amount),
+        exchangeRate: nullableNumber(stage.exchange_rate),
         dueDate: nullableString(stage.due_date),
         paidAt: nullableString(stage.paid_at),
         status: string(stage.status) as PurchaseOrderInput["paymentStages"][number]["status"],

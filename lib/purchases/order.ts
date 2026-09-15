@@ -18,6 +18,11 @@ export interface PurchasePaymentStage {
   title: string;
   percent: number;
   amount: number;
+  /** §13/§27.5 ТЗ: курс на дату именно ЭТОГО платежа, не курс заказа
+   *  (purchase_orders.exchange_rate — один на весь документ). `amount`
+   *  остаётся тем, что реально ушло со счёта в рублях, — это поле не
+   *  участвует в расчёте суммы, только фиксирует курс для истории и §13. */
+  exchangeRate: number | null;
   dueDate: string | null;
   paidAt: string | null;
   status: PurchasePaymentStatus;
@@ -106,6 +111,12 @@ function nullableDate(value: unknown): string | null {
 function nullableTimestamp(value: unknown): string | null {
   const candidate = text(value, 40);
   return candidate && Number.isFinite(Date.parse(candidate)) ? candidate : null;
+}
+
+function nullablePositiveNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 export function addDays(date: string, days: number): string {
@@ -337,7 +348,7 @@ export function normalizePurchaseOrderPayload(raw: unknown, forced?: { id?: stri
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) return { ok: false, error: `Этап оплаты ${index + 1}: процент должен быть от 0 до 100` };
     if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: `Этап оплаты ${index + 1}: некорректная сумма` };
     if (!PAYMENT_STATUSES.has(paymentStatus)) return { ok: false, error: `Этап оплаты ${index + 1}: некорректный статус` };
-    paymentStages.push({ title, percent, amount, dueDate: nullableDate(stage.dueDate), paidAt: nullableTimestamp(stage.paidAt), status: paymentStatus });
+    paymentStages.push({ title, percent, amount, exchangeRate: nullablePositiveNumber(stage.exchangeRate), dueDate: nullableDate(stage.dueDate), paidAt: nullableTimestamp(stage.paidAt), status: paymentStatus });
   }
 
   const logisticsRows = Array.isArray(source.logisticsStages) ? source.logisticsStages : [];
