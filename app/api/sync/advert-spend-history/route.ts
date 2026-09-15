@@ -7,6 +7,7 @@ import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/sync
 import { getAdvertSpendHistory, type AdvertSpendHistoryItem } from "@/lib/wb/advertApi";
 
 export const maxDuration = 60;
+// redeploy-nudge: продовый билд Vercel не подхватил предыдущий мёрж, форсируем новый деплой.
 
 const JOB = "advert_spend_history";
 // Окно за один шаг: этот отчёт синхронный (не задача-с-опросом, как
