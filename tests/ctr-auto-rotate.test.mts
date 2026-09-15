@@ -83,11 +83,18 @@ test("запрет узкий: автоматика не забирает у ч�
   assert.match(action, /Раунды переключает автоматика/);
 });
 
-test("переключать способ ротации можно только у остановленного теста", () => {
+/**
+ * Ручного режима больше нет (владелец отменил его 15.09.2026): старт теста
+ * сам включает автосмену — вместо отдельного тумблера с ролью и заслоном по
+ * полкам оба условия переехали на действие "start".
+ */
+test("старт теста сам включает автосмену — с той же ролью и заслоном, что раньше стоял у тумблера", () => {
   const action = read("../app/api/ctrtest/[id]/action/route.ts");
-  assert.match(action, /auto: "AUTO_ROTATE"/, "необратимое включение требует подтверждения");
-  assert.match(action, /requireApiSession\(\["director", "wb_manager"\]\)/);
-  assert.match(action, /if \(test\.status === "running"\)/);
+  assert.doesNotMatch(action, /action === "auto"/, "отдельного действия auto больше нет");
+  const startBlock = action.slice(action.indexOf('if (action === "start") {'), action.indexOf("let snapshot"));
+  assert.match(startBlock, /requireApiSession\(\["director", "wb_manager"\]\)/);
+  assert.match(startBlock, /binding\.shelfConflictState/);
+  assert.match(action, /if \(action === "start"\) \{\s*\n\s*await db\.from\("ctr_tests"\)\.update\(\{ live_swap_enabled: true/, "автосмена включается после успешного старта");
 });
 
 test("ротация запускается по расписанию", () => {
@@ -124,30 +131,16 @@ test("ключ контента вводится в модуле тестов и
   assert.match(panel, /«Только на чтение» снять/, "сказано, какой именно ключ нужен");
 });
 
-/**
- * Переключатель автоматики сначала не работал вовсе: экран не подставлял
- * подтверждение (сервер отвечал «Нужно явное подтверждение действия»), а роут
- * читал намерение из `force`, который означает совсем другое — закрыть тест при
- * неравной открутке. То есть даже пройдя подтверждение, кнопка всегда бы
- * ВЫКЛЮЧАЛА автоматику.
- */
-test("переключатель автоматики подтверждается и различает вкл/выкл", () => {
-  const page = read("../components/wb/WbCtrPage.tsx");
-  assert.match(page, /actionName === "auto"\s*\?\s*"AUTO_ROTATE"/);
-  assert.match(page, /if \(actionName === "auto"\)/, "после смены режима список перечитывается");
-
-  const route = read("../app/api/ctrtest/[id]/action/route.ts");
-  assert.match(route, /const enabled = String\(body\?\.explanation \?\? ""\) === "on";/);
-  assert.doesNotMatch(route, /const enabled = body\?\.force === true;/, "force здесь про другое");
-});
-
 /** Экран не должен предлагать то, что гейт отклонит. */
 test("у автоматического теста нет кнопки ручного перехода", () => {
   const detail = read("../components/wb/ctr/CtrTestDetail.tsx");
   assert.match(detail, /test\.status === "running" && next && !test\.liveSwapEnabled \? <button/);
-  // И запуск не просит поставить руками то, что уже стоит на карточке.
-  assert.match(detail, /if \(action === "start" && auto\)/);
+  // Запуск не просит поставить руками то, что уже стоит на карточке — теперь
+  // это правило для КАЖДОГО старта, не только «если auto»: тумблера, который
+  // выбирал бы иное, больше нет.
+  assert.match(detail, /if \(action === "start"\) \{/);
   assert.match(detail, /фото, которое сейчас стоит на карточке/);
+  assert.doesNotMatch(detail, /Менять автоматически/, "тумблера ручного/автоматического режима больше нет");
 });
 
 /**

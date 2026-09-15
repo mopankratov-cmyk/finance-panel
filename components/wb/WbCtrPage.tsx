@@ -191,9 +191,7 @@ export function WbCtrPage() {
           ? "CANCEL_TEST"
           : actionName === "winner"
             ? "SELECT_WINNER"
-            : actionName === "auto"
-              ? "AUTO_ROTATE"
-              : undefined;
+            : undefined;
     setBusy(true); setError(null);
     try {
       const response = await responseJson(await fetch(`/api/ctrtest/${selectedTest.id}/action`, {
@@ -205,10 +203,8 @@ export function WbCtrPage() {
       // обычный переход, — и человек не узнавал, что тест встал, а кампания в
       // кабинете WB продолжает жечь бюджет. Панель в WB не пишет и остановить
       // её не может, поэтому обязана сказать это прямо.
-      if (actionName === "auto") {
-        reload(explanation === "on"
-          ? "Автоматическая смена включена: панель сама переставит фото, когда вариант наберёт норму."
-          : "Автоматическая смена выключена: варианты ставите и подтверждаете вы.");
+      if (actionName === "start") {
+        reload("Тест запущен: панель сама переставит фото, когда вариант наберёт норму показов.");
       } else if (response?.outcome === "cap_paused") {
         reload("Лимит расходов выбран — тест на паузе. Остановите кампанию в кабинете WB: панель этого не делает.");
       } else if (response?.outcome === "cap_finished") {

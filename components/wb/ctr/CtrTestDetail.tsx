@@ -225,14 +225,15 @@ function CellView({ cell, share, role }: { cell: Cell; share: number | null; rol
   );
 }
 
-function actionConfirm(action: string, variant?: CtrVariantView, auto = false) {
-  // При автоматике первый слот стартует на том, что УЖЕ стоит на карточке:
-  // базовый вариант — это её текущее фото. Просить поставить его руками
+function actionConfirm(action: string, variant?: CtrVariantView) {
+  // Ручного режима больше нет (15.09.2026): старт ВСЕГДА включает автосмену.
+  // Первый слот при этом стартует на том, что УЖЕ стоит на карточке —
+  // базовый вариант — это её текущее фото, просить поставить его руками
   // значит просить сделать то, что и так сделано.
-  if (action === "start" && auto) {
+  if (action === "start") {
     return window.confirm(`Запустить тест? Первым откручивается «${variant?.label ?? "базовый вариант"}» — фото, которое сейчас стоит на карточке. Дальше панель переставит варианты сама.`);
   }
-  if (action === "start" || action === "advance") return window.confirm(`Сначала вручную установите «${variant?.label ?? "выбранный вариант"}» в карточке/кампании WB. Контент уже установлен и можно зафиксировать начало слота?`);
+  if (action === "advance") return window.confirm(`Сначала вручную установите «${variant?.label ?? "выбранный вариант"}» в карточке/кампании WB. Контент уже установлен и можно зафиксировать начало слота?`);
   if (action === "finish") return window.confirm("Завершить тест и выбрать победителя по накопленным метрикам?");
   if (action === "cancel") return window.confirm("Отменить тест? История и метрики останутся в журнале.");
   if (action === "winner") return window.confirm(`Выбрать «${variant?.label}» победителем вручную и завершить тест?`);
@@ -396,7 +397,7 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
   const spentPct = Math.min(100, test.spendCapRub > 0 ? spent / test.spendCapRub * 100 : 0);
 
   const trigger = (action: string, variant?: CtrVariantView) => {
-    if (!actionConfirm(action, variant, test.liveSwapEnabled)) return;
+    if (!actionConfirm(action, variant)) return;
     onAction(action, variant?.id, action === "winner" ? "Победитель выбран владельцем после ручной проверки метрик и контента." : undefined);
   };
 
@@ -413,29 +414,6 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
             {test.status === "running" && next && !test.liveSwapEnabled ? <button type="button" disabled={busy} onClick={() => trigger("advance", next)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" />Следующий: {next.label}</button> : null}
             {test.status === "running" ? <button type="button" disabled={busy} onClick={() => onAction("pause")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-200 px-3 text-[11px] font-semibold text-amber-700 disabled:opacity-50"><Pause className="h-3.5 w-3.5" />Пауза</button> : null}
             {test.status !== "done" && test.status !== "cancelled" ? <button type="button" disabled={busy} onClick={() => trigger("finish")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 disabled:opacity-50"><Square className="h-3.5 w-3.5" />Стоп с победителем</button> : null}
-            {/*
-              Способ ротации меняется только у остановленного теста: иначе часть
-              раундов окажется ручной, часть машинной, и сравнивать их не с чем.
-              Кнопка говорит, что произойдёт, а не как называется флаг.
-            */}
-            {test.status === "draft" || test.status === "paused" ? (
-              <button
-                type="button"
-                disabled={busy || (!test.liveSwapEnabled && test.testType === "ctr" && !["none", "confirmed", "declined"].includes(test.shelfConflictState))}
-                title={!test.liveSwapEnabled && test.testType === "ctr" && test.shelfConflictState === "pending" ? "Сначала разберитесь с конкурирующими полочными кампаниями на этом артикуле — список выше" : undefined}
-                onClick={() => {
-                  const on = !test.liveSwapEnabled;
-                  if (!window.confirm(on
-                    ? "Включить автоматическую смену?\n\nПанель будет сама менять главное фото карточки на витрине WB каждый раз, когда вариант наберёт норму показов. Запись в карточку необратима."
-                    : "Выключить автоматическую смену? Дальше варианты ставите и подтверждаете вы.")) return;
-                  onAction("auto", undefined, on ? "on" : "off");
-                }}
-                className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-[11px] font-semibold disabled:opacity-50 ${test.liveSwapEnabled ? "border-violet-300 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-600"}`}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                {test.liveSwapEnabled ? "Меняет сама" : "Менять автоматически"}
-              </button>
-            ) : null}
             {test.status !== "done" && test.status !== "cancelled" ? <button type="button" disabled={busy} onClick={() => trigger("cancel")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-rose-200 px-3 text-[11px] font-semibold text-rose-600 disabled:opacity-50"><XCircle className="h-3.5 w-3.5" />Отменить</button> : null}
           </div>
         </div>

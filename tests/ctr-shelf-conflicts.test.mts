@@ -135,13 +135,14 @@ test("детект полок исключает саму привязанную
   assert.equal(candidates.length, 0);
 });
 
-test("гейт автосмены проверяет shelf_conflict_state; ручная ротация — нет", () => {
+test("гейт по полкам стоит у старта (ручного режима больше нет), а не у автономного тумблера", () => {
   const route = read("../app/api/ctrtest/[id]/action/route.ts");
-  const autoBlock = route.slice(route.indexOf('if (action === "auto")'), route.indexOf('if (action === "advance")'));
-  assert.match(autoBlock, /shelf_conflict_state/, "включение автосмены должно проверять состояние конфликта полок");
-  assert.match(autoBlock, /\["none", "confirmed", "declined"\]/);
+  assert.doesNotMatch(route, /action === "auto"/, "отдельного тумблера auto больше нет — старт теперь сам его заменяет");
+  const startBlock = route.slice(route.indexOf('if (action === "start") {'), route.indexOf("let snapshot"));
+  assert.match(startBlock, /binding\.shelfConflictState/, "старт должен проверять состояние конфликта полок (из свежего результата резолюции, не устаревшего test.shelf_conflict_state)");
+  assert.match(startBlock, /\["none", "confirmed", "declined"\]/);
   const advanceBlock = route.slice(route.indexOf('if (action === "advance")'), route.indexOf("// Резолюция поисковой кампании"));
-  assert.doesNotMatch(advanceBlock, /shelf_conflict_state/, "ручная ротация не должна блокироваться состоянием полок");
+  assert.doesNotMatch(advanceBlock, /shelfConflictState|shelf_conflict_state/, "ручная ротация легаси-тестов не должна блокироваться состоянием полок");
 });
 
 test("резолюция кампании вызывается из action route, только для test_type ctr", () => {

@@ -46,7 +46,6 @@ function humanTransitionError(message: string): string {
   return message;
 }
 const confirmations: Record<string, string> = {
-  auto: "AUTO_ROTATE",
   start: "CONTENT_IS_SET",
   advance: "CONTENT_IS_SET",
   finish: "FINISH_TEST",
@@ -61,7 +60,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!Number.isInteger(id) || id <= 0) return fail("Некорректный id теста", 400);
   const body = await request.json().catch(() => null) as { action?: string; variantId?: number; confirm?: string; explanation?: string; force?: boolean } | null;
   const action = String(body?.action ?? "");
-  if (!["start", "advance", "pause", "finish", "cancel", "winner", "auto"].includes(action)) return fail("Неизвестное действие", 400);
+  if (!["start", "advance", "pause", "finish", "cancel", "winner"].includes(action)) return fail("Неизвестное действие", 400);
   if (confirmations[action] && body?.confirm !== confirmations[action]) return fail("Нужно явное подтверждение действия", 400);
 
   const db = getSupabaseAdmin();
@@ -90,52 +89,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (allowedNmIds !== null && !allowedNmIds.has(nmId)) return fail("SKU больше не входит в товарный контур кабинета", 403);
 
   /**
-   * Включение и выключение автоматической ротации.
-   *
-   * Отдельно от переходов состояния: это не шаг теста, а смена того, КТО им
-   * управляет. Переключать можно только у неработающего теста — иначе часть
-   * раундов окажется человеческой, часть машинной, и сравнивать их будет не с
-   * чем. Директор или менеджер WB: у обоих уже есть `catalog.edit` на
-   * товарный контур, а запись идёт только в WB-карточку кабинета, к
-   * которому у менеджера и так есть доступ (владелец подтвердил 15.09.2026).
-   */
-  if (action === "auto") {
-    const roleGate = await requireApiSession(["director", "wb_manager"]);
-    if (roleGate) return roleGate;
-    if (test.status === "running") {
-      return fail("Тест уже идёт: остановите его, чтобы сменить способ ротации — иначе часть раундов будет ручной, часть машинной", 409);
-    }
-    const enabled = String(body?.explanation ?? "") === "on";
-    // Автоматика необратимо пишет в живую карточку WB — прежде чем включать
-    // её, конкурирующие полочные кампании на этом же артикуле должны быть
-    // разобраны человеком (поставлены на паузу или осознанно оставлены как
-    // есть), а не просто существовать невидимо и портить замер CTR.
-    if (enabled && test.test_type === "ctr" && !["none", "confirmed", "declined"].includes(test.shelf_conflict_state)) {
-      return fail("Сначала разберитесь с конкурирующими полочными кампаниями на этом артикуле — список в карточке теста (GET .../shelf-conflicts).", 409);
-    }
-    const { error: flagError } = await db
-      .from("ctr_tests")
-      .update({ live_swap_enabled: enabled, auto_error: null, updated_at: new Date().toISOString() })
-      .eq("id", id);
-    if (flagError) {
-      return fail(missingMigration(flagError.code) ? "Примените миграции 202609050001 и 202609050002" : flagError.message, missingMigration(flagError.code) ? 503 : 500);
-    }
-    // Переключение режима пишется в журнал наравне с остальными действиями.
-    // Без этой записи в истории теста оставались только «создан / запущен /
-    // отменён», и по журналу было НЕ ВИДНО, работал ли тест на автоматике.
-    // Когда автосмена молчала полтора суток, именно этого следа не хватило,
-    // чтобы отличить «не включали» от «включили, но не сработало».
-    const actor = (await getServerSession())?.email ?? "—";
-    await db.from("ctr_test_events").insert({
-      test_id: id,
-      action: "auto",
-      actor,
-      details: { autoRotate: enabled },
-    });
-    return NextResponse.json({ data: { autoRotate: enabled }, error: null });
-  }
-
-  /**
    * Раунды у автоматического теста переключает крон, а не человек.
    *
    * Раньше это стояло в SQL и там же ломало всё остальное: запрет накрывал и
@@ -143,11 +96,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
    * с витриной. Теперь запрет узкий и стоит здесь, потому что гейт в базе
    * действия не знает. Слабее, чем в SQL, и держится на том, что у ручного
    * пути ровно один вызывающий — этот роут. Крона база останавливает сама.
+   *
+   * Срабатывает только у тестов старше 15.09.2026 (владелец отменил ручной
+   * режим): у них ещё может стоять `live_swap_enabled = false` с прошлого —
+   * новые тесты этот флаг больше никогда не несут.
    */
   if (action === "advance") {
     const { data: mode } = await db.from("ctr_tests").select("live_swap_enabled").eq("id", id).maybeSingle();
     if (mode?.live_swap_enabled) {
-      return fail("Раунды переключает автоматика. Чтобы вести тест руками, выключите автоматическую смену", 409);
+      return fail("Раунды переключает автоматика — у новых тестов ручного режима больше нет", 409);
     }
   }
 
@@ -162,6 +119,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     advertId: test.advert_id,
     shelfConflictState: test.shelf_conflict_state,
   });
+
+  /**
+   * Ручного режима больше нет (решение владельца 15.09.2026): старт теста
+   * сразу и необратимо включает автосмену — раньше это был отдельный шаг
+   * («тумблер auto»), требовавший director/wb_manager и разобранных полок.
+   * Оба условия переехали сюда без ослабления: старт теперь ровно настолько
+   * же необратимое действие, каким раньше был тот тумблер, — крон начнёт
+   * писать в живую карточку по итогам именно этого шага.
+   */
+  if (action === "start") {
+    const roleGate = await requireApiSession(["director", "wb_manager"]);
+    if (roleGate) return roleGate;
+    if (test.test_type === "ctr" && !["none", "confirmed", "declined"].includes(binding.shelfConflictState)) {
+      return fail("Сначала разберитесь с конкурирующими полочными кампаниями на этом артикуле — список в карточке теста (GET .../shelf-conflicts).", 409);
+    }
+  }
 
   let snapshot: CtrMetricSnapshot;
   try { snapshot = await getCtrMetricSnapshot(cabinetId, nmId, binding.advertId); }
@@ -204,6 +177,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const outcome = action === "advance" && status === "paused" ? "cap_paused"
     : action === "advance" && status === "done" ? "cap_finished"
     : action;
+
+  // Тест перешёл в running первым запуском — включаем автосмену. Роль и
+  // заслон по полкам уже пройдены гейтом выше; сама запись — после успеха
+  // transition_ctr_test, а не до: неудавшийся старт не должен оставлять флаг
+  // включённым на тесте, который так и не побежал.
+  if (action === "start") {
+    await db.from("ctr_tests").update({ live_swap_enabled: true, auto_error: null }).eq("id", id);
+  }
 
   // Автовозврат полок — тест дошёл до конца (явным finish/cancel, или
   // advance упёрся в потолок расхода и SQL закрыл его сам). Не на

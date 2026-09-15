@@ -104,8 +104,8 @@ export async function ensureCtrTestCampaignBinding(
   db: SupabaseClient,
   test: BindableTest,
   override?: { advertId: number },
-): Promise<{ advertId: number | null }> {
-  if (test.testType !== "ctr" || test.roundNum !== 0) return { advertId: test.advertId };
+): Promise<{ advertId: number | null; shelfConflictState: string }> {
+  if (test.testType !== "ctr" || test.roundNum !== 0) return { advertId: test.advertId, shelfConflictState: test.shelfConflictState };
 
   let advertId: number | null = null;
   if (override) {
@@ -115,14 +115,16 @@ export async function ensureCtrTestCampaignBinding(
     advertId = resolution.status === "resolved" ? resolution.advertId : null;
   }
 
+  let shelfConflictState = test.shelfConflictState;
   const update: Record<string, unknown> = { advert_id: advertId, updated_at: new Date().toISOString() };
   if (test.shelfConflictState === "unchecked") {
     const shelfConflicts = await findCompetingShelfCampaigns(db, test.cabinetId, test.nmId, advertId);
-    update.shelf_conflict_state = shelfConflicts.length ? "pending" : "none";
+    shelfConflictState = shelfConflicts.length ? "pending" : "none";
+    update.shelf_conflict_state = shelfConflictState;
     update.shelf_conflict_checked_at = new Date().toISOString();
   }
   await db.from("ctr_tests").update(update).eq("id", test.id);
-  return { advertId };
+  return { advertId, shelfConflictState };
 }
 
 export interface CtrShelfCandidate {
