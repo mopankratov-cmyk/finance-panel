@@ -21,7 +21,7 @@ import { moscowYesterday } from "@/lib/wb/rkJournalDates";
  * читает вовсе. Зато она есть здесь, в ctr-breakdown, — и доставляется ссылкой,
  * а не переездом двухсот семидесяти строк.
  */
-export function CtrCampaignBridge({ cabinetId, nmId }: { cabinetId: string; nmId: number }) {
+export function CtrCampaignBridge({ cabinetId, nmId, boundAdvertId }: { cabinetId: string; nmId: number; boundAdvertId?: number | null }) {
   const [rows, setRows] = useState<CtrCampaignRow[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -63,6 +63,9 @@ export function CtrCampaignBridge({ cabinetId, nmId }: { cabinetId: string; nmId
             className="tap-row flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px] transition-colors hover:bg-violet-50"
           >
             <span className="min-w-0 flex-1 basis-full truncate font-medium text-slate-700 sm:basis-auto">{row.name}</span>
+            {boundAdvertId != null && row.advertId === boundAdvertId ? (
+              <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700">измеряется тестом</span>
+            ) : null}
             <span className="shrink-0 tabular-nums text-slate-500">{Math.round(row.spent).toLocaleString("ru-RU")} ₽</span>
             <span className="shrink-0 tabular-nums text-slate-400">CTR {row.ctr == null ? "—" : `${row.ctr.toFixed(2)}%`}</span>
             <ExternalLink className="h-3.5 w-3.5 shrink-0 text-violet-500" aria-hidden="true" />

@@ -343,7 +343,8 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
             {test.status === "draft" || test.status === "paused" ? (
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || (!test.liveSwapEnabled && test.testType === "ctr" && !["none", "confirmed", "declined"].includes(test.shelfConflictState))}
+                title={!test.liveSwapEnabled && test.testType === "ctr" && test.shelfConflictState === "pending" ? "Сначала разберитесь с конкурирующими полочными кампаниями на этом артикуле — список выше" : undefined}
                 onClick={() => {
                   const on = !test.liveSwapEnabled;
                   if (!window.confirm(on

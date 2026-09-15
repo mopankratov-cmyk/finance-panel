@@ -74,6 +74,10 @@ export interface CtrTestView {
   winnerVariantId: number | null;
   winnerExplanation: string | null;
   sourceTestId: number | null;
+  /** Поисковая кампания, к которой привязана метрика. null — тест не привязан (смешанная метрика по всем кампаниям, как раньше Фазы A). */
+  advertId: number | null;
+  /** unchecked/none/pending/confirmed/declined — состояние разбора конкурирующих полочных кампаний. */
+  shelfConflictState: "unchecked" | "none" | "pending" | "confirmed" | "declined";
   variants: CtrVariantView[];
   rounds: CtrRoundView[];
   history: CtrEventView[];

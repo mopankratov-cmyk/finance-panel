@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
+import { ensureCtrTestCampaignBinding, resumeShelfPausesForTest } from "@/lib/ctrtest/campaignBinding";
 import { getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
 import { CTR_FORCE_HINT, ctrSnapshotDelta, type CtrMetricSnapshot } from "@/lib/ctrtest/model";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 
 export const dynamic = "force-dynamic";
@@ -64,8 +66,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
-  const { data: test, error } = await db.from("ctr_tests").select("id, cabinet_id, nm_id, status, test_type").eq("id", id).maybeSingle();
-  if (error) return fail(missingMigration(error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : error.message, missingMigration(error.code) ? 503 : 500);
+  // Колонки Фазы A (advert_id/shelf_conflict_state, миграция 202609150004)
+  // может ещё не быть в базе — она накатывается владельцем отдельно от
+  // выкладки кода. Откат на старый список полей, а не 500, пока не применена.
+  let test: { id: number; cabinet_id: string; nm_id: number; status: string; test_type: string; round_num: number; advert_id: number | null; shelf_conflict_state: string } | null = null;
+  {
+    const full = await db.from("ctr_tests").select("id, cabinet_id, nm_id, status, test_type, round_num, advert_id, shelf_conflict_state").eq("id", id).maybeSingle();
+    if (full.error?.code === "42703") {
+      const legacy = await db.from("ctr_tests").select("id, cabinet_id, nm_id, status, test_type, round_num").eq("id", id).maybeSingle();
+      if (legacy.error) return fail(missingMigration(legacy.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : legacy.error.message, missingMigration(legacy.error.code) ? 503 : 500);
+      test = legacy.data ? { ...legacy.data, advert_id: null, shelf_conflict_state: "unchecked" } : null;
+    } else if (full.error) {
+      return fail(missingMigration(full.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : full.error.message, missingMigration(full.error.code) ? 503 : 500);
+    } else {
+      test = full.data;
+    }
+  }
   if (!test?.cabinet_id) return fail("Тест не найден", 404);
   const cabinetId = String(test.cabinet_id);
   const nmId = Number(test.nm_id);
@@ -90,6 +106,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       return fail("Тест уже идёт: остановите его, чтобы сменить способ ротации — иначе часть раундов будет ручной, часть машинной", 409);
     }
     const enabled = String(body?.explanation ?? "") === "on";
+    // Автоматика необратимо пишет в живую карточку WB — прежде чем включать
+    // её, конкурирующие полочные кампании на этом же артикуле должны быть
+    // разобраны человеком (поставлены на паузу или осознанно оставлены как
+    // есть), а не просто существовать невидимо и портить замер CTR.
+    if (enabled && test.test_type === "ctr" && !["none", "confirmed", "declined"].includes(test.shelf_conflict_state)) {
+      return fail("Сначала разберитесь с конкурирующими полочными кампаниями на этом артикуле — список в карточке теста (GET .../shelf-conflicts).", 409);
+    }
     const { error: flagError } = await db
       .from("ctr_tests")
       .update({ live_swap_enabled: enabled, auto_error: null, updated_at: new Date().toISOString() })
@@ -128,8 +151,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
   }
 
+  // Резолюция поисковой кампании — один раз, пока у теста ещё не было ни
+  // одного раунда; дальше функция сама no-op (lib/ctrtest/campaignBinding.ts).
+  const binding = await ensureCtrTestCampaignBinding(db, {
+    id: test.id,
+    cabinetId,
+    nmId,
+    testType: test.test_type,
+    roundNum: test.round_num,
+    advertId: test.advert_id,
+    shelfConflictState: test.shelf_conflict_state,
+  });
+
   let snapshot: CtrMetricSnapshot;
-  try { snapshot = await getCtrMetricSnapshot(cabinetId, nmId); }
+  try { snapshot = await getCtrMetricSnapshot(cabinetId, nmId, binding.advertId); }
   catch (cause) { return fail(cause instanceof Error ? cause.message : "Не удалось снять метрики", 502); }
 
   let result: ReturnType<typeof ctrSnapshotDelta> | Record<string, never> = {};
@@ -169,5 +204,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const outcome = action === "advance" && status === "paused" ? "cap_paused"
     : action === "advance" && status === "done" ? "cap_finished"
     : action;
+
+  // Автовозврат полок — тест дошёл до конца (явным finish/cancel, или
+  // advance упёрся в потолок расхода и SQL закрыл его сам). Не на
+  // cap_paused: паузу тест может снять позже, полки должны остаться
+  // выключенными до тех пор.
+  if (test.test_type === "ctr" && (status === "done" || status === "cancelled")) {
+    const cabinet = await getWbCabinet(cabinetId);
+    const token = cabinet ? resolveWbToken(cabinet, "advert") : null;
+    if (token) {
+      await resumeShelfPausesForTest(db, { testId: id, token, actorEmail: session?.email ?? "ctr-test" });
+    }
+  }
+
   return NextResponse.json({ data: { test: data, result, outcome }, error: null });
 }

@@ -4,11 +4,22 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 interface AdvertMetricRow { views: number | null; clicks: number | null; spent: number | null }
 interface FunnelMetricRow { open_card: number | null; add_to_cart: number | null; orders: number | null }
 
-export async function getCtrMetricSnapshot(cabinetId: string, nmId: number): Promise<CtrMetricSnapshot> {
+/**
+ * `advertId` — обязательный параметр (не опциональный), намеренно: вызов,
+ * забывший подумать про кампанию, не должен молча собрать смешанную метрику.
+ * `null` воспроизводит прежнее поведение байт-в-байт (сумма всех кампаний по
+ * артикулу) — это единственно верный выбор для тестов без резолвленной
+ * поисковой кампании (Фаза A ТЗ 15.09.2026, lib/ctrtest/campaignBinding.ts).
+ * `wb_funnel_daily` кампанией не атрибутируется и не фильтруется никогда.
+ */
+export async function getCtrMetricSnapshot(cabinetId: string, nmId: number, advertId: number | null): Promise<CtrMetricSnapshot> {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
+  const advertQuery = advertId == null
+    ? db.from("wb_advert_nm_daily").select("views, clicks, spent").eq("cabinet_id", cabinetId).eq("nm_id", nmId)
+    : db.from("wb_advert_nm_campaign_daily").select("views, clicks, spent").eq("cabinet_id", cabinetId).eq("nm_id", nmId).eq("advert_id", advertId);
   const [advert, funnel] = await Promise.all([
-    db.from("wb_advert_nm_daily").select("views, clicks, spent").eq("cabinet_id", cabinetId).eq("nm_id", nmId).order("date", { ascending: true }).limit(10_000),
+    advertQuery.order("date", { ascending: true }).limit(10_000),
     db.from("wb_funnel_daily").select("open_card, add_to_cart, orders").eq("cabinet_id", cabinetId).eq("nm_id", nmId).order("date", { ascending: true }).limit(10_000),
   ]);
   if (advert.error) throw new Error(advert.error.message);

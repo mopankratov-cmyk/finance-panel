@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resumeShelfPausesForTest } from "@/lib/ctrtest/campaignBinding";
 import { getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
 import { ctrSnapshotDelta, type CtrMetricSnapshot } from "@/lib/ctrtest/model";
 import { checkCronAuth } from "@/lib/sync/helpers";
@@ -40,6 +41,7 @@ interface TestRow {
   photos_original: string[] | null;
   test_type: string;
   auto_error: string | null;
+  advert_id?: number | null;
 }
 
 interface VariantRow { id: number; image_url: string; position: number | null; rounds_count: number | null }
@@ -91,14 +93,25 @@ async function rotate(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
-  const { data: tests, error } = await db
-    .from("ctr_tests")
-    .select("id, cabinet_id, nm_id, status, round_num, current_variant_id, impressions_per_round, dead_zone_min, photos_original, test_type, auto_error")
-    .eq("status", "running")
-    .eq("live_swap_enabled", true);
-  if (error) {
-    const missing = ["42703", "PGRST204"].includes(error.code ?? "");
-    return fail(missing ? "Примените миграции 202609050001 и 202609050002" : error.message, missing ? 503 : 500);
+  const BASE_COLUMNS = "id, cabinet_id, nm_id, status, round_num, current_variant_id, impressions_per_round, dead_zone_min, photos_original, test_type, auto_error";
+  let tests: TestRow[] | null = null;
+  {
+    const withCampaign = await db.from("ctr_tests").select(`${BASE_COLUMNS}, advert_id`).eq("status", "running").eq("live_swap_enabled", true);
+    if (withCampaign.error?.code === "42703") {
+      // Колонка Фазы A (миграция 202609150004) ещё не применена владельцем —
+      // ротация продолжает работать по смешанной метрике, как раньше.
+      const base = await db.from("ctr_tests").select(BASE_COLUMNS).eq("status", "running").eq("live_swap_enabled", true);
+      if (base.error) {
+        const missing = ["42703", "PGRST204"].includes(base.error.code ?? "");
+        return fail(missing ? "Примените миграции 202609050001 и 202609050002" : base.error.message, missing ? 503 : 500);
+      }
+      tests = ((base.data ?? []) as TestRow[]).map((row) => ({ ...row, advert_id: null }));
+    } else if (withCampaign.error) {
+      const missing = ["42703", "PGRST204"].includes(withCampaign.error.code ?? "");
+      return fail(missing ? "Примените миграции 202609050001 и 202609050002" : withCampaign.error.message, missing ? 503 : 500);
+    } else {
+      tests = withCampaign.data as TestRow[];
+    }
   }
 
   const now = Date.now();
@@ -119,7 +132,7 @@ async function rotate(request: NextRequest) {
       const sinceSwitch = (now - Date.parse(String(round.started_at))) / 60_000;
       if (sinceSwitch < test.dead_zone_min) { note("мёртвая зона", `${Math.round(sinceSwitch)} мин из ${test.dead_zone_min}`); continue; }
 
-      const snapshot: CtrMetricSnapshot = await getCtrMetricSnapshot(test.cabinet_id, test.nm_id);
+      const snapshot: CtrMetricSnapshot = await getCtrMetricSnapshot(test.cabinet_id, test.nm_id, test.advert_id ?? null);
       const delta = ctrSnapshotDelta((round.baseline ?? {}) as Partial<CtrMetricSnapshot>, snapshot);
       const volume = roundVolume(delta, test.test_type);
       if (volume < test.impressions_per_round) {
@@ -163,6 +176,12 @@ async function rotate(request: NextRequest) {
       if (transitionError) { note("фото сменено, раунд не отмечен"); failure = `фото уже сменено, но раунд не записан: ${transitionError.message}`; continue; }
       const status = (transition as { status?: string } | null)?.status ?? "running";
       note(status === "running" ? "переключено" : status === "paused" ? "потолок расхода — пауза" : "завершён", `вариант ${next.id}`);
+      // Автовозврат полок — не на паузе (тест может продолжиться), только
+      // когда действительно дошёл до конца.
+      if (test.test_type === "ctr" && (status === "done" || status === "cancelled")) {
+        const advertToken = resolveWbToken(cabinet, "advert");
+        if (advertToken) await resumeShelfPausesForTest(db, { testId: test.id, token: advertToken, actorEmail: "ctr-rotate" });
+      }
     } catch (cause) {
       note("сбой", cause instanceof Error ? cause.message : String(cause));
       failure = cause instanceof Error ? cause.message : "неизвестный сбой";

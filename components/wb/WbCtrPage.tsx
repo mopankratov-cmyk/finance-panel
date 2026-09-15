@@ -17,6 +17,7 @@ import { CTR_FORCE_HINT, type CtrTestType } from "@/lib/ctrtest/model";
 import { useDashboardFilter } from "@/lib/useDashboardFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { CtrCampaignBridge } from "./ctr/CtrCampaignBridge";
+import { CtrShelfConflictPanel } from "./ctr/CtrShelfConflictPanel";
 import { CtrTestDetail } from "./ctr/CtrTestDetail";
 import { CtrTestWizard } from "./ctr/CtrTestWizard";
 import type { CtrCandidate, CtrTestView, CtrVariantView, CtrWizardSeed } from "./ctr/types";
@@ -294,7 +295,7 @@ export function WbCtrPage() {
         {message ? <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{message}</div> : null}
         {error && !loading ? <WbErrorState message={error} onRetry={() => setRetryKey((value) => value + 1)} /> : null}
 
-        {selectedTest ? <><CtrTestDetail test={selectedTest} busy={busy} onBack={() => setSelectedId(null)} onAction={(name, variantId, explanation) => void action(name, variantId, explanation)} onFlywheel={openFlywheel} /><CtrCampaignBridge cabinetId={cabinetId} nmId={selectedTest.nmId} /></> : wizard !== false && canWrite ? <CtrTestWizard cabinetId={cabinetId} type={type} candidates={candidates} days={days} seed={wizard} onClose={() => setWizard(false)} onCreated={() => reload("Черновик теста создан")} /> : <>
+        {selectedTest ? <>{selectedTest.testType === "ctr" && selectedTest.shelfConflictState === "pending" ? <CtrShelfConflictPanel testId={selectedTest.id} onResolved={() => reload("Решение по полочным кампаниям сохранено")} /> : null}<CtrTestDetail test={selectedTest} busy={busy} onBack={() => setSelectedId(null)} onAction={(name, variantId, explanation) => void action(name, variantId, explanation)} onFlywheel={openFlywheel} /><CtrCampaignBridge cabinetId={cabinetId} nmId={selectedTest.nmId} boundAdvertId={selectedTest.advertId} /></> : wizard !== false && canWrite ? <CtrTestWizard cabinetId={cabinetId} type={type} candidates={candidates} days={days} seed={wizard} onClose={() => setWizard(false)} onCreated={() => reload("Черновик теста создан")} /> : <>
           {/*
             Одна панель управления вместо трёх строк.
             Было: строка-описание с двумя цветными кнопками, отдельная секция
