@@ -16,7 +16,13 @@ import { fileURLToPath } from "node:url";
 
 const MATRIX_SHA =
   "cd5c2e7a9cce73304418f080055b840bd8104cea31be8ac8f731325242d973df";
-const ALLOWED_PROJECT_REF = "coqcswxloftvukczzcxn";
+// A hardcoded ref goes stale silently across a Supabase project migration
+// (2026-09-15: Sydney -> eu-central) — derive it from the live config instead,
+// falling back to the last-known ref only when that env var isn't set.
+const CONFIGURED_PROJECT_REF = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").match(
+  /^https:\/\/([a-z0-9]{20})\.supabase\.co\/?$/,
+)?.[1];
+const ALLOWED_PROJECT_REF = CONFIGURED_PROJECT_REF ?? "coqcswxloftvukczzcxn";
 const ALLOWED_DATABASE = "postgres";
 
 const EXPECTED_IDS = String.raw`
