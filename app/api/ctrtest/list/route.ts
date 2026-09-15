@@ -57,19 +57,30 @@ export async function GET(request: NextRequest) {
   if (!db) return fail("Supabase не настроен", 500);
 
   const TEST_COLUMNS = "id, cabinet_id, nm_id, article, name, status, test_type, interval_min, impressions_per_round, target_impressions, spend_cap_rub, live_swap_enabled, auto_error, round_num, current_variant_id, winner_variant_id, winner_explanation, source_test_id, started_at, finished_at, created_by, created_at, updated_at";
+  const CAMPAIGN_COLUMNS = "advert_id, shelf_conflict_state";
+  const AI_COLUMNS = "ai_analysis, ai_analysis_generated_at";
   let rawTests: Record<string, unknown>[] | null = null;
   {
-    const withCampaign = await db.from("ctr_tests").select(`${TEST_COLUMNS}, advert_id, shelf_conflict_state`).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
-    if (withCampaign.error?.code === "42703") {
-      // Миграция Фазы A (202609150004) ещё не применена владельцем — список
-      // работает как раньше, просто без полей кампании/полок.
-      const base = await db.from("ctr_tests").select(TEST_COLUMNS).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
-      if (base.error) return fail(migrationMissing(base.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : base.error.message, migrationMissing(base.error.code) ? 503 : 500);
-      rawTests = (base.data ?? []).map((row) => ({ ...row, advert_id: null, shelf_conflict_state: "unchecked" }));
-    } else if (withCampaign.error) {
-      return fail(migrationMissing(withCampaign.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withCampaign.error.message, migrationMissing(withCampaign.error.code) ? 503 : 500);
+    const withAll = await db.from("ctr_tests").select(`${TEST_COLUMNS}, ${CAMPAIGN_COLUMNS}, ${AI_COLUMNS}`).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
+    if (withAll.error?.code === "42703") {
+      // Миграция Фазы D (202609150005, ai_analysis) ещё не применена —
+      // пробуем без неё, с полями кампании/полок из Фазы A.
+      const withCampaign = await db.from("ctr_tests").select(`${TEST_COLUMNS}, ${CAMPAIGN_COLUMNS}`).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
+      if (withCampaign.error?.code === "42703") {
+        // И миграция Фазы A (202609150004) тоже ещё не применена — список
+        // работает как раньше, без полей кампании/полок/ИИ-разбора.
+        const base = await db.from("ctr_tests").select(TEST_COLUMNS).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
+        if (base.error) return fail(migrationMissing(base.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : base.error.message, migrationMissing(base.error.code) ? 503 : 500);
+        rawTests = (base.data ?? []).map((row) => ({ ...row, advert_id: null, shelf_conflict_state: "unchecked", ai_analysis: null, ai_analysis_generated_at: null }));
+      } else if (withCampaign.error) {
+        return fail(migrationMissing(withCampaign.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withCampaign.error.message, migrationMissing(withCampaign.error.code) ? 503 : 500);
+      } else {
+        rawTests = (withCampaign.data ?? []).map((row) => ({ ...row, ai_analysis: null, ai_analysis_generated_at: null }));
+      }
+    } else if (withAll.error) {
+      return fail(migrationMissing(withAll.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withAll.error.message, migrationMissing(withAll.error.code) ? 503 : 500);
     } else {
-      rawTests = withCampaign.data;
+      rawTests = withAll.data;
     }
   }
   const ids = (rawTests ?? []).map((row) => Number(row.id));
@@ -144,6 +155,8 @@ export async function GET(request: NextRequest) {
       sourceTestId: row.source_test_id == null ? null : Number(row.source_test_id),
       advertId: row.advert_id == null ? null : Number(row.advert_id),
       shelfConflictState: String(row.shelf_conflict_state ?? "unchecked"),
+      aiAnalysis: (row.ai_analysis as { variants: { variantId: number; verdict: string }[]; recommendations: string[] } | null) ?? null,
+      aiAnalysisGeneratedAt: (row.ai_analysis_generated_at as string | null) ?? null,
       variants: rawVariants.map((variant) => publicVariant(variant, type, baselineScore)),
       rounds: roundsByTest.get(Number(row.id)) ?? [],
       history: eventsByTest.get(Number(row.id)) ?? [],

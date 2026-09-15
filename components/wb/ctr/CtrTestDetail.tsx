@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- variant URLs are user-selected WB/external test assets */
 
-import { AlertTriangle, ArrowLeft, Download, CheckCircle2, ExternalLink, Hourglass, Loader2, Pause, Play, RotateCcw, Square, Trophy, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, CheckCircle2, ExternalLink, Hourglass, Loader2, Pause, Play, RotateCcw, Sparkles, Square, Trophy, XCircle } from "lucide-react";
 import { useState } from "react";
 import { ctrGapVerdict, ctrLeaderVerdict } from "@/lib/ctrtest/model";
 import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
@@ -270,6 +270,84 @@ function VariantImage({ url, label }: { url: string; label: string }) {
    подолу. `object-contain` показывает кадр полностью даже когда пропорция
    у варианта своя. */
   return <img src={url} alt="" onError={() => setBroken(true)} className="mx-auto h-36 w-auto rounded-md bg-slate-50 object-contain md:h-56" />;
+}
+
+/**
+ * Фаза D методологии CTR-тестов (ТЗ владельца 15.09.2026): ИИ-разбор фото —
+ * почему у варианта такой CTR и что доработать в следующей обложке.
+ *
+ * Самодостаточная секция (свой fetch/POST), как CtrShelfConflictPanel: не
+ * тащит состояние в родителя, только показывает то, что уже сохранено в
+ * тесте, и умеет перезапустить разбор.
+ */
+function CtrAiAnalysisPanel({ test }: { test: CtrTestView }) {
+  const [result, setResult] = useState(test.aiAnalysis);
+  const [generatedAt, setGeneratedAt] = useState(test.aiAnalysisGeneratedAt);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const eligible = test.variants.filter((variant) => variant.impressions > 0).length >= 2;
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/ctrtest/${test.id}/analyze`, { method: "POST" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body?.error || `Разбор не удался (${response.status})`);
+      setResult(body.data.analysis);
+      setGeneratedAt(body.data.generatedAt);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Разбор не удался");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Sparkles className="h-4 w-4 text-violet-500" aria-hidden="true" />
+        <h3 className="text-sm font-bold text-slate-800">ИИ-разбор фото</h3>
+        <button
+          type="button"
+          disabled={busy || !eligible}
+          title={eligible ? undefined : "Нужно хотя бы два варианта с реальными показами"}
+          onClick={() => void run()}
+          className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white disabled:opacity-40"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Sparkles className="h-3.5 w-3.5" />}
+          {result ? "Обновить разбор" : "Разобрать"}
+        </button>
+      </div>
+
+      {error ? <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800">{error}</p> : null}
+      {!result && !error ? <p className="mt-2 text-[11px] text-slate-400">{eligible ? "Разбор ещё не запускали." : "Дождитесь показов хотя бы по двум вариантам."}</p> : null}
+
+      {result ? (
+        <div className="mt-3 space-y-2">
+          {result.variants.map((entry) => {
+            const variant = test.variants.find((item) => item.id === entry.variantId);
+            return (
+              <div key={entry.variantId} className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-700">
+                <span className="font-semibold text-violet-700">{variant?.label ?? `Вариант ${entry.variantId}`}: </span>
+                {entry.verdict}
+              </div>
+            );
+          })}
+          {result.recommendations.length ? (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] leading-5 text-violet-900">
+              <p className="mb-1 font-semibold">Рекомендации для будущих обложек:</p>
+              <ul className="list-disc space-y-0.5 pl-4">
+                {result.recommendations.map((tip, index) => <li key={index}>{tip}</li>)}
+              </ul>
+            </div>
+          ) : null}
+          {generatedAt ? <p className="text-[10px] text-slate-400">Разобрано {formatTime(generatedAt)}</p> : null}
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Props) {
@@ -546,6 +624,8 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
         <h3 className="mb-2 text-xs font-bold text-slate-700">История раундов</h3>
         {test.rounds.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white px-3 py-8 text-center text-[10px] text-slate-400">История появится после запуска первого раунда.</p> : <div className="scroll-x rounded-xl border border-slate-200 bg-white"><table className="min-w-[760px] w-full text-[10px]"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Начало</th><th className="px-3 py-2 text-left">Вариант</th><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-right">Показы</th><th className="px-3 py-2 text-right">Клики</th><th className="px-3 py-2 text-right">Корзины</th><th className="px-3 py-2 text-right">Заказы</th><th className="px-3 py-2 text-left">Автор</th></tr></thead><tbody>{test.rounds.map((round) => { const variant = test.variants.find((item) => item.id === round.variant_id); return <tr key={round.id} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-500">{formatTime(round.started_at)}</td><td className="px-3 py-2 font-semibold text-violet-700">{variant?.label ?? round.variant_id}</td><td className="px-3 py-2">{round.status}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.impressions ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.clicks ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.carts ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.orders ?? 0))}</td><td className="px-3 py-2 text-slate-400">{round.actor ?? "—"}</td></tr>; })}</tbody></table></div>}
       </section>
+
+      {test.testType === "ctr" ? <CtrAiAnalysisPanel test={test} /> : null}
       {/* Текст правится вместе с режимом: раньше здесь стояло «панель ничего не
           пишет, live_swap_enabled всегда false» — с появлением автосмены это
           стало неправдой ровно на тех тестах, где автоматика включена, и
