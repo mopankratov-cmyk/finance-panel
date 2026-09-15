@@ -120,6 +120,7 @@ const RULES: readonly ApiRule[] = [
   ["/api/warehouse/", { read: "warehouse.view", write: "warehouse.task.execute" }],
   ["/api/warehouse/entities", { read: "warehouse.view", write: "warehouse.view" }],
   ["/api/warehouse/balances", { read: "warehouse.view", write: "warehouse.view" }],
+  ["/api/warehouse/balance-check", { read: "warehouse.view", write: "warehouse.view" }],
   ["/api/warehouse/stock", { read: "warehouse.view", write: "warehouse.view" }],
   ["/api/warehouse/events", { read: "warehouse.view", write: "warehouse.view" }],
   ["/api/warehouse/todo", { read: "warehouse.view", write: "warehouse.view" }],

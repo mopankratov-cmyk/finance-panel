@@ -1,7 +1,8 @@
 "use client";
 
-import { Activity, ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, QrCode, PackageX, PackagePlus, Package, RefreshCw, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileText, QrCode, PackageX, PackagePlus, Package, RefreshCw, Scale, ScrollText, Truck, Warehouse as WarehouseIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BalanceCheckTab } from "@/components/warehouse/BalanceCheckTab";
 import { BalancesTab } from "@/components/warehouse/BalancesTab";
 import { DocsTab } from "@/components/warehouse/DocsTab";
 import { EventsTab } from "@/components/warehouse/EventsTab";
@@ -21,7 +22,7 @@ import type { LegalEntityRow } from "@/lib/warehouse/entityAccess";
 import { canManageStock } from "@/lib/warehouse/operatorScope";
 import type { WarehouseRow } from "@/app/api/warehouse/warehouses/route";
 
-type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "events" | "products" | "kiz" | "docs" | "moves" | "warehouses" | "opening";
+type Tab = "balances" | "receipts" | "shipment" | "movement" | "defects" | "events" | "products" | "kiz" | "docs" | "moves" | "warehouses" | "opening" | "balanceCheck";
 
 /** Порядок — рабочий день склада: сначала то, что делают руками, потом то, чем
  *  сверяются, и в конце то, что настраивают раз в месяц. */
@@ -31,6 +32,7 @@ const TABS: ShellTab<Tab>[] = [
   { key: "movement", label: "Перемещение", icon: ArrowLeftRight, group: "Работа" },
   { key: "defects", label: "Брак", icon: PackageX, group: "Работа" },
   { key: "balances", label: "Остатки", icon: Boxes, group: "Учёт" },
+  { key: "balanceCheck", label: "Контроль баланса", icon: Scale, group: "Учёт" },
   { key: "events", label: "События", icon: Activity, group: "Учёт" },
   { key: "kiz", label: "Маркировка", icon: QrCode, group: "Учёт" },
   { key: "docs", label: "Документы", icon: FileText, group: "Учёт" },
@@ -309,6 +311,9 @@ export function WarehousePage() {
             </TabPanel>
           <TabPanel {...panel("defects")}>
               <DefectsTab entityId={entityId} warehouses={warehouses} refreshKey={refreshKey} canManage={canManage} onChanged={refresh} />
+            </TabPanel>
+          <TabPanel {...panel("balanceCheck")}>
+              <BalanceCheckTab entityId={entityId} />
             </TabPanel>
           <TabPanel {...panel("events")}>
               <EventsTab entityId={entityId} refreshKey={refreshKey} />
