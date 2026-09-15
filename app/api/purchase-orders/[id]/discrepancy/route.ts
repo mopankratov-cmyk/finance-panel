@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
-import { normalizeDiscrepancyActPayload } from "@/lib/purchases/discrepancyActs";
+import { normalizeDiscrepancyActPayload, summarizeDiscrepancy, type DiscrepancyReceiptLine } from "@/lib/purchases/discrepancyActs";
 import { DISCREPANCY_ACT_SELECT, discrepancyActFromDb } from "@/lib/purchases/discrepancyActsDb";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -17,40 +17,6 @@ function databaseError(error: { code?: string; message: string }) {
     return errorResponse("Акты расхождений ещё не развёрнуты: примените миграцию 202609140008_discrepancy_acts.sql", 503);
   }
   return errorResponse(error.message, error.code === "23505" ? 409 : 500);
-}
-
-interface DbReceiptLine {
-  expected_qty: number;
-  received_qty: number | null;
-  defect_qty: number | null;
-  status: "expected" | "received";
-}
-
-/**
- * Расхождение партии — та же логика, что components/warehouse/ReceiptsTab.tsx
- * discrepancyOf() и роут app/api/warehouse/receipts считают для склада: недовоз
- * и излишек копятся по строкам (а не по итогам, чтобы −4 одного размера и +2
- * другого не схлопнулись в «−2»), и null, пока не все строки партии пересчитаны.
- * Здесь — та же арифметика в миниатюре, без остальных полей ReceiptBatchRow
- * (партия, себестоимость, шапка), которые этому экрану не нужны.
- */
-function summarizeDiscrepancy(lines: DbReceiptLine[]) {
-  let expectedQty = 0;
-  let receivedQty = 0;
-  let defectQty = 0;
-  let short = 0;
-  let over = 0;
-  let counted = lines.length > 0;
-  for (const line of lines) {
-    expectedQty += Number(line.expected_qty ?? 0);
-    receivedQty += Number(line.received_qty ?? 0);
-    defectQty += Number(line.defect_qty ?? 0);
-    if (line.status === "expected") { counted = false; continue; }
-    const diff = Number(line.received_qty ?? 0) - Number(line.expected_qty ?? 0);
-    if (diff < 0) short += -diff;
-    if (diff > 0) over += diff;
-  }
-  return { expectedQty, receivedQty, defectQty, counted, short: counted ? short : 0, over: counted ? over : 0 };
 }
 
 async function loadOrder(db: ReturnType<typeof getSupabaseAdmin>, id: string) {
@@ -85,7 +51,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
   const { data: actRow, error: actError } = await db.from("discrepancy_acts").select(DISCREPANCY_ACT_SELECT).eq("batch_id", batchId).maybeSingle();
   if (actError && !["42P01", "42883", "PGRST200", "PGRST202", "PGRST205"].includes(actError.code ?? "")) return errorResponse(actError.message, 500);
 
-  const summary = summarizeDiscrepancy((lines ?? []) as DbReceiptLine[]);
+  const summary = summarizeDiscrepancy((lines ?? []) as DiscrepancyReceiptLine[]);
   return NextResponse.json({
     data: { batchId, ...summary, act: actRow ? discrepancyActFromDb(actRow as Record<string, unknown>) : null },
     error: null,

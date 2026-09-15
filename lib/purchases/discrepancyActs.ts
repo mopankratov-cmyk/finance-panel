@@ -57,3 +57,44 @@ export function normalizeDiscrepancyActPayload(raw: unknown, forced?: { id?: str
     },
   };
 }
+
+export interface DiscrepancyReceiptLine {
+  expected_qty: number;
+  received_qty: number | null;
+  defect_qty: number | null;
+  status: "expected" | "received";
+}
+
+export interface DiscrepancySummary {
+  expectedQty: number;
+  receivedQty: number;
+  defectQty: number;
+  counted: boolean;
+  short: number;
+  over: number;
+}
+
+/**
+ * Расхождение партии — общая точка для экрана заказа (§10.3) и расчётов с
+ * поставщиком (§27.9, «к допоставке»): недовоз и излишек копятся по строкам
+ * (а не по итогам, чтобы −4 одного размера и +2 другого не схлопнулись в
+ * «−2»), и null/0, пока не все строки партии пересчитаны.
+ */
+export function summarizeDiscrepancy(lines: DiscrepancyReceiptLine[]): DiscrepancySummary {
+  let expectedQty = 0;
+  let receivedQty = 0;
+  let defectQty = 0;
+  let short = 0;
+  let over = 0;
+  let counted = lines.length > 0;
+  for (const line of lines) {
+    expectedQty += Number(line.expected_qty ?? 0);
+    receivedQty += Number(line.received_qty ?? 0);
+    defectQty += Number(line.defect_qty ?? 0);
+    if (line.status === "expected") { counted = false; continue; }
+    const diff = Number(line.received_qty ?? 0) - Number(line.expected_qty ?? 0);
+    if (diff < 0) short += -diff;
+    if (diff > 0) over += diff;
+  }
+  return { expectedQty, receivedQty, defectQty, counted, short: counted ? short : 0, over: counted ? over : 0 };
+}
