@@ -1,6 +1,6 @@
 export const COMPANY_BASE_COLUMNS = "id,name,group_name,is_active";
 export const COMPANY_TAX_COLUMNS = `${COMPANY_BASE_COLUMNS},tax_system,vat_mode`;
-export const COMPANY_TAX_UNAVAILABLE = "Налоговые настройки пока недоступны: администратору необходимо обновить структуру базы данных. Статус компании можно менять.";
+export const COMPANY_TAX_UNAVAILABLE = "Налоговый режим и НДС не загрузились. Примените исправляющую миграцию 202609150001_company_tax_settings_retry.sql и обновите страницу. Название, группа и статус компании сохраняются как обычно.";
 
 export function isMissingCompanyTaxColumn(error: { code?: string; message?: string } | null): boolean {
   return Boolean(error && /tax_system|vat_mode/i.test(error.message ?? "") &&
