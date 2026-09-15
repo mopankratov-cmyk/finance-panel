@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { categoryOptions, sectionForCategory, TRANSFER_CATEGORIES } from "./categories.ts";
-import { validateExpenseCategory } from "./expenseCategories.ts";
+import { validateExpenseCategory, validateExpenseCategoryTarget } from "./expenseCategories.ts";
 import { aggregateDdsMonthlyFacts } from "../opiu/monthlyFacts.ts";
 import { buildMonthlyOpiuStatement } from "../opiu/monthlyStatement.ts";
 import { buildDdsSummary } from "../../components/payments/ddsSummary.ts";
@@ -23,6 +23,17 @@ test("название и цель не приводятся из объекто
   }
   assert.deepEqual(validateExpenseCategory({ name: "Курсы\u00a0 команды" }), { name: "Курсы команды", opiuArticleId: null });
   assert.throws(() => validateExpenseCategory({ name: "я".repeat(161) }));
+});
+
+test("связь существующей статьи можно менять только на разрешённую строку ОПиУ", () => {
+  assert.equal(validateExpenseCategoryTarget("training"), "training");
+  assert.equal(validateExpenseCategoryTarget(""), null);
+  assert.equal(validateExpenseCategoryTarget(null), null);
+  for (const target of ["cogs", "admin_salary", "unknown", {}, 123]) assert.throws(() => validateExpenseCategoryTarget(target));
+  const route = readFileSync(new URL("../../app/api/finance/expense-categories/route.ts", import.meta.url), "utf8");
+  const manager = readFileSync(new URL("../../components/payments/ExpenseCategoryManager.tsx", import.meta.url), "utf8");
+  assert.match(route, /export async function PATCH/);
+  assert.match(manager, /method: "PATCH"/);
 });
 
 test("новая статья доступна в опциях и относится к операционной деятельности", () => {

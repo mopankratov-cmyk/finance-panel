@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
-import { validateExpenseCategory } from "@/lib/finance/expenseCategories";
+import { validateExpenseCategory, validateExpenseCategoryTarget } from "@/lib/finance/expenseCategories";
 import { loadDdsExpenseCategories } from "@/lib/finance/expenseCategoriesServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -31,4 +31,26 @@ export async function POST(request: NextRequest) {
     .select("id,name,opiu_article_id").single();
   if (result.error) return NextResponse.json({ error: result.error.code === "23505" ? "Такая статья уже существует" : result.error.message }, { status: result.error.code === "23505" ? 409 : 502 });
   return NextResponse.json({ category: { id: result.data.id, name: result.data.name, opiuArticleId: result.data.opiu_article_id } }, { status: 201 });
+}
+
+export async function PATCH(request: NextRequest) {
+  const gate = await requireApiSession(["director", "fin_director", "financier"]);
+  if (gate) return gate;
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || typeof body.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.id)) {
+    return NextResponse.json({ error: "Некорректная статья ДДС" }, { status: 400 });
+  }
+  let opiuArticleId: string | null;
+  try { opiuArticleId = validateExpenseCategoryTarget(body.opiuArticleId); }
+  catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
+  const db = getSupabaseAdmin();
+  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
+  const result = await db.from("finance_expense_categories")
+    .update({ opiu_article_id: opiuArticleId })
+    .eq("id", body.id)
+    .select("id,name,opiu_article_id")
+    .maybeSingle();
+  if (result.error) return NextResponse.json({ error: result.error.message }, { status: 502 });
+  if (!result.data) return NextResponse.json({ error: "Статья ДДС не найдена" }, { status: 404 });
+  return NextResponse.json({ category: { id: result.data.id, name: result.data.name, opiuArticleId: result.data.opiu_article_id } });
 }
