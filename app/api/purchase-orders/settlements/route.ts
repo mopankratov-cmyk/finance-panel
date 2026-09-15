@@ -22,7 +22,14 @@ export interface SupplierSettlementRow {
   paid: number;
   received: number;
   toRestock: number;
+  /** balance = paid − received: сохранён для обратной совместимости и как
+   *  единое число для сортировки/суммирования. advance/debt (§27.6, §8.3
+   *  ТЗ) — тот же знак, разложенный на два явных поля, а не выведенный
+   *  клиентом из знака balance — «аванс поставщику» и «долг компании» это
+   *  два разных по смыслу состояния, а не одна цифра с минусом. */
   balance: number;
+  advance: number;
+  debt: number;
 }
 
 interface DbOrderRow {
@@ -151,7 +158,11 @@ export async function GET(request: NextRequest) {
       paid: 0,
       received: 0,
       toRestock: 0,
+      // balance/advance/debt пересчитываются заново для всех строк в финальном
+      // .map() ниже — здесь только валидная по типу заглушка на время накопления.
       balance: 0,
+      advance: 0,
+      debt: 0,
     };
 
     const items = row.purchase_order_items ?? [];
@@ -183,7 +194,10 @@ export async function GET(request: NextRequest) {
   }
 
   const suppliers = [...bySupplier.values()]
-    .map((row) => ({ ...row, balance: row.paid - row.received }))
+    .map((row) => {
+      const balance = row.paid - row.received;
+      return { ...row, balance, advance: Math.max(0, balance), debt: Math.max(0, -balance) };
+    })
     .sort((a, b) => b.ordered - a.ordered);
 
   return NextResponse.json({ data: { suppliers }, error: null });

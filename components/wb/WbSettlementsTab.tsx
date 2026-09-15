@@ -72,8 +72,8 @@ export function WbSettlementsTab({ cabinetId }: Props) {
                 <td className={`px-3 text-right tabular-nums font-semibold ${row.toRestock > 0 ? "text-amber-600" : "text-slate-400"}`}>
                   {row.toRestock > 0 ? `${row.toRestock} шт.` : "—"}
                 </td>
-                <td className={`px-3 text-right tabular-nums font-semibold ${row.balance > 0 ? "text-emerald-600" : row.balance < 0 ? "text-rose-600" : "text-slate-400"}`}>
-                  {row.balance === 0 ? "—" : row.balance > 0 ? `аванс ${formatMoney(row.balance)}` : `долг ${formatMoney(-row.balance)}`}
+                <td className={`px-3 text-right tabular-nums font-semibold ${row.advance > 0 ? "text-emerald-600" : row.debt > 0 ? "text-rose-600" : "text-slate-400"}`}>
+                  {row.advance > 0 ? `аванс ${formatMoney(row.advance)}` : row.debt > 0 ? `долг ${formatMoney(row.debt)}` : "—"}
                 </td>
               </tr>
             ))}</tbody>
