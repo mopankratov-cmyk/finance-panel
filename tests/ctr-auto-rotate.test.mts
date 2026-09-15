@@ -86,7 +86,7 @@ test("запрет узкий: автоматика не забирает у ч�
 test("переключать способ ротации можно только у остановленного теста", () => {
   const action = read("../app/api/ctrtest/[id]/action/route.ts");
   assert.match(action, /auto: "AUTO_ROTATE"/, "необратимое включение требует подтверждения");
-  assert.match(action, /requireApiSession\(\["director"\]\)/);
+  assert.match(action, /requireApiSession\(\["director", "wb_manager"\]\)/);
   assert.match(action, /if \(test\.status === "running"\)/);
 });
 
