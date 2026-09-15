@@ -7,6 +7,7 @@ import { assertVariantsInScope } from "@/lib/warehouse/ownership";
 import { recordWarehouseEvent } from "@/lib/warehouse/events";
 import { BUSY_MESSAGE, claimDocKey, releaseDocKey, settleDocKey } from "@/lib/warehouse/idempotency";
 import { recordStockDoc } from "@/lib/warehouse/stockDocs";
+import { auditedMutation, redactSecrets } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,21 @@ const fail = (error: string, status: number) => NextResponse.json({ data: null, 
 const missingMigration = (code?: string) => ["42P01", "42703", "PGRST204", "PGRST205"].includes(code ?? "");
 const migrationHint = "Примените миграцию 202608230016_transfers_returns.sql";
 
-/** Перемещение между складами: Уссурийск → «В пути» → Москва. */
+/**
+ * Перемещение — операция уровня юрлица (склад→склад внутри одного юрлица),
+ * без кабинета маркетплейса. Поэтому журнал ведётся не через
+ * operation_audit_log (там cabinet_id обязателен) — как у отгрузки/списания,
+ * а через общий access_audit_log, где cabinet_id опционален.
+ */
 export async function POST(request: NextRequest) {
+  return auditedMutation(request, "warehouse.move", await getServerSession(), () => handlePost(request), (body) => ({
+    entityId: typeof body.entityId === "string" ? body.entityId : null,
+    warehouseId: typeof body.fromWarehouseId === "string" ? body.fromWarehouseId : null,
+    after: redactSecrets(body),
+  }));
+}
+
+async function handlePost(request: NextRequest) {
   const gate = await requireApiSession();
   if (gate) return gate;
   const body = (await request.json().catch(() => null)) as
