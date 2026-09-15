@@ -49,7 +49,12 @@ test("деталь теста показывает ИИ-разбор тольк�
   assert.match(detail, /test\.testType === "ctr" \? <CtrAiAnalysisPanel test=\{test\} \/> : null/);
 });
 
-test("кнопка разбора недоступна меньше чем на двух вариантах с показами — согласовано с серверной проверкой", () => {
+test("кнопка разбора СКРЫТА (не дизейблена) меньше чем на двух вариантах с показами — согласовано с серверной проверкой", () => {
   const detail = read("../components/wb/ctr/CtrTestDetail.tsx");
   assert.match(detail, /test\.variants\.filter\(\(variant\) => variant\.impressions > 0\)\.length >= 2/);
+  // Серая недоступная кнопка — то же самое обещание, что и её отсутствие, но
+  // занимает место и переспрашивает клик, ничего не объясняя без наведения.
+  const panel = detail.slice(detail.indexOf("function CtrAiAnalysisPanel"), detail.indexOf("export function CtrTestDetail"));
+  assert.match(panel, /\{eligible \? \(/, "кнопка должна не рендериться вовсе, а не только дизейблиться");
+  assert.doesNotMatch(panel, /disabled=\{busy \|\| !eligible\}/, "старый вариант с disabled по !eligible не должен вернуться");
 });

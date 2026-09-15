@@ -310,16 +310,17 @@ function CtrAiAnalysisPanel({ test }: { test: CtrTestView }) {
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles className="h-4 w-4 text-violet-500" aria-hidden="true" />
         <h3 className="text-sm font-bold text-slate-800">ИИ-разбор фото</h3>
-        <button
-          type="button"
-          disabled={busy || !eligible}
-          title={eligible ? undefined : "Нужно хотя бы два варианта с реальными показами"}
-          onClick={() => void run()}
-          className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white disabled:opacity-40"
-        >
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Sparkles className="h-3.5 w-3.5" />}
-          {result ? "Обновить разбор" : "Разобрать"}
-        </button>
+        {eligible ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void run()}
+            className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white disabled:opacity-40"
+          >
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {result ? "Обновить разбор" : "Разобрать"}
+          </button>
+        ) : null}
       </div>
 
       {error ? <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800">{error}</p> : null}
