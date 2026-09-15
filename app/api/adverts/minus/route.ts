@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
+import { activeCtrTestForNm, ctrFreezeMessage } from "@/lib/ctrtest/freeze";
 import { getMinusPhrases, setMinusPhrases } from "@/lib/wb/advertApi";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +74,11 @@ export async function POST(request: NextRequest) {
   const resolved = await resolveAdvertCabinetContext({ cabinetId: body.cabinetId, advertIds: [advertId] });
   if (resolved.response) return resolved.response;
   const context = resolved.context;
+
+  // Заморозка на время CTR-теста (ТЗ владельца 15.09.2026) — правка ключевых
+  // фраз посреди замера тоже меняет условия показа, как и ставка.
+  const lock = await activeCtrTestForNm(context.db, context.cabinet.id, nmId);
+  if (lock) return NextResponse.json({ error: ctrFreezeMessage(lock) }, { status: 409 });
 
   const current = await currentPhrases(context.token, advertId, nmId);
   // Не прочитали текущий набор — не пишем вовсе. Слепая запись здесь означает

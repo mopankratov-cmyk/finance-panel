@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
+import { activeCtrTestForCampaign, ctrFreezeMessage } from "@/lib/ctrtest/freeze";
 import { ADVERT_STATUS_BY_ACTION, setAdvertLifecycle, type AdvertLifecycleAction } from "@/lib/wb/advertApi";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,14 @@ export async function POST(request: NextRequest) {
   const resolved = await resolveAdvertCabinetContext({ cabinetId: body.cabinetId, advertIds: [advertId] });
   if (resolved.response) return resolved.response;
   const context = resolved.context;
+
+  // Заморозка на время CTR-теста (ТЗ владельца 15.09.2026): совпадает только
+  // с кампанией, реально привязанной к тесту (advert_id, Фаза A) — не с любой,
+  // что когда-либо крутила этот артикул, иначе автопауза «полок» самого теста
+  // (она идёт в обход этого роута — lib/ctrtest/campaignBinding.ts) рисковала
+  // бы задеть себя же.
+  const lock = await activeCtrTestForCampaign(context.db, context.cabinet.id, advertId);
+  if (lock) return NextResponse.json({ error: ctrFreezeMessage(lock) }, { status: 409 });
 
   const status = ADVERT_STATUS_BY_ACTION[action];
   const oldStatus = context.adverts.get(advertId)?.status ?? null;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
+import { activeCtrTestForNm, ctrFreezeMessage } from "@/lib/ctrtest/freeze";
 import { getAdvertConfig, setAdvertBids, type AdvertPlacement, type NmBidInput } from "@/lib/wb/advertApi";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +86,14 @@ export async function POST(request: NextRequest) {
       );
     }
     parsed.push({ nmId, bidRub, placement });
+  }
+
+  // Заморозка на время CTR-теста (ТЗ владельца 15.09.2026): правка ставки
+  // посреди замера рвёт сравнение вариантов. Проверяем ДО любого обращения к
+  // WB — частичного применения (часть артикулов прошла) быть не должно.
+  for (const item of parsed) {
+    const lock = await activeCtrTestForNm(context.db, context.cabinet.id, item.nmId);
+    if (lock) return NextResponse.json({ error: ctrFreezeMessage(lock) }, { status: 409 });
   }
 
   // Шаг ставки и валюту диктует WB: у кабинета не обязательно рубль, и

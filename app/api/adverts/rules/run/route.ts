@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { decideBid, orderRulesBySafety, type BidRule, type BidRuleDecision, type BidRuleFact } from "@/lib/adverts/bidRules";
 import { resolveAdvertCabinetAccess } from "@/lib/adverts/cabinetGuard";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+import { activeCtrTestForNm, ctrFreezeMessage } from "@/lib/ctrtest/freeze";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { moscowToday, shiftIsoDay } from "@/lib/sync/moscowDay";
 import { setAdvertBids, type AdvertPlacement } from "@/lib/wb/advertApi";
@@ -340,6 +341,20 @@ async function runRules(request: NextRequest) {
 
       if (dryRun) {
         results.push({ ...base, applied: false, dryRun: true });
+        continue;
+      }
+
+      // Заморозка на время CTR-теста (ТЗ владельца 15.09.2026): автоправило
+      // не должно тайком поменять ставку под уже идущим замером — владелец
+      // ждал бы увидеть это в логе правила, а не гадать, почему тест разошёлся.
+      const lock = await activeCtrTestForNm(db, cabinetId, item.nmId);
+      if (lock) {
+        results.push({ ...base, applied: false, error: ctrFreezeMessage(lock) });
+        runLog.push({
+          rule_id: item.rule.id, advert_id: item.rule.advertId, nm_id: item.nmId,
+          decision: "error", old_bid: item.decision.currentBid || null, new_bid: null,
+          reason: ctrFreezeMessage(lock), fact: item.fact,
+        });
         continue;
       }
 

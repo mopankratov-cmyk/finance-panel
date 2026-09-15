@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auditAdvertOperation, resolveAdvertCabinetContext } from "@/lib/adverts/cabinetGuard";
+import { activeCtrTestForCampaign, ctrFreezeMessage } from "@/lib/ctrtest/freeze";
 import { ADVERT_STATUS_BY_ACTION, setAdvertLifecycle, type AdvertLifecycleAction } from "@/lib/wb/advertApi";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,15 @@ export async function POST(request: NextRequest) {
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, PAUSE_MS));
     const advertId = ids[index];
     const oldStatus = context.adverts.get(advertId)?.status ?? null;
+
+    // Заморозка на время CTR-теста (ТЗ владельца 15.09.2026) — как в
+    // одиночном /api/adverts/action, но пропускаем только эту кампанию и
+    // продолжаем пачку: другие кампании в списке заморозка одной не касается.
+    const lock = await activeCtrTestForCampaign(context.db, context.cabinet.id, advertId);
+    if (lock) {
+      results.push({ advertId, ok: false, error: ctrFreezeMessage(lock) });
+      continue;
+    }
 
     const result = await setAdvertLifecycle(context.token, advertId, action);
     if (result.ok) {
