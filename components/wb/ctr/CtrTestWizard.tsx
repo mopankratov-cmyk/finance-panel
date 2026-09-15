@@ -2,11 +2,12 @@
 /* eslint-disable @next/next/no-img-element -- variant URLs are user-selected WB/external test assets */
 
 import { AlertTriangle, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import type { CtrTestType } from "@/lib/ctrtest/model";
 import type { ContentItem } from "@/lib/content/productLibrary";
 import { ctrTestForecast } from "@/lib/ctrtest/model";
+import { ctrIterationPlan } from "@/lib/ctrtest/iterationPlan";
 import type { CtrCandidate, CtrWizardSeed } from "./types";
 import { ContentPicker } from "./ContentPicker";
 
@@ -91,6 +92,28 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
     viewsInWindow: selected?.views ?? null,
     windowDays: days,
   }).text, [days, selected, targetImpressions, variants.length]);
+
+  /**
+   * Календарь итераций — на трафике ПРИВЯЗАННОЙ поисковой кампании, не на
+   * смешанном трафике товара (тот уже в `forecast` выше). Резолюция здесь
+   * только предпросмотр: ничего не пишет, реальная привязка происходит один
+   * раз при старте теста (lib/ctrtest/campaignBinding.ts).
+   */
+  const [campaignForecast, setCampaignForecast] = useState<{ dailyViews: number | null; resolutionStatus: string } | null>(null);
+  useEffect(() => {
+    if (type !== "ctr" || !selected?.nm) { setCampaignForecast(null); return; }
+    let cancelled = false;
+    fetch(`/api/ctrtest/campaign-forecast?cabinet=${encodeURIComponent(cabinetId)}&nm=${selected.nm}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((body) => { if (!cancelled) setCampaignForecast(body?.data ? { dailyViews: body.data.dailyViews, resolutionStatus: body.data.resolution?.status ?? "none" } : null); })
+      .catch(() => { if (!cancelled) setCampaignForecast(null); });
+    return () => { cancelled = true; };
+  }, [cabinetId, selected?.nm, type]);
+  const iterationPlan = useMemo(() => type === "ctr" && selected?.nm ? ctrIterationPlan({
+    dailyViews: campaignForecast?.dailyViews ?? null,
+    targetImpressions,
+    variantCount: variants.length,
+  }) : null, [campaignForecast, selected?.nm, targetImpressions, type, variants.length]);
 
 
   const pickCandidate = (nextNm: number) => {
@@ -196,6 +219,11 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
         на первой любой вывод был случайным.
       */}
       <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">{forecast}</p>
+      {iterationPlan ? (
+        <p className={`mt-2 rounded-lg px-3 py-2 text-[11px] leading-5 ${iterationPlan.feasible === false ? "bg-amber-50 text-amber-800" : "bg-violet-50 text-violet-800"}`}>
+          {iterationPlan.text}
+        </p>
+      ) : null}
 
       {/*
         Библиотека стоит НАД полями вариантов, а не под ними: выбрать из своего
