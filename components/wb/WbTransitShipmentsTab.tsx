@@ -17,6 +17,9 @@ interface ShipmentWithOrder {
   status: ShipmentStatus;
   eta: string | null;
   items: { nmId: number; article: string; quantity: number }[];
+  /** §27.11 ТЗ: наступил ли момент перехода права собственности по договору.
+   *  null — нет договора на эту пару (поставщик, юрлицо), бейдж не рисуем. */
+  ownershipTransferred: boolean | null;
 }
 
 const STATUS_LABELS: Record<ShipmentStatus, string> = {
@@ -99,7 +102,14 @@ export function WbTransitShipmentsTab({ cabinetId }: Props) {
                     <div className="truncate text-sm font-bold text-slate-800">{shipment.orderNumber}</div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-500">{shipment.supplier || "Поставщик не указан"}</div>
                   </div>
-                  <span className={`shrink-0 rounded-full border px-2 py-1 text-[9px] font-semibold ${STATUS_STYLES[shipment.status]}`}>{STATUS_LABELS[shipment.status]}</span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className={`rounded-full border px-2 py-1 text-[9px] font-semibold ${STATUS_STYLES[shipment.status]}`}>{STATUS_LABELS[shipment.status]}</span>
+                    {shipment.ownershipTransferred === true ? (
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700">Наш товар</span>
+                    ) : shipment.ownershipTransferred === false ? (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-semibold text-slate-500">Ещё не наш</span>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="mt-3 space-y-1 text-[11px] text-slate-600">
                   <div>{shipment.carrier || "Перевозчик не указан"}{shipment.route ? ` · ${shipment.route}` : ""}</div>
