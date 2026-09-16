@@ -14,7 +14,7 @@ import { loadBankGoogleSyncData } from "./bankReviewStore";
 import { BankReconciliationPanel } from "./BankReconciliationPanel";
 import { DdsOverview } from "./DdsOverview";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { DdsReport } from "./DdsReport";
+import { DdsReport, type DdsReportDrilldown } from "./DdsReport";
 import {
   loadDdsCompanies,
   loadPaymentCompanyLinks,
@@ -38,6 +38,8 @@ import { COMPANY_TAX_SYSTEMS, COMPANY_VAT_MODES, type CompanyTaxSystem, type Com
 import { COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
+
+const WITHOUT_CATEGORY_FILTER = "__without_category__";
 
 export function PaymentsPage() {
   const { categories: DDS_CATEGORIES, customCategoryNames } = useDdsCategories();
@@ -85,9 +87,17 @@ export function PaymentsPage() {
     () => new Map(companies.map((company) => [company.id, company.name] as const)),
     [companies],
   );
+  const companyById = useMemo(
+    () => new Map(companies.map((company) => [company.id, company] as const)),
+    [companies],
+  );
   const accountNameById = useMemo(
     () => new Map(state.accounts.map((account) => [account.id, account.name] as const)),
     [state.accounts],
+  );
+  const companyGroups = useMemo(
+    () => [...new Set(companies.filter((company) => company.isActive).map((company) => company.groupName))].sort((a, b) => a.localeCompare(b, "ru")),
+    [companies],
   );
 
   const paymentsWithCompany = useMemo(
@@ -105,14 +115,16 @@ export function PaymentsPage() {
         if (p.status !== "done") return false; // реестр — только факт; план — в платёжном календаре
         if (dateFrom && p.date < dateFrom) return false;
         if (dateTo && p.date > dateTo) return false;
-        if (filterCategory && p.category !== filterCategory) return false;
+        if (filterCategory === WITHOUT_CATEGORY_FILTER && p.category.trim()) return false;
+        if (filterCategory && filterCategory !== WITHOUT_CATEGORY_FILTER && p.category.trim() !== filterCategory) return false;
         if (filterAccount && p.accountId !== filterAccount) return false;
         if (filterCompany === "unassigned" && p.companyId !== null) return false;
-        if (filterCompany && filterCompany !== "unassigned" && p.companyId !== filterCompany) return false;
+        if (filterCompany.startsWith("group:") && (!p.companyId || companyById.get(p.companyId)?.groupName !== filterCompany.slice(6))) return false;
+        if (filterCompany && filterCompany !== "unassigned" && !filterCompany.startsWith("group:") && p.companyId !== filterCompany) return false;
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [paymentsWithCompany, dateFrom, dateTo, filterCategory, filterAccount, filterCompany]);
+  }, [paymentsWithCompany, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, companyById]);
 
   const activeFilters = [dateFrom, dateTo, filterCategory, filterAccount, filterCompany].filter(Boolean).length;
   const resetFilters = () => {
@@ -126,10 +138,19 @@ export function PaymentsPage() {
   // В фильтре должны быть и статьи вне справочника (старые выгрузки) — иначе их не отобрать.
   const filterCategories = useMemo(() => {
     const known = new Set(DDS_CATEGORIES);
-    const extra = [...new Set(state.payments.map((payment) => payment.category).filter((category) => category && !known.has(category)))]
+    const extra = [...new Set(state.payments.map((payment) => payment.category.trim()).filter((category) => category && !known.has(category)))]
       .sort((a, b) => a.localeCompare(b, "ru"));
     return [...DDS_CATEGORIES, ...extra];
   }, [state.payments, DDS_CATEGORIES]);
+
+  const openDdsPayments = useCallback(({ category, from, to, scope }: DdsReportDrilldown) => {
+    setDateFrom(from);
+    setDateTo(to);
+    setFilterCategory(category === "Без статьи" ? WITHOUT_CATEGORY_FILTER : category);
+    setFilterAccount("");
+    setFilterCompany(scope === "all" ? "" : scope);
+    setMode("ledger");
+  }, []);
 
 
   const openAdd = () => {
@@ -363,7 +384,7 @@ export function PaymentsPage() {
           менеджеру. Ключ сброса не нужен — источник данных здесь один на весь
           экран. */}
       <TabPanel {...panel("dds")}>
-        <DdsReport payments={paymentsWithCompany} companies={companies} />
+        <DdsReport payments={paymentsWithCompany} companies={companies} onOpenPayments={openDdsPayments} />
       </TabPanel>
       <TabPanel {...panel("review")}>
         <BankReviewPanel accounts={state.accounts} companies={companies} />
@@ -406,6 +427,7 @@ export function PaymentsPage() {
                 className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               >
                 <option value="">Все</option>
+                <option value={WITHOUT_CATEGORY_FILTER}>Без статьи</option>
                 {filterCategories.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
@@ -437,6 +459,7 @@ export function PaymentsPage() {
               >
                 <option value="">Все компании</option>
                 <option value="unassigned">Общее по группе</option>
+                {companyGroups.map((group) => <option key={group} value={`group:${group}`}>Группа: {group}</option>)}
                 {companies.filter((company) => company.isActive).map((company) => (
                   <option key={company.id} value={company.id}>{company.name}</option>
                 ))}
