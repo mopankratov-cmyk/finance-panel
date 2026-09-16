@@ -3,14 +3,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { parseCompanyTaxSystem, parseCompanyVatMode } from "@/lib/finance/companyTax";
+import { companyTaxTotalRate, parseCompanyTaxRate, parseCompanyTaxSystem, parseCompanyVatMode } from "@/lib/finance/companyTax";
 
-import { COMPANY_TAX_UNAVAILABLE, isMissingCompanyTaxColumn, readCompaniesCompat } from "@/lib/finance/companySchema";
+import {
+  COMPANY_TAX_RATE_UNAVAILABLE,
+  COMPANY_TAX_UNAVAILABLE,
+  isMissingCompanyTaxColumn,
+  isMissingCompanyTaxRateColumn,
+  readCompaniesCompat,
+} from "@/lib/finance/companySchema";
 
 function companyResponse(row: Record<string, unknown>) {
   return {
-    company: { id: row.id, name: row.name, group_name: row.group_name, is_active: row.is_active, tax_system: row.tax_system ?? null, vat_mode: row.vat_mode ?? null },
+    company: {
+      id: row.id,
+      name: row.name,
+      group_name: row.group_name,
+      is_active: row.is_active,
+      tax_system: row.tax_system ?? null,
+      vat_mode: row.vat_mode ?? null,
+      tax_rate: row.tax_rate ?? null,
+      tax_additional_rate: row.tax_additional_rate ?? null,
+    },
     tax_settings_available: "tax_system" in row && "vat_mode" in row,
+    tax_rates_available: "tax_rate" in row && "tax_additional_rate" in row,
   };
 }
 
@@ -47,6 +63,7 @@ export async function GET(request: NextRequest) {
     companies: companies.data ?? [],
     payment_links: links,
     tax_settings_available: loaded.taxSettingsAvailable,
+    tax_rates_available: loaded.taxRatesAvailable,
   });
 }
 
@@ -112,18 +129,29 @@ export async function PATCH(request: NextRequest) {
   if (body.action === "company") {
     const companyId = String(body.company_id ?? "").trim();
     const hasTaxSettings = "tax_system" in body || "vat_mode" in body;
+    const hasTaxRates = "tax_rate" in body || "tax_additional_rate" in body;
     const taxSystem = hasTaxSettings ? parseCompanyTaxSystem(body.tax_system) : null;
     const vatMode = hasTaxSettings ? parseCompanyVatMode(body.vat_mode) : null;
+    const taxRate = hasTaxRates ? parseCompanyTaxRate(body.tax_rate) : null;
+    const taxAdditionalRate = hasTaxRates ? parseCompanyTaxRate(body.tax_additional_rate) : null;
     if (!companyId) return NextResponse.json({ error: "Не указана компания" }, { status: 400 });
     if (typeof body.is_active !== "boolean") return NextResponse.json({ error: "Некорректный статус компании" }, { status: 400 });
     if (taxSystem === undefined) return NextResponse.json({ error: "Некорректная система налогообложения" }, { status: 400 });
     if (vatMode === undefined) return NextResponse.json({ error: "Некорректная настройка НДС" }, { status: 400 });
+    if (taxRate === undefined || taxAdditionalRate === undefined) return NextResponse.json({ error: "Ставка налога должна быть от 0 до 100% и содержать не более трёх знаков после запятой" }, { status: 400 });
+    if (taxRate === null && taxAdditionalRate !== null) return NextResponse.json({ error: "Укажите основную ставку перед дополнительной" }, { status: 400 });
+    if ((companyTaxTotalRate(taxRate, taxAdditionalRate) ?? 0) > 100) return NextResponse.json({ error: "Общая ставка налога не может превышать 100%" }, { status: 400 });
     const result = await db.from("companies")
-      .update({ is_active: body.is_active, ...(hasTaxSettings ? { tax_system: taxSystem, vat_mode: vatMode } : {}) })
+      .update({
+        is_active: body.is_active,
+        ...(hasTaxSettings ? { tax_system: taxSystem, vat_mode: vatMode } : {}),
+        ...(hasTaxRates ? { tax_rate: taxRate, tax_additional_rate: taxAdditionalRate } : {}),
+      })
       .eq("id", companyId)
       .select("*")
       .maybeSingle();
     if (isMissingCompanyTaxColumn(result.error)) return NextResponse.json({ error: COMPANY_TAX_UNAVAILABLE }, { status: 503 });
+    if (isMissingCompanyTaxRateColumn(result.error)) return NextResponse.json({ error: COMPANY_TAX_RATE_UNAVAILABLE }, { status: 503 });
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
     if (!result.data) return NextResponse.json({ error: "Компания не найдена" }, { status: 404 });
     return NextResponse.json(companyResponse(result.data));
