@@ -199,14 +199,25 @@ export async function syncReportRows(
     return { synced, pages: 0, lastRrdId: cursor, complete: false };
   }
 
-  const persist = (status: string, lastError: string | null) =>
-    writeWbSyncState<ReportSyncJobState>(db, cabinetId, REPORT_SYNC_JOB, {
-      cursor: String(cursor),
-      status,
-      attempts: 0,
-      lastError,
-      state: { periodDateFrom: dateFrom, periodDateTo: dateTo, cursor, synced },
-    });
+  // Транзиентные сетевые сбои (наблюдались и на самом запросе к WB, и на
+  // записи в Supabase в тот же момент) не должны стоить нам уже пройденной
+  // страницы — без ретрая курсор молча остаётся на месте, и следующий вызов
+  // повторяет уже скачанные данные. 3 коротких попытки достаточно: сама
+  // запись — один маленький upsert, а не тяжёлый запрос к WB.
+  const persist = async (status: string, lastError: string | null) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const writeError = await writeWbSyncState<ReportSyncJobState>(db, cabinetId, REPORT_SYNC_JOB, {
+        cursor: String(cursor),
+        status,
+        attempts: 0,
+        lastError,
+        state: { periodDateFrom: dateFrom, periodDateTo: dateTo, cursor, synced },
+      });
+      if (!writeError) return;
+      console.error(`[opiu] failed to persist report sync state for ${cabinetId} (attempt ${attempt + 1}/3):`, writeError);
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+    }
+  };
 
   const startedAt = Date.now();
   let pages = 0;
