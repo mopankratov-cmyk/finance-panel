@@ -6,7 +6,8 @@ import { formatPct, formatRub } from "@/lib/analytics/format";
 import { buildMonthlyOpiuStatement, type MonthlyOpiuAmount, type MonthlyOpiuRow } from "@/lib/opiu/monthlyStatement";
 import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
 import { buildMonthlyOpiuSheetPayload, exportMonthlyOpiuToGoogleSheets } from "@/lib/opiu/monthlySheetExport";
-import { Check, ExternalLink, FileSpreadsheet, LineChart, Loader2 } from "lucide-react";
+import { combineMonthlySources, type MonthlySourceResult } from "@/lib/opiu/monthlySourceFallback";
+import { Check, ExternalLink, FileSpreadsheet, LineChart, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 interface MonthlyOpiuResponse {
@@ -23,10 +24,22 @@ interface MonthlyFactsResponse {
   error?: string;
 }
 
-interface MonthlyOpiuData extends MonthlyOpiuResponse {
+interface MonthlyOpiuData extends Omit<MonthlyOpiuResponse, "period"> {
   shared?: MonthlyFactsResponse["shared"];
   companies?: OpiuCompanyOption[];
   warnings?: string[];
+}
+
+async function loadSource<T>(url: string, signal: AbortSignal): Promise<MonthlySourceResult<T>> {
+  try {
+    const response = await fetch(url, { cache: "no-store", signal });
+    const json = await response.json().catch(() => null) as (T & { error?: string }) | null;
+    if (!response.ok || !json) return { data: null, error: json?.error ?? `HTTP ${response.status}` };
+    return { data: json, error: null };
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+    return { data: null, error: reason instanceof Error ? reason.message : "Источник временно недоступен" };
+  }
 }
 
 function currentMonthParam(): string {
@@ -66,6 +79,7 @@ export function MonthlyOpiuPage() {
   const [exporting, setExporting] = useState(false);
   const [exportedUrl, setExportedUrl] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,21 +89,15 @@ export function MonthlyOpiuPage() {
     setError(null);
     setExportedUrl(null);
     Promise.all([
-      fetch(`/api/opiu/mp?${params}`, { cache: "no-store", signal: controller.signal })
-        .then(async (response) => {
-          const json = await response.json() as MonthlyOpiuResponse;
-          if (!response.ok) throw new Error(json.error ?? `HTTP ${response.status}`);
-          return json;
-        }),
-      fetch(`/api/opiu/monthly-facts?${params}`, { cache: "no-store", signal: controller.signal })
-        .then(async (response) => {
-          const json = await response.json() as MonthlyFactsResponse;
-          if (!response.ok) return { shared: {}, warnings: [json.error ?? `HTTP ${response.status}`] } satisfies MonthlyFactsResponse;
-          return json;
-        }),
+      loadSource<MonthlyOpiuResponse>(`/api/opiu/mp?${params}`, controller.signal),
+      loadSource<MonthlyFactsResponse>(`/api/opiu/monthly-facts?${params}`, controller.signal),
     ])
-      .then(([marketplaces, facts]) => ({ ...marketplaces, shared: facts.shared, companies: facts.companies, warnings: facts.warnings }))
-      .then(setData)
+      .then(([marketplaces, facts]) => combineMonthlySources(marketplaces, facts))
+      .then((result) => {
+        const nextData = result.data;
+        if (!nextData) throw new Error(result.error ?? "Не удалось загрузить ОПиУ");
+        setData((previous) => ({ ...nextData, companies: nextData.companies ?? previous?.companies }));
+      })
       .catch((reason) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
         setData(null);
@@ -97,7 +105,7 @@ export function MonthlyOpiuPage() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [month, companyId]);
+  }, [month, companyId, reloadKey]);
 
   const statement = useMemo(() => data ? buildMonthlyOpiuStatement({ wb: data.wb, ozon: data.ozon, shared: data.shared }) : null, [data]);
   const companies = data?.companies ?? [];
@@ -185,7 +193,12 @@ export function MonthlyOpiuPage() {
       {loading ? (
         <div className="rounded-xl border border-slate-200 bg-white py-20 text-center text-slate-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
       ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700">{error}</div>
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700">
+          <p>{error}</p>
+          <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="mx-auto mt-4 inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 font-semibold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+            <RefreshCw className="h-4 w-4" />Повторить
+          </button>
+        </div>
       ) : statement ? (
         <div className="scroll-x rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-[820px] w-full border-collapse text-sm">
