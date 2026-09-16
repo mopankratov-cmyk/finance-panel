@@ -4,6 +4,7 @@ import {
   type WbReportPageResult,
 } from "@/lib/wb/reportPagination";
 import type { WbReportRow } from "@/lib/wb/types";
+import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 
 const REPORT_FIELDS = [
   "rrdId",
@@ -36,7 +37,17 @@ const REPORT_FIELDS = [
 ];
 
 const UPSERT_CHUNK_SIZE = 1_000;
-const MAX_REPORT_PAGES = 1_000;
+const REPORT_SYNC_JOB = "opiu_report";
+// Небольшие кабинеты (несколько страниц) должны по-прежнему полностью
+// досинхроваться за один вызов, как раньше. Большие агентские кабинеты
+// (см. Оптима — ~116k строк отчёта/день, разово падал по сети примерно на
+// 7-й странице из-за объёма) не должны ни блокировать весь крон-запрос
+// (maxDuration в app/api/opiu/monitor/route.ts), ни терять прогресс при
+// обрыве: курсор пишется в wb_sync_state ПОСЛЕ каждой успешно скачанной
+// страницы, поэтому следующий вызов (следующий тик крона) продолжает с
+// последнего сохранённого rrd_id, а не с начала периода.
+const MAX_PAGES_PER_CALL = 40;
+const SOFT_TIME_BUDGET_MS = 240_000;
 
 type StoredReportRow = Record<string, unknown> & {
   cabinet_id: string;
@@ -135,9 +146,28 @@ export interface SyncReportRowsResult {
   synced: number;
   pages: number;
   lastRrdId: number;
-  complete: true;
+  /** false = период ещё не догружен целиком, продолжится на следующем вызове. */
+  complete: boolean;
 }
 
+interface ReportSyncJobState extends Record<string, unknown> {
+  periodDateFrom?: string;
+  periodDateTo?: string;
+  cursor?: number;
+  synced?: number;
+}
+
+/**
+ * Догружает "отчёт о реализации" WB за период, ОДИН вызов = ограниченная
+ * порция работы (см. MAX_PAGES_PER_CALL/SOFT_TIME_BUDGET_MS), не весь период
+ * сразу. Прогресс (курсор rrd_id + счётчик synced) хранится в wb_sync_state
+ * по ключу (cabinetId, "opiu_report") и переживает обрыв/таймаут — повторный
+ * вызов (следующий тик крона) продолжает с сохранённого курсора, а не
+ * пересинкает период с нуля. dateFrom используется как признак "это тот же
+ * период" — если он изменился (например, перевалило на новый месяц в
+ * opiuReportRefreshPeriod), прогресс сбрасывается: старый курсор мог
+ * относиться к окну, часть которого теперь вне периода.
+ */
 export async function syncReportRows(
   cabinetId: string,
   token: string,
@@ -149,36 +179,82 @@ export async function syncReportRows(
   }
   if (!token.trim()) throw new Error("WB finance token is not configured");
 
-  let cursor = 0;
-  let pages = 0;
-  let synced = 0;
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Supabase service role is not configured");
 
-  for (let pageIndex = 0; pageIndex < MAX_REPORT_PAGES; pageIndex += 1) {
-    const page: WbReportPageResult<WbReportRow> = await fetchWbReportPage<WbReportRow>({
-      token,
-      dateFrom,
-      dateTo,
-      initialRrdId: cursor,
-      limit: 100_000,
-      fields: REPORT_FIELDS,
-    });
+  const saved = await readWbSyncState<ReportSyncJobState>(db, cabinetId, REPORT_SYNC_JOB);
+  const sameWindow = saved?.state?.periodDateFrom === dateFrom;
+  let cursor = sameWindow ? Number(saved?.state?.cursor ?? 0) || 0 : 0;
+  let synced = sameWindow ? Number(saved?.state?.synced ?? 0) || 0 : 0;
+
+  if (sameWindow && saved?.status === "complete" && saved.state?.periodDateTo === dateTo) {
+    return { synced, pages: 0, lastRrdId: cursor, complete: true };
+  }
+
+  // Не даём двум параллельным вызовам (например, наложившимся тикам крона)
+  // одновременно тянуть один и тот же кабинет — зависшая дольше 15 минут
+  // блокировка считается протухшей и перехватывается следующим вызовом.
+  const claimed = await claimWbSyncJob(db, cabinetId, REPORT_SYNC_JOB, 900);
+  if (!claimed) {
+    return { synced, pages: 0, lastRrdId: cursor, complete: false };
+  }
+
+  // Транзиентные сетевые сбои (наблюдались и на самом запросе к WB, и на
+  // записи в Supabase в тот же момент) не должны стоить нам уже пройденной
+  // страницы — без ретрая курсор молча остаётся на месте, и следующий вызов
+  // повторяет уже скачанные данные. 3 коротких попытки достаточно: сама
+  // запись — один маленький upsert, а не тяжёлый запрос к WB.
+  const persist = async (status: string, lastError: string | null) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const writeError = await writeWbSyncState<ReportSyncJobState>(db, cabinetId, REPORT_SYNC_JOB, {
+        cursor: String(cursor),
+        status,
+        attempts: 0,
+        lastError,
+        state: { periodDateFrom: dateFrom, periodDateTo: dateTo, cursor, synced },
+      });
+      if (!writeError) return;
+      console.error(`[opiu] failed to persist report sync state for ${cabinetId} (attempt ${attempt + 1}/3):`, writeError);
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+    }
+  };
+
+  const startedAt = Date.now();
+  let pages = 0;
+
+  for (; pages < MAX_PAGES_PER_CALL; pages += 1) {
+    let page: WbReportPageResult<WbReportRow>;
+    try {
+      page = await fetchWbReportPage<WbReportRow>({
+        token,
+        dateFrom,
+        dateTo,
+        initialRrdId: cursor,
+        limit: 100_000,
+        fields: REPORT_FIELDS,
+      });
+    } catch (error) {
+      // Курсор в БД уже соответствует последней УСПЕШНО скачанной странице —
+      // следующий вызов продолжит именно с него, а не с начала периода.
+      await persist("error", error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+
     if (page.complete) {
-      return {
-        synced,
-        pages,
-        lastRrdId: cursor,
-        complete: true,
-      };
+      await persist("complete", null);
+      return { synced, pages, lastRrdId: cursor, complete: true };
     }
 
     const storedRows = page.rows.map((row) => reportRowForStorage(cabinetId, row));
     await upsertPage(storedRows);
     synced += storedRows.length;
-    pages += 1;
     cursor = page.lastRrdId;
+    await persist("running", null);
+
+    if (Date.now() - startedAt > SOFT_TIME_BUDGET_MS) {
+      return { synced, pages: pages + 1, lastRrdId: cursor, complete: false };
+    }
   }
 
-  throw new Error(
-    `WB financial report is incomplete after ${MAX_REPORT_PAGES} pages`,
-  );
+  return { synced, pages, lastRrdId: cursor, complete: false };
 }
