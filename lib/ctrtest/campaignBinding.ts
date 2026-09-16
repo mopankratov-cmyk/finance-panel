@@ -6,7 +6,17 @@ import { ADVERT_STATUS_BY_ACTION, setAdvertLifecycle } from "@/lib/wb/advertApi"
 
 const SEARCH_LOOKBACK_DAYS = 14;
 const SEARCH_BLOCKS = new Set<WbRkBlock>(["cpc_search", "cpm_search"]);
-const SHELF_BLOCKS = new Set<WbRkBlock>(["cpc_shelf", "cpm_shelf", "cpc_both", "cpm_both"]);
+const UNIFIED_BLOCKS = new Set<WbRkBlock>(["erk"]);
+// 'erk' крутится и в поиске, и на полках по своей природе (см.
+// lib/wb/advertBlocks.ts) — раньше сюда не входил, и вторая живая ЕРК-кампания
+// на том же артикуле была невидима для детектора конфликтов в любом режиме.
+const SHELF_BLOCKS = new Set<WbRkBlock>(["cpc_shelf", "cpm_shelf", "cpc_both", "cpm_both", "erk"]);
+
+export type CtrCampaignMode = "search_only" | "unified";
+
+function blocksForMode(mode: CtrCampaignMode): Set<WbRkBlock> {
+  return mode === "unified" ? UNIFIED_BLOCKS : SEARCH_BLOCKS;
+}
 
 export interface CtrCampaignCandidate {
   advertId: number;
@@ -32,16 +42,18 @@ async function loadAdvertRows(db: SupabaseClient, advertIds: number[]): Promise<
 }
 
 /**
- * Поисковая кампания теста — по доказанной активности на артикуле, не по
- * технической пригодности. Источник — тот же порог `CTR_MIN_CAMPAIGN_SPEND`,
- * что уже одобрен владельцем 11.09.2026 для выбора кампании без смешивания
- * CPC/CPM (lib/wb/ctrCampaignPick.ts) — здесь та же логика «кампания реально
- * работала», только выбор делается один раз при старте теста, а не по дням.
+ * Поисковая (или, в режиме `unified`, единая) кампания теста — по доказанной
+ * активности на артикуле, не по технической пригодности. Источник — тот же
+ * порог `CTR_MIN_CAMPAIGN_SPEND`, что уже одобрен владельцем 11.09.2026 для
+ * выбора кампании без смешивания CPC/CPM (lib/wb/ctrCampaignPick.ts) — здесь
+ * та же логика «кампания реально работала», только выбор делается один раз
+ * при старте теста, а не по дням.
  */
 export async function resolveCtrSearchCampaign(
   db: SupabaseClient,
   cabinetId: string,
   nmId: number,
+  mode: CtrCampaignMode = "search_only",
 ): Promise<CtrCampaignResolution> {
   const since = new Date(Date.now() - SEARCH_LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
   const { data, error } = await db
@@ -61,6 +73,7 @@ export async function resolveCtrSearchCampaign(
   if (!workingIds.length) return { status: "none", advertId: null, candidates: [] };
 
   const adverts = await loadAdvertRows(db, workingIds);
+  const blocks = blocksForMode(mode);
   const candidates: CtrCampaignCandidate[] = adverts
     .map((row) => ({
       advertId: Number(row.advert_id),
@@ -68,12 +81,36 @@ export async function resolveCtrSearchCampaign(
       block: wbAdvertBlock(row),
       spent: spendByAdvert.get(Number(row.advert_id)) ?? 0,
     }))
-    .filter((candidate) => candidate.block != null && SEARCH_BLOCKS.has(candidate.block))
+    .filter((candidate) => candidate.block != null && blocks.has(candidate.block))
     .sort((a, b) => b.spent - a.spent);
 
   if (!candidates.length) return { status: "none", advertId: null, candidates: [] };
   if (candidates.length === 1) return { status: "resolved", advertId: candidates[0].advertId, candidates };
   return { status: "ambiguous", advertId: null, candidates };
+}
+
+/**
+ * Полный список кампаний-кандидатов на артикуле для ручного выбора в мастере
+ * — БЕЗ порога `CTR_MIN_CAMPAIGN_SPEND` и без окна в 14 дней: источник тут
+ * `wb_adverts.nm_ids`, а не суточная статистика, поэтому кампания, созданная
+ * только что и ещё не накрутившая расход, тоже видна сразу же после первого
+ * синка списка кампаний — ждать порог не нужно.
+ */
+export async function listCtrCampaignCandidates(
+  db: SupabaseClient,
+  cabinetId: string,
+  nmId: number,
+  mode: CtrCampaignMode,
+): Promise<CtrCampaignCandidate[]> {
+  const { data } = await db
+    .from("wb_adverts")
+    .select("advert_id, name, bid_type, payment_type, placement_search, placement_shelf, bid_cpm_rub, bid_search_rub, bid_shelf_rub, block_override, status")
+    .eq("cabinet_id", cabinetId)
+    .contains("nm_ids", [nmId]);
+  const blocks = blocksForMode(mode);
+  return ((data ?? []) as (AdvertRow & { status: number })[])
+    .map((row) => ({ advertId: Number(row.advert_id), name: row.name ?? null, block: wbAdvertBlock(row), spent: 0 }))
+    .filter((candidate): candidate is CtrCampaignCandidate => candidate.block != null && blocks.has(candidate.block));
 }
 
 interface BindableTest {
@@ -84,6 +121,7 @@ interface BindableTest {
   roundNum: number;
   advertId: number | null;
   shelfConflictState: string;
+  campaignMode?: CtrCampaignMode;
 }
 
 /**
@@ -94,6 +132,12 @@ interface BindableTest {
  * по `advertId == null` — тест без найденной кампании (0 или 2+ кандидатов)
  * тоже должен навсегда остаться непривязанным, а не резолвиться заново на
  * каждом действии.
+ *
+ * Если `advert_id` уже стоит (ручной выбор в мастере при создании ИЛИ
+ * результат предыдущего вызова этой же функции) — авторезолюция не
+ * запускается вовсе, даже без явного `override`: иначе ручной выбор человека
+ * тихо перезаписался бы на следующем действии, если авторезолюция вдруг
+ * найдёт другого кандидата.
  *
  * Полки проверяются здесь же, а не отдельно, но ТОЛЬКО если человек ещё не
  * принял решение сам через POST .../shelf-conflicts (state всё ещё
@@ -107,11 +151,11 @@ export async function ensureCtrTestCampaignBinding(
 ): Promise<{ advertId: number | null; shelfConflictState: string }> {
   if (test.testType !== "ctr" || test.roundNum !== 0) return { advertId: test.advertId, shelfConflictState: test.shelfConflictState };
 
-  let advertId: number | null = null;
+  let advertId: number | null = test.advertId;
   if (override) {
     advertId = override.advertId;
-  } else {
-    const resolution = await resolveCtrSearchCampaign(db, test.cabinetId, test.nmId);
+  } else if (advertId == null) {
+    const resolution = await resolveCtrSearchCampaign(db, test.cabinetId, test.nmId, test.campaignMode ?? "search_only");
     advertId = resolution.status === "resolved" ? resolution.advertId : null;
   }
 

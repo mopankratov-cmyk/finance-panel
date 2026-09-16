@@ -28,6 +28,8 @@ export interface CtrVariantTotals {
   roundsWon: number;
 }
 
+export type CtrCampaignMode = "search_only" | "unified";
+
 export interface CtrCreateInput {
   cabinetId: string;
   nmId: number;
@@ -39,6 +41,10 @@ export interface CtrCreateInput {
   targetImpressions: number;
   spendCapRub: number;
   sourceTestId: number | null;
+  /** search_only — только поиск (Фаза A, по умолчанию); unified — единая ставка (ЕРК), поиск+полки. */
+  campaignMode: CtrCampaignMode;
+  /** Кампания, выбранная человеком в мастере вручную. null — авторезолюция при старте (campaignBinding.ts). */
+  advertId: number | null;
   variants: { label: string; imageUrl: string; source: string; isBaseline: boolean }[];
 }
 
@@ -66,6 +72,10 @@ export function normalizeCtrCreatePayload(raw: Record<string, unknown>): Normali
   const targetImpressions = integer(raw.targetImpressions, 100, 10_000_000);
   const spendCapRub = money(raw.spendCapRub, 100, 1_000_000);
   const sourceTestId = raw.sourceTestId == null ? null : integer(raw.sourceTestId, 1, Number.MAX_SAFE_INTEGER);
+  const campaignModeRaw = clean(raw.campaignMode, 20);
+  const campaignMode: CtrCampaignMode = campaignModeRaw === "unified" ? "unified" : "search_only";
+  const advertId = raw.advertId == null ? null : integer(raw.advertId, 1, Number.MAX_SAFE_INTEGER);
+  if (raw.advertId != null && !advertId) return { ok: false, error: "Некорректная выбранная кампания" };
   if (!cabinetId || cabinetId === "all" || cabinetId.startsWith("group:")) return { ok: false, error: "Выберите один реальный WB-кабинет" };
   if (!nmId) return { ok: false, error: "Укажите корректный nmId" };
   if (!["ctr", "cr", "video"].includes(testType)) return { ok: false, error: "Неизвестный тип теста" };
@@ -105,6 +115,8 @@ export function normalizeCtrCreatePayload(raw: Record<string, unknown>): Normali
       targetImpressions,
       spendCapRub,
       sourceTestId,
+      campaignMode,
+      advertId,
       variants,
     },
   };

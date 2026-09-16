@@ -55,7 +55,7 @@ test("запас ~15% считается от одной итерации, не 
 
 test("роут campaign-forecast не пишет в ctr_tests — только резолюция для предпросмотра", () => {
   const route = read("../app/api/ctrtest/campaign-forecast/route.ts");
-  assert.match(route, /resolveCtrSearchCampaign\(db, cabinetId, nmId\)/);
+  assert.match(route, /resolveCtrSearchCampaign\(db, cabinetId, nmId, mode\)/);
   assert.doesNotMatch(route, /\.from\("ctr_tests"\)\.update/, "предпросмотр в мастере не должен резолвить и фиксировать кампанию раньше времени — это делает только ensureCtrTestCampaignBinding при первом start");
 });
 

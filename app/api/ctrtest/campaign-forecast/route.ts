@@ -29,11 +29,17 @@ export async function GET(request: NextRequest) {
   const { cabinetId } = await resolveShopCabinet(sp.get("cabinet") ?? undefined);
   if (!cabinetId) return fail("Выберите один реальный WB-кабинет", 400);
   if (!(await hasCabinetAccess(cabinetId))) return fail("Нет доступа к кабинету", 403);
+  const mode = sp.get("mode") === "unified" ? "unified" : "search_only";
+  // Человек мог выбрать кампанию в пикере руками — тогда прогноз считаем по
+  // ней, а не по авторезолюции (та может найти другую при 2+ кандидатах).
+  const manualAdvertId = sp.get("advert") ? Number(sp.get("advert")) : null;
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
 
-  const resolution = await resolveCtrSearchCampaign(db, cabinetId, nmId);
+  const resolution = manualAdvertId
+    ? ({ status: "resolved" as const, advertId: manualAdvertId, candidates: [] })
+    : await resolveCtrSearchCampaign(db, cabinetId, nmId, mode);
   if (resolution.status !== "resolved") {
     return NextResponse.json({ data: { resolution, dailyViews: null, ctrPercent: null }, error: null });
   }
