@@ -18,6 +18,8 @@ import { DdsReport, type DdsReportDrilldown } from "./DdsReport";
 import {
   loadDdsCompanies,
   loadPaymentCompanyLinks,
+  companyScopeOptions,
+  UNASSIGNED_COMPANY_LABEL,
   createDdsCompany,
   savePaymentWithCompany,
   updateDdsCompany,
@@ -95,10 +97,7 @@ export function PaymentsPage() {
     () => new Map(state.accounts.map((account) => [account.id, account.name] as const)),
     [state.accounts],
   );
-  const companyGroups = useMemo(
-    () => [...new Set(companies.filter((company) => company.isActive).map((company) => company.groupName))].sort((a, b) => a.localeCompare(b, "ru")),
-    [companies],
-  );
+  const companyScope = useMemo(() => companyScopeOptions(companies), [companies]);
 
   const paymentsWithCompany = useMemo(
     () =>
@@ -118,13 +117,13 @@ export function PaymentsPage() {
         if (filterCategory === WITHOUT_CATEGORY_FILTER && p.category.trim()) return false;
         if (filterCategory && filterCategory !== WITHOUT_CATEGORY_FILTER && p.category.trim() !== filterCategory) return false;
         if (filterAccount && p.accountId !== filterAccount) return false;
-        if (filterCompany === "unassigned" && p.companyId !== null) return false;
+        if (filterCompany === "unassigned" && p.companyId !== null && !companyScope.unassignedCompanyIds.includes(p.companyId)) return false;
         if (filterCompany.startsWith("group:") && (!p.companyId || companyById.get(p.companyId)?.groupName !== filterCompany.slice(6))) return false;
         if (filterCompany && filterCompany !== "unassigned" && !filterCompany.startsWith("group:") && p.companyId !== filterCompany) return false;
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [paymentsWithCompany, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, companyById]);
+  }, [paymentsWithCompany, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, companyById, companyScope]);
 
   const activeFilters = [dateFrom, dateTo, filterCategory, filterAccount, filterCompany].filter(Boolean).length;
   const resetFilters = () => {
@@ -458,9 +457,9 @@ export function PaymentsPage() {
                 className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               >
                 <option value="">Все компании</option>
-                <option value="unassigned">Общее по группе</option>
-                {companyGroups.map((group) => <option key={group} value={`group:${group}`}>Группа: {group}</option>)}
-                {companies.filter((company) => company.isActive).map((company) => (
+                <option value="unassigned">{UNASSIGNED_COMPANY_LABEL}</option>
+                {companyScope.groups.map((group) => <option key={group.name} value={`group:${group.name}`}>{group.label}</option>)}
+                {companyScope.companies.map((company) => (
                   <option key={company.id} value={company.id}>{company.name}</option>
                 ))}
               </select>

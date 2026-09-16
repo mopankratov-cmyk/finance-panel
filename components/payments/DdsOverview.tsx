@@ -2,7 +2,7 @@
 
 import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Building2, CheckCircle2, WalletCards } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { DdsCompany } from "./ddsCompanies";
+import { companyScopeOptions, UNASSIGNED_COMPANY_LABEL, type DdsCompany } from "./ddsCompanies";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
@@ -25,20 +25,17 @@ export function DdsOverview({
   onOpenReconciliation: () => void;
 }) {
   const [companyScope, setCompanyScope] = useState("all");
-  const groups = useMemo(
-    () => [...new Set(companies.filter((company) => company.isActive).map((company) => company.groupName))].sort(),
-    [companies],
-  );
+  const scopeOptions = useMemo(() => companyScopeOptions(companies), [companies]);
   const companyById = useMemo(() => new Map(companies.map((company) => [company.id, company])), [companies]);
   const scopedPayments = useMemo(() => {
     if (companyScope === "all") return payments;
-    if (companyScope === "unassigned") return payments.filter((payment) => !payment.companyId);
+    if (companyScope === "unassigned") return payments.filter((payment) => !payment.companyId || scopeOptions.unassignedCompanyIds.includes(payment.companyId));
     if (companyScope.startsWith("group:")) {
       const group = companyScope.slice(6);
       return payments.filter((payment) => payment.companyId && companyById.get(payment.companyId)?.groupName === group);
     }
     return payments.filter((payment) => payment.companyId === companyScope);
-  }, [payments, companyScope, companyById]);
+  }, [payments, companyScope, companyById, scopeOptions]);
   const facts = useMemo(() => scopedPayments.filter((payment) => payment.status === "done"), [scopedPayments]);
   const income = facts.reduce((sum, payment) => sum + Math.max(0, payment.amount), 0);
   const expense = facts.reduce((sum, payment) => sum + Math.max(0, -payment.amount), 0);
@@ -79,9 +76,9 @@ export function DdsOverview({
           className="min-h-11 min-w-64 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800"
         >
           <option value="all">Все компании</option>
-          <option value="unassigned">Без назначенной компании</option>
-          {groups.map((group) => <option key={group} value={`group:${group}`}>Группа: {group}</option>)}
-          {companies.filter((company) => company.isActive).map((company) => (
+          <option value="unassigned">{UNASSIGNED_COMPANY_LABEL}</option>
+          {scopeOptions.groups.map((group) => <option key={group.name} value={`group:${group.name}`}>{group.label}</option>)}
+          {scopeOptions.companies.map((company) => (
             <option key={company.id} value={company.id}>{company.name}</option>
           ))}
         </select>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import type { DdsCompany } from "./ddsCompanies";
+import { companyScopeOptions, UNASSIGNED_COMPANY_LABEL, type DdsCompany } from "./ddsCompanies";
 import { buildDdsSummary, TECHNICAL_SECTION } from "./ddsSummary";
 import { currentLocalMonth, monthRange, periodLabel, yearRange, type DdsPeriodMode } from "./ddsPeriod";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -42,7 +42,7 @@ export function DdsReport({ payments, companies, onOpenPayments }: { payments: P
   const [expanded,setExpanded]=useState<Set<string>>(new Set());
   const [annualExpanded,setAnnualExpanded]=useState<{key:string;rowKey:string;category:string;from:string;to:string}|null>(null);
   const companyById=useMemo(()=>new Map(companies.map(company=>[company.id,company] as const)),[companies]);
-  const groups=useMemo(()=>Array.from(new Set(companies.filter(company=>company.isActive).map(company=>company.groupName))).sort(),[companies]);
+  const scopeOptions=useMemo(()=>companyScopeOptions(companies),[companies]);
   const years=useMemo(()=>{
     const values=new Set([year,Number(initialMonth.slice(0,4))]);
     payments.forEach(payment=>{const value=Number(payment.date.slice(0,4));if(value>=2000&&value<=2200)values.add(value);});
@@ -52,10 +52,10 @@ export function DdsReport({ payments, companies, onOpenPayments }: { payments: P
   const range=periodMode==="month"?monthRange(month):periodMode==="year"?yearRange(year):customComplete?{from:customFrom,to:customTo}:{from:"9999-12-31",to:"0000-01-01"};
   const scopedPayments=useMemo(()=>{
     if(scope==="all")return payments;
-    if(scope==="unassigned")return payments.filter(payment=>!payment.companyId);
+    if(scope==="unassigned")return payments.filter(payment=>!payment.companyId||scopeOptions.unassignedCompanyIds.includes(payment.companyId));
     if(scope.startsWith("group:")){const name=scope.slice(6);return payments.filter(payment=>payment.companyId&&companyById.get(payment.companyId)?.groupName===name);}
     return payments.filter(payment=>payment.companyId===scope);
-  },[payments,scope,companyById]);
+  },[payments,scope,companyById,scopeOptions]);
   const summary=useMemo(()=>buildDdsSummary(scopedPayments,range.from||undefined,range.to||undefined,customCategoryNames),[scopedPayments,range.from,range.to,customCategoryNames]);
   const monthly=useMemo(()=>MONTHS.map((label,index)=>{
     const value=`${year}-${String(index+1).padStart(2,"0")}`;const current=monthRange(value);
@@ -83,7 +83,7 @@ export function DdsReport({ payments, companies, onOpenPayments }: { payments: P
         {periodMode==="month"&&<Field label="Выберите месяц"><input type="month" value={month} onChange={event=>setMonth(event.target.value)} className="control"/></Field>}
         {periodMode==="year"&&<Field label="Выберите год"><select value={year} onChange={event=>{setYear(Number(event.target.value));setAnnualExpanded(null);}} className="control">{years.map(value=><option key={value}>{value}</option>)}</select></Field>}
         {periodMode==="custom"&&<><Field label="С даты"><input type="date" value={customFrom} onChange={event=>setCustomFrom(event.target.value)} className="control"/></Field><Field label="По дату"><input type="date" value={customTo} onChange={event=>setCustomTo(event.target.value)} className="control"/></Field></>}
-        <Field label="Компания или группа"><select value={scope} onChange={event=>{setScope(event.target.value);setAnnualExpanded(null);}} className="control"><option value="all">Все компании</option><option value="unassigned">Общее по группе</option>{groups.map(group=><option key={group} value={`group:${group}`}>Группа: {group}</option>)}{companies.filter(company=>company.isActive).map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></Field>
+        <Field label="Компания или группа"><select value={scope} onChange={event=>{setScope(event.target.value);setAnnualExpanded(null);}} className="control"><option value="all">Все компании</option><option value="unassigned">{UNASSIGNED_COMPANY_LABEL}</option>{scopeOptions.groups.map(group=><option key={group.name} value={`group:${group.name}`}>{group.label}</option>)}{scopeOptions.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></Field>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700"><span><b className="capitalize">Период: {selectedPeriod}</b><span className="ml-2 text-slate-500">· операций: {fmt(summary.count)}</span></span><span>Чистый поток: <b className={amountColor(summary.realNet)}>{fmt(summary.realNet)} ₽</b></span></div>
       {periodMode==="custom"&&customFrom&&customTo&&customFrom>customTo&&<p role="alert" className="text-sm text-red-600">Дата начала должна быть раньше даты окончания.</p>}
