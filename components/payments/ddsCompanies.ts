@@ -159,6 +159,7 @@ export async function savePaymentWithCompany(
     status: string;
     counterparty: string;
     comment?: string;
+    importSource?: string | null;
   },
   companyId: string,
 ): Promise<void> {

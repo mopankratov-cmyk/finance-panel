@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Plus, RefreshCw, Save, Trash2, Upload, WalletCards } from "lucide-react";
+import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Plus, RefreshCw, Save, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
 import { PaymentChainModal, type PaymentChainSeed } from "./PaymentChainModal";
 import { TransferBalancePanel } from "./TransferBalancePanel";
@@ -25,11 +25,9 @@ import {
   updateDdsCompany,
   type DdsCompany,
 } from "./ddsCompanies";
-import { cleanDemoData } from "./ddsImport";
 import { ddsReviewTemplateRows, ddsTemplateRows, downloadDdsCsv, downloadGroupedDdsXlsx } from "./ddsExport";
 import { syncDdsToGoogleSheets } from "./ddsGoogleSync";
 import { ddsSheetNameForCompany } from "./ddsSheetGroups";
-import { ImportDdsModal } from "./ImportDdsModal";
 import { PaymentForm } from "./PaymentForm";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
@@ -38,6 +36,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { COMPANY_TAX_SYSTEMS, COMPANY_VAT_MODES, type CompanyTaxSystem, type CompanyVatMode } from "@/lib/finance/companyTax";
 import { COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
+import { isDdsActualPayment, manualDdsCashAccounts } from "@/lib/finance/bankDdsPayment";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
 
@@ -54,7 +53,6 @@ export function PaymentsPage() {
   const [editing, setEditing] = useState<Payment | null>(null);
   const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">("overview");
   const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">(mode);
-  const [importOpen, setImportOpen] = useState(false);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [companiesOpen, setCompaniesOpen] = useState(false);
   const [syncingGoogle, setSyncingGoogle] = useState(false);
@@ -108,10 +106,26 @@ export function PaymentsPage() {
     [state.payments, companyByPayment],
   );
 
+  // ДДС — подтверждённый банковский факт, созданные из него части и ручные
+  // операции наличными. Остальные ручные/старые строки без источника сюда не
+  // попадают: по ним невозможно отличить факт от технической строки календаря.
+  // Календарь и графики займов используют ту же таблицу payments, поэтому
+  // фильтра по status=done недостаточно: завершённые строки плана попадали в
+  // реестр и приносили сюда технические кошельки вроде PANKSTER GROUP.
+  const ddsPayments = useMemo(
+    () => paymentsWithCompany.filter(isDdsActualPayment),
+    [paymentsWithCompany],
+  );
+  const ddsAccountIds = useMemo(() => new Set(ddsPayments.map((payment) => payment.accountId)), [ddsPayments]);
+  const ddsAccounts = useMemo(() => state.accounts.filter((account) => ddsAccountIds.has(account.id)), [state.accounts, ddsAccountIds]);
+  const manualCashAccounts = useMemo(
+    () => manualDdsCashAccounts(state.accounts, state.payments),
+    [state.accounts, state.payments],
+  );
+
   const filtered = useMemo(() => {
-    return paymentsWithCompany
+    return ddsPayments
       .filter((p) => {
-        if (p.status !== "done") return false; // реестр — только факт; план — в платёжном календаре
         if (dateFrom && p.date < dateFrom) return false;
         if (dateTo && p.date > dateTo) return false;
         if (filterCategory === WITHOUT_CATEGORY_FILTER && p.category.trim()) return false;
@@ -123,7 +137,7 @@ export function PaymentsPage() {
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [paymentsWithCompany, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, companyById, companyScope]);
+  }, [ddsPayments, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, companyById, companyScope]);
 
   const activeFilters = [dateFrom, dateTo, filterCategory, filterAccount, filterCompany].filter(Boolean).length;
   const resetFilters = () => {
@@ -137,10 +151,10 @@ export function PaymentsPage() {
   // В фильтре должны быть и статьи вне справочника (старые выгрузки) — иначе их не отобрать.
   const filterCategories = useMemo(() => {
     const known = new Set(DDS_CATEGORIES);
-    const extra = [...new Set(state.payments.map((payment) => payment.category.trim()).filter((category) => category && !known.has(category)))]
+    const extra = [...new Set(ddsPayments.map((payment) => payment.category.trim()).filter((category) => category && !known.has(category)))]
       .sort((a, b) => a.localeCompare(b, "ru"));
     return [...DDS_CATEGORIES, ...extra];
-  }, [state.payments, DDS_CATEGORIES]);
+  }, [ddsPayments, DDS_CATEGORIES]);
 
   const openDdsPayments = useCallback(({ category, from, to, scope }: DdsReportDrilldown) => {
     setDateFrom(from);
@@ -151,8 +165,11 @@ export function PaymentsPage() {
     setMode("ledger");
   }, []);
 
-
   const openAdd = () => {
+    if (!manualCashAccounts.length) {
+      alert("Нет доступного наличного кошелька. Создайте наличный счёт в разделе «Счета».");
+      return;
+    }
     setEditing(null);
     setModalOpen(true);
   };
@@ -164,7 +181,12 @@ export function PaymentsPage() {
   };
 
   const handleSubmit = async (data: Omit<Payment, "id">, companyId: string) => {
-    const payment = { id: editing?.id ?? generateId("pay"), ...data };
+    const id = editing?.id ?? generateId("pay");
+    const payment = {
+      id,
+      ...data,
+      importSource: editing?.importSource ?? `manual-dds:${id}`,
+    };
     try {
       await savePaymentWithCompany(payment, companyId);
       setModalOpen(false);
@@ -183,35 +205,19 @@ export function PaymentsPage() {
     }
   };
 
-  const handleCleanDemo = async () => {
-    if (
-      !confirm(
-        "Удалить стартовые демо-данные: платежи и счета, заведённые автоматическим посевом при первом открытии панели, и сами эти счета, если на них ничего не останется?\n\nБоевые платежи и счета — даже с такими же названиями — не тронутся. Действие необратимо.",
-      )
-    )
-      return;
-    try {
-      const r = await cleanDemoData();
-      alert(`Удалено счетов: ${r.accountsDeleted}, платежей: ${r.paymentsDeleted}.${r.accountsKept ? ` Оставлено счетов с боевыми платежами: ${r.accountsKept}.` : ""} Страница обновится.`);
-      window.location.reload();
-    } catch (e) {
-      alert(`Ошибка: ${e instanceof Error ? e.message : "не удалось удалить"}`);
-    }
-  };
-
   const handleGoogleSync = async () => {
     setSyncingGoogle(true);
     try {
       const bankSync = await loadBankGoogleSyncData();
       const companyById = new Map(companies.map((company) => [company.id, company] as const));
       const sheetNames = new Set<string>();
-      for (const payment of paymentsWithCompany) {
-        if (payment.status === "done") sheetNames.add(ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null));
+      for (const payment of ddsPayments) {
+        sheetNames.add(ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null));
       }
       for (const item of bankSync.items) sheetNames.add(ddsSheetNameForCompany(item.companyId ? companyById.get(item.companyId) : null));
       const sheets = [...sheetNames].sort((a, b) => a.localeCompare(b, "ru")).map((name) => {
-        const facts = paymentsWithCompany
-          .filter((payment) => payment.status === "done" && ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === name)
+        const facts = ddsPayments
+          .filter((payment) => ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === name)
           .sort((a, b) => a.date.localeCompare(b.date));
         const reviewItems = bankSync.items.filter((item) => ddsSheetNameForCompany(item.companyId ? companyById.get(item.companyId) : null) === name);
         const confirmed = ddsTemplateRows({ payments: facts, accountNameById, companyNameById, customExpenseNames: customCategoryNames });
@@ -235,11 +241,26 @@ export function PaymentsPage() {
   // уникальные контрагенты — для подсказок в форме
   const counterparties = useMemo(
     () =>
-      Array.from(new Set(state.payments.map((p) => p.counterparty).filter(Boolean))).sort((a, b) =>
+      Array.from(new Set(ddsPayments.map((p) => p.counterparty).filter(Boolean))).sort((a, b) =>
         a.localeCompare(b, "ru"),
       ),
-    [state.payments],
+    [ddsPayments],
   );
+
+  // Если данные изменились в другой вкладке или административной операцией,
+  // при возвращении не держим старый снимок до ручного F5.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadFinanceState().then((payload) => dispatch({ type: "LOAD", payload })).catch(() => undefined);
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [dispatch]);
 
 
   return (
@@ -259,13 +280,6 @@ export function PaymentsPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setImportOpen(true)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <Upload className="h-4 w-4" />
-            Импорт ДДС
-          </button>
           <button
             onClick={() => setCompaniesOpen(true)}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -312,7 +326,7 @@ export function PaymentsPage() {
 
       <div className="flex flex-wrap items-center justify-end gap-2">
           <button
-            onClick={() => downloadDdsCsv({ payments: paymentsWithCompany, accountNameById, companyNameById, customExpenseNames: customCategoryNames })}
+            onClick={() => downloadDdsCsv({ payments: ddsPayments, accountNameById, companyNameById, customExpenseNames: customCategoryNames })}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
           >
             <Download className="h-4 w-4" /> CSV
@@ -320,11 +334,11 @@ export function PaymentsPage() {
           <button
             onClick={() => {
               const companyById = new Map(companies.map((company) => [company.id, company] as const));
-              const names = new Set(paymentsWithCompany.filter((payment) => payment.status === "done").map((payment) => ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null)));
+              const names = new Set(ddsPayments.map((payment) => ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null)));
               downloadGroupedDdsXlsx([...names].sort((a, b) => a.localeCompare(b, "ru")).map((name) => ({
                 name,
                 rows: ddsTemplateRows({
-                  payments: paymentsWithCompany.filter((payment) => payment.status === "done" && ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === name),
+                  payments: ddsPayments.filter((payment) => ddsSheetNameForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === name),
                   accountNameById,
                   companyNameById,
                   customExpenseNames: customCategoryNames,
@@ -343,21 +357,13 @@ export function PaymentsPage() {
             {syncingGoogle ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Google Таблица
           </button>
-          <button
-            onClick={handleCleanDemo}
-            title="Удалить стартовые демо-данные"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            Удалить демо
-          </button>
           {mode === "ledger" && (
             <button
               onClick={openAdd}
-              className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"
             >
               <Plus className="h-4 w-4" />
-              Новый платёж
+              Операция наличными
             </button>
           )}
       </div>
@@ -370,8 +376,8 @@ export function PaymentsPage() {
 
       {mode === "overview" && (
         <DdsOverview
-          payments={paymentsWithCompany}
-          accounts={state.accounts}
+          payments={ddsPayments}
+          accounts={ddsAccounts}
           companies={companies}
           onOpenLedger={() => setMode("ledger")}
           onOpenReview={() => setMode("review")}
@@ -383,7 +389,7 @@ export function PaymentsPage() {
           менеджеру. Ключ сброса не нужен — источник данных здесь один на весь
           экран. */}
       <TabPanel {...panel("dds")}>
-        <DdsReport payments={paymentsWithCompany} companies={companies} onOpenPayments={openDdsPayments} />
+        <DdsReport payments={ddsPayments} companies={companies} onOpenPayments={openDdsPayments} />
       </TabPanel>
       <TabPanel {...panel("review")}>
         <BankReviewPanel accounts={state.accounts} companies={companies} />
@@ -442,7 +448,7 @@ export function PaymentsPage() {
                 className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
               >
                 <option value="">Все</option>
-                {state.accounts.map((acc) => (
+                {ddsAccounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
                     {acc.name}
                   </option>
@@ -487,10 +493,10 @@ export function PaymentsPage() {
           разворачивается в карточку (table-cards-lg). Раньше здесь вместо этого
           прятались три колонки — компания, контрагент и назначение платежа
           были недоступны с телефона и с планшета в портрете вовсе. */}
-      <TransferBalancePanel payments={paymentsWithCompany} accounts={state.accounts} onEdit={openEdit}/>
+      <TransferBalancePanel payments={ddsPayments} accounts={ddsAccounts} onEdit={openEdit}/>
       <BankTransfersPanel/>
       <Card>
-        <PaymentOperationsTable visible={filtered} all={paymentsWithCompany} accounts={state.accounts} companies={companies} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed}/>
+        <PaymentOperationsTable visible={filtered} all={ddsPayments} accounts={ddsAccounts} companies={companies} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed}/>
       </Card>
         </>
       )}
@@ -502,11 +508,11 @@ export function PaymentsPage() {
           setModalOpen(false);
           setEditing(null);
         }}
-        title={editing ? "Редактировать платёж" : "Новый платёж"}
+        title={editing ? "Редактировать платёж" : "Операция наличными"}
       >
         <PaymentForm
           payment={editing ?? undefined}
-          accounts={state.accounts}
+          accounts={editing ? ddsAccounts : manualCashAccounts}
           counterparties={counterparties}
           companies={companies}
           companyId={editing ? companyByPayment.get(editing.id) : null}
@@ -518,14 +524,6 @@ export function PaymentsPage() {
         />
       </Modal>
 
-      <ImportDdsModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        existingAccounts={state.accounts}
-        existingPayments={paymentsWithCompany}
-        companies={companies}
-        onCompanyCreated={(company) => setCompanies((current) => [...current, company])}
-      />
       <CompaniesModal
         open={companiesOpen}
         companies={companies}
