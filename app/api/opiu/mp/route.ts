@@ -6,11 +6,12 @@ import { monthlyWbActualFromOpiu } from "@/lib/opiu/monthlyWbActual";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { ozonAnalytics, ozonImages, ozonTransactionTotals } from "@/lib/ozon/api";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { buildOpiuCompanyScopes } from "@/lib/opiu/companyScope";
+import { buildOpiuCompanyScopes, companyNamesMatch } from "@/lib/opiu/companyScope";
 import {
   aggregateOzonSources,
   aggregateWbSources,
   coalesceWbSources,
+  wbBrandCompanyName,
   type MonthlyMarketplaceSource,
 } from "@/lib/opiu/monthlyMarketplaceSources";
 
@@ -70,17 +71,27 @@ export async function GET(request: NextRequest) {
   if (requestedCompanyId && !selectedCompany) return NextResponse.json({ error: "Компания не найдена" }, { status: 400 });
   const selectedCabinetIds = selectedCompany ? new Set(selectedCompany.cabinetIds) : null;
   const ownerByCabinetId = new Map(companyScopes.flatMap((company) => company.cabinetIds.map((cabinetId) => [cabinetId, company] as const)));
+  const companyNameById = new Map((companiesResult.data ?? []).map((company) => [String(company.id), String(company.name)]));
+  const ownerByBrandId = new Map(OPIU_BRANDS.map((brand) => {
+    const expectedOwner = wbBrandCompanyName(brand);
+    const owner = companyScopes.find((scope) => scope.companyIds.some((companyId) => companyNamesMatch(companyNameById.get(companyId) ?? "", expectedOwner)));
+    return [brand.id, owner] as const;
+  }));
 
   const wbCabinetIds = [...new Set(OPIU_BRANDS.map((brand) => brand.cabinetId))];
   const accessPairs = await Promise.all(wbCabinetIds.map(async (cabinetId) => [cabinetId, await hasCabinetAccess(cabinetId)] as const));
   const accessByCabinet = new Map(accessPairs);
-  const accessibleBrands = OPIU_BRANDS.filter((brand) => accessByCabinet.get(brand.cabinetId) && (!selectedCabinetIds || selectedCabinetIds.has(brand.cabinetId)));
+  const accessibleBrands = OPIU_BRANDS.filter((brand) => {
+    if (!accessByCabinet.get(brand.cabinetId)) return false;
+    if (!selectedCompany) return true;
+    return ownerByBrandId.get(brand.id)?.id === selectedCompany.id;
+  });
 
   const costByArt = new Map<string, number>();
   for (const row of costsResult.data ?? []) costByArt.set(String(row.article || "").trim().toUpperCase(), num(row.cost_rub));
 
   const wbSourcesPromise = Promise.all(accessibleBrands.map(async (brand): Promise<MonthlyMarketplaceSource> => {
-    const owner = ownerByCabinetId.get(brand.cabinetId);
+    const owner = ownerByBrandId.get(brand.id);
     try {
       const wb = monthlyWbActualFromOpiu(await loadOpiuSalePeriod(from, to, [brand.id]));
       return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb };
