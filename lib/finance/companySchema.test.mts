@@ -1,18 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { COMPANY_BASE_COLUMNS, COMPANY_TAX_COLUMNS, readCompaniesCompat } from "./companySchema.ts";
+import { COMPANY_BASE_COLUMNS, COMPANY_TAX_COLUMNS, COMPANY_TAX_RATE_COLUMNS, readCompaniesCompat } from "./companySchema.ts";
 
 test("отсутствующие налоговые колонки не блокируют загрузку компаний", async () => {
   const calls: string[] = [];
   const loaded = await readCompaniesCompat(async (columns) => {
     calls.push(columns);
-    return columns === COMPANY_TAX_COLUMNS
+    return columns === COMPANY_TAX_RATE_COLUMNS
       ? { error: { code: "42703", message: "column companies.tax_system does not exist" }, data: null }
       : { error: null, data: [{ id: "company" }] };
   });
-  assert.deepEqual(calls, [COMPANY_TAX_COLUMNS, COMPANY_BASE_COLUMNS]);
+  assert.deepEqual(calls, [COMPANY_TAX_RATE_COLUMNS, COMPANY_BASE_COLUMNS]);
   assert.equal(loaded.taxSettingsAvailable, false);
+  assert.equal(loaded.taxRatesAvailable, false);
   assert.deepEqual(loaded.result.data, [{ id: "company" }]);
+});
+
+test("без новых ставок старые налоговые настройки продолжают загружаться", async () => {
+  const calls: string[] = [];
+  const loaded = await readCompaniesCompat(async (columns) => {
+    calls.push(columns);
+    return columns === COMPANY_TAX_RATE_COLUMNS
+      ? { error: { code: "42703", message: "column companies.tax_rate does not exist" }, data: null }
+      : { error: null, data: [{ id: "company", tax_system: "usn_income", vat_mode: "exempt" }] };
+  });
+  assert.deepEqual(calls, [COMPANY_TAX_RATE_COLUMNS, COMPANY_TAX_COLUMNS]);
+  assert.equal(loaded.taxSettingsAvailable, true);
+  assert.equal(loaded.taxRatesAvailable, false);
+  assert.equal(loaded.result.data?.[0].tax_system, "usn_income");
 });
 
 test("доступная схема не требует повторной выборки, прочие ошибки не скрываются", async () => {

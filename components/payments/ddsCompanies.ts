@@ -18,7 +18,10 @@ export interface DdsCompany {
   isActive: boolean;
   taxSystem?: CompanyTaxSystem | null;
   vatMode?: CompanyVatMode | null;
+  taxRate?: number | null;
+  taxAdditionalRate?: number | null;
   taxSettingsAvailable?: boolean;
+  taxRatesAvailable?: boolean;
 }
 
 export interface DdsCompanyGroupOption {
@@ -73,6 +76,8 @@ interface CompanyRow {
   is_active: boolean;
   tax_system: CompanyTaxSystem | null;
   vat_mode: CompanyVatMode | null;
+  tax_rate: number | null;
+  tax_additional_rate: number | null;
 }
 
 interface CompaniesResponse {
@@ -81,6 +86,7 @@ interface CompaniesResponse {
   company?: CompanyRow;
   error?: string;
   tax_settings_available?: boolean;
+  tax_rates_available?: boolean;
 }
 
 async function json<T extends { error?: string }>(response: Response): Promise<T> {
@@ -95,7 +101,7 @@ async function load(): Promise<CompaniesResponse> {
 
 export async function loadDdsCompanies(): Promise<DdsCompany[]> {
   const body = await load();
-  return (body.companies ?? []).map((row) => companyFromRow(row, body.tax_settings_available));
+  return (body.companies ?? []).map((row) => companyFromRow(row, body.tax_settings_available, body.tax_rates_available));
 }
 
 export async function loadPaymentCompanyLinks(): Promise<PaymentCompanyLink[]> {
@@ -110,10 +116,10 @@ export async function createDdsCompany(name: string, groupName: string): Promise
     body: JSON.stringify({ action: "create", name, group_name: groupName }),
   }).then(json<CompaniesResponse>);
   if (!body.company) throw new Error("Юрлицо не вернулось после сохранения");
-  return companyFromRow(body.company, body.tax_settings_available);
+  return companyFromRow(body.company, body.tax_settings_available, body.tax_rates_available);
 }
 
-function companyFromRow(row: CompanyRow, taxSettingsAvailable = true): DdsCompany {
+function companyFromRow(row: CompanyRow, taxSettingsAvailable = true, taxRatesAvailable = true): DdsCompany {
   return {
     id: row.id,
     name: companyLabel(row.name),
@@ -121,7 +127,10 @@ function companyFromRow(row: CompanyRow, taxSettingsAvailable = true): DdsCompan
     isActive: row.is_active,
     taxSystem: row.tax_system ?? null,
     vatMode: row.vat_mode ?? null,
+    taxRate: row.tax_rate ?? null,
+    taxAdditionalRate: row.tax_additional_rate ?? null,
     taxSettingsAvailable,
+    taxRatesAvailable,
   };
 }
 
@@ -134,10 +143,11 @@ export async function updateDdsCompany(company: DdsCompany): Promise<DdsCompany>
       company_id: company.id,
       is_active: company.isActive,
       ...(company.taxSettingsAvailable === false ? {} : { tax_system: company.taxSystem ?? null, vat_mode: company.vatMode ?? null }),
+      ...(company.taxRatesAvailable === false ? {} : { tax_rate: company.taxRate ?? null, tax_additional_rate: company.taxAdditionalRate ?? null }),
     }),
   }).then(json<CompaniesResponse>);
   if (!body.company) throw new Error("Юрлицо не вернулось после сохранения");
-  return companyFromRow(body.company, body.tax_settings_available);
+  return companyFromRow(body.company, body.tax_settings_available, body.tax_rates_available);
 }
 
 export async function savePaymentWithCompany(

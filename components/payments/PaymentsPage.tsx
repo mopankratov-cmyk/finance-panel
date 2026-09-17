@@ -34,8 +34,17 @@ import { useFinance, useDdsCategories } from "@/components/providers/FinanceProv
 import { ExpenseCategoryManager } from "./ExpenseCategoryManager";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
-import { COMPANY_TAX_SYSTEMS, COMPANY_VAT_MODES, type CompanyTaxSystem, type CompanyVatMode } from "@/lib/finance/companyTax";
-import { COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
+import {
+  COMPANY_TAX_SYSTEMS,
+  COMPANY_VAT_MODES,
+  companyTaxSystemSupportsRate,
+  companyTaxTotalRate,
+  formatCompanyTaxRate,
+  parseCompanyTaxRate,
+  type CompanyTaxSystem,
+  type CompanyVatMode,
+} from "@/lib/finance/companyTax";
+import { COMPANY_TAX_RATE_UNAVAILABLE, COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
 import { isDdsActualPayment, manualDdsCashAccounts } from "@/lib/finance/bankDdsPayment";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
@@ -586,12 +595,13 @@ function CompaniesModal({ open, companies, onClose, onCreated, onUpdated }: {
         </button>
       </form>
       {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
-      <div className="table-cards rounded-xl border border-slate-200 md:overflow-x-auto">
-        <table className="w-full text-sm md:min-w-[820px]">
-          <thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-2.5">Компания</th><th className="px-3 py-2.5">Группа</th><th className="px-3 py-2.5">Статус</th><th className="px-3 py-2.5">Налогообложение</th><th className="px-3 py-2.5">НДС</th><th className="px-3 py-2.5 text-right">Действие</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{companies.length === 0 ? <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">Компаний пока нет</td></tr> : companies.map((company) => <CompanySettingsRow key={company.id} company={company} onUpdated={onUpdated} />)}</tbody>
-        </table>
       {companies.some((company) => company.taxSettingsAvailable === false) && <p role="status" id="company-tax-unavailable" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">{COMPANY_TAX_UNAVAILABLE}</p>}
+      {companies.some((company) => company.taxRatesAvailable === false) && <p role="status" id="company-tax-rate-unavailable" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">{COMPANY_TAX_RATE_UNAVAILABLE}</p>}
+      <div className="table-cards rounded-xl border border-slate-200 md:overflow-x-auto">
+        <table className="w-full text-sm md:min-w-[1080px]">
+          <thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-2.5">Компания</th><th className="px-3 py-2.5">Группа</th><th className="px-3 py-2.5">Статус</th><th className="px-3 py-2.5">Налогообложение</th><th className="px-3 py-2.5">Ставки</th><th className="px-3 py-2.5">НДС</th><th className="px-3 py-2.5 text-right">Действие</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">{companies.length === 0 ? <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">Компаний пока нет</td></tr> : companies.map((company) => <CompanySettingsRow key={company.id} company={company} onUpdated={onUpdated} />)}</tbody>
+        </table>
       </div>
     </div>
   </Modal>;
@@ -601,15 +611,43 @@ function CompanySettingsRow({ company, onUpdated }: { company: DdsCompany; onUpd
   const [isActive, setIsActive] = useState(company.isActive);
   const [taxSystem, setTaxSystem] = useState<CompanyTaxSystem | null>(company.taxSystem ?? null);
   const [vatMode, setVatMode] = useState<CompanyVatMode | null>(company.vatMode ?? null);
+  const [taxRateInput, setTaxRateInput] = useState(formatCompanyTaxRate(company.taxRate));
+  const [taxAdditionalRateInput, setTaxAdditionalRateInput] = useState(formatCompanyTaxRate(company.taxAdditionalRate));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const dirty = isActive !== company.isActive || taxSystem !== (company.taxSystem ?? null) || vatMode !== (company.vatMode ?? null);
+  const supportsRate = companyTaxSystemSupportsRate(taxSystem);
+  const parsedTaxRate = supportsRate ? parseCompanyTaxRate(taxRateInput) : null;
+  const parsedTaxAdditionalRate = supportsRate ? parseCompanyTaxRate(taxAdditionalRateInput) : null;
+  const totalRate = parsedTaxRate === undefined || parsedTaxAdditionalRate === undefined
+    ? undefined
+    : companyTaxTotalRate(parsedTaxRate, parsedTaxAdditionalRate);
+  const invalidRate = parsedTaxRate === undefined || parsedTaxAdditionalRate === undefined ||
+    (parsedTaxRate === null && parsedTaxAdditionalRate !== null) || (totalRate ?? 0) > 100;
+  const rateDirty = company.taxRatesAvailable !== false && (
+    parsedTaxRate === undefined || parsedTaxAdditionalRate === undefined ||
+    parsedTaxRate !== (company.taxRate ?? null) || parsedTaxAdditionalRate !== (company.taxAdditionalRate ?? null)
+  );
+  const dirty = isActive !== company.isActive || taxSystem !== (company.taxSystem ?? null) ||
+    vatMode !== (company.vatMode ?? null) || rateDirty;
 
   const save = async () => {
-    setSaving(true);
     setError("");
+    if (invalidRate) {
+      setError(parsedTaxRate === null && parsedTaxAdditionalRate !== null
+        ? "Сначала укажите основную ставку"
+        : "Ставки должны быть от 0 до 100%, содержать не более трёх знаков после запятой, а их сумма не должна превышать 100%");
+      return;
+    }
+    setSaving(true);
     try {
-      const updated = await updateDdsCompany({ ...company, isActive, taxSystem, vatMode });
+      const updated = await updateDdsCompany({
+        ...company,
+        isActive,
+        taxSystem,
+        vatMode,
+        taxRate: parsedTaxRate,
+        taxAdditionalRate: parsedTaxAdditionalRate,
+      });
       onUpdated(updated);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки компании");
@@ -625,6 +663,19 @@ function CompanySettingsRow({ company, onUpdated }: { company: DdsCompany; onUpd
     <td data-label="Группа" className="px-3 py-3 align-top text-slate-600">{company.groupName}</td>
     <td data-label="Статус" className="px-3 py-3 align-top"><select aria-label={`Статус компании ${company.name}`} value={isActive ? "active" : "inactive"} onChange={(event) => setIsActive(event.target.value === "active")} className={controlClass}><option value="active">Активна</option><option value="inactive">Отключена</option></select></td>
     <td data-label="Налогообложение" className="px-3 py-3 align-top"><select disabled={saving || company.taxSettingsAvailable === false} aria-describedby={company.taxSettingsAvailable === false ? "company-tax-unavailable" : undefined} aria-label={`Система налогообложения компании ${company.name}`} value={taxSystem ?? ""} onChange={(event) => setTaxSystem((event.target.value || null) as CompanyTaxSystem | null)} className={`${controlClass} disabled:cursor-not-allowed disabled:bg-slate-100`}><option value="">{company.taxSettingsAvailable === false ? "Недоступно до обновления базы" : "Не указано"}</option>{COMPANY_TAX_SYSTEMS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
+    <td data-label="Ставки" className="px-3 py-3 align-top">
+      {supportsRate ? <div className="grid min-w-[230px] grid-cols-2 gap-2">
+        <label className="text-xs font-medium text-slate-600">Основная, %
+          <input type="text" inputMode="decimal" value={taxRateInput} onChange={(event) => setTaxRateInput(event.target.value)} disabled={saving || company.taxRatesAvailable === false} aria-invalid={invalidRate || undefined} aria-describedby={company.taxRatesAvailable === false ? "company-tax-rate-unavailable" : undefined} className={`${controlClass} mt-1 min-w-0 tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100`} placeholder="Например, 1" />
+        </label>
+        <label className="text-xs font-medium text-slate-600">Доплата, %
+          <input type="text" inputMode="decimal" value={taxAdditionalRateInput} onChange={(event) => setTaxAdditionalRateInput(event.target.value)} disabled={saving || company.taxRatesAvailable === false} aria-invalid={invalidRate || undefined} aria-describedby={company.taxRatesAvailable === false ? "company-tax-rate-unavailable" : undefined} className={`${controlClass} mt-1 min-w-0 tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100`} placeholder="Например, 1" />
+        </label>
+        <p className={`col-span-2 text-xs font-semibold ${invalidRate ? "text-rose-700" : "text-slate-600"}`} aria-live="polite">
+          {invalidRate ? "Проверьте ставки" : totalRate === null ? "Итоговая ставка не указана" : `Итого: ${formatCompanyTaxRate(totalRate)}%`}
+        </p>
+      </div> : <span className="text-sm text-slate-400">Для этого режима единая ставка не задаётся</span>}
+    </td>
     <td data-label="НДС" className="px-3 py-3 align-top"><select disabled={saving || company.taxSettingsAvailable === false} aria-describedby={company.taxSettingsAvailable === false ? "company-tax-unavailable" : undefined} aria-label={`НДС компании ${company.name}`} value={vatMode ?? ""} onChange={(event) => setVatMode((event.target.value || null) as CompanyVatMode | null)} className={`${controlClass} disabled:cursor-not-allowed disabled:bg-slate-100`}><option value="">{company.taxSettingsAvailable === false ? "Недоступно до обновления базы" : "Не указано"}</option>{COMPANY_VAT_MODES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
     <td data-cell="actions" className="px-3 py-3 align-top text-right"><button type="button" onClick={() => void save()} disabled={saving || !dirty} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40">{saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Save className="h-4 w-4" />}Сохранить</button></td>
   </tr>;
