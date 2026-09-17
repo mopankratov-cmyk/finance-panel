@@ -106,20 +106,23 @@ export function aggregatePayrollMonthlyFacts(input: {
   from: string;
   to: string;
   companyId?: string | null;
+  companyIds?: readonly string[];
 }): Record<string, MonthlySharedFact> {
   if (!input.periods.length || !input.entries.length) return {};
   const periodIds = new Set(input.periods.map((period) => period.id));
   const employeeById = new Map(input.employees.map((employee) => [employee.id, employee]));
+  const selectedCompanyIds = new Set(input.companyIds?.length ? input.companyIds : input.companyId ? [input.companyId] : []);
+  const companySelected = selectedCompanyIds.size > 0;
   const totals = new Map<string, number>([["admin_salary", 0], ["commercial_salary", 0], ["payroll_taxes", 0]]);
   for (const entry of input.entries) {
     if (!periodIds.has(entry.periodId)) continue;
     const employee = employeeById.get(entry.employeeId);
     if (!employee) continue;
     const selectedLines = entry.lines?.length
-      ? entry.lines.filter((line) => !input.companyId || line.companyId === input.companyId)
+      ? entry.lines.filter((line) => !companySelected || (line.companyId ? selectedCompanyIds.has(line.companyId) : false))
       : null;
-    if (input.companyId && !selectedLines && entry.companyId !== input.companyId) continue;
-    if (input.companyId && selectedLines?.length === 0) continue;
+    if (companySelected && !selectedLines && (!entry.companyId || !selectedCompanyIds.has(entry.companyId))) continue;
+    if (companySelected && selectedLines?.length === 0) continue;
     const salary = selectedLines
       ? selectedLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0)
       : entry.officialAmount + entry.unofficialAmount + entry.contractorAmount;

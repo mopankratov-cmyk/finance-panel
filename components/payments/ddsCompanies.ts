@@ -1,7 +1,15 @@
 "use client";
 
 import { sameCompanyAlias } from "@/lib/finance/companyAliases";
+import {
+  companyGroupLabel,
+  companyLabel,
+  isLegacySharedExpenseCompany,
+  UNASSIGNED_COMPANY_LABEL,
+} from "@/lib/finance/companyLabels";
 import type { CompanyTaxSystem, CompanyVatMode } from "@/lib/finance/companyTax";
+
+export { companyGroupLabel, companyLabel, UNASSIGNED_COMPANY_LABEL } from "@/lib/finance/companyLabels";
 
 export interface DdsCompany {
   id: string;
@@ -24,18 +32,12 @@ export interface DdsCompanyScopeOptions {
   unassignedCompanyIds: string[];
 }
 
-export const UNASSIGNED_COMPANY_LABEL = "Не распределено по компаниям";
-
-function isLegacySharedExpenseCompany(company: Pick<DdsCompany, "name">): boolean {
-  return company.name === "Общая группа РИО" || company.name === "Основная группа" || company.name === UNASSIGNED_COMPANY_LABEL;
-}
-
 /** Алиасы одного юрлица показываем одним пунктом, настоящие группы — отдельно. */
 export function companyScopeOptions(companies: readonly DdsCompany[]): DdsCompanyScopeOptions {
   const active = companies.filter((company) => company.isActive);
   const grouped = new Map<string, DdsCompany[]>();
   const hiddenCompanyIds = new Set<string>();
-  const unassignedCompanyIds = active.filter(isLegacySharedExpenseCompany).map((company) => company.id);
+  const unassignedCompanyIds = active.filter((company) => isLegacySharedExpenseCompany(company.name)).map((company) => company.id);
   unassignedCompanyIds.forEach((id) => hiddenCompanyIds.add(id));
   for (const company of companies) {
     const groupName = companyGroupLabel(company.groupName.trim());
@@ -57,16 +59,6 @@ export function companyScopeOptions(companies: readonly DdsCompany[]): DdsCompan
     })
     .sort((left, right) => left.name.localeCompare(right.name, "ru"));
   return { groups, companies: active.filter((company) => !hiddenCompanyIds.has(company.id)), unassignedCompanyIds };
-}
-
-// До применения миграции в старых данных могла остаться техническая запись
-// «Общая группа РИО». Это не юрлицо и не вся группа, а корзина общих расходов.
-export function companyLabel(name: string): string {
-  return name === "Общая группа РИО" || name === "Основная группа" ? UNASSIGNED_COMPANY_LABEL : name;
-}
-
-export function companyGroupLabel(name: string): string {
-  return name === "Общая группа РИО" || name === "РИО / ИП Панкратов / ИП Кучеренко" ? "Основная группа" : name;
 }
 
 export interface PaymentCompanyLink {

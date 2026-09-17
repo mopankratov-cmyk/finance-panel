@@ -82,3 +82,27 @@ test("зарплата выбранной компании берётся из �
   assert.equal(result.admin_salary.amount, 100);
   assert.equal(result.payroll_taxes.amount, 13);
 });
+
+test("алиасы одного юрлица объединяют начисления обеих исторических карточек", () => {
+  const result = aggregatePayrollMonthlyFacts({
+    from: "2026-09-01",
+    to: "2026-09-30",
+    companyIds: ["korovkin", "filippov"],
+    periods: [{ id: "p1", periodStart: "2026-09-01", periodEnd: "2026-09-30" }],
+    employees: [{ id: "e1", position: "Финансовый директор" }],
+    entries: [{
+      periodId: "p1",
+      employeeId: "e1",
+      officialAmount: 300,
+      unofficialAmount: 0,
+      contractorAmount: 0,
+      taxAmount: 39,
+      lines: [
+        { amount: 100, taxAmount: 13, companyId: "korovkin" },
+        { amount: 200, taxAmount: 26, companyId: "filippov" },
+      ],
+    }],
+  });
+  assert.equal(result.admin_salary.amount, 300);
+  assert.equal(result.payroll_taxes.amount, 39);
+});
