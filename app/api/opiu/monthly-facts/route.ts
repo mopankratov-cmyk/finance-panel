@@ -55,11 +55,12 @@ export async function GET(request: NextRequest) {
   let payrollFacts: Record<string, MonthlySharedFact> = {};
 
   try {
-    const payments = await loadAllSupabasePages<DdsFactRow>((pageFrom, pageTo) => {
+    const paymentRows = await loadAllSupabasePages<Record<string, unknown>>((pageFrom, pageTo) => {
       let query = db
         .from("payments")
-        .select("amount,category,comment,date,id,company_id")
+        .select("amount,category,comment,date,id,company_id,status,import_source")
         .eq("status", "done")
+        .or("import_source.like.bank-review:%,import_source.like.dds-chain:%,import_source.like.manual-dds:%")
         .gte("date", from)
         .lte("date", to);
       if (requestedCompanyIds.length) query = query.in("company_id", requestedCompanyIds);
@@ -68,6 +69,14 @@ export async function GET(request: NextRequest) {
         .order("id", { ascending: true })
         .range(pageFrom, pageTo);
     }, { label: "ОПиУ: подтверждённые расходы ДДС", maxPages: 100 });
+    const payments: DdsFactRow[] = paymentRows.map((row) => ({
+      amount: num(row.amount),
+      category: row.category == null ? null : String(row.category),
+      comment: row.comment == null ? null : String(row.comment),
+      companyId: row.company_id == null ? null : String(row.company_id),
+      status: String(row.status) as DdsFactRow["status"],
+      importSource: row.import_source == null ? null : String(row.import_source),
+    }));
     const { categories } = await loadDdsExpenseCategories();
     ddsFacts = aggregateDdsMonthlyFacts(payments, categories);
   } catch (error) {
