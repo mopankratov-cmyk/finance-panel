@@ -1,9 +1,19 @@
-import { sameCompanyAlias } from "@/lib/finance/companyAliases";
+import { companyAliasGroup, sameCompanyAlias } from "@/lib/finance/companyAliases";
+import { companyGroupLabel, isLegacySharedExpenseCompany } from "@/lib/finance/companyLabels";
 
 export interface OpiuCompanyOption {
   id: string;
   name: string;
   groupName: string;
+}
+
+export interface OpiuCompanyScope extends OpiuCompanyOption {
+  companyIds: string[];
+  cabinetIds: string[];
+}
+
+interface CompanyRow extends OpiuCompanyOption {
+  isActive?: boolean;
 }
 
 interface LegalEntityRow {
@@ -21,6 +31,7 @@ const normalizeCompanyName = (value: string) => value
   .replace(/ё/g, "е")
   .replace(/[«»"']/g, "")
   .replace(/[^а-яa-z0-9]+/g, " ")
+  .replace(/^(ип|ооо|ао)\s+/, "")
   .trim();
 
 export function companyNamesMatch(left: string, right: string): boolean {
@@ -38,4 +49,41 @@ export function marketplaceCabinetIdsForCompany(
       .map((entity) => entity.id),
   );
   return new Set(links.filter((link) => entityIds.has(link.legalEntityId)).map((link) => link.cabinetId));
+}
+
+/**
+ * ОПиУ показывает одно юрлицо один раз. Исторические карточки
+ * «ИП Коровкин» и «ИП Филиппов» объединяются, но их id сохраняются для
+ * фильтрации ДДС и зарплаты без потери старых операций.
+ */
+export function buildOpiuCompanyScopes(
+  companies: readonly CompanyRow[],
+  legalEntities: readonly LegalEntityRow[] = [],
+  links: readonly LegalEntityCabinetRow[] = [],
+): OpiuCompanyScope[] {
+  const active = companies.filter((company) => company.isActive !== false && !isLegacySharedExpenseCompany(company.name));
+  const grouped = new Map<string, CompanyRow[]>();
+  for (const company of active) {
+    const alias = companyAliasGroup(company.name);
+    const key = alias ? `alias:${alias.join("|")}` : `company:${company.id}`;
+    const members = grouped.get(key) ?? [];
+    members.push(company);
+    grouped.set(key, members);
+  }
+  return [...grouped.values()]
+    .map((members) => {
+      const canonical = members.find((company) => /коровкин/i.test(company.name)) ?? members[0]!;
+      const cabinetIds = new Set<string>();
+      for (const member of members) {
+        for (const id of marketplaceCabinetIdsForCompany(member.name, legalEntities, links)) cabinetIds.add(id);
+      }
+      return {
+        id: canonical.id,
+        name: canonical.name,
+        groupName: companyGroupLabel(canonical.groupName),
+        companyIds: members.map((company) => company.id),
+        cabinetIds: [...cabinetIds],
+      };
+    })
+    .sort((left, right) => left.groupName.localeCompare(right.groupName, "ru") || left.name.localeCompare(right.name, "ru"));
 }

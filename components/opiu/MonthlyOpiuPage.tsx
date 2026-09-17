@@ -7,6 +7,7 @@ import { buildMonthlyOpiuStatement, type MonthlyOpiuAmount, type MonthlyOpiuRow 
 import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
 import { buildMonthlyOpiuSheetPayload, exportMonthlyOpiuToGoogleSheets } from "@/lib/opiu/monthlySheetExport";
 import { combineMonthlySources, type MonthlySourceResult } from "@/lib/opiu/monthlySourceFallback";
+import type { MonthlyMarketplaceSource } from "@/lib/opiu/monthlyMarketplaceSources";
 import { Check, ExternalLink, FileSpreadsheet, LineChart, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -14,6 +15,7 @@ interface MonthlyOpiuResponse {
   period: { from: string; to: string; month: string };
   wb?: Parameters<typeof buildMonthlyOpiuStatement>[0]["wb"];
   ozon?: Parameters<typeof buildMonthlyOpiuStatement>[0]["ozon"];
+  sources?: MonthlyMarketplaceSource[];
   error?: string;
 }
 
@@ -54,8 +56,9 @@ function monthLabel(month: string): string {
 }
 
 function visibleAmount(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string {
-  if (amount.value == null) return "—";
-  return row.kind === "percent" ? formatPct(amount.value) : formatRub(amount.value);
+  const value = amount.value ?? (amount.status === "partial" ? amount.known : null);
+  if (value == null) return "—";
+  return row.kind === "percent" ? formatPct(value) : formatRub(value);
 }
 
 function AmountCell({ amount, row, label }: { amount: MonthlyOpiuAmount; row: MonthlyOpiuRow; label: string }) {
@@ -67,7 +70,8 @@ function AmountCell({ amount, row, label }: { amount: MonthlyOpiuAmount; row: Mo
 }
 
 function KpiValue({ amount, percent = false }: { amount: MonthlyOpiuAmount; percent?: boolean }) {
-  return <>{amount.value == null ? "—" : percent ? formatPct(amount.value) : formatRub(amount.value)}</>;
+  const value = amount.value ?? (amount.status === "partial" ? amount.known : null);
+  return <>{value == null ? "—" : percent ? formatPct(value) : formatRub(value)}</>;
 }
 
 export function MonthlyOpiuPage() {
@@ -83,6 +87,7 @@ export function MonthlyOpiuPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    let active = true;
     const params = new URLSearchParams({ month });
     if (companyId) params.set("company", companyId);
     setLoading(true);
@@ -94,20 +99,36 @@ export function MonthlyOpiuPage() {
     ])
       .then(([marketplaces, facts]) => combineMonthlySources(marketplaces, facts))
       .then((result) => {
+        if (!active) return;
         const nextData = result.data;
         if (!nextData) throw new Error(result.error ?? "Не удалось загрузить ОПиУ");
         setData((previous) => ({ ...nextData, companies: nextData.companies ?? previous?.companies }));
       })
       .catch((reason) => {
-        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        if (!active || (reason instanceof DOMException && reason.name === "AbortError")) return;
         setData(null);
         setError(reason instanceof Error ? reason.message : "Не удалось загрузить ОПиУ");
       })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+      .finally(() => { if (active) setLoading(false); });
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [month, companyId, reloadKey]);
 
   const statement = useMemo(() => data ? buildMonthlyOpiuStatement({ wb: data.wb, ozon: data.ozon, shared: data.shared }) : null, [data]);
+  const sourceColumns = useMemo(() => {
+    if (!data) return [];
+    const sources: MonthlyMarketplaceSource[] = data.sources?.length ? data.sources : [];
+    if (!data.sources?.length && data.wb) sources.push({ id: "wb", label: "WB", marketplace: "wb", wb: data.wb });
+    if (!data.sources?.length && data.ozon) sources.push({ id: "ozon", label: "Ozon", marketplace: "ozon", ozon: data.ozon });
+    return sources.map((source) => ({
+      id: source.id,
+      label: source.label,
+      direction: source.marketplace,
+      statement: buildMonthlyOpiuStatement(source.marketplace === "wb" ? { wb: source.wb } : { ozon: source.ozon }),
+    }));
+  }, [data]);
   const companies = data?.companies ?? [];
   const selectedCompanyLabel = companies.find((company) => company.id === companyId)?.name ?? "Все компании";
 
@@ -123,6 +144,7 @@ export function MonthlyOpiuPage() {
         generatedAt: new Date().toLocaleString("ru-RU"),
         companyKey: companyId || "all",
         companyLabel: selectedCompanyLabel,
+        columns: sourceColumns,
       });
       const result = await exportMonthlyOpiuToGoogleSheets(payload);
       setExportedUrl(result.spreadsheetUrl ?? null);
@@ -167,7 +189,7 @@ export function MonthlyOpiuPage() {
         <button
           type="button"
           onClick={() => void handleExport()}
-          disabled={!statement || exporting}
+          disabled={!statement || loading || exporting}
           className="flex min-h-11 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-semibold text-emerald-700 shadow-sm transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
@@ -182,7 +204,7 @@ export function MonthlyOpiuPage() {
         </a>
       ) : null}
 
-      {statement ? (
+      {!loading && statement ? (
         <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Выручка</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.revenue} /></div></div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">EBITDA</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.ebitda} /></div></div>
@@ -201,12 +223,11 @@ export function MonthlyOpiuPage() {
         </div>
       ) : statement ? (
         <div className="scroll-x rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-[820px] w-full border-collapse text-sm">
+          <table className="w-full border-collapse text-sm" style={{ minWidth: `${Math.max(820, 440 + (sourceColumns.length + 2) * 150)}px` }}>
             <thead>
               <tr className="border-b border-slate-300 bg-[#434343] text-[#ffd966]">
                 <th className="sticky left-0 z-20 min-w-[290px] bg-[#434343] px-4 py-3 text-left font-bold">Статья</th>
-                <th className="w-[120px] px-3 py-3 text-right">WB</th>
-                <th className="w-[120px] px-3 py-3 text-right">Ozon</th>
+                {sourceColumns.map((source) => <th key={source.id} className="min-w-[145px] px-3 py-3 text-right">{source.label}</th>)}
                 <th className="w-[120px] px-3 py-3 text-right">Общие</th>
                 <th className="w-[145px] px-3 py-3 text-right">Итого</th>
               </tr>
@@ -215,7 +236,7 @@ export function MonthlyOpiuPage() {
               {statement.rows.map((row, index) => {
                 if (row.kind === "section") return (
                   <tr key={row.id} className="border-y border-amber-400 bg-amber-300 text-slate-900">
-                    <td colSpan={5} className="bg-amber-300 px-4 py-2 font-bold uppercase tracking-wide"><span className="sticky left-4 inline-block">{row.label}</span></td>
+                    <td colSpan={sourceColumns.length + 3} className="bg-amber-300 px-4 py-2 font-bold uppercase tracking-wide"><span className="sticky left-4 inline-block">{row.label}</span></td>
                   </tr>
                 );
                 const resultRow = row.kind === "result";
@@ -229,8 +250,12 @@ export function MonthlyOpiuPage() {
                       <span>{row.label}</span>
                       {row.description ? <Hint label={`Описание статьи «${row.label}»`} className="ml-1">{row.description}</Hint> : null}
                     </td>
-                    <AmountCell amount={row.amounts.wb} row={row} label="WB" />
-                    <AmountCell amount={row.amounts.ozon} row={row} label="Ozon" />
+                    {sourceColumns.map((source) => {
+                      const sourceRow = source.statement.rows.find((candidate) => candidate.id === row.id);
+                      return sourceRow
+                        ? <AmountCell key={source.id} amount={sourceRow.amounts[source.direction]} row={sourceRow} label={source.label} />
+                        : <td key={source.id} data-label={source.label} className="px-3 py-2.5 text-right text-slate-400">—</td>;
+                    })}
                     <AmountCell amount={row.amounts.shared} row={row} label="Общие" />
                     <td data-label="Итого" className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-slate-900">{visibleAmount(total, row)}</td>
                   </tr>

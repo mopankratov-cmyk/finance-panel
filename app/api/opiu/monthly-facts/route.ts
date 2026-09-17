@@ -11,7 +11,7 @@ import {
 } from "@/lib/opiu/monthlyFacts";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
+import { buildOpiuCompanyScopes, type OpiuCompanyOption } from "@/lib/opiu/companyScope";
 import { loadDdsExpenseCategories } from "@/lib/finance/expenseCategoriesServer";
 
 export const dynamic = "force-dynamic";
@@ -35,12 +35,20 @@ export async function GET(request: NextRequest) {
 
   const companiesResult = await db.from("companies").select("id,name,group_name,is_active").order("group_name").order("name");
   if (companiesResult.error) return NextResponse.json({ error: companiesResult.error.message }, { status: 502 });
-  const companies: OpiuCompanyOption[] = (companiesResult.data ?? [])
-    .filter((row) => row.is_active)
-    .map((row) => ({ id: String(row.id), name: String(row.name), groupName: String(row.group_name ?? "") }));
-  if (requestedCompanyId && !companies.some((company) => company.id === requestedCompanyId)) {
+  const companyScopes = buildOpiuCompanyScopes((companiesResult.data ?? []).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    groupName: String(row.group_name ?? ""),
+    isActive: Boolean(row.is_active),
+  })));
+  const companies: OpiuCompanyOption[] = companyScopes.map(({ id, name, groupName }) => ({ id, name, groupName }));
+  const requestedCompany = requestedCompanyId
+    ? companyScopes.find((company) => company.companyIds.includes(requestedCompanyId))
+    : null;
+  if (requestedCompanyId && !requestedCompany) {
     return NextResponse.json({ error: "Компания не найдена" }, { status: 400 });
   }
+  const requestedCompanyIds = requestedCompany?.companyIds ?? [];
 
   const warnings: string[] = [];
   let ddsFacts: Record<string, MonthlySharedFact> = {};
@@ -54,7 +62,7 @@ export async function GET(request: NextRequest) {
         .eq("status", "done")
         .gte("date", from)
         .lte("date", to);
-      if (requestedCompanyId) query = query.eq("company_id", requestedCompanyId);
+      if (requestedCompanyIds.length) query = query.in("company_id", requestedCompanyIds);
       return query
         .order("date", { ascending: true })
         .order("id", { ascending: true })
@@ -114,7 +122,7 @@ export async function GET(request: NextRequest) {
         employees = employeesRaw.map((row) => ({ id: String(row.id), position: String(row.position ?? "") }));
       }
     }
-    payrollFacts = aggregatePayrollMonthlyFacts({ periods, entries, employees, from, to, companyId: requestedCompanyId });
+    payrollFacts = aggregatePayrollMonthlyFacts({ periods, entries, employees, from, to, companyIds: requestedCompanyIds });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить зарплатную ведомость";
     console.error("[monthly opiu] payroll facts:", message);

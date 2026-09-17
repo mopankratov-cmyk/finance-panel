@@ -39,7 +39,7 @@ test("общий ОПиУ выбирается только по календа�
 });
 
 test("недоступный WB-кабинет не блокирует весь месячный ОПиУ", () => {
-  assert.match(route, /accessibleBrandIds/);
-  assert.match(route, /Promise\.resolve\(\{ error: "Нет доступа к кабинетам WB из состава ОПиУ" \}\)/);
+  assert.match(route, /accessibleBrands/);
+  assert.match(route, /failedWb\("Нет доступа к кабинетам WB из состава ОПиУ"\)/);
   assert.doesNotMatch(route, /return NextResponse\.json\(\{ error: "Нет доступа к WB-кабинету" \}, \{ status: 403 \}\)/);
 });

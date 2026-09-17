@@ -1,5 +1,6 @@
 import type { OpiuCompanyOption } from "./companyScope";
 import type { MarketplaceMonthlyActual } from "./monthlyStatement";
+import type { MonthlyMarketplaceSource } from "./monthlyMarketplaceSources";
 
 export interface MonthlyFactsSource {
   shared?: MarketplaceMonthlyActual["shared"];
@@ -13,6 +14,7 @@ export interface MonthlySourceResult<T> {
 
 export interface CombinedMonthlySources extends MarketplaceMonthlyActual {
   companies?: OpiuCompanyOption[];
+  sources?: MonthlyMarketplaceSource[];
 }
 
 export function combineMonthlySources(
