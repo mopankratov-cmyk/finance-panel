@@ -4,14 +4,23 @@ import { aggregateDdsMonthlyFacts, aggregatePayrollMonthlyFacts, mergeMonthlySha
 
 test("ДДС раскладывается по статьям ОПиУ и не дублирует платежи ведомости", () => {
   const result = aggregateDdsMonthlyFacts([
-    { amount: -100, category: "РКО" },
-    { amount: -50, category: "РКО" },
-    { amount: -70, category: "Расходы на персонал", comment: "[payroll:entry-1] Налог" },
-    { amount: -30, category: "Расходы на персонал", comment: "Подарок сотруднику" },
-    { amount: 200, category: "РКО" },
+    { amount: -100, category: "РКО", status: "done", importSource: "bank-review:1" },
+    { amount: -50, category: "РКО", status: "done", importSource: "dds-chain:1:1" },
+    { amount: -70, category: "Расходы на персонал", comment: "[payroll:entry-1] Налог", status: "done", importSource: "bank-review:2" },
+    { amount: -30, category: "Расходы на персонал", comment: "Подарок сотруднику", status: "done", importSource: "manual-dds:1" },
+    { amount: 200, category: "РКО", status: "done", importSource: "bank-review:3" },
   ]);
   assert.equal(result.bank_fees.amount, 150);
   assert.equal(result.personnel.amount, 30);
+});
+
+test("ОПиУ не принимает завершённые технические строки платёжного календаря за факт ДДС", () => {
+  const result = aggregateDdsMonthlyFacts([
+    { amount: -100, category: "РКО", status: "done", importSource: "bank-review:1" },
+    { amount: -900, category: "РКО", status: "done", importSource: null },
+    { amount: -700, category: "РКО", status: "planned", importSource: "manual-dds:2" },
+  ]);
+  assert.equal(result.bank_fees.amount, 100);
 });
 
 test("полный месяц ведомости даёт начисленный административный и коммерческий ФОТ", () => {

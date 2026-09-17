@@ -1,4 +1,6 @@
 import { LOAN_CATEGORIES } from "@/lib/finance/categories";
+import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
+import type { Payment } from "@/lib/types";
 import { payrollCategoryForEmployee } from "@/lib/payroll/model";
 import { DDS_OPIU_EXPENSE_TARGETS, type DdsExpenseCategory } from "@/lib/finance/expenseCategories";
 
@@ -13,6 +15,8 @@ export interface DdsFactRow {
   category: string | null;
   comment?: string | null;
   companyId?: string | null;
+  status: Payment["status"];
+  importSource: string | null;
 }
 
 export interface PayrollPeriodFact {
@@ -65,6 +69,7 @@ export function aggregateDdsMonthlyFacts(rows: readonly DdsFactRow[], customCate
   const allowedTargets = new Set(DDS_OPIU_EXPENSE_TARGETS.map((article) => article.id));
   const customMapping = new Map(customCategories.filter((category) => category.opiuArticleId && allowedTargets.has(category.opiuArticleId)).map((category) => [category.name, category.opiuArticleId!]));
   for (const row of rows) {
+    if (!isDdsActualPayment(row)) continue;
     const category = String(row.category ?? "").trim();
     const id = DDS_TO_OPIU[category] ?? customMapping.get(category);
     if (!id || row.amount >= 0) continue;
