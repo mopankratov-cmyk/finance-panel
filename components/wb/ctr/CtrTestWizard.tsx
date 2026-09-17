@@ -4,12 +4,16 @@
 import { AlertTriangle, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
-import type { CtrTestType } from "@/lib/ctrtest/model";
+import type { CtrCampaignMode, CtrTestType } from "@/lib/ctrtest/model";
 import type { ContentItem } from "@/lib/content/productLibrary";
 import { ctrTestForecast } from "@/lib/ctrtest/model";
 import { ctrIterationPlan } from "@/lib/ctrtest/iterationPlan";
+import type { CtrCampaignCandidate } from "@/lib/ctrtest/campaignBinding";
+import { WB_RK_BLOCK_LABELS } from "@/lib/wb/advertBlocks";
 import type { CtrCandidate, CtrWizardSeed } from "./types";
 import { ContentPicker } from "./ContentPicker";
+
+const campaignModeLabel: Record<CtrCampaignMode, string> = { search_only: "Только поиск", unified: "Единая ставка (ЕРК)" };
 
 interface VariantDraft { label: string; imageUrl: string; source: string }
 
@@ -93,22 +97,42 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
     windowDays: days,
   }).text, [days, selected, targetImpressions, variants.length]);
 
+  // Режим кампании (владелец 16.09.2026): по умолчанию только поиск, как в
+  // Фазе A — раньше он всегда тестировал на единой ставке (ЕРК), чтобы
+  // показы шли и в поиске, и на полках сразу, и мерить агрегированный CTR
+  // (на полках он всегда выше, чем в поиске с ВЧ-ключом). Выбор в мастере,
+  // не жёстко зашитый режим — оба варианта равноправны.
+  const [campaignMode, setCampaignMode] = useState<CtrCampaignMode>("search_only");
+  const [campaignCandidates, setCampaignCandidates] = useState<CtrCampaignCandidate[]>([]);
+  const [pickedAdvertId, setPickedAdvertId] = useState<number | null>(null);
+  useEffect(() => {
+    setPickedAdvertId(null);
+    if (type !== "ctr" || !selected?.nm) { setCampaignCandidates([]); return; }
+    let cancelled = false;
+    fetch(`/api/ctrtest/campaigns?cabinet=${encodeURIComponent(cabinetId)}&nm=${selected.nm}&mode=${campaignMode}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((body) => { if (!cancelled) setCampaignCandidates(body?.data?.candidates ?? []); })
+      .catch(() => { if (!cancelled) setCampaignCandidates([]); });
+    return () => { cancelled = true; };
+  }, [cabinetId, campaignMode, selected?.nm, type]);
+
   /**
-   * Календарь итераций — на трафике ПРИВЯЗАННОЙ поисковой кампании, не на
-   * смешанном трафике товара (тот уже в `forecast` выше). Резолюция здесь
-   * только предпросмотр: ничего не пишет, реальная привязка происходит один
-   * раз при старте теста (lib/ctrtest/campaignBinding.ts).
+   * Календарь итераций — на трафике ПРИВЯЗАННОЙ (или вручную выбранной)
+   * кампании, не на смешанном трафике товара (тот уже в `forecast` выше).
+   * Резолюция здесь только предпросмотр: ничего не пишет, реальная привязка
+   * происходит один раз при старте теста (lib/ctrtest/campaignBinding.ts).
    */
   const [campaignForecast, setCampaignForecast] = useState<{ dailyViews: number | null; resolutionStatus: string } | null>(null);
   useEffect(() => {
     if (type !== "ctr" || !selected?.nm) { setCampaignForecast(null); return; }
     let cancelled = false;
-    fetch(`/api/ctrtest/campaign-forecast?cabinet=${encodeURIComponent(cabinetId)}&nm=${selected.nm}`, { cache: "no-store" })
+    const advertParam = pickedAdvertId ? `&advert=${pickedAdvertId}` : "";
+    fetch(`/api/ctrtest/campaign-forecast?cabinet=${encodeURIComponent(cabinetId)}&nm=${selected.nm}&mode=${campaignMode}${advertParam}`, { cache: "no-store" })
       .then((response) => response.json())
       .then((body) => { if (!cancelled) setCampaignForecast(body?.data ? { dailyViews: body.data.dailyViews, resolutionStatus: body.data.resolution?.status ?? "none" } : null); })
       .catch(() => { if (!cancelled) setCampaignForecast(null); });
     return () => { cancelled = true; };
-  }, [cabinetId, selected?.nm, type]);
+  }, [cabinetId, campaignMode, pickedAdvertId, selected?.nm, type]);
   const iterationPlan = useMemo(() => type === "ctr" && selected?.nm ? ctrIterationPlan({
     dailyViews: campaignForecast?.dailyViews ?? null,
     targetImpressions,
@@ -182,6 +206,8 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
           targetImpressions,
           spendCapRub,
           sourceTestId: seed?.sourceTestId ?? null,
+          campaignMode: type === "ctr" ? campaignMode : "search_only",
+          advertId: type === "ctr" ? pickedAdvertId : null,
           variants: variants.map((variant, index) => ({ ...variant, isBaseline: index === 0 })),
         }),
       }));
@@ -210,6 +236,31 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
         <label className="text-[11px] font-medium text-slate-600">Интервал, минут<input type="number" min={5} step={5} value={intervalMin} onChange={(event) => setIntervalMin(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
         <label className="text-[11px] font-medium text-slate-600">Лимит расходов, ₽<input type="number" min={100} step={100} value={spendCapRub} onChange={(event) => setSpendCapRub(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
       </div>
+
+      {/*
+        Режим кампании — только для CTR-теста: CR/video мерят не рекламный
+        трафик, кампания им не при чём. По умолчанию «только поиск» (Фаза A),
+        «единая ставка» — для тех, кто, как владелец, всегда мерил
+        агрегированный CTR по поиску и полкам сразу (полки дают более высокий
+        CTR, чем поиск с ВЧ-ключом, и смесь честнее для решения по фото).
+        Кампанию можно выбрать руками — список без порога расхода, свежая
+        кампания видна сразу, ждать накрутку ₽100 не нужно.
+      */}
+      {type === "ctr" ? (
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <label className="text-[11px] font-medium text-slate-600">Режим кампании
+            <select value={campaignMode} onChange={(event) => setCampaignMode(event.target.value as CtrCampaignMode)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400">
+              {(Object.keys(campaignModeLabel) as CtrCampaignMode[]).map((mode) => <option key={mode} value={mode}>{campaignModeLabel[mode]}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] font-medium text-slate-600">Кампания
+            <select value={pickedAdvertId ?? ""} onChange={(event) => setPickedAdvertId(event.target.value ? Number(event.target.value) : null)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400">
+              <option value="">Автоматически при старте</option>
+              {campaignCandidates.map((candidate) => <option key={candidate.advertId} value={candidate.advertId}>{candidate.name || `#${candidate.advertId}`} · {candidate.block ? WB_RK_BLOCK_LABELS[candidate.block] : "?"}</option>)}
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       {/*
         Числа в полях выше сами по себе ничего не говорят. Эта строка переводит

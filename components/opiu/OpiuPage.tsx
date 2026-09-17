@@ -3,7 +3,13 @@
 import { formatPct, formatRub, formatTime } from "@/lib/analytics/format";
 import { currentWeekStartParam, mondayOfWeek, todayParam } from "@/lib/opiu/weeks";
 import type { MonthWeek } from "@/lib/opiu/weeks";
-import { DEFAULT_OPIU_BRAND_ID, OPIU_BRANDS } from "@/lib/opiu/constants";
+import {
+  brandIdsForLegalEntities,
+  DEFAULT_OPIU_BRAND_ID,
+  DEFAULT_OPIU_LEGAL_ENTITY_ID,
+  OPIU_BRANDS,
+  OPIU_LEGAL_ENTITIES,
+} from "@/lib/opiu/constants";
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
 import { buildOpiuSheetPayload, exportOpiuToGoogleSheets, OPIU_SECTION_BEFORE } from "@/lib/opiu/googleSheetExport";
 import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
@@ -110,14 +116,23 @@ function OpiuTableSkeleton({ cols }: { cols: number }) {
   );
 }
 
-function BrandMultiSelect({
+interface MultiSelectOption {
+  id: string;
+  label: string;
+}
+
+function MultiSelectDropdown({
+  fieldLabel,
+  options,
   selected,
   onToggle,
-  label,
+  buttonLabel,
 }: {
+  fieldLabel: string;
+  options: MultiSelectOption[];
   selected: string[];
-  onToggle: (brandId: string) => void;
-  label: string;
+  onToggle: (id: string) => void;
+  buttonLabel: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -140,7 +155,7 @@ function BrandMultiSelect({
 
   return (
     <div ref={rootRef} className="relative flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-slate-500">Бренд</label>
+      <label className="text-sm font-medium text-slate-500">{fieldLabel}</label>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -148,7 +163,7 @@ function BrandMultiSelect({
         aria-expanded={open}
         className="flex h-11 min-w-[180px] items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
       >
-        <span className="truncate">{label}</span>
+        <span className="truncate">{buttonLabel}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
@@ -157,15 +172,15 @@ function BrandMultiSelect({
           aria-multiselectable="true"
           className="absolute left-0 top-full z-20 mt-1 min-w-[220px] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
         >
-          {OPIU_BRANDS.map((b) => {
-            const checked = selected.includes(b.id);
+          {options.map((o) => {
+            const checked = selected.includes(o.id);
             return (
               <button
-                key={b.id}
+                key={o.id}
                 type="button"
                 role="option"
                 aria-selected={checked}
-                onClick={() => onToggle(b.id)}
+                onClick={() => onToggle(o.id)}
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
               >
                 <span
@@ -175,7 +190,7 @@ function BrandMultiSelect({
                 >
                   {checked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
                 </span>
-                {b.label}
+                {o.label}
               </button>
             );
           })}
@@ -186,6 +201,7 @@ function BrandMultiSelect({
 }
 
 export function OpiuPage() {
+  const [legalEntities, setLegalEntities] = useState<string[]>([DEFAULT_OPIU_LEGAL_ENTITY_ID]);
   const [brands, setBrands] = useState<string[]>([DEFAULT_OPIU_BRAND_ID]);
   const [endDate, setEndDate] = useState(todayParam);
   const [tab, setTab] = useState<OpiuTab>("report_date");
@@ -331,6 +347,33 @@ export function OpiuPage() {
     setGoogleResult(null);
   };
 
+  const handleLegalEntityToggle = (entityId: string) => {
+    setLegalEntities((current) => {
+      const next = current.includes(entityId)
+        ? current.filter((e) => e !== entityId)
+        : [...current, entityId];
+      // всегда должно быть выбрано хотя бы одно юрлицо
+      return next.length > 0 ? next : current;
+    });
+    setError(null);
+    setRangeError(null);
+    setGoogleResult(null);
+  };
+
+  // Список брендов сужается выбранными юрлицами; при сужении/смене юрлица
+  // снимаем выбор с брендов, ставших недоступными, и если так ничего не
+  // остаётся — подставляем все бренды заново выбранных юрлиц (не молчим нулём).
+  const allowedBrandIds = brandIdsForLegalEntities(legalEntities);
+  const allowedBrandIdsKey = [...allowedBrandIds].sort().join(",");
+  useEffect(() => {
+    setBrands((current) => {
+      const filtered = current.filter((b) => allowedBrandIds.has(b));
+      if (filtered.length > 0) return filtered;
+      return OPIU_BRANDS.filter((b) => allowedBrandIds.has(b.id)).map((b) => b.id);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedBrandIdsKey]);
+
   const handleRefresh = () => {
     if (tab === "sale_date") {
       if (!isValidRange) return;
@@ -381,6 +424,10 @@ export function OpiuPage() {
 
   const selectedBrandLabels = OPIU_BRANDS.filter((b) => brands.includes(b.id)).map((b) => b.label);
   const currentBrandLabel = selectedBrandLabels.join(", ") || "—";
+  const currentLegalEntityLabel = OPIU_LEGAL_ENTITIES.filter((e) => legalEntities.includes(e.id))
+    .map((e) => e.label)
+    .join(", ") || "—";
+  const brandOptions = OPIU_BRANDS.filter((b) => allowedBrandIds.has(b.id)).map((b) => ({ id: b.id, label: b.label }));
   const report = tab === "report_date" ? data?.report : rangeData?.report;
   const isRangeTab = tab === "sale_date";
   const weekCount = report?.weeks.length ?? 4;
@@ -437,7 +484,21 @@ export function OpiuPage() {
       </div>
 
       <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:flex-wrap lg:items-end">
-        <BrandMultiSelect selected={brands} onToggle={handleBrandToggle} label={currentBrandLabel} />
+        <MultiSelectDropdown
+          fieldLabel="Юр лицо"
+          options={OPIU_LEGAL_ENTITIES.map((e) => ({ id: e.id, label: e.label }))}
+          selected={legalEntities}
+          onToggle={handleLegalEntityToggle}
+          buttonLabel={currentLegalEntityLabel}
+        />
+
+        <MultiSelectDropdown
+          fieldLabel="Бренд"
+          options={brandOptions}
+          selected={brands}
+          onToggle={handleBrandToggle}
+          buttonLabel={currentBrandLabel}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:flex-none">
           <label className="text-sm font-medium text-slate-500">Период</label>

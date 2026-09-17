@@ -60,7 +60,7 @@ export function buildDdsSummary(
     if (to && p.date > to) continue;
     count++;
 
-    const cat = p.category || "Без статьи";
+    const cat = p.category.trim() || "Без статьи";
     const row = byCat.get(cat) ?? { category: cat, income: 0, expense: 0, net: 0 };
     if (p.amount >= 0) row.income += p.amount;
     else row.expense += -p.amount;

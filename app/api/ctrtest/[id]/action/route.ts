@@ -65,20 +65,28 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
-  // Колонки Фазы A (advert_id/shelf_conflict_state, миграция 202609150004)
-  // может ещё не быть в базе — она накатывается владельцем отдельно от
-  // выкладки кода. Откат на старый список полей, а не 500, пока не применена.
-  let test: { id: number; cabinet_id: string; nm_id: number; status: string; test_type: string; round_num: number; advert_id: number | null; shelf_conflict_state: string } | null = null;
+  // Колонки Фазы A (advert_id/shelf_conflict_state, 202609150004) и режима
+  // кампании (campaign_mode, 202609160002) накатываются владельцем отдельно
+  // от выкладки кода. Откат на более старый список полей, а не 500, пока не
+  // применены.
+  let test: { id: number; cabinet_id: string; nm_id: number; status: string; test_type: string; round_num: number; advert_id: number | null; shelf_conflict_state: string; campaign_mode: string } | null = null;
   {
-    const full = await db.from("ctr_tests").select("id, cabinet_id, nm_id, status, test_type, round_num, advert_id, shelf_conflict_state").eq("id", id).maybeSingle();
-    if (full.error?.code === "42703") {
-      const legacy = await db.from("ctr_tests").select("id, cabinet_id, nm_id, status, test_type, round_num").eq("id", id).maybeSingle();
-      if (legacy.error) return fail(missingMigration(legacy.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : legacy.error.message, missingMigration(legacy.error.code) ? 503 : 500);
-      test = legacy.data ? { ...legacy.data, advert_id: null, shelf_conflict_state: "unchecked" } : null;
-    } else if (full.error) {
-      return fail(missingMigration(full.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : full.error.message, missingMigration(full.error.code) ? 503 : 500);
+    const withMode = await db.from("ctr_tests").select("id, cabinet_id, nm_id, status, test_type, round_num, advert_id, shelf_conflict_state, campaign_mode").eq("id", id).maybeSingle();
+    if (withMode.error?.code === "42703") {
+      const full = await db.from("ctr_tests").select("id, cabinet_id, nm_id, status, test_type, round_num, advert_id, shelf_conflict_state").eq("id", id).maybeSingle();
+      if (full.error?.code === "42703") {
+        const legacy = await db.from("ctr_tests").select("id, cabinet_id, nm_id, status, test_type, round_num").eq("id", id).maybeSingle();
+        if (legacy.error) return fail(missingMigration(legacy.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : legacy.error.message, missingMigration(legacy.error.code) ? 503 : 500);
+        test = legacy.data ? { ...legacy.data, advert_id: null, shelf_conflict_state: "unchecked", campaign_mode: "search_only" } : null;
+      } else if (full.error) {
+        return fail(missingMigration(full.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : full.error.message, missingMigration(full.error.code) ? 503 : 500);
+      } else {
+        test = full.data ? { ...full.data, campaign_mode: "search_only" } : null;
+      }
+    } else if (withMode.error) {
+      return fail(missingMigration(withMode.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withMode.error.message, missingMigration(withMode.error.code) ? 503 : 500);
     } else {
-      test = full.data;
+      test = withMode.data;
     }
   }
   if (!test?.cabinet_id) return fail("Тест не найден", 404);
@@ -118,6 +126,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     roundNum: test.round_num,
     advertId: test.advert_id,
     shelfConflictState: test.shelf_conflict_state,
+    campaignMode: test.campaign_mode === "unified" ? "unified" : "search_only",
   });
 
   /**

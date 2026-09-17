@@ -13,14 +13,16 @@ function stableSheetKey(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function directionValue(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string | number {
-  if (amount.value == null) return "";
-  return row.kind === "percent" ? amount.value / 100 : amount.value;
+function displayedValue(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string | number {
+  const value = amount.value ?? (amount.status === "partial" ? amount.known : null);
+  if (value == null) return "";
+  return row.kind === "percent" ? value / 100 : value;
 }
 
-function totalValue(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string | number {
-  if (amount.value == null) return "";
-  return row.kind === "percent" ? amount.value / 100 : amount.value;
+export interface MonthlyOpiuSheetColumn {
+  label: string;
+  statement: MonthlyOpiuStatement;
+  direction: "wb" | "ozon";
 }
 
 export interface MonthlyOpiuSheetPayload {
@@ -30,28 +32,36 @@ export interface MonthlyOpiuSheetPayload {
 
 export function buildMonthlyOpiuSheetPayload(
   statement: MonthlyOpiuStatement,
-  context: { monthKey: string; monthLabel: string; generatedAt: string; companyKey?: string; companyLabel?: string },
+  context: { monthKey: string; monthLabel: string; generatedAt: string; companyKey?: string; companyLabel?: string; columns?: MonthlyOpiuSheetColumn[] },
 ): MonthlyOpiuSheetPayload {
   const companyLabel = context.companyLabel?.trim() || "Все компании";
+  const columns = context.columns?.length ? context.columns : [
+    { label: "WB", statement, direction: "wb" as const },
+    { label: "Ozon", statement, direction: "ozon" as const },
+  ];
+  const width = columns.length + 3;
+  const blankRow = () => Array.from({ length: width - 1 }, () => "");
   const rows: Array<Array<string | number>> = [
-    [`ОПиУ · ${companyLabel} · ${context.monthLabel}`, "", "", "", ""],
-    ["ФАКТ", "", "", "", ""],
-    ["Период", context.monthLabel, "", "", ""],
-    ["Компания", companyLabel, "", "", ""],
-    ["Обновлено", context.generatedAt, "", "", ""],
-    ["Статья", "WB", "Ozon", "Общие", "Итого"],
+    [`ОПиУ · ${companyLabel} · ${context.monthLabel}`, ...blankRow()],
+    ["ФАКТ", ...blankRow()],
+    ["Период", context.monthLabel, ...Array.from({ length: width - 2 }, () => "")],
+    ["Компания", companyLabel, ...Array.from({ length: width - 2 }, () => "")],
+    ["Обновлено", context.generatedAt, ...Array.from({ length: width - 2 }, () => "")],
+    ["Статья", ...columns.map((column) => column.label), "Общие", "Итого"],
   ];
   for (const row of statement.rows) {
     if (row.kind === "section") {
-      rows.push([row.label, "", "", "", ""]);
+      rows.push([row.label, ...blankRow()]);
       continue;
     }
     rows.push([
       row.label,
-      directionValue(row.amounts.wb, row),
-      directionValue(row.amounts.ozon, row),
-      directionValue(row.amounts.shared, row),
-      totalValue(row.amounts.total, row),
+      ...columns.map((column) => {
+        const sourceRow = column.statement.rows.find((candidate) => candidate.id === row.id);
+        return sourceRow ? displayedValue(sourceRow.amounts[column.direction], sourceRow) : "";
+      }),
+      displayedValue(row.amounts.shared, row),
+      displayedValue(row.amounts.total, row),
     ]);
   }
   const identity = `${context.monthKey.trim()}|${context.companyKey?.trim() || companyLabel}`;

@@ -1,4 +1,6 @@
 import { LOAN_CATEGORIES } from "@/lib/finance/categories";
+import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
+import type { Payment } from "@/lib/types";
 import { payrollCategoryForEmployee } from "@/lib/payroll/model";
 import { DDS_OPIU_EXPENSE_TARGETS, type DdsExpenseCategory } from "@/lib/finance/expenseCategories";
 
@@ -13,6 +15,8 @@ export interface DdsFactRow {
   category: string | null;
   comment?: string | null;
   companyId?: string | null;
+  status: Payment["status"];
+  importSource: string | null;
 }
 
 export interface PayrollPeriodFact {
@@ -65,6 +69,7 @@ export function aggregateDdsMonthlyFacts(rows: readonly DdsFactRow[], customCate
   const allowedTargets = new Set(DDS_OPIU_EXPENSE_TARGETS.map((article) => article.id));
   const customMapping = new Map(customCategories.filter((category) => category.opiuArticleId && allowedTargets.has(category.opiuArticleId)).map((category) => [category.name, category.opiuArticleId!]));
   for (const row of rows) {
+    if (!isDdsActualPayment(row)) continue;
     const category = String(row.category ?? "").trim();
     const id = DDS_TO_OPIU[category] ?? customMapping.get(category);
     if (!id || row.amount >= 0) continue;
@@ -106,20 +111,23 @@ export function aggregatePayrollMonthlyFacts(input: {
   from: string;
   to: string;
   companyId?: string | null;
+  companyIds?: readonly string[];
 }): Record<string, MonthlySharedFact> {
   if (!input.periods.length || !input.entries.length) return {};
   const periodIds = new Set(input.periods.map((period) => period.id));
   const employeeById = new Map(input.employees.map((employee) => [employee.id, employee]));
+  const selectedCompanyIds = new Set(input.companyIds?.length ? input.companyIds : input.companyId ? [input.companyId] : []);
+  const companySelected = selectedCompanyIds.size > 0;
   const totals = new Map<string, number>([["admin_salary", 0], ["commercial_salary", 0], ["payroll_taxes", 0]]);
   for (const entry of input.entries) {
     if (!periodIds.has(entry.periodId)) continue;
     const employee = employeeById.get(entry.employeeId);
     if (!employee) continue;
     const selectedLines = entry.lines?.length
-      ? entry.lines.filter((line) => !input.companyId || line.companyId === input.companyId)
+      ? entry.lines.filter((line) => !companySelected || (line.companyId ? selectedCompanyIds.has(line.companyId) : false))
       : null;
-    if (input.companyId && !selectedLines && entry.companyId !== input.companyId) continue;
-    if (input.companyId && selectedLines?.length === 0) continue;
+    if (companySelected && !selectedLines && (!entry.companyId || !selectedCompanyIds.has(entry.companyId))) continue;
+    if (companySelected && selectedLines?.length === 0) continue;
     const salary = selectedLines
       ? selectedLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0)
       : entry.officialAmount + entry.unofficialAmount + entry.contractorAmount;

@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
       counterparty: String(payment.counterparty ?? ""),
       comment: payment.comment == null ? null : String(payment.comment),
       company_id: companyId || null,
+      import_source: payment.importSource == null ? null : String(payment.importSource),
     });
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
     return NextResponse.json({ ok: true });

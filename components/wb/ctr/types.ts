@@ -78,6 +78,8 @@ export interface CtrTestView {
   advertId: number | null;
   /** unchecked/none/pending/confirmed/declined — состояние разбора конкурирующих полочных кампаний. */
   shelfConflictState: "unchecked" | "none" | "pending" | "confirmed" | "declined";
+  /** search_only — только поиск (по умолчанию); unified — единая ставка (ЕРК), поиск+полки вместе. */
+  campaignMode: "search_only" | "unified";
   /** ИИ-разбор фото по метрикам теста — null, пока не запускали. */
   aiAnalysis: { variants: { variantId: number; verdict: string }[]; recommendations: string[] } | null;
   aiAnalysisGeneratedAt: string | null;

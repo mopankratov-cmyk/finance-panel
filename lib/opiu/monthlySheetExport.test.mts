@@ -17,7 +17,7 @@ test("месячный ОПиУ выгружается отдельным лис
   assert.equal(sales[2], 500);
   assert.equal(sales[4], 1500);
   const logistics = payload.rows.find((row) => row[0] === "Логистика маркетплейсов")!;
-  assert.equal(logistics[4], "");
+  assert.equal(logistics[4], 40);
   assert.equal(logistics[2], 40);
 });
 
@@ -31,4 +31,25 @@ test("длинные названия компаний не смешивают �
   assert.match(september.sheetName, /^ОПиУ 2026-09 [0-9a-f]{8} /);
   assert.notEqual(september.sheetName, october.sheetName);
   assert.notEqual(september.sheetName, otherCompany.sheetName);
+});
+
+test("выгрузка повторяет динамические колонки кабинетов и брендов", () => {
+  const norvia = buildMonthlyOpiuStatement({ wb: { revenue_before_spp: 100, commission: 10, acquiring: 0, ad: 0, other: 0, cogs: 20, packaging: 0, logistics: 5, storage: 0, penalty: 0 } });
+  const ozon = buildMonthlyOpiuStatement({ ozon: { revenue: 200, commission: 20, delivery: 10, services: 5, cogs: 40 } });
+  const statement = buildMonthlyOpiuStatement({
+    wb: { revenue_before_spp: 100, commission: 10, acquiring: 0, ad: 0, other: 0, cogs: 20, packaging: 0, logistics: 5, storage: 0, penalty: 0 },
+    ozon: { revenue: 200, commission: 20, delivery: 10, services: 5, cogs: 40 },
+  });
+  const payload = buildMonthlyOpiuSheetPayload(statement, {
+    monthKey: "2026-09",
+    monthLabel: "сентябрь 2026 г.",
+    generatedAt: "16.09.2026",
+    columns: [
+      { label: "WB Norvia · ИП Коровкин", statement: norvia, direction: "wb" },
+      { label: "Ozon ИП Панкратов", statement: ozon, direction: "ozon" },
+    ],
+  });
+  assert.deepEqual(payload.rows[5], ["Статья", "WB Norvia · ИП Коровкин", "Ozon ИП Панкратов", "Общие", "Итого"]);
+  const sales = payload.rows.find((row) => row[0] === "Продажи на МП")!;
+  assert.deepEqual(sales.slice(1), [100, 200, "", 300]);
 });

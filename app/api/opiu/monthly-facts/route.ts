@@ -11,7 +11,7 @@ import {
 } from "@/lib/opiu/monthlyFacts";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
+import { buildOpiuCompanyScopes, type OpiuCompanyOption } from "@/lib/opiu/companyScope";
 import { loadDdsExpenseCategories } from "@/lib/finance/expenseCategoriesServer";
 
 export const dynamic = "force-dynamic";
@@ -35,31 +35,48 @@ export async function GET(request: NextRequest) {
 
   const companiesResult = await db.from("companies").select("id,name,group_name,is_active").order("group_name").order("name");
   if (companiesResult.error) return NextResponse.json({ error: companiesResult.error.message }, { status: 502 });
-  const companies: OpiuCompanyOption[] = (companiesResult.data ?? [])
-    .filter((row) => row.is_active)
-    .map((row) => ({ id: String(row.id), name: String(row.name), groupName: String(row.group_name ?? "") }));
-  if (requestedCompanyId && !companies.some((company) => company.id === requestedCompanyId)) {
+  const companyScopes = buildOpiuCompanyScopes((companiesResult.data ?? []).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    groupName: String(row.group_name ?? ""),
+    isActive: Boolean(row.is_active),
+  })));
+  const companies: OpiuCompanyOption[] = companyScopes.map(({ id, name, groupName }) => ({ id, name, groupName }));
+  const requestedCompany = requestedCompanyId
+    ? companyScopes.find((company) => company.companyIds.includes(requestedCompanyId))
+    : null;
+  if (requestedCompanyId && !requestedCompany) {
     return NextResponse.json({ error: "Компания не найдена" }, { status: 400 });
   }
+  const requestedCompanyIds = requestedCompany?.companyIds ?? [];
 
   const warnings: string[] = [];
   let ddsFacts: Record<string, MonthlySharedFact> = {};
   let payrollFacts: Record<string, MonthlySharedFact> = {};
 
   try {
-    const payments = await loadAllSupabasePages<DdsFactRow>((pageFrom, pageTo) => {
+    const paymentRows = await loadAllSupabasePages<Record<string, unknown>>((pageFrom, pageTo) => {
       let query = db
         .from("payments")
-        .select("amount,category,comment,date,id,company_id")
+        .select("amount,category,comment,date,id,company_id,status,import_source")
         .eq("status", "done")
+        .or("import_source.like.bank-review:%,import_source.like.dds-chain:%,import_source.like.manual-dds:%")
         .gte("date", from)
         .lte("date", to);
-      if (requestedCompanyId) query = query.eq("company_id", requestedCompanyId);
+      if (requestedCompanyIds.length) query = query.in("company_id", requestedCompanyIds);
       return query
         .order("date", { ascending: true })
         .order("id", { ascending: true })
         .range(pageFrom, pageTo);
     }, { label: "ОПиУ: подтверждённые расходы ДДС", maxPages: 100 });
+    const payments: DdsFactRow[] = paymentRows.map((row) => ({
+      amount: num(row.amount),
+      category: row.category == null ? null : String(row.category),
+      comment: row.comment == null ? null : String(row.comment),
+      companyId: row.company_id == null ? null : String(row.company_id),
+      status: String(row.status) as DdsFactRow["status"],
+      importSource: row.import_source == null ? null : String(row.import_source),
+    }));
     const { categories } = await loadDdsExpenseCategories();
     ddsFacts = aggregateDdsMonthlyFacts(payments, categories);
   } catch (error) {
@@ -114,7 +131,7 @@ export async function GET(request: NextRequest) {
         employees = employeesRaw.map((row) => ({ id: String(row.id), position: String(row.position ?? "") }));
       }
     }
-    payrollFacts = aggregatePayrollMonthlyFacts({ periods, entries, employees, from, to, companyId: requestedCompanyId });
+    payrollFacts = aggregatePayrollMonthlyFacts({ periods, entries, employees, from, to, companyIds: requestedCompanyIds });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить зарплатную ведомость";
     console.error("[monthly opiu] payroll facts:", message);

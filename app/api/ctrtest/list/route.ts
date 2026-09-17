@@ -3,6 +3,7 @@ import { resolveWbCardCoverUrl } from "@/lib/wb/cardImage";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
+import { listCtrCampaignCandidates } from "@/lib/ctrtest/campaignBinding";
 import { ctrProductBelongsToCabinet, getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
 import { ctrSnapshotDelta, ctrVariantScore, normalizeCtrCreatePayload, type CtrTestType, type CtrVariantTotals } from "@/lib/ctrtest/model";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
@@ -59,28 +60,38 @@ export async function GET(request: NextRequest) {
   const TEST_COLUMNS = "id, cabinet_id, nm_id, article, name, status, test_type, interval_min, impressions_per_round, target_impressions, spend_cap_rub, live_swap_enabled, auto_error, round_num, current_variant_id, winner_variant_id, winner_explanation, source_test_id, started_at, finished_at, created_by, created_at, updated_at";
   const CAMPAIGN_COLUMNS = "advert_id, shelf_conflict_state";
   const AI_COLUMNS = "ai_analysis, ai_analysis_generated_at";
+  const MODE_COLUMN = "campaign_mode";
   let rawTests: Record<string, unknown>[] | null = null;
   {
-    const withAll = await db.from("ctr_tests").select(`${TEST_COLUMNS}, ${CAMPAIGN_COLUMNS}, ${AI_COLUMNS}`).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
-    if (withAll.error?.code === "42703") {
-      // Миграция Фазы D (202609150005, ai_analysis) ещё не применена —
-      // пробуем без неё, с полями кампании/полок из Фазы A.
-      const withCampaign = await db.from("ctr_tests").select(`${TEST_COLUMNS}, ${CAMPAIGN_COLUMNS}`).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
-      if (withCampaign.error?.code === "42703") {
-        // И миграция Фазы A (202609150004) тоже ещё не применена — список
-        // работает как раньше, без полей кампании/полок/ИИ-разбора.
-        const base = await db.from("ctr_tests").select(TEST_COLUMNS).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
-        if (base.error) return fail(migrationMissing(base.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : base.error.message, migrationMissing(base.error.code) ? 503 : 500);
-        rawTests = (base.data ?? []).map((row) => ({ ...row, advert_id: null, shelf_conflict_state: "unchecked", ai_analysis: null, ai_analysis_generated_at: null }));
-      } else if (withCampaign.error) {
-        return fail(migrationMissing(withCampaign.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withCampaign.error.message, migrationMissing(withCampaign.error.code) ? 503 : 500);
+    const withMode = await db.from("ctr_tests").select(`${TEST_COLUMNS}, ${CAMPAIGN_COLUMNS}, ${AI_COLUMNS}, ${MODE_COLUMN}`).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
+    if (withMode.error?.code === "42703") {
+      // Миграция режима кампании (202609160002, campaign_mode) ещё не
+      // применена — пробуем без неё, дальше цепочка как раньше.
+      const withAll = await db.from("ctr_tests").select(`${TEST_COLUMNS}, ${CAMPAIGN_COLUMNS}, ${AI_COLUMNS}`).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
+      if (withAll.error?.code === "42703") {
+        // Миграция Фазы D (202609150005, ai_analysis) ещё не применена —
+        // пробуем без неё, с полями кампании/полок из Фазы A.
+        const withCampaign = await db.from("ctr_tests").select(`${TEST_COLUMNS}, ${CAMPAIGN_COLUMNS}`).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
+        if (withCampaign.error?.code === "42703") {
+          // И миграция Фазы A (202609150004) тоже ещё не применена — список
+          // работает как раньше, без полей кампании/полок/ИИ-разбора.
+          const base = await db.from("ctr_tests").select(TEST_COLUMNS).eq("cabinet_id", cabinetId).order("created_at", { ascending: false }).limit(100);
+          if (base.error) return fail(migrationMissing(base.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : base.error.message, migrationMissing(base.error.code) ? 503 : 500);
+          rawTests = (base.data ?? []).map((row) => ({ ...row, advert_id: null, shelf_conflict_state: "unchecked", ai_analysis: null, ai_analysis_generated_at: null, campaign_mode: "search_only" }));
+        } else if (withCampaign.error) {
+          return fail(migrationMissing(withCampaign.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withCampaign.error.message, migrationMissing(withCampaign.error.code) ? 503 : 500);
+        } else {
+          rawTests = (withCampaign.data ?? []).map((row) => ({ ...row, ai_analysis: null, ai_analysis_generated_at: null, campaign_mode: "search_only" }));
+        }
+      } else if (withAll.error) {
+        return fail(migrationMissing(withAll.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withAll.error.message, migrationMissing(withAll.error.code) ? 503 : 500);
       } else {
-        rawTests = (withCampaign.data ?? []).map((row) => ({ ...row, ai_analysis: null, ai_analysis_generated_at: null }));
+        rawTests = (withAll.data ?? []).map((row) => ({ ...row, campaign_mode: "search_only" }));
       }
-    } else if (withAll.error) {
-      return fail(migrationMissing(withAll.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withAll.error.message, migrationMissing(withAll.error.code) ? 503 : 500);
+    } else if (withMode.error) {
+      return fail(migrationMissing(withMode.error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : withMode.error.message, migrationMissing(withMode.error.code) ? 503 : 500);
     } else {
-      rawTests = withAll.data;
+      rawTests = withMode.data;
     }
   }
   const ids = (rawTests ?? []).map((row) => Number(row.id));
@@ -155,6 +166,7 @@ export async function GET(request: NextRequest) {
       sourceTestId: row.source_test_id == null ? null : Number(row.source_test_id),
       advertId: row.advert_id == null ? null : Number(row.advert_id),
       shelfConflictState: String(row.shelf_conflict_state ?? "unchecked"),
+      campaignMode: row.campaign_mode === "unified" ? "unified" : "search_only",
       aiAnalysis: (row.ai_analysis as { variants: { variantId: number; verdict: string }[]; recommendations: string[] } | null) ?? null,
       aiAnalysisGeneratedAt: (row.ai_analysis_generated_at as string | null) ?? null,
       variants: rawVariants.map((variant) => publicVariant(variant, type, baselineScore)),
@@ -192,6 +204,19 @@ export async function POST(request: NextRequest) {
     if (!source) return fail("Исходный тест маховика не найден в этом кабинете", 400);
   }
   /**
+   * Ручной выбор кампании (владелец 16.09.2026: хочет сам выбирать, а не
+   * только доверять авторезолюции) — не доверяем клиенту id как есть,
+   * сверяем с тем же списком кандидатов, что отдаёт мастеру пикер. Так
+   * нельзя подсунуть чужую кампанию или кампанию не того вида размещения
+   * (полочную в режим "только поиск" и наоборот).
+   */
+  if (normalized.value.advertId != null && normalized.value.testType === "ctr") {
+    const candidates = await listCtrCampaignCandidates(db, cabinetId, normalized.value.nmId, normalized.value.campaignMode);
+    if (!candidates.some((candidate) => candidate.advertId === normalized.value.advertId)) {
+      return fail("Выбранная кампания не найдена среди подходящих для этого режима на этом артикуле", 400);
+    }
+  }
+  /**
    * Ссылку на текущее фото карточки чиним ЗДЕСЬ, а не доверяем клиенту.
    *
    * Мастер собирает её формулой `estimateBasket`, которая протухает при каждой
@@ -216,5 +241,19 @@ export async function POST(request: NextRequest) {
     p_actor: session?.email ?? null,
   });
   if (error) return fail(migrationMissing(error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : error.message, migrationMissing(error.code) ? 503 : 500);
+  /**
+   * `create_ctr_test` (SQL, 20260713_ctr_test_lifecycle.sql) не знает о
+   * campaign_mode/advert_id — они появились позже (202609160002). Пишем
+   * отдельным update, а не трогаем уже применённую RPC. При ручном выборе
+   * кампании shelf_conflict_state НЕ трогаем здесь — его по-прежнему
+   * проверяет ensureCtrTestCampaignBinding на первом "старте", свежими
+   * данными, а не теми, что были на момент создания черновика.
+   */
+  if (normalized.value.testType === "ctr" && (normalized.value.campaignMode !== "search_only" || normalized.value.advertId != null)) {
+    const update: Record<string, unknown> = { campaign_mode: normalized.value.campaignMode };
+    if (normalized.value.advertId != null) update.advert_id = normalized.value.advertId;
+    const { error: updateError } = await db.from("ctr_tests").update(update).eq("id", id);
+    if (updateError && !migrationMissing(updateError.code)) return fail(updateError.message, 500);
+  }
   return NextResponse.json({ data: { id: Number(id) }, error: null }, { status: 201 });
 }

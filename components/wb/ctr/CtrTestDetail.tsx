@@ -418,8 +418,14 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
             {test.status !== "done" && test.status !== "cancelled" ? <button type="button" disabled={busy} onClick={() => trigger("cancel")} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-rose-200 px-3 text-[11px] font-semibold text-rose-600 disabled:opacity-50"><XCircle className="h-3.5 w-3.5" />Отменить</button> : null}
           </div>
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-4">
-          {[['Раунд', test.roundNum], ['Интервал', `${test.intervalMin} мин`], ['Цель', `${number(test.targetImpressions)} показов`], ['Режим', test.liveSwapEnabled ? 'меняет сама' : 'ручная ротация']].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><div className="text-[9px] uppercase text-slate-400">{label}</div><div className="mt-1 text-xs font-bold text-slate-700">{value}</div></div>)}
+        <div className={`mt-4 grid gap-2 ${test.testType === "ctr" ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
+          {[
+            ['Раунд', test.roundNum],
+            ['Интервал', `${test.intervalMin} мин`],
+            ['Цель', `${number(test.targetImpressions)} показов`],
+            ['Режим', test.liveSwapEnabled ? 'меняет сама' : 'ручная ротация'],
+            ...(test.testType === "ctr" ? [['Кампания', `${test.campaignMode === "unified" ? "ЕРК" : "поиск"}${test.advertId ? ` · #${test.advertId}` : " · не привязана"}`]] : []),
+          ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><div className="text-[9px] uppercase text-slate-400">{label}</div><div className="mt-1 text-xs font-bold text-slate-700">{value}</div></div>)}
         </div>
         <div className="mt-3"><div className="flex justify-between text-[10px] text-slate-500"><span>Расход теста</span><span>{number(spent)} / {number(test.spendCapRub)} ₽</span></div><div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${spentPct >= 100 ? "bg-rose-500" : "bg-violet-500"}`} style={{ width: `${spentPct}%` }} /></div></div>
         {test.liveSwapEnabled && test.autoError ? (
