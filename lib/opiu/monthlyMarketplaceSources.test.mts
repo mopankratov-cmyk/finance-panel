@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateOzonSources, aggregateWbSources, coalesceWbSources, type MonthlyMarketplaceSource } from "./monthlyMarketplaceSources.ts";
+import { aggregateOzonSources, aggregateWbSources, coalesceWbSources, wbBrandCompanyName, type MonthlyMarketplaceSource } from "./monthlyMarketplaceSources.ts";
 
 const wb = (revenue: number) => ({
   revenue_before_spp: revenue,
@@ -50,4 +50,12 @@ test("частичный сбой второго WB-кабинета остаё�
   ]);
   assert.equal(sources[0]?.wb?.revenue_before_spp, 100);
   assert.deepEqual(sources[0]?.wb?.warnings, ["Оптима недоступна"]);
+});
+
+test("Riobox принадлежит Оптиме, а не Филиппову/Коровкину", () => {
+  assert.equal(wbBrandCompanyName({ id: "norvia", entity: "Retail Family" }), "ИП Филиппов");
+  assert.equal(wbBrandCompanyName({ id: "heaton", entity: "Retail Family" }), "ИП Филиппов");
+  assert.equal(wbBrandCompanyName({ id: "optima-norvia", entity: "Retail Family" }), "Оптима");
+  assert.equal(wbBrandCompanyName({ id: "optima-heaton", entity: "Retail Family" }), "Оптима");
+  assert.equal(wbBrandCompanyName({ id: "optima-riobox", entity: "ООО РИО" }), "Оптима");
 });

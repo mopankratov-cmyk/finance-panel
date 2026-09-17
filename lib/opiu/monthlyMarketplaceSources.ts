@@ -1,4 +1,5 @@
 import type { MarketplaceMonthlyActual } from "./monthlyStatement";
+import type { OpiuBrand } from "./constants";
 
 export interface MonthlyMarketplaceSource extends MarketplaceMonthlyActual {
   id: string;
@@ -15,6 +16,13 @@ const sumNullable = <T>(rows: readonly T[], pick: (row: T) => number | null) => 
   const values = rows.map(pick).filter((value): value is number => value != null);
   return values.length ? Math.round(values.reduce((total, value) => total + value, 0)) : null;
 };
+
+/** Бизнес-владелец бренда важнее общей связи кабинета с юрлицами. */
+export function wbBrandCompanyName(brand: Pick<OpiuBrand, "id" | "entity">): string {
+  if (brand.id.startsWith("optima-")) return "Оптима";
+  if (brand.id === "norvia" || brand.id === "heaton") return "ИП Филиппов";
+  return brand.entity;
+}
 
 export function aggregateWbSources(sources: readonly MonthlyMarketplaceSource[]): WbActual {
   const ready = sources.flatMap((source) => source.wb && !source.wb.error ? [source.wb] : []);
