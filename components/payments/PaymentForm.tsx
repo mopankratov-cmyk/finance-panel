@@ -149,7 +149,7 @@ export function PaymentForm({
 
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">
-          Счёт
+          {payment?.importSource?.startsWith("bank-review:") ? "Банк / кошелёк" : "Счёт"}
         </label>
         <select
           name="accountId"
@@ -164,7 +164,9 @@ export function PaymentForm({
           ))}
         </select>
         <p className="mt-1 text-xs text-slate-400">
-          Здесь сохраняются только фактические операции. Плановые добавляются в платёжном календаре.
+          {payment?.importSource?.startsWith("bank-review:")
+            ? "Выберите банковский кошелёк, к которому относится операция из выписки."
+            : "Здесь сохраняются только фактические операции. Плановые добавляются в платёжном календаре."}
         </p>
       </div>
 

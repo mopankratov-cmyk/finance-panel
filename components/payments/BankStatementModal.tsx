@@ -2,10 +2,12 @@
 
 import { CounterpartySelect } from "./CounterpartySelect";
 import { applyBankCounterparties } from "./bankCounterpartyOverrides";
+import { applyBankPurposes } from "./bankPurposeOverrides";
 import { AlertTriangle, FileSpreadsheet, Loader2, X } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { BankStatement } from "./bankStatement";
 import { requiresCounterparty, type BankSuggestion } from "./bankAutoClassify";
+import { mandatoryBankCategory } from "@/lib/opiu/bankPaymentRules";
 import type { DdsCompany } from "./ddsCompanies";
 import { rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
 import { needsDirectUpload, uploadViaStorage } from "./uploadViaStorage";
@@ -36,12 +38,13 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   const [confirmedCategories, setConfirmedCategories] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<Map<string, string>>(new Map());
   const [counterpartyOverrides, setCounterpartyOverrides] = useState<Map<string,string>>(new Map());
+  const [purposeOverrides, setPurposeOverrides] = useState<Map<string,string>>(new Map());
   const [included, setIncluded] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<BankSuggestion[]>([]);
-  const [done, setDone] = useState<{ queued: number; approved: number; matchedTransfers: number } | null>(null);
+  const [done, setDone] = useState<{ queued: number; approved: number; matchedTransfers: number; duplicatesSkipped: number } | null>(null);
   const [controlMismatchAccepted, setControlMismatchAccepted] = useState(false);
 
   const selectedAccount = accounts.find((account) => account.id === accountId);
@@ -58,6 +61,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setCategories(new Map());
     setConfirmedCategories(new Set());
     setCounterpartyOverrides(new Map());
+    setPurposeOverrides(new Map());
     setIncluded(new Set());
     setBulkCategory("");
     setSuggestions([]);
@@ -91,6 +95,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       setStatement(parsed);
       setConfirmedCategories(new Set());
       setCounterpartyOverrides(new Map());
+      setPurposeOverrides(new Map());
       setFileName(file.name);
       setControlMismatchAccepted(false);
       setIncluded(new Set(parsed.rows.map((row) => row.id)));
@@ -131,6 +136,21 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setConfirmedCategories(current => new Set(current).add(id));
   };
 
+  const setPurpose = (id: string, purpose: string) => {
+    const suggestion = suggestions.find((item) => item.row.id === id);
+    if (suggestion) {
+      const previousPurpose = purposeOverrides.get(id) ?? suggestion.row.purpose;
+      const previousMandatory = mandatoryBankCategory({ ...suggestion.row, purpose: previousPurpose });
+      const nextMandatory = mandatoryBankCategory({ ...suggestion.row, purpose });
+      if (nextMandatory) {
+        setCategories((current) => new Map(current).set(id, nextMandatory));
+      } else if (previousMandatory && !confirmedCategories.has(id)) {
+        setCategories((current) => new Map(current).set(id, ""));
+      }
+    }
+    setPurposeOverrides((current) => new Map(current).set(id, purpose));
+  };
+
   const applyBulkCategory = () => {
     if (!bulkCategory) return;
     setConfirmedCategories(current => new Set([...current,...included]));
@@ -150,18 +170,24 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setLoading(true);
     setError(null);
     try {
-      const selectedSuggestions = applyBankCounterparties(suggestions, counterpartyOverrides)
+      const selectedSuggestions = applyBankPurposes(
+        applyBankCounterparties(suggestions, counterpartyOverrides),
+        purposeOverrides,
+      )
         .filter((suggestion) => included.has(suggestion.row.id))
         .map((suggestion) => {
           const category = categories.get(suggestion.row.id) || null;
           const rowCompanyId = companyId || suggestion.companyId;
+          const mandatoryCategory = mandatoryBankCategory(suggestion.row);
+          const confidence = mandatoryCategory ? 1 : suggestion.confidence;
           return {
             ...suggestion,
             companyId: rowCompanyId,
             accountId,
             category,
+            confidence,
             categoryConfirmed: confirmedCategories.has(suggestion.row.id),
-            needsReview: !category || !rowCompanyId || suggestion.confidence < 0.85 || (requiresCounterparty(category) && !suggestion.row.counterparty.trim()),
+            needsReview: !category || !rowCompanyId || confidence < 0.85 || (requiresCounterparty(category) && !suggestion.row.counterparty.trim()),
           };
         });
       const result = await saveBankReviewBatch(statement, selectedSuggestions, fileName);
@@ -194,7 +220,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       {done ? (
         <div className="space-y-4 text-sm">
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-            Добавлено в ДДС: <b>{done.approved}</b>. Требуют проверки: <b>{done.queued}</b>. Связано переводов между выписками: <b>{done.matchedTransfers}</b>.
+            Добавлено в ДДС: <b>{done.approved}</b>. Требуют проверки: <b>{done.queued}</b>. Пропущено дублей: <b>{done.duplicatesSkipped}</b>. Связано переводов между выписками: <b>{done.matchedTransfers}</b>.
           </div>
           <button onClick={() => { close(); onQueued(); }} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white">
             Вернуться к операциям
@@ -214,8 +240,9 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
 
           {statement && (
             <>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <Stat label="Операций" value={String(statement.rows.length)} />
+                <Stat label="Банк" value={statement.bank} />
                 <Stat label="Счёт" value={statement.accountNumber} />
                 <Stat label="Расходы" value={formatMoney(-statement.declaredDebit)} />
                 <Stat label="Поступления" value={formatMoney(statement.declaredCredit)} />
@@ -258,7 +285,16 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                         <td className="whitespace-nowrap p-2">{row.date}</td>
                         <td className={`whitespace-nowrap p-2 text-right font-semibold ${row.amount >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatMoney(row.amount)}</td>
                         <td className="p-2"><CounterpartySelect ariaLabel={`Контрагент операции от ${row.date} на ${formatMoney(row.amount)}`} value={counterpartyOverrides.get(row.id) ?? row.counterparty} options={counterparties} disabled={loading} onChange={name => setCounterpartyOverrides(current => new Map(current).set(row.id,name))}/></td>
-                        <td className="break-anywhere p-2 lg:max-w-72 lg:truncate" title={row.purpose}>{row.purpose}</td>
+                        <td className="p-2">
+                          <textarea
+                            aria-label={`Назначение операции от ${row.date} на ${formatMoney(row.amount)}`}
+                            value={purposeOverrides.get(row.id) ?? row.purpose}
+                            disabled={loading}
+                            rows={2}
+                            onChange={(event) => setPurpose(row.id, event.target.value)}
+                            className="min-h-11 w-full resize-y rounded border border-slate-300 px-2 py-1.5"
+                          />
+                        </td>
                         <td className="p-2">
                           <select value={categories.get(row.id) ?? ""} onChange={(e) => setCategory(row.id, e.target.value)} className="min-h-10 w-full rounded border border-slate-300 px-2">
                             <option value="">Выберите статью</option>

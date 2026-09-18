@@ -33,6 +33,7 @@ test("одна колонка «Сумма» без направления — �
   ];
   const statement = statementFromGrid(grid, "", "h");
   assert.equal(statement.rows.length, 2);
+  assert.equal(statement.rows[0].documentNumber, "", "номер строки нельзя выдавать за номер банковского документа");
   assert.ok(statement.warnings.some((warning) => /знак операций не определён/.test(warning)));
   const withDirection = statementFromGrid([
     ["Дата", "Сумма", "Тип операции"],
@@ -47,4 +48,25 @@ test("владелец распознаётся и по «Наименовани
   const statement = statementFromGrid([["Дата", "Списание"], ["01.08.2027", "5"]], "Наименование клиента: ООО Вектор ИНН: 7701234567 Счет: 1", "h");
   assert.equal(statement.owner, "ООО Вектор");
   assert.equal(statement.ownerInn, "7701234567");
+});
+
+test("Ozon определяется по шапке, а счёт владельца и реквизиты — в двухстрочной форме банка", () => {
+  const grid = [
+    ["", "ООО \"ОЗОН БАНК\""],
+    ["", "Клиент:", "", "", "", "ИП Панкратов Максим Олегович"],
+    ["", "ИНН:", "", "", "", "280888215133"],
+    ["", "Счет:", "", "", "", "40802810100000112301"],
+    ["", "Входящий остаток:", "", "", "", "0"],
+    ["", "Исходящий остаток:", "", "", "", "25625.88"],
+    ["", "Дата", "Номер документа", "Дебет", "Кредит", "Контрагент", "", "", "Назначение платежа"],
+    ["", "", "", "", "", "Наименование, ИНН", "Cчёт, БИК банка"],
+    ["", "11.09.2026", "80", "21000", "", "ООО \"ПИОНЕР ПРО\"\nИНН:7709976927", "Р/С:40702810901500001720\nБИК:044525104", "", "По счету №3266. Банк Точка указан только в операции"],
+  ];
+  const metadata = grid.flat().join(" ");
+  const statement = statementFromGrid(grid, metadata, "ozon-hash");
+  assert.equal(statement.bank, "Ozon Банк");
+  assert.equal(statement.accountNumber, "40802810100000112301");
+  assert.equal(statement.closingBalance, 25625.88);
+  assert.equal(statement.rows[0].counterpartyInn, "7709976927");
+  assert.equal(statement.rows[0].counterpartyAccount, "40702810901500001720");
 });

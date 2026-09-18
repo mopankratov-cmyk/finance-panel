@@ -121,7 +121,17 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
     }
     throw new Error("Не удалось определить заголовки банковской выписки. Нужны колонки с датой и суммой операции");
   }
-  const headers = grid[headerIndex].map(normalize);
+  // Некоторые банки (в частности Ozon) делят заголовок на две строки:
+  // «Контрагент» / «Наименование, ИНН» и пусто / «Счёт, БИК банка».
+  // Для выбора колонок рассматриваем обе строки как один заголовок.
+  const possibleHeaderContinuation = grid[headerIndex + 1] ?? [];
+  const headerContinuation = possibleHeaderContinuation.some((cell) => Boolean(statementIsoDate(cell ?? "")))
+    ? []
+    : possibleHeaderContinuation;
+  const headers = grid[headerIndex].map((cell, index) => normalize(
+    `${cell ?? ""} ${headerContinuation[index] ?? ""}`
+      .replace(/Cч[её]т/gi, "Счет"),
+  ));
   const column = (names: readonly string[], forbidden: string[] = []) => {
     const exact = headers.findIndex((cell) => names.includes(cell));
     if (exact >= 0) return exact;
@@ -135,8 +145,8 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
   const documentColumn = column(aliases.document);
   const accountColumn = column(aliases.account, ["контрагент", "получател", "плательщик", "корр", "банк"]);
   const counterpartyColumn = column(aliases.counterparty);
-  const innColumn = column(aliases.inn);
-  const counterpartyAccountColumn = column(aliases.counterpartyAccount);
+  const innColumn = column(aliases.inn, ["контрагент", "наименование"]);
+  const counterpartyAccountColumn = column([...aliases.counterpartyAccount, "счет бик банка"]);
   const purposeColumn = column(aliases.purpose);
   const operations: BankStatementRow[] = [];
   const accountCounts = new Map<string, number>();
@@ -160,16 +170,25 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
       if (/зачис|приход|кредит|поступ/.test(direction)) amount = Math.abs(rawAmount);
     }
     if (!amount) continue;
-    const documentNumber = documentColumn >= 0 ? cells[documentColumn]?.trim() ?? "" : String(index + 1);
+    const documentNumber = documentColumn >= 0 ? cells[documentColumn]?.trim() ?? "" : "";
     const account = accountColumn >= 0 ? (cells[accountColumn] ?? "").replace(/\D/g, "") : "";
+    const counterparty = counterpartyColumn >= 0 ? cells[counterpartyColumn]?.trim() ?? "" : "";
+    const counterpartyAccount = counterpartyAccountColumn >= 0
+      ? (cells[counterpartyAccountColumn] ?? "").match(/(?:р\/?с|счет|счёт)\s*:?[\s\r\n]*(\d{15,25})/i)?.[1]
+        ?? (cells[counterpartyAccountColumn] ?? "").match(/\b(\d{20})\b/)?.[1]
+        ?? ""
+      : "";
+    const counterpartyInn = innColumn >= 0
+      ? cells[innColumn]?.trim() ?? ""
+      : counterparty.match(/инн\s*:?\s*(\d{10,12})/i)?.[1] ?? "";
     if (account.length >= 15) accountCounts.set(account, (accountCounts.get(account) ?? 0) + 1);
     operations.push({
       id: `${documentHash}:${index + 1}`,
       date,
       amount,
-      counterparty: counterpartyColumn >= 0 ? cells[counterpartyColumn]?.trim() ?? "" : "",
-      counterpartyInn: innColumn >= 0 ? cells[innColumn]?.trim() ?? "" : "",
-      counterpartyAccount: counterpartyAccountColumn >= 0 ? cells[counterpartyAccountColumn]?.trim() ?? "" : "",
+      counterparty,
+      counterpartyInn,
+      counterpartyAccount,
       purpose: purposeColumn >= 0 ? cells[purposeColumn]?.replace(/\s+/g, " ").trim() ?? "" : "",
       documentNumber,
     });
@@ -199,11 +218,19 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
   if (controlDebit && Math.abs(actualDebit - controlDebit) > 0.01) warnings.push("Сумма расходов не совпала с контрольной суммой банка");
   if (controlCredit && Math.abs(actualCredit - controlCredit) > 0.01) warnings.push("Сумма поступлений не совпала с контрольной суммой банка");
   const dates = operations.map((row) => row.date).sort();
-  const accountNumber = [...accountCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  const ownerAccountNumber = metadata.match(/(?:Счет|Счёт)\s*:?\s*(\d{15,25})/i)?.[1] ?? "";
+  const accountNumber = ownerAccountNumber
+    || [...accountCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+    || "";
 
   const owner = metadata.match(/(?:Клиент|Владелец|Наименование\s+клиента|Наименование\s+организации)\s*:?\s*([^<]{3,160}?)(?=\s+ИНН\s*:|\s+Счет\s*:|\s+Счёт\s*:)/i)?.[1]?.trim() ?? "";
   const ownerInn = metadata.match(/ИНН\s*:?\s*(\d{10,12})/i)?.[1] ?? "";
-  const bank = /банк точка/i.test(metadata) ? "Банк Точка" : /озон банк|ozon/i.test(metadata) ? "Ozon Банк" : /т[- ]?банк|тинькофф/i.test(metadata) ? "Т-Банк" : "Банковская выписка";
+  const operationHeaderIndex = metadata.search(/\bДата\s+(?:Номер документа\s+)?(?:Дебет|Списание|Сумма)/i);
+  const statementHeader = operationHeaderIndex >= 0 ? metadata.slice(0, operationHeaderIndex) : metadata.slice(0, 1_000);
+  const bank = /озон банк|ozon bank/i.test(statementHeader) ? "Ozon Банк"
+    : /банк точка|точка банк/i.test(statementHeader) ? "Банк Точка"
+      : /т[- ]?банк|тинькофф/i.test(statementHeader) ? "Т-Банк"
+        : "Банковская выписка";
   return {
     documentHash,
     bank,
@@ -212,8 +239,8 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
     accountNumber,
     dateFrom: dates[0] ?? "",
     dateTo: dates.at(-1) ?? "",
-    openingBalance: 0,
-    closingBalance: 0,
+    openingBalance: parseStatementNumber(valueAfterLabel(grid, /^входящий остаток/)),
+    closingBalance: parseStatementNumber(valueAfterLabel(grid, /^исходящий остаток/)),
     declaredDebit,
     declaredCredit,
     rows: operations,

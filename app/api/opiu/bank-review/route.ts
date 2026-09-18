@@ -11,6 +11,7 @@ import { findCertainTransferPairs } from "@/lib/opiu/bankTransferMatching";
 import { transferCategories } from "@/lib/opiu/bankTransferClassification";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { audit } from "@/lib/audit/log";
+import { bankOperationIdentity, operationIdentityFromReasons } from "@/lib/opiu/bankOperationIdentity";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
 type SuggestionInput = {
@@ -22,6 +23,7 @@ type SuggestionInput = {
     counterpartyInn?: string;
     counterpartyAccount?: string;
     purpose?: string;
+    documentNumber?: string;
   };
   companyId?: string | null;
   accountId?: string | null;
@@ -187,6 +189,15 @@ export async function POST(request: Request) {
     const date = text(row?.date, 10);
     const amount = Number(row?.amount);
     if (!externalId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(amount) || amount === 0) return [];
+    const operationIdentity = bankOperationIdentity({
+      bankAccountNumber,
+      date,
+      amount,
+      documentNumber: row?.documentNumber,
+      counterpartyAccount: row?.counterpartyAccount,
+      counterpartyInn: row?.counterpartyInn,
+      counterparty: row?.counterparty,
+    });
     return [{
       id: crypto.randomUUID(),
       batch_id: batchId,
@@ -210,9 +221,10 @@ export async function POST(request: Request) {
       }) ?? (text(suggestion.category, 255) || null),
       confidence: Math.min(1, Math.max(0, Number(suggestion.confidence) || 0)),
       reasons: [
-        ...(Array.isArray(suggestion.reasons) ? suggestion.reasons.slice(0, 19).map((reason) => text(reason, 500)) : []),
+        ...(Array.isArray(suggestion.reasons) ? suggestion.reasons.slice(0, 18).map((reason) => text(reason, 500)) : []),
         `${COUNTERPARTY_ACCOUNT_MARKER}${text(row?.counterpartyAccount, 40).replace(/\D/g, "")}`,
-      ],
+        operationIdentity,
+      ].filter((reason): reason is string => Boolean(reason)),
       status: suggestion.needsReview ? "needs_info" : "ready",
       matched_transfer_id: null,
     }];
@@ -239,13 +251,39 @@ export async function POST(request: Request) {
     if (missingAccountIds.length) return jsonError(`Счёт не найден в справочнике: ${missingAccountIds.join(", ")}`, 400);
   }
 
-  const { data, error } = await db
+  const incomingIdentities = new Set(rows.map((row) => operationIdentityFromReasons(row.reasons)).filter((identity): identity is string => Boolean(identity)));
+  const existingIdentities = new Set<string>();
+  if (bankAccountNumber && incomingIdentities.size) {
+    const dates = rows.map((row) => row.date).sort();
+    const existingRows = await loadAllSupabasePages<{ reasons: unknown }>((from, to) => db
+      .from("bank_review_items")
+      .select("reasons")
+      .eq("bank_account_number", bankAccountNumber)
+      .gte("date", dates[0])
+      .lte("date", dates.at(-1)!)
+      .order("id")
+      .range(from, to), { label: "Проверка дублей банковской выписки" });
+    for (const existing of existingRows) {
+      const identity = operationIdentityFromReasons(existing.reasons);
+      if (identity) existingIdentities.add(identity);
+    }
+  }
+  const seenIdentities = new Set(existingIdentities);
+  const rowsToInsert = rows.filter((row) => {
+    const identity = operationIdentityFromReasons(row.reasons);
+    if (!identity) return true;
+    if (seenIdentities.has(identity)) return false;
+    seenIdentities.add(identity);
+    return true;
+  });
+  const saved = rowsToInsert.length ? await db
     .from("bank_review_items")
-    .upsert(rows, {
+    .upsert(rowsToInsert, {
       onConflict: "document_hash,external_id",
       ignoreDuplicates: true,
     })
-    .select("id");
+    .select("id") : { data: [], error: null };
+  const { data, error } = saved;
   if (error) return jsonError(error.message, 500);
   try {
     const matchedTransfers = await matchBankReviewTransfers();
@@ -265,7 +303,7 @@ export async function POST(request: Request) {
     const confirmed = confirmIds.length ? await db.rpc("confirm_bank_review_items",{p_ids:confirmIds}) : {data:0,error:null};
     if(confirmed.error) return jsonError(confirmed.error.message,500);
     const confirmedSet=new Set(confirmIds);
-    return NextResponse.json({ queued: stored.filter(row=>selectedExternalIds.has(row.external_id)&&ACTIVE_STATUSES.includes(row.status)&&!confirmedSet.has(row.id)).length, approved: Number(confirmed.data ?? 0), matchedTransfers });
+    return NextResponse.json({ queued: stored.filter(row=>selectedExternalIds.has(row.external_id)&&ACTIVE_STATUSES.includes(row.status)&&!confirmedSet.has(row.id)).length, approved: Number(confirmed.data ?? 0), matchedTransfers, duplicatesSkipped: rows.length - (data?.length ?? 0) });
   } catch(error) {
     return jsonError(error instanceof Error ? error.message : "Не удалось связать выписки. Проверьте миграцию 202609140003_bank_review_confirm_and_link.sql",500);
   }

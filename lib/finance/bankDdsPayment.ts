@@ -10,8 +10,8 @@ export function isManualDdsPayment(payment: Pick<Payment, "importSource">) {
   return /^manual-dds:/i.test(payment.importSource ?? "");
 }
 
-/** Наличные кошельки для ручного факта; чисто календарные счета исключаются. */
-export function manualDdsCashAccounts(accounts: Account[], payments: Payment[]) {
+/** Кошельки, доступные факту ДДС; чисто календарные счета исключаются. */
+export function ddsEditableAccounts(accounts: Account[], payments: Payment[]) {
   const calendarOnlyAccountIds = new Set(accounts.flatMap((account) => {
     const rows = payments.filter((payment) => payment.accountId === account.id);
     const onlyCalendarRows = rows.length > 0 && rows.every((payment) =>
@@ -19,5 +19,10 @@ export function manualDdsCashAccounts(accounts: Account[], payments: Payment[]) 
     );
     return onlyCalendarRows ? [account.id] : [];
   }));
-  return accounts.filter((account) => account.type === "cash" && !calendarOnlyAccountIds.has(account.id));
+  return accounts.filter((account) => !calendarOnlyAccountIds.has(account.id));
+}
+
+/** Наличные кошельки для ручного факта; чисто календарные счета исключаются. */
+export function manualDdsCashAccounts(accounts: Account[], payments: Payment[]) {
+  return ddsEditableAccounts(accounts, payments).filter((account) => account.type === "cash");
 }
