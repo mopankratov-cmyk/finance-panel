@@ -75,24 +75,39 @@ function reportDateColumn(mode: OpiuReportDateMode): "sale_dt" | "rr_dt" {
   return mode === "sale" ? "sale_dt" : "rr_dt";
 }
 
+/**
+ * articlePrefixes — фильтр по префиксу артикула ПРЯМО В SQL (ilike), а не
+ * постфактум в JS: на обычных кабинетах разницы не видно, но на агентских
+ * (Оптима — до ~116k строк отчёта/день, 92% из них чужие товары других
+ * продавцов через тот же кабинет) запрос без этого фильтра тянет из
+ * Postgres весь месяц целиком и стабильно падает по statement timeout —
+ * ровно то, что нужному суб-бренду (Riobox/Heaton/Norvia) из этих строк
+ * нужен один процент.
+ */
 export async function fetchReportRows(
   dateFrom: string,
   dateTo: string,
   mode: OpiuReportDateMode,
   cabinetId: string = OPIU_WB_CABINET_ID,
+  articlePrefixes?: string[],
 ): Promise<WbReportRow[]> {
   const client = getSupabaseAdmin();
   if (!client) throw new Error("Supabase service role is not configured");
   const dateColumn = reportDateColumn(mode);
+  const prefixFilter = articlePrefixes?.length
+    ? articlePrefixes.map((p) => `sa_name.ilike.${p.replace(/[%,]/g, "")}%`).join(",")
+    : null;
 
   return loadAllSupabasePages<WbReportRow>(async (from, to) => {
-    const result = await client
+    let query = client
       .from("wb_report_rows")
       .select(REPORT_COLUMNS)
       .eq("cabinet_id", cabinetId)
       .not(dateColumn, "is", null)
       .gte(dateColumn, dateFrom)
-      .lte(dateColumn, dateTo)
+      .lte(dateColumn, dateTo);
+    if (prefixFilter) query = query.or(prefixFilter);
+    const result = await query
       .order(dateColumn, { ascending: true })
       .order("rrd_id", { ascending: true })
       .range(from, to);
@@ -106,6 +121,48 @@ export async function fetchReportRows(
         ? "ОПиУ: финансовый отчёт WB по дате продажи"
         : "ОПиУ: финансовый отчёт WB по дате отчёта",
     });
+}
+
+/**
+ * Узкая выборка ТОЛЬКО строк "перевод на баланс заёмщика" (по всем 4
+ * вариантам bonus_type_name, у них общий префикс) — нужна для
+ * sharedLoanTransferByWeek, которой требуются НЕотфильтрованные по
+ * артикулу строки всего кабинета (см. её комментарий), но полный
+ * financial-отчёт агентского кабинета целиком гонять ради этого нельзя
+ * (тот же statement timeout, что и в fetchReportRows). Фильтр по
+ * bonus_type_name — в SQL, поэтому объём почти всегда крошечный
+ * независимо от размера кабинета.
+ */
+export async function fetchLoanTransferRows(
+  dateFrom: string,
+  dateTo: string,
+  mode: OpiuReportDateMode,
+  cabinetId: string,
+): Promise<WbReportRow[]> {
+  const client = getSupabaseAdmin();
+  if (!client) throw new Error("Supabase service role is not configured");
+  const dateColumn = reportDateColumn(mode);
+
+  return loadAllSupabasePages<WbReportRow>(async (from, to) => {
+    const result = await client
+      .from("wb_report_rows")
+      .select(REPORT_COLUMNS)
+      .eq("cabinet_id", cabinetId)
+      .not(dateColumn, "is", null)
+      .gte(dateColumn, dateFrom)
+      .lte(dateColumn, dateTo)
+      .ilike("bonus_type_name", "перевод на баланс заёмщика%")
+      .order(dateColumn, { ascending: true })
+      .order("rrd_id", { ascending: true })
+      .range(from, to);
+    return {
+      data: result.data as unknown as WbReportRow[] | null,
+      error: result.error ? { message: result.error.message } : null,
+    };
+  }, {
+    maxPages: 100,
+    label: "ОПиУ: перевод на баланс заёмщика",
+  });
 }
 
 export async function fetchForecastReportRows(
