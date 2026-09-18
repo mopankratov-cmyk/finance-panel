@@ -160,7 +160,7 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
       if (/зачис|приход|кредит|поступ/.test(direction)) amount = Math.abs(rawAmount);
     }
     if (!amount) continue;
-    const documentNumber = documentColumn >= 0 ? cells[documentColumn]?.trim() ?? "" : String(index + 1);
+    const documentNumber = documentColumn >= 0 ? cells[documentColumn]?.trim() ?? "" : "";
     const account = accountColumn >= 0 ? (cells[accountColumn] ?? "").replace(/\D/g, "") : "";
     if (account.length >= 15) accountCounts.set(account, (accountCounts.get(account) ?? 0) + 1);
     operations.push({

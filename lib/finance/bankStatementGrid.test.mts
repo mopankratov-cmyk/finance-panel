@@ -33,6 +33,7 @@ test("одна колонка «Сумма» без направления — �
   ];
   const statement = statementFromGrid(grid, "", "h");
   assert.equal(statement.rows.length, 2);
+  assert.equal(statement.rows[0].documentNumber, "", "номер строки нельзя выдавать за номер банковского документа");
   assert.ok(statement.warnings.some((warning) => /знак операций не определён/.test(warning)));
   const withDirection = statementFromGrid([
     ["Дата", "Сумма", "Тип операции"],
