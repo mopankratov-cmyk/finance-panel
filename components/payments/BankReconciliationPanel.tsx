@@ -1,9 +1,11 @@
 "use client";
 
-import { Bot, Eye, FileSpreadsheet } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bot, CheckCircle2, Eye, FileSpreadsheet, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
 import type { Account } from "@/lib/types";
+import { loadBankLedgerControl, type BankLedgerControl } from "./bankReviewStore";
 
 export function BankReconciliationPanel({
   accounts,
@@ -14,6 +16,17 @@ export function BankReconciliationPanel({
   onImportStatement: () => void;
   onOpenReview: () => void;
 }) {
+  const [ledgerControl, setLedgerControl] = useState<BankLedgerControl | null>(null);
+  useEffect(() => {
+    let active = true;
+    loadBankLedgerControl().then((control) => { if (active) setLedgerControl(control); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const ledgerHasErrors = Boolean(ledgerControl && (
+    ledgerControl.sourceCountDifference !== 0 || ledgerControl.sourceAmountDifference !== 0
+    || ledgerControl.unprojectedCount > 0 || ledgerControl.statementMismatchCount > 0
+    || ledgerControl.missingApprovedCount > 0 || ledgerControl.mismatchCount > 0
+  ));
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -21,6 +34,20 @@ export function BankReconciliationPanel({
         <StatusAction icon={Eye} label="Страница банка" value="Работает через экспорт" detail="Скачайте выписку на странице банка и загрузите её сюда" onClick={onImportStatement}/>
         <StatusAction icon={Bot} label="ИИ-сверка" value="Включена" detail="Определяет компанию, кошелёк, статью и встречные переводы" onClick={onOpenReview}/>
       </div>
+
+      {ledgerControl ? <Card className={`border ${ledgerHasErrors ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
+        <div className="flex gap-3 px-5 py-4">
+          {ledgerHasErrors ? <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-700"/> : <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700"/>}
+          <div>
+            <h2 className={`font-semibold ${ledgerHasErrors ? "text-red-900" : "text-emerald-900"}`}>Контроль банковских данных</h2>
+            <p className={`mt-1 text-sm ${ledgerHasErrors ? "text-red-800" : "text-emerald-800"}`}>
+              {ledgerHasErrors
+                ? `Есть расхождения: не перенесено ${ledgerControl.unprojectedCount}, выписок с неверным итогом ${ledgerControl.statementMismatchCount}, проведённых строк без суммы ${ledgerControl.missingApprovedCount}, несовпадающих сумм ${ledgerControl.mismatchCount} (${formatMoney(ledgerControl.mismatchAmount)}).`
+                : `Сверено ${ledgerControl.transactionCount} банковских операций на ${formatMoney(ledgerControl.transactionAmount)}. Исходные строки, выписки и проведённые суммы совпадают.`}
+            </p>
+          </div>
+        </div>
+      </Card> : null}
 
       <Card>
         <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">

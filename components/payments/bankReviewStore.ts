@@ -99,8 +99,16 @@ export async function saveBankReviewBatch(
       action: "batch",
       statement: {
         documentHash: statement.documentHash,
+        bank: statement.bank,
+        owner: statement.owner,
         accountNumber: statement.accountNumber,
         ownerInn: statement.ownerInn,
+        dateFrom: statement.dateFrom,
+        dateTo: statement.dateTo,
+        openingBalance: statement.openingBalance,
+        closingBalance: statement.closingBalance,
+        declaredDebit: statement.declaredDebit,
+        declaredCredit: statement.declaredCredit,
       },
       suggestions,
       sourceFileName,
@@ -112,6 +120,37 @@ export async function saveBankReviewBatch(
 export async function loadBankReviewItems(): Promise<BankReviewItem[]> {
   const result = await api<{ items: ReviewRow[] }>("/api/opiu/bank-review");
   return result.items.map(mapRow);
+}
+
+export type BankLedgerControl = {
+  reviewCount: number;
+  reviewAmount: number;
+  transactionCount: number;
+  transactionAmount: number;
+  sourceCountDifference: number;
+  sourceAmountDifference: number;
+  unprojectedCount: number;
+  statementMismatchCount: number;
+  approvedCount: number;
+  allocationCount: number;
+  missingApprovedCount: number;
+  mismatchCount: number;
+  mismatchAmount: number;
+};
+
+export async function loadBankLedgerControl(): Promise<BankLedgerControl | null> {
+  const result = await api<{ available: boolean; control?: Partial<BankLedgerControl> }>("/api/opiu/bank-review?resource=ledger-control");
+  if (!result.available || !result.control) return null;
+  const number = (key: keyof BankLedgerControl) => Number(result.control?.[key] ?? 0);
+  return {
+    reviewCount: number("reviewCount"), reviewAmount: number("reviewAmount"),
+    transactionCount: number("transactionCount"), transactionAmount: number("transactionAmount"),
+    sourceCountDifference: number("sourceCountDifference"), sourceAmountDifference: number("sourceAmountDifference"),
+    unprojectedCount: number("unprojectedCount"), statementMismatchCount: number("statementMismatchCount"),
+    approvedCount: number("approvedCount"), allocationCount: number("allocationCount"),
+    missingApprovedCount: number("missingApprovedCount"), mismatchCount: number("mismatchCount"),
+    mismatchAmount: number("mismatchAmount"),
+  };
 }
 
 export async function loadBankGoogleSyncData(): Promise<{
