@@ -597,12 +597,9 @@ function CompaniesModal({ open, companies, onClose, onCreated, onUpdated }: {
       {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
       {companies.some((company) => company.taxSettingsAvailable === false) && <p role="status" id="company-tax-unavailable" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">{COMPANY_TAX_UNAVAILABLE}</p>}
       {companies.some((company) => company.taxRatesAvailable === false) && <p role="status" id="company-tax-rate-unavailable" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">{COMPANY_TAX_RATE_UNAVAILABLE}</p>}
-      <div className="table-cards rounded-xl border border-slate-200 md:overflow-x-auto">
-        <table className="w-full text-sm md:min-w-[1080px]">
-          <thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-2.5">Компания</th><th className="px-3 py-2.5">Группа</th><th className="px-3 py-2.5">Статус</th><th className="px-3 py-2.5">Налогообложение</th><th className="px-3 py-2.5">Ставки</th><th className="px-3 py-2.5">НДС</th><th className="px-3 py-2.5 text-right">Действие</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{companies.length === 0 ? <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">Компаний пока нет</td></tr> : companies.map((company) => <CompanySettingsRow key={company.id} company={company} onUpdated={onUpdated} />)}</tbody>
-        </table>
-      </div>
+      {companies.length === 0
+        ? <p className="rounded-xl border border-slate-200 px-3 py-8 text-center text-sm text-slate-500">Компаний пока нет</p>
+        : <div className="grid gap-3 xl:grid-cols-2">{companies.map((company) => <CompanySettingsRow key={company.id} company={company} onUpdated={onUpdated} />)}</div>}
     </div>
   </Modal>;
 }
@@ -658,25 +655,40 @@ function CompanySettingsRow({ company, onUpdated }: { company: DdsCompany; onUpd
 
   const controlClass = "min-h-11 w-full min-w-[150px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100";
 
-  return <tr>
-    <td data-cell="title" className="px-3 py-3 align-top font-semibold text-slate-900">{company.name}{error && <p role="alert" className="mt-2 max-w-64 text-xs font-normal leading-5 text-rose-700">{error}</p>}</td>
-    <td data-label="Группа" className="px-3 py-3 align-top text-slate-600">{company.groupName}</td>
-    <td data-label="Статус" className="px-3 py-3 align-top"><select aria-label={`Статус компании ${company.name}`} value={isActive ? "active" : "inactive"} onChange={(event) => setIsActive(event.target.value === "active")} className={controlClass}><option value="active">Активна</option><option value="inactive">Отключена</option></select></td>
-    <td data-label="Налогообложение" className="px-3 py-3 align-top"><select disabled={saving || company.taxSettingsAvailable === false} aria-describedby={company.taxSettingsAvailable === false ? "company-tax-unavailable" : undefined} aria-label={`Система налогообложения компании ${company.name}`} value={taxSystem ?? ""} onChange={(event) => setTaxSystem((event.target.value || null) as CompanyTaxSystem | null)} className={`${controlClass} disabled:cursor-not-allowed disabled:bg-slate-100`}><option value="">{company.taxSettingsAvailable === false ? "Недоступно до обновления базы" : "Не указано"}</option>{COMPANY_TAX_SYSTEMS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
-    <td data-label="Ставки" className="px-3 py-3 align-top">
-      {supportsRate ? <div className="grid min-w-[230px] grid-cols-2 gap-2">
+  return <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-col gap-1 border-b border-slate-100 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <div className="min-w-0">
+        <h3 className="font-semibold text-slate-900">{company.name}</h3>
+        <p className="mt-0.5 text-sm text-slate-500">{company.groupName}</p>
+      </div>
+      {error && <p role="alert" className="max-w-sm text-xs font-normal leading-5 text-rose-700">{error}</p>}
+    </div>
+    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <label className="text-xs font-semibold text-slate-600">Статус
+        <select aria-label={`Статус компании ${company.name}`} value={isActive ? "active" : "inactive"} onChange={(event) => setIsActive(event.target.value === "active")} className={`${controlClass} mt-1`}><option value="active">Активна</option><option value="inactive">Отключена</option></select>
+      </label>
+      <label className="text-xs font-semibold text-slate-600">Налогообложение
+        <select disabled={saving || company.taxSettingsAvailable === false} aria-describedby={company.taxSettingsAvailable === false ? "company-tax-unavailable" : undefined} aria-label={`Система налогообложения компании ${company.name}`} value={taxSystem ?? ""} onChange={(event) => setTaxSystem((event.target.value || null) as CompanyTaxSystem | null)} className={`${controlClass} mt-1 disabled:cursor-not-allowed disabled:bg-slate-100`}><option value="">{company.taxSettingsAvailable === false ? "Недоступно до обновления базы" : "Не указано"}</option>{COMPANY_TAX_SYSTEMS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+      </label>
+      <label className="text-xs font-semibold text-slate-600">НДС
+        <select disabled={saving || company.taxSettingsAvailable === false} aria-describedby={company.taxSettingsAvailable === false ? "company-tax-unavailable" : undefined} aria-label={`НДС компании ${company.name}`} value={vatMode ?? ""} onChange={(event) => setVatMode((event.target.value || null) as CompanyVatMode | null)} className={`${controlClass} mt-1 disabled:cursor-not-allowed disabled:bg-slate-100`}><option value="">{company.taxSettingsAvailable === false ? "Недоступно до обновления базы" : "Не указано"}</option>{COMPANY_VAT_MODES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+      </label>
+      <div className="sm:col-span-2">
+      {supportsRate ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="text-xs font-medium text-slate-600">Основная, %
           <input type="text" inputMode="decimal" value={taxRateInput} onChange={(event) => setTaxRateInput(event.target.value)} disabled={saving || company.taxRatesAvailable === false} aria-invalid={invalidRate || undefined} aria-describedby={company.taxRatesAvailable === false ? "company-tax-rate-unavailable" : undefined} className={`${controlClass} mt-1 min-w-0 tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100`} placeholder="Например, 1" />
         </label>
         <label className="text-xs font-medium text-slate-600">Доплата, %
           <input type="text" inputMode="decimal" value={taxAdditionalRateInput} onChange={(event) => setTaxAdditionalRateInput(event.target.value)} disabled={saving || company.taxRatesAvailable === false} aria-invalid={invalidRate || undefined} aria-describedby={company.taxRatesAvailable === false ? "company-tax-rate-unavailable" : undefined} className={`${controlClass} mt-1 min-w-0 tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100`} placeholder="Например, 1" />
         </label>
-        <p className={`col-span-2 text-xs font-semibold ${invalidRate ? "text-rose-700" : "text-slate-600"}`} aria-live="polite">
+        <p className={`text-xs font-semibold sm:col-span-2 ${invalidRate ? "text-rose-700" : "text-slate-600"}`} aria-live="polite">
           {invalidRate ? "Проверьте ставки" : totalRate === null ? "Итоговая ставка не указана" : `Итого: ${formatCompanyTaxRate(totalRate)}%`}
         </p>
       </div> : <span className="text-sm text-slate-400">Для этого режима единая ставка не задаётся</span>}
-    </td>
-    <td data-label="НДС" className="px-3 py-3 align-top"><select disabled={saving || company.taxSettingsAvailable === false} aria-describedby={company.taxSettingsAvailable === false ? "company-tax-unavailable" : undefined} aria-label={`НДС компании ${company.name}`} value={vatMode ?? ""} onChange={(event) => setVatMode((event.target.value || null) as CompanyVatMode | null)} className={`${controlClass} disabled:cursor-not-allowed disabled:bg-slate-100`}><option value="">{company.taxSettingsAvailable === false ? "Недоступно до обновления базы" : "Не указано"}</option>{COMPANY_VAT_MODES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
-    <td data-cell="actions" className="px-3 py-3 align-top text-right"><button type="button" onClick={() => void save()} disabled={saving || !dirty} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40">{saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Save className="h-4 w-4" />}Сохранить</button></td>
-  </tr>;
+      </div>
+    </div>
+    <div className="mt-4 flex justify-end border-t border-slate-100 pt-3">
+      <button type="button" onClick={() => void save()} disabled={saving || !dirty} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto">{saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Save className="h-4 w-4" />}Сохранить</button>
+    </div>
+  </article>;
 }
