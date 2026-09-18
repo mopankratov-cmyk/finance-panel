@@ -29,6 +29,8 @@ export interface MonthlyOpiuArticle {
 export interface MarketplaceMonthlyActual {
   wb?: {
     revenue_before_spp: number;
+    /** Налоговая база продаж WB: фактическая выручка покупателя после СПП. */
+    revenue_after_spp?: number;
     commission: number;
     acquiring: number;
     ad: number;

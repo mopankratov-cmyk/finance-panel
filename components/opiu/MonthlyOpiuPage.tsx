@@ -6,8 +6,9 @@ import { formatPct, formatRub } from "@/lib/analytics/format";
 import { buildMonthlyOpiuStatement, type MonthlyOpiuAmount, type MonthlyOpiuRow } from "@/lib/opiu/monthlyStatement";
 import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
 import { buildMonthlyOpiuSheetPayload, exportMonthlyOpiuToGoogleSheets } from "@/lib/opiu/monthlySheetExport";
-import { combineMonthlySources, type MonthlySourceResult } from "@/lib/opiu/monthlySourceFallback";
-import type { MonthlyMarketplaceSource } from "@/lib/opiu/monthlyMarketplaceSources";
+import type { MonthlySourceResult } from "@/lib/opiu/monthlySourceFallback";
+import { aggregateOzonSources, aggregateWbSources, type MonthlyMarketplaceSource } from "@/lib/opiu/monthlyMarketplaceSources";
+import { withCalculatedMonthlyTaxes } from "@/lib/opiu/monthlyTaxFacts";
 import { Check, ExternalLink, FileSpreadsheet, LineChart, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -23,6 +24,7 @@ interface MonthlyFactsResponse {
   shared?: Parameters<typeof buildMonthlyOpiuStatement>[0]["shared"];
   companies?: OpiuCompanyOption[];
   warnings?: string[];
+  byCompany?: Record<string, NonNullable<MonthlyFactsResponse["shared"]>>;
   error?: string;
 }
 
@@ -30,6 +32,7 @@ interface MonthlyOpiuData extends Omit<MonthlyOpiuResponse, "period"> {
   shared?: MonthlyFactsResponse["shared"];
   companies?: OpiuCompanyOption[];
   warnings?: string[];
+  byCompany?: MonthlyFactsResponse["byCompany"];
 }
 
 async function loadSource<T>(url: string, signal: AbortSignal): Promise<MonthlySourceResult<T>> {
@@ -89,7 +92,6 @@ export function MonthlyOpiuPage() {
     const controller = new AbortController();
     let active = true;
     const params = new URLSearchParams({ month });
-    if (companyId) params.set("company", companyId);
     setLoading(true);
     setError(null);
     setExportedUrl(null);
@@ -97,12 +99,18 @@ export function MonthlyOpiuPage() {
       loadSource<MonthlyOpiuResponse>(`/api/opiu/mp?${params}`, controller.signal),
       loadSource<MonthlyFactsResponse>(`/api/opiu/monthly-facts?${params}`, controller.signal),
     ])
-      .then(([marketplaces, facts]) => combineMonthlySources(marketplaces, facts))
-      .then((result) => {
+      .then(([marketplaces, facts]) => {
         if (!active) return;
-        const nextData = result.data;
-        if (!nextData) throw new Error(result.error ?? "Не удалось загрузить ОПиУ");
-        setData((previous) => ({ ...nextData, companies: nextData.companies ?? previous?.companies }));
+        if (!marketplaces.data && !facts.data) {
+          throw new Error([marketplaces.error, facts.error].filter(Boolean).join(". ") || "Не удалось загрузить ОПиУ");
+        }
+        setData({
+          ...(marketplaces.data ?? {}),
+          shared: facts.data?.shared,
+          companies: facts.data?.companies,
+          byCompany: facts.data?.byCompany,
+          warnings: facts.data?.warnings,
+        });
       })
       .catch((reason) => {
         if (!active || (reason instanceof DOMException && reason.name === "AbortError")) return;
@@ -114,21 +122,66 @@ export function MonthlyOpiuPage() {
       active = false;
       controller.abort();
     };
-  }, [month, companyId, reloadKey]);
+  }, [month, reloadKey]);
 
-  const statement = useMemo(() => data ? buildMonthlyOpiuStatement({ wb: data.wb, ozon: data.ozon, shared: data.shared }) : null, [data]);
+  const selectedData = useMemo<MonthlyOpiuData | null>(() => {
+    if (!data) return null;
+    const selectedSources = companyId ? (data.sources ?? []).filter((source) => source.companyId === companyId) : data.sources ?? [];
+    const wbSources = selectedSources.filter((source) => source.marketplace === "wb");
+    const ozonSources = selectedSources.filter((source) => source.marketplace === "ozon");
+    const wb = companyId ? (wbSources.length ? aggregateWbSources(wbSources) : undefined) : data.wb;
+    const ozon = companyId ? (ozonSources.length ? aggregateOzonSources(ozonSources) : undefined) : data.ozon;
+    let shared = companyId ? data.byCompany?.[companyId] : data.shared;
+    const company = data.companies?.find((item) => item.id === companyId);
+    const preliminary = buildMonthlyOpiuStatement({ wb, ozon, shared });
+    if (!companyId) {
+      const perCompany = (data.companies ?? []).map((item) => {
+        const companySources = (data.sources ?? []).filter((source) => source.companyId === item.id);
+        const companyWbSources = companySources.filter((source) => source.marketplace === "wb");
+        const companyOzonSources = companySources.filter((source) => source.marketplace === "ozon");
+        const companyWb = companyWbSources.length ? aggregateWbSources(companyWbSources) : undefined;
+        const companyOzon = companyOzonSources.length ? aggregateOzonSources(companyOzonSources) : undefined;
+        const companyShared = data.byCompany?.[item.id];
+        const companyStatement = buildMonthlyOpiuStatement({ wb: companyWb, ozon: companyOzon, shared: companyShared });
+        return withCalculatedMonthlyTaxes({
+          company: item,
+          marketplaceTaxBase: (companyWb?.revenue_after_spp ?? 0) + (companyOzon?.revenue ?? 0),
+          ebitda: companyStatement.ebitda.known,
+          shared: companyShared,
+        });
+      });
+      const combined = { ...(shared ?? {}) };
+      for (const id of ["taxes", "vat"] as const) {
+        const facts = perCompany.flatMap((facts) => facts?.[id] ? [facts[id]] : []);
+        if (facts.length) combined[id] = {
+          amount: Math.round(facts.reduce((total, fact) => total + fact.amount, 0) * 100) / 100,
+          status: facts.every((fact) => fact.status === "complete") ? "complete" : "partial",
+          note: `Сумма расчётов по ${facts.length} компани${facts.length === 1 ? "и" : "ям"}`,
+        };
+      }
+      shared = combined;
+    }
+    const calculatedShared = companyId ? withCalculatedMonthlyTaxes({
+      company,
+      marketplaceTaxBase: (wb?.revenue_after_spp ?? 0) + (ozon?.revenue ?? 0),
+      ebitda: preliminary.ebitda.known,
+      shared,
+    }) : shared;
+    return { ...data, wb, ozon, shared: calculatedShared, sources: selectedSources };
+  }, [companyId, data]);
+  const statement = useMemo(() => selectedData ? buildMonthlyOpiuStatement({ wb: selectedData.wb, ozon: selectedData.ozon, shared: selectedData.shared }) : null, [selectedData]);
   const sourceColumns = useMemo(() => {
-    if (!data) return [];
-    const sources: MonthlyMarketplaceSource[] = data.sources?.length ? data.sources : [];
-    if (!data.sources?.length && data.wb) sources.push({ id: "wb", label: "WB", marketplace: "wb", wb: data.wb });
-    if (!data.sources?.length && data.ozon) sources.push({ id: "ozon", label: "Ozon", marketplace: "ozon", ozon: data.ozon });
+    if (!selectedData) return [];
+    const sources: MonthlyMarketplaceSource[] = selectedData.sources?.length ? [...selectedData.sources] : [];
+    if (!selectedData.sources?.length && selectedData.wb) sources.push({ id: "wb", label: "WB", marketplace: "wb", wb: selectedData.wb });
+    if (!selectedData.sources?.length && selectedData.ozon) sources.push({ id: "ozon", label: "Ozon", marketplace: "ozon", ozon: selectedData.ozon });
     return sources.map((source) => ({
       id: source.id,
       label: source.label,
       direction: source.marketplace,
       statement: buildMonthlyOpiuStatement(source.marketplace === "wb" ? { wb: source.wb } : { ozon: source.ozon }),
     }));
-  }, [data]);
+  }, [selectedData]);
   const companies = data?.companies ?? [];
   const selectedCompanyLabel = companies.find((company) => company.id === companyId)?.name ?? "Все компании";
 

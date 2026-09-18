@@ -1,4 +1,3 @@
-import { LOAN_CATEGORIES } from "@/lib/finance/categories";
 import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
 import type { Payment } from "@/lib/types";
 import { payrollCategoryForEmployee } from "@/lib/payroll/model";
@@ -56,9 +55,40 @@ const DDS_TO_OPIU: Readonly<Record<string, string>> = {
   "Выкупы": "self_purchases",
   "Кешбэк": "cashback",
   "Кэшбек": "cashback",
-  [LOAN_CATEGORIES.interest]: "loan_interest",
-  "Оплата % по кредиту": "loan_interest",
 };
+
+export interface LoanScheduleMonthlyFact {
+  amount: number;
+  kind: "interest" | "penalty" | "fine" | "fee";
+  status: "planned" | "paid" | "cancelled";
+  companyId?: string | null;
+}
+
+/**
+ * ОПиУ работает по начислению: проценты и комиссии берём из графика за месяц,
+ * независимо от того, успел ли платёж перейти из плана в факт. Тело кредита
+ * здесь намеренно не учитывается — это движение баланса, а не расход.
+ */
+export function aggregateLoanScheduleMonthlyFacts(
+  rows: readonly LoanScheduleMonthlyFact[],
+  companyIds: readonly string[] = [],
+): Record<string, MonthlySharedFact> {
+  const selected = new Set(companyIds);
+  const relevant = rows.filter((row) =>
+    row.kind === "interest" &&
+    row.status !== "cancelled" &&
+    (!selected.size || (row.companyId ? selected.has(row.companyId) : false)),
+  );
+  if (!relevant.length) return {};
+  const amount = Math.round(relevant.reduce((total, row) => total + Math.abs(Number(row.amount) || 0), 0) * 100) / 100;
+  return {
+    loan_interest: {
+      amount,
+      status: "complete",
+      note: "Начисленные проценты по графикам кредитов за месяц",
+    },
+  };
+}
 
 function add(target: Map<string, number>, id: string, value: number) {
   target.set(id, Math.round(((target.get(id) ?? 0) + value) * 100) / 100);
@@ -66,7 +96,8 @@ function add(target: Map<string, number>, id: string, value: number) {
 
 export function aggregateDdsMonthlyFacts(rows: readonly DdsFactRow[], customCategories: readonly DdsExpenseCategory[] = []): Record<string, MonthlySharedFact> {
   const totals = new Map<string, number>();
-  const allowedTargets = new Set(DDS_OPIU_EXPENSE_TARGETS.map((article) => article.id));
+  const accrualOnlyTargets = new Set(["taxes", "vat", "loan_interest"]);
+  const allowedTargets = new Set(DDS_OPIU_EXPENSE_TARGETS.map((article) => article.id).filter((id) => !accrualOnlyTargets.has(id)));
   const customMapping = new Map(customCategories.filter((category) => category.opiuArticleId && allowedTargets.has(category.opiuArticleId)).map((category) => [category.name, category.opiuArticleId!]));
   for (const row of rows) {
     if (!isDdsActualPayment(row)) continue;

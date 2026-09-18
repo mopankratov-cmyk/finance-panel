@@ -22,7 +22,7 @@ const num = (value: unknown) => Number(value ?? 0) || 0;
 const r0 = (value: number) => Math.round(value);
 
 function failedWb(message: string): NonNullable<MonthlyMarketplaceSource["wb"]> {
-  return { revenue_before_spp: 0, commission: 0, acquiring: 0, ad: 0, other: 0, cogs: 0, packaging: 0, logistics: 0, storage: 0, penalty: 0, error: message };
+  return { revenue_before_spp: 0, revenue_after_spp: 0, commission: 0, acquiring: 0, ad: 0, other: 0, cogs: 0, packaging: 0, logistics: 0, storage: 0, penalty: 0, error: message };
 }
 
 function failedOzon(message: string): NonNullable<MonthlyMarketplaceSource["ozon"]> {

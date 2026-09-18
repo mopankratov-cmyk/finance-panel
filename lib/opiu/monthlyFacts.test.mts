@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateDdsMonthlyFacts, aggregatePayrollMonthlyFacts, mergeMonthlySharedFacts } from "./monthlyFacts.ts";
+import { aggregateDdsMonthlyFacts, aggregateLoanScheduleMonthlyFacts, aggregatePayrollMonthlyFacts, mergeMonthlySharedFacts } from "./monthlyFacts.ts";
 
 test("ДДС раскладывается по статьям ОПиУ и не дублирует платежи ведомости", () => {
   const result = aggregateDdsMonthlyFacts([
@@ -21,6 +21,28 @@ test("ОПиУ не принимает завершённые техническ
     { amount: -700, category: "РКО", status: "planned", importSource: "manual-dds:2" },
   ]);
   assert.equal(result.bank_fees.amount, 100);
+});
+
+test("налоги и проценты из ДДС не дублируют расчёты ОПиУ, а проценты берутся из графика", () => {
+  const dds = aggregateDdsMonthlyFacts([
+    { amount: -1_000, category: "УСН", status: "done", importSource: "bank-review:tax" },
+    { amount: -700, category: "Проценты по кредитам и займам", status: "done", importSource: "bank-review:loan" },
+  ]);
+  const loans = aggregateLoanScheduleMonthlyFacts([
+    { amount: 500, kind: "interest", status: "planned", companyId: "company-a" },
+    { amount: 100, kind: "fee", status: "paid", companyId: "company-a" },
+    { amount: 900, kind: "interest", status: "cancelled", companyId: "company-a" },
+  ], ["company-a"]);
+  assert.equal(dds.taxes, undefined);
+  assert.equal(dds.loan_interest, undefined);
+  assert.equal(loans.loan_interest.amount, 500);
+});
+
+test("даже пользовательская статья ДДС не подменяет расчёт налогов и процентов", () => {
+  const result = aggregateDdsMonthlyFacts([
+    { amount: -1_000, category: "Мой налог", status: "done", importSource: "manual-dds:tax" },
+  ], [{ id: "custom-tax", name: "Мой налог", opiuArticleId: "taxes" }]);
+  assert.equal(result.taxes, undefined);
 });
 
 test("полный месяц ведомости даёт начисленный административный и коммерческий ФОТ", () => {
