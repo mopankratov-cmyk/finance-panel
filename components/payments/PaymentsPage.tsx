@@ -7,7 +7,7 @@ import { TransferBalancePanel } from "./TransferBalancePanel";
 import { BankTransfersPanel } from "./BankTransfersPanel";
 import { PaymentOperationsTable } from "./PaymentOperationsTable";
 import { PaymentChainList } from "./PaymentChainList";
-import { chainMetadata, chainIdForPayment } from "@/lib/finance/paymentChains";
+import { chainMetadata } from "@/lib/finance/paymentChains";
 import { loadFinanceState } from "@/lib/db";
 import { BankReviewPanel } from "./BankReviewPanel";
 import { loadBankGoogleSyncData } from "./bankReviewStore";
@@ -45,7 +45,7 @@ import {
   type CompanyVatMode,
 } from "@/lib/finance/companyTax";
 import { COMPANY_TAX_RATE_UNAVAILABLE, COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
-import { isDdsActualPayment, manualDdsCashAccounts } from "@/lib/finance/bankDdsPayment";
+import { ddsEditableAccounts, isDdsActualPayment, manualDdsCashAccounts } from "@/lib/finance/bankDdsPayment";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
 
@@ -131,6 +131,10 @@ export function PaymentsPage() {
     () => manualDdsCashAccounts(state.accounts, state.payments),
     [state.accounts, state.payments],
   );
+  const editableDdsAccounts = useMemo(
+    () => ddsEditableAccounts(state.accounts, state.payments),
+    [state.accounts, state.payments],
+  );
 
   const filtered = useMemo(() => {
     return ddsPayments
@@ -184,7 +188,7 @@ export function PaymentsPage() {
   };
 
   const openEdit = (payment: Payment) => {
-    if(chainIdForPayment(payment)){setChainSeed({paymentId:payment.id});return;}
+    if(chainMetadata(payment.comment)){setChainSeed({paymentId:payment.id});return;}
     setEditing(payment);
     setModalOpen(true);
   };
@@ -521,7 +525,7 @@ export function PaymentsPage() {
       >
         <PaymentForm
           payment={editing ?? undefined}
-          accounts={editing ? ddsAccounts : manualCashAccounts}
+          accounts={editing ? editableDdsAccounts : manualCashAccounts}
           counterparties={counterparties}
           companies={companies}
           companyId={editing ? companyByPayment.get(editing.id) : null}

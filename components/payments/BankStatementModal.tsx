@@ -240,8 +240,9 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
 
           {statement && (
             <>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <Stat label="Операций" value={String(statement.rows.length)} />
+                <Stat label="Банк" value={statement.bank} />
                 <Stat label="Счёт" value={statement.accountNumber} />
                 <Stat label="Расходы" value={formatMoney(-statement.declaredDebit)} />
                 <Stat label="Поступления" value={formatMoney(statement.declaredCredit)} />

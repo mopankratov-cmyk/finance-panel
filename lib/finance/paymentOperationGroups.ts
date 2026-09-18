@@ -29,7 +29,12 @@ export function groupPaymentOperations(visible: Payment[], all: Payment[], summa
     const meta = chainMetadata(p.comment);
     const summary = chainId ? summariesById.get(chainId) : undefined;
     const amount = meta?.amount ?? summary?.amount;
-    if (!chainId || amount === null || amount === undefined) {
+    // Обычный подтверждённый платёж тоже имеет importSource bank-review:<id>.
+    // Это ссылка на банковский оригинал, а не признак разбиения. Старую
+    // операцию считаем разбитой только когда из неё действительно создано
+    // несколько строк; новые цепочки имеют явную служебную метку в comment.
+    const isSplit = Boolean(meta) || (summary?.count ?? 0) > 1;
+    if (!chainId || !isSplit || amount === null || amount === undefined) {
       result.push({ key: p.id, source: p, parts: [] });
       continue;
     }
