@@ -17,7 +17,7 @@ import {
   type OpiuOrder,
   type ProductCostRow,
 } from "./metrics";
-import { fetchReportRows, rowsBySaleDate } from "./reportRows";
+import { fetchLoanTransferRows, fetchReportRows, rowsBySaleDate } from "./reportRows";
 import { fetchPaidStorageByWeek } from "./paidStorage";
 import { fetchAdsSpendBySourceByWeek } from "./adsSpendBySource";
 
@@ -257,26 +257,29 @@ async function loadBrandMonthData(
   dateTo: string,
   refresh: boolean,
 ): Promise<BrandMonthData> {
+  const needsLoanTransferSplit = Boolean(brand.articlePrefixes?.length);
   const [
-    saleDateRowsRaw,
-    reportDateRowsRaw,
+    saleDateRows,
+    reportDateRows,
     orders,
     costs,
     warehouseByWeek,
+    loanTransferRowsSale,
+    loanTransferRowsReport,
   ] = await Promise.all([
-    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
-    fetchReportRows(dateFrom, dateTo, "report", brand.cabinetId),
+    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId, brand.articlePrefixes),
+    fetchReportRows(dateFrom, dateTo, "report", brand.cabinetId, brand.articlePrefixes),
     fetchOrders(dateFrom, dateTo, refresh, brand),
     fetchProductCosts(brand),
     fetchWarehouseCosts(weeks, brand),
+    needsLoanTransferSplit ? fetchLoanTransferRows(dateFrom, dateTo, "sale", brand.cabinetId) : Promise.resolve([]),
+    needsLoanTransferSplit ? fetchLoanTransferRows(dateFrom, dateTo, "report", brand.cabinetId) : Promise.resolve([]),
   ]);
-  const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
-  const reportDateRows = reportDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
   const nmIdWhitelist = brandNmIdWhitelist(brand, orders, saleDateRows);
   const adStats = await fetchAdStats(dateFrom, dateTo, brand, nmIdWhitelist);
 
-  const loanTransferBySaleWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), weeks, brand);
-  const loanTransferByReportWeek = sharedLoanTransferByWeek(reportDateRowsRaw, weeks, brand);
+  const loanTransferBySaleWeek = sharedLoanTransferByWeek(rowsBySaleDate(loanTransferRowsSale), weeks, brand);
+  const loanTransferByReportWeek = sharedLoanTransferByWeek(loanTransferRowsReport, weeks, brand);
   // Гранулярное "Платное хранение" (per nm_id) нужно ТОЛЬКО брендам, которые
   // делят один WB-кабинет с кем-то ещё (Norvia/Heaton) — им обезличенный
   // storage_fee из финотчёта нечем разложить по суб-бренду. У брендов с
@@ -448,15 +451,16 @@ async function loadBrandSalePeriodData(
   dateFrom: string,
   dateTo: string,
 ): Promise<BrandSalePeriodData> {
-  const [saleDateRowsRaw, orders, costs] = await Promise.all([
-    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
+  const needsLoanTransferSplit = Boolean(brand.articlePrefixes?.length);
+  const [saleDateRows, orders, costs, loanTransferRowsSale] = await Promise.all([
+    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId, brand.articlePrefixes),
     fetchOrders(dateFrom, dateTo, false, brand),
     fetchProductCosts(brand),
+    needsLoanTransferSplit ? fetchLoanTransferRows(dateFrom, dateTo, "sale", brand.cabinetId) : Promise.resolve([]),
   ]);
-  const saleDateRows = saleDateRowsRaw.filter((r) => matchesArticlePrefix(r.sa_name, brand.articlePrefixes));
   const nmIdWhitelist = brandNmIdWhitelist(brand, orders, saleDateRows);
   const adStats = await fetchAdStats(dateFrom, dateTo, brand, nmIdWhitelist);
-  const loanTransferByWeek = sharedLoanTransferByWeek(rowsBySaleDate(saleDateRowsRaw), [period], brand);
+  const loanTransferByWeek = sharedLoanTransferByWeek(rowsBySaleDate(loanTransferRowsSale), [period], brand);
   // См. комментарий в loadBrandMonthData: гранулярное хранение только для
   // брендов, делящих кабинет с кем-то ещё.
   const paidStorageByWeek = brand.articlePrefixes?.length
