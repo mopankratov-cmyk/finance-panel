@@ -30,9 +30,28 @@ export function PaymentOperationsTable({ visible, all, accounts, companies, onEd
   const companyName = (id: string | null | undefined) => companies.find(c => c.id === id)?.name ?? "Общее по группе";
   const toggle = (id: string) => setExpanded(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
-  return <div className="table-cards-lg overflow-x-auto p-3 lg:p-0">
-    <table className="w-full text-sm">
-      <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-500">{["Дата", "Сумма", "Кошелёк", "Направление бизнеса", "Контрагент", "Назначение платежа", "Статья", "Действия"].map(label => <th key={label} className="px-5 py-3 font-medium">{label}</th>)}</tr></thead>
+  return <div className="table-cards-lg overflow-x-auto p-3 lg:overflow-x-visible lg:p-0">
+    <table className="w-full text-sm lg:table-fixed">
+      <colgroup>
+        <col className="lg:w-[7rem]" />
+        <col className="lg:w-[7.5rem]" />
+        <col className="lg:w-[8.25rem]" />
+        <col className="lg:w-[7.5rem]" />
+        <col className="lg:w-[11rem]" />
+        <col />
+        <col className="lg:w-[10.5rem]" />
+        <col className="lg:w-[10rem]" />
+      </colgroup>
+      <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-500">
+        <th className="px-3 py-3 font-medium">Дата</th>
+        <th className="px-3 py-3 text-right font-medium">Сумма</th>
+        <th className="px-3 py-3 font-medium">Кошелёк</th>
+        <th className="px-3 py-3 font-medium" title="Направление бизнеса">Компания</th>
+        <th className="px-3 py-3 font-medium">Контрагент</th>
+        <th className="px-3 py-3 font-medium" title="Назначение платежа">Назначение</th>
+        <th className="px-3 py-3 font-medium">Статья</th>
+        <th className="px-2 py-3 text-right font-medium">Действия</th>
+      </tr></thead>
       <tbody className="divide-y divide-slate-50">
         {!groups.length && <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-400">Нет фактических платежей по выбранным фильтрам</td></tr>}
         {groups.map(group => {
@@ -40,14 +59,14 @@ export function PaymentOperationsTable({ visible, all, accounts, companies, onEd
           const open = expanded.has(group.key);
           return <Fragment key={group.key}>
             <tr className={group.chainId ? "bg-violet-50/30" : "hover:bg-slate-50/50"}>
-              <td data-label="Дата" className="whitespace-nowrap px-5 py-3 text-slate-600">{formatDate(p.date)}</td>
-              <td data-label="Сумма" className={`whitespace-nowrap px-5 py-3 text-right font-semibold ${p.amount < 0 ? "text-red-600" : "text-emerald-600"}`}>{formatMoney(p.amount)}</td>
-              <td data-label="Кошелёк" className="px-5 py-3 text-slate-600">{accountName(p.accountId)}</td>
-              <td data-label="Направление бизнеса" className="px-5 py-3 text-slate-600">{companyName(p.companyId)}</td>
-              <td data-label="Контрагент" className="break-anywhere px-5 py-3 text-slate-600">{p.counterparty || "—"}</td>
-              <td data-label="Назначение платежа" className="break-anywhere px-5 py-3 text-slate-500 lg:max-w-xs lg:truncate">{p.name}</td>
-              <td data-label="Статья" className="px-5 py-3 font-medium">{group.chainId ? <button type="button" aria-expanded={open} aria-controls={`parts-${group.key}`} onClick={() => toggle(group.key)} className="flex min-h-11 items-center gap-1 rounded-lg px-1 text-left text-violet-700 hover:bg-violet-50">{open ? <ChevronDown className="h-4 w-4 shrink-0"/> : <ChevronRight className="h-4 w-4 shrink-0"/>}<span>Частей: {group.parts.length}</span></button> : p.category}</td>
-              <td data-cell="actions" className="px-5 py-3"><div className="flex items-center justify-end gap-2">{!group.chainId && p.amount < 0 && <button type="button" onClick={() => onOpen({ paymentId: p.id })} className="min-h-11 rounded-lg border border-violet-200 px-2 text-xs text-violet-700">Разбить</button>}<button type="button" aria-label="Редактировать операцию" onClick={() => group.chainId ? onOpen({ paymentId: p.id }) : onEdit(p)} className="tap rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Pencil className="h-4 w-4"/></button><button type="button" aria-label={group.chainId ? "Отменить операцию" : "Удалить платёж"} onClick={() => group.chainId ? onOpen({ paymentId: p.id }) : onDelete(p.id)} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4"/><span>{group.chainId ? "Отменить" : "Удалить"}</span></button></div></td>
+              <td data-label="Дата" className="whitespace-nowrap px-3 py-3 text-slate-600">{formatDate(p.date)}</td>
+              <td data-label="Сумма" className={`whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums ${p.amount < 0 ? "text-red-600" : "text-emerald-600"}`}>{formatMoney(p.amount)}</td>
+              <td data-label="Кошелёк" className="px-3 py-3 text-slate-600" title={accountName(p.accountId)}><span className="lg:line-clamp-2">{accountName(p.accountId)}</span></td>
+              <td data-label="Компания" className="px-3 py-3 text-slate-600" title={companyName(p.companyId)}><span className="lg:line-clamp-2">{companyName(p.companyId)}</span></td>
+              <td data-label="Контрагент" className="break-anywhere px-3 py-3 text-slate-600" title={p.counterparty || undefined}><span className="lg:line-clamp-2">{p.counterparty || "—"}</span></td>
+              <td data-label="Назначение" className="break-anywhere px-3 py-3 text-slate-500 lg:truncate" title={p.name}>{p.name}</td>
+              <td data-label="Статья" className="px-3 py-3 font-medium" title={group.chainId ? undefined : p.category}>{group.chainId ? <button type="button" aria-expanded={open} aria-controls={`parts-${group.key}`} onClick={() => toggle(group.key)} className="flex min-h-11 items-center gap-1 rounded-lg px-1 text-left text-violet-700 hover:bg-violet-50">{open ? <ChevronDown className="h-4 w-4 shrink-0"/> : <ChevronRight className="h-4 w-4 shrink-0"/>}<span>Частей: {group.parts.length}</span></button> : <span className="lg:line-clamp-2">{p.category}</span>}</td>
+              <td data-cell="actions" className="px-2 py-3"><div className="flex items-center justify-end gap-1">{!group.chainId && p.amount < 0 && <button type="button" onClick={() => onOpen({ paymentId: p.id })} className="min-h-11 rounded-lg border border-violet-200 px-2 text-xs text-violet-700">Разбить</button>}<button type="button" aria-label="Редактировать операцию" title="Редактировать" onClick={() => group.chainId ? onOpen({ paymentId: p.id }) : onEdit(p)} className="tap rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Pencil className="h-4 w-4"/></button><button type="button" aria-label={group.chainId ? "Отменить операцию" : "Удалить платёж"} title={group.chainId ? "Отменить операцию" : "Удалить платёж"} onClick={() => group.chainId ? onOpen({ paymentId: p.id }) : onDelete(p.id)} className="tap rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4"/></button></div></td>
             </tr>
             {group.chainId && open && <tr id={`parts-${group.key}`}><td colSpan={8} className="px-5 py-3"><div className="w-full space-y-2 rounded-lg border border-violet-100 bg-slate-50 p-3 text-left">
               <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">Части операции на {formatMoney(-p.amount)}</p><button type="button" onClick={() => onOpen({ paymentId: p.id })} className="min-h-11 rounded-lg px-3 text-sm text-violet-700 hover:bg-white">Изменить разбивку</button></div>
