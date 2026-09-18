@@ -192,7 +192,9 @@ export function classifyBankStatement(
     if (mandatory) {
       category = mandatory;
       categoryConfidence = 1;
-      reasons.push("ООО Интернет Решения, ИНН 7704217370: оплата товаров по договору ИР — продажи на МП");
+      reasons.push(mandatory === "Продажи на МП"
+        ? "ООО Интернет Решения: оплата товаров по договору ИР — продажи на МП"
+        : "Назначение ЕНП — налог УСН");
     } else if (row.counterpartyInn && row.counterpartyInn === statement.ownerInn) {
       category = row.amount >= 0 ? "Поступление — Перевод между счетами" : "Выбытие — Перевод между счетами";
       categoryConfidence = 0.98;
