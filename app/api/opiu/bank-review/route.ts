@@ -202,7 +202,12 @@ export async function POST(request: Request) {
       counterparty: text(row?.counterparty),
       counterparty_inn: text(row?.counterpartyInn, 20).replace(/\D/g, ""),
       purpose: text(row?.purpose, 5_000),
-      category: mandatoryBankCategory({amount,counterpartyInn:row?.counterpartyInn,purpose:row?.purpose}) ?? (text(suggestion.category, 255) || null),
+      category: mandatoryBankCategory({
+        amount,
+        counterparty: row?.counterparty,
+        counterpartyInn: row?.counterpartyInn,
+        purpose: row?.purpose,
+      }) ?? (text(suggestion.category, 255) || null),
       confidence: Math.min(1, Math.max(0, Number(suggestion.confidence) || 0)),
       reasons: [
         ...(Array.isArray(suggestion.reasons) ? suggestion.reasons.slice(0, 19).map((reason) => text(reason, 500)) : []),
