@@ -1,7 +1,8 @@
 
 import { extractOfficeText } from "@/components/loans/officeText";
-import { mergeRecognition, recognizeLoanSpreadsheet, recognizeLoanText, type LoanCurrency, type RecognizedLoan } from "@/components/loans/loanRecognition";
+import { mergeRecognition, recognizeLoanPdfSchedule, recognizeLoanSpreadsheet, recognizeLoanText, type LoanCurrency, type RecognizedLoan } from "@/components/loans/loanRecognition";
 import { applyLoanScheduleCorrections } from "@/components/loans/loanScheduleCorrections";
+import { extractPdfText } from "@/lib/loans/pdfText";
 import { roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { xlsxGrid } from "@/lib/finance/xlsxGrid";
 import { isImageMediaType, type AiRecognitionBody } from "./aiRecognition";
@@ -79,7 +80,10 @@ export async function recognizeLoanDocument(
   let spreadsheetRecognition: Partial<RecognizedLoan> | undefined;
   if (file) {
     const lower = file.name.toLowerCase();
-    if (lower.endsWith(".pdf") || file.mimeType === "application/pdf") pdfBase64 = file.bytes.toString("base64");
+    if (lower.endsWith(".pdf") || file.mimeType === "application/pdf") {
+      pdfBase64 = file.bytes.toString("base64");
+      documentText = extractPdfText(file.bytes);
+    }
     else if ((imageType = imageMediaType(file))) imageBase64 = file.bytes.toString("base64");
     else {
       const officeFile = new File([new Uint8Array(file.bytes)], file.name);
@@ -89,6 +93,18 @@ export async function recognizeLoanDocument(
   }
   const extractedText = [instructions, documentText].filter(Boolean).join("\n");
   const local = mergeRecognition(recognizeLoanText(extractedText || file?.name || ""), spreadsheetRecognition);
+  const pdfSchedule = pdfBase64 && documentText ? recognizeLoanPdfSchedule(documentText) : [];
+  if (pdfSchedule.length) {
+    local.schedule = pdfSchedule;
+    local.dueDate = pdfSchedule.at(-1)?.date ?? local.dueDate;
+    local.interestFrequency = "weekly";
+    const openingBalance = pdfSchedule[0].balanceBefore ?? pdfSchedule.reduce((sum, row) => sum + row.principal, 0);
+    // Число из даты/номера строки не является суммой займа. Если регулярка
+    // поймала явно несоразмерное значение, доверяем напечатанному остатку до
+    // первого платежа.
+    if (!local.principalAmount || local.principalAmount < openingBalance * 0.5) local.principalAmount = openingBalance;
+    local.warnings = local.warnings.filter((warning) => warning !== "Не удалось определить дату возврата тела");
+  }
   let remote: Partial<RecognizedLoan> | undefined;
   // Договор Дзюбина распознаётся полностью локально. Не даём сбою внешнего ИИ
   // сорвать загрузку или подменить поквартальный рост тела.
@@ -104,11 +120,13 @@ export async function recognizeLoanDocument(
         fileName: file?.name,
       });
     } catch (error) {
-      // Для PDF и картинок локального резерва нет — без ИИ читать нечем.
-      if (pdfBase64 || imageBase64) throw error;
+      // У PDF с текстовым слоем есть локальный резерв. Скан и картинку без
+      // OCR нельзя разбирать достоверно, поэтому не маскируем ошибку успехом.
+      if ((pdfBase64 && !documentText) || imageBase64) throw error;
+      local.warnings.push("ИИ недоступен: договор прочитан локально, проверьте предложенные поля.");
     }
-  } else if (pdfBase64 || imageBase64) {
-    throw new Error("Для PDF и изображений нужно ИИ-распознавание, а оно не подключено");
+  } else if ((pdfBase64 && !documentText) || imageBase64) {
+    throw new Error("В PDF не найден текстовый слой. Загрузите текстовый PDF, добавьте описание или используйте OCR.");
   }
   const recognized = mergeRecognition(local, remote);
   if (local.interestFrequency === "semi_monthly") {

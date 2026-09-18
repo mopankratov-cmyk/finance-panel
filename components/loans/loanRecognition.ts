@@ -202,6 +202,39 @@ export function recognizeLoanDocumentSchedule(text: string): RecognizedScheduleR
   return aggregateRecognizedSchedule(rows);
 }
 
+/**
+ * Графики из PDF обычно идут строками: №, дата, платёж, тело, проценты,
+ * комиссия, остаток. В отличие от Word-таблицы, порядок колонок здесь другой.
+ * Берём только явно напечатанные суммы, ничего не достраиваем.
+ */
+export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] {
+  const rows: RecognizedScheduleRow[] = [];
+  const rowPattern = /(\d{1,4})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{4})([\s\S]*?)(?=(?:\d{1,4}\s+\d{1,2}[./-]\d{1,2}[./-]\d{4})|$)/g;
+  // Сначала дробные суммы: это не даёт комиссии «0» склеиться с остатком
+  // без разделителя тысяч (`0 2170294.16`). Затем — отдельные целые нули.
+  const amountPattern = /\d+(?:[\s\u00a0\u202f]\d{3})*[.,]\d{1,2}|(?<![\d.,])\d+(?![\d.,])/g;
+  const year = new Date().getFullYear();
+  for (const match of text.matchAll(rowPattern)) {
+    const amounts = [...match[3].matchAll(amountPattern)].map((item) => normalizeAmount(item[0]));
+    // Платёж, тело, проценты, комиссия, остаток после оплаты.
+    if (amounts.length < 5) continue;
+    const [total, principal, interest, commission, balanceAfter] = amounts;
+    if (!(total > 0) || principal < 0 || interest < 0 || balanceAfter < 0) continue;
+    const date = isoDate(match[2], year);
+    if (!date || Math.abs(total - principal - interest - commission) > Math.max(2, total * 0.02)) continue;
+    rows.push({
+      date,
+      principal,
+      interest,
+      penalty: 0,
+      fine: 0,
+      balanceBefore: balanceAfter + principal,
+      balanceAfter,
+    });
+  }
+  return aggregateRecognizedSchedule(rows);
+}
+
 /** Exact local parser for bank schedules with Date / operation type / amount columns. */
 export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLoan> {
   const normalize = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();

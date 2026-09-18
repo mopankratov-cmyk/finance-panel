@@ -9,6 +9,7 @@ import type { LoanScheduleDraft } from "@/lib/loans/schedule";
 import { isUploadObjectPath, readUpload, removeUpload } from "@/lib/finance/uploadStorage";
 
 export const maxDuration = 120;
+export const runtime = "nodejs";
 
 // Распознавание договора целиком на сервере. Раньше браузер сам вытаскивал
 // текст из DOCX/XLSX, гонял регулярки, звал ИИ, сливал результаты и строил
