@@ -8,6 +8,7 @@ import {
   detectSkuAnomalies,
   detectSkuSignals,
   detectStockCoverageSignal,
+  dropLegacyPartsOnlyMetrics,
   filterAnomaliesByField,
   formatAnomalyBadge,
   isOpenMoscowDayLabel,
@@ -212,4 +213,54 @@ test("недельная колонка пересчитывает процен�
   assert.equal(find("clicks").daily[0], 100);
   // Остаток — снимок: сумма за неделю дала бы 326 штук вместо сорока.
   assert.equal(find("stock").daily[0], 40);
+});
+
+test("недельная колонка метрики с частями пересчитывается из их сумм и несёт их дальше", () => {
+  // Понедельник: 1 выкуп из 10 решённых (10%), воскресенье: 60 из 80 (75%).
+  // Среднее дней — 42.5%, честная неделя — 61 / 90 = 67.8%.
+  const table = {
+    period: Array.from({ length: 7 }, (_, index) => ({ label: `0${index + 1}.09`, period_type: "рабочий" })),
+    summary: [
+      {
+        field: "actual_buyout_pct",
+        kind: "pct",
+        daily: [10, null, null, null, null, null, 75],
+        parts: { numerator: [1, 0, 0, 0, 0, 0, 60], denominator: [10, 0, 0, 0, 0, 0, 80], scale: 100 as const },
+      },
+      {
+        field: "logistics_per_unit",
+        kind: "money",
+        daily: [3_000, null, null, null, null, null, 1_000],
+        parts: { numerator: [3_000, null, null, null, null, null, 4_000], denominator: [1, null, null, null, null, null, 4], scale: 1 as const },
+      },
+    ],
+    skus: [],
+  };
+  const weekly = aggregateRnpWeekly(table, "2026-09-07", "2026-09-13");
+  const find = (field: string) => weekly.summary.find((metric) => metric.field === field)!;
+  assert.equal(find("actual_buyout_pct").daily[0], 67.8);
+  assert.deepEqual(find("actual_buyout_pct").parts, { numerator: [61], denominator: [90], scale: 100 });
+  assert.equal(find("logistics_per_unit").daily[0], 1_400, "7 000 ₽ на 5 штук, а не среднее 2 000");
+});
+
+test("старый снимок без частей: когортные строки гаснут, остальные не трогаются", () => {
+  const table = {
+    period: [{ label: "01.09", period_type: "рабочий" }],
+    summary: [
+      { field: "actual_buyout_pct", kind: "pct", daily: [89.7], total: 89.7, forecast: null },
+      { field: "buyout_pct", kind: "pct", daily: [23.5], total: 23.5, forecast: null },
+    ],
+    skus: [{ metrics: [{ field: "actual_buyout_pct", kind: "pct", daily: [90], total: 90, forecast: null }] }],
+  };
+  const cleaned = dropLegacyPartsOnlyMetrics(table);
+  assert.deepEqual(cleaned.summary[0].daily, [null]);
+  assert.equal((cleaned.summary[0] as { total: number | null }).total, null);
+  assert.equal((cleaned.summary[1] as { total: number | null }).total, 23.5);
+  assert.equal((cleaned.skus[0].metrics[0] as { total: number | null }).total, null);
+
+  const fresh = { ...table, summary: [{ ...table.summary[0], parts: { numerator: [25], denominator: [100], scale: 100 as const } }] , skus: [] };
+  assert.equal(dropLegacyPartsOnlyMetrics(fresh), fresh, "снимок с частями возвращается как есть");
+
+  const weekly = aggregateRnpWeekly({ period: Array.from({ length: 7 }, () => ({ label: "", period_type: "" })), summary: [{ field: "actual_buyout_pct", kind: "pct", daily: [90, 90, 90, 90, 90, 90, 90] }], skus: [] }, "2026-09-07", "2026-09-13");
+  assert.deepEqual(weekly.summary[0].daily, [null], "неделя по старому снимку не усредняет проценты");
 });

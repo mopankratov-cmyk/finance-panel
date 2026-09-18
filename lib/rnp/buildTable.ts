@@ -54,6 +54,25 @@ interface DailyRow {
    */
   buyouts_gross_sum?: number;
   buyouts_finished_sum?: number;
+  /**
+   * Когорта заказов дня — по дате ЗАКАЗА, судьба сопоставлена с продажами по
+   * srid (`rnp_buyout_cohort_daily_sku`): всего заказов, отменено/отказ,
+   * выкуплено и не возвращено, возвращено. Остальные ещё в пути.
+   * `undefined` — агрегата нет (миграция не применена или нет id кабинета).
+   */
+  cohort_orders?: number;
+  cohort_cancelled?: number;
+  cohort_kept?: number;
+  /** Из cohort_kept: выкуплено, но 21-дневное окно возврата ещё открыто. */
+  cohort_kept_open?: number;
+  cohort_returned?: number;
+  /**
+   * Логистика финотчёта (delivery_rub со знаком) и проданные штуки из тех же
+   * строк отчёта (продажи − возвраты), по дате операции rr_dt
+   * (`rnp_report_logistics_daily_sku`). `undefined` — отчёта за день нет.
+   */
+  report_logistics_rub?: number;
+  report_sold_units?: number;
 }
 
 /** Факты, которых может не быть: складываем их отдельно, чтобы не выдать undefined за ноль. */
@@ -69,6 +88,13 @@ const OPTIONAL_FACT_FIELDS = [
   "orders_fbw_sum",
   "buyouts_gross_sum",
   "buyouts_finished_sum",
+  "cohort_orders",
+  "cohort_cancelled",
+  "cohort_kept",
+  "cohort_kept_open",
+  "cohort_returned",
+  "report_logistics_rub",
+  "report_sold_units",
 ] as const;
 
 /**
@@ -348,6 +374,7 @@ export function applyRnpScopeCutoff<Row extends DailyRow>(rows: Row[], asOf: str
     ...(row.returns_count == null ? {} : { returns_count: 0, returns_sum: 0 }),
     ...(row.orders_gross_sum == null ? {} : { orders_gross_sum: 0 }),
     ...(row.buyouts_gross_sum == null ? {} : { buyouts_gross_sum: 0, buyouts_finished_sum: 0 }),
+    ...(row.cohort_orders == null ? {} : { cohort_orders: 0, cohort_cancelled: 0, cohort_kept: 0, cohort_kept_open: 0, cohort_returned: 0 }),
   } as Row));
 }
 
@@ -363,6 +390,11 @@ export function applyRnpSourceCutoffs<Row extends DailyRow>(
       ...(isAfter(date, cutoffs.orders) ? { orders_count: 0, orders_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.orders) && row.cancels_count != null ? { cancels_count: 0, cancels_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.orders) && row.orders_gross_sum != null ? { orders_gross_sum: 0 } : {}),
+      // Когорте нужны оба источника: отмены из заказов, выкупы и возвраты из
+      // продаж. Застрявшие продажи при свежих заказах давали бы 0% выкупа.
+      ...((isAfter(date, cutoffs.orders) || isAfter(date, cutoffs.sales)) && row.cohort_orders != null
+        ? { cohort_orders: 0, cohort_cancelled: 0, cohort_kept: 0, cohort_kept_open: 0, cohort_returned: 0 }
+        : {}),
       ...(isAfter(date, cutoffs.sales) ? { buyouts_count: 0, buyouts_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.sales) && row.returns_count != null ? { returns_count: 0, returns_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.sales) && row.buyouts_gross_sum != null ? { buyouts_gross_sum: 0, buyouts_finished_sum: 0 } : {}),
@@ -391,6 +423,26 @@ export interface Metric {
   note?: string;
   qualityReason?: "no_activity" | "missing_cost" | "missing_rates" | "stale_source" | "api_error" | "unsupported_source";
   group_start?: boolean;
+  /**
+   * Числитель и знаменатель производной, которых нет среди строк таблицы.
+   * Недельная колонка и сводка под фильтром пересчитывают долю из их сумм:
+   * усреднение готовых процентов дало бы день с тремя заказами тот же вес,
+   * что и день с тремястами.
+   */
+  parts?: RnpMetricParts;
+}
+
+export interface RnpMetricParts {
+  numerator: (number | null)[];
+  denominator: (number | null)[];
+  /** 100 — доля в процентах с точностью 0.1, 1 — рубли на единицу. */
+  scale: 100 | 1;
+}
+
+export function ratioFromParts(numerator: number | null, denominator: number | null, scale: 100 | 1): number | null {
+  if (numerator == null || denominator == null || !(denominator > 0)) return null;
+  const value = (numerator / denominator) * scale;
+  return scale === 100 ? Math.round(value * 10) / 10 : Math.round(value);
 }
 
 const ADDITIVE_FORECAST_FIELDS = new Set([
@@ -521,6 +573,89 @@ export function applyEconomyMetricCoverage(
 function knownSum(values: (number | null)[]) {
   const known = values.filter((value): value is number => value != null && Number.isFinite(value));
   return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+}
+
+/** Дни, за которые финотчёт WB кабинета загружен (min/max rr_dt). */
+export interface RnpReportCoverage {
+  first: string;
+  last: string;
+}
+
+/**
+ * Покрытие метрик, у которых полнота факта — не число загруженных дней.
+ *
+ * «Фактический % выкупа»: доля заказов периода с окончательным итогом
+ * (отмена/отказ, возврат или выкуп, у которого закрылось окно возврата) и доля
+ * дней, где когорту вообще можно собрать (у продаж есть srid). Недозревший
+ * период — «частично», а не «готово».
+ *
+ * «Логистика на единицу»: доля дней периода, за которые финотчёт WB уже
+ * загружен. Отчёт приходит с задержкой; пустой свежий день — «отчёта ещё
+ * нет», а не «логистики не было».
+ *
+ * Повторный проход прогнозов сводки сбрасывает покрытие таких строк на 100%,
+ * поэтому функция вызывается и после него.
+ */
+export function applyCohortAndReportCoverage(
+  metrics: Metric[],
+  days: string[],
+  asOf: string,
+  reportCoverage: RnpReportCoverage | null,
+  cohortSince: string | null = null,
+) {
+  const r1 = (value: number) => Math.round(value * 10) / 10;
+  const eligible = days.filter((day) => day <= asOf);
+  const shareOfDays = (covered: (day: string) => boolean) =>
+    eligible.length ? r1((eligible.filter(covered).length / eligible.length) * 100) : 0;
+  const apply = (metric: Metric, sourceCoveragePct: number) => {
+    if (metric.qualityReason === "unsupported_source") {
+      metric.coveragePct = 0;
+      metric.status = "unavailable";
+      return;
+    }
+    if (metric.total != null) {
+      metric.coveragePct = sourceCoveragePct;
+      metric.status = statusForCoverage(sourceCoveragePct);
+      metric.qualityReason = sourceCoveragePct < 100 ? "stale_source" : undefined;
+      return;
+    }
+    metric.coveragePct = 0;
+    metric.status = "unavailable";
+    const numerator = metric.parts ? knownSum(metric.parts.numerator) : null;
+    const denominator = metric.parts ? knownSum(metric.parts.denominator) : null;
+    if (numerator != null && numerator !== 0 && denominator != null && !(denominator > 0)) {
+      // Деньги есть, а проданных штук ноль или минус: на единицу не делится,
+      // но «активности не было» — неправда.
+      metric.qualityReason = undefined;
+      const text = "За период нет проданных штук (продажи не больше возвратов) — на единицу не делится.";
+      if (!metric.note?.includes(text)) metric.note = [metric.note, text].filter(Boolean).join(" ");
+      return;
+    }
+    // Источник не покрыл период (отчёта ещё нет, когорта не дозрела) — это не
+    // «активности нет».
+    metric.qualityReason = sourceCoveragePct < 100 ? "stale_source" : "no_activity";
+  };
+
+  const cohortDaysPct = cohortSince ? shareOfDays((day) => day >= cohortSince) : 0;
+  const buyout = metrics.find((metric) => metric.field === "actual_buyout_pct");
+  const resolved = metrics.find((metric) => metric.field === "cohort_resolved_pct");
+  if (buyout) {
+    const finalTotal = resolved?.parts ? knownSum(resolved.parts.numerator) : null;
+    const ordersTotal = resolved?.parts ? knownSum(resolved.parts.denominator) : null;
+    const finalPct = finalTotal != null && ordersTotal != null && ordersTotal > 0
+      ? r1((finalTotal / ordersTotal) * 100)
+      : 0;
+    apply(buyout, Math.min(finalPct, cohortDaysPct));
+  }
+  if (resolved) apply(resolved, cohortDaysPct);
+
+  const logistics = metrics.find((metric) => metric.field === "logistics_per_unit");
+  if (logistics) {
+    apply(logistics, reportCoverage
+      ? shareOfDays((day) => day >= reportCoverage.first && day <= reportCoverage.last)
+      : 0);
+  }
+  return metrics;
 }
 
 /**
@@ -1028,6 +1163,14 @@ export function buildMetrics(
       overheadPct: number;
       extraParts?: { delivery: number; storage: number; penalty: number; acceptance: number; deduction: number } | null;
     } | null;
+    /**
+     * С какого дня заказов когорту можно собрать: у продаж есть srid
+     * (`rnp_sales_srid_since` + день запаса). null — когорты нет вовсе
+     * (миграция не применена, нет id кабинета), «Фактический % выкупа» молчит.
+     */
+    cohortSince?: string | null;
+    /** Дни, покрытые финотчётом. null — отчёта у кабинета нет, «Логистика на единицу» молчит. */
+    reportCoverage?: RnpReportCoverage | null;
   } = {},
 ): Metric[] {
   const pick = (key: keyof DailyRow, cutoff: string | null) => days.map((day) =>
@@ -1094,15 +1237,67 @@ export function buildMetrics(
     if (!(buyoutsGrossSum[index] > 0)) return null;
     return Math.round(ordersSum[index] * (buyoutsFinishedSum[index] / buyoutsGrossSum[index]));
   });
-  // Фактический % выкупа = оставленное у себя / доставленное = нетто-выкупы /
-  // брутто-выкупы. Доставлено покупателю ровно столько, сколько строк продажи,
-  // то есть брутто; возвраты — часть этого же потока, а не добавка к нему.
-  // Прежняя формула брала знаменателем «брутто + возвраты» и считала каждый
-  // возврат дважды, из-за чего процент выкупа был завышен.
-  const actualBuyoutPct = days.map((_, index) => {
-    if (buyoutsCount[index] == null || grossBuyoutsCount[index] == null) return null;
-    return grossBuyoutsCount[index] > 0 ? r1((buyoutsCount[index] / grossBuyoutsCount[index]) * 100) : null;
-  });
+  // Фактический % выкупа — когорта по дате ЗАКАЗА, как считает сам WB:
+  // выкуплено и не возвращено / заказы с известным итогом (выкуп, возврат,
+  // отмена или отказ на ПВЗ). Заказы в пути в знаменатель не входят.
+  //
+  // Прежде здесь было «нетто-выкупы / брутто-выкупы» — ровно 100% минус доля
+  // возвратов. Отказ на ПВЗ строки продажи не создаёт вовсе, поэтому основная
+  // масса невыкупа одежды в ту формулу не попадала: Retail Family 11–17.09
+  // показывал 89.7% при реальных ~20–40%.
+  const cohortSince = options.cohortSince ?? null;
+  const cohortFacts = cohortSince != null;
+  // Когорте нужны оба источника: отмены из заказов, выкупы и возвраты из
+  // продаж. Отсечка — по отставшему из них, иначе застрявшие продажи при
+  // свежих заказах давали бы 0% выкупа.
+  const cohortCutoff = cutoffs.orders && cutoffs.sales
+    ? (cutoffs.orders < cutoffs.sales ? cutoffs.orders : cutoffs.sales)
+    : null;
+  const cohortPick = (key: keyof DailyRow) => days.map((day) =>
+    !cohortSince || !cohortCutoff || day < cohortSince || day > asOf || day > cohortCutoff
+      ? null
+      : Number(byDate.get(day)?.[key] ?? 0));
+  const cohortOrders = cohortPick("cohort_orders");
+  const cohortCancelled = cohortPick("cohort_cancelled");
+  const cohortKept = cohortPick("cohort_kept");
+  const cohortKeptOpen = cohortPick("cohort_kept_open");
+  const cohortReturned = cohortPick("cohort_returned");
+  const cohortResolved = days.map((_, index) =>
+    cohortKept[index] == null || cohortCancelled[index] == null || cohortReturned[index] == null
+      ? null
+      : cohortKept[index] + cohortCancelled[index] + cohortReturned[index]);
+  // Окончательный итог: выкуп, у которого закрылось окно возврата, возврат или
+  // отмена. Выкуп с открытым окном в процент входит, но зрелость не добавляет.
+  const cohortFinal = days.map((_, index) =>
+    cohortResolved[index] == null || cohortKeptOpen[index] == null
+      ? null
+      : cohortResolved[index] - cohortKeptOpen[index]);
+  // День показываем, когда итог известен хотя бы у половины его заказов. В
+  // первые день-два известны почти одни быстрые отмены — процент там был бы
+  // около нуля и читался как обвал. Такие дни не входят и в итог периода.
+  const matureCohortDay = (index: number) =>
+    cohortOrders[index] != null && cohortOrders[index] > 0
+    && cohortResolved[index] != null && cohortResolved[index] / cohortOrders[index] >= 0.5;
+  const matureKept = days.map((_, index) => matureCohortDay(index) ? cohortKept[index] : null);
+  const matureResolved = days.map((_, index) => matureCohortDay(index) ? cohortResolved[index] : null);
+  const actualBuyoutPct = days.map((_, index) => ratioFromParts(matureKept[index], matureResolved[index], 100));
+  const cohortResolvedPct = days.map((_, index) => ratioFromParts(cohortFinal[index], cohortOrders[index], 100));
+  const cohortQualityReason: Metric["qualityReason"] = cohortFacts ? undefined : "unsupported_source";
+  const cohortSinceLabel = cohortSince && days.some((day) => day < cohortSince && day <= asOf)
+    ? ` Дни до ${cohortSince.split("-").reverse().join(".")} пусты: у продаж тех дат нет srid, итог заказа не сопоставить.`
+    : "";
+  // Логистика на единицу: вся логистика финотчёта (туда, обратно, сторно) /
+  // проданные штуки из тех же строк отчёта. Невыкуп учтён сам собой: доставки
+  // отказов и обратная логистика уже в сумме. Дни вне загруженного отчёта —
+  // «отчёта ещё нет», а не ноль.
+  const reportCoverage = options.reportCoverage ?? null;
+  const reportPick = (key: keyof DailyRow) => days.map((day) =>
+    !reportCoverage || day > asOf || day < reportCoverage.first || day > reportCoverage.last
+      ? null
+      : Number(byDate.get(day)?.[key] ?? 0));
+  const reportLogistics = reportPick("report_logistics_rub");
+  const reportUnits = reportPick("report_sold_units");
+  const logisticsPerUnit = days.map((_, index) => ratioFromParts(reportLogistics[index], reportUnits[index], 1));
   const sppPct = days.map((_, index) =>
     buyoutsGrossSum[index] != null && buyoutsFinishedSum[index] != null && buyoutsGrossSum[index] > 0
       ? r1((1 - buyoutsFinishedSum[index] / buyoutsGrossSum[index]) * 100)
@@ -1313,12 +1508,26 @@ export function buildMetrics(
       label: "Фактический % выкупа, %",
       kind: "pct",
       daily: actualBuyoutPct,
-      total: totalBuyoutsCount != null && totalGrossBuyouts != null && totalGrossBuyouts > 0
-        ? r1((totalBuyoutsCount / totalGrossBuyouts) * 100)
-        : null,
+      total: ratioFromParts(knownSum(matureKept), knownSum(matureResolved), 100),
       forecast: null,
-      source: "WB Статистика",
-      note: "Оставлено у себя / доставлено = выкупы за вычетом возвратов, делённые на выкупы до вычета. В отличие от «Выкуп потока» считается по факту доставки, а не к заказам другой когорты.",
+      source: "WB Статистика заказов + продаж (по srid)",
+      note: cohortFacts
+        ? "Как у WB: из заказов дня — выкуплено и не возвращено / заказы с известным итогом (выкуп, возврат, отмена или отказ на ПВЗ). Заказы в пути не учитываются. День показывается, когда итог известен хотя бы у половины его заказов: в первые дни известны почти одни быстрые отмены. Пока окно возврата (21 день) не закрылось, часть выкупов ещё может вернуться — насколько период дозрел, видно в «Заказы с итогом»." + cohortSinceLabel
+        : "Когорта заказов ещё не посчитана: нужна миграция 202609170001 (rnp_buyout_cohort_daily_sku) или у выбранного набора нет id кабинета.",
+      qualityReason: cohortQualityReason,
+      parts: { numerator: matureKept, denominator: matureResolved, scale: 100 },
+    },
+    {
+      field: "cohort_resolved_pct",
+      label: "Заказы с итогом, %",
+      kind: "pct",
+      daily: cohortResolvedPct,
+      total: ratioFromParts(knownSum(cohortFinal), knownSum(cohortOrders), 100),
+      forecast: null,
+      source: "WB Статистика заказов + продаж (по srid)",
+      note: "Доля заказов дня с окончательным итогом: отмена или отказ, возврат, либо выкуп, у которого закрылось 21-дневное окно возврата. Остальные ещё в пути или могут вернуться. Чем ниже, тем меньше можно доверять «Фактическому % выкупа»." + cohortSinceLabel,
+      qualityReason: cohortQualityReason,
+      parts: { numerator: cohortFinal, denominator: cohortOrders, scale: 100 },
     },
     {
       field: "orders_spp_sum",
@@ -1428,6 +1637,20 @@ export function buildMetrics(
     { field: "gross", label: "Прибыль после расходов МП, ₽", kind: "money", daily: gross, total: totalGross == null ? null : Math.round(totalGross), forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason: profitReason, group_start: true },
     { field: "margin_pct", label: "Расчётная маржа после рекламы, %", kind: "pct", daily: marginPct, total: grossBuyoutsSum != null && totalGross != null && grossBuyoutsSum > 0 ? r1((totalGross / grossBuyoutsSum) * 100) : null, forecast: null, source: "WB Финотчёт + себестоимость + WB Реклама", qualityReason: profitReason },
     ...buildEconomyBreakdown(days, { buyoutsSum, buyoutsCount, adSpend, gross, cost, wbCostPct, rates: options.rates ?? null }),
+    {
+      field: "logistics_per_unit",
+      label: "Логистика на единицу, ₽",
+      kind: "money",
+      daily: logisticsPerUnit,
+      total: ratioFromParts(knownSum(reportLogistics), knownSum(reportUnits), 1),
+      forecast: null,
+      source: "WB Финотчёт",
+      note: reportCoverage
+        ? `Вся логистика из финотчёта (туда и обратно, со сторно) / проданные штуки из тех же строк отчёта (продажи − возвраты), по дате операции. Невыкуп учтён сам собой: доставки отказов и обратная логистика уже в сумме. Отчёт загружен по ${reportCoverage.last.split("-").reverse().join(".")}; дни после — пустые, отчёта ещё нет. По дням значение шумное — ориентир по итогу и неделям.`
+        : "Финотчёта по этому кабинету нет (он грузится только для кабинетов ОПиУ) или не применена миграция 202609170001.",
+      qualityReason: reportCoverage ? undefined : "unsupported_source",
+      parts: { numerator: reportLogistics, denominator: reportUnits, scale: 1 },
+    },
   );
   // Оборачиваемость, дней = остаток / средние дневные выкупы за выбранное
   // пользователем окно. Будущие/не загруженные дни не попадают в знаменатель.
@@ -1500,7 +1723,7 @@ export function buildMetrics(
   applyDerivedRatioCoverage(withForecasts, "cancel_pct", ["cancels_count", "orders_count"]);
   applyDerivedRatioCoverage(withForecasts, "return_pct", ["returns_count", "buyouts_count"]);
   applyDerivedRatioCoverage(withForecasts, "fbs_share_pct", ["orders_fbs_sum", "orders_fbw_sum"]);
-  applyDerivedRatioCoverage(withForecasts, "actual_buyout_pct", ["buyouts_count", "returns_count"]);
+  applyCohortAndReportCoverage(withForecasts, days, asOf, reportCoverage, cohortSince);
   applyDerivedRatioCoverage(withForecasts, "orders_spp_sum", ["orders_sum", "buyouts_sum"]);
   applyDerivedRatioCoverage(withForecasts, "buyouts_gross_count", ["buyouts_count", "returns_count"]);
   applyDerivedRatioCoverage(withForecasts, "avg_order_price", ["orders_sum", "orders_count"]);
@@ -2311,6 +2534,198 @@ async function loadSalesReturns(
   });
 }
 
+export interface BuyoutCohortRow {
+  d: string;
+  nm_id: number;
+  cohort_orders: number;
+  cohort_cancelled: number;
+  cohort_kept: number;
+  cohort_kept_open: number;
+  cohort_returned: number;
+}
+
+export interface BuyoutCohortFacts {
+  rows: BuyoutCohortRow[];
+  /** Первый день заказов, у которых итог можно сопоставить по srid. */
+  since: string;
+}
+
+export interface ReportLogisticsRow {
+  d: string;
+  nm_id: number;
+  logistics_rub: number | string;
+  sold_units: number;
+}
+
+export interface ReportLogisticsFacts {
+  rows: ReportLogisticsRow[];
+  coverage: RnpReportCoverage;
+}
+
+/**
+ * Когорта заказов периода с их итогом. null — функции нет (миграция не
+ * применена), у продаж кабинета нет srid вовсе или нет id кабинета: метрика
+ * молчит, а не рисует ноль.
+ */
+async function loadBuyoutCohort(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  allowed: number[] | null,
+  from: string,
+  to: string,
+): Promise<BuyoutCohortFacts | null> {
+  if (!scope.cabinetId) return null;
+  try {
+    const { data: sridSince, error } = await db.rpc("rnp_sales_srid_since", { p_cabinet: scope.cabinetId });
+    const sridDay = error ? null : dateOnly(Array.isArray(sridSince) ? sridSince[0] : sridSince);
+    if (!sridDay) return null;
+    // День запаса: srid стали писать синком с перекрытием в 48 часов, и
+    // строки самого первого дня могли остаться без него.
+    const since = nextIsoDate(sridDay);
+    if (since > to) return { rows: [], since };
+    const rows = await loadAllSupabasePages<BuyoutCohortRow>((rangeFrom, rangeTo) => db
+      .rpc("rnp_buyout_cohort_daily_sku", {
+        p_from: from,
+        p_to: to,
+        p_cabinet: scope.cabinetId,
+        p_nm_ids: allowed,
+      })
+      .order("d", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(rangeFrom, rangeTo), { label: "RNP: когорта выкупа", maxPages: 100 });
+    return { rows, since };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Логистика и проданные штуки из финотчёта плюс границы загруженного отчёта.
+ * null — отчёта у кабинета нет (грузится только для кабинетов ОПиУ) или
+ * функций нет в базе.
+ */
+async function loadReportLogistics(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  allowed: number[] | null,
+  from: string,
+  to: string,
+): Promise<ReportLogisticsFacts | null> {
+  if (!scope.cabinetId) return null;
+  try {
+    const { data, error } = await db.rpc("rnp_report_coverage", { p_cabinet: scope.cabinetId });
+    if (error) return null;
+    const bounds = (Array.isArray(data) ? data[0] : data) as { first_day?: string | null; last_day?: string | null } | null;
+    const first = dateOnly(bounds?.first_day);
+    const last = dateOnly(bounds?.last_day);
+    if (!first || !last) return null;
+    const coverage = { first, last };
+    if (last < from || first > to) return { rows: [], coverage };
+    const rows = await loadAllSupabasePages<ReportLogisticsRow>((rangeFrom, rangeTo) => db
+      .rpc("rnp_report_logistics_daily_sku", {
+        p_from: first > from ? first : from,
+        p_to: last < to ? last : to,
+        p_cabinet: scope.cabinetId,
+        p_nm_ids: allowed,
+      })
+      .order("d", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(rangeFrom, rangeTo), { label: "RNP: логистика финотчёта", maxPages: 100 });
+    return { rows, coverage };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Вклеивает когорту выкупа и логистику финотчёта в дневные строки SKU.
+ * День, которого не было среди заказов и продаж (например, пришла только
+ * логистика), появляется нулевой строкой. Явный ноль ставится там, где
+ * источник факт знает: когорте — всем строкам, отчёту — только дням внутри
+ * загруженного периода.
+ */
+export function applyCohortAndReportFacts(
+  rows: SkuDailyRow[],
+  cohort: BuyoutCohortFacts | null,
+  report: ReportLogisticsFacts | null,
+): SkuDailyRow[] {
+  if (!cohort && !report) return rows;
+  const byKey = new Map<string, SkuDailyRow>();
+  for (const row of rows) byKey.set(scopedDailyKey(Number(row.nm_id), readDate(row.d)), { ...row });
+  const touch = (nmId: number, date: string) => {
+    const key = scopedDailyKey(nmId, date);
+    const existing = byKey.get(key);
+    if (existing) return existing;
+    const created: SkuDailyRow = { d: date, nm_id: nmId, orders_count: 0, orders_sum: 0, buyouts_count: 0, buyouts_sum: 0, ad_spent: 0 };
+    byKey.set(key, created);
+    return created;
+  };
+  const num = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const inCohort = (date: string) => !!cohort && date >= cohort.since;
+  for (const item of cohort?.rows ?? []) {
+    const nmId = Number(item.nm_id);
+    const date = readDate(item.d);
+    if (!Number.isFinite(nmId) || !date || !inCohort(date)) continue;
+    const row = touch(nmId, date);
+    row.cohort_orders = (row.cohort_orders ?? 0) + num(item.cohort_orders);
+    row.cohort_cancelled = (row.cohort_cancelled ?? 0) + num(item.cohort_cancelled);
+    row.cohort_kept = (row.cohort_kept ?? 0) + num(item.cohort_kept);
+    row.cohort_kept_open = (row.cohort_kept_open ?? 0) + num(item.cohort_kept_open);
+    row.cohort_returned = (row.cohort_returned ?? 0) + num(item.cohort_returned);
+  }
+  const inReport = (date: string) => !!report && date >= report.coverage.first && date <= report.coverage.last;
+  for (const item of report?.rows ?? []) {
+    const nmId = Number(item.nm_id);
+    const date = readDate(item.d);
+    if (!Number.isFinite(nmId) || !date || !inReport(date)) continue;
+    const row = touch(nmId, date);
+    row.report_logistics_rub = (row.report_logistics_rub ?? 0) + num(item.logistics_rub);
+    row.report_sold_units = (row.report_sold_units ?? 0) + num(item.sold_units);
+  }
+  return [...byKey.values()]
+    .map((row) => ({
+      ...row,
+      ...(inCohort(readDate(row.d)) ? {
+        cohort_orders: row.cohort_orders ?? 0,
+        cohort_cancelled: row.cohort_cancelled ?? 0,
+        cohort_kept: row.cohort_kept ?? 0,
+        cohort_kept_open: row.cohort_kept_open ?? 0,
+        cohort_returned: row.cohort_returned ?? 0,
+      } : {}),
+      ...(inReport(readDate(row.d)) ? {
+        report_logistics_rub: row.report_logistics_rub ?? 0,
+        report_sold_units: row.report_sold_units ?? 0,
+      } : {}),
+    }))
+    .sort((a, b) => a.d.localeCompare(b.d) || a.nm_id - b.nm_id);
+}
+
+/**
+ * Общая граница когорты для сводки по нескольким кабинетам: самый поздний
+ * день, с которого srid есть у всех. Хотя бы у одного когорты нет — молчит.
+ */
+export function latestCohortSince(values: Array<string | null>): string | null {
+  if (!values.length || values.some((value) => value == null)) return null;
+  return (values as string[]).reduce((latest, value) => value > latest ? value : latest);
+}
+
+/**
+ * Общая граница отчёта для сводки по нескольким кабинетам: пересечение их
+ * периодов. Хотя бы у одного кабинета отчёта нет — сводка молчит целиком,
+ * иначе сумма без целого кабинета выглядела бы честным числом.
+ */
+export function intersectReportCoverage(coverages: Array<RnpReportCoverage | null>): RnpReportCoverage | null {
+  if (!coverages.length || coverages.some((coverage) => coverage == null)) return null;
+  const known = coverages as RnpReportCoverage[];
+  return {
+    first: known.reduce((latest, coverage) => coverage.first > latest ? coverage.first : latest, known[0].first),
+    last: known.reduce((earliest, coverage) => coverage.last < earliest ? coverage.last : earliest, known[0].last),
+  };
+}
+
 async function loadCurrentStockRows(db: SupabaseAdmin, scope: CabinetScope) {
   return loadAllPages<ScopedStockSourceRow>((start, end) => {
     let query = db
@@ -2444,6 +2859,10 @@ export async function buildRnpTable(
             advertsCutoff: null as string | null,
             funnelCutoff: null as string | null,
             hasPrimaryFacts: true,
+            cohort: null as BuyoutCohortFacts | null,
+            reportFacts: null as ReportLogisticsFacts | null,
+            // Пустой кабинет ничего не теряет, поэтому не гасит сводные метрики.
+            emptyScope: true,
             scope,
             asOf: periodEnd,
           };
@@ -2462,6 +2881,8 @@ export async function buildRnpTable(
           salesSyncCutoff,
           advertsSyncCutoff,
           funnelSyncCutoff,
+          cohort,
+          reportFacts,
         ] = await Promise.all([
           allowed
             ? timed("base_facts_scoped", loadScopedBaseFacts(db, scope, allowed, from, to, timings))
@@ -2571,6 +2992,8 @@ export async function buildRnpTable(
           latestSyncStateDate(scope, "sales"),
           latestSyncStateDate(scope, "advert-stats"),
           latestSyncStateDate(scope, "funnel", { preferLastPeriodEnd: true }),
+          timed("buyout_cohort", loadBuyoutCohort(db, scope, allowed, from, to)),
+          timed("report_logistics", loadReportLogistics(db, scope, allowed, from, to)),
         ]);
         timings.sources_done = Date.now() - buildStartedAt;
         const advertTypeRows = advertStatsAndTypes.types;
@@ -2608,6 +3031,9 @@ export async function buildRnpTable(
           // Отмены и цены знает только путь по первичным строкам заказов и продаж.
           // RPC-агрегат rnp_daily их не отдаёт, и подменять их нулём нельзя.
           hasPrimaryFacts: !!allowed,
+          cohort,
+          reportFacts,
+          emptyScope: false,
           scope,
           asOf: earliestKnownDate([latestKnownDate([funnelCutoff, ordersCutoff]), salesCutoff], periodEnd),
         };
@@ -2633,12 +3059,16 @@ export async function buildRnpTable(
 
     timings.all_sources_done = Date.now() - buildStartedAt;
     const skuDailyRows = scopeData.flatMap((item) => applyRnpSourceCutoffs(
-      applyAdvertSpendOverlay(
-        applySalesReturnsAdjustment(
-          applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
-          item.returnRows,
+      applyCohortAndReportFacts(
+        applyAdvertSpendOverlay(
+          applySalesReturnsAdjustment(
+            applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
+            item.returnRows,
+          ),
+          item.adRows,
         ),
-        item.adRows,
+        item.cohort,
+        item.reportFacts,
       ),
       {
         orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]),
@@ -2663,6 +3093,8 @@ export async function buildRnpTable(
     const cutoffsByNm = new Map<number, MetricCutoffs>();
     const primaryFactsByNm = new Map<number, boolean>();
     const schemeFactsByNm = new Map<number, boolean>();
+    const cohortSinceByNm = new Map<number, string | null>();
+    const reportCoverageByNm = new Map<number, RnpReportCoverage | null>();
     for (const item of scopeData) {
       const cutoffs = { orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]), sales: item.salesCutoff, adverts: item.advertsCutoff };
       // Пустой кабинет схему не «теряет»: терять нечего, поэтому он не гасит метрику.
@@ -2672,12 +3104,17 @@ export async function buildRnpTable(
         cutoffsByNm.set(Number(total.nm_id), cutoffs);
         primaryFactsByNm.set(Number(total.nm_id), item.hasPrimaryFacts);
         schemeFactsByNm.set(Number(total.nm_id), hasScheme);
+        cohortSinceByNm.set(Number(total.nm_id), item.cohort?.since ?? null);
+        reportCoverageByNm.set(Number(total.nm_id), item.reportFacts?.coverage ?? null);
       }
       if (!hasScheme) schemeFactsInSummary = false;
     }
     // Сводка складывает все кабинеты: если хотя бы один не отдаёт первичные факты,
     // общая цифра была бы занижена, поэтому такие метрики молчат целиком.
     const primaryFactsInSummary = scopeData.every((item) => item.hasPrimaryFacts);
+    const factScopes = scopeData.filter((item) => !item.emptyScope);
+    const summaryCohortSince = latestCohortSince(factScopes.map((item) => item.cohort?.since ?? null));
+    const summaryReportCoverage = intersectReportCoverage(factScopes.map((item) => item.reportFacts?.coverage ?? null));
 
     // рекламный и товарный трафик по (nm_id, date) — отдельно от rnp_daily(_sku) RPC
     const viewsByNm = new Map<number, Map<string, number>>();
@@ -2896,7 +3333,7 @@ export async function buildRnpTable(
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
         const card = cardByNm.get(t.nm_id);
         const cost = costByArt.get(t.article);
-        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, schemeFacts: schemeFactsByNm.get(t.nm_id) ?? schemeFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0), rates: wbRatesForNm(t.nm_id) });
+        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, schemeFacts: schemeFactsByNm.get(t.nm_id) ?? schemeFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0), rates: wbRatesForNm(t.nm_id), cohortSince: cohortSinceByNm.has(t.nm_id) ? cohortSinceByNm.get(t.nm_id) ?? null : summaryCohortSince, reportCoverage: reportCoverageByNm.has(t.nm_id) ? reportCoverageByNm.get(t.nm_id) ?? null : summaryReportCoverage });
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs, {
           ordersByDate: adOrdersByNm.get(t.nm_id) ?? new Map(),
           ordersSumByDate: adOrdersSumByNm.get(t.nm_id) ?? new Map(),
@@ -2921,7 +3358,7 @@ export async function buildRnpTable(
       .map(({ _o, ...rest }) => { void _o; return rest; });
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
-    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), summaryCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, schemeFacts: schemeFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal });
+    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), summaryCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, schemeFacts: schemeFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal, cohortSince: summaryCohortSince, reportCoverage: summaryReportCoverage });
     summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, summaryFunnelCutoffs, {
       ordersByDate: adOrdersByDateAll,
       ordersSumByDate: adOrdersSumByDateAll,
@@ -2992,8 +3429,10 @@ export async function buildRnpTable(
       source: "WB Финотчёт + себестоимость + WB Реклама",
     });
     // Экономика сводки складывается по SKU: себестоимость и ставки WB у каждого свои,
-    // общей ставки для всего кабинета не существует.
-    for (const field of ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "mp_cost_rub"]) {
+    // общей ставки для всего кабинета не существует. Статьи удержаний — тоже:
+    // без них «Общая сводка» показывала «Логистика, ₽» пустой всегда, хотя под
+    // фильтром (сумма тех же SKU на клиенте) строка была заполнена.
+    for (const field of ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub"]) {
       const metric = summary.find((item) => item.field === field);
       if (!metric) continue;
       const daily = sumDaily(field);
@@ -3032,7 +3471,7 @@ export async function buildRnpTable(
     applyDerivedRatioCoverage(summary, "cancel_pct", ["cancels_count", "orders_count"]);
     applyDerivedRatioCoverage(summary, "return_pct", ["returns_count", "buyouts_count"]);
     applyDerivedRatioCoverage(summary, "fbs_share_pct", ["orders_fbs_sum", "orders_fbw_sum"]);
-    applyDerivedRatioCoverage(summary, "actual_buyout_pct", ["buyouts_count", "returns_count"]);
+    applyCohortAndReportCoverage(summary, days, asOf, summaryReportCoverage, summaryCohortSince);
     applyDerivedRatioCoverage(summary, "orders_spp_sum", ["orders_sum", "buyouts_sum"]);
     applyDerivedRatioCoverage(summary, "buyouts_gross_count", ["buyouts_count", "returns_count"]);
     applyDerivedRatioCoverage(summary, "avg_order_price", ["orders_sum", "orders_count"]);
@@ -3068,6 +3507,21 @@ export async function buildRnpTable(
         `Полный экономический факт для ${costedSkuCount} из ${skus.length} SKU: себестоимость ${costKnownSkuCount}, ставки WB ${ratesKnownSkuCount}.`,
         economyQualityReason,
       );
+    }
+    // Разбивку удержаний по статьям знает только SKU с собственной выручкой в
+    // финотчёте; SKU на средних ставках её не имеет, хотя «Логистика и прочие
+    // удержания» у него есть. Сумма статей тогда неполная — так и говорим.
+    const hasTotal = (sku: (typeof skus)[number], field: string) => sku.metrics.some((metric) => metric.field === field && metric.total != null);
+    const ratedSkuCount = skus.filter((sku) => hasTotal(sku, "logistics_rub")).length;
+    const partsSkuCount = skus.filter((sku) => hasTotal(sku, "logistics_rub") && hasTotal(sku, "delivery_rub")).length;
+    if (partsSkuCount < ratedSkuCount) {
+      const partsCoveragePct = ratedSkuCount ? Math.round((partsSkuCount / ratedSkuCount) * 1_000) / 10 : 0;
+      for (const metric of summary.filter((item) => ["delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub"].includes(item.field))) {
+        metric.coveragePct = Math.min(metric.coveragePct ?? 0, partsCoveragePct);
+        metric.status = statusForCoverage(metric.coveragePct);
+        metric.qualityReason = "unsupported_source";
+        metric.note = [metric.note, `Разбивка удержаний есть у ${partsSkuCount} из ${ratedSkuCount} SKU со ставками — сумма неполная.`].filter(Boolean).join(" ");
+      }
     }
 
     return {

@@ -100,22 +100,58 @@ test("страница подменяет сводку и её дельты то
   assert.match(page, /сводка по фильтру/);
 });
 
-test("фактический % выкупа под фильтром считается по той же формуле, что на сервере", async () => {
-  // Доставлено 10 (брутто), из них оставили 8 → 80%. Прежняя формула делила на
-  // «брутто + возвраты» = 12 и завышала показатель до 83.3%.
-  const sku = { metrics: [
-    metric("buyouts_count", "int", [8], 8),
-    metric("buyouts_gross_count", "int", [10], 10),
-    metric("returns_count", "int", [2], 2),
+test("фактический % выкупа и логистика на единицу под фильтром — из сумм частей, а не среднее SKU", () => {
+  // SKU A: 1 выкуп из 10 решённых (10%). SKU B: 30 из 40 (75%). Среднее
+  // процентов дало бы 42.5%, честная сумма — 31 / 50 = 62%.
+  const withParts = (field: string, kind: string, numerator: number[], denominator: number[], scale: 100 | 1) => ({
+    ...metric(field, kind, [null], null),
+    parts: { numerator, denominator, scale },
+  });
+  const skuA = { metrics: [
+    withParts("actual_buyout_pct", "pct", [1], [10], 100),
+    withParts("logistics_per_unit", "money", [5_000], [1], 1),
   ] };
-  const summary = composeRnpSummaryFromSkus([metric("actual_buyout_pct", "pct", [null], null)], [sku], 30);
-  assert.equal(summary[0].total, 80);
-  assert.equal(summary[0].daily[0], 80);
+  const skuB = { metrics: [
+    withParts("actual_buyout_pct", "pct", [30], [40], 100),
+    withParts("logistics_per_unit", "money", [3_000], [3], 1),
+  ] };
+  const summary = composeRnpSummaryFromSkus(
+    [metric("actual_buyout_pct", "pct", [null], null), metric("logistics_per_unit", "money", [null], null)],
+    [skuA, skuB],
+    30,
+  );
+  const buyout = summary.find((item) => item.field === "actual_buyout_pct")!;
+  assert.equal(buyout.daily[0], 62);
+  assert.equal(buyout.total, 62);
+  assert.deepEqual(buyout.parts, { numerator: [31], denominator: [50], scale: 100 });
+  const logistics = summary.find((item) => item.field === "logistics_per_unit")!;
+  assert.equal(logistics.total, 2_000);                  // 8 000 ₽ / 4 шт
+});
 
-  // Формула обязана совпадать с серверной буквально: расхождение здесь означает
-  // две разные правды на одном экране — с фильтром и без.
-  const server = await readFile(new URL("../lib/rnp/buildTable.ts", import.meta.url), "utf8");
-  assert.match(server, /r1\(\(buyoutsCount\[index\] \/ grossBuyoutsCount\[index\]\) \* 100\)/);
+test("сводка под фильтром молчит в день, где один из SKU факта не знает, как серверная по кабинетам", () => {
+  // Кабинет A с финотчётом (100 ₽/шт), кабинет B без него: части B пустые.
+  const withParts = (numerator: (number | null)[], denominator: (number | null)[]) => ({
+    metrics: [{ ...metric("logistics_per_unit", "money", [null], null), parts: { numerator, denominator, scale: 1 as const } }],
+  });
+  const summary = composeRnpSummaryFromSkus(
+    [metric("logistics_per_unit", "money", [null], null)],
+    [withParts([1_000], [10]), withParts([null], [null])],
+    30,
+  );
+  assert.equal(summary[0].daily[0], null);
+  assert.equal(summary[0].total, null);
+});
+
+test("снимок кэша без частей не суммирует проценты SKU в сводке под фильтром", () => {
+  // Три SKU по ~90% из старого снимка: общее правило сложило бы их в 270%.
+  const legacy = (value: number) => ({ metrics: [metric("actual_buyout_pct", "pct", [value], value)] });
+  const summary = composeRnpSummaryFromSkus(
+    [metric("actual_buyout_pct", "pct", [null], null)],
+    [legacy(91), legacy(82), legacy(95)],
+    30,
+  );
+  assert.equal(summary[0].total, null);
+  assert.deepEqual(summary[0].daily, [null]);
 });
 
 test("маржа под фильтром делится на выкупы только посчитанных SKU", () => {

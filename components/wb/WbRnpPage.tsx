@@ -26,6 +26,7 @@ import {
   RNP_VIEW_PRESETS,
   aggregateRnpWeekly,
   anomalyDirection,
+  dropLegacyPartsOnlyMetrics,
   detectSkuSignals,
   formatAnomalyBadge,
   isBurnedOutSku,
@@ -82,6 +83,8 @@ interface Metric {
   note?: string;
   qualityReason?: "no_activity" | "missing_cost" | "missing_rates" | "stale_source" | "api_error" | "unsupported_source";
   group_start?: boolean;
+  /** Числитель и знаменатель производной для недель и сводки под фильтром. */
+  parts?: { numerator: (number | null)[]; denominator: (number | null)[]; scale: 100 | 1 };
 }
 
 interface Sku {
@@ -191,6 +194,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   return_pct: { label: "Доля возвратов, %", kind: "pct" },
   buyout_pct: { label: "Выкуп потока, %", kind: "pct" },
   actual_buyout_pct: { label: "Фактический % выкупа, %", kind: "pct" },
+  cohort_resolved_pct: { label: "Заказы с итогом, %", kind: "pct" },
   buyouts_gross_count: { label: "Выкуплено, шт", kind: "int" },
   buyouts_gross_rub: { label: "Выкуплено, ₽", kind: "money" },
   orders_spp_sum: { label: "Заказы с СПП, ₽", kind: "money" },
@@ -229,6 +233,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   acquiring_rub: { label: "Эквайринг, ₽", kind: "money" },
   logistics_rub: { label: "Логистика и прочие удержания, ₽", kind: "money" },
   delivery_rub: { label: "Логистика, ₽", kind: "money" },
+  logistics_per_unit: { label: "Логистика на единицу, ₽", kind: "money" },
   storage_rub: { label: "Хранение, ₽", kind: "money" },
   penalty_rub: { label: "Штрафы, ₽", kind: "money" },
   acceptance_rub: { label: "Приёмка, ₽", kind: "money" },
@@ -328,11 +333,11 @@ const OPTIMA_TABLE_GROUPS: ReadonlyArray<{ id: string; label: string; fields: re
   // нетто-число законно уходит в минус на краю окна. Видеть обе цифры рядом —
   // единственный способ не принять этот минус за падение продаж.
   { id: "main", label: "Основное", fields: ["orders_count", "buyout_pct", "buyouts_gross_count", "buyouts_count", "ad_spent", "drr"], expanded: true },
-  { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "orders_spp_sum", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_rub", "buyouts_sum", "returns_count", "returns_sum", "return_pct", "actual_buyout_pct"], expanded: false },
+  { id: "sales", label: "Продажи и возвраты", fields: ["orders_sum", "orders_spp_sum", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_rub", "buyouts_sum", "returns_count", "returns_sum", "return_pct", "actual_buyout_pct", "cohort_resolved_pct"], expanded: false },
   { id: "price", label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"], expanded: false },
   { id: "funnel", label: "Воронка", fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr", "wishlist", "ad_orders", "ad_orders_sum"], expanded: false },
   { id: "organic", label: "Органика", fields: ["org_open_card", "org_orders_count", "org_cr_pct", "org_share_pct"], expanded: false },
-  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "agent_commission_rub", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
+  { id: "economy", label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "logistics_per_unit", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "agent_commission_rub", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"], expanded: false },
   { id: "reviews", label: "Отзывы", fields: ["reviews_count", "reviews_rating", "reviews_bad_share_pct"], expanded: false },
   { id: "ads_manual", label: "Реклама · Ручная", fields: ["ads_manual_spent", "ads_manual_views", "ads_manual_clicks", "ads_manual_orders", "ads_manual_orders_sum"], expanded: false },
   { id: "ads_unified", label: "Реклама · Единая", fields: ["ads_unified_spent", "ads_unified_views", "ads_unified_clicks", "ads_unified_orders", "ads_unified_orders_sum"], expanded: false },
@@ -744,8 +749,11 @@ export function WbRnpPage() {
   // Копируем массивы метрик — исходный ответ остаётся без налоговых строк,
   // поэтому смена ставки всегда пересчитывается от чистого источника.
   const skuNames = useWbSkuNames(cabinetId || null);
-  const withTax = useCallback((source: RnpTable | null) => {
-    if (!source) return null;
+  const withTax = useCallback((raw: RnpTable | null) => {
+    if (!raw) return null;
+    // Снимок из кэша мог быть собран до когортного «Фактического % выкупа»:
+    // прежние ~90% без частей нельзя ни показывать, ни сравнивать с новыми.
+    const source = dropLegacyPartsOnlyMetrics(raw);
     return {
       ...source,
       summary: appendTaxMetrics([...source.summary], taxPct, { extraCommissionPct: cabinetExtraPct }),

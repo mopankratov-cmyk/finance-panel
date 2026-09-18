@@ -6,12 +6,20 @@
 // исказило бы агрегат). Формулы сверены с lib/rnp/buildTable.ts и
 // lib/rnp/taxMetrics.ts — расхождение сторожит тест rnp-summary-from-skus.
 
+interface MetricParts {
+  numerator: (number | null)[];
+  denominator: (number | null)[];
+  scale: 100 | 1;
+}
+
 interface BaseMetric {
   field: string;
   kind: string;
   daily: (number | null)[];
   total: number | null;
   forecast: number | null;
+  /** Числитель и знаменатель производной, которых нет среди строк таблицы. */
+  parts?: MetricParts;
 }
 
 type Get = (field: string) => number | null;
@@ -25,6 +33,9 @@ function pctOf(num: number | null, den: number | null): number | null {
 function perUnit(num: number | null, den: number | null): number | null {
   return num != null && den != null && den > 0 ? Math.round(num / den) : null;
 }
+
+/** Производные, которые пересчитываются только из своих `parts`. */
+const PARTS_ONLY_FIELDS = new Set(["actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit"]);
 
 // Производные из СУММ выбранных SKU — формулы buildTable/taxMetrics один в один.
 const RATIO_RULES: Record<string, (g: Get) => number | null> = {
@@ -43,9 +54,8 @@ const RATIO_RULES: Record<string, (g: Get) => number | null> = {
     return cancels != null && orders != null ? pctOf(cancels, cancels + orders) : null;
   },
   return_pct: (g) => pctOf(g("returns_count"), g("buyouts_gross_count")),
-  // Оставлено у себя / доставлено. Знаменатель — брутто-выкупы: возвраты уже
-  // внутри этого потока, добавлять их ещё раз значит считать каждый дважды.
-  actual_buyout_pct: (g) => pctOf(g("buyouts_count"), g("buyouts_gross_count")),
+  // actual_buyout_pct, cohort_resolved_pct и logistics_per_unit пересчитываются
+  // из своих `parts` (когорта заказов, логистика финотчёта) — см. ниже.
   fbs_share_pct: (g) => {
     const fbs = g("orders_fbs_sum");
     const known = (fbs ?? 0) + (g("orders_fbw_sum") ?? 0);
@@ -192,7 +202,54 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     return average > 0 ? Math.round(stock / average) : null;
   })();
 
+  const ratio = (num: number | null, den: number | null, scale: 100 | 1) => {
+    if (num == null || den == null || !(den > 0)) return null;
+    const value = (num / den) * scale;
+    return scale === 100 ? r1(value) : Math.round(value);
+  };
+  // Сумма ряда частей по выбранным SKU. null в частях значит «факт неизвестен»
+  // (кабинет без отчёта, день за отсечкой), а не ноль — поэтому день, где хоть
+  // один SKU факта не знает, молчит целиком, как серверная сводка по кабинетам.
+  // Иначе «все кабинеты» под фильтром показывали бы цифру одного из них.
+  const sumParts = (field: string, pick: (parts: MetricParts) => (number | null)[], index: number) => {
+    let sum = 0;
+    let seen = false;
+    for (const metrics of skusMetrics) {
+      const parts = metrics.get(field)?.parts;
+      if (!parts) continue;
+      const value = pick(parts)[index];
+      if (value == null || !Number.isFinite(value)) return null;
+      sum += value;
+      seen = true;
+    }
+    return seen ? sum : null;
+  };
+  const knownTotal = (values: (number | null)[]) => {
+    const known = values.filter((value): value is number => value != null && Number.isFinite(value));
+    return known.length ? known.reduce((acc, value) => acc + value, 0) : null;
+  };
+
   return template.map((metric) => {
+    const scale = metric.parts?.scale
+      ?? skusMetrics.map((metrics) => metrics.get(metric.field)?.parts?.scale).find((value) => value != null);
+    if (scale != null) {
+      const rawNumerator = Array.from({ length: dayCount }, (_, index) => sumParts(metric.field, (parts) => parts.numerator, index));
+      const rawDenominator = Array.from({ length: dayCount }, (_, index) => sumParts(metric.field, (parts) => parts.denominator, index));
+      const numerator = rawNumerator.map((value, index) => rawDenominator[index] == null ? null : value);
+      const denominator = rawDenominator.map((value, index) => rawNumerator[index] == null ? null : value);
+      return {
+        ...metric,
+        daily: numerator.map((num, index) => ratio(num, denominator[index], scale)),
+        total: ratio(knownTotal(numerator), knownTotal(denominator), scale),
+        forecast: null,
+        parts: { numerator, denominator, scale },
+      };
+    }
+    // Снимок, собранный до появления `parts`: долю из процентов SKU не сложить,
+    // а общее правило ниже просуммировало бы их (три SKU по 90% дали бы 270%).
+    if (PARTS_ONLY_FIELDS.has(metric.field)) {
+      return { ...metric, daily: Array.from({ length: dayCount }, () => null), total: null, forecast: null };
+    }
     const rule = RATIO_RULES[metric.field];
     if (rule) {
       return {

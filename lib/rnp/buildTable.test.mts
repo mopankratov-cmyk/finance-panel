@@ -3,8 +3,11 @@ import test from "node:test";
 
 import {
   appendOrderConversion,
+  applyCohortAndReportFacts,
   applyDerivedRatioCoverage,
   applyAdvertSpendOverlay,
+  intersectReportCoverage,
+  latestCohortSince,
   applySalesReturnsAdjustment,
   buildFunnelMetrics,
   buildMetrics,
@@ -598,11 +601,11 @@ test("кэш без разбивки: состав молчит, общая су
   assert.equal(find("mp_cost_rub").total, 3_000);
 });
 
-test("выкуплено — брутто, а фактический % выкупа считается к доставленному", () => {
+test("выкуплено — брутто, нетто-выкупы не меняются", () => {
   const metrics = buildMetrics(
     ["2026-08-01"],
     "2026-08-01",
-    // 8 нетто-выкупов + 2 возврата = 10 доставлено покупателю.
+    // 8 нетто-выкупов + 2 возврата = 10 строк продажи.
     new Map([["2026-08-01", salesDay({})]]),
     0,
     0,
@@ -610,11 +613,269 @@ test("выкуплено — брутто, а фактический % выку�
   );
   const find = (field: string) => metrics.find((item) => item.field === field)!;
   assert.equal(find("buyouts_gross_count").total, 10);
-  assert.equal(find("buyouts_count").total, 8);          // нетто не изменилось
-  // Доставлено 10, из них оставили 8 → 80%. Прежняя формула делила на 12
-  // (возвраты считались дважды) и показывала завышенные 83.3%.
-  assert.equal(find("actual_buyout_pct").daily[0], 80);
-  assert.equal(find("actual_buyout_pct").total, 80);
+  assert.equal(find("buyouts_count").total, 8);
+});
+
+const cohortDay = (overrides: Record<string, number>) => ({
+  ...salesDay({}),
+  cohort_orders: 0,
+  cohort_cancelled: 0,
+  cohort_kept: 0,
+  cohort_kept_open: 0,
+  cohort_returned: 0,
+  ...overrides,
+});
+const allSince = "2026-07-01";
+const freshCutoffs = (day: string) => ({ orders: day, sales: day, adverts: day });
+
+test("фактический % выкупа — когорта заказов с итогом, отказы в знаменателе", () => {
+  // Ровно ловушка Retail Family: из 100 заказов выкупили и оставили 20, вернули
+  // 3, отменили/отказались 57, ещё 20 в пути. Старая формула (нетто/брутто
+  // продаж) показала бы 20/23 = 87%, хотя выкуплена лишь четверть решённых.
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", cohortDay({ cohort_orders: 100, cohort_kept: 20, cohort_kept_open: 5, cohort_returned: 3, cohort_cancelled: 57 })]]),
+    0,
+    0,
+    freshCutoffs("2026-08-01"),
+    0,
+    null,
+    30,
+    { cohortSince: allSince },
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  assert.equal(find("actual_buyout_pct").daily[0], 25);   // 20 / (20 + 3 + 57)
+  assert.equal(find("actual_buyout_pct").total, 25);
+  // Окончательный итог — без 5 выкупов с открытым окном возврата: 75 из 100.
+  assert.equal(find("cohort_resolved_pct").total, 75);
+  assert.equal(find("actual_buyout_pct").coveragePct, 75);
+  assert.equal(find("actual_buyout_pct").status, "partial");
+  assert.equal(find("actual_buyout_pct").qualityReason, "stale_source");
+  assert.deepEqual(find("actual_buyout_pct").parts, { numerator: [20], denominator: [80], scale: 100 });
+});
+
+test("фактический % выкупа больше не равен 100 минус доля возвратов", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", cohortDay({ cohort_orders: 10, cohort_kept: 4, cohort_cancelled: 6 })]]),
+    0,
+    0,
+    freshCutoffs("2026-08-01"),
+    0,
+    null,
+    30,
+    { cohortSince: allSince },
+  );
+  const find = (field: string) => metrics.find((item) => item.field === field)!;
+  assert.equal(find("return_pct").total, 20);
+  assert.equal(find("actual_buyout_pct").total, 40);
+  assert.notEqual(find("actual_buyout_pct").total, 100 - find("return_pct").total!);
+});
+
+test("без когорты фактический % выкупа молчит, а не рисует ноль", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", salesDay({})]]),
+    0,
+    0,
+    freshCutoffs("2026-08-01"),
+  );
+  const buyout = metrics.find((item) => item.field === "actual_buyout_pct")!;
+  assert.equal(buyout.total, null);
+  assert.deepEqual(buyout.daily, [null]);
+  assert.equal(buyout.qualityReason, "unsupported_source");
+  assert.equal(buyout.status, "unavailable");
+});
+
+test("свежий день, где известны одни быстрые отмены, не рисует 0% и не тянет итог вниз", () => {
+  const days = ["2026-09-10", "2026-09-17"];
+  const metrics = buildMetrics(
+    days,
+    "2026-09-17",
+    new Map([
+      ["2026-09-10", cohortDay({ cohort_orders: 12, cohort_kept: 4, cohort_cancelled: 6 })],
+      // Вчерашние заказы: 2 отмены из 12, выкупы ещё не доехали.
+      ["2026-09-17", cohortDay({ cohort_orders: 12, cohort_cancelled: 2 })],
+    ]),
+    0,
+    0,
+    freshCutoffs("2026-09-17"),
+    0,
+    null,
+    30,
+    { cohortSince: allSince },
+  );
+  const buyout = metrics.find((item) => item.field === "actual_buyout_pct")!;
+  assert.deepEqual(buyout.daily, [40, null]);
+  assert.equal(buyout.total, 40);
+});
+
+test("дни до появления srid у продаж — не 0%, а пусто, и покрытие это отражает", () => {
+  // Продажи до 23.08 записаны без srid: выкуп заказа не сопоставить, и когорта
+  // показала бы 0% (отмены известны, выкупы — нет).
+  const days = ["2026-08-20", "2026-08-25"];
+  const metrics = buildMetrics(
+    days,
+    "2026-08-25",
+    new Map([
+      ["2026-08-20", cohortDay({ cohort_orders: 50, cohort_cancelled: 30 })],
+      ["2026-08-25", cohortDay({ cohort_orders: 50, cohort_kept: 20, cohort_cancelled: 30 })],
+    ]),
+    0,
+    0,
+    freshCutoffs("2026-08-25"),
+    0,
+    null,
+    30,
+    { cohortSince: "2026-08-24" },
+  );
+  const buyout = metrics.find((item) => item.field === "actual_buyout_pct")!;
+  assert.deepEqual(buyout.daily, [null, 40]);
+  assert.equal(buyout.total, 40);
+  assert.equal(buyout.coveragePct, 50);                  // половина дней периода без srid
+  assert.match(buyout.note ?? "", /Дни до 24\.08\.2026 пусты/);
+});
+
+test("застрявшие продажи при свежих заказах не превращают когорту в 0%", () => {
+  const days = ["2026-09-12", "2026-09-13"];
+  const metrics = buildMetrics(
+    days,
+    "2026-09-13",
+    new Map([
+      ["2026-09-12", cohortDay({ cohort_orders: 10, cohort_kept: 4, cohort_cancelled: 6 })],
+      ["2026-09-13", cohortDay({ cohort_orders: 10, cohort_cancelled: 6 })],
+    ]),
+    0,
+    0,
+    { orders: "2026-09-13", sales: "2026-09-12", adverts: "2026-09-13" },
+    0,
+    null,
+    30,
+    { cohortSince: allSince },
+  );
+  const buyout = metrics.find((item) => item.field === "actual_buyout_pct")!;
+  assert.deepEqual(buyout.daily, [40, null]);
+  assert.equal(buyout.total, 40);
+});
+
+test("логистика на единицу: логистика финотчёта / проданные штуки, дни вне отчёта пусты", () => {
+  const days = ["2026-08-01", "2026-08-02", "2026-08-03"];
+  const metrics = buildMetrics(
+    days,
+    "2026-08-03",
+    new Map([
+      // Отказов много: 23 500 ₽ логистики на 10 проданных штук (ездили и отказы).
+      ["2026-08-01", { ...salesDay({}), report_logistics_rub: 23_500, report_sold_units: 10 }],
+      ["2026-08-02", { ...salesDay({}), report_logistics_rub: 4_500, report_sold_units: 2 }],
+      // 03.08 финотчёта ещё нет — не «ноль логистики».
+      ["2026-08-03", { ...salesDay({}) }],
+    ]),
+    0,
+    0,
+    freshCutoffs("2026-08-03"),
+    0,
+    null,
+    30,
+    { reportCoverage: { first: "2026-07-01", last: "2026-08-02" } },
+  );
+  const logistics = metrics.find((item) => item.field === "logistics_per_unit")!;
+  assert.deepEqual(logistics.daily, [2_350, 2_250, null]);
+  assert.equal(logistics.total, 2_333);                  // 28 000 / 12, а не среднее дней
+  assert.equal(logistics.coveragePct, 66.7);             // 2 из 3 дней покрыты отчётом
+  assert.equal(logistics.status, "partial");
+  assert.equal(logistics.qualityReason, "stale_source");
+});
+
+test("логистика на единицу молчит у кабинета без финотчёта", () => {
+  const metrics = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", { ...salesDay({}), report_logistics_rub: 1_000, report_sold_units: 1 }]]),
+    0,
+    0,
+    freshCutoffs("2026-08-01"),
+  );
+  const logistics = metrics.find((item) => item.field === "logistics_per_unit")!;
+  assert.equal(logistics.total, null);
+  assert.equal(logistics.qualityReason, "unsupported_source");
+});
+
+test("логистика без проданных штук и период после отчёта — не «активности нет»", () => {
+  const noUnits = buildMetrics(
+    ["2026-08-01"],
+    "2026-08-01",
+    new Map([["2026-08-01", { ...salesDay({}), report_logistics_rub: 5_000, report_sold_units: 0 }]]),
+    0,
+    0,
+    freshCutoffs("2026-08-01"),
+    0,
+    null,
+    30,
+    { reportCoverage: { first: "2026-07-01", last: "2026-08-10" } },
+  ).find((item) => item.field === "logistics_per_unit")!;
+  assert.equal(noUnits.total, null);
+  assert.equal(noUnits.qualityReason, undefined);
+  assert.match(noUnits.note ?? "", /нет проданных штук/);
+
+  const afterReport = buildMetrics(
+    ["2026-09-15"],
+    "2026-09-15",
+    new Map([["2026-09-15", salesDay({})]]),
+    0,
+    0,
+    freshCutoffs("2026-09-15"),
+    0,
+    null,
+    30,
+    { reportCoverage: { first: "2026-07-01", last: "2026-09-07" } },
+  ).find((item) => item.field === "logistics_per_unit")!;
+  assert.equal(afterReport.qualityReason, "stale_source");
+});
+
+test("когорта и логистика вклеиваются в дневные строки с явными нулями только там, где факт известен", () => {
+  const rows = applyCohortAndReportFacts(
+    [
+      { d: "2026-07-31", nm_id: 1, orders_count: 2, orders_sum: 200, buyouts_count: 0, buyouts_sum: 0, ad_spent: 0 },
+      { d: "2026-08-01", nm_id: 1, orders_count: 5, orders_sum: 500, buyouts_count: 1, buyouts_sum: 100, ad_spent: 0 },
+    ],
+    {
+      since: "2026-08-01",
+      rows: [
+        { d: "2026-07-31", nm_id: 1, cohort_orders: 2, cohort_cancelled: 2, cohort_kept: 0, cohort_kept_open: 0, cohort_returned: 0 },
+        { d: "2026-08-01", nm_id: 1, cohort_orders: 6, cohort_cancelled: 3, cohort_kept: 1, cohort_kept_open: 1, cohort_returned: 0 },
+      ],
+    },
+    {
+      rows: [
+        { d: "2026-08-02", nm_id: 1, logistics_rub: "900.50", sold_units: 1 },
+        { d: "2026-08-05", nm_id: 1, logistics_rub: 700, sold_units: 1 }, // вне отчёта — отброшено
+      ],
+      coverage: { first: "2026-08-01", last: "2026-08-02" },
+    },
+  );
+  const day0 = rows.find((row) => row.d === "2026-07-31")!;
+  const day1 = rows.find((row) => row.d === "2026-08-01")!;
+  const day2 = rows.find((row) => row.d === "2026-08-02")!;
+  assert.equal(day0.cohort_orders, undefined);           // до srid когорта неизвестна, не ноль
+  assert.equal(day1.cohort_kept_open, 1);
+  assert.equal(day1.report_logistics_rub, 0);            // день в отчёте: логистики не было
+  assert.equal(day2.orders_count, 0);                    // строка создана ради логистики
+  assert.equal(day2.cohort_orders, 0);                   // когорта знает: заказов не было
+  assert.equal(day2.report_logistics_rub, 900.5);
+  assert.equal(rows.some((row) => row.d === "2026-08-05"), false);
+});
+
+test("сводка по кабинетам: у одного нет финотчёта или srid — метрика молчит целиком", () => {
+  assert.equal(intersectReportCoverage([{ first: "2026-08-01", last: "2026-08-10" }, null]), null);
+  assert.deepEqual(
+    intersectReportCoverage([{ first: "2026-08-01", last: "2026-08-10" }, { first: "2026-08-03", last: "2026-08-08" }]),
+    { first: "2026-08-03", last: "2026-08-08" },
+  );
+  assert.equal(latestCohortSince(["2026-08-24", null]), null);
+  assert.equal(latestCohortSince(["2026-08-24", "2026-08-26"]), "2026-08-26");
 });
 
 test("заказы с СПП берут скидку WB того же дня", () => {
