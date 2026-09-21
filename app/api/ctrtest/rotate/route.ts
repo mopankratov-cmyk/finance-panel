@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resumeShelfPausesForTest } from "@/lib/ctrtest/campaignBinding";
 import { restoreOriginalCover } from "@/lib/ctrtest/originalCover";
 import { isLiveWbCoverUrl } from "@/lib/ctrtest/pinImage";
+import { runStepEngineTests } from "@/lib/ctrtest/stepRunner";
 import { getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
 import { ctrSnapshotDelta, type CtrMetricSnapshot } from "@/lib/ctrtest/model";
 import { checkCronAuth } from "@/lib/sync/helpers";
@@ -128,7 +129,12 @@ async function rotate(request: NextRequest) {
   // заход ниже их не трогает, иначе отказ WB бился бы дважды подряд.
   const restoreAttempted = new Set<number>();
 
-  for (const test of (tests ?? []) as TestRow[]) {
+  // Тесты нового движка (engine_version = 2) ведёт пошаговый автомат
+  // (lib/ctrtest/stepRunner.ts): живая статистика WB, кампания на паузе, пока
+  // цифры устаиваются. Ниже остаётся прежний путь — для тестов, созданных до него.
+  const engineIds = await runStepEngineTests(db, report, restoreAttempted);
+
+  for (const test of ((tests ?? []) as TestRow[]).filter((row) => !engineIds.has(row.id))) {
     const note = (outcome: string, detail?: string) => { report.push({ testId: test.id, outcome, detail }); };
     let failure: string | null = null;
     try {

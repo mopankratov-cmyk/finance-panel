@@ -6,6 +6,8 @@ import { ensureCtrTestCampaignBinding, resumeShelfPausesForTest } from "@/lib/ct
 import { getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
 import { CTR_FORCE_HINT, ctrSnapshotDelta, type CtrMetricSnapshot } from "@/lib/ctrtest/model";
 import { prepareTestForStart, restoreOriginalCover } from "@/lib/ctrtest/originalCover";
+import { activeStepResult, prepareStepEngineStart, pauseStepEngineTest, readEngineFields, restoreCampaignForTest, resumeStepEngineTest } from "@/lib/ctrtest/stepControl";
+import { makeSupabaseStepStore } from "@/lib/ctrtest/stepAdapters";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
@@ -130,6 +132,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     campaignMode: test.campaign_mode === "unified" ? "unified" : "search_only",
   });
 
+  const session = await getServerSession();
+  // Новый движок (engine_version = 2): шаги с фазами и кампания на паузе, пока
+  // статистика устаивается. Пауза и возобновление у него мимо SQL-функции — она
+  // закрывала бы шаг с недоделанными цифрами (lib/ctrtest/stepControl.ts).
+  const engine = await readEngineFields(db, id);
+  const isEngine = engine.engineVersion === 2 && test.test_type === "ctr";
+  let engineStartVariant: number | null = null;
+
   /**
    * Ручного режима больше нет (решение владельца 15.09.2026): старт теста
    * сразу и необратимо включает автосмену — раньше это был отдельный шаг
@@ -144,6 +154,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (test.test_type === "ctr" && !["none", "confirmed", "declined"].includes(binding.shelfConflictState)) {
       return fail("Сначала разберитесь с конкурирующими полочными кампаниями на этом артикуле — список в карточке теста (GET .../shelf-conflicts).", 409);
     }
+    if (isEngine && test.status === "paused") {
+      const resumed = await resumeStepEngineTest(db, id, session?.email ?? null);
+      if (resumed.handled) {
+        if (!resumed.ok) return fail(resumed.error, resumed.status);
+        return NextResponse.json({ data: { test: resumed.test, result: {}, outcome: "start", coverRestore: null, campaignRestore: null }, error: null });
+      }
+    }
+    // Кампания и план проверяются ДО копирования картинок: отказ здесь не должен
+    // оставлять в хранилище копии от теста, который так и не стартовал.
+    if (isEngine && test.status === "draft") {
+      const prepared = await prepareStepEngineStart(db, { testId: id, cabinetId, advertId: binding.advertId, orders: engine.variantOrders });
+      if (!prepared.ok) return fail(prepared.error, prepared.status);
+      engineStartVariant = prepared.variantId;
+    }
     // Первый запуск — последний момент, когда на витрине ещё исходная обложка:
     // после первой смены снять её копию уже нечем. Копируем её и варианты в наше
     // хранилище (lib/ctrtest/originalCover.ts). Не вышло — тест не стартует,
@@ -154,24 +178,40 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
   }
 
+  if (isEngine && action === "pause") {
+    const paused = await pauseStepEngineTest(db, id, session?.email ?? null);
+    if (!paused.ok) return fail(paused.error, paused.status);
+    // Кампания возвращается в состояние до теста: остановленная и забытая
+    // кампания — потерянные продажи. Обложка при паузе не возвращается: тест
+    // может продолжиться, и экран говорит, что на витрине вариант из теста.
+    const campaignRestore = await restoreCampaignForTest(db, { id, cabinetId, advertId: binding.advertId }, session?.email ?? "ctr-test");
+    return NextResponse.json({ data: { test: paused.test, result: {}, outcome: "pause", coverRestore: null, campaignRestore }, error: null });
+  }
+
   let snapshot: CtrMetricSnapshot;
   try { snapshot = await getCtrMetricSnapshot(cabinetId, nmId, binding.advertId); }
   catch (cause) { return fail(cause instanceof Error ? cause.message : "Не удалось снять метрики", 502); }
 
   let result: ReturnType<typeof ctrSnapshotDelta> | Record<string, never> = {};
-  if (test.status === "running") {
+  if (test.status === "running" && isEngine) {
+    // Шкала базы (все дни) и шкала шага (окно от начала замера) разные: разность
+    // с базой дала бы цифры чужих недель. Результат — по журналу самого шага.
+    const active = await activeStepResult(db, id);
+    if (active.kind === "error") return fail(active.error, 500);
+    if (active.kind === "missing") return fail("У работающего теста нет активного раунда", 409);
+    result = active.result;
+  } else if (test.status === "running") {
     const { data: active, error: activeError } = await db.from("ctr_test_rounds").select("baseline").eq("test_id", id).eq("status", "active").maybeSingle();
     if (activeError) return fail(activeError.message, 500);
     if (!active) return fail("У работающего теста нет активного раунда", 409);
     result = ctrSnapshotDelta((active.baseline ?? {}) as Partial<CtrMetricSnapshot>, snapshot);
   }
 
-  const session = await getServerSession();
   const { data, error: transitionError } = await db.rpc("transition_ctr_test", {
     p_input: {
       testId: id,
       action,
-      variantId: body?.variantId ?? null,
+      variantId: engineStartVariant ?? body?.variantId ?? null,
       snapshot,
       result,
       explanation: String(body?.explanation ?? "").slice(0, 2_000),
@@ -202,6 +242,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   // включённым на тесте, который так и не побежал.
   if (action === "start") {
     await db.from("ctr_tests").update({ live_swap_enabled: true, auto_error: null }).eq("id", id);
+    // Первый шаг нового движка начинается со смены фото; номер раунда — первый.
+    if (isEngine) {
+      await makeSupabaseStepStore(db).labelOpenedStep(id, { phase: "swap", phase_at: new Date().toISOString(), pass_no: 1, detail: {} }).catch(() => undefined);
+    }
   }
 
   // Автовозврат полок — тест дошёл до конца (явным finish/cancel, или
@@ -209,7 +253,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   // cap_paused: паузу тест может снять позже, полки должны остаться
   // выключенными до тех пор.
   let coverRestore: string | null = null;
+  let campaignRestore: string | null = null;
   if (status === "done" || status === "cancelled") {
+    // Кампания — в состояние до теста; при ошибке метка остаётся, крон повторит.
+    if (isEngine) campaignRestore = await restoreCampaignForTest(db, { id, cabinetId, advertId: binding.advertId }, session?.email ?? "ctr-test");
     const cabinet = await getWbCabinet(cabinetId);
     const advertToken = test.test_type === "ctr" && cabinet ? resolveWbToken(cabinet, "advert") : null;
     if (advertToken) {
@@ -226,5 +273,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
   }
 
-  return NextResponse.json({ data: { test: data, result, outcome, coverRestore }, error: null });
+  return NextResponse.json({ data: { test: data, result, outcome, coverRestore, campaignRestore }, error: null });
 }

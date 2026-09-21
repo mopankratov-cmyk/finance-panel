@@ -1,4 +1,5 @@
 import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
+import { DEFAULT_MAX_STEP_MIN, DEFAULT_WARMUP_MIN, MAX_ROUNDS, deriveRounds, normalizeVariantOrders } from "./stepPlan";
 
 export type CtrTestType = "ctr" | "cr" | "video";
 export type CtrTestStatus = "draft" | "running" | "paused" | "done" | "cancelled";
@@ -45,6 +46,14 @@ export interface CtrCreateInput {
   campaignMode: CtrCampaignMode;
   /** Кампания, выбранная человеком в мастере вручную. null — авторезолюция при старте (campaignBinding.ts). */
   advertId: number | null;
+  /** Раундов (полных проходов по всем вариантам). Не задано — считается из «показов на вариант» и «за шаг». */
+  roundsTotal: number;
+  /** Потолок минут на набор показов одним шагом. */
+  maxStepMin: number;
+  /** Минут прогрева после смены фото: показы этого окна в замер не идут. */
+  warmupMin: number;
+  /** Порядок вариантов по раундам — позиции с нуля, по списку на раунд. Не задано — циклический сдвиг. */
+  variantOrders: number[][];
   variants: { label: string; imageUrl: string; source: string; isBaseline: boolean }[];
 }
 
@@ -76,6 +85,12 @@ export function normalizeCtrCreatePayload(raw: Record<string, unknown>): Normali
   const campaignMode: CtrCampaignMode = campaignModeRaw === "unified" ? "unified" : "search_only";
   const advertId = raw.advertId == null ? null : integer(raw.advertId, 1, Number.MAX_SAFE_INTEGER);
   if (raw.advertId != null && !advertId) return { ok: false, error: "Некорректная выбранная кампания" };
+  const roundsTotal = raw.roundsTotal == null ? deriveRounds(targetImpressions ?? 0, impressionsPerRound ?? 0) : integer(raw.roundsTotal, 1, MAX_ROUNDS);
+  const maxStepMin = raw.maxStepMin == null ? DEFAULT_MAX_STEP_MIN : integer(raw.maxStepMin, 30, 1_440);
+  const warmupMin = raw.warmupMin == null ? DEFAULT_WARMUP_MIN : integer(raw.warmupMin, 1, 60);
+  if (!roundsTotal) return { ok: false, error: `Число раундов должно быть от 1 до ${MAX_ROUNDS}` };
+  if (!maxStepMin) return { ok: false, error: "Максимум времени на шаг — от 30 минут до 24 часов" };
+  if (!warmupMin) return { ok: false, error: "Прогрев после смены фото — от 1 до 60 минут" };
   if (!cabinetId || cabinetId === "all" || cabinetId.startsWith("group:")) return { ok: false, error: "Выберите один реальный WB-кабинет" };
   if (!nmId) return { ok: false, error: "Укажите корректный nmId" };
   if (!["ctr", "cr", "video"].includes(testType)) return { ok: false, error: "Неизвестный тип теста" };
@@ -107,6 +122,9 @@ export function normalizeCtrCreatePayload(raw: Record<string, unknown>): Normali
   const baseIndex = variants.findIndex((variant) => variant.source === "current");
   variants.forEach((variant, index) => { variant.isBaseline = index === baseIndex; });
 
+  const orders = normalizeVariantOrders(raw.variantOrders, variants.length, roundsTotal);
+  if (!orders.ok) return { ok: false, error: orders.error };
+
   return {
     ok: true,
     value: {
@@ -122,6 +140,10 @@ export function normalizeCtrCreatePayload(raw: Record<string, unknown>): Normali
       sourceTestId,
       campaignMode,
       advertId,
+      roundsTotal,
+      maxStepMin,
+      warmupMin,
+      variantOrders: orders.orders,
       variants,
     },
   };

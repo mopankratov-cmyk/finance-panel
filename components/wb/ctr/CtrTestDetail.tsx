@@ -389,6 +389,47 @@ function OriginalCoverNote({ test }: { test: CtrTestView }) {
   );
 }
 
+const STEP_PHASE_LABEL: Record<string, string> = {
+  swap: "меняем фото",
+  starting: "запускаем рекламу",
+  warmup: "прогрев после смены фото",
+  collecting: "набираем целевые показы",
+  settling: "реклама на паузе, ждём устоявшуюся статистику",
+};
+
+/**
+ * Где сейчас шаг нового движка и держит ли тест кампанию.
+ *
+ * Новый движок сам останавливает и запускает рекламу: пока статистика
+ * устаивается, кампания стоит на паузе. Экран говорит об этом прямо — иначе
+ * остановленная реклама читалась бы как поломка, а забытая после сбоя — как
+ * норма. Молчит у тестов прежнего движка.
+ */
+function EngineStatusNote({ test }: { test: CtrTestView }) {
+  if ((test.engineVersion ?? 1) !== 2) return null;
+  const step = test.rounds.find((round) => round.status === "active");
+  const variant = step ? test.variants.find((item) => item.id === step.variant_id) : null;
+  const notes: { tone: "info" | "warn"; text: string }[] = [];
+  if (test.status === "running" && step) {
+    const phase = STEP_PHASE_LABEL[step.phase ?? "swap"] ?? step.phase ?? "";
+    notes.push({ tone: "info", text: `Раунд ${step.pass_no ?? "—"} из ${test.roundsTotal ?? "—"} · «${variant?.label ?? step.variant_id}» · ${phase}.` });
+  }
+  if (test.campaignRestorePending && test.status !== "running") {
+    notes.push({
+      tone: "warn",
+      text: `Кампания${test.advertId ? ` #${test.advertId}` : ""} остановлена тестом и ещё не вернулась в прежнее состояние — панель повторяет попытку каждые 5 минут.${test.campaignRestoreError ? ` Причина: ${test.campaignRestoreError}` : ""}`,
+    });
+  }
+  if (!notes.length) return null;
+  return (
+    <div role="status" className="mt-3 space-y-2">
+      {notes.map((note) => (
+        <div key={note.text} className={`rounded-lg border p-3 text-[11px] leading-5 ${note.tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-violet-200 bg-violet-50 text-violet-800"}`}>{note.text}</div>
+      ))}
+    </div>
+  );
+}
+
 export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Props) {
   const current = test.variants.find((variant) => variant.id === test.currentVariantId) ?? null;
   const latestRound = [...test.rounds].sort((a, b) => b.round_number - a.round_number)[0];
@@ -467,9 +508,12 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
         <div className="mt-3"><div className="flex justify-between text-[10px] text-slate-500"><span>Расход теста</span><span>{number(spent)} / {number(test.spendCapRub)} ₽</span></div><div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${spentPct >= 100 ? "bg-rose-500" : "bg-violet-500"}`} style={{ width: `${spentPct}%` }} /></div></div>
         {test.liveSwapEnabled && test.autoError ? (
           <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-800">
-            Последняя попытка смены не прошла: {test.autoError}. Тест стоит на прежнем варианте — ротация повторит попытку.
+            {test.status === "paused"
+              ? `Тест на паузе: ${test.autoError}. Возобновите его — шаг начнётся заново.`
+              : `Последняя попытка смены не прошла: ${test.autoError}. Тест стоит на прежнем варианте — ротация повторит попытку.`}
           </div>
         ) : null}
+        <EngineStatusNote test={test} />
         <OriginalCoverNote test={test} />
         {current ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-[11px] text-violet-800"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /><span>Сейчас измеряется: <b>{current.label}</b></span><span className="text-violet-500">live +{number(Number(test.currentLive?.impressions ?? 0))} показов · +{number(Number(test.currentLive?.clicks ?? 0))} кликов</span><a href={current.imageUrl} target="_blank" rel="noreferrer" className="ml-auto inline-flex min-h-11 items-center gap-1 font-semibold hover:underline">Открыть контент <ExternalLink className="h-3.5 w-3.5" /></a></div> : null}
       </section>

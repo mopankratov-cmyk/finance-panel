@@ -43,6 +43,13 @@ export interface CtrRoundView {
   actor: string | null;
   started_at: string;
   ended_at: string | null;
+  /** Номер раунда (прохода по всем вариантам). null у строк прежнего движка. */
+  pass_no?: number | null;
+  /** Фаза идущего шага нового движка: swap, starting, warmup, collecting, settling. */
+  phase?: string | null;
+  phase_at?: string | null;
+  /** Журнал шага: замеры при старте/стопе/после стабилизации, опросы, повторы и последняя ошибка. */
+  detail?: Record<string, unknown>;
 }
 
 export interface CtrEventView {
@@ -83,6 +90,17 @@ export interface CtrTestView {
   /** ИИ-разбор фото по метрикам теста — null, пока не запускали. */
   aiAnalysis: { variants: { variantId: number; verdict: string }[]; recommendations: string[] } | null;
   aiAnalysisGeneratedAt: string | null;
+  /** 2 — новый движок (шаги с фазами, кампания на паузе, пока цифры устаиваются), 1 или не задано — прежний. */
+  engineVersion?: number;
+  roundsTotal?: number | null;
+  maxStepMin?: number | null;
+  settleMaxMin?: number | null;
+  settleStableReads?: number | null;
+  /** Порядок вариантов по раундам: id вариантов. */
+  variantOrders?: number[][] | null;
+  /** Тест менял статус кампании и ещё не вернул её. */
+  campaignRestorePending?: boolean;
+  campaignRestoreError?: string | null;
   /** Закреплённая копия обложки, стоявшей на витрине к старту; вернётся после теста. null — тест создан до этой защиты, оригинал не сохранён. */
   originalCoverUrl: string | null;
   /** Когда автосмена впервые записала в карточку вариант. null — витрина не менялась. */

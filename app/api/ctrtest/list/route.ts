@@ -106,6 +106,16 @@ export async function GET(request: NextRequest) {
     // миграция не применена, ошибка колонки не должна ронять весь список.
     db.from("ctr_tests").select("id, original_cover_url, cover_swapped_at, cover_restored_at").in("id", ids),
   ]);
+  // Поля нового движка (миграция 202609220001) — так же отдельными запросами:
+  // без неё список работает как раньше, а тесты остаются прежнего движка.
+  const [engineResult, stepResult] = await Promise.all([
+    db.from("ctr_tests").select("id, engine_version, rounds_total, max_step_min, settle_max_min, settle_stable_reads, variant_orders, campaign_status_before, campaign_restore_pending, campaign_restore_error").in("id", ids),
+    db.from("ctr_test_rounds").select("id, pass_no, phase, phase_at, detail").in("test_id", ids),
+  ]);
+  const engineByTest = new Map<number, Record<string, unknown>>();
+  for (const row of engineResult.error ? [] : engineResult.data ?? []) engineByTest.set(Number(row.id), row as Record<string, unknown>);
+  const stepById = new Map<string, Record<string, unknown>>();
+  for (const row of stepResult.error ? [] : stepResult.data ?? []) stepById.set(String(row.id), row as Record<string, unknown>);
   const coverByTest = new Map<number, { original_cover_url: string | null; cover_swapped_at: string | null; cover_restored_at: string | null }>();
   for (const row of coverResult.error ? [] : coverResult.data ?? []) {
     coverByTest.set(Number(row.id), row as { original_cover_url: string | null; cover_swapped_at: string | null; cover_restored_at: string | null });
@@ -140,6 +150,18 @@ export async function GET(request: NextRequest) {
   await Promise.all(running.map(async (test) => {
     const active = (roundsByTest.get(Number(test.id)) ?? []).find((round) => round.status === "active");
     if (!active) return;
+    // Тест нового движка: «идёт сейчас» считается по последнему показанию самого
+    // шага (у него окно статистики WB), а не по базе — у базы другая шкала, и
+    // разность дала бы цифры чужих недель. Заодно список не ходит за метриками в WB.
+    if (Number(engineByTest.get(Number(test.id))?.engine_version ?? 1) === 2) {
+      const detail = (stepById.get(String(active.id))?.detail ?? {}) as { lastRead?: { impressions: number; clicks: number; spend: number; at: string } };
+      const phase = stepById.get(String(active.id))?.phase;
+      const baseline = (active.baseline ?? {}) as Record<string, unknown>;
+      if (detail.lastRead && (phase === "collecting" || phase === "settling")) {
+        liveByTest.set(Number(test.id), ctrSnapshotDelta(baseline, { ...baseline, impressions: detail.lastRead.impressions, clicks: detail.lastRead.clicks, spend: detail.lastRead.spend, capturedAt: detail.lastRead.at }));
+      }
+      return;
+    }
     try {
       const advertId = test.advert_id == null ? null : Number(test.advert_id) || null;
       const current = await getCtrMetricSnapshot(cabinetId, Number(test.nm_id), advertId);
@@ -181,7 +203,18 @@ export async function GET(request: NextRequest) {
       coverSwappedAt: coverByTest.get(Number(row.id))?.cover_swapped_at ?? null,
       coverRestoredAt: coverByTest.get(Number(row.id))?.cover_restored_at ?? null,
       variants: rawVariants.map((variant) => publicVariant(variant, type, baselineScore)),
-      rounds: roundsByTest.get(Number(row.id)) ?? [],
+      rounds: (roundsByTest.get(Number(row.id)) ?? []).map((round) => {
+        const step = stepById.get(String(round.id));
+        return step ? { ...round, pass_no: step.pass_no ?? null, phase: step.phase ?? null, phase_at: step.phase_at ?? null, detail: step.detail ?? {} } : round;
+      }),
+      engineVersion: Number(engineByTest.get(Number(row.id))?.engine_version ?? 1),
+      roundsTotal: engineByTest.get(Number(row.id))?.rounds_total == null ? null : Number(engineByTest.get(Number(row.id))?.rounds_total),
+      maxStepMin: engineByTest.get(Number(row.id))?.max_step_min == null ? null : Number(engineByTest.get(Number(row.id))?.max_step_min),
+      settleMaxMin: engineByTest.get(Number(row.id))?.settle_max_min == null ? null : Number(engineByTest.get(Number(row.id))?.settle_max_min),
+      settleStableReads: engineByTest.get(Number(row.id))?.settle_stable_reads == null ? null : Number(engineByTest.get(Number(row.id))?.settle_stable_reads),
+      variantOrders: (engineByTest.get(Number(row.id))?.variant_orders as number[][] | null | undefined) ?? null,
+      campaignRestorePending: Boolean(engineByTest.get(Number(row.id))?.campaign_restore_pending),
+      campaignRestoreError: (engineByTest.get(Number(row.id))?.campaign_restore_error as string | null | undefined) ?? null,
       history: eventsByTest.get(Number(row.id)) ?? [],
       currentLive: liveByTest.get(Number(row.id)) ?? null,
       startedAt: row.started_at ?? null,
@@ -210,6 +243,14 @@ export async function POST(request: NextRequest) {
   if (!(await ctrProductBelongsToCabinet(cabinetId, normalized.value.nmId))) return fail("SKU не найден в данных выбранного кабинета", 404);
   const db = getSupabaseAdmin();
   if (!db) return fail("Supabase не настроен", 500);
+  // CTR-тест создаётся на новом движке; без миграции 202609220001 он молча
+  // остался бы прежним (другая шкала метрик, кампанию не ведёт). Лучше отказ.
+  if (normalized.value.testType === "ctr") {
+    const probe = await db.from("ctr_tests").select("engine_version").limit(1);
+    if (probe.error) {
+      return fail(migrationMissing(probe.error.code) ? "Примените миграцию 202609220001_ctr_test_step_engine.sql — без неё новые CTR-тесты создать нельзя." : probe.error.message, migrationMissing(probe.error.code) ? 503 : 500);
+    }
+  }
   if (normalized.value.sourceTestId) {
     const { data: source } = await db.from("ctr_tests").select("id").eq("id", normalized.value.sourceTestId).eq("cabinet_id", cabinetId).maybeSingle();
     if (!source) return fail("Исходный тест маховика не найден в этом кабинете", 400);
@@ -288,6 +329,34 @@ export async function POST(request: NextRequest) {
   await db.from("ctr_variants").update({ is_baseline: false }).eq("test_id", id);
   const basePositions = normalized.value.variants.flatMap((variant, index) => (variant.isBaseline ? [index] : []));
   if (basePositions.length) await db.from("ctr_variants").update({ is_baseline: true }).eq("test_id", id).in("position", basePositions);
+
+  /**
+   * План нового движка: версия, число раундов, потолки времени и порядок
+   * вариантов по раундам. Порядок пришёл позициями (id вариантов до создания не
+   * существует) — здесь заменяется на id. `target_impressions` пересчитывается:
+   * цель варианта — это показов за шаг × раундов, иначе SQL сравнивал бы факт
+   * с нормой, которой в плане нет.
+   */
+  if (normalized.value.testType === "ctr") {
+    const { data: created } = await db.from("ctr_variants").select("id, position").eq("test_id", id);
+    const idByPosition = new Map((created ?? []).map((row) => [Number(row.position), Number(row.id)]));
+    const variantOrders = normalized.value.variantOrders.map((order) => order.map((position) => idByPosition.get(position) ?? null));
+    const planned = variantOrders.every((order) => order.every((variantId) => variantId != null));
+    const engine = planned ? await db.from("ctr_tests").update({
+      engine_version: 2,
+      rounds_total: normalized.value.roundsTotal,
+      max_step_min: normalized.value.maxStepMin,
+      dead_zone_min: normalized.value.warmupMin,
+      variant_orders: variantOrders,
+      target_impressions: normalized.value.impressionsPerRound * normalized.value.roundsTotal,
+    }).eq("id", id) : null;
+    if (!planned || engine?.error) {
+      // Черновик без плана запустился бы на прежнем движке — убираем его, а не оставляем.
+      await db.from("ctr_tests").delete().eq("id", id);
+      await removePinned(db, pinnedPaths);
+      return fail(engine?.error?.message ?? "Не удалось собрать порядок вариантов по раундам", 500);
+    }
+  }
   /**
    * `create_ctr_test` (SQL, 20260713_ctr_test_lifecycle.sql) не знает о
    * campaign_mode/advert_id — они появились позже (202609160002). Пишем
