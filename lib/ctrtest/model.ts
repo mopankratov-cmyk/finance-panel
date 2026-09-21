@@ -92,15 +92,20 @@ export function normalizeCtrCreatePayload(raw: Record<string, unknown>): Normali
     return {
       label: clean(row.label, 80) || `Вариант ${String.fromCharCode(65 + index)}`,
       imageUrl: clean(row.imageUrl, 2_000),
-      source: clean(row.source, 40) || (index === 0 ? "current" : "link"),
-      isBaseline: row.isBaseline === true || index === 0,
+      source: clean(row.source, 40) || "link",
+      isBaseline: false,
     };
   });
   if (variants.some((variant) => {
     try { return new URL(variant.imageUrl).protocol !== "https:"; } catch { return true; }
   })) return { ok: false, error: "Каждый вариант должен содержать HTTPS-ссылку на контент" };
   if (new Set(variants.map((variant) => variant.imageUrl)).size !== variants.length) return { ok: false, error: "Одинаковый контент нельзя добавить дважды" };
-  variants.forEach((variant, index) => { variant.isBaseline = index === 0; });
+  // «База» — фото, которое уже стояло на карточке. Оно в тесте только если
+  // человек сам добавил его вариантом (источник `current`): по умолчанию текущая
+  // обложка в сравнении не участвует, а хранится отдельно и возвращается на
+  // витрину после теста (lib/ctrtest/originalCover.ts).
+  const baseIndex = variants.findIndex((variant) => variant.source === "current");
+  variants.forEach((variant, index) => { variant.isBaseline = index === baseIndex; });
 
   return {
     ok: true,

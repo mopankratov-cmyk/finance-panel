@@ -83,6 +83,12 @@ export interface CtrTestView {
   /** ИИ-разбор фото по метрикам теста — null, пока не запускали. */
   aiAnalysis: { variants: { variantId: number; verdict: string }[]; recommendations: string[] } | null;
   aiAnalysisGeneratedAt: string | null;
+  /** Закреплённая копия обложки, стоявшей на витрине к старту; вернётся после теста. null — тест создан до этой защиты, оригинал не сохранён. */
+  originalCoverUrl: string | null;
+  /** Когда автосмена впервые записала в карточку вариант. null — витрина не менялась. */
+  coverSwappedAt: string | null;
+  /** Когда исходная обложка вернулась на витрину. null при заполненном coverSwappedAt — возврат ещё ждёт. */
+  coverRestoredAt: string | null;
   variants: CtrVariantView[];
   rounds: CtrRoundView[];
   history: CtrEventView[];

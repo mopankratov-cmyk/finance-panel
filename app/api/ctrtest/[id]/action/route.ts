@@ -5,6 +5,7 @@ import { getServerSession } from "@/lib/auth/server";
 import { ensureCtrTestCampaignBinding, resumeShelfPausesForTest } from "@/lib/ctrtest/campaignBinding";
 import { getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
 import { CTR_FORCE_HINT, ctrSnapshotDelta, type CtrMetricSnapshot } from "@/lib/ctrtest/model";
+import { prepareTestForStart, restoreOriginalCover } from "@/lib/ctrtest/originalCover";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet, resolveWbToken } from "@/lib/wb/cabinetTokens";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
@@ -143,6 +144,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (test.test_type === "ctr" && !["none", "confirmed", "declined"].includes(binding.shelfConflictState)) {
       return fail("Сначала разберитесь с конкурирующими полочными кампаниями на этом артикуле — список в карточке теста (GET .../shelf-conflicts).", 409);
     }
+    // Первый запуск — последний момент, когда на витрине ещё исходная обложка:
+    // после первой смены снять её копию уже нечем. Копируем её и варианты в наше
+    // хранилище (lib/ctrtest/originalCover.ts). Не вышло — тест не стартует,
+    // потому что вернуть витрину после него было бы нечем.
+    if (test.status === "draft") {
+      const prepared = await prepareTestForStart(db, { testId: id, cabinetId, nmId });
+      if (!prepared.ok) return fail(prepared.error, prepared.status);
+    }
   }
 
   let snapshot: CtrMetricSnapshot;
@@ -199,13 +208,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   // advance упёрся в потолок расхода и SQL закрыл его сам). Не на
   // cap_paused: паузу тест может снять позже, полки должны остаться
   // выключенными до тех пор.
-  if (test.test_type === "ctr" && (status === "done" || status === "cancelled")) {
+  let coverRestore: string | null = null;
+  if (status === "done" || status === "cancelled") {
     const cabinet = await getWbCabinet(cabinetId);
-    const token = cabinet ? resolveWbToken(cabinet, "advert") : null;
-    if (token) {
-      await resumeShelfPausesForTest(db, { testId: id, token, actorEmail: session?.email ?? "ctr-test" });
+    const advertToken = test.test_type === "ctr" && cabinet ? resolveWbToken(cabinet, "advert") : null;
+    if (advertToken) {
+      await resumeShelfPausesForTest(db, { testId: id, token: advertToken, actorEmail: session?.email ?? "ctr-test" });
+    }
+    // Исходная обложка возвращается на витрину при любом завершении: победитель
+    // выбран, тест закрыт или отменён. Победителя владелец ставит сам, а панель
+    // не оставляет на карточке то, что осталось от последнего раунда. Не вышло с
+    // первого раза — возврат остаётся в очереди, крон повторяет его.
+    const contentToken = cabinet ? resolveWbToken(cabinet, "content") : null;
+    if (contentToken) {
+      const restored = await restoreOriginalCover(db, { id, nm_id: nmId }, contentToken, session?.email ?? "ctr-test");
+      coverRestore = restored.status === "failed" ? `failed: ${restored.error}` : restored.status;
     }
   }
 
-  return NextResponse.json({ data: { test: data, result, outcome }, error: null });
+  return NextResponse.json({ data: { test: data, result, outcome, coverRestore }, error: null });
 }

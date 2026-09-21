@@ -4,6 +4,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { getServerSession } from "@/lib/auth/server";
 import { listCtrCampaignCandidates } from "@/lib/ctrtest/campaignBinding";
+import { needsPin, pinImageFromUrl, removePinned } from "@/lib/ctrtest/pinImage";
 import { ctrProductBelongsToCabinet, getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
 import { ctrSnapshotDelta, ctrVariantScore, normalizeCtrCreatePayload, type CtrTestType, type CtrVariantTotals } from "@/lib/ctrtest/model";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
@@ -97,11 +98,18 @@ export async function GET(request: NextRequest) {
   const ids = (rawTests ?? []).map((row) => Number(row.id));
   if (!ids.length) return NextResponse.json({ data: { tests: [] }, error: null });
 
-  const [variantResult, roundResult, eventResult] = await Promise.all([
+  const [variantResult, roundResult, eventResult, coverResult] = await Promise.all([
     db.from("ctr_variants").select("id, test_id, label, image_url, source, is_winner, position, is_baseline, impressions, clicks, spend, opens, carts, orders, rounds_count, rounds_won").in("test_id", ids).order("position"),
     db.from("ctr_test_rounds").select("id, test_id, variant_id, round_number, status, baseline, result, close_reason, actor, started_at, ended_at").in("test_id", ids).order("started_at", { ascending: false }).limit(500),
     db.from("ctr_test_events").select("id, test_id, action, actor, details, created_at").in("test_id", ids).order("created_at", { ascending: false }).limit(500),
+    // Колонки исходной обложки (202609210001) — отдельным запросом: пока
+    // миграция не применена, ошибка колонки не должна ронять весь список.
+    db.from("ctr_tests").select("id, original_cover_url, cover_swapped_at, cover_restored_at").in("id", ids),
   ]);
+  const coverByTest = new Map<number, { original_cover_url: string | null; cover_swapped_at: string | null; cover_restored_at: string | null }>();
+  for (const row of coverResult.error ? [] : coverResult.data ?? []) {
+    coverByTest.set(Number(row.id), row as { original_cover_url: string | null; cover_swapped_at: string | null; cover_restored_at: string | null });
+  }
   const nestedError = variantResult.error ?? roundResult.error ?? eventResult.error;
   if (nestedError) return fail(migrationMissing(nestedError.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : nestedError.message, migrationMissing(nestedError.code) ? 503 : 500);
 
@@ -169,6 +177,9 @@ export async function GET(request: NextRequest) {
       campaignMode: row.campaign_mode === "unified" ? "unified" : "search_only",
       aiAnalysis: (row.ai_analysis as { variants: { variantId: number; verdict: string }[]; recommendations: string[] } | null) ?? null,
       aiAnalysisGeneratedAt: (row.ai_analysis_generated_at as string | null) ?? null,
+      originalCoverUrl: coverByTest.get(Number(row.id))?.original_cover_url ?? null,
+      coverSwappedAt: coverByTest.get(Number(row.id))?.cover_swapped_at ?? null,
+      coverRestoredAt: coverByTest.get(Number(row.id))?.cover_restored_at ?? null,
       variants: rawVariants.map((variant) => publicVariant(variant, type, baselineScore)),
       rounds: roundsByTest.get(Number(row.id)) ?? [],
       history: eventsByTest.get(Number(row.id)) ?? [],
@@ -235,12 +246,48 @@ export async function POST(request: NextRequest) {
     if (real) normalized.value.variants[baseIndex] = { ...normalized.value.variants[baseIndex], imageUrl: real };
   }
 
+  /**
+   * Каждую картинку теста закрепляем копией в нашем хранилище.
+   *
+   * Ссылка на фото карточки WB (`…/images/big/1.webp`) — адрес позиции, а не
+   * файла: после замены обложки она отдаёт уже подставленный вариант, и вариант
+   * «Текущее фото» не возвращается на витрину (lib/ctrtest/pinImage.ts). Файл у
+   * нас не меняется. Не удалось скопировать — тест не создаём: иначе отказ
+   * всплыл бы только в момент записи в живую карточку.
+   */
+  const pins = await Promise.all(normalized.value.variants.map((variant) =>
+    needsPin(variant.imageUrl) ? pinImageFromUrl(db, { url: variant.imageUrl, cabinetId, nmId: normalized.value.nmId }) : null));
+  const pinnedPaths = pins.flatMap((pin) => (pin?.ok ? [pin.path] : []));
+  const pinFailure = pins.findIndex((pin) => pin !== null && !pin.ok);
+  if (pinFailure >= 0) {
+    await removePinned(db, pinnedPaths);
+    const failed = pins[pinFailure] as { ok: false; error: string };
+    return fail(`Вариант «${normalized.value.variants[pinFailure].label}»: ${failed.error}`, 502);
+  }
+  normalized.value.variants = normalized.value.variants.map((variant, index) => {
+    const pin = pins[index];
+    return pin?.ok ? { ...variant, imageUrl: pin.url } : variant;
+  });
+
   const session = await getServerSession();
   const { data: id, error } = await db.rpc("create_ctr_test", {
     p_test: { ...normalized.value, liveSwapEnabled: false },
     p_actor: session?.email ?? null,
   });
-  if (error) return fail(migrationMissing(error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : error.message, migrationMissing(error.code) ? 503 : 500);
+  if (error) {
+    await removePinned(db, pinnedPaths);
+    return fail(migrationMissing(error.code) ? "Примените миграцию 20260713_ctr_test_lifecycle.sql" : error.message, migrationMissing(error.code) ? 503 : 500);
+  }
+  /**
+   * `create_ctr_test` помечает базой первый вариант по позиции. База — это фото,
+   * которое уже стояло на карточке, и оно в тесте только если человек добавил
+   * его сам (см. normalizeCtrCreatePayload). Выправляем флаги отдельной записью,
+   * не трогая уже применённую RPC. Метка чисто справочная (подпись «база» на
+   * экране и сноска о конверсии), поэтому сбой здесь создание не срывает.
+   */
+  await db.from("ctr_variants").update({ is_baseline: false }).eq("test_id", id);
+  const basePositions = normalized.value.variants.flatMap((variant, index) => (variant.isBaseline ? [index] : []));
+  if (basePositions.length) await db.from("ctr_variants").update({ is_baseline: true }).eq("test_id", id).in("position", basePositions);
   /**
    * `create_ctr_test` (SQL, 20260713_ctr_test_lifecycle.sql) не знает о
    * campaign_mode/advert_id — они появились позже (202609160002). Пишем

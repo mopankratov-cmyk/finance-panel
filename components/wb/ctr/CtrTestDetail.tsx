@@ -352,6 +352,43 @@ function CtrAiAnalysisPanel({ test }: { test: CtrTestView }) {
   );
 }
 
+/**
+ * Исходная обложка: где лежит её копия и вернулась ли она на витрину.
+ *
+ * Автосмена кладёт в карточку варианты, и витрина принадлежит владельцу, а не
+ * тесту: на старте панель сохраняет обложку, в конце возвращает. Экран говорит
+ * об этом прямо, потому что молчание читалось как «на карточке то, что было».
+ * У тестов, созданных до защиты, копии нет — это тоже говорим, а не прячем.
+ */
+function OriginalCoverNote({ test }: { test: CtrTestView }) {
+  const swapped = Boolean(test.coverSwappedAt);
+  const finished = test.status === "done" || test.status === "cancelled";
+  if (!test.originalCoverUrl) {
+    if (test.roundNum < 2) return null;
+    return (
+      <div role="note" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-800">
+        Исходная обложка не сохранена: тест создан до защиты витрины. Проверьте фото на карточке — там может стоять вариант из теста.
+      </div>
+    );
+  }
+  const waiting = finished && swapped && !test.coverRestoredAt;
+  const text = test.coverRestoredAt
+    ? `Вернулась на витрину ${formatTime(test.coverRestoredAt)}.`
+    : waiting
+      ? "Ждёт возврата на витрину — панель повторяет попытку каждые 5 минут."
+      : test.status === "paused" && swapped
+        ? "Тест на паузе: на витрине может стоять вариант из теста. Исходная вернётся, когда тест завершится."
+        : finished
+          ? "Витрина в ходе теста не менялась — возвращать нечего."
+          : "Вернётся на витрину, когда тест завершится.";
+  return (
+    <div role="note" className={`mt-3 flex items-center gap-3 rounded-lg border p-3 text-[11px] leading-5 ${waiting ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
+      <img src={test.originalCoverUrl} alt="Исходная обложка" className="h-16 w-auto shrink-0 rounded-md bg-white object-contain" />
+      <div className="min-w-0"><b className="font-semibold">Исходная обложка сохранена.</b> {text}</div>
+    </div>
+  );
+}
+
 export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Props) {
   const current = test.variants.find((variant) => variant.id === test.currentVariantId) ?? null;
   const latestRound = [...test.rounds].sort((a, b) => b.round_number - a.round_number)[0];
@@ -433,6 +470,7 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
             Последняя попытка смены не прошла: {test.autoError}. Тест стоит на прежнем варианте — ротация повторит попытку.
           </div>
         ) : null}
+        <OriginalCoverNote test={test} />
         {current ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-[11px] text-violet-800"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /><span>Сейчас измеряется: <b>{current.label}</b></span><span className="text-violet-500">live +{number(Number(test.currentLive?.impressions ?? 0))} показов · +{number(Number(test.currentLive?.clicks ?? 0))} кликов</span><a href={current.imageUrl} target="_blank" rel="noreferrer" className="ml-auto inline-flex min-h-11 items-center gap-1 font-semibold hover:underline">Открыть контент <ExternalLink className="h-3.5 w-3.5" /></a></div> : null}
       </section>
 

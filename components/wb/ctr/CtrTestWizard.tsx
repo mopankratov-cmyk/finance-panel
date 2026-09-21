@@ -3,7 +3,6 @@
 
 import { AlertTriangle, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import type { CtrCampaignMode, CtrTestType } from "@/lib/ctrtest/model";
 import type { ContentItem } from "@/lib/content/productLibrary";
 import { ctrTestForecast } from "@/lib/ctrtest/model";
@@ -75,11 +74,12 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
       { label: `Победитель теста #${seed.sourceTestId}`, imageUrl: seed.baseline.imageUrl, source: "winner" },
       { label: "Новый вариант", imageUrl: "", source: "link" },
     ];
-    if (initialCandidate) return [
-      { label: type === "video" ? "Текущее видео" : "Текущее фото", imageUrl: type === "video" ? "" : wbCardImageUrl(initialCandidate.nm, "big"), source: "current" },
-      { label: "Вариант B", imageUrl: "", source: "link" },
-    ];
-    return [{ label: type === "video" ? "Текущее видео" : "Текущее фото", imageUrl: "", source: "current" }, { label: "Вариант B", imageUrl: "", source: "link" }];
+    // Фото, что стоит на витрине сейчас, вариантом НЕ добавляется (решение
+    // владельца 21.09.2026): раньше оно шло первым вариантом живой ссылкой на
+    // обложку, и после первой смены та же ссылка отдавала уже подставленное
+    // фото. Теперь панель сохраняет его отдельно и возвращает после теста; хочешь
+    // проверить и его — добавь вариантом из библиотеки (фото карточки).
+    return [{ label: "Вариант A", imageUrl: "", source: "link" }, { label: "Вариант B", imageUrl: "", source: "link" }];
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,9 +142,6 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
 
   const pickCandidate = (nextNm: number) => {
     setNmId(nextNm);
-    const candidate = candidates.find((item) => item.nm === nextNm);
-    if (!candidate || seed?.baseline) return;
-    setVariants((current) => current.map((variant, index) => index === 0 ? { ...variant, imageUrl: type === "video" ? "" : wbCardImageUrl(candidate.nm, "big"), source: "current", label: type === "video" ? "Текущее видео" : "Текущее фото" } : variant));
   };
 
   const setVariant = (index: number, field: "label" | "imageUrl", value: string) => {
@@ -167,8 +164,6 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
     setVariants((current) => {
       const already = current.findIndex((variant) => variant.imageUrl === item.url);
       if (already >= 0) {
-        // Первый вариант — базовый, его не удаляем: тест без базы бессмыслен.
-        if (already === 0) return current.map((variant, index) => index === 0 ? { ...variant, imageUrl: "" } : variant);
         return current.length > 2
           ? current.filter((_, index) => index !== already)
           : current.map((variant, index) => index === already ? { ...variant, imageUrl: "" } : variant);
@@ -208,7 +203,7 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
           sourceTestId: seed?.sourceTestId ?? null,
           campaignMode: type === "ctr" ? campaignMode : "search_only",
           advertId: type === "ctr" ? pickedAdvertId : null,
-          variants: variants.map((variant, index) => ({ ...variant, isBaseline: index === 0 })),
+          variants,
         }),
       }));
       onCreated();
@@ -220,7 +215,7 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
     <section aria-labelledby="ctr-wizard-title" className="rounded-xl border border-violet-200 bg-white p-4 shadow-[0_10px_30px_rgba(76,29,149,0.08)]">
       <div className="flex items-start gap-3">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-violet-100 text-violet-700"><ImagePlus className="h-4 w-4" /></div>
-        <div><h2 id="ctr-wizard-title" className="text-sm font-bold text-slate-900">Новый тест · {typeLabel[type]}</h2><p className="mt-1 text-[11px] text-slate-500">Черновик не меняет карточку WB. Каждый раунд запускается только после ручного подтверждения установленного контента.</p></div>
+        <div><h2 id="ctr-wizard-title" className="text-sm font-bold text-slate-900">Новый тест · {typeLabel[type]}</h2><p className="mt-1 text-[11px] text-slate-500">Черновик не меняет карточку WB. После запуска панель сама меняет обложку по кругу и в конце возвращает исходную.</p></div>
         <button type="button" onClick={onClose} aria-label="Закрыть мастер" className="ml-auto grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
       </div>
 
@@ -282,7 +277,10 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
         экране должен повторять этот порядок, иначе поле со ссылкой снова
         читается как единственный способ.
       */}
-      <div className="mt-4">
+      <p className="mt-4 text-[11px] leading-5 text-slate-500">
+        Фото, которое стоит на витрине сейчас, в тест не входит: панель сохранит его при запуске и вернёт после завершения. Хотите проверить и его — выберите фото карточки в библиотеке ниже, оно добавится отдельным вариантом.
+      </p>
+      <div className="mt-2">
         <ContentPicker
           cabinetId={cabinetId}
           nmId={selected?.nm ?? 0}
@@ -297,7 +295,7 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
           <div className="mb-2 flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white text-[10px] font-bold text-violet-700 shadow-sm">{String.fromCharCode(65 + index)}</span><input value={variant.label} onChange={(event) => setVariant(index, "label", event.target.value)} aria-label={`Название варианта ${index + 1}`} className="min-h-11 min-w-0 flex-1 bg-transparent text-xs font-semibold outline-none" />{index > 1 ? <button type="button" onClick={() => setVariants((current) => current.filter((_, position) => position !== index))} aria-label={`Удалить вариант ${index + 1}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button> : null}</div>
           <div className="aspect-[3/4] overflow-hidden rounded-lg border border-slate-200 bg-slate-50">{variant.imageUrl ? type === "video" ? <video src={variant.imageUrl} controls muted preload="metadata" className="h-full w-full object-contain" /> : <img src={variant.imageUrl} alt="" className="h-full w-full object-contain" /> : <div className="grid h-full place-items-center text-[10px] text-slate-300">HTTPS-ссылка на контент</div>}</div>
           <input type="url" value={variant.imageUrl} onChange={(event) => setVariant(index, "imageUrl", event.target.value)} placeholder="https://…" aria-label={`Ссылка варианта ${index + 1}`} className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-[10px] outline-none focus:border-violet-400" />
-          {index === 0 ? <div className="mt-2 text-[9px] font-medium text-violet-600">Базовый вариант</div> : null}
+          {variant.source === "current" ? <div className="mt-2 text-[9px] font-medium text-violet-600">Фото с витрины (база)</div> : null}
         </div>)}
         {variants.length < 6 ? <button type="button" onClick={() => setVariants((current) => [...current, { label: `Вариант ${String.fromCharCode(65 + current.length)}`, imageUrl: "", source: "link" }])} className="grid min-h-[270px] w-[180px] shrink-0 place-items-center rounded-xl border-2 border-dashed border-violet-200 text-xs font-semibold text-violet-600 hover:bg-violet-50"><span className="flex flex-col items-center gap-2"><Plus className="h-6 w-6" />Добавить вариант</span></button> : null}
       </div>

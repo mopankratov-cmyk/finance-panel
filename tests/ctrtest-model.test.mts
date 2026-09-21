@@ -16,7 +16,15 @@ test("CTR test creation requires one cabinet and unique HTTPS variants", () => {
     variants: [{ imageUrl: "https://example.com/a.webp" }, { imageUrl: "https://example.com/b.webp" }],
   });
   assert.equal(valid.ok, true);
-  assert.equal(valid.ok && valid.value.variants[0].isBaseline, true);
+  // Текущее фото в тест не входит, пока человек не добавил его вариантом сам:
+  // «база» — не первый по порядку, а тот, у кого источник `current`.
+  assert.equal(valid.ok && valid.value.variants[0].isBaseline, false);
+  const withCurrent = normalizeCtrCreatePayload({
+    cabinetId: "00000000-0000-4000-8000-000000000001", nmId: 123, testType: "ctr", intervalMin: 60,
+    impressionsPerRound: 350, targetImpressions: 1000, spendCapRub: 5000,
+    variants: [{ imageUrl: "https://example.com/a.webp" }, { imageUrl: "https://example.com/b.webp", source: "current" }],
+  });
+  assert.equal(withCurrent.ok && withCurrent.value.variants.map((variant) => variant.isBaseline).join(), "false,true");
   assert.equal(normalizeCtrCreatePayload({ cabinetId: "all" }).ok, false);
   assert.equal(normalizeCtrCreatePayload({
     cabinetId: "x", nmId: 1, testType: "ctr", intervalMin: 60, impressionsPerRound: 350, targetImpressions: 1000, spendCapRub: 5000,

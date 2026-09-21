@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resumeShelfPausesForTest } from "@/lib/ctrtest/campaignBinding";
+import { restoreOriginalCover } from "@/lib/ctrtest/originalCover";
+import { isLiveWbCoverUrl } from "@/lib/ctrtest/pinImage";
 import { getCtrMetricSnapshot } from "@/lib/ctrtest/metrics";
 import { ctrSnapshotDelta, type CtrMetricSnapshot } from "@/lib/ctrtest/model";
 import { checkCronAuth } from "@/lib/sync/helpers";
@@ -25,6 +27,12 @@ export const maxDuration = 300;
  * станет ложью, которую нечем обнаружить. Обратная неудача (фото сменилось,
  * отметка не прошла) видна сразу: следующий проход увидит расхождение и
  * запишет ошибку.
+ *
+ * ВИТРИНА ПРИНАДЛЕЖИТ ВЛАДЕЛЬЦУ, А НЕ ТЕСТУ. Перед первым стартом панель копирует
+ * исходную обложку в наше хранилище (lib/ctrtest/originalCover.ts), а когда тест
+ * заканчивается — по потолку расхода здесь или руками в action-роуте — кладёт её
+ * обратно. Варианты тоже лежат копиями: ссылка на фото карточки WB — адрес
+ * позиции, и «возврат» к ней возвращал то, что уже висит.
  */
 
 const fail = (error: string, status: number) => NextResponse.json({ ok: false, error }, { status });
@@ -116,6 +124,9 @@ async function rotate(request: NextRequest) {
 
   const now = Date.now();
   const report: { testId: number; outcome: string; detail?: string }[] = [];
+  // Тесты, у которых возврат обложки уже пробовали в этом проходе: повторный
+  // заход ниже их не трогает, иначе отказ WB бился бы дважды подряд.
+  const restoreAttempted = new Set<number>();
 
   for (const test of (tests ?? []) as TestRow[]) {
     const note = (outcome: string, detail?: string) => { report.push({ testId: test.id, outcome, detail }); };
@@ -146,11 +157,21 @@ async function rotate(request: NextRequest) {
       const variants = (variantRows ?? []) as VariantRow[];
       const next = nextVariant(variants, round.variant_id as number);
       if (!next?.image_url) { note("нет следующего варианта"); failure = "у теста не нашлось следующего варианта с картинкой"; continue; }
+      // Ссылка на живую обложку карточки — адрес позиции, а не файла: после
+      // замены обложки она отдаёт уже подставленный вариант, и «возврат» к этому
+      // варианту ничего бы не менял, при этом показы засчитались бы ему.
+      // Так у тестов, созданных до закрепления копий (lib/ctrtest/pinImage.ts).
+      if (isLiveWbCoverUrl(next.image_url)) {
+        note("вариант — живая ссылка на обложку");
+        failure = "вариант «Текущее фото» ссылается на живую обложку WB, а не на сохранённую копию (тест создан до исправления) — создайте тест заново";
+        continue;
+      }
 
       // ── Запись в карточку WB ──
       const cabinet = await getWbCabinet(test.cabinet_id);
       if (!cabinet) { note("кабинет не найден"); failure = "кабинет не найден"; continue; }
-      const card = await fetchCardForWrite(resolveWbToken(cabinet, "content"), test.nm_id);
+      const contentToken = resolveWbToken(cabinet, "content");
+      const card = await fetchCardForWrite(contentToken, test.nm_id);
       if (!card.found) { note("WB не подтвердил карточку"); failure = "WB не подтвердил карточку — запись отменена"; continue; }
 
       // Исходный набор запоминаем один раз — не для записи, а как след: по нему
@@ -165,8 +186,12 @@ async function rotate(request: NextRequest) {
       // ли оно перезапись. Карточек с видео в кабинете больше половины, то есть
       // функция была выключена на большей части ассортимента. Замена по номеру
       // позиции видео и прочие фото не трогает вовсе.
-      const write = await replaceCardCover(resolveWbToken(cabinet, "content"), test.nm_id, next.image_url);
+      const write = await replaceCardCover(contentToken, test.nm_id, next.image_url);
       if (!write.ok) { note("WB отказал в записи"); failure = write.error ?? "WB отказал в записи без объяснения"; continue; }
+      // Витрина изменена: с этого момента при завершении теста исходную обложку
+      // надо вернуть. Метка — до отметки раунда, чтобы сбой ниже её не потерял.
+      // Колонка из миграции 202609210001; пока её нет, ошибка не мешает ротации.
+      await db.from("ctr_tests").update({ cover_swapped_at: new Date().toISOString() }).eq("id", test.id).is("cover_swapped_at", null);
 
       // ── И только теперь отметка раунда ──
       const { data: transition, error: transitionError } = await db.rpc("transition_ctr_test", {
@@ -181,6 +206,20 @@ async function rotate(request: NextRequest) {
       if (test.test_type === "ctr" && (status === "done" || status === "cancelled")) {
         const advertToken = resolveWbToken(cabinet, "advert");
         if (advertToken) await resumeShelfPausesForTest(db, { testId: test.id, token: advertToken, actorEmail: "ctr-rotate" });
+      }
+      // Тест закончился (потолок расхода закрыл его сам) — на витрине нельзя
+      // оставлять то, что осталось от последнего раунда. Возврат исходной
+      // обложки; не прошёл — повторит проход ниже, пока не получится.
+      if (status === "done" || status === "cancelled") {
+        restoreAttempted.add(test.id);
+        // Свой try: сбой возврата не должен попасть в общий catch — тот пишет
+        // auto_error и при повторе ставит тест на паузу, а этот уже закрыт.
+        try {
+          const restored = await restoreOriginalCover(db, { id: test.id, nm_id: test.nm_id }, contentToken, "ctr-rotate");
+          note(`возврат обложки: ${restored.status}`, restored.status === "failed" ? restored.error : undefined);
+        } catch (cause) {
+          note("возврат обложки: сбой", cause instanceof Error ? cause.message : String(cause));
+        }
       }
     } catch (cause) {
       note("сбой", cause instanceof Error ? cause.message : String(cause));
@@ -203,6 +242,26 @@ async function rotate(request: NextRequest) {
         ...(repeated ? { status: "paused" } : {}),
       }).eq("id", test.id);
       if (repeated) note("тот же отказ второй раз — тест на паузе");
+    }
+  }
+
+  // Возврат обложки, что не прошёл с первого раза: WB отказал, сбой сети или тест
+  // закрыл человек в момент недоступности. Витрина принадлежит владельцу, поэтому
+  // очередь не гаснет, пока `cover_restored_at` пуст. Ошибка запроса — колонок
+  // ещё нет (миграция 202609210001 не применена): возвращать нечего.
+  const pendingRestore = await db.from("ctr_tests").select("id, cabinet_id, nm_id")
+    .in("status", ["done", "cancelled"]).not("cover_swapped_at", "is", null).is("cover_restored_at", null).limit(20);
+  for (const pending of pendingRestore.error ? [] : (pendingRestore.data ?? [])) {
+    const testId = Number(pending.id);
+    if (restoreAttempted.has(testId)) continue;
+    try {
+      const cabinet = await getWbCabinet(String(pending.cabinet_id));
+      const token = cabinet ? resolveWbToken(cabinet, "content") : null;
+      if (!token) { report.push({ testId, outcome: "возврат обложки: нет токена контента" }); continue; }
+      const restored = await restoreOriginalCover(db, { id: testId, nm_id: Number(pending.nm_id) }, token, "ctr-rotate");
+      report.push({ testId, outcome: `возврат обложки: ${restored.status}`, detail: restored.status === "failed" ? restored.error : undefined });
+    } catch (cause) {
+      report.push({ testId, outcome: "возврат обложки: сбой", detail: cause instanceof Error ? cause.message : String(cause) });
     }
   }
 
