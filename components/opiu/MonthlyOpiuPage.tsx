@@ -19,6 +19,7 @@ interface MonthlyOpiuResponse {
   wb?: Parameters<typeof buildMonthlyOpiuStatement>[0]["wb"];
   ozon?: Parameters<typeof buildMonthlyOpiuStatement>[0]["ozon"];
   sources?: MonthlyMarketplaceSource[];
+  warnings?: string[];
   error?: string;
 }
 
@@ -115,7 +116,7 @@ export function MonthlyOpiuPage() {
           shared: facts.data?.shared,
           companies: facts.data?.companies,
           byCompany: facts.data?.byCompany,
-          warnings: facts.data?.warnings,
+          warnings: [...new Set([...(marketplaces.data?.warnings ?? []), ...(facts.data?.warnings ?? [])])],
         });
       })
       .catch((reason) => {

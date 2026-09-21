@@ -108,6 +108,10 @@
       "schedule": "15 6 * * *"
     },
     {
+      "path": "/api/sync/opiu-report",
+      "schedule": "12 * * * *"
+    },
+    {
       "path": "/api/opiu/monitor",
       "schedule": "0 5 * * *"
     },

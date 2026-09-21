@@ -7,10 +7,27 @@ import type { OpiuReportDateMode } from "./reportRows";
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= "test-anon-key";
 
-const [{ rowsBySaleDate }, { reportRowForStorage }] = await Promise.all([
+const [{ rowsBySaleDate }, { filterReportRowsByAllowedNmIds, reportRowForStorage }] = await Promise.all([
   import("./reportRows"),
   import("./syncReportRows"),
 ]);
+
+test("agent cabinet report keeps only allowlisted nm_id rows", () => {
+  const rows = [
+    { rrd_id: 1, rr_dt: "2026-08-01", nm_id: 101 },
+    { rrd_id: 2, rr_dt: "2026-08-01", nm_id: 202 },
+    { rrd_id: 3, rr_dt: "2026-08-01", nm_id: 0 },
+  ] as WbReportRow[];
+
+  assert.deepEqual(
+    filterReportRowsByAllowedNmIds(rows, new Set([202])).map((row) => row.rrd_id),
+    [2],
+  );
+  assert.deepEqual(
+    filterReportRowsByAllowedNmIds(rows, null).map((row) => row.rrd_id),
+    [1, 2, 3],
+  );
+});
 
 test("sale-date report uses sale_dt while preserving report-date rows", () => {
   const source: WbReportRow[] = [{
