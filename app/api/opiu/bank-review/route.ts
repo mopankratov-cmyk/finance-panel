@@ -316,15 +316,32 @@ export async function POST(request: Request) {
       const identity = operationIdentityFromReasons(candidate.reasons);
       return identity ? [[identity, candidate] as const] : [];
     }));
+    // Строки, сохранённые до PR #1164 (маркера __operation_identity: тогда ещё
+    // не было), у идентичности не найдутся — их всё равно нужно узнавать по
+    // паре (файл, строка в файле), иначе повторная загрузка любой старой
+    // выписки бьётся об "Не все строки выписки удалось связать" вхолостую.
+    const candidatesByExternalId = new Map(candidates.map((candidate) =>
+      [`${candidate.document_hash}:${candidate.external_id}`, candidate] as const));
+    const legacyIdentityBackfill: { id: string; reasons: string[] }[] = [];
     const stored = rows.flatMap((sourceRow) => {
       const identity = operationIdentityFromReasons(sourceRow.reasons);
-      const candidate = identity
-        ? candidatesByIdentity.get(identity)
-        : candidates.find((item) => item.document_hash === documentHash && item.external_id === sourceRow.external_id);
+      const candidate = (identity ? candidatesByIdentity.get(identity) : undefined)
+        ?? candidatesByExternalId.get(`${documentHash}:${sourceRow.external_id}`);
+      if (candidate && identity && !operationIdentityFromReasons(candidate.reasons)) {
+        // Нашли по старому ключу — дописываем маркер задним числом, иначе эта
+        // строка так и останется вне дедупликации по идентичности навсегда.
+        legacyIdentityBackfill.push({
+          id: candidate.id,
+          reasons: [...(Array.isArray(candidate.reasons) ? candidate.reasons.map(String) : []), identity],
+        });
+      }
       return candidate ? [{ ...candidate, external_id: sourceRow.external_id }] : [];
     });
     if (stored.length !== rows.length) {
       return jsonError("Не все строки выписки удалось связать с банковскими операциями. Импорт остановлен до проведения платежей.", 500);
+    }
+    for (const legacyRow of legacyIdentityBackfill) {
+      await db.from("bank_review_items").update({ reasons: legacyRow.reasons }).eq("id", legacyRow.id);
     }
     const selectedExternalIds=new Set(rows.map(row=>row.external_id));
     const ledgerStatement: BankStatement = {
