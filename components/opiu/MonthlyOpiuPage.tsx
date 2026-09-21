@@ -1,6 +1,7 @@
 "use client";
 
 import { FinanceTabs } from "@/components/FinanceTabs";
+import { ActionableError } from "@/components/ui/ActionableError";
 import { Hint } from "@/components/ui/Hint";
 import { formatPct, formatRub } from "@/lib/analytics/format";
 import { buildMonthlyOpiuStatement, type MonthlyOpiuAmount, type MonthlyOpiuRow } from "@/lib/opiu/monthlyStatement";
@@ -8,8 +9,9 @@ import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
 import { buildMonthlyOpiuSheetPayload, exportMonthlyOpiuToGoogleSheets } from "@/lib/opiu/monthlySheetExport";
 import type { MonthlySourceResult } from "@/lib/opiu/monthlySourceFallback";
 import { aggregateOzonSources, aggregateWbSources, type MonthlyMarketplaceSource } from "@/lib/opiu/monthlyMarketplaceSources";
-import { withCalculatedMonthlyTaxes } from "@/lib/opiu/monthlyTaxFacts";
-import { Check, ExternalLink, FileSpreadsheet, LineChart, Loader2, RefreshCw } from "lucide-react";
+import { combineMonthlyCompanyFacts, monthlyTaxSettingGaps, withCalculatedMonthlyTaxes } from "@/lib/opiu/monthlyTaxFacts";
+import { AlertTriangle, Check, ExternalLink, FileSpreadsheet, LineChart, Loader2, RefreshCw, Settings } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 interface MonthlyOpiuResponse {
@@ -65,9 +67,13 @@ function visibleAmount(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string {
 }
 
 function AmountCell({ amount, row, label }: { amount: MonthlyOpiuAmount; row: MonthlyOpiuRow; label: string }) {
+  const showCalculationHint = amount.note && ["taxes", "vat", "loan_interest"].includes(row.id);
   return (
     <td data-label={label} className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-slate-800">
-      {visibleAmount(amount, row)}
+      <span className="inline-flex items-center justify-end gap-1">
+        {visibleAmount(amount, row)}
+        {showCalculationHint ? <Hint label={`Пояснение к сумме «${row.label}», ${label}`}>{amount.note}</Hint> : null}
+      </span>
     </td>
   );
 }
@@ -152,12 +158,8 @@ export function MonthlyOpiuPage() {
       });
       const combined = { ...(shared ?? {}) };
       for (const id of ["taxes", "vat"] as const) {
-        const facts = perCompany.flatMap((facts) => facts?.[id] ? [facts[id]] : []);
-        if (facts.length) combined[id] = {
-          amount: Math.round(facts.reduce((total, fact) => total + fact.amount, 0) * 100) / 100,
-          status: facts.every((fact) => fact.status === "complete") ? "complete" : "partial",
-          note: `Сумма расчётов по ${facts.length} компани${facts.length === 1 ? "и" : "ям"}`,
-        };
+        const fact = combineMonthlyCompanyFacts(perCompany.map((facts) => facts?.[id]));
+        if (fact) combined[id] = fact;
       }
       shared = combined;
     }
@@ -182,8 +184,14 @@ export function MonthlyOpiuPage() {
       statement: buildMonthlyOpiuStatement(source.marketplace === "wb" ? { wb: source.wb } : { ozon: source.ozon }),
     }));
   }, [selectedData]);
-  const companies = data?.companies ?? [];
+  const companies = useMemo(() => data?.companies ?? [], [data?.companies]);
   const selectedCompanyLabel = companies.find((company) => company.id === companyId)?.name ?? "Все компании";
+  const companiesWithTaxGaps = useMemo(() => {
+    const relevant = companyId ? companies.filter((company) => company.id === companyId) : companies;
+    return relevant
+      .map((company) => ({ company, gaps: monthlyTaxSettingGaps(company) }))
+      .filter((item) => item.gaps.length > 0);
+  }, [companies, companyId]);
 
   const handleExport = async () => {
     if (!statement) return;
@@ -257,6 +265,37 @@ export function MonthlyOpiuPage() {
         </a>
       ) : null}
 
+      {!loading && (data?.warnings ?? []).map((warning) => (
+        <ActionableError
+          key={warning}
+          message={warning}
+          label="ОПиУ"
+          onRetry={() => setReloadKey((value) => value + 1)}
+          compact
+          tone="amber"
+          className="mb-3"
+        />
+      ))}
+
+      {!loading && companiesWithTaxGaps.length > 0 ? (
+        <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">Налог и НДС рассчитаны не полностью</p>
+              <ul className="mt-1 space-y-0.5 text-xs leading-5 text-amber-900/80">
+                {companiesWithTaxGaps.map(({ company, gaps }) => (
+                  <li key={company.id}><span className="font-semibold">{company.name}:</span> не настроены {gaps.join(", ")}.</li>
+                ))}
+              </ul>
+            </div>
+            <Link href="/payments" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+              <Settings className="h-4 w-4" /> Настройки компаний
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
       {!loading && statement ? (
         <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Выручка</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.revenue} /></div></div>
@@ -310,7 +349,7 @@ export function MonthlyOpiuPage() {
                         : <td key={source.id} data-label={source.label} className="px-3 py-2.5 text-right text-slate-400">—</td>;
                     })}
                     <AmountCell amount={row.amounts.shared} row={row} label="Общие" />
-                    <td data-label="Итого" className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-slate-900">{visibleAmount(total, row)}</td>
+                    <AmountCell amount={total} row={row} label="Итого" />
                   </tr>
                 );
               })}

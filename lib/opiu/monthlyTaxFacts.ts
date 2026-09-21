@@ -1,4 +1,4 @@
-import { companyTaxTotalRate } from "@/lib/finance/companyTax";
+import { companyTaxSystemSupportsRate, companyTaxTotalRate } from "@/lib/finance/companyTax";
 import type { OpiuCompanyOption } from "./companyScope";
 import type { MonthlySharedFact } from "./monthlyFacts";
 
@@ -11,6 +11,36 @@ interface MonthlyTaxFactInput {
 }
 
 const money = (value: number) => Math.round(value * 100) / 100;
+
+export function monthlyTaxSettingGaps(company: OpiuCompanyOption): string[] {
+  const gaps: string[] = [];
+  if (!company.taxSystem) gaps.push("налоговый режим");
+  else if (companyTaxSystemSupportsRate(company.taxSystem) && companyTaxTotalRate(company.taxRate ?? null, company.taxAdditionalRate ?? null) == null) {
+    gaps.push("ставка налога");
+  }
+  if (company.vatMode == null) gaps.push("режим НДС");
+  return gaps;
+}
+
+/**
+ * Свод по всем компаниям остаётся частичным, если расчёт отсутствует хотя бы
+ * у одной компании. Иначе одна настроенная компания могла превратить общий
+ * итог в визуально «полный», хотя остальные юрлица в него не вошли.
+ */
+export function combineMonthlyCompanyFacts(
+  facts: Array<MonthlySharedFact | undefined>,
+): MonthlySharedFact | undefined {
+  const available = facts.filter((fact): fact is MonthlySharedFact => Boolean(fact));
+  if (!available.length) return undefined;
+  const complete = available.length === facts.length && available.every((fact) => fact.status === "complete");
+  return {
+    amount: money(available.reduce((total, fact) => total + fact.amount, 0)),
+    status: complete ? "complete" : "partial",
+    note: available.length === facts.length
+      ? `Сумма расчётов по ${available.length} компани${available.length === 1 ? "и" : "ям"}`
+      : `Расчёт доступен для ${available.length} из ${facts.length} компаний`,
+  };
+}
 
 /**
  * Добавляет расчётные начисления только когда нет подтверждённого факта.
