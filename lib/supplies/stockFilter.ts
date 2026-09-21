@@ -1,32 +1,26 @@
+import { isWbWarehouse } from "@/lib/wb/realStock";
+
 /**
  * Фильтр остатков по складам WB.
  *
- * Общий остаток артикула — сумма по всем складским строкам отчёта WB, а в ней
- * лежат склады, откуда товар не продаётся: «Склад WB РФ» — это товар в пути
- * между складами WB, а не остаток, склады после пожара, куда поставок не будет.
- * Отчёт по Retail Family 02.09.2026 показал 14 944 шт при 2 370 доступных на
- * витрине. Поэтому «корректный остаток» — это остаток по тем складам, которые
- * человек выбрал, а не общая сумма.
+ * Общий остаток — сумма по всем складным строкам отчёта WB, но реален только
+ * остаток на «Склад WB» (FBW и FBS): склады по городам после пожара пусты, а их
+ * цифры в отчёте — фантом (lib/wb/realStock.ts). Поэтому «корректный остаток» —
+ * это остаток по «Склад WB», и экран считает его по умолчанию, а остальные
+ * склады остаются доступны для сверки.
  *
  * Чистые функции без React и базы: каждое число в таблице проверяется тестом.
  */
 
 export interface WarehouseQty { warehouse: string; quantity: number }
 
-/**
- * Склад-транзит: «Склад WB РФ» — товар в пути между складами WB. В отчёте
- * WB это дизъюнктная строка, входящая в «Всего», но продать этот товар нельзя,
- * пока он не приехал на склад. Совпадает и с прежним агрегатом «Склад WB»
- * (warehouseId −999999), который отдавал старый отчёт.
- */
-export const isTransitWarehouse = (name: string): boolean => /^Склад\s+WB/i.test(name.trim());
-
 export interface WarehouseOption {
   warehouse: string;
   quantity: number;
   /** Сколько артикулов лежит на складе. */
   skus: number;
-  transit: boolean;
+  /** «Склад WB» — единственное место с реальным остатком. */
+  wb: boolean;
 }
 
 /** Склады, на которых есть товар, — с суммой остатка и числом артикулов. */
@@ -35,7 +29,7 @@ export function warehouseOptions(rows: readonly { warehouses: readonly Warehouse
   for (const row of rows) {
     for (const entry of row.warehouses) {
       if (!(entry.quantity > 0)) continue;
-      const current = byName.get(entry.warehouse) ?? { warehouse: entry.warehouse, quantity: 0, skus: 0, transit: isTransitWarehouse(entry.warehouse) };
+      const current = byName.get(entry.warehouse) ?? { warehouse: entry.warehouse, quantity: 0, skus: 0, wb: isWbWarehouse(entry.warehouse) };
       current.quantity += entry.quantity;
       current.skus += 1;
       byName.set(entry.warehouse, current);
@@ -92,13 +86,22 @@ export function toggleWarehouse(current: ReadonlySet<string> | null, warehouse: 
   return normalizeSelection(base, options);
 }
 
-/** Все склады, кроме транзитных: «Склад WB РФ» и прежний агрегат «Склад WB». */
-export function withoutTransit(options: readonly WarehouseOption[]): Set<string> | null {
-  const picked = new Set(options.filter((option) => !option.transit).map((option) => option.warehouse));
-  return normalizeSelection(picked, options);
+/**
+ * Только «Склад WB» — корректный остаток. Нет такого склада в данных — null:
+ * без него остаток показывать по всем складам лучше, чем нулём по всем.
+ */
+export function onlyWbWarehouses(options: readonly WarehouseOption[]): Set<string> | null {
+  const picked = new Set(options.filter((option) => option.wb).map((option) => option.warehouse));
+  return picked.size === 0 ? null : normalizeSelection(picked, options);
+}
+
+/** Выбран ли ровно «Склад WB» (и ничего сверх него). */
+export function isWbOnlySelection(selected: ReadonlySet<string> | null): boolean {
+  return selected !== null && selected.size > 0 && [...selected].every(isWbWarehouse);
 }
 
 export function selectionLabel(selected: ReadonlySet<string> | null, options: readonly WarehouseOption[]): string {
   if (selected === null) return `все (${options.length})`;
+  if (isWbOnlySelection(selected)) return "«Склад WB»";
   return `${selected.size} из ${options.length}`;
 }

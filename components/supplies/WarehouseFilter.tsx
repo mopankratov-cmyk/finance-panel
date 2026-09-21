@@ -4,16 +4,17 @@ import { Warehouse } from "lucide-react";
 import { useMemo, useState } from "react";
 import { SlidePanel } from "@/components/ui/SlidePanel";
 import { formatNumber } from "@/lib/analytics/format";
-import { normalizeSelection, selectionLabel, toggleWarehouse, withoutTransit, type WarehouseOption } from "@/lib/supplies/stockFilter";
+import { normalizeSelection, onlyWbWarehouses, selectionLabel, toggleWarehouse, type WarehouseOption } from "@/lib/supplies/stockFilter";
 
 /**
  * Выбор складов WB, по которым считается остаток.
  *
- * Общий остаток включает то, что продать нельзя: «Склад WB РФ» — товар в пути
- * между складами WB, склады после пожара. «Корректный остаток» — это остаток по
- * тем складам, которые человек выбрал. Выбор лежит в панели, а не в выпадающем
- * списке: складов десятки, и на телефоне длинный список поверх страницы не
- * прокрутить, а SlidePanel умеет и то, и другое (mobile-adaptation §5).
+ * Реален только остаток на «Склад WB» (FBW и FBS): склады по городам после
+ * пожара пусты, а их строки в отчёте WB — фантом, из-за которого общая сумма
+ * завышена. Поэтому по умолчанию выбран «Склад WB», а остальные склады остаются
+ * в списке для сверки. Выбор лежит в панели, а не в выпадающем списке: складов
+ * десятки, и на телефоне длинный список поверх страницы не прокрутить, а
+ * SlidePanel умеет и то, и другое (mobile-adaptation §5).
  */
 export function WarehouseFilter({
   options,
@@ -31,7 +32,7 @@ export function WarehouseFilter({
     const needle = query.trim().toLowerCase();
     return needle ? options.filter((option) => option.warehouse.toLowerCase().includes(needle)) : options;
   }, [options, query]);
-  const hasTransit = options.some((option) => option.transit);
+  const hasWb = options.some((option) => option.wb);
   const chosen = (warehouse: string) => selected === null || selected.has(warehouse);
   const chosenQuantity = options.reduce((sum, option) => sum + (chosen(option.warehouse) ? option.quantity : 0), 0);
 
@@ -65,15 +66,15 @@ export function WarehouseFilter({
       >
         <div className="space-y-3 p-4">
           <p className="text-xs leading-5 text-slate-500">
-            Остаток, «хватит дней» и итоги считаются по выбранным складам. Общий остаток включает и то, что продать нельзя: товар в пути между складами WB, склады, куда поставок больше не будет.
+            Остаток, «хватит дней» и итоги считаются по выбранным складам. Реален только остаток на <b>«Склад WB»</b> (FBW и FBS): склады по городам после пожара пусты, а их цифры в отчёте WB — фантом, из-за которого общая сумма завышена.
           </p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => onChange(null)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 lg:min-h-0 lg:py-1.5">Все склады</button>
-            {hasTransit ? (
-              <button type="button" onClick={() => onChange(withoutTransit(options))} className="min-h-11 rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 lg:min-h-0 lg:py-1.5">
-                Без «Склад WB…» — товара в пути между складами
+            {hasWb ? (
+              <button type="button" onClick={() => onChange(onlyWbWarehouses(options))} className="min-h-11 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 lg:min-h-0 lg:py-1.5">
+                Только «Склад WB» — корректный остаток
               </button>
             ) : null}
+            <button type="button" onClick={() => onChange(null)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 lg:min-h-0 lg:py-1.5">Все склады</button>
             <button type="button" onClick={() => onChange(normalizeSelection(new Set(), options))} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 lg:min-h-0 lg:py-1.5">Снять все</button>
           </div>
           <input
@@ -95,7 +96,7 @@ export function WarehouseFilter({
                   />
                   <span className="min-w-0 flex-1 text-sm text-slate-800">
                     <span className="break-anywhere">{option.warehouse}</span>
-                    {option.transit ? <span className="ml-1.5 text-[10px] font-medium text-amber-700">в пути между складами</span> : null}
+                    {option.wb ? <span className="ml-1.5 text-[10px] font-medium text-emerald-700">реальный остаток · FBW и FBS</span> : null}
                   </span>
                   <span className="shrink-0 text-right text-xs tabular-nums text-slate-500">
                     {formatNumber(option.quantity)} шт

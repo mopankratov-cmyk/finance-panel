@@ -7,7 +7,7 @@ import { formatNumber } from "@/lib/analytics/format";
 import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { WbProductImage } from "@/components/wb/WbProductImage";
-import { applyWarehouseFilter, warehouseOptions } from "@/lib/supplies/stockFilter";
+import { applyWarehouseFilter, isWbOnlySelection, onlyWbWarehouses, warehouseOptions } from "@/lib/supplies/stockFilter";
 import type { StockCatalogRow } from "@/app/api/supplies/route";
 import { StockHistoryPanel } from "./StockHistoryPanel";
 import { WarehouseFilter } from "./WarehouseFilter";
@@ -24,13 +24,16 @@ export function StockCatalogTab({ rows, cabinet = "all" }: { rows: StockCatalogR
   const [category, setCategory] = useState("");
   const [q, setQ] = useState("");
   const [hideEmpty, setHideEmpty] = useState(false);
-  // Склады WB, по которым считается остаток. null — все: тогда цифры те, что
-  // посчитал сервер. Фильтр не запоминается между заходами намеренно: остаток
-  // «по трём складам» нельзя принять за общий, если забыл, что фильтр стоит.
-  const [warehouses, setWarehouses] = useState<Set<string> | null>(null);
+  // Склады WB, по которым считается остаток. По умолчанию — только «Склад WB»:
+  // реален лишь он, склады по городам после пожара пусты, а их строки в отчёте —
+  // фантом. `undefined` — человек ещё не выбирал; null — выбрал «все склады».
+  // Выбор не запоминается между заходами: остаток «по трём складам» нельзя принять
+  // за общий, если забыл, что фильтр стоит.
+  const [choice, setChoice] = useState<Set<string> | null | undefined>(undefined);
   const [historyNm, setHistoryNm] = useState<number | null>(null);
 
   const options = useMemo(() => warehouseOptions(rows), [rows]);
+  const warehouses = useMemo(() => (choice === undefined ? onlyWbWarehouses(options) : choice), [choice, options]);
   const effective = useMemo(() => rows.map((row) => applyWarehouseFilter(row, warehouses)), [rows, warehouses]);
 
   const filtered = useMemo(() => {
@@ -87,7 +90,7 @@ export function StockCatalogTab({ rows, cabinet = "all" }: { rows: StockCatalogR
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-400">{warehouses === null ? "Всего на складах (по фильтру)" : "На выбранных складах (по фильтру)"}</p>
+          <p className="text-xs text-slate-400">{warehouses === null ? "Всего на складах (по фильтру)" : isWbOnlySelection(warehouses) ? "На «Склад WB» (по фильтру)" : "На выбранных складах (по фильтру)"}</p>
           <p className="text-xl font-bold text-slate-900">{formatNumber(totalQuantity)}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -100,7 +103,7 @@ export function StockCatalogTab({ rows, cabinet = "all" }: { rows: StockCatalogR
         <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
           className="min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-violet-500 focus:outline-none sm:w-64 lg:min-h-0 lg:py-1.5" />
-        <WarehouseFilter options={options} selected={warehouses} onChange={setWarehouses} />
+        <WarehouseFilter options={options} selected={warehouses} onChange={setChoice} />
         <label className="flex min-h-11 items-center gap-1.5 text-sm text-slate-600 lg:min-h-0">
           <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} className="h-5 w-5 lg:h-4 lg:w-4" />
           Скрыть нулевые
@@ -108,7 +111,10 @@ export function StockCatalogTab({ rows, cabinet = "all" }: { rows: StockCatalogR
       </div>
       {warehouses !== null ? (
         <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">
-          Остаток и «Хватит дней» считаются по выбранным складам ({warehouses.size} из {options.length}). «В пути к клиенту» и «от клиента» WB не делит по складам — они по всему артикулу.
+          {isWbOnlySelection(warehouses)
+            ? "Остаток и «Хватит дней» считаются по «Склад WB» (FBW и FBS): склады по городам после пожара пусты, их цифры в отчёте WB — фантом. "
+            : `Остаток и «Хватит дней» считаются по выбранным складам (${warehouses.size} из ${options.length}). `}
+          «В пути к клиенту» и «от клиента» WB не делит по складам — они по всему артикулу.
         </p>
       ) : null}
 

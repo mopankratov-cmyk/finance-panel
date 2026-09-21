@@ -9,8 +9,9 @@ import { StockChart, StockHistoryPanel, StockHistoryView } from "../components/s
 import { WarehouseFilter } from "../components/supplies/WarehouseFilter";
 import { apiPermissionFor } from "../lib/auth/apiPermissions";
 import {
-  applyWarehouseFilter, isTransitWarehouse, normalizeSelection, selectionLabel, toggleWarehouse, warehouseOptions, withoutTransit,
+  applyWarehouseFilter, isWbOnlySelection, normalizeSelection, onlyWbWarehouses, selectionLabel, toggleWarehouse, warehouseOptions,
 } from "../lib/supplies/stockFilter";
+import { isWbWarehouse } from "../lib/wb/realStock";
 import { dailyPoints, historyLines, mskDate, pointTotal, unreliableNote, type HistoryRow } from "../lib/supplies/stockHistory";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -18,10 +19,11 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 /**
  * Остатки WB: фильтр по складам и история.
  *
- * Общий остаток включает то, что продать нельзя (товар в пути между складами WB,
- * склады после пожара): по Retail Family отчёт показал 14 944 шт при 2 370
- * доступных на витрине. Поэтому остаток считается по выбранным складам, а рядом
- * лежит история — снимки раз в четыре часа, о которых экран раньше не знал.
+ * Реален только остаток на «Склад WB» (FBW и FBS): склады по городам после
+ * пожара пусты, а их строки в отчёте WB — фантом (владелец, 21.09.2026). Общая
+ * сумма завышена: по Retail Family отчёт показал 14 944 шт при 2 370 доступных на
+ * витрине. Поэтому остаток по умолчанию считается по «Склад WB», а рядом лежит
+ * история — снимки раз в четыре часа, о которых экран раньше не знал.
  */
 
 // ── Фильтр по складам ────────────────────────────────────────────────────────
@@ -34,12 +36,12 @@ const row = (over: Partial<StockCatalogRow> = {}): StockCatalogRow => ({
   ...over,
 });
 
-test("транзитный склад — «Склад WB РФ» и прежний агрегат «Склад WB»", () => {
-  assert.equal(isTransitWarehouse("Склад WB РФ"), true);
-  assert.equal(isTransitWarehouse("Склад WB"), true);
-  assert.equal(isTransitWarehouse("  склад wb рф "), true);
-  assert.equal(isTransitWarehouse("Коледино"), false);
-  assert.equal(isTransitWarehouse("Электросталь"), false);
+test("реальный склад — «Склад WB РФ» и прежний агрегат «Склад WB», склады по городам — нет", () => {
+  assert.equal(isWbWarehouse("Склад WB РФ"), true);
+  assert.equal(isWbWarehouse("Склад WB"), true);
+  assert.equal(isWbWarehouse("  склад wb рф "), true);
+  assert.equal(isWbWarehouse("Коледино"), false);
+  assert.equal(isWbWarehouse("Электросталь"), false);
 });
 
 test("склады для выбора: только с товаром, с суммой и числом артикулов, крупные первыми", () => {
@@ -48,8 +50,8 @@ test("склады для выбора: только с товаром, с су�
     row({ nmId: 2, warehouses: [{ warehouse: "Коледино", quantity: 20 }, { warehouse: "Пустой", quantity: 0 }, { warehouse: "Отриц", quantity: -5 }] }),
   ]);
   assert.deepEqual(options.map((option) => option.warehouse), ["Коледино", "Склад WB РФ", "Казань"]);
-  assert.deepEqual(options[0], { warehouse: "Коледино", quantity: 100, skus: 2, transit: false });
-  assert.equal(options[1].transit, true);
+  assert.deepEqual(options[0], { warehouse: "Коледино", quantity: 100, skus: 2, wb: false });
+  assert.equal(options[1].wb, true);
   assert.equal(options.some((option) => option.warehouse === "Пустой"), false, "склад без товара в списке не нужен");
 });
 
@@ -58,25 +60,25 @@ test("без фильтра строка остаётся ровно той, ч�
   assert.equal(applyWarehouseFilter(source, null), source, "тот же объект: подменять серверную цифру пересчётом незачем");
 });
 
-test("остаток, «хватит дней» и склады пересчитываются по выбранным складам", () => {
-  const filtered = applyWarehouseFilter(row(), new Set(["Коледино", "Казань"]));
-  assert.equal(filtered.quantity, 90, "130 − 40 товара в пути между складами");
-  assert.equal(filtered.daysLeft, 9, "90 шт при 10 заказах в день");
-  assert.equal(filtered.warehouseCount, 2);
-  assert.deepEqual(filtered.topWarehouses.map((entry) => entry.warehouse), ["Коледино", "Казань"]);
+test("остаток, «хватит дней» и склады пересчитываются по «Склад WB» без фантома городских складов", () => {
+  const filtered = applyWarehouseFilter(row(), new Set(["Склад WB РФ"]));
+  assert.equal(filtered.quantity, 40, "из 130 реален только остаток на «Склад WB»");
+  assert.equal(filtered.daysLeft, 4, "40 шт при 10 заказах в день");
+  assert.equal(filtered.warehouseCount, 1);
+  assert.deepEqual(filtered.topWarehouses.map((entry) => entry.warehouse), ["Склад WB РФ"]);
   assert.equal(filtered.inWayToClient, 12, "«в пути» WB не делит по складам — не трогаем");
   assert.equal(filtered.inWayFromClient, 3);
 });
 
 test("без заказов «хватит дней» — бесконечность, а не ноль; нет остатка на выбранных складах — честный ноль", () => {
-  assert.equal(applyWarehouseFilter(row({ avgDaily: 0 }), new Set(["Коледино"])).daysLeft, null);
+  assert.equal(applyWarehouseFilter(row({ avgDaily: 0 }), new Set(["Склад WB РФ"])).daysLeft, null);
   const none = applyWarehouseFilter(row(), new Set(["Другой склад"]));
   assert.equal(none.quantity, 0);
   assert.equal(none.daysLeft, 0);
   assert.equal(none.warehouseCount, 0);
 });
 
-test("выбрали все склады — это «без фильтра»; переключение и пресет «без транзита»", () => {
+test("выбрали все склады — это «без фильтра»; переключение и пресет «только Склад WB»", () => {
   const options = warehouseOptions([row()]);
   assert.equal(normalizeSelection(new Set(options.map((option) => option.warehouse)), options), null);
   assert.deepEqual([...normalizeSelection(new Set(["Коледино"]), options)!], ["Коледино"]);
@@ -85,11 +87,15 @@ test("выбрали все склады — это «без фильтра»; �
   assert.deepEqual([...off!].sort(), ["Коледино", "Склад WB РФ"], "из «все» снимаем один склад");
   assert.equal(toggleWarehouse(off, "Казань", options), null, "вернули склад — снова «все»");
 
-  const noTransit = withoutTransit(options);
-  assert.deepEqual([...noTransit!].sort(), ["Казань", "Коледино"]);
-  assert.equal(withoutTransit([{ warehouse: "Коледино", quantity: 1, skus: 1, transit: false }]), null, "транзита нет — фильтр не нужен");
+  const wbOnly = onlyWbWarehouses(options);
+  assert.deepEqual([...wbOnly!], ["Склад WB РФ"], "корректный остаток — только «Склад WB»");
+  assert.equal(isWbOnlySelection(wbOnly), true);
+  assert.equal(isWbOnlySelection(null), false);
+  assert.equal(isWbOnlySelection(new Set(["Склад WB РФ", "Казань"])), false);
+  assert.equal(onlyWbWarehouses([{ warehouse: "Коледино", quantity: 1, skus: 1, wb: false }]), null, "«Склад WB» в данных нет — показываем по всем, а не нулём по всем");
   assert.equal(selectionLabel(null, options), "все (3)");
-  assert.equal(selectionLabel(noTransit, options), "2 из 3");
+  assert.equal(selectionLabel(wbOnly, options), "«Склад WB»");
+  assert.equal(selectionLabel(new Set(["Коледино", "Казань"]), options), "2 из 3");
 });
 
 // ── История: снимки по дням ──────────────────────────────────────────────────
@@ -149,9 +155,9 @@ test("история по выбранным складам: остаток, и�
   const all = historyLines(points, null);
   assert.deepEqual(all.map((line) => line.total), [140, 110]);
   assert.deepEqual(all.map((line) => line.delta), [null, -30]);
-  const noTransit = historyLines(points, new Set(["Коледино"]));
-  assert.deepEqual(noTransit.map((line) => line.total), [100, 70], "тот же фильтр, что у таблицы остатков");
-  assert.deepEqual(noTransit[1].top, [{ warehouse: "Коледино", quantity: 70 }]);
+  const wbOnly = historyLines(points, new Set(["Склад WB РФ"]));
+  assert.deepEqual(wbOnly.map((line) => line.total), [40, 40], "тот же фильтр, что у таблицы остатков: реален только «Склад WB»");
+  assert.deepEqual(wbOnly[1].top, [{ warehouse: "Склад WB РФ", quantity: 40 }]);
 });
 
 test("период сбоя источника помечен, границы включительные", () => {
@@ -181,27 +187,39 @@ test("роут истории закрыт правами чтения анал�
 
 // ── Экран (серверный рендер) ─────────────────────────────────────────────────
 
-test("фильтр складов: кнопка со счётчиком, пресет «без транзита» и склады с остатком", () => {
+test("фильтр складов: кнопка со счётчиком, пресет «Только Склад WB» и пометка реального остатка", () => {
   const options = warehouseOptions([row()]);
   const all = renderToStaticMarkup(createElement(WarehouseFilter, { options, selected: null, onChange: () => undefined }));
   assert.match(all, /Склады WB: все \(3\)/);
-  assert.match(all, /Без «Склад WB…» — товара в пути между складами/);
-  assert.match(all, /в пути между складами/, "транзитный склад подписан");
+  assert.match(all, /Только «Склад WB» — корректный остаток/);
+  assert.match(all, /реальный остаток · FBW и FBS/, "«Склад WB» подписан как единственный реальный");
+  assert.match(all, /склады по городам после пожара пусты/);
   assert.match(all, /Коледино/);
   assert.doesNotMatch(all, />все склады</, "кнопки сброса при «все склады» нет");
 
+  const wb = renderToStaticMarkup(createElement(WarehouseFilter, { options, selected: new Set(["Склад WB РФ"]), onChange: () => undefined }));
+  assert.match(wb, /Склады WB: «Склад WB»/);
+  assert.match(wb, /все склады/, "выбор частичный — есть сброс");
   const some = renderToStaticMarkup(createElement(WarehouseFilter, { options, selected: new Set(["Коледино"]), onChange: () => undefined }));
   assert.match(some, /Склады WB: 1 из 3/);
-  assert.match(some, /все склады/, "выбор частичный — есть сброс");
 });
 
-test("вкладка остатков: фильтр по складам, колонка истории и клик по строке", () => {
+test("вкладка остатков по умолчанию считает только «Склад WB»: остаток без фантома городских складов", () => {
   const html = renderToStaticMarkup(createElement(StockCatalogTab, { rows: [row(), row({ nmId: 2, article: "HT-83-27" })], cabinet: "cab" }));
-  assert.match(html, /Склады WB: все \(3\)/);
-  assert.match(html, /История/);
+  assert.match(html, /Склады WB: «Склад WB»/);
+  assert.match(html, /На «Склад WB» \(по фильтру\)/);
+  assert.match(html, /склады по городам после пожара пусты/);
   assert.match(html, /aria-label="История остатка HT-83-26"/);
-  assert.match(html, /Всего на складах \(по фильтру\)/);
   assert.match(html, /Скрыть нулевые/);
+  // Два артикула по 40 шт на «Склад WB» вместо 130 по всем складам — итог 80, а не 260.
+  assert.match(html, /На «Склад WB» \(по фильтру\)<\/p><p[^>]*>80</);
+  assert.doesNotMatch(html, />130</, "общий остаток артикула по всем складам в таблице не показан");
+});
+
+test("нет склада «Склад WB» в данных — остаток по всем складам, а не нулевой", () => {
+  const html = renderToStaticMarkup(createElement(StockCatalogTab, { rows: [row({ warehouses: [{ warehouse: "Коледино", quantity: 130 }], topWarehouses: [{ warehouse: "Коледино", quantity: 130 }] })], cabinet: "cab" }));
+  assert.match(html, /Склады WB: все \(1\)/);
+  assert.match(html, /Всего на складах \(по фильтру\)/);
 });
 
 test("панель истории: закрыта без строки, с периодами и подписью «по всем складам» при открытии", () => {

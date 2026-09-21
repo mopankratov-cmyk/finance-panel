@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SlidePanel } from "@/components/ui/SlidePanel";
 import { formatNumber } from "@/lib/analytics/format";
 import { UNRELIABLE_WINDOWS, historyLines, type HistoryLine, type HistoryPoint } from "@/lib/supplies/stockHistory";
+import { isWbOnlySelection } from "@/lib/supplies/stockFilter";
 import type { StockCatalogRow } from "@/app/api/supplies/route";
 
 /**
@@ -114,7 +115,7 @@ export function StockHistoryView({
           </button>
         ))}
         <span className="text-xs text-slate-500">
-          {selected === null ? "по всем складам" : `по выбранным складам: ${selected.size}`}
+          {selected === null ? "по всем складам" : isWbOnlySelection(selected) ? "по «Склад WB»" : `по выбранным складам: ${selected.size}`}
         </span>
       </div>
 

@@ -15,6 +15,19 @@ import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { loadCabinetPimRowsHourly, loadCardsFromDb, type PimCardRef, type PimRow } from "@/lib/wb/cards";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
 import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
+import { isWbWarehouse } from "@/lib/wb/realStock";
+import {
+  emptyStockHistory,
+  loadStockHistory,
+  mergeStockHistories,
+  stockDailySeries,
+  stockSeriesForSku,
+  stockSeriesForSummary,
+  type StockHistory,
+  type StockSeries,
+  type StockSeriesDay,
+} from "@/lib/rnp/stockHistory";
+import { moscowToday } from "@/lib/sync/moscowDay";
 import { readWbSyncState, type WbSyncState } from "@/lib/wb/syncState";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
@@ -210,6 +223,12 @@ export interface ScopedAdvertSpendRow {
 
 export interface ScopedStockSourceRow {
   nm_id: number;
+  /**
+   * Склад строки. В остаток идёт только «Склад WB»: склады по городам после
+   * пожара пусты, а их строки в отчёте WB — фантом (lib/wb/realStock.ts). Не
+   * задан (`undefined`) — строка считается целиком, как раньше.
+   */
+  warehouse?: string | null;
   quantity: number | null;
   in_way_to_client?: number | null;
   in_way_from_client?: number | null;
@@ -258,7 +277,9 @@ const EMPTY_STOCK_POSITION: StockPosition = { stock: 0, in_way_to_client: 0, in_
 function addStockRow(current: StockPosition | undefined, row: ScopedStockSourceRow): StockPosition {
   const base = current ?? EMPTY_STOCK_POSITION;
   return {
-    stock: base.stock + Number(row.quantity ?? 0),
+    // «В пути» WB отдаёт одной строкой на артикул, а не по складам, поэтому
+    // суммируется по всем строкам; остаток — только по реальному складу.
+    stock: base.stock + (row.warehouse === undefined || isWbWarehouse(row.warehouse) ? Number(row.quantity ?? 0) : 0),
     in_way_to_client: base.in_way_to_client + Number(row.in_way_to_client ?? 0),
     in_way_from_client: base.in_way_from_client + Number(row.in_way_from_client ?? 0),
   };
@@ -1171,6 +1192,12 @@ export function buildMetrics(
     cohortSince?: string | null;
     /** Дни, покрытые финотчётом. null — отчёта у кабинета нет, «Логистика на единицу» молчит. */
     reportCoverage?: RnpReportCoverage | null;
+    /**
+     * Остаток по дням из снимков (lib/rnp/stockHistory.ts). Не задан — истории нет
+     * (миграция не применена или источник упал): остаток показывается точкой в дате
+     * факта, как раньше, а не выдумывается.
+     */
+    stockSeries?: StockSeries | null;
   } = {},
 ): Metric[] {
   const pick = (key: keyof DailyRow, cutoff: string | null) => days.map((day) =>
@@ -1670,43 +1697,52 @@ export function buildMetrics(
     ? `по ${turnoverObservedDays} доступным дням из ${Math.max(1, turnoverWindowDays)}`
     : `по последним ${Math.max(1, turnoverWindowDays)} доступным дням`;
   const snapshotNote = `Текущий снимок показан в дате факта; прошлые дни не подменяются сегодняшним остатком. Оборачиваемость рассчитана ${turnoverWindowLabel}.`;
+  // Остаток по дням: снимки на фиксированный час, только «Склад WB». Нет истории —
+  // прежняя точка в дате факта. GMROI остаётся точкой: он считается от суммы
+  // за период и «деньги в остатках» на сегодня, по дням не определён.
+  const series = options.stockSeries ?? null;
+  const stockDaily = (current: number | null, pick: (day: StockSeriesDay) => number | null) =>
+    series ? stockDailySeries(days, series, current, pick) : pointInTimeMetricDaily(days, asOf, current);
+  const stockNote = series
+    ? `История по дням: снимки остатков WB на ${series.hour}:00 по Москве, только по «Склад WB» — склады по городам после пожара пусты, их строки в отчёте фантом. Сегодня — текущий остаток; в дни без снимка ячейка пуста. Оборачиваемость дня — остаток дня / средние дневные выкупы ${turnoverWindowLabel}.`
+    : snapshotNote;
   const inWayToClient = Math.round(Number(options.inWayToClient ?? 0));
   const inWayFromClient = Math.round(Number(options.inWayFromClient ?? 0));
   const stockTotalWithInWay = stock + inWayToClient + inWayFromClient;
   out.push(
-    { field: "stock", label: "Остаток, шт", kind: "int", daily: pointInTimeMetricDaily(days, asOf, stock), total: stock, forecast: null, source: "WB Остатки", note: `Доступно к продаже на складах. ${snapshotNote}`, group_start: true },
+    { field: "stock", label: "Остаток, шт", kind: "int", daily: stockDaily(stock, (day) => day.stock), total: stock, forecast: null, source: "WB Остатки", note: `Доступно к продаже на «Склад WB». ${stockNote}`, group_start: true },
     {
       field: "stock_in_way_to_client",
       label: "В пути к клиенту, шт",
       kind: "int",
-      daily: pointInTimeMetricDaily(days, asOf, inWayToClient),
+      daily: stockDaily(inWayToClient, (day) => day.inWayToClient),
       total: inWayToClient,
       forecast: null,
       source: "WB Остатки",
-      note: `Уже продано, но ещё не доставлено — в остаток к продаже не входит. ${snapshotNote}`,
+      note: `Уже продано, но ещё не доставлено — в остаток к продаже не входит. ${stockNote}`,
     },
     {
       field: "stock_in_way_from_client",
       label: "В пути от клиента, шт",
       kind: "int",
-      daily: pointInTimeMetricDaily(days, asOf, inWayFromClient),
+      daily: stockDaily(inWayFromClient, (day) => day.inWayFromClient),
       total: inWayFromClient,
       forecast: null,
       source: "WB Остатки",
-      note: `Возвраты, которые едут обратно на склад, — ранний признак роста возвратов. ${snapshotNote}`,
+      note: `Возвраты, которые едут обратно на склад, — ранний признак роста возвратов. ${stockNote}`,
     },
     {
       field: "stock_total",
       label: "Всего на складах, шт",
       kind: "int",
-      daily: pointInTimeMetricDaily(days, asOf, stockTotalWithInWay),
+      daily: stockDaily(stockTotalWithInWay, (day) => day.stock + day.inWayToClient + day.inWayFromClient),
       total: stockTotalWithInWay,
       forecast: null,
       source: "WB Остатки",
-      note: `Остаток к продаже плюс товар в пути в обе стороны. ${snapshotNote}`,
+      note: `Остаток к продаже плюс товар в пути в обе стороны. ${stockNote}`,
     },
-    { field: "money", label: "Деньги в остатках, ₽", kind: "money", daily: pointInTimeMetricDaily(days, asOf, knownStockMoney), total: knownStockMoney, forecast: null, source: "WB Остатки + себестоимость", note: snapshotNote, qualityReason: knownStockMoney == null && stock > 0 ? "missing_cost" : undefined },
-    { field: "turnover", label: "Оборачиваемость, дней", kind: "int", daily: pointInTimeMetricDaily(days, asOf, turnover), total: turnover, forecast: null, source: "WB Остатки + выкупы", note: snapshotNote, qualityReason: turnover == null ? "no_activity" : undefined },
+    { field: "money", label: "Деньги в остатках, ₽", kind: "money", daily: stockDaily(knownStockMoney, (day) => day.money), total: knownStockMoney, forecast: null, source: "WB Остатки + себестоимость", note: stockNote, qualityReason: knownStockMoney == null && stock > 0 ? "missing_cost" : undefined },
+    { field: "turnover", label: "Оборачиваемость, дней", kind: "int", daily: stockDaily(turnover, (day) => calculateTurnoverDays(day.stock, turnoverValues.map((item) => item.value), turnoverWindowDays)), total: turnover, forecast: null, source: "WB Остатки + выкупы", note: stockNote, qualityReason: turnover == null ? "no_activity" : undefined },
     { field: "gmroi", label: "GMROI, %", kind: "pct", daily: pointInTimeMetricDaily(days, asOf, gmroi), total: gmroi, forecast: null, source: "Расчётная прибыль / деньги в остатках", note: snapshotNote, qualityReason: cost <= 0 && stock > 0 ? "missing_cost" : wbCostPct == null ? "missing_rates" : gmroi == null ? "no_activity" : undefined },
   );
   const withForecasts = applyMetricForecasts(out, days, asOf, {
@@ -2466,7 +2502,7 @@ async function loadScopedBaseFacts(
     step("scoped_stocks", loadAllPages<ScopedStockSourceRow>((start, end) => {
       let query = db
         .from("wb_stocks")
-        .select("nm_id, quantity, in_way_to_client, in_way_from_client")
+        .select("nm_id, warehouse, quantity, in_way_to_client, in_way_from_client")
         .in("nm_id", allowed)
         .order("nm_id", { ascending: true })
         .range(start, end);
@@ -2730,7 +2766,7 @@ async function loadCurrentStockRows(db: SupabaseAdmin, scope: CabinetScope) {
   return loadAllPages<ScopedStockSourceRow>((start, end) => {
     let query = db
       .from("wb_stocks")
-      .select("nm_id, quantity, in_way_to_client, in_way_from_client")
+      .select("nm_id, warehouse, quantity, in_way_to_client, in_way_from_client")
       .order("nm_id", { ascending: true })
       .range(start, end);
     if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
@@ -2861,6 +2897,8 @@ export async function buildRnpTable(
             hasPrimaryFacts: true,
             cohort: null as BuyoutCohortFacts | null,
             reportFacts: null as ReportLogisticsFacts | null,
+            // Пустая история, а не null: null погасил бы историю остатков всей сводки.
+            stockHistory: emptyStockHistory() as StockHistory | null,
             // Пустой кабинет ничего не теряет, поэтому не гасит сводные метрики.
             emptyScope: true,
             scope,
@@ -2883,6 +2921,7 @@ export async function buildRnpTable(
           funnelSyncCutoff,
           cohort,
           reportFacts,
+          stockHistory,
         ] = await Promise.all([
           allowed
             ? timed("base_facts_scoped", loadScopedBaseFacts(db, scope, allowed, from, to, timings))
@@ -2994,6 +3033,10 @@ export async function buildRnpTable(
           latestSyncStateDate(scope, "funnel", { preferLastPeriodEnd: true }),
           timed("buyout_cohort", loadBuyoutCohort(db, scope, allowed, from, to)),
           timed("report_logistics", loadReportLogistics(db, scope, allowed, from, to)),
+          // История остатков по дням не должна ронять РНП: нет функции (миграция не
+          // применена) или она упала — остаток остаётся точкой, а причина в notes.
+          timed("stock_history", loadStockHistory(db, { cabinetId: scope.cabinetId, from, to, nmIds: allowed }))
+            .catch(noteOn("история остатков", null as StockHistory | null)),
         ]);
         timings.sources_done = Date.now() - buildStartedAt;
         const advertTypeRows = advertStatsAndTypes.types;
@@ -3033,6 +3076,7 @@ export async function buildRnpTable(
           hasPrimaryFacts: !!allowed,
           cohort,
           reportFacts,
+          stockHistory,
           emptyScope: false,
           scope,
           asOf: earliestKnownDate([latestKnownDate([funnelCutoff, ordersCutoff]), salesCutoff], periodEnd),
@@ -3234,6 +3278,10 @@ export async function buildRnpTable(
     const cur = new Date(from), end = new Date(to);
     while (cur <= end) { days.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
     const asOf = cutoffAsOf(latestKnownDate([ordersCutoff, salesCutoff, advertsCutoff, funnelCutoff]), periodEnd);
+    // Остаток по дням: снимки всех кабинетов сводки. Хоть у одного кабинета истории
+    // нет — её нет и у сводки: сумма без целого кабинета читалась бы как честная.
+    const stockHistory = mergeStockHistories(scopeData.map((item) => item.stockHistory));
+    const todayMsk = moscowToday();
     const metricCutoffs: MetricCutoffs = { orders: ordersCutoff, sales: salesCutoff, adverts: advertsCutoff };
     const funnelCutoffs: FunnelCutoffs = { adverts: advertsCutoff, funnel: funnelCutoff };
     // Сводка складывает кабинеты, поэтому её граница свежести — по САМОМУ
@@ -3333,7 +3381,7 @@ export async function buildRnpTable(
         const dmap = byNm.get(t.nm_id) ?? new Map<string, DailyRow>();
         const card = cardByNm.get(t.nm_id);
         const cost = costByArt.get(t.article);
-        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, schemeFacts: schemeFactsByNm.get(t.nm_id) ?? schemeFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0), rates: wbRatesForNm(t.nm_id), cohortSince: cohortSinceByNm.has(t.nm_id) ? cohortSinceByNm.get(t.nm_id) ?? null : summaryCohortSince, reportCoverage: reportCoverageByNm.has(t.nm_id) ? reportCoverageByNm.get(t.nm_id) ?? null : summaryReportCoverage });
+        const metrics = buildMetrics(days, asOf, dmap, Number(t.stock ?? 0), Math.round(Number(t.stock ?? 0) * Number(t.cost ?? 0)), cutoffsByNm.get(t.nm_id) ?? metricCutoffs, Number(t.cost ?? 0), wbCostForNm(t.nm_id), turnoverWindowDays, { primaryFacts: primaryFactsByNm.get(t.nm_id) ?? primaryFactsInSummary, schemeFacts: schemeFactsByNm.get(t.nm_id) ?? schemeFactsInSummary, inWayToClient: Number(t.in_way_to_client ?? 0), inWayFromClient: Number(t.in_way_from_client ?? 0), rates: wbRatesForNm(t.nm_id), cohortSince: cohortSinceByNm.has(t.nm_id) ? cohortSinceByNm.get(t.nm_id) ?? null : summaryCohortSince, reportCoverage: reportCoverageByNm.has(t.nm_id) ? reportCoverageByNm.get(t.nm_id) ?? null : summaryReportCoverage, stockSeries: stockHistory ? stockSeriesForSku(stockHistory, t.nm_id, Number(t.cost ?? 0), todayMsk) : null });
         metrics.unshift(...buildFunnelMetrics(days, asOf, viewsByNm.get(t.nm_id) ?? new Map(), clicksByNm.get(t.nm_id) ?? new Map(), openCardByNm.get(t.nm_id) ?? new Map(), cartByNm.get(t.nm_id) ?? new Map(), funnelCutoffs, {
           ordersByDate: adOrdersByNm.get(t.nm_id) ?? new Map(),
           ordersSumByDate: adOrdersSumByNm.get(t.nm_id) ?? new Map(),
@@ -3358,7 +3406,7 @@ export async function buildRnpTable(
       .map(({ _o, ...rest }) => { void _o; return rest; });
 
     // Сводка: базовые метрики из дневной агрегации + Валовая/Маржа вклеиваем суммой по SKU (себес разный)
-    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), summaryCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, schemeFacts: schemeFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal, cohortSince: summaryCohortSince, reportCoverage: summaryReportCoverage });
+    const summary = buildMetrics(days, asOf, dailyByDate, stockTotal, Math.round(stockMoneyTotal), summaryCutoffs, 0, null, turnoverWindowDays, { primaryFacts: primaryFactsInSummary, schemeFacts: schemeFactsInSummary, inWayToClient: inWayToClientTotal, inWayFromClient: inWayFromClientTotal, cohortSince: summaryCohortSince, reportCoverage: summaryReportCoverage, stockSeries: stockHistory ? stockSeriesForSummary(stockHistory, totalByNm.keys(), new Map([...totalByNm].map(([nmId, total]) => [nmId, total.cost ?? null])), todayMsk) : null });
     summary.unshift(...buildFunnelMetrics(days, asOf, viewsByDateAll, clicksByDateAll, openCardByDateAll, cartByDateAll, summaryFunnelCutoffs, {
       ordersByDate: adOrdersByDateAll,
       ordersSumByDate: adOrdersSumByDateAll,
