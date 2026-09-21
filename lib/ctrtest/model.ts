@@ -233,6 +233,8 @@ export function ctrTestForecast(input: {
   ctrPercent: number | null;
   viewsInWindow: number | null;
   windowDays: number;
+  /** Какое поле поднять, чтобы тест различал меньшую разницу: у CTR-теста это «показов на шаг» и «раундов», у прочих — «показов на вариант». */
+  lever?: string;
 }): { detectableShare: number | null; days: number | null; text: string } {
   const p = ((input.ctrPercent ?? 0) > 0 ? Number(input.ctrPercent) : 4.3) / 100;
   const n = Math.max(0, Math.floor(input.targetImpressions));
@@ -248,7 +250,7 @@ export function ctrTestForecast(input: {
       ? `различит разницу примерно от ${Math.round(detectableShare * 100)}% — хватит и на тонкие отличия`
       : detectableShare <= 0.35
         ? `различит разницу примерно от ${Math.round(detectableShare * 100)}% — обычный рабочий уровень для обложки`
-        : `различит только разницу от ${Math.round(detectableShare * 100)}%, то есть почти любой итог будет случайным: поднимите «показов на вариант»`;
+        : `различит только разницу от ${Math.round(detectableShare * 100)}%, то есть почти любой итог будет случайным: поднимите ${input.lever ?? "«показов на вариант»"}`;
 
   const duration = days == null
     ? "срок зависит от того, сколько реклама даст показов"

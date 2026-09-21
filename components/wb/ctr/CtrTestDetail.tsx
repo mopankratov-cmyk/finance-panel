@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ctrGapVerdict, ctrLeaderVerdict } from "@/lib/ctrtest/model";
 import { CTR_MIN_VIEWS } from "@/lib/wb/ctrQuality";
 import { formatTime } from "@/lib/analytics/format";
+import { CtrRoundHistory } from "./CtrRoundHistory";
 import type { CtrTestView, CtrVariantView } from "./types";
 
 interface Props {
@@ -431,6 +432,10 @@ function EngineStatusNote({ test }: { test: CtrTestView }) {
 }
 
 export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Props) {
+  const isEngine = (test.engineVersion ?? 1) === 2;
+  // Раунд для карточки: идущего шага, а если его нет — последнего закрытого.
+  const closedPasses = test.rounds.flatMap((round) => (round.status === "closed" && round.pass_no ? [round.pass_no] : []));
+  const passNow = test.rounds.find((round) => round.status === "active")?.pass_no ?? (closedPasses.length ? Math.max(...closedPasses) : null);
   const current = test.variants.find((variant) => variant.id === test.currentVariantId) ?? null;
   const latestRound = [...test.rounds].sort((a, b) => b.round_number - a.round_number)[0];
   const lastVariant = test.variants.find((variant) => variant.id === latestRound?.variant_id);
@@ -497,13 +502,19 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
           </div>
         </div>
         <div className={`mt-4 grid gap-2 ${test.testType === "ctr" ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
-          {[
+          {(isEngine ? [
+            ['Раунд', `${passNow ?? "—"} из ${test.roundsTotal ?? "—"}`],
+            ['Показов на шаг', number(test.impressionsPerRound)],
+            ['Максимум на шаг', `${test.maxStepMin ?? "—"} мин`],
+            ['Режим', test.liveSwapEnabled ? 'меняет сама' : 'ручная ротация'],
+            ['Кампания', `${test.campaignMode === "unified" ? "ЕРК" : "поиск"}${test.advertId ? ` · #${test.advertId}` : " · не привязана"}`],
+          ] : [
             ['Раунд', test.roundNum],
             ['Интервал', `${test.intervalMin} мин`],
             ['Цель', `${number(test.targetImpressions)} показов`],
             ['Режим', test.liveSwapEnabled ? 'меняет сама' : 'ручная ротация'],
             ...(test.testType === "ctr" ? [['Кампания', `${test.campaignMode === "unified" ? "ЕРК" : "поиск"}${test.advertId ? ` · #${test.advertId}` : " · не привязана"}`]] : []),
-          ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><div className="text-[9px] uppercase text-slate-400">{label}</div><div className="mt-1 text-xs font-bold text-slate-700">{value}</div></div>)}
+          ]).map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><div className="text-[9px] uppercase text-slate-400">{label}</div><div className="mt-1 text-xs font-bold text-slate-700">{value}</div></div>)}
         </div>
         <div className="mt-3"><div className="flex justify-between text-[10px] text-slate-500"><span>Расход теста</span><span>{number(spent)} / {number(test.spendCapRub)} ₽</span></div><div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${spentPct >= 100 ? "bg-rose-500" : "bg-violet-500"}`} style={{ width: `${spentPct}%` }} /></div></div>
         {test.liveSwapEnabled && test.autoError ? (
@@ -688,8 +699,12 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
       </section>
 
       <section>
+        {isEngine ? <CtrRoundHistory test={test} /> : (
+          <>
         <h3 className="mb-2 text-xs font-bold text-slate-700">История раундов</h3>
         {test.rounds.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white px-3 py-8 text-center text-[10px] text-slate-400">История появится после запуска первого раунда.</p> : <div className="scroll-x rounded-xl border border-slate-200 bg-white"><table className="min-w-[760px] w-full text-[10px]"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2 text-left">Начало</th><th className="px-3 py-2 text-left">Вариант</th><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-right">Показы</th><th className="px-3 py-2 text-right">Клики</th><th className="px-3 py-2 text-right">Корзины</th><th className="px-3 py-2 text-right">Заказы</th><th className="px-3 py-2 text-left">Автор</th></tr></thead><tbody>{test.rounds.map((round) => { const variant = test.variants.find((item) => item.id === round.variant_id); return <tr key={round.id} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-500">{formatTime(round.started_at)}</td><td className="px-3 py-2 font-semibold text-violet-700">{variant?.label ?? round.variant_id}</td><td className="px-3 py-2">{round.status}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.impressions ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.clicks ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.carts ?? 0))}</td><td className="px-3 py-2 text-right tabular-nums">{number(Number(round.result?.orders ?? 0))}</td><td className="px-3 py-2 text-slate-400">{round.actor ?? "—"}</td></tr>; })}</tbody></table></div>}
+          </>
+        )}
       </section>
 
       {test.testType === "ctr" ? <CtrAiAnalysisPanel test={test} /> : null}
@@ -698,7 +713,9 @@ export function CtrTestDetail({ test, busy, onBack, onAction, onFlywheel }: Prop
           стало неправдой ровно на тех тестах, где автоматика включена, и
           экран уверял в обратном. */}
       {test.liveSwapEnabled ? (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span><b>Панель меняет фото сама.</b> Раз в пять минут проверяется, набрал ли раунд норму показов; когда набрал — обложка карточки на витрине WB переписывается следующим вариантом. Это запись в живой товар, а не пометка в панели.</span></div>
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><span><b>Панель меняет фото сама.</b> {isEngine
+            ? "Раз в пять минут тест двигает шаг: меняет обложку на витрине WB, запускает рекламу, набирает целевые показы, ставит кампанию на паузу и ждёт, пока статистика устоится, — и только потом переходит к следующему варианту. В конце обложка и кампания возвращаются в прежнее состояние. Это запись в живой товар и в рекламу, а не пометка в панели."
+            : "Раз в пять минут проверяется, набрал ли раунд норму показов; когда набрал — обложка карточки на витрине WB переписывается следующим вариантом. Это запись в живой товар, а не пометка в панели."}</span></div>
       ) : (
         <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-5 text-slate-500"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /><span><b className="text-slate-700">Без скрытых записей:</b> вариант вы ставите в кабинете сами, панель лишь отмечает момент и считает дельту реальных метрик WB.</span></div>
       )}

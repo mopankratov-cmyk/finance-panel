@@ -91,3 +91,26 @@ export function planStep(orders: number[][], closedSteps: number): PlannedStep |
 export function totalSteps(orders: number[][]): number {
   return orders.length * (orders[0]?.length ?? 0);
 }
+
+/**
+ * Правка порядка в мастере: сдвиг одного варианта на место вверх или вниз.
+ * Возвращает НОВЫЙ массив: состояние React не мутируется.
+ */
+export function moveInOrder(order: number[], index: number, delta: -1 | 1): number[] {
+  const target = index + delta;
+  if (index < 0 || index >= order.length || target < 0 || target >= order.length) return order;
+  const next = [...order];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+}
+
+/**
+ * Годится ли порядок, заданный руками, к нынешним числу вариантов и раундов.
+ * Человек мог поменять их уже после того, как расставил порядок: старая
+ * расстановка тогда либо не покрывает новых раундов, либо теряет вариант.
+ */
+export function ordersFit(orders: number[][] | null | undefined, count: number, rounds: number): orders is number[][] {
+  return Array.isArray(orders)
+    && orders.length === rounds
+    && orders.every((order) => order.length === count && new Set(order).size === count && order.every((position) => Number.isInteger(position) && position >= 0 && position < count));
+}

@@ -7,6 +7,10 @@ import type { CtrCampaignMode, CtrTestType } from "@/lib/ctrtest/model";
 import type { ContentItem } from "@/lib/content/productLibrary";
 import { ctrTestForecast } from "@/lib/ctrtest/model";
 import { ctrIterationPlan } from "@/lib/ctrtest/iterationPlan";
+import { buildCreateBody, adDowntimeHours, totalPerVariant, MIN_SETTLE_MIN_PER_STEP } from "@/lib/ctrtest/wizardPayload";
+import { DEFAULT_MAX_STEP_MIN, DEFAULT_WARMUP_MIN, MAX_ROUNDS, buildVariantOrders, ordersFit } from "@/lib/ctrtest/stepPlan";
+import { Hint } from "@/components/ui/Hint";
+import { CtrOrderEditor } from "./CtrOrderEditor";
 import type { CtrCampaignCandidate } from "@/lib/ctrtest/campaignBinding";
 import { WB_RK_BLOCK_LABELS } from "@/lib/wb/advertBlocks";
 import type { CtrCandidate, CtrWizardSeed } from "./types";
@@ -69,6 +73,13 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
   // два варианта обходится примерно в 2000 ₽, на три — в 3000 ₽. Прежние 5000
   // рисковали остановить тест ровно на финише; 10 000 оставляют запас втрое.
   const [spendCapRub, setSpendCapRub] = useState(10000);
+  // Новый движок CTR-тестов (только для типа «CTR»): раунды — полные проходы по
+  // всем вариантам, шаг — показ одного варианта. Три раунда — тот же объём, что
+  // был у теста 13, а порядок по умолчанию сдвигается по кругу.
+  const [roundsTotal, setRoundsTotal] = useState(3);
+  const [maxStepMin, setMaxStepMin] = useState(DEFAULT_MAX_STEP_MIN);
+  const [warmupMin, setWarmupMin] = useState(DEFAULT_WARMUP_MIN);
+  const [customOrders, setCustomOrders] = useState<number[][] | null>(null);
   const [variants, setVariants] = useState<VariantDraft[]>(() => {
     if (seed?.baseline?.imageUrl) return [
       { label: `Победитель теста #${seed.sourceTestId}`, imageUrl: seed.baseline.imageUrl, source: "winner" },
@@ -83,6 +94,14 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const roundsValid = Number.isInteger(roundsTotal) && roundsTotal >= 1 && roundsTotal <= MAX_ROUNDS;
+  // Цель варианта у CTR — показов на шаг × раундов; у CR и видео задаётся прежним полем.
+  const effectiveTarget = type === "ctr" ? totalPerVariant(impressionsPerRound, roundsValid ? roundsTotal : 1) : targetImpressions;
+  const defaultOrders = useMemo(() => buildVariantOrders(variants.length, roundsValid ? roundsTotal : 1), [variants.length, roundsTotal, roundsValid]);
+  // Порядок, расставленный руками, действует, пока подходит к числу вариантов и
+  // раундов; поменял их — расстановка сбрасывается на сдвиг, а не теряет вариант.
+  const orders = ordersFit(customOrders, variants.length, roundsTotal) ? customOrders : defaultOrders;
+  const ordersCustomized = orders === customOrders;
   const candidateOptions = useMemo(() => initialCandidate && !candidates.some((candidate) => candidate.nm === initialCandidate.nm) ? [initialCandidate, ...candidates] : candidates, [candidates, initialCandidate]);
   const selected = useMemo(() => candidateOptions.find((candidate) => candidate.nm === nmId) ?? initialCandidate, [candidateOptions, initialCandidate, nmId]);
 
@@ -90,12 +109,13 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
   // формула порога различимости — это не оформление, ошибиться в ней значит
   // уверенно советовать неверную цель.
   const forecast = useMemo(() => ctrTestForecast({
-    targetImpressions,
+    targetImpressions: effectiveTarget,
     variantCount: variants.length,
     ctrPercent: selected?.ctr ?? null,
     viewsInWindow: selected?.views ?? null,
     windowDays: days,
-  }).text, [days, selected, targetImpressions, variants.length]);
+    lever: type === "ctr" ? "«показов на шаг» или «раундов»" : undefined,
+  }).text, [days, effectiveTarget, selected, type, variants.length]);
 
   // Режим кампании (владелец 16.09.2026): по умолчанию только поиск, как в
   // Фазе A — раньше он всегда тестировал на единой ставке (ЕРК), чтобы
@@ -135,9 +155,9 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
   }, [cabinetId, campaignMode, pickedAdvertId, selected?.nm, type]);
   const iterationPlan = useMemo(() => type === "ctr" && selected?.nm ? ctrIterationPlan({
     dailyViews: campaignForecast?.dailyViews ?? null,
-    targetImpressions,
+    targetImpressions: effectiveTarget,
     variantCount: variants.length,
-  }) : null, [campaignForecast, selected?.nm, targetImpressions, type, variants.length]);
+  }) : null, [campaignForecast, effectiveTarget, selected?.nm, type, variants.length]);
 
 
   const pickCandidate = (nextNm: number) => {
@@ -190,21 +210,24 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
       await responseJson(await fetch("/api/ctrtest/list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(buildCreateBody({
+          type,
           cabinetId,
           nmId: selected.nm,
           article: selected.art,
-          name: selected.art,
-          testType: type,
           intervalMin,
           impressionsPerRound,
           targetImpressions,
           spendCapRub,
           sourceTestId: seed?.sourceTestId ?? null,
-          campaignMode: type === "ctr" ? campaignMode : "search_only",
-          advertId: type === "ctr" ? pickedAdvertId : null,
+          campaignMode,
+          pickedAdvertId,
           variants,
-        }),
+          roundsTotal,
+          maxStepMin,
+          warmupMin,
+          customOrders: ordersCustomized ? customOrders : null,
+        })),
       }));
       onCreated();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось создать тест"); }
@@ -226,11 +249,37 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
             {candidateOptions.map((candidate) => <option key={candidate.nm} value={candidate.nm}>{candidate.art} · nm {candidate.nm} · CTR {candidate.ctr ?? "—"}%</option>)}
           </select>
         </label>
-        <label className="text-[11px] font-medium text-slate-600">Показов на вариант<input type="number" min={100} step={100} value={targetImpressions} onChange={(event) => setTargetImpressions(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
-        <label className="text-[11px] font-medium text-slate-600">Показов за раунд<input type="number" min={10} step={10} value={impressionsPerRound} onChange={(event) => setImpressionsPerRound(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
-        <label className="text-[11px] font-medium text-slate-600">Интервал, минут<input type="number" min={5} step={5} value={intervalMin} onChange={(event) => setIntervalMin(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
+        {type === "ctr" ? (
+          <>
+            <label className="text-[11px] font-medium text-slate-600">Показов на шаг<input type="number" min={10} step={100} value={impressionsPerRound} onChange={(event) => setImpressionsPerRound(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
+            <label className="text-[11px] font-medium text-slate-600">Раундов<input type="number" min={1} max={MAX_ROUNDS} step={1} value={roundsTotal} onChange={(event) => setRoundsTotal(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
+          </>
+        ) : (
+          <>
+            <label className="text-[11px] font-medium text-slate-600">Показов на вариант<input type="number" min={100} step={100} value={targetImpressions} onChange={(event) => setTargetImpressions(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
+            <label className="text-[11px] font-medium text-slate-600">Показов за раунд<input type="number" min={10} step={10} value={impressionsPerRound} onChange={(event) => setImpressionsPerRound(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
+            <label className="text-[11px] font-medium text-slate-600">Интервал, минут<input type="number" min={5} step={5} value={intervalMin} onChange={(event) => setIntervalMin(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
+          </>
+        )}
         <label className="text-[11px] font-medium text-slate-600">Лимит расходов, ₽<input type="number" min={100} step={100} value={spendCapRub} onChange={(event) => setSpendCapRub(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" /></label>
       </div>
+
+      {type === "ctr" ? (
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <label className="text-[11px] font-medium text-slate-600">
+            <span className="flex items-center gap-1">Максимум на шаг, минут
+              <Hint label="Что значит максимум на шаг">Если целевые показы не набрались за это время, шаг останавливается с пометкой «недобор» и тест идёт дальше. Без потолка вариант с малым трафиком мог бы крутиться бесконечно.</Hint>
+            </span>
+            <input type="number" min={30} max={1440} step={30} value={maxStepMin} onChange={(event) => setMaxStepMin(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" />
+          </label>
+          <label className="text-[11px] font-medium text-slate-600">
+            <span className="flex items-center gap-1">Прогрев после смены фото, минут
+              <Hint label="Что значит прогрев">Ещё несколько минут после смены фото идут показы прежней картинки: WB отдаёт выдачу из кеша. Показы этого окна в замер не входят.</Hint>
+            </span>
+            <input type="number" min={1} max={60} step={1} value={warmupMin} onChange={(event) => setWarmupMin(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-violet-400" />
+          </label>
+        </div>
+      ) : null}
 
       {/*
         Режим кампании — только для CTR-теста: CR/video мерят не рекламный
@@ -270,6 +319,18 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
           {iterationPlan.text}
         </p>
       ) : null}
+      {type === "ctr" ? (
+        <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-[11px] leading-5 text-violet-800">
+          Шагов: {roundsValid ? roundsTotal * variants.length : "—"} ({roundsValid ? roundsTotal : "—"} × {variants.length}), на каждый вариант — {effectiveTarget.toLocaleString("ru-RU")} показов. Когда шаг набрал цель, тест ставит выбранную кампанию на паузу и ждёт, пока статистика устоится (не меньше {MIN_SETTLE_MIN_PER_STEP} минут), — суммарно реклама простоит не меньше {roundsValid ? adDowntimeHours(variants.length, roundsTotal).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) : "—"} ч. В конце кампания возвращается в прежнее состояние.
+        </p>
+      ) : null}
+      {type === "ctr" && !pickedAdvertId && campaignForecast && campaignForecast.resolutionStatus !== "resolved" ? (
+        <p role="alert" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">
+          {campaignForecast.resolutionStatus === "ambiguous"
+            ? "На артикуле несколько подходящих кампаний — выберите одну в списке «Кампания»: тест сам её останавливает и запускает."
+            : "Для артикула не найдена поисковая кампания — без неё тест не запустится: панель не сможет ни включить показы, ни остановить их, когда цель набрана."}
+        </p>
+      ) : null}
 
       {/*
         Библиотека стоит НАД полями вариантов, а не под ними: выбрать из своего
@@ -300,9 +361,13 @@ export function CtrTestWizard({ cabinetId, type, candidates, days, seed, onClose
         {variants.length < 6 ? <button type="button" onClick={() => setVariants((current) => [...current, { label: `Вариант ${String.fromCharCode(65 + current.length)}`, imageUrl: "", source: "link" }])} className="grid min-h-[270px] w-[180px] shrink-0 place-items-center rounded-xl border-2 border-dashed border-violet-200 text-xs font-semibold text-violet-600 hover:bg-violet-50"><span className="flex flex-col items-center gap-2"><Plus className="h-6 w-6" />Добавить вариант</span></button> : null}
       </div>
 
+      {type === "ctr" ? (
+        <CtrOrderEditor labels={variants.map((variant) => variant.label)} orders={orders} customized={ordersCustomized} onChange={setCustomOrders} onReset={() => setCustomOrders(null)} />
+      ) : null}
+
       {type === "video" ? <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />WB API не возвращает просмотры конкретного видео. Победитель рассчитывается по честному proxy: заказы / открытия карточки за слот.</div> : null}
       {error ? <div role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{error}</div> : null}
-      <div className="mt-4 flex flex-col-reverse gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="min-h-11 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-600">Отмена</button><button type="button" onClick={() => void create()} disabled={busy || !selected || variants.some((variant) => !variant.imageUrl.trim())} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Plus className="h-4 w-4" />}Создать тест (черновик)</button></div>
+      <div className="mt-4 flex flex-col-reverse gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="min-h-11 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-600">Отмена</button><button type="button" onClick={() => void create()} disabled={busy || !selected || variants.some((variant) => !variant.imageUrl.trim()) || (type === "ctr" && !roundsValid)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Plus className="h-4 w-4" />}Создать тест (черновик)</button></div>
     </section>
   );
 }
