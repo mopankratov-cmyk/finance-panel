@@ -1,12 +1,16 @@
 "use client";
 
+import { History } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AnalyticsTable, type Column } from "@/components/analytics/AnalyticsTable";
 import { formatNumber } from "@/lib/analytics/format";
 import { CategoryFilter, categoriesOnScreen, filterByCategory } from "@/components/ui/CategoryFilter";
 import { useCategoryMap } from "@/lib/useCategoryMap";
 import { WbProductImage } from "@/components/wb/WbProductImage";
+import { applyWarehouseFilter, warehouseOptions } from "@/lib/supplies/stockFilter";
 import type { StockCatalogRow } from "@/app/api/supplies/route";
+import { StockHistoryPanel } from "./StockHistoryPanel";
+import { WarehouseFilter } from "./WarehouseFilter";
 
 function daysColor(d: number | null): string {
   if (d === null) return "text-slate-400";
@@ -15,19 +19,30 @@ function daysColor(d: number | null): string {
   return "text-emerald-600";
 }
 
-export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
+export function StockCatalogTab({ rows, cabinet = "all" }: { rows: StockCatalogRow[]; cabinet?: string }) {
   const { categories, byArticle } = useCategoryMap();
   const [category, setCategory] = useState("");
   const [q, setQ] = useState("");
   const [hideEmpty, setHideEmpty] = useState(false);
+  // Склады WB, по которым считается остаток. null — все: тогда цифры те, что
+  // посчитал сервер. Фильтр не запоминается между заходами намеренно: остаток
+  // «по трём складам» нельзя принять за общий, если забыл, что фильтр стоит.
+  const [warehouses, setWarehouses] = useState<Set<string> | null>(null);
+  const [historyNm, setHistoryNm] = useState<number | null>(null);
+
+  const options = useMemo(() => warehouseOptions(rows), [rows]);
+  const effective = useMemo(() => rows.map((row) => applyWarehouseFilter(row, warehouses)), [rows, warehouses]);
 
   const filtered = useMemo(() => {
     const s = q.toLowerCase().trim();
-    let out = rows;
+    let out = effective;
     if (s) out = out.filter((r) => (r.name ?? "").toLowerCase().includes(s) || r.article.toLowerCase().includes(s) || String(r.nmId).includes(s));
-    if (hideEmpty) out = out.filter((r) => r.quantity > 0 || r.inWayToClient > 0 || r.inWayFromClient > 0);
+    // «В пути» от склада не зависит: при фильтре по складам артикул без остатка на
+    // выбранных складах не должен оставаться в списке только из-за товара в пути.
+    if (hideEmpty) out = out.filter((r) => r.quantity > 0 || (warehouses === null && (r.inWayToClient > 0 || r.inWayFromClient > 0)));
     return filterByCategory(out, (r) => r.article, byArticle, category);
-  }, [rows, q, hideEmpty, category, byArticle]);
+  }, [effective, q, hideEmpty, category, byArticle, warehouses]);
+  const historyRow = useMemo(() => effective.find((row) => row.nmId === historyNm) ?? null, [effective, historyNm]);
   const catOptions = useMemo(
     () => categoriesOnScreen(rows, (r) => r.article, byArticle, categories),
     [rows, byArticle, categories],
@@ -49,6 +64,13 @@ export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
     { key: "quantity", label: "Остаток", align: "right", sortable: true, render: (r) => (
       <span className={r.quantity < 10 ? "font-semibold text-red-600" : ""}>{formatNumber(r.quantity)}</span>
     ), csv: (r) => String(r.quantity) },
+    { key: "history", label: "История", align: "center", render: (r) => (
+      <button type="button" onClick={(event) => { event.stopPropagation(); setHistoryNm(r.nmId); }}
+        aria-label={`История остатка ${r.article || r.nmId}`}
+        className="tap grid place-items-center rounded-lg text-violet-600 hover:bg-violet-50">
+        <History className="h-4 w-4" />
+      </button>
+    ) },
     { key: "inWayToClient", label: "В пути к клиенту", align: "right", sortable: true, render: (r) => formatNumber(r.inWayToClient), csv: (r) => String(r.inWayToClient) },
     { key: "inWayFromClient", label: "В пути от клиента", align: "right", sortable: true, render: (r) => (
       <span className="text-slate-500">{formatNumber(r.inWayFromClient)}</span>
@@ -65,7 +87,7 @@ export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-400">Всего на складах (по фильтру)</p>
+          <p className="text-xs text-slate-400">{warehouses === null ? "Всего на складах (по фильтру)" : "На выбранных складах (по фильтру)"}</p>
           <p className="text-xl font-bold text-slate-900">{formatNumber(totalQuantity)}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -78,18 +100,27 @@ export function StockCatalogTab({ rows }: { rows: StockCatalogRow[] }) {
         <CategoryFilter categories={catOptions.categories} hasUncategorized={catOptions.hasUncategorized} value={category} onChange={setCategory} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по артикулу/названию"
           className="min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm focus:border-violet-500 focus:outline-none sm:w-64 lg:min-h-0 lg:py-1.5" />
+        <WarehouseFilter options={options} selected={warehouses} onChange={setWarehouses} />
         <label className="flex min-h-11 items-center gap-1.5 text-sm text-slate-600 lg:min-h-0">
           <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} className="h-5 w-5 lg:h-4 lg:w-4" />
           Скрыть нулевые
         </label>
       </div>
+      {warehouses !== null ? (
+        <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">
+          Остаток и «Хватит дней» считаются по выбранным складам ({warehouses.size} из {options.length}). «В пути к клиенту» и «от клиента» WB не делит по складам — они по всему артикулу.
+        </p>
+      ) : null}
 
       <AnalyticsTable
         columns={columns}
         data={filtered}
         filename="stock-catalog.csv"
         emptyMessage="Нет остатков по выбранному фильтру."
+        onRowClick={(row) => setHistoryNm(row.nmId)}
       />
+
+      <StockHistoryPanel row={historyRow} selected={warehouses} cabinet={cabinet} onClose={() => setHistoryNm(null)} />
     </div>
   );
 }

@@ -44,6 +44,8 @@ export interface StockCatalogRow {
   inWayToClient: number;
   inWayFromClient: number;
   daysLeft: number | null;
+  /** Среднесуточные заказы за 30 дней: по ним экран пересчитывает «хватит дней» при фильтре по складам. */
+  avgDaily: number;
   warehouseCount: number;
   topWarehouses: { warehouse: string; quantity: number }[];
   /** Полная разбивка остатка по складам — нужна, чтобы исключить конкретные склады (например сгоревшие). */
@@ -238,6 +240,7 @@ export async function GET(req: NextRequest) {
     const nameByArticle = new Map((costsRes.data ?? []).map((c) => [c.article as string, c.name as string | null]));
     const daysLeftByNm = new Map(skus.map((s) => [s.nmId, s.daysLeft]));
     const articleByNm = new Map(skus.map((s) => [s.nmId, s.article]));
+    const avgDailyByNm = new Map(skus.map((s) => [s.nmId, s.avgDaily]));
 
     const byNm = new Map<number, { quantity: number; toClient: number; fromClient: number; wh: Map<string, number> }>();
     for (const s of allStockRows) {
@@ -260,6 +263,7 @@ export async function GET(req: NextRequest) {
         name: article ? (nameByArticle.get(article) ?? null) : null,
         quantity: e.quantity, inWayToClient: e.toClient, inWayFromClient: e.fromClient,
         daysLeft: daysLeftByNm.get(nmId) ?? null,
+        avgDaily: avgDailyByNm.get(nmId) ?? 0,
         warehouseCount: e.wh.size, topWarehouses: top, warehouses: all,
       };
     }).sort((a, b) => b.quantity - a.quantity);

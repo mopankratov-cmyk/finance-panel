@@ -266,7 +266,7 @@ export function WbSuppliesPage() {
              и держат незаконченный ввод: возврат на вкладку стоил и запросов,
              и работы. Кабинет — то, при смене чего данные становятся чужими. */
           <>
-            <TabPanel {...panel("stock")}><StockCatalogTab rows={data.data.catalog} /></TabPanel>
+            <TabPanel {...panel("stock")}><StockCatalogTab rows={data.data.catalog} cabinet={cabinetId || "all"} /></TabPanel>
             <TabPanel {...panel("receiving")}>
               {canWrite ? <ReceivingTab skus={data.data.skus} cabId={cabinetId} warehouses={data.data.warehouses} /> : <WbEmptyState>Приёмка ведётся по одному реальному кабинету. Выберите кабинет в верхней панели.</WbEmptyState>}
             </TabPanel>

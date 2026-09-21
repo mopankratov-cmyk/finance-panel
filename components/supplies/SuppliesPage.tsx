@@ -250,7 +250,7 @@ export function SuppliesPage() {
         // запроса и работы. Кабинет — то, при смене чего данные чужие.
         <>
           <TabPanel {...panel("stock")}>
-            <StockCatalogTab rows={catalog} />
+            <StockCatalogTab rows={catalog} cabinet={cabId || "all"} />
           </TabPanel>
           <TabPanel {...panel("receiving")}>
             <ReceivingTab skus={skus} cabId={cabId} warehouses={warehouses} />
