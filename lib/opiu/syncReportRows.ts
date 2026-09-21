@@ -153,8 +153,41 @@ export interface SyncReportRowsResult {
 interface ReportSyncJobState extends Record<string, unknown> {
   periodDateFrom?: string;
   periodDateTo?: string;
+  completedPeriodDateTo?: string;
   cursor?: number;
   synced?: number;
+}
+
+/**
+ * Агентские кабинеты содержат строки сотен чужих продавцов. Если для кабинета
+ * настроен явный wb_cabinet_product_scope, сохраняем только принадлежащие нам
+ * nm_id. Курсор при этом всё равно двигается по полной странице WB: чужие
+ * строки больше не занимают БД и не тратят минуты на сотни лишних upsert.
+ *
+ * null означает обычный кабинет, для которого строки scope не настроены.
+ */
+export function filterReportRowsByAllowedNmIds(
+  rows: readonly WbReportRow[],
+  allowedNmIds: ReadonlySet<number> | null,
+): WbReportRow[] {
+  if (allowedNmIds === null) return [...rows];
+  return rows.filter((row) => {
+    const nmId = Number(row.nm_id);
+    return Number.isSafeInteger(nmId) && allowedNmIds.has(nmId);
+  });
+}
+
+async function loadAllowedNmIds(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  cabinetId: string,
+): Promise<ReadonlySet<number> | null> {
+  const { data, error } = await db
+    .from("wb_cabinet_product_scope")
+    .select("nm_id")
+    .eq("cabinet_id", cabinetId);
+  if (error) throw new Error(`wb_cabinet_product_scope read failed: ${error.message}`);
+  if (!data?.length) return null;
+  return new Set(data.map((row) => Number(row.nm_id)).filter(Number.isSafeInteger));
 }
 
 /**
@@ -182,10 +215,13 @@ export async function syncReportRows(
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase service role is not configured");
 
+  const allowedNmIds = await loadAllowedNmIds(db, cabinetId);
+
   const saved = await readWbSyncState<ReportSyncJobState>(db, cabinetId, REPORT_SYNC_JOB);
   const sameWindow = saved?.state?.periodDateFrom === dateFrom;
   let cursor = sameWindow ? Number(saved?.state?.cursor ?? 0) || 0 : 0;
   let synced = sameWindow ? Number(saved?.state?.synced ?? 0) || 0 : 0;
+  let completedPeriodDateTo = String(saved?.state?.completedPeriodDateTo ?? "") || undefined;
 
   if (sameWindow && saved?.status === "complete" && saved.state?.periodDateTo === dateTo) {
     return { synced, pages: 0, lastRrdId: cursor, complete: true };
@@ -211,7 +247,7 @@ export async function syncReportRows(
         status,
         attempts: 0,
         lastError,
-        state: { periodDateFrom: dateFrom, periodDateTo: dateTo, cursor, synced },
+        state: { periodDateFrom: dateFrom, periodDateTo: dateTo, completedPeriodDateTo, cursor, synced },
       });
       if (!writeError) return;
       console.error(`[opiu] failed to persist report sync state for ${cabinetId} (attempt ${attempt + 1}/3):`, writeError);
@@ -241,11 +277,13 @@ export async function syncReportRows(
     }
 
     if (page.complete) {
+      completedPeriodDateTo = dateTo;
       await persist("complete", null);
       return { synced, pages, lastRrdId: cursor, complete: true };
     }
 
-    const storedRows = page.rows.map((row) => reportRowForStorage(cabinetId, row));
+    const storedRows = filterReportRowsByAllowedNmIds(page.rows, allowedNmIds)
+      .map((row) => reportRowForStorage(cabinetId, row));
     await upsertPage(storedRows);
     synced += storedRows.length;
     cursor = page.lastRrdId;

@@ -14,12 +14,22 @@ import {
   wbBrandCompanyName,
   type MonthlyMarketplaceSource,
 } from "@/lib/opiu/monthlyMarketplaceSources";
+import { reportSyncBlocksMonth, type ReportSyncStateRow } from "@/lib/opiu/reportSyncReadiness";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const num = (value: unknown) => Number(value ?? 0) || 0;
 const r0 = (value: number) => Math.round(value);
+
+function moscowDate(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
 
 function failedWb(message: string): NonNullable<MonthlyMarketplaceSource["wb"]> {
   return { revenue_before_spp: 0, revenue_after_spp: 0, commission: 0, acquiring: 0, ad: 0, other: 0, cogs: 0, packaging: 0, logistics: 0, storage: 0, penalty: 0, error: message };
@@ -51,13 +61,15 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
 
-  const [companiesResult, entitiesResult, linksResult, costsResult] = await Promise.all([
+  const wbCabinetIds = [...new Set(OPIU_BRANDS.map((brand) => brand.cabinetId))];
+  const [companiesResult, entitiesResult, linksResult, costsResult, reportSyncResult] = await Promise.all([
     db.from("companies").select("id,name,group_name,is_active"),
     db.from("legal_entities").select("id,name"),
     db.from("legal_entity_cabinets").select("legal_entity_id,cabinet_id"),
     db.from("product_costs").select("article,cost_rub"),
+    db.from("wb_sync_state").select("cabinet_id,status,state").in("cabinet_id", wbCabinetIds).eq("job", "opiu_report"),
   ]);
-  const relationError = companiesResult.error ?? entitiesResult.error ?? linksResult.error ?? costsResult.error;
+  const relationError = companiesResult.error ?? entitiesResult.error ?? linksResult.error ?? costsResult.error ?? reportSyncResult.error;
   if (relationError) return NextResponse.json({ error: relationError.message }, { status: 502 });
 
   const companyScopes = buildOpiuCompanyScopes(
@@ -78,7 +90,9 @@ export async function GET(request: NextRequest) {
     return [brand.id, owner] as const;
   }));
 
-  const wbCabinetIds = [...new Set(OPIU_BRANDS.map((brand) => brand.cabinetId))];
+  const reportSyncByCabinet = new Map(
+    ((reportSyncResult.data ?? []) as ReportSyncStateRow[]).map((row) => [row.cabinet_id, row] as const),
+  );
   const accessPairs = await Promise.all(wbCabinetIds.map(async (cabinetId) => [cabinetId, await hasCabinetAccess(cabinetId)] as const));
   const accessByCabinet = new Map(accessPairs);
   const accessibleBrands = OPIU_BRANDS.filter((brand) => {
@@ -92,6 +106,11 @@ export async function GET(request: NextRequest) {
 
   const wbSourcesPromise = Promise.all(accessibleBrands.map(async (brand): Promise<MonthlyMarketplaceSource> => {
     const owner = ownerByBrandId.get(brand.id);
+    const syncState = reportSyncByCabinet.get(brand.cabinetId);
+    if (reportSyncBlocksMonth(syncState, from, to, moscowDate())) {
+      const message = `Финансовый отчёт WB «${owner?.name ?? brand.label}» ещё загружается. Итоги появятся после завершения синхронизации.`;
+      return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb: failedWb(message) };
+    }
     try {
       const wb = monthlyWbActualFromOpiu(await loadOpiuSalePeriod(from, to, [brand.id]));
       return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb };
@@ -150,5 +169,8 @@ export async function GET(request: NextRequest) {
   const ozon = ozonSources.length
     ? aggregateOzonSources(ozonSources)
     : failedOzon(selectedCompany ? "У компании нет связанного кабинета Ozon" : ozonResult.error ?? "Нет доступных кабинетов Ozon");
-  return NextResponse.json({ period: { from, to, month }, wb, ozon, sources });
+  const warnings = [...new Set([
+    ...wbSources.flatMap((source) => source.wb?.error ? [source.wb.error] : []),
+  ])];
+  return NextResponse.json({ period: { from, to, month }, wb, ozon, sources, warnings });
 }
