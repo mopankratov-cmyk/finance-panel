@@ -5,7 +5,7 @@ import { opiuReportRefreshPeriod, syncOpiuReportPeriod } from "@/lib/opiu/report
 
 // Один вызов syncOpiuReportPeriod обрабатывает ограниченную порцию (см.
 // MAX_PAGES_PER_CALL/SOFT_TIME_BUDGET_MS в lib/opiu/syncReportRows.ts —
-// до 40 страниц или 4 минуты), поэтому 300с запаса хватает даже для
+// до 40 страниц или 3,5 минуты), поэтому 300с запаса хватает даже для
 // самого крупного кабинета (Оптима, ~116k строк отчёта/день).
 export const maxDuration = 300;
 
