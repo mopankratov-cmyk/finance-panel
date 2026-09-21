@@ -289,7 +289,7 @@ export function MonthlyOpiuPage() {
                 ))}
               </ul>
             </div>
-            <Link href="/payments" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+            <Link href="/payments?companies=1" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
               <Settings className="h-4 w-4" /> Настройки компаний
             </Link>
           </div>

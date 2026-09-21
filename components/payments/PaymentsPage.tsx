@@ -48,6 +48,7 @@ import { COMPANY_TAX_RATE_UNAVAILABLE, COMPANY_TAX_UNAVAILABLE } from "@/lib/fin
 import { ddsEditableAccounts, isDdsActualPayment, manualDdsCashAccounts } from "@/lib/finance/bankDdsPayment";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
+import { shouldOpenCompanySettings } from "./paymentDeepLink";
 
 const WITHOUT_CATEGORY_FILTER = "__without_category__";
 
@@ -74,6 +75,10 @@ export function PaymentsPage() {
   const [companies, setCompanies] = useState<DdsCompany[]>([]);
   const [companyByPayment, setCompanyByPayment] = useState<Map<string, string | null>>(new Map());
   const [companyError, setCompanyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (shouldOpenCompanySettings(window.location.search)) setCompaniesOpen(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
