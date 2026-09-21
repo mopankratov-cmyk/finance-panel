@@ -12,6 +12,8 @@ import { transferCategories } from "@/lib/opiu/bankTransferClassification";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { audit } from "@/lib/audit/log";
 import { bankOperationIdentity, operationIdentityFromReasons } from "@/lib/opiu/bankOperationIdentity";
+import { bankLedgerProjectionPayload } from "@/lib/finance/bankLedgerProjection";
+import type { BankStatement } from "@/lib/finance/bankStatementGrid";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
 type SuggestionInput = {
@@ -73,6 +75,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ mappings: data ?? [] });
   }
 
+  if (resource === "ledger-control") {
+    const { data, error } = await db.rpc("finance_bank_ledger_control");
+    if (error) {
+      if (missingMigration(error.code) || /does not exist|schema cache/i.test(error.message)) {
+        return NextResponse.json({ available: false });
+      }
+      return jsonError(error.message, 500);
+    }
+    return NextResponse.json({ available: true, control: data });
+  }
+
   if (resource === "google-sync") {
     // Без листания PostgREST молча отдаёт первую тысячу — .limit(5000) не помогает.
     try {
@@ -122,8 +135,16 @@ export async function POST(request: Request) {
     incomingId?: string;
     statement?: {
       documentHash?: string;
+      bank?: string;
+      owner?: string;
       accountNumber?: string;
       ownerInn?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      openingBalance?: number;
+      closingBalance?: number;
+      declaredDebit?: number;
+      declaredCredit?: number;
     };
     suggestions?: SuggestionInput[];
     sourceFileName?: string;
@@ -289,8 +310,64 @@ export async function POST(request: Request) {
     const matchedTransfers = await matchBankReviewTransfers();
     const explicitIds = new Set(body.suggestions.filter(s => s.categoryConfirmed).map(s => text(s.row?.id,500)));
     const names = await loadAllSupabasePages<{id:string;name:string}>((from,to)=>db.from("companies").select("id,name").order("id").range(from,to),{label:"Компании выписок"});
-    const stored = await loadAllSupabasePages<{id:string;external_id:string;amount:number;counterparty:string;purpose:string;company_id:string|null;account_id:string|null;category:string|null;status:ReviewStatus;manager_answer:string|null}>((from,to)=>db.from("bank_review_items").select("id,external_id,amount,counterparty,purpose,company_id,account_id,category,status,manager_answer").eq("document_hash",documentHash).order("id").range(from,to),{label:"Сохранённые строки выписки"});
+    const dateRange = rows.map((row) => row.date).sort();
+    const candidates = await loadAllSupabasePages<{id:string;document_hash:string;external_id:string;date:string;amount:number;counterparty:string;counterparty_inn:string;purpose:string;reasons:unknown;company_id:string|null;account_id:string|null;category:string|null;status:ReviewStatus;manager_answer:string|null}>((from,to)=>db.from("bank_review_items").select("id,document_hash,external_id,date,amount,counterparty,counterparty_inn,purpose,reasons,company_id,account_id,category,status,manager_answer").eq("bank_account_number",bankAccountNumber).gte("date",dateRange[0]).lte("date",dateRange.at(-1)!).order("id").range(from,to),{label:"Сохранённые строки выписки"});
+    const candidatesByIdentity = new Map(candidates.flatMap((candidate) => {
+      const identity = operationIdentityFromReasons(candidate.reasons);
+      return identity ? [[identity, candidate] as const] : [];
+    }));
+    const stored = rows.flatMap((sourceRow) => {
+      const identity = operationIdentityFromReasons(sourceRow.reasons);
+      const candidate = identity
+        ? candidatesByIdentity.get(identity)
+        : candidates.find((item) => item.document_hash === documentHash && item.external_id === sourceRow.external_id);
+      return candidate ? [{ ...candidate, external_id: sourceRow.external_id }] : [];
+    });
+    if (stored.length !== rows.length) {
+      return jsonError("Не все строки выписки удалось связать с банковскими операциями. Импорт остановлен до проведения платежей.", 500);
+    }
     const selectedExternalIds=new Set(rows.map(row=>row.external_id));
+    const ledgerStatement: BankStatement = {
+      documentHash,
+      bank: text(body.statement.bank, 255) || "Банк не определён",
+      owner: text(body.statement.owner, 500),
+      ownerInn,
+      accountNumber: bankAccountNumber,
+      dateFrom: text(body.statement.dateFrom, 10),
+      dateTo: text(body.statement.dateTo, 10),
+      openingBalance: Number(body.statement.openingBalance) || 0,
+      closingBalance: Number(body.statement.closingBalance) || 0,
+      declaredDebit: Number(body.statement.declaredDebit) || 0,
+      declaredCredit: Number(body.statement.declaredCredit) || 0,
+      rows: body.suggestions.flatMap((suggestion) => {
+        const row = suggestion.row;
+        if (!row?.id || !row.date || !Number.isFinite(Number(row.amount))) return [];
+        return [{
+          id: text(row.id, 500), date: text(row.date, 10), amount: Number(row.amount),
+          counterparty: text(row.counterparty), counterpartyInn: text(row.counterpartyInn, 20).replace(/\D/g, ""),
+          counterpartyAccount: text(row.counterpartyAccount, 40).replace(/\D/g, ""),
+          purpose: text(row.purpose, 5_000), documentNumber: text(row.documentNumber, 255),
+        }];
+      }),
+      warnings: [],
+    };
+    const projection = bankLedgerProjectionPayload(
+      ledgerStatement,
+      text(body.sourceFileName, 255) || "Банковская выписка",
+      body.suggestions as Parameters<typeof bankLedgerProjectionPayload>[2],
+      stored.map((row) => ({
+        id: row.id, externalId: row.external_id, date: row.date, amount: Number(row.amount),
+        purpose: row.purpose, counterparty: row.counterparty, counterpartyInn: row.counterparty_inn,
+        reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+      })),
+    );
+    const registered = await db.rpc("register_finance_bank_statement", {
+      p_statement: projection.statement,
+      p_transactions: projection.transactions,
+    });
+    if (registered.error && !(missingMigration(registered.error.code) || /does not exist|schema cache/i.test(registered.error.message))) {
+      return jsonError(registered.error.message, 500);
+    }
     const companyNames = new Map(names.map(c => [c.id,c.name]));
     const confirmIds = stored.filter(row => {
       const recipientAliases = companyAliasKeys(row.counterparty + " " + row.purpose);
@@ -303,7 +380,7 @@ export async function POST(request: Request) {
     const confirmed = confirmIds.length ? await db.rpc("confirm_bank_review_items",{p_ids:confirmIds}) : {data:0,error:null};
     if(confirmed.error) return jsonError(confirmed.error.message,500);
     const confirmedSet=new Set(confirmIds);
-    return NextResponse.json({ queued: stored.filter(row=>selectedExternalIds.has(row.external_id)&&ACTIVE_STATUSES.includes(row.status)&&!confirmedSet.has(row.id)).length, approved: Number(confirmed.data ?? 0), matchedTransfers, duplicatesSkipped: rows.length - (data?.length ?? 0) });
+    return NextResponse.json({ queued: stored.filter(row=>selectedExternalIds.has(row.external_id)&&ACTIVE_STATUSES.includes(row.status)&&!confirmedSet.has(row.id)).length, approved: Number(confirmed.data ?? 0), matchedTransfers, duplicatesSkipped: rows.length - (data?.length ?? 0), ledgerProjection: registered.error ? "migration_pending" : "synced" });
   } catch(error) {
     return jsonError(error instanceof Error ? error.message : "Не удалось связать выписки. Проверьте миграцию 202609140003_bank_review_confirm_and_link.sql",500);
   }
