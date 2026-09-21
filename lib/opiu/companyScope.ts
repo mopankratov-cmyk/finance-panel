@@ -1,10 +1,15 @@
 import { companyAliasGroup, sameCompanyAlias } from "@/lib/finance/companyAliases";
 import { companyGroupLabel, isLegacySharedExpenseCompany } from "@/lib/finance/companyLabels";
+import type { CompanyTaxSystem, CompanyVatMode } from "@/lib/finance/companyTax";
 
 export interface OpiuCompanyOption {
   id: string;
   name: string;
   groupName: string;
+  taxSystem?: CompanyTaxSystem | null;
+  vatMode?: CompanyVatMode | null;
+  taxRate?: number | null;
+  taxAdditionalRate?: number | null;
 }
 
 export interface OpiuCompanyScope extends OpiuCompanyOption {
@@ -73,6 +78,7 @@ export function buildOpiuCompanyScopes(
   return [...grouped.values()]
     .map((members) => {
       const canonical = members.find((company) => /коровкин/i.test(company.name)) ?? members[0]!;
+      const taxOwner = members.find((company) => company.taxSystem != null || company.vatMode != null || company.taxRate != null || company.taxAdditionalRate != null) ?? canonical;
       const cabinetIds = new Set<string>();
       for (const member of members) {
         for (const id of marketplaceCabinetIdsForCompany(member.name, legalEntities, links)) cabinetIds.add(id);
@@ -81,6 +87,10 @@ export function buildOpiuCompanyScopes(
         id: canonical.id,
         name: canonical.name,
         groupName: companyGroupLabel(canonical.groupName),
+        ...(taxOwner.taxSystem !== undefined ? { taxSystem: taxOwner.taxSystem } : {}),
+        ...(taxOwner.vatMode !== undefined ? { vatMode: taxOwner.vatMode } : {}),
+        ...(taxOwner.taxRate !== undefined ? { taxRate: taxOwner.taxRate } : {}),
+        ...(taxOwner.taxAdditionalRate !== undefined ? { taxAdditionalRate: taxOwner.taxAdditionalRate } : {}),
         companyIds: members.map((company) => company.id),
         cabinetIds: [...cabinetIds],
       };

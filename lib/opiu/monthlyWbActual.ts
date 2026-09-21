@@ -46,6 +46,7 @@ export function monthlyWbActualFromOpiu(source: MonthlyWbSource) {
 
   return {
     revenue_before_spp: revenueBeforeSpp,
+    revenue_after_spp: revenue,
     coinvest: optionalTotal(report, "loyalty_comp"),
     revenue,
     commission,

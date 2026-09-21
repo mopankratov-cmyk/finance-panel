@@ -26,9 +26,10 @@ export function wbBrandCompanyName(brand: Pick<OpiuBrand, "id" | "entity">): str
 
 export function aggregateWbSources(sources: readonly MonthlyMarketplaceSource[]): WbActual {
   const ready = sources.flatMap((source) => source.wb && !source.wb.error ? [source.wb] : []);
-  if (!ready.length) return { revenue_before_spp: 0, commission: 0, acquiring: 0, ad: 0, other: 0, cogs: 0, packaging: 0, logistics: null, storage: null, penalty: null, error: "Нет доступных источников WB" };
+  if (!ready.length) return { revenue_before_spp: 0, revenue_after_spp: 0, commission: 0, acquiring: 0, ad: 0, other: 0, cogs: 0, packaging: 0, logistics: null, storage: null, penalty: null, error: "Нет доступных источников WB" };
   return {
     revenue_before_spp: sum(ready, (row) => row.revenue_before_spp),
+    revenue_after_spp: sum(ready, (row) => row.revenue_after_spp ?? row.revenue_before_spp),
     commission: sum(ready, (row) => row.commission),
     acquiring: sum(ready, (row) => row.acquiring),
     ad: sum(ready, (row) => row.ad),
