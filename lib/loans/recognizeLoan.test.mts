@@ -35,11 +35,34 @@ test("XLSX-график банка читается по ячейкам серв
   assert.equal(result.suggestedCompanyId, "c-1", "компания подсказана по заёмщику из ИИ");
 });
 
-test("PDF без ИИ — честная ошибка, а не пустой результат", async () => {
+test("PDF без текстового слоя без ИИ требует OCR, а не даёт пустой результат", async () => {
   await assert.rejects(
     recognizeLoanDocument({ description: "", file: { name: "dogovor.pdf", bytes: Buffer.from("%PDF-1.4 %%EOF"), mimeType: "application/pdf" } }, deps),
-    /ИИ-распознавание/,
+    /текстовый слой/,
   );
+});
+
+test("текстовый PDF с графиком распознаётся без ИИ", async () => {
+  const content = [
+    "BT",
+    "(Contract 2026022600069) Tj",
+    "(Principal 2180000 RUB) Tj",
+    "(1 10.03.2026 37299.26 9705.84 27593.42 0 2170294.16) Tj",
+    "(2 17.03.2026 37299.26 9828.31 27470.95 0 2160465.85) Tj",
+    "ET",
+  ].join("\n");
+  const pdf = `%PDF-1.4\n1 0 obj\n<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream\nendobj\n%%EOF`;
+  const result = await recognizeLoanDocument({
+    description: "",
+    file: { name: "wb-finance.pdf", bytes: Buffer.from(pdf), mimeType: "application/pdf" },
+  }, deps);
+  assert.equal(result.recognized.principalAmount, 2180000);
+  assert.equal(result.recognized.dueDate, "2026-03-17");
+  assert.equal(result.recognized.interestFrequency, "weekly");
+  assert.deepEqual(result.schedule.map((row) => [row.date, row.principal, row.interest, row.balanceAfter]), [
+    ["2026-03-10", 9705.84, 27593.42, 2170294.16],
+    ["2026-03-17", 9828.31, 27470.95, 2160465.85],
+  ]);
 });
 
 test("договор Дзюбина распознаётся локально при недоступном ИИ и сохраняет поквартальный рост тела", async () => {
