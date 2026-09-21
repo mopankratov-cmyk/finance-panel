@@ -45,7 +45,9 @@ export interface MarginRow {
   additionalPayments: number;
   storage: number;
   storagePct: number | null;
+  storagePerUnit: number | null;
   acceptance: number;
+  acceptancePerUnit: number | null;
   transit: number;
   /** К перечислению − логистика − штрафы − доплаты − хранение − приёмка − транзит. */
   totalPayout: number;
@@ -58,6 +60,12 @@ export interface MarginRow {
   netProfitPerUnit: number | null;
   netMarginPct: number | null;
   adSpend: number;
+  /**
+   * (Выручка без СПП − Комиссия − Логистика − Себестоимость − Подготовка) /
+   * Выручка без СПП, % — столбец «Маржа без учёта Хранения» из гугл-таблицы:
+   * быстрая маржа без штрафов/доплат/хранения/приёмки/транзита/налога/рекламы.
+   */
+  marginPctExStorage: number | null;
 }
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
@@ -183,7 +191,9 @@ export function buildMarginByBarcode(
       additionalPayments: round2(additionalPayments),
       storage: round2(storage),
       storagePct: revenueWithoutSpp > 0 ? round2((storage / revenueWithoutSpp) * 100) : null,
+      storagePerUnit: netQty > 0 ? round2(storage / netQty) : null,
       acceptance: round2(acceptance),
+      acceptancePerUnit: netQty > 0 ? round2(acceptance / netQty) : null,
       transit: round2(transit),
       totalPayout: round2(totalPayout),
       cost: round2(cost),
@@ -195,6 +205,10 @@ export function buildMarginByBarcode(
       netProfitPerUnit: netQty > 0 ? round2(netProfit / netQty) : null,
       netMarginPct: revenueWithoutSpp > 0 ? round2((netProfit / revenueWithoutSpp) * 100) : null,
       adSpend: round2(adSpend),
+      marginPctExStorage:
+        revenueWithoutSpp > 0
+          ? round2(((revenueWithoutSpp - commission - logistics - cost - packaging) / revenueWithoutSpp) * 100)
+          : null,
     });
   }
 

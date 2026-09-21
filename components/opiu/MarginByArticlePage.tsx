@@ -43,8 +43,10 @@ const COLUMNS: { key: keyof MarginRow; label: string; fmt: (row: MarginRow) => s
   { key: "penalties", label: "Штрафы, руб", fmt: (r) => money(r.penalties) },
   { key: "additionalPayments", label: "Доплаты, руб", fmt: (r) => money(r.additionalPayments) },
   { key: "storage", label: "Хранение, руб", fmt: (r) => money(r.storage) },
+  { key: "storagePerUnit", label: "Хранение на 1 ед, руб", fmt: (r) => (r.storagePerUnit == null ? "—" : money(r.storagePerUnit)) },
   { key: "storagePct", label: "% хранения", fmt: (r) => pct(r.storagePct) },
   { key: "acceptance", label: "Платная приёмка, руб", fmt: (r) => money(r.acceptance) },
+  { key: "acceptancePerUnit", label: "Платная приёмка на 1 ед, руб", fmt: (r) => (r.acceptancePerUnit == null ? "—" : money(r.acceptancePerUnit)) },
   { key: "transit", label: "Транзит, руб", fmt: (r) => money(r.transit) },
   { key: "totalPayout", label: "Итого к оплате, руб", fmt: (r) => money(r.totalPayout) },
   { key: "cost", label: "Себестоимость, руб", fmt: (r) => money(r.cost) },
@@ -56,6 +58,7 @@ const COLUMNS: { key: keyof MarginRow; label: string; fmt: (row: MarginRow) => s
   { key: "netProfitPerUnit", label: "Чистая прибыль на ед, руб", fmt: (r) => (r.netProfitPerUnit == null ? "—" : money(r.netProfitPerUnit)) },
   { key: "netMarginPct", label: "Маржа с налогом, %", fmt: (r) => pct(r.netMarginPct) },
   { key: "adSpend", label: "Реклама, руб", fmt: (r) => money(r.adSpend) },
+  { key: "marginPctExStorage", label: "Маржа без учёта хранения, %", fmt: (r) => pct(r.marginPctExStorage) },
 ];
 
 export function MarginByArticlePage() {
