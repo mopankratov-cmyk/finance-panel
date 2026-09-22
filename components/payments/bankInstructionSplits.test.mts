@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseBankInstructionList, splitBankTotal, splitNetTotal, splitsAreReady, splitTotal } from "./bankInstructionSplits.ts";
+import { parseBankInstructionList, splitBankTotal, splitNetTotal, splitsAreReady, splitTotal, walletTransferSplits } from "./bankInstructionSplits.ts";
 import type { BankReviewItem } from "./bankReviewStore.ts";
 
 const item = (id: string, date: string, amount: number): BankReviewItem => ({
@@ -64,4 +64,30 @@ test("allows a bank outflow to pass through another wallet before the final expe
   assert.equal(splitBankTotal(review, splits), -15_000);
   assert.equal(splitNetTotal(review, splits), -15_000);
   assert.equal(splitsAreReady(review, splits), true);
+});
+
+test("a bank outflow creates a separate destination wallet choice", () => {
+  const review = item("out", "2026-09-22", -10_000);
+  review.accountId = "bank";
+  review.companyId = "company";
+  const splits = walletTransferSplits(review);
+  assert.deepEqual(splits.map((split) => [split.flow, split.countsTowardBank, split.accountId]), [
+    ["expense", true, "bank"],
+    ["income", false, null],
+  ]);
+  assert.equal(splitBankTotal(review, splits), -10_000);
+  assert.equal(splitNetTotal(review, splits), 0);
+});
+
+test("a bank inflow creates a separate source wallet choice", () => {
+  const review = item("in", "2026-09-22", 10_000);
+  review.accountId = "bank";
+  review.companyId = "company";
+  const splits = walletTransferSplits(review);
+  assert.deepEqual(splits.map((split) => [split.flow, split.countsTowardBank, split.accountId]), [
+    ["expense", false, null],
+    ["income", true, "bank"],
+  ]);
+  assert.equal(splitBankTotal(review, splits), 10_000);
+  assert.equal(splitNetTotal(review, splits), 0);
 });

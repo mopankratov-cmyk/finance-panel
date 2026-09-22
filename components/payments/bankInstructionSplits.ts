@@ -151,6 +151,32 @@ export function splitAccountId(item: Pick<BankReviewItem, "accountId">, split: B
   return split.accountId === undefined ? item.accountId : split.accountId;
 }
 
+/**
+ * Создаёт обе стороны перевода, когда одна из них пришла из банковской
+ * выписки. Банковская сторона остаётся на счёте выписки, а второй кошелёк
+ * пользователь выбирает отдельно — это может быть банк, наличные или крипто.
+ */
+export function walletTransferSplits(item: Pick<BankReviewItem, "amount" | "companyId" | "accountId">): BankInstructionSplit[] {
+  const amount = Math.abs(item.amount);
+  const bankSide: BankInstructionSplit = {
+    id: crypto.randomUUID(), amount,
+    description: item.amount < 0 ? "Перевод с банковского счёта" : "Поступление на банковский счёт",
+    category: item.amount < 0 ? "Выбытие — Перевод между счетами" : "Поступление — Перевод между счетами",
+    companyId: item.companyId, accountId: item.accountId,
+    flow: item.amount < 0 ? "expense" : "income",
+    countsTowardBank: true, excluded: false, needsClarification: false,
+  };
+  const otherSide: BankInstructionSplit = {
+    id: crypto.randomUUID(), amount,
+    description: item.amount < 0 ? "Поступление на другой кошелёк" : "Перевод с другого кошелька",
+    category: item.amount < 0 ? "Поступление — Перевод между счетами" : "Выбытие — Перевод между счетами",
+    companyId: item.companyId, accountId: null,
+    flow: item.amount < 0 ? "income" : "expense",
+    countsTowardBank: false, excluded: false, needsClarification: false,
+  };
+  return item.amount < 0 ? [bankSide, otherSide] : [otherSide, bankSide];
+}
+
 export function encodeBankSplits(splits: BankInstructionSplit[]) {
   return `${BANK_SPLIT_PREFIX}${JSON.stringify(splits)}`;
 }
