@@ -7,6 +7,7 @@ import { canCloseRowsWithFact, derivedPaymentForRow, scheduleRowFromDb, type Sch
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbLoanFactFromRow } from "@/lib/loans/marketplaceFacts";
+import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
 import type { Payment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -207,11 +208,17 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true, rows: [{ ...rows[0], status: "paid", paidByMarketplaceSource: source.source }] });
   }
   const [factResult, allPayments] = await Promise.all([
-    client.from("payments").select("id,status,amount").eq("id", factId).maybeSingle(),
+    client.from("payments").select("id,status,amount,import_source").eq("id", factId).maybeSingle(),
     loadAllSupabasePages<{ id: string; comment: string | null }>((from, to) => client.from("payments").select("id,comment").not("comment", "is", null).like("comment", "%[%").order("id", { ascending: true }).range(from, to), { label: "Занятые факты", maxPages: 60 }),
   ]);
   if (factResult.error) return NextResponse.json({ error: factResult.error.message }, { status: 500 });
-  const fact = factResult.data ? { id: String(factResult.data.id), status: String(factResult.data.status) as Payment["status"], amount: Number(factResult.data.amount) } : undefined;
+  const fact = factResult.data ? {
+    id: String(factResult.data.id),
+    status: String(factResult.data.status) as Payment["status"],
+    amount: Number(factResult.data.amount),
+    importSource: factResult.data.import_source ? String(factResult.data.import_source) : null,
+  } : undefined;
+  if (fact && !isDdsActualPayment(fact)) return NextResponse.json({ error: "Выбранная запись не является фактом ДДС" }, { status: 409 });
   const check = canCloseRowsWithFact(rows, fact, consumedFactIds(allPayments), Boolean(body?.confirmed));
   if (!check.ok) return NextResponse.json({ error: check.reason }, { status: 409 });
   const now = new Date().toISOString();
