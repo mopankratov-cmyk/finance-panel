@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateDdsMonthlyFacts, aggregateLoanScheduleMonthlyFacts, aggregatePayrollMonthlyFacts, mergeMonthlySharedFacts } from "./monthlyFacts.ts";
+import { aggregateDdsMonthlyFacts, aggregateLoanScheduleMonthlyFacts, aggregatePayrollMonthlyFacts, loanCompanyByReceiptPayments, mergeMonthlySharedFacts } from "./monthlyFacts.ts";
 
 test("ДДС раскладывается по статьям ОПиУ и не дублирует платежи ведомости", () => {
   const result = aggregateDdsMonthlyFacts([
@@ -43,6 +43,25 @@ test("даже пользовательская статья ДДС не под�
     { amount: -1_000, category: "Мой налог", status: "done", importSource: "manual-dds:tax" },
   ], [{ id: "custom-tax", name: "Мой налог", opiuArticleId: "taxes" }]);
   assert.equal(result.taxes, undefined);
+});
+
+test("компания кредита восстанавливается по платежу получения договора", () => {
+  const companies = loanCompanyByReceiptPayments([
+    { companyId: "company-rio", comment: "[loan:11111111-1111-4111-8111-111111111111:receipt]" },
+    { companyId: null, comment: "[loan:22222222-2222-4222-8222-222222222222:receipt]" },
+    { companyId: "company-other", comment: "обычный платёж" },
+  ]);
+  assert.equal(companies.get("11111111-1111-4111-8111-111111111111"), "company-rio");
+  assert.equal(companies.has("22222222-2222-4222-8222-222222222222"), false);
+});
+
+test("не угадывает компанию договора при конфликтующих привязках", () => {
+  const companies = loanCompanyByReceiptPayments([
+    { companyId: "company-a", comment: "[loan:11111111-1111-4111-8111-111111111111:receipt]" },
+    { companyId: "company-b", comment: "[loan:11111111-1111-4111-8111-111111111111:receipt]" },
+    { companyId: "company-a", comment: "[loan:11111111-1111-4111-8111-111111111111:receipt]" },
+  ]);
+  assert.equal(companies.has("11111111-1111-4111-8111-111111111111"), false);
 });
 
 test("полный месяц ведомости даёт начисленный административный и коммерческий ФОТ", () => {
