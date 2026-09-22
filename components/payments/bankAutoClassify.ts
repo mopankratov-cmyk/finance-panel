@@ -158,6 +158,13 @@ function accountFromNumber(statement: BankStatement, accounts: Account[]) {
   return { accountId: matched[0].id, confidence: 0.96, reason: "Кошелёк определён по номеру банковского счёта" };
 }
 
+/** Точное сопоставление счёта: сохранённая связь или уникальный хвост номера. */
+export function exactBankStatementAccount(statement: BankStatement, accounts: Account[], mappings: BankAccountMapping[]) {
+  const mapped = mappedAccount(statement, mappings);
+  if (mapped && accounts.some((account) => account.id === mapped.accountId)) return mapped;
+  return accountFromNumber(statement, accounts);
+}
+
 function accountFromOwnerAndBank(statement: BankStatement, accounts: Account[]) {
   const ownerWords = words(statement.owner);
   const bankWords = words(statement.bank);
