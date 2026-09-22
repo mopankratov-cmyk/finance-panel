@@ -263,11 +263,24 @@ export function PaymentsPage() {
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const payment=state.payments.find(p=>p.id===id);
     if(payment && chainMetadata(payment.comment)){setChainSeed({paymentId:id});return;}
-    if (confirm("Удалить этот платёж?")) {
-      dispatch({ type: "DELETE_PAYMENT", payload: id });
+    if (!confirm("Удалить этот платёж? Если он закрывает кредит, календарный план или зарплату, обязательство снова станет неоплаченным.")) return;
+    try {
+      const response = await fetch(`/api/finance/payments/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const result = await response.json().catch(() => null) as { error?: string; deleted?: boolean; reopenedLoanRows?: number; reopenedCalendarPlans?: number } | null;
+      if (!response.ok || !result?.deleted) throw new Error(result?.error ?? "Не удалось удалить платёж");
+      dispatch({ type: "LOAD", payload: await loadFinanceState() });
+      setCompanyByPayment((current) => {
+        const next = new Map(current);
+        next.delete(id);
+        return next;
+      });
+      const reopened = Number(result.reopenedLoanRows ?? 0) + Number(result.reopenedCalendarPlans ?? 0);
+      alert(reopened > 0 ? `Платёж удалён. Связанные обязательства возвращены в план: ${reopened}.` : "Платёж удалён.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось удалить платёж");
     }
   };
 
