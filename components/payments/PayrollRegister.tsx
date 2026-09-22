@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import { consumedFactIds } from "@/lib/finance/factLinks";
 import { paymentIsPayrollCandidate } from "@/lib/payroll/model";
+import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import type { Account, Payment } from "@/lib/types";
 import { defaultCalendarAccountId } from "@/components/calendar/defaultCalendarAccount";
 import type { DdsCompany } from "./ddsCompanies";
@@ -40,7 +41,7 @@ import { allocatePayrollPayment, deletePayrollEmployee, importPayrollStaffFile, 
 const EMPTY_DATA: PayrollData = { employees: [], periods: [], entries: [], debts: [], allocations: [] };
 // Разбор штатного Excel — на сервере (lib/payroll/staffSheet.ts); форма только отправляет файл.
 
-export function PayrollRegister({ accounts, companies, payments, onCalendarUpdated }: { accounts: Account[]; companies: DdsCompany[]; payments: Payment[]; onCalendarUpdated: () => Promise<void> }) {
+export function PayrollRegister({ accounts, companies, payments, scheduleRows, onCalendarUpdated }: { accounts: Account[]; companies: DdsCompany[]; payments: Payment[]; scheduleRows: ScheduleRowRecord[] | null; onCalendarUpdated: () => Promise<void> }) {
   const today = todayISO();
   const [data, setData] = useState<PayrollData>(EMPTY_DATA);
   const [payDate, setPayDate] = useState(() => nextPayrollDate(today));
@@ -111,9 +112,10 @@ export function PayrollRegister({ accounts, companies, payments, onCalendarUpdat
   const debtByYear = useMemo(() => payrollDebtByYear(data), [data]);
 
   const payrollCandidates = useMemo(() => {
+    if (scheduleRows === null) return [];
     const allocated = new Map<string, number>();
     for (const item of data.allocations) allocated.set(item.paymentId, (allocated.get(item.paymentId) ?? 0) + item.amount);
-    const consumed = consumedFactIds(payments);
+    const consumed = consumedFactIds(payments, undefined, scheduleRows);
     const employeeWords = data.employees.map((employee) => employee.fullName.toLowerCase().split(" ")[0]).filter(Boolean);
     return payments.filter((payment) => {
       if (!paymentIsPayrollCandidate(payment)) return false;
@@ -127,7 +129,7 @@ export function PayrollRegister({ accounts, companies, payments, onCalendarUpdat
       if (/(налог|ндфл|взнос|фнс)/.test(haystack)) return false;
       return /(зарплат|аванс|зп|сотрудник)/.test(haystack) || employeeWords.some((word) => word.length > 3 && haystack.includes(word));
     }).sort((left, right) => right.date.localeCompare(left.date));
-  }, [data.allocations, data.employees, payments]);
+  }, [data.allocations, data.employees, payments, scheduleRows]);
 
   const summary = useMemo(() => employeesForPeriod.reduce((result, employee) => {
     const draft = drafts[employee.id] ?? blankPayrollEntry(employee);

@@ -43,3 +43,13 @@ test("расход не сопоставляется с поступлением
   const result = findPlanFactMatches([payment("plan", "planned", -1000), payment("fact", "done", 1000)]);
   assert.equal(result.matched.length, 0);
 });
+
+test("факт из канонической связи кредита не предлагается календарю", () => {
+  const result = findPlanFactMatches(
+    [payment("plan", "planned", 100000), payment("fact", "done", 100000)],
+    new Map(),
+    [{ paidByPaymentId: "fact" }],
+  );
+  assert.equal(result.matched.length, 0);
+  assert.equal(result.review.length, 0);
+});
