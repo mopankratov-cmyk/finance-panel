@@ -12,10 +12,11 @@ import type { DdsCompany } from "./ddsCompanies";
 import { rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
 import { needsDirectUpload, uploadViaStorage } from "./uploadViaStorage";
 import { useDdsCategories, useFinance } from "@/components/providers/FinanceProvider";
-import { loadFinanceState } from "@/lib/db";
+import { loadFinanceState, persistFinanceAction } from "@/lib/db";
 import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
+import { importedBankAccountName, importedBankAccountOpeningDate } from "./importedBankAccount";
 
 // Статьи — из единого справочника; отдельного списка «для выписки» больше нет.
 
@@ -29,12 +30,14 @@ interface Props {
 }
 
 export function BankStatementModal({ open, onClose, accounts, companies, existingPayments, onQueued }: Props) {
-  const { dispatch } = useFinance();
+  const { state, dispatch } = useFinance();
   const { categories: BANK_CATEGORIES } = useDdsCategories();
   const [statement, setStatement] = useState<BankStatement | null>(null);
   const [fileName, setFileName] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [accountNumberKnown, setAccountNumberKnown] = useState<boolean | null>(null);
+  const [newAccountName, setNewAccountName] = useState("");
   const [confirmedCategories, setConfirmedCategories] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<Map<string, string>>(new Map());
   const [counterpartyOverrides, setCounterpartyOverrides] = useState<Map<string,string>>(new Map());
@@ -58,6 +61,8 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setFileName("");
     setCompanyId("");
     setAccountId("");
+    setAccountNumberKnown(null);
+    setNewAccountName("");
     setCategories(new Map());
     setConfirmedCategories(new Set());
     setCounterpartyOverrides(new Map());
@@ -87,12 +92,14 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
         body.append("file", file);
         response = await fetch("/api/opiu/bank-statement", { method: "POST", body });
       }
-      const data = await response.json().catch(() => null) as { statement?: BankStatement; suggestions?: BankSuggestion[]; error?: string } | null;
+      const data = await response.json().catch(() => null) as { statement?: BankStatement; suggestions?: BankSuggestion[]; accountNumberKnown?: boolean; error?: string } | null;
       if (!response.ok || !data?.statement || !data.suggestions) throw new Error(data?.error ?? "Не удалось распознать выписку");
       const parsed = data.statement;
       const suggestions = data.suggestions;
       setSuggestions(suggestions);
       setStatement(parsed);
+      setAccountNumberKnown(typeof data.accountNumberKnown === "boolean" ? data.accountNumberKnown : null);
+      setNewAccountName("");
       setConfirmedCategories(new Set());
       setCounterpartyOverrides(new Map());
       setPurposeOverrides(new Map());
@@ -107,7 +114,8 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       const suggestedCompanyId = suggestions.find((suggestion) => suggestion.companyId)?.companyId;
       const suggestedAccountId = suggestions.find((suggestion) => suggestion.accountId)?.accountId;
       if (suggestedCompanyId) setCompanyId(suggestedCompanyId);
-      if (suggestedAccountId) setAccountId(suggestedAccountId);
+      if (parsed.accountNumber && data.accountNumberKnown === false) setAccountId("");
+      else if (suggestedAccountId) setAccountId(suggestedAccountId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось прочитать выписку");
     } finally {
@@ -121,6 +129,8 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   );
   const counterparties = useMemo(() => [...new Set([...existingPayments.map(p => p.counterparty), ...(statement?.rows.map(row => row.counterparty) ?? []), ...counterpartyOverrides.values()].map(name => name.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,"ru")), [existingPayments, statement, counterpartyOverrides]);
   const unclassified = selectedRows.filter((row) => !categories.get(row.id)).length;
+  const needsNewBankAccount = Boolean(statement?.accountNumber && accountNumberKnown === false);
+  const newAccountDisplayName = statement ? importedBankAccountName(newAccountName, statement.accountNumber) : "";
 
   const toggleIncluded = (id: string) => {
     setIncluded((current) => {
@@ -163,13 +173,38 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
 
   const handlePrepare = async () => {
     if (!statement) return;
-    if (!selectedAccount) {
+    if (!selectedAccount && !needsNewBankAccount) {
       setError("Перед отправкой выберите кошелёк / банковский счёт. Компанию можно определить отдельно для каждого платежа в разделе «На проверке». ");
+      return;
+    }
+    if (needsNewBankAccount && !newAccountDisplayName) {
+      setError("Введите название нового банковского кошелька.");
       return;
     }
     setLoading(true);
     setError(null);
     try {
+      let resolvedAccountId = accountId;
+      if (needsNewBankAccount) {
+        const newAccount: Account = {
+          id: crypto.randomUUID(),
+          name: newAccountDisplayName,
+          type: "bank",
+          currency: "RUB",
+          balance: Number(statement.openingBalance) || 0,
+          openingBalance: Number(statement.openingBalance) || 0,
+          openingDate: importedBankAccountOpeningDate(statement),
+        };
+        const nextState = { ...state, accounts: [...state.accounts, newAccount] };
+        await persistFinanceAction({ type: "ADD_ACCOUNT", payload: newAccount }, state, nextState);
+        resolvedAccountId = newAccount.id;
+        setAccountId(newAccount.id);
+        setAccountNumberKnown(true);
+        dispatch({ type: "LOAD", payload: await loadFinanceState() });
+        if (statement.accountNumber && selectedCompany) {
+          await rememberBankAccount(statement.accountNumber, statement.ownerInn, companyId, newAccount.id);
+        }
+      }
       const selectedSuggestions = applyBankPurposes(
         applyBankCounterparties(suggestions, counterpartyOverrides),
         purposeOverrides,
@@ -183,7 +218,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
           return {
             ...suggestion,
             companyId: rowCompanyId,
-            accountId,
+            accountId: resolvedAccountId,
             category,
             confidence,
             categoryConfirmed: confirmedCategories.has(suggestion.row.id),
@@ -195,7 +230,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       // явно выбрал одну компанию для всей выписки. Общий счёт нельзя закреплять
       // за случайной компанией из одной операции.
       if (statement.accountNumber && selectedCompany) {
-        await rememberBankAccount(statement.accountNumber, statement.ownerInn, companyId, accountId);
+        await rememberBankAccount(statement.accountNumber, statement.ownerInn, companyId, resolvedAccountId);
       }
       dispatch({type:"LOAD",payload:await loadFinanceState()});
       setDone(result);
@@ -256,11 +291,21 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-slate-500">Кошелёк / банковский счёт</label>
-                  <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3">
-                    <option value="">Выберите кошелёк</option>
-                    {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
-                  </select>
+                  {needsNewBankAccount ? (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                      <label className="mb-1 block text-xs font-medium text-amber-950" htmlFor="new-bank-account-name">Новый расчётный счёт — название кошелька</label>
+                      <input id="new-bank-account-name" autoFocus value={newAccountName} onChange={(event) => setNewAccountName(event.target.value)} placeholder="Например, Озон банк ИП Панкратов" className="min-h-11 w-full rounded-lg border border-amber-300 bg-white px-3 text-slate-900" />
+                      <p className="mt-1 text-xs text-amber-900">Счёт ••••{statement.accountNumber.slice(-4)} ещё не сохранён. Будет создан банковский кошелёк{newAccountDisplayName ? <> «{newAccountDisplayName}»</> : null}.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="mb-1 block text-xs text-slate-500">Кошелёк / банковский счёт</label>
+                      <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3">
+                        <option value="">Выберите кошелёк</option>
+                        {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                      </select>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex flex-wrap items-end gap-2 rounded-lg bg-slate-50 p-3">
@@ -322,12 +367,12 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                   Я сверил выписку и подтверждаю отправку несмотря на расхождение с контрольной суммой банка.
                 </label>
               )}
-              {!accountId && (
+              {!accountId && !needsNewBankAccount && (
                 <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sky-800">
                   Выберите общий кошелёк. Компанию для каждого платежа можно проверить и изменить на следующем шаге.
                 </div>
               )}
-              <button onClick={handlePrepare} disabled={loading || selectedRows.length === 0 || (hasControlMismatch && !controlMismatchAccepted)} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <button onClick={handlePrepare} disabled={loading || selectedRows.length === 0 || (needsNewBankAccount && !newAccountDisplayName) || (hasControlMismatch && !controlMismatchAccepted)} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
                 {loading ? "Отправляю…" : "Добавить операции"}
               </button>
             </>

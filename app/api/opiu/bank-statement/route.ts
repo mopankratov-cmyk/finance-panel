@@ -64,8 +64,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Файл не похож на заявленный формат — содержимое не совпадает" }, { status: 415 });
     }
     const statement = await recognizeBankStatementUpload(upload);
-    const suggestions = await suggestForStatement(db, statement);
-    return NextResponse.json({ statement, suggestions });
+    const { suggestions, accountNumberKnown } = await suggestForStatement(db, statement);
+    return NextResponse.json({ statement, suggestions, accountNumberKnown });
   } catch (error) {
     if (error instanceof PdfRecognitionError) return NextResponse.json({ error: error.message }, { status: 502 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось прочитать выписку" }, { status: 500 });

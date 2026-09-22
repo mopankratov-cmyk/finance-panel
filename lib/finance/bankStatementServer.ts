@@ -1,6 +1,6 @@
 
 import { createHash } from "node:crypto";
-import { classifyBankStatement, matchInternalTransfers, type BankAccountMapping, type BankSuggestion } from "@/components/payments/bankAutoClassify";
+import { classifyBankStatement, exactBankStatementAccount, matchInternalTransfers, type BankAccountMapping, type BankSuggestion } from "@/components/payments/bankAutoClassify";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Account, Payment } from "@/lib/types";
@@ -59,7 +59,7 @@ async function loadHistory(db: SupabaseClient): Promise<Array<Payment & { compan
   }));
 }
 
-export async function suggestForStatement(db: SupabaseClient, statement: BankStatement): Promise<BankSuggestion[]> {
+export async function suggestForStatement(db: SupabaseClient, statement: BankStatement): Promise<{ suggestions: BankSuggestion[]; accountNumberKnown: boolean }> {
   const [accounts, companies, mappings, history] = await Promise.all([
     db.from("accounts").select("id,name,type,currency,balance"),
     db.from("companies").select("id,name,group_name,is_active"),
@@ -79,5 +79,11 @@ export async function suggestForStatement(db: SupabaseClient, statement: BankSta
     companyId: String(row.company_id),
     accountId: String(row.account_id),
   }));
-  return matchInternalTransfers(classifyBankStatement(statement, accountList, companyList, history, mappingList));
+  const exactAccount = exactBankStatementAccount(statement, accountList, mappingList);
+  return {
+    suggestions: matchInternalTransfers(classifyBankStatement(statement, accountList, companyList, history, mappingList)),
+    // Совпадение только по названию банка и владельцу полезно как подсказка,
+    // но не доказывает, что это тот же расчётный счёт.
+    accountNumberKnown: Boolean(statement.accountNumber && exactAccount),
+  };
 }
