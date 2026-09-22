@@ -30,6 +30,9 @@ const REPORT_FIELDS = [
   "paidStorage",
   "paidAcceptance",
   "acquiringFee",
+  // «Количество доставок» — отдельное поле WB, не совпадает с quantity
+  // (см. «Доставок, шт» в гугл-таблице «Маржа по артикулам»).
+  "deliveryAmount",
   // Компенсация скидки по программе лояльности: WB отдаёт её только если
   // поле явно запрошено, иначе строка приходит без него и метрика ОПиУ = 0.
   "cashbackDiscount",
@@ -123,6 +126,7 @@ export function reportRowForStorage(
     storage_fee: finiteNumber(row.storage_fee),
     acceptance: finiteNumber(row.acceptance),
     acquiring_fee: finiteNumber(row.acquiring_fee),
+    delivery_amount: safeInteger(row.delivery_amount),
     cashback_discount: finiteNumber(row.cashback_discount),
     bonus_type_name: text(row.bonus_type_name),
     realizationreport_id: safeInteger(row.realizationreport_id),

@@ -30,6 +30,7 @@ const REPORT_COLUMNS = [
   "storage_fee",
   "acceptance",
   "acquiring_fee",
+  "delivery_amount",
   "cashback_discount",
   "bonus_type_name",
   "realizationreport_id",

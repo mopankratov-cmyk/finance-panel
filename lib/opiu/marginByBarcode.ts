@@ -46,6 +46,8 @@ export interface MarginRow {
   forPay: number;
   commission: number;
   commissionPct: number | null;
+  /** Доставок, шт — WB-поле delivery_amount (не quantity): число физических доставок, не единиц. */
+  deliveryCount: number;
   logistics: number;
   logisticsPerUnit: number | null;
   penalties: number;
@@ -143,6 +145,7 @@ export function buildMarginByBarcode(
     let revenueAfterSpp = 0;
     let forPay = 0;
     let commission = 0;
+    let deliveryCount = 0;
     let logistics = 0;
     let penalties = 0;
     let additionalPayments = 0;
@@ -173,6 +176,7 @@ export function buildMarginByBarcode(
       revenueAfterSpp += revenueRub(row);
       forPay += forPayRub(row);
       commission += commissionResidualRub(row);
+      deliveryCount += Math.max(0, Math.round(num(row.delivery_amount)));
       logistics += expenseRub(row.delivery_rub);
       penalties += expenseRub(row.penalty);
       additionalPayments += expenseRub(row.additional_payment);
@@ -211,6 +215,7 @@ export function buildMarginByBarcode(
       forPay: round2(forPay),
       commission: round2(commission),
       commissionPct: revenueWithoutSpp > 0 ? round2((commission / revenueWithoutSpp) * 100) : null,
+      deliveryCount,
       logistics: round2(logistics),
       logisticsPerUnit: netQty > 0 ? round2(logistics / netQty) : null,
       penalties: round2(penalties),
