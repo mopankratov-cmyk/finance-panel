@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Account, Payment } from "../../lib/types";
-import { ddsReconciliationAccountRows } from "./ddsReconciliationAccounts";
+import { bankStatementSourceAccounts, ddsReconciliationAccountRows } from "./ddsReconciliationAccounts";
 
 const accounts: Account[] = [
   { id: "calendar", name: "PANKSTER GROUP", type: "cash", currency: "RUB", balance: 53_863 },
@@ -22,5 +22,9 @@ test("сверка показывает только кошельки с фак�
   ], "2026-09-30");
   assert.deepEqual(rows.map((row) => row.account.name), ["Озон банк", "Наличка"]);
   assert.deepEqual(rows.map((row) => row.balance), [1_100, 450]);
+});
+
+test("при разборе выписки источником можно выбрать только банковский счёт", () => {
+  assert.deepEqual(bankStatementSourceAccounts(accounts).map((account) => account.name), ["Озон банк"]);
 });
 

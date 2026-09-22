@@ -37,6 +37,7 @@ import { suggestLoanSplits } from "./loanReviewSuggestion";
 import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
 import { loadFinanceState } from "@/lib/db";
 import { companyAliasKeys } from "@/lib/finance/companyAliases";
+import { bankStatementSourceAccounts } from "./ddsReconciliationAccounts";
 
 // Статьи — из единого справочника (раньше свой список дублировал «Получение кредитов и займов»).
 
@@ -98,6 +99,9 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
   const counterparties = useMemo(() => [...new Set([...state.payments.map(p => p.counterparty), ...items.map(item => item.counterparty)].map(name => name.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,"ru")), [state.payments, items]);
   const companyById = useMemo(() => new Map(companies.map((company) => [company.id, company.name])), [companies]);
   const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account.name])), [accounts]);
+  const bankAccounts = useMemo(() => bankStatementSourceAccounts(accounts), [accounts]);
+  const bankAccountIds = useMemo(() => new Set(bankAccounts.map((account) => account.id)), [bankAccounts]);
+  const hasBankAccount = (accountId: string | null) => Boolean(accountId && bankAccountIds.has(accountId));
 
   const refresh = async () => {
     setLoading(true);
@@ -154,12 +158,12 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
   const itemIsReady = (item: BankReviewItem) => {
     if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id))return false;
     const splits = decodeBankSplits(item.managerAnswer);
-    if (splits) return !splits.some(split => !split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) && splitsAreReady(item, splits);
+    if (splits) return hasBankAccount(item.accountId) && !splits.some(split => !split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) && splitsAreReady(item, splits);
     const sourceCompany = companies.find((company) => company.id === item.companyId);
     const mustBeIntercompanyLoan = item.amount < 0
       && isRioCompany(sourceCompany)
       && Boolean(mentionedCompanyId(item, companies));
-    return !mustBeIntercompanyLoan && Boolean(item.companyId && item.accountId && item.category
+    return !mustBeIntercompanyLoan && Boolean(item.companyId && hasBankAccount(item.accountId) && item.category
       && categoryMatchesDirection(item.category, item.amount)
       && (!requiresCounterparty(item.category) || item.counterparty.trim()));
   };
@@ -303,7 +307,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
         await Promise.all(matched.map(async (instruction) => {
           const item = items.find((candidate) => candidate.id === instruction.itemId)!;
           const managerAnswer = encodeBankSplits(instruction.splits);
-          const status = item.accountId && splitsAreReady(item, instruction.splits) ? "ready" : "needs_info";
+          const status = hasBankAccount(item.accountId) && splitsAreReady(item, instruction.splits) ? "ready" : "needs_info";
           await updateBankReviewItem(item.id, { managerAnswer, status });
         }));
         await refresh();
@@ -323,13 +327,13 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
   };
 
   const saveSplits = async (item: BankReviewItem, splits: BankInstructionSplit[]) => {
-    const status = item.accountId && splitsAreReady(item, splits) ? "ready" : "needs_info";
+    const status = hasBankAccount(item.accountId) && splitsAreReady(item, splits) ? "ready" : "needs_info";
     await updateLocal(item.id, { managerAnswer: encodeBankSplits(splits), status });
   };
 
   const saveAndApproveSplits = async (item: BankReviewItem, splits: BankInstructionSplit[]) => {
     if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id) || splits.some(split=>!split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))) {setChainReviewId(item.id);return;}
-    if (!splitsAreReady(item, splits)) return;
+    if (!hasBankAccount(item.accountId) || !splitsAreReady(item, splits)) return;
     const prepared = { ...item, managerAnswer: encodeBankSplits(splits), status: "ready" as const };
     try {
       await updateBankReviewItem(item.id, { managerAnswer: prepared.managerAnswer, status: prepared.status });
@@ -401,18 +405,18 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                   <select value={item.companyId ?? ""} onChange={(e) => void updateLocal(item.id, { companyId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
                     <option value="">Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                   </select>
-                  <select value={item.accountId ?? ""} onChange={(e) => void updateLocal(item.id, { accountId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
-                    <option value="">Кошелёк не определён</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                  <select value={hasBankAccount(item.accountId) ? item.accountId! : ""} onChange={(e) => void updateLocal(item.id, { accountId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
+                    <option value="">Банковский счёт не определён</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
                   </select>
                   <select value={item.category ?? ""} onChange={(e) => {
                     const category = e.target.value || null;
-                    const valid = category && item.companyId && item.accountId && categoryMatchesDirection(category, item.amount) && (!requiresCounterparty(category) || Boolean(item.counterparty.trim()));
+                    const valid = category && item.companyId && hasBankAccount(item.accountId) && categoryMatchesDirection(category, item.amount) && (!requiresCounterparty(category) || Boolean(item.counterparty.trim()));
                     void updateLocal(item.id, { category, status: valid ? "ready" : "needs_info" });
                   }} className={`min-h-11 rounded-lg border px-2 ${item.category && !categoryMatchesDirection(item.category, item.amount) ? "border-red-400 bg-red-50" : "border-slate-300"}`}>
                     <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                   </select>
                   <CounterpartySelect ariaLabel={`Контрагент операции от ${item.date} на ${formatMoney(item.amount)}`} value={item.counterparty} options={counterparties} disabled={saving} onChange={counterparty => {
-                    const valid = item.category && item.companyId && item.accountId && categoryMatchesDirection(item.category,item.amount) && (!requiresCounterparty(item.category) || Boolean(counterparty.trim()));
+                    const valid = item.category && item.companyId && hasBankAccount(item.accountId) && categoryMatchesDirection(item.category,item.amount) && (!requiresCounterparty(item.category) || Boolean(counterparty.trim()));
                     void updateLocal(item.id, {counterparty, status: valid ? "ready" : "needs_info"});
                   }}/>
                 </div>

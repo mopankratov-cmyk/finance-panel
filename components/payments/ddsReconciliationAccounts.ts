@@ -2,6 +2,11 @@ import { accountBalance } from "@/lib/finance/balance";
 import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
 import type { Account, Payment } from "@/lib/types";
 
+/** Счёт-источник строки банковской выписки всегда должен быть банковским. */
+export function bankStatementSourceAccounts(accounts: readonly Account[]) {
+  return accounts.filter((account) => account.type === "bank");
+}
+
 /**
  * Строки блока «Кошельки в ДДС». Календарные и технические кошельки без
  * фактов ДДС сюда не попадают; остаток считается тем же способом, что и на
