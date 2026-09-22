@@ -48,6 +48,32 @@ export class WbReportDeadlineError extends Error {
 const REPORT_URL = "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed";
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
+interface ErrorCauseLike {
+  message?: unknown;
+  code?: unknown;
+}
+
+/**
+ * Native fetch reports every transport failure as the unhelpful `fetch failed`.
+ * Preserve the underlying undici/Node cause so wb_sync_state explains whether
+ * WB timed out, reset the connection or failed for another network reason.
+ */
+export function describeWbReportFetchError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error || "Ошибка сети WB");
+  const outer = error.message.trim() || "Ошибка сети WB";
+  const cause = error.cause && typeof error.cause === "object"
+    ? error.cause as ErrorCauseLike
+    : null;
+  const causeMessage = typeof cause?.message === "string" ? cause.message.trim() : "";
+  const causeCode = typeof cause?.code === "string" ? cause.code.trim() : "";
+  if (!causeMessage && !causeCode) return outer;
+
+  const details = [causeMessage && causeMessage !== outer ? causeMessage : "", causeCode]
+    .filter(Boolean)
+    .join(" · ");
+  return details ? `${outer}: ${details}` : outer;
+}
+
 // Новый Finance API использует camelCase и строковые денежные поля. Остальной
 // финансовый контур пока читает прежние snake_case-имена, поэтому нормализуем
 // ответ на границе интеграции и одновременно сохраняем исходные поля.
@@ -153,7 +179,7 @@ async function requestReportPage<Row>(
       await sleep(waitMs);
     } catch (error) {
       if (error instanceof WbReportDeadlineError) throw error;
-      lastError = error instanceof Error ? error.message : "Ошибка сети WB";
+      lastError = describeWbReportFetchError(error);
       if (attempt === maxRetries) break;
       const waitMs = retryBaseMs * 2 ** attempt;
       if (options.deadlineMs && now() + waitMs + 5_000 >= options.deadlineMs) {
