@@ -4,6 +4,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { DEFAULT_STATE } from "@/lib/constants";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Account, FinanceAction, FinanceState, Loan, Payment } from "@/lib/types";
+import { applyBankLedgerReadModel, type BankAllocationReadRow } from "@/lib/finance/bankLedgerReadModel";
 
 type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 type AccountRow = { id: string; name: string; type: string; currency: string; balance: number; opening_balance?: number | null; opening_date?: string | null; created_at?: string };
@@ -115,10 +116,11 @@ async function seed(db: Db) {
 
 export async function loadFinanceStateServer(): Promise<FinanceState> {
   const db = requireDb();
-  const [accountsResult, paymentsResult, loansResult] = await Promise.all([
+  const [accountsResult, paymentsResult, loansResult, bankAllocations] = await Promise.all([
     db.from("accounts").select("*").order("created_at"),
     loadAllSupabasePages<PaymentRow>((from,to) => db.from("payments").select("*").order("date", { ascending: false }).order("id").range(from,to), {label: "Платежи и история цепочек ДДС"}).then(data => ({data,error:null})),
     db.from("loans").select("*").order("created_at"),
+    loadBankAllocationReadModel(db),
   ]);
   if (accountsResult.error) throw accountsResult.error;
   if (paymentsResult.error) throw paymentsResult.error;
@@ -134,7 +136,7 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
       openingBalance: row.opening_balance == null ? Number(row.balance) : Number(row.opening_balance),
       openingDate: row.opening_date ? String(row.opening_date).slice(0, 10) : null,
     })),
-    payments: ((paymentsResult.data ?? []) as PaymentRow[]).map((row) => ({
+    payments: applyBankLedgerReadModel(((paymentsResult.data ?? []) as PaymentRow[]).map((row) => ({
       id: row.id,
       name: row.name,
       amount: Number(row.amount),
@@ -146,7 +148,7 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
       counterparty: row.counterparty ?? "",
       comment: row.comment ?? undefined,
       importSource: row.import_source ?? null,
-    })),
+    })), bankAllocations),
     loans: ((loansResult.data ?? []) as LoanRow[]).map((row) => ({
       id: row.id,
       creditorName: row.creditor,
@@ -173,6 +175,26 @@ export async function loadFinanceStateServer(): Promise<FinanceState> {
     return loadFinanceStateServer();
   }
   return state;
+}
+
+async function loadBankAllocationReadModel(db: Db): Promise<BankAllocationReadRow[]> {
+  try {
+    return await loadAllSupabasePages<BankAllocationReadRow>((from, to) => db
+      .from("finance_bank_allocations")
+      .select("payment_id,amount,operation_date,category,account_id,company_id,counterparty,status")
+      .order("operation_date", { ascending: false })
+      .order("payment_id", { ascending: true })
+      .range(from, to), { label: "Канонические банковские проводки", maxPages: 60 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Переходный резерв для локальных/preview-окружений, где владелец ещё не
+    // применил миграцию. Любая другая ошибка должна быть видимой, иначе экран
+    // незаметно вернётся к старому источнику при реальной поломке базы.
+    if (/finance_bank_allocations.*(?:does not exist|schema cache)|could not find.*finance_bank_allocations/i.test(message)) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function persistFinanceActionServer(
