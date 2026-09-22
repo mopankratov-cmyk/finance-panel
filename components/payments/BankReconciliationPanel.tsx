@@ -4,19 +4,24 @@ import { useEffect, useState } from "react";
 import { Bot, CheckCircle2, Eye, FileSpreadsheet, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { formatMoney } from "@/lib/format";
-import type { Account } from "@/lib/types";
+import { todayISO } from "@/lib/format";
+import type { Account, Payment } from "@/lib/types";
 import { loadBankLedgerControl, type BankLedgerControl } from "./bankReviewStore";
+import { ddsReconciliationAccountRows } from "./ddsReconciliationAccounts";
 
 export function BankReconciliationPanel({
   accounts,
+  payments,
   onImportStatement,
   onOpenReview,
 }: {
   accounts: Account[];
+  payments: Payment[];
   onImportStatement: () => void;
   onOpenReview: () => void;
 }) {
   const [ledgerControl, setLedgerControl] = useState<BankLedgerControl | null>(null);
+  const walletRows = ddsReconciliationAccountRows(accounts, payments, todayISO());
   useEffect(() => {
     let active = true;
     loadBankLedgerControl().then((control) => { if (active) setLedgerControl(control); }).catch(() => undefined);
@@ -72,12 +77,13 @@ export function BankReconciliationPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {accounts.map((account) => (
+              {walletRows.map(({ account, balance }) => (
                 <tr key={account.id} className="hover:bg-slate-50/70">
                   <td className="px-5 py-3 font-medium text-slate-900">{account.name}</td>
-                  <td className="px-5 py-3 text-right tabular-nums text-slate-700">{formatMoney(account.balance)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums text-slate-700">{formatMoney(balance)}</td>
                 </tr>
               ))}
+              {!walletRows.length && <tr><td colSpan={2} className="px-5 py-8 text-center text-sm text-slate-500">Кошельки появятся после загрузки выписки или первой операции наличными.</td></tr>}
             </tbody>
           </table>
         </div>

@@ -461,7 +461,7 @@ export function PaymentsPage() {
         <BankReviewPanel accounts={state.accounts} companies={companies} />
       </TabPanel>
       <TabPanel {...panel("reconciliation")}>
-        <BankReconciliationPanel accounts={state.accounts} onImportStatement={() => setBankImportOpen(true)} onOpenReview={() => setMode("review")} />
+        <BankReconciliationPanel accounts={state.accounts} payments={ddsPayments} onImportStatement={() => setBankImportOpen(true)} onOpenReview={() => setMode("review")} />
       </TabPanel>
 
       {mode === "chains" && <PaymentChainList onOpen={setChainSeed} version={chainVersion}/>}
