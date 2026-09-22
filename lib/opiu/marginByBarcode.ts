@@ -29,9 +29,15 @@ export interface MarginRow {
   nmId: number;
   article: string;
   barcode: string;
+  /** Заказы за период (шт/руб) — из wb_orders, на уровне nm_id (баркода в заказах нет). */
+  ordersQty: number;
+  ordersRub: number;
+  /** Отказы (отменённые заказы), шт — из wb_orders.is_cancel, на уровне nm_id. */
+  cancelQty: number;
   salesQty: number;
   returnsQty: number;
   netQty: number;
+  /** Итого продаж / Заказы, % — как в гугл-таблице (не Продажи / (Продажи + Возвраты)). */
   buyoutPct: number | null;
   salesRub: number;
   returnsRub: number;
@@ -39,6 +45,7 @@ export interface MarginRow {
   revenueAfterSpp: number;
   forPay: number;
   commission: number;
+  commissionPct: number | null;
   logistics: number;
   logisticsPerUnit: number | null;
   penalties: number;
@@ -81,10 +88,17 @@ export interface MarginByBarcodeResult {
   unattributedRows: number;
 }
 
+export interface OrdersSummary {
+  ordersQty: number;
+  ordersRub: number;
+  cancelQty: number;
+}
+
 export function buildMarginByBarcode(
   rows: WbReportRow[],
   costs: ProductCostRow[],
   adSpendByNmId: Map<number, number>,
+  ordersByNmId: Map<number, OrdersSummary> = new Map(),
   taxPct = 6,
 ): MarginByBarcodeResult {
   const lookup = buildCostLookup(costs);
@@ -110,6 +124,10 @@ export function buildMarginByBarcode(
 
   const result: MarginRow[] = [];
   const adSpendUsedForNmId = new Set<number>();
+  // Заказы/Отказы приходят на уровне nm_id (в wb_orders нет баркода) — как и
+  // с рекламой, если у nm_id несколько баркодов, сумма приписывается только
+  // первой встреченной группе, иначе она задвоилась бы по числу баркодов.
+  const ordersUsedForNmId = new Set<number>();
 
   for (const [key, group] of byBarcode) {
     const first = group[0]!;
@@ -171,20 +189,28 @@ export function buildMarginByBarcode(
     const adSpend = adSpendUsedForNmId.has(nmId) ? 0 : (adSpendByNmId.get(nmId) ?? 0);
     adSpendUsedForNmId.add(nmId);
 
+    const orders = ordersUsedForNmId.has(nmId) ? undefined : ordersByNmId.get(nmId);
+    ordersUsedForNmId.add(nmId);
+    const ordersQty = orders?.ordersQty ?? 0;
+
     result.push({
       nmId,
       article,
       barcode,
+      ordersQty,
+      ordersRub: round2(orders?.ordersRub ?? 0),
+      cancelQty: orders?.cancelQty ?? 0,
       salesQty,
       returnsQty,
       netQty,
-      buyoutPct: salesQty + returnsQty > 0 ? round2((salesQty / (salesQty + returnsQty)) * 100) : null,
+      buyoutPct: ordersQty > 0 ? round2((netQty / ordersQty) * 100) : null,
       salesRub: round2(salesRub),
       returnsRub: round2(returnsRub),
       revenueWithoutSpp: round2(revenueWithoutSpp),
       revenueAfterSpp: round2(revenueAfterSpp),
       forPay: round2(forPay),
       commission: round2(commission),
+      commissionPct: revenueWithoutSpp > 0 ? round2((commission / revenueWithoutSpp) * 100) : null,
       logistics: round2(logistics),
       logisticsPerUnit: netQty > 0 ? round2(logistics / netQty) : null,
       penalties: round2(penalties),

@@ -119,7 +119,7 @@ export function commissionResidualRub(row: WbReportRow): number {
   return type === "sale" ? signed : -signed;
 }
 
-function orderRub(row: OpiuOrder): number {
+export function orderRub(row: OpiuOrder): number {
   if (row.totalPriceDiscount !== undefined) {
     return Math.abs(num(row.totalPriceDiscount));
   }

@@ -31,14 +31,20 @@ const money = (value: number) => `${formatNumber(Math.round(value))} ₽`;
 const pct = (value: number | null) => (value == null ? "—" : `${value.toFixed(1)}%`);
 
 const COLUMNS: { key: keyof MarginRow; label: string; fmt: (row: MarginRow) => string }[] = [
+  { key: "ordersQty", label: "Заказы, шт", fmt: (r) => formatNumber(r.ordersQty) },
+  { key: "ordersRub", label: "Заказы, руб", fmt: (r) => money(r.ordersRub) },
   { key: "salesQty", label: "Продажи, шт", fmt: (r) => formatNumber(r.salesQty) },
   { key: "returnsQty", label: "Возвраты, шт", fmt: (r) => formatNumber(r.returnsQty) },
+  { key: "cancelQty", label: "Отказы, шт", fmt: (r) => formatNumber(r.cancelQty) },
   { key: "netQty", label: "Итого продаж", fmt: (r) => formatNumber(r.netQty) },
   { key: "buyoutPct", label: "% выкупа", fmt: (r) => pct(r.buyoutPct) },
+  { key: "salesRub", label: "Продажи, руб", fmt: (r) => money(r.salesRub) },
+  { key: "returnsRub", label: "Возвраты, руб", fmt: (r) => money(r.returnsRub) },
   { key: "revenueWithoutSpp", label: "Выручка без СПП", fmt: (r) => money(r.revenueWithoutSpp) },
   { key: "revenueAfterSpp", label: "Выручка после СПП", fmt: (r) => money(r.revenueAfterSpp) },
   { key: "forPay", label: "К перечислению продавцу", fmt: (r) => money(r.forPay) },
   { key: "commission", label: "Комиссия, руб", fmt: (r) => money(r.commission) },
+  { key: "commissionPct", label: "Комиссия, %", fmt: (r) => pct(r.commissionPct) },
   { key: "logistics", label: "Логистика, руб", fmt: (r) => money(r.logistics) },
   { key: "penalties", label: "Штрафы, руб", fmt: (r) => money(r.penalties) },
   { key: "additionalPayments", label: "Доплаты, руб", fmt: (r) => money(r.additionalPayments) },
@@ -160,6 +166,7 @@ export function MarginByArticlePage() {
             <p className="mb-3 text-xs text-gray-400">
               Строк отчёта: {data.meta.reportRows} · SKU: {data.meta.skuCount} · себестоимостей в базе: {data.meta.costsKnown}
               {" · "}Налог — 6% с выручки после СПП (как в таблице) · «Реклама» — справочно, не вычтена из прибыли
+              {" · "}% выкупа = Итого продаж / Заказы · Заказы/Отказы — из ленты заказов WB, на уровне артикула WB (без баркода)
               {data.meta.unattributedRows > 0 && (
                 <> · <span className="text-amber-600">не привязано ни к товару, ни к nm_id: {data.meta.unattributedRows} строк отчёта</span></>
               )}
@@ -177,15 +184,23 @@ export function MarginByArticlePage() {
                 <tbody>
                   <tr className="border-b border-gray-200 bg-violet-50 font-semibold">
                     <td className="sticky left-0 z-10 bg-violet-50 px-3 py-2">Итого</td>
-                    {COLUMNS.map((col) => (
-                      <td key={col.key} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                        {typeof totals?.[col.key] === "number"
-                          ? col.key.toString().toLowerCase().includes("pct")
+                    {COLUMNS.map((col) => {
+                      const key = col.key.toString().toLowerCase();
+                      const value = totals?.[col.key];
+                      const display =
+                        typeof value !== "number"
+                          ? "—"
+                          : key.includes("pct")
                             ? "—"
-                            : money(totals[col.key])
-                          : "—"}
-                      </td>
-                    ))}
+                            : key.includes("qty")
+                              ? formatNumber(value)
+                              : money(value);
+                      return (
+                        <td key={col.key} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                          {display}
+                        </td>
+                      );
+                    })}
                   </tr>
                   {data.rows.map((row) => (
                     <tr key={row.barcode || `nm-${row.nmId}`} className="group border-b border-gray-100 last:border-0 hover:bg-gray-50">
