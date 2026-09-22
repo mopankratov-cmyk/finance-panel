@@ -138,6 +138,10 @@ async function syncOpiu(
   const sectionRows = rows.flatMap((row, index) => sectionLabels.has(String(row[0] ?? "")) ? [index] : []);
   const subtotalRows = rows.flatMap((row, index) => subtotalLabels.has(String(row[0] ?? "")) ? [index] : []);
   const totalRows = rows.flatMap((row, index) => totalLabels.has(String(row[0] ?? "")) ? [index] : []);
+  const emphasizedRows = new Set([...sectionRows, ...subtotalRows, ...totalRows]);
+  const bandedRows = rows.flatMap((_row, index) =>
+    index >= 6 && (index - 6) % 2 === 1 && !emphasizedRows.has(index) ? [index] : [],
+  );
   const percentRows = rows.flatMap((row, index) => {
     const label = String(row[0] ?? "");
     return label.startsWith("%") || /Рентабельность|ДРР/.test(label) ? [index] : [];
@@ -154,8 +158,8 @@ async function syncOpiu(
   requests.push(
     {
       updateSheetProperties: {
-        properties: { sheetId: sheet.sheetId, gridProperties: { frozenRowCount: 6, frozenColumnCount: 1 } },
-        fields: "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+        properties: { sheetId: sheet.sheetId, gridProperties: { frozenRowCount: 6, frozenColumnCount: 1, hideGridlines: true } },
+        fields: "gridProperties.frozenRowCount,gridProperties.frozenColumnCount,gridProperties.hideGridlines",
       },
     },
     {
@@ -182,8 +186,15 @@ async function syncOpiu(
     {
       repeatCell: {
         range: { sheetId: sheet.sheetId, startRowIndex: 5, endRowIndex: 6, startColumnIndex: 0, endColumnIndex: width },
-        cell: { userEnteredFormat: { backgroundColor: rgb(0.937, 0.937, 0.937), textFormat: { bold: true }, horizontalAlignment: "CENTER", borders: { bottom: { style: "SOLID", color: rgb(0.75, 0.75, 0.75) } } } },
+        cell: { userEnteredFormat: { backgroundColor: rgb(0.263, 0.263, 0.263), textFormat: { bold: true, foregroundColor: rgb(1, 0.851, 0.4) }, horizontalAlignment: "RIGHT", borders: { bottom: { style: "SOLID", color: rgb(0.75, 0.75, 0.75) } } } },
         fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,borders)",
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId: sheet.sheetId, startRowIndex: 5, endRowIndex: 6, startColumnIndex: 0, endColumnIndex: 1 },
+        cell: { userEnteredFormat: { horizontalAlignment: "LEFT" } },
+        fields: "userEnteredFormat(horizontalAlignment)",
       },
     },
     {
@@ -206,6 +217,13 @@ async function syncOpiu(
       },
     },
   );
+  for (const rowIndex of bandedRows) requests.push({
+    repeatCell: {
+      range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 0, endColumnIndex: width },
+      cell: { userEnteredFormat: { backgroundColor: rgb(0.973, 0.98, 0.988) } },
+      fields: "userEnteredFormat.backgroundColor",
+    },
+  });
   for (const rowIndex of sectionRows) requests.push({
     repeatCell: {
       range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 0, endColumnIndex: width },
@@ -223,7 +241,7 @@ async function syncOpiu(
   for (const rowIndex of totalRows) requests.push({
     repeatCell: {
       range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 0, endColumnIndex: width },
-      cell: { userEnteredFormat: { backgroundColor: rgb(0.878, 0.4, 0.4), textFormat: { bold: true, foregroundColor: rgb(1, 1, 1) } } },
+      cell: { userEnteredFormat: { backgroundColor: rgb(0.996, 0.886, 0.886), textFormat: { bold: true, foregroundColor: rgb(0.059, 0.09, 0.165) } } },
       fields: "userEnteredFormat(backgroundColor,textFormat)",
     },
   });
