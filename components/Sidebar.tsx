@@ -137,6 +137,8 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
       { href: "/pnl/balance", label: "Баланс", icon: Scale },
       { href: "/opiu", label: "Финансовый отчёт WB", icon: Table2 },
       { href: "/opiu/margin", label: "Маржа по артикулам", icon: PieChart },
+      { href: "/opiu/ozon", label: "Финансовый отчёт Ozon", icon: Table2 },
+      { href: "/opiu/ozon/margin", label: "Маржа по артикулам Ozon", icon: PieChart },
     ],
   },
   {
