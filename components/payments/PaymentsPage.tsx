@@ -48,7 +48,7 @@ import { COMPANY_TAX_RATE_UNAVAILABLE, COMPANY_TAX_UNAVAILABLE } from "@/lib/fin
 import { ddsEditableAccounts, isDdsActualPayment, manualDdsCashAccounts } from "@/lib/finance/bankDdsPayment";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
-import { shouldOpenCompanySettings } from "./paymentDeepLink";
+import { paymentIdFromSearch, shouldOpenCompanySettings } from "./paymentDeepLink";
 
 const WITHOUT_CATEGORY_FILTER = "__without_category__";
 
@@ -75,6 +75,7 @@ export function PaymentsPage() {
   const [companies, setCompanies] = useState<DdsCompany[]>([]);
   const [companyByPayment, setCompanyByPayment] = useState<Map<string, string | null>>(new Map());
   const [companyError, setCompanyError] = useState<string | null>(null);
+  const [highlightedPaymentId, setHighlightedPaymentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (shouldOpenCompanySettings(window.location.search)) setCompaniesOpen(true);
@@ -130,6 +131,22 @@ export function PaymentsPage() {
     () => paymentsWithCompany.filter(isDdsActualPayment),
     [paymentsWithCompany],
   );
+
+  useEffect(() => {
+    const paymentId = paymentIdFromSearch(window.location.search);
+    if (!paymentId) return;
+    const payment = ddsPayments.find((item) => item.id === paymentId);
+    if (!payment) return;
+    setMode("ledger");
+    setDateFrom(payment.date);
+    setDateTo(payment.date);
+    setFilterCategory("");
+    setFilterAccount("");
+    setFilterCompany("");
+    setHighlightedPaymentId(paymentId);
+    const timer = window.setTimeout(() => document.getElementById(`payment-${paymentId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 0);
+    return () => window.clearTimeout(timer);
+  }, [ddsPayments]);
   const ddsAccountIds = useMemo(() => new Set(ddsPayments.map((payment) => payment.accountId)), [ddsPayments]);
   const ddsAccounts = useMemo(() => state.accounts.filter((account) => ddsAccountIds.has(account.id)), [state.accounts, ddsAccountIds]);
   const manualCashAccounts = useMemo(
@@ -514,7 +531,7 @@ export function PaymentsPage() {
       <TransferBalancePanel payments={ddsPayments} accounts={ddsAccounts} onEdit={openEdit}/>
       <BankTransfersPanel/>
       <Card>
-        <PaymentOperationsTable visible={filtered} all={ddsPayments} accounts={ddsAccounts} companies={companies} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed}/>
+        <PaymentOperationsTable visible={filtered} all={ddsPayments} accounts={ddsAccounts} companies={companies} highlightedPaymentId={highlightedPaymentId} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed}/>
       </Card>
         </>
       )}

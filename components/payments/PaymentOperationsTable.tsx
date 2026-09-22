@@ -9,8 +9,9 @@ import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "./ddsCompanies";
 import type { PaymentChainSeed } from "./PaymentChainModal";
 
-export function PaymentOperationsTable({ visible, all, accounts, companies, onEdit, onDelete, onOpen }: {
+export function PaymentOperationsTable({ visible, all, accounts, companies, highlightedPaymentId, onEdit, onDelete, onOpen }: {
   visible: Payment[]; all: Payment[]; accounts: Account[]; companies: DdsCompany[];
+  highlightedPaymentId?: string | null;
   onEdit: (payment: Payment) => void; onDelete: (id: string) => void; onOpen: (seed: PaymentChainSeed) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -58,7 +59,7 @@ export function PaymentOperationsTable({ visible, all, accounts, companies, onEd
           const p = group.source;
           const open = expanded.has(group.key);
           return <Fragment key={group.key}>
-            <tr className={group.chainId ? "bg-violet-50/30" : "hover:bg-slate-50/50"}>
+            <tr id={`payment-${p.id}`} className={p.id === highlightedPaymentId ? "bg-emerald-100/70 ring-2 ring-inset ring-emerald-400" : group.chainId ? "bg-violet-50/30" : "hover:bg-slate-50/50"}>
               <td data-label="Дата" className="whitespace-nowrap px-3 py-3 text-slate-600">{formatDate(p.date)}</td>
               <td data-label="Сумма" className={`whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums ${p.amount < 0 ? "text-red-600" : "text-emerald-600"}`}>{formatMoney(p.amount)}</td>
               <td data-label="Кошелёк" className="px-3 py-3 text-slate-600" title={accountName(p.accountId)}><span className="lg:line-clamp-2">{accountName(p.accountId)}</span></td>
