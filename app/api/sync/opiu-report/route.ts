@@ -63,19 +63,26 @@ export async function GET(request: NextRequest) {
 
   if (!cabinetId) return NextResponse.json({ error: "Нет кабинетов для синхронизации" }, { status: 503 });
 
-  let result: Record<string, unknown>;
   try {
-    result = { cabinetId, ...(await syncOpiuReportPeriod(period, cabinetId)) };
+    const result = { cabinetId, ...(await syncOpiuReportPeriod(period, cabinetId)) };
+    return NextResponse.json({
+      period,
+      results: [result],
+      deferredCabinetIds: uniqueCabinetIds.filter((id) => id !== cabinetId),
+    });
   } catch (error) {
-    result = {
+    const result = {
       cabinetId,
       error: error instanceof Error ? error.message : "Не удалось обновить финансовый отчёт WB",
     };
+    // Vercel считает cron успешным только по HTTP-статусу. Возвращать 200 с
+    // `error` в JSON опасно: зелёный запуск маскирует неподвижный курсор и
+    // неполный отчёт Оптимы. Тело ответа сохраняем для диагностики, но сам
+    // запуск явно помечаем как сбой внешнего источника.
+    return NextResponse.json({
+      period,
+      results: [result],
+      deferredCabinetIds: uniqueCabinetIds.filter((id) => id !== cabinetId),
+    }, { status: 502 });
   }
-
-  return NextResponse.json({
-    period,
-    results: [result],
-    deferredCabinetIds: uniqueCabinetIds.filter((id) => id !== cabinetId),
-  });
 }
