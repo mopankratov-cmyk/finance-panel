@@ -40,11 +40,12 @@ export function withCalendarFactLink(payment: Payment, factId: string): Payment 
 export function findPlanFactMatches(
   payments: Payment[],
   companyByPayment: Map<string, string | null> = new Map(),
+  scheduleRows: readonly { paidByPaymentId?: string | null }[] = [],
 ): PlanFactMatchingResult {
   const planned = payments.filter((payment) => (payment.status === "planned" && isCalendarCashFlow(payment)) || Boolean(linkedFactId(payment)));
   const facts = payments.filter((payment) => payment.status === "done" && isCalendarCashFlow(payment));
   // Факт, уже закрывший строку графика кредита или другой план, второй раз не предлагается.
-  const consumed = consumedFactIds(payments);
+  const consumed = consumedFactIds(payments, undefined, scheduleRows);
   const usedFacts = new Set<string>();
   const matched: PlanFactMatch[] = [];
   const review: PlanFactMatch[] = [];

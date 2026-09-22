@@ -21,6 +21,7 @@ import { WeekSummaryCell } from "./WeekSummaryCell";
 import { chronologicalPaymentOrder, displayPaymentComment, getPaymentPriority, PRIORITY_META, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
 import { loanScheduleKey, overdueLoanInstallmentsForReview, rescheduleLoanInstallment, rescheduleOverdueLoanInstallment, type OverdueLoanInstallment } from "./loanPaymentReschedule";
 import { useDailyLoanCurrencyRefresh } from "@/components/loans/currencyRefresh";
+import { loadLoanScheduleRows } from "@/components/loans/scheduleStore";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { loadDdsCompanies, loadPaymentCompanyLinks, savePaymentWithCompany, updatePaymentCompany, type DdsCompany } from "@/components/payments/ddsCompanies";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
@@ -29,6 +30,7 @@ import {
   type DayInfo,
 } from "@/lib/calculations";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
+import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import type { Account, Payment } from "@/lib/types";
 
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -104,6 +106,8 @@ export function CalendarPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFlow, setBulkFlow] = useState<"expense" | "income">("expense");
   const [calendarLayout, setCalendarLayout] = useState<"agenda" | "grid">("grid");
+  const [loanScheduleRows, setLoanScheduleRows] = useState<ScheduleRowRecord[] | null>(null);
+  const [scheduleLinksError, setScheduleLinksError] = useState("");
 
   // Сетка месяца на телефоне даёт колонку в 34px: в неё не помещается ни
   // сумма, ни число операций — ячейка превращается в вертикальную полоску с
@@ -152,6 +156,20 @@ export function CalendarPage() {
       setCompanies(loadedCompanies);
       setCompanyByPayment(new Map(links.map((link) => [link.paymentId, link.companyId])));
     });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    loadLoanScheduleRows()
+      .then((result) => {
+        if (cancelled) return;
+        if (result.missingTable) throw new Error("не применена структура графиков кредитов");
+        setLoanScheduleRows(result.rows);
+        setScheduleLinksError("");
+      })
+      .catch((error) => {
+        if (!cancelled) setScheduleLinksError(error instanceof Error ? error.message : "не удалось загрузить связи кредитов");
+      });
     return () => { cancelled = true; };
   }, []);
   const companyById = useMemo(() => new Map(companies.map((company) => [company.id, company])), [companies]);
@@ -211,8 +229,10 @@ export function CalendarPage() {
   // Выгрузка в Google Таблицу — только по кнопке. Раньше эффект отправлял весь
   // календарь наружу через 3 секунды после любой правки, без подтверждения.
   const allPlanFactMatching = useMemo(
-    () => findPlanFactMatches(scopedPayments, companyByPayment),
-    [scopedPayments, companyByPayment],
+    () => loanScheduleRows === null
+      ? { matched: [], review: [] }
+      : findPlanFactMatches(scopedPayments, companyByPayment, loanScheduleRows),
+    [scopedPayments, companyByPayment, loanScheduleRows],
   );
   const planFactMatching = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -575,6 +595,11 @@ export function CalendarPage() {
       {factLinkError && (
         <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
           {factLinkError}
+        </div>
+      )}
+      {scheduleLinksError && (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Не удалось проверить платежи, уже привязанные к кредитам: {scheduleLinksError}. Сопоставление плана с фактом временно выключено.
         </div>
       )}
 
