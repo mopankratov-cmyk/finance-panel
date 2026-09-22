@@ -64,6 +64,37 @@ export interface LoanScheduleMonthlyFact {
   companyId?: string | null;
 }
 
+export interface LoanReceiptCompanyFact {
+  companyId: string | null;
+  comment: string | null;
+}
+
+/**
+ * Компания договора хранится на приходе кредита. Это резервный источник для
+ * старых/частично пересохранённых графиков, где у отдельного календарного
+ * платежа company_id мог остаться пустым.
+ *
+ * Если один договор по ошибке связан с разными компаниями, ничего не угадываем:
+ * такой договор должен быть исправлен вручную, а не попасть не в то юрлицо.
+ */
+export function loanCompanyByReceiptPayments(rows: readonly LoanReceiptCompanyFact[]): Map<string, string> {
+  const result = new Map<string, string>();
+  const conflicts = new Set<string>();
+  for (const row of rows) {
+    if (!row.companyId) continue;
+    const loanId = row.comment?.match(/\[loan:([0-9a-f-]{36}):receipt\]/i)?.[1]?.toLowerCase();
+    if (!loanId || conflicts.has(loanId)) continue;
+    const current = result.get(loanId);
+    if (current && current !== row.companyId) {
+      result.delete(loanId);
+      conflicts.add(loanId);
+      continue;
+    }
+    result.set(loanId, row.companyId);
+  }
+  return result;
+}
+
 /**
  * ОПиУ работает по начислению: проценты и комиссии берём из графика за месяц,
  * независимо от того, успел ли платёж перейти из плана в факт. Тело кредита

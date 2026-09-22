@@ -3,6 +3,7 @@ import {
   aggregateDdsMonthlyFacts,
   aggregateLoanScheduleMonthlyFacts,
   aggregatePayrollMonthlyFacts,
+  loanCompanyByReceiptPayments,
   mergeMonthlySharedFacts,
   type DdsFactRow,
   type LoanScheduleMonthlyFact,
@@ -166,7 +167,7 @@ export async function GET(request: NextRequest) {
   try {
     const scheduleRaw = await loadAllSupabasePages<Record<string, unknown>>((pageFrom, pageTo) => db
       .from("loan_schedule_rows")
-      .select("amount_rub,kind,status,calendar_payment_id")
+      .select("loan_id,amount_rub,kind,status,calendar_payment_id")
       .gte("due_date", from)
       .lte("due_date", to)
       .eq("kind", "interest")
@@ -186,12 +187,36 @@ export async function GET(request: NextRequest) {
         if (payment.company_id) companyByPayment.set(String(payment.id), String(payment.company_id));
       }
     }
+    const rowsWithoutPaymentCompany = scheduleRaw.filter((row) =>
+      !companyByPayment.has(String(row.calendar_payment_id ?? "")),
+    );
+    let companyByLoan = new Map<string, string>();
+    if (rowsWithoutPaymentCompany.length) {
+      const receiptPayments = await loadAllSupabasePages<Record<string, unknown>>((pageFrom, pageTo) => db
+        .from("payments")
+        .select("company_id,comment")
+        .not("company_id", "is", null)
+        .like("comment", "%:receipt]%")
+        .order("id", { ascending: true })
+        .range(pageFrom, pageTo), { label: "ОПиУ: компании кредитных договоров", maxPages: 20 });
+      companyByLoan = loanCompanyByReceiptPayments(receiptPayments.map((row) => ({
+        companyId: row.company_id == null ? null : String(row.company_id),
+        comment: row.comment == null ? null : String(row.comment),
+      })));
+    }
     loanRows = scheduleRaw.map((row) => ({
       amount: num(row.amount_rub),
       kind: String(row.kind) as LoanScheduleMonthlyFact["kind"],
       status: String(row.status) as LoanScheduleMonthlyFact["status"],
-      companyId: companyByPayment.get(String(row.calendar_payment_id ?? "")) ?? null,
+      companyId: companyByPayment.get(String(row.calendar_payment_id ?? ""))
+        ?? companyByLoan.get(String(row.loan_id ?? "").toLowerCase())
+        ?? null,
     }));
+    const unassignedInterest = loanRows.filter((row) => !row.companyId);
+    if (unassignedInterest.length) {
+      const total = unassignedInterest.reduce((sum, row) => sum + Math.abs(row.amount), 0);
+      warnings.push(`Кредиты: ${unassignedInterest.length} строк графика на ${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(total)} ₽ без компании не вошли в разрез юрлиц`);
+    }
     loanFacts = aggregateLoanScheduleMonthlyFacts(loanRows, requestedCompanyIds);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить графики кредитов";
