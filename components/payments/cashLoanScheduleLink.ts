@@ -47,6 +47,12 @@ function kindLabel(kinds: readonly ScheduleRowKind[]) {
   return kinds[0] === "principal" ? "тело" : kinds[0] === "interest" ? "проценты" : kinds[0] === "fine" ? "штраф" : "пени / комиссия";
 }
 
+function loanOptionLabel(loan: Loan) {
+  const [year, month, day] = loan.startDate.split("-");
+  const date = year && month && day ? `${day}.${month}.${year}` : loan.startDate;
+  return `${loan.creditorName} · с ${date} · ${loan.principalAmount.toLocaleString("ru-RU")} ₽`;
+}
+
 export function cashLoanScheduleOptions(input: {
   loans: readonly Loan[];
   payments: readonly Payment[];
@@ -73,7 +79,7 @@ export function cashLoanScheduleOptions(input: {
         result.push({
           key: `rows:${loan.id}:${dueDate}:${kinds.join("+")}`,
           loanId: loan.id,
-          loanName: loan.creditorName,
+          loanName: loanOptionLabel(loan),
           companyId,
           dueDate,
           amount,
@@ -99,7 +105,7 @@ export function cashLoanScheduleOptions(input: {
       result.push({
         key: `legacy:${loan.id}:${dueDate}:${kinds.join("+")}`,
         loanId: loan.id,
-        loanName: loan.creditorName,
+        loanName: loanOptionLabel(loan),
         companyId,
         dueDate,
         amount,

@@ -53,3 +53,15 @@ test("для кредита предлагается ближайший плат
   ], "2026-10-10", 10_000);
   assert.equal(selected?.key, "near-exact");
 });
+
+test("одноимённые кредиты различаются датой начала и исходной суммой", () => {
+  const secondLoan = { ...loan, id: "loan-2", startDate: "2026-02-03", principalAmount: 250_000 };
+  const options = cashLoanScheduleOptions({
+    loans: [loan, secondLoan], payments: [], paymentCompanies: new Map(),
+    scheduleRows: [row({ loanId: "loan-1", id: "r1" }), row({ loanId: "loan-2", id: "r2" })],
+    category: "Погашение тела кредита",
+  });
+  assert.equal(new Set(options.map((item) => item.loanName)).size, 2);
+  assert.match(options.find((item) => item.loanId === "loan-1")?.loanName ?? "", /01\.01\.2026.*100\s000 ₽/);
+  assert.match(options.find((item) => item.loanId === "loan-2")?.loanName ?? "", /03\.02\.2026.*250\s000 ₽/);
+});
