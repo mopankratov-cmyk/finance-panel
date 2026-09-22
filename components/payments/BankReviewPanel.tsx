@@ -26,6 +26,7 @@ import {
   splitNetTotal,
   splitAccountId,
   splitsAreReady,
+  walletTransferSplits,
   type BankInstructionSplit,
 } from "./bankInstructionSplits";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -402,20 +403,20 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                   <button onClick={() => openManagerQuestion(item)} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs text-slate-600"><HelpCircle className="h-4 w-4" /> Спросить</button>
                 </div>
                 <div className="grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <select value={item.companyId ?? ""} onChange={(e) => void updateLocal(item.id, { companyId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
+                  <label className="text-xs text-slate-500">Компания<select aria-label="Компания банковской операции" value={item.companyId ?? ""} onChange={(e) => void updateLocal(item.id, { companyId: e.target.value || null })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm text-slate-900">
                     <option value="">Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-                  </select>
-                  <select value={hasBankAccount(item.accountId) ? item.accountId! : ""} onChange={(e) => void updateLocal(item.id, { accountId: e.target.value || null })} className="min-h-11 rounded-lg border border-slate-300 px-2">
+                  </select></label>
+                  <label className="text-xs text-slate-500">Счёт выписки<select aria-label="Банковский счёт выписки" value={hasBankAccount(item.accountId) ? item.accountId! : ""} onChange={(e) => void updateLocal(item.id, { accountId: e.target.value || null })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm text-slate-900">
                     <option value="">Банковский счёт не определён</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
-                  </select>
-                  <select value={item.category ?? ""} onChange={(e) => {
+                  </select></label>
+                  <label className="text-xs text-slate-500">Статья<select aria-label="Статья банковской операции" value={item.category ?? ""} onChange={(e) => {
                     const category = e.target.value || null;
                     const valid = category && item.companyId && hasBankAccount(item.accountId) && categoryMatchesDirection(category, item.amount) && (!requiresCounterparty(category) || Boolean(item.counterparty.trim()));
                     void updateLocal(item.id, { category, status: valid ? "ready" : "needs_info" });
-                  }} className={`min-h-11 rounded-lg border px-2 ${item.category && !categoryMatchesDirection(item.category, item.amount) ? "border-red-400 bg-red-50" : "border-slate-300"}`}>
+                  }} className={`mt-1 min-h-11 w-full rounded-lg border px-2 text-sm text-slate-900 ${item.category && !categoryMatchesDirection(item.category, item.amount) ? "border-red-400 bg-red-50" : "border-slate-300"}`}>
                     <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
-                  </select>
-                  <CounterpartySelect ariaLabel={`Контрагент операции от ${item.date} на ${formatMoney(item.amount)}`} value={item.counterparty} options={counterparties} disabled={saving} onChange={counterparty => {
+                  </select></label>
+                  <CounterpartySelect label="Контрагент" ariaLabel={`Контрагент операции от ${item.date} на ${formatMoney(item.amount)}`} value={item.counterparty} options={counterparties} disabled={saving} onChange={counterparty => {
                     const valid = item.category && item.companyId && hasBankAccount(item.accountId) && categoryMatchesDirection(item.category,item.amount) && (!requiresCounterparty(item.category) || Boolean(counterparty.trim()));
                     void updateLocal(item.id, {counterparty, status: valid ? "ready" : "needs_info"});
                   }}/>
@@ -435,6 +436,9 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                     <div className="space-y-2">
                     {intercompanyLoanSuggested && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-medium text-amber-900">Похоже на займ между компаниями: источник относится к группе РИО, а в ответе указан получатель {companyById.get(destinationCompanyId!)}. Проверьте и оформите две связанные записи ДДС.</p>}
                     <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => updateSplitsLocal(item.id, walletTransferSplits(item))} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800">
+                      Перевод между кошельками
+                    </button>
                     {suggestLoanSplits(item, state.payments) && <button type="button" onClick={() => updateSplitsLocal(item.id, suggestLoanSplits(item, state.payments)!)} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                       Разбить по графику кредита
                     </button>}
@@ -482,9 +486,9 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                           <select value={split.companyId ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, companyId: event.target.value || null } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                           </select>
-                          <select value={splitAccountId(item, split) ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, accountId: event.target.value || null } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
-                            <option value="">Кошелёк не определён</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
-                          </select>
+                          <label className="text-[10px] text-slate-500">{split.countsTowardBank === false ? "Кошелёк перевода" : "Счёт выписки"}<select aria-label={`${split.countsTowardBank === false ? "Кошелёк перевода" : "Счёт выписки"} части ${index + 1}`} value={splitAccountId(item, split) ?? ""} disabled={split.excluded || split.countsTowardBank !== false} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, accountId: event.target.value || null } : part))} className="mt-0.5 min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 text-xs text-slate-900 disabled:opacity-60">
+                            <option value="">{split.countsTowardBank === false ? "Выберите банк, наличные или крипто" : "Счёт выписки не определён"}</option>{(split.countsTowardBank === false ? accounts : bankAccounts).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                          </select></label>
                           <select value={split.category ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, category: event.target.value || null, needsClarification: false, isRemainder: false } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
                             <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                           </select>
