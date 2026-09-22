@@ -9,13 +9,14 @@ import { loadRnpDailySkuRows } from "@/lib/rnp/rpcLoaders";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
 import { funnelPeriodDates, percentRatio, resolveFunnelPeriod } from "@/lib/wb/funnelMetrics";
+import { isWbWarehouse } from "@/lib/wb/realStock";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 interface FunnelRow { nm_id: number; date: string; open_card: number; add_to_cart: number; orders: number; orders_sum: number }
 interface AdRow { nm_id: number; date: string; views: number; clicks: number; spent: number }
-interface StockRow { nm_id: number; quantity: number | null }
+interface StockRow { nm_id: number; warehouse: string | null; quantity: number | null }
 interface ScopeRow { nm_id: number; article: string | null }
 
 /**
@@ -207,7 +208,9 @@ export async function GET(request: NextRequest) {
         timed("stocks", loadAllSupabasePages<StockRow>((from, to) => {
           let query = db
             .from("wb_stocks")
-            .select("nm_id, quantity")
+            // warehouse — остаток считается только по «Склад WB» (lib/wb/realStock.ts):
+            // склады по городам после пожара пусты, их строки в отчёте WB фантом.
+            .select("nm_id, warehouse, quantity")
             .order("nm_id", { ascending: true })
             .range(from, to);
           if (cabinetId) query = query.eq("cabinet_id", cabinetId);
@@ -276,10 +279,12 @@ export async function GET(request: NextRequest) {
   const yest = period.end;
   const selected = new Set(dates.filter((d) => d >= period.start && d <= period.end));
 
-  // Остаток FBO — сумма по складам WB, артикул — из каталога кабинета,
-  // себестоимость и название — из product_costs по артикулу.
+  // Остаток FBO — сумма по «Склад WB» (FBW и FBS): склады по городам после
+  // пожара пусты, их строки в отчёте WB фантом (lib/wb/realStock.ts).
+  // Артикул — из каталога кабинета, себестоимость и название — из product_costs.
   const stockByNm = new Map<number, number>();
   for (const row of stocks) {
+    if (!isWbWarehouse(row.warehouse)) continue;
     const nm = Number(row.nm_id);
     stockByNm.set(nm, (stockByNm.get(nm) ?? 0) + Number(row.quantity ?? 0));
   }

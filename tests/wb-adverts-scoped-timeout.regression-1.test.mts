@@ -56,6 +56,21 @@ test("WB adverts scoped report aggregates only allowlisted SKU", () => {
   ]);
 });
 
+test("WB adverts scoped report counts only «Склад WB» — city warehouses are post-fire phantom", () => {
+  const rows = buildScopedAdvertReportRowsFromFacts({
+    allowedNmIds: [101],
+    products: [{ nm_id: 101, article: "NOR-101" }],
+    costs: [],
+    stocks: [
+      { nm_id: 101, warehouse: "Склад WB РФ", quantity: 5 },
+      { nm_id: 101, warehouse: "Коледино", quantity: 500 },
+      { nm_id: 101, warehouse: "Казань", quantity: 60 },
+    ],
+    orders: [],
+  });
+  assert.equal(rows[0].stock, 5, "остаток на «Склад WB», а не сумма фантомных городских складов");
+});
+
 test("WB adverts month start uses the same 30-day window shape as rnp_report", () => {
   assert.equal(advertMonthStart(new Date("2026-07-15T12:00:00.000Z")), "2026-06-16");
 });
@@ -70,6 +85,7 @@ test("WB adverts scoped report reads funnel orders for the same allowlisted SKU 
   const source = readFileSync(new URL("../lib/adverts/scopedReport.ts", import.meta.url), "utf8");
   assert.match(source, /applyFunnelOrdersOverlay/);
   assert.match(source, /\.select\("nm_id, supplier_article, date, total_price, discount_percent, price_with_disc, is_cancel"\)/);
+  assert.match(source, /\.select\("nm_id, warehouse, quantity"\)/, "остаток без склада строки посчитал бы фантомные города");
   assert.match(source, /\.from\("wb_funnel_daily"\)/);
   assert.match(source, /\.select\("nm_id, date, orders, orders_sum"\)/);
   assert.match(source, /funnelOrders/);

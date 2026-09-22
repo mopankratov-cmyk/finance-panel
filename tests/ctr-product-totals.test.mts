@@ -28,6 +28,23 @@ test("товар без остатка остаётся в списке с ну�
   assert.deepEqual(totals, [{ nm_id: 5, article: "NV-01-35", stock: 0 }]);
 });
 
+test("остаток считается только по «Склад WB» — городские склады после пожара пусты, их строки фантом", () => {
+  const totals = buildCtrProductTotals(
+    [{ nm_id: 1, article: "HT-83-11" }],
+    [
+      { nm_id: 1, warehouse: "Склад WB РФ", quantity: 5 },
+      { nm_id: 1, warehouse: "Коледино", quantity: 500 },
+      { nm_id: 1, warehouse: "Казань", quantity: 60 },
+    ],
+  );
+  assert.equal(totals[0].stock, 5);
+});
+
+test("строка без поля warehouse считается целиком — обратная совместимость", () => {
+  const totals = buildCtrProductTotals([{ nm_id: 1, article: "HT-83-11" }], [{ nm_id: 1, quantity: 4 }, { nm_id: 1, quantity: 7 }]);
+  assert.equal(totals[0].stock, 11);
+});
+
 test("остаток без карточки не теряется", () => {
   // Карточку могли не синкнуть, а товар лежит на складе и крутится в рекламе.
   // Экран подставит номер вместо артикула — это честнее, чем потерять строку.

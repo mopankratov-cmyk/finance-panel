@@ -122,7 +122,9 @@ export async function loadScopedAdvertReportRows(
       .range(from, to)),
     loadAllPages<ScopedStockSourceRow>((from, to) => db
       .from("wb_stocks")
-      .select("nm_id, quantity")
+      // warehouse — остаток считается только по «Склад WB» (lib/wb/realStock.ts):
+      // склады по городам после пожара пусты, их строки в отчёте WB фантом.
+      .select("nm_id, warehouse, quantity")
       .eq("cabinet_id", cabinetId)
       .in("nm_id", allowedNmIds)
       .order("nm_id", { ascending: true })

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { isWbWarehouse } from "@/lib/wb/realStock";
 
 /**
  * Артикул и остаток по номенклатуре — ровно то, и только то, что нужно таблице
@@ -22,7 +23,10 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
  * Поэтому источник заменён, а не обёрнут: карточки и остатки читаются прямыми
  * выборками по `cabinet_id`. Остаток складывается по строкам склада — так же,
  * как это делает `addStockRow` в общем сборщике РНП: у одной номенклатуры
- * строка на каждый склад, и «остаток» это их сумма.
+ * строка на каждый склад, но в сумму идёт только «Склад WB» (FBW и FBS) —
+ * склады по городам после пожара пусты, их строки в отчёте WB фантом
+ * (lib/wb/realStock.ts). Строка без поля `warehouse` (в тестах, например)
+ * считается целиком — тот же контракт, что у `ScopedStockSourceRow`.
  */
 
 export interface CtrCardRow {
@@ -32,6 +36,8 @@ export interface CtrCardRow {
 
 export interface CtrStockRow {
   nm_id: number;
+  /** Не задан — строка считается целиком (см. договор выше). */
+  warehouse?: string | null;
   quantity: number | null;
 }
 
@@ -46,6 +52,7 @@ export function buildCtrProductTotals(cards: CtrCardRow[], stocks: CtrStockRow[]
   for (const row of stocks) {
     const nmId = Number(row.nm_id);
     if (!Number.isFinite(nmId)) continue;
+    if (row.warehouse !== undefined && !isWbWarehouse(row.warehouse)) continue;
     stockByNm.set(nmId, (stockByNm.get(nmId) ?? 0) + Number(row.quantity ?? 0));
   }
 
@@ -97,7 +104,7 @@ export async function loadCtrProductTotals(
     loadAllSupabasePages<CtrStockRow>((from, to) => {
       const query = db
         .from("wb_stocks")
-        .select("nm_id, quantity")
+        .select("nm_id, warehouse, quantity")
         .eq("cabinet_id", cabinetId)
         .order("nm_id", { ascending: true })
         .range(from, to);

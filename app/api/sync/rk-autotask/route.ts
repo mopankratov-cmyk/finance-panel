@@ -4,6 +4,7 @@ import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { moscowYesterday } from "@/lib/wb/rkJournalDates";
 import { isPlannerSuggestion, planDailyRkTask, RK_MAX_CARRY_DAYS, type RkYesterdayTask } from "@/lib/wb/rkDailyTasks";
+import { isWbWarehouse } from "@/lib/wb/realStock";
 
 // Ежедневная простановка задач журнала РК за вчерашний день.
 //
@@ -141,19 +142,24 @@ export async function GET(request: NextRequest) {
     }
 
     // Остатки: рекламировать то, чего нет на складе, советовать нельзя, а
-    // пустой остаток — сам по себе задача «Откл до отгрузки».
-    const stockRows = await loadAllSupabasePages<{ cabinet_id: string; nm_id: number; quantity: number | null }>(
+    // пустой остаток — сам по себе задача «Откл до отгрузки». Реален только
+    // остаток на «Склад WB» (FBW и FBS) — склады по городам после пожара
+    // пусты, их строки в отчёте WB фантом (lib/wb/realStock.ts). Без этого
+    // фильтра товар с нулевым реальным остатком и полным «Коледино» выглядел
+    // бы доступным, и совет держал бы рекламу включённой на пустом товаре.
+    const stockRows = await loadAllSupabasePages<{ cabinet_id: string; nm_id: number; warehouse: string | null; quantity: number | null }>(
       (from, to) => db
         .from("wb_stocks")
-        .select("cabinet_id, nm_id, quantity")
+        .select("cabinet_id, nm_id, warehouse, quantity")
         .in("cabinet_id", cabinets)
         .order("cabinet_id", { ascending: true })
         .order("nm_id", { ascending: true })
         .range(from, to),
       { maxPages: 60, label: "Автозадачи: остатки", concurrency: 4 },
-    ).catch(() => [] as { cabinet_id: string; nm_id: number; quantity: number | null }[]);
+    ).catch(() => [] as { cabinet_id: string; nm_id: number; warehouse: string | null; quantity: number | null }[]);
     const stockByKey = new Map<string, number>();
     for (const row of stockRows) {
+      if (!isWbWarehouse(row.warehouse)) continue;
       const key = `${row.cabinet_id}|${row.nm_id}`;
       stockByKey.set(key, (stockByKey.get(key) ?? 0) + num(row.quantity));
     }
