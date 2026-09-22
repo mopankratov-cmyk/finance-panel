@@ -36,3 +36,14 @@ test("кабинеты компании берутся только из явн�
   );
   assert.deepEqual([...result], ["cabinet-p"]);
 });
+
+test("ООО РИО и Оптима остаются двумя независимыми компаниями", () => {
+  const scopes = buildOpiuCompanyScopes([
+    { id: "rio", name: "ООО РИО", groupName: "Основная группа", isActive: true },
+    { id: "optima", name: "Оптима", groupName: "Оптима", isActive: true },
+  ]);
+
+  assert.equal(scopes.length, 2);
+  assert.deepEqual(scopes.find((scope) => scope.id === "rio")?.companyIds, ["rio"]);
+  assert.deepEqual(scopes.find((scope) => scope.id === "optima")?.companyIds, ["optima"]);
+});
