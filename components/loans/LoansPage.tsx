@@ -19,6 +19,7 @@ import { loadFinanceState } from "@/lib/db";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
+import { loanPaymentCandidates, requiresLoanAmountConfirmation } from "./manualLoanPayment";
 
 type SummaryKey = "outstanding" | "interest" | "next30" | "overdue" | "active";
 
@@ -223,6 +224,34 @@ export function LoansPage() {
   useDailyLoanCurrencyRefresh(state.payments, dispatch, (error) => {
     console.error("Не удалось обновить валютный график кредитов", error);
   });
+
+  const linkPaymentToSchedule = useCallback(async (loanId: string, dueDate: string, paymentId: string, confirmed: boolean) => {
+    const rowIds = scheduleRows
+      .filter((row) => row.loanId === loanId && row.dueDate === dueDate && row.status === "planned")
+      .map((row) => row.id);
+    if (rowIds.length) {
+      await closeLoanScheduleRows(rowIds, paymentId, confirmed);
+    } else {
+      // Старые договоры ещё могут жить только в payments, без
+      // loan_schedule_rows. Для них сохраняем ту же связь [paid-by:], которую
+      // понимают история оплаты, календарь и защита от повторного расходования.
+      const legacyRows = linkedRows(state.payments, loanId)
+        .filter((payment) => payment.date === dueDate && payment.status === "planned");
+      if (!legacyRows.length) throw new Error("Строка графика уже закрыта или не найдена");
+      await Promise.all(legacyRows.map((payment) => {
+        const companyId = companyByPayment.get(payment.id) ?? payment.companyId;
+        if (!companyId) throw new Error("У строки графика не указана компания");
+        return savePaymentWithCompany({
+          ...payment,
+          status: "cancelled",
+          comment: `${payment.comment ?? ""} [paid-by:${paymentId}]`.trim(),
+        }, companyId);
+      }));
+    }
+    const [fresh, refreshedSchedule] = await Promise.all([loadFinanceState(), loadLoanScheduleRows()]);
+    dispatch({ type: "LOAD", payload: fresh });
+    setScheduleRows(refreshedSchedule.rows);
+  }, [companyByPayment, dispatch, scheduleRows, state.payments]);
 
   const loanCompany = (loanId: string) => {
     const linked = linkedRows(state.payments, loanId);
@@ -628,11 +657,14 @@ export function LoansPage() {
       {details && <LoanDetails
         loan={details}
         company={companies.find((item) => item.id === loanCompany(details.id))?.name ?? "Компания не назначена"}
+        companyId={loanCompany(details.id)}
         schedule={schedules.get(details.id) ?? []}
         payments={state.payments}
+        companyByPayment={companyByPayment}
         accounts={state.accounts}
         scheduleRows={scheduleRows}
         marketplaceFacts={marketplaceFacts}
+        onLinkPayment={linkPaymentToSchedule}
         onClose={() => setDetails(null)}
         onEdit={() => { setDetails(null); setEditing(details); setModalOpen(true); }}
       />}
@@ -640,9 +672,10 @@ export function LoansPage() {
   );
 }
 
-function LoanDetails({ loan, company, schedule, payments, accounts, scheduleRows, marketplaceFacts, onClose, onEdit }: {
-  loan: Loan; company: string; schedule: LoanScheduleDraft[]; payments: Payment[]; accounts: Array<{ id: string; name: string }>; scheduleRows: ScheduleRowRecord[]; marketplaceFacts: MarketplaceFact[];
-  onClose: () => void; onEdit: () => void;
+function LoanDetails({ loan, company, companyId, schedule, payments, companyByPayment, accounts, scheduleRows, marketplaceFacts, onLinkPayment, onClose, onEdit }: {
+  loan: Loan; company: string; companyId: string | null; schedule: LoanScheduleDraft[]; payments: Payment[]; companyByPayment: ReadonlyMap<string, string | null>;
+  accounts: Array<{ id: string; name: string }>; scheduleRows: ScheduleRowRecord[]; marketplaceFacts: MarketplaceFact[];
+  onLinkPayment: (loanId: string, dueDate: string, paymentId: string, confirmed: boolean) => Promise<void>; onClose: () => void; onEdit: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   useDialogBehavior(true, onClose, panel);
@@ -691,27 +724,74 @@ function LoanDetails({ loan, company, schedule, payments, accounts, scheduleRows
           const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);
           return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-2 text-right"><button type="button" onClick={() => setTraceRow(row)} aria-label={`Оплата по графику ${formatDate(row.date)}: ${formatMoney(row.principal + row.interest + row.penalty + row.fine)}`} className="min-h-11 rounded-lg px-2 font-bold tabular-nums text-violet-700 underline decoration-violet-200 underline-offset-4 transition hover:bg-violet-50 hover:text-violet-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</button></td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right font-semibold tabular-nums">{formatMoney(projectedBalances.get(row.id) ?? balance)}</td></tr>;
         })}</tbody></table></div>
-        {traceRow && <LoanPaymentTrace loanId={loan.id} row={traceRow} payments={payments} accounts={accounts} scheduleRows={scheduleRows} marketplaceFacts={marketplaceFacts} onClose={() => setTraceRow(null)} />}
+        {traceRow && <LoanPaymentTrace loanId={loan.id} companyId={companyId} row={traceRow} payments={payments} companyByPayment={companyByPayment} accounts={accounts} scheduleRows={scheduleRows} marketplaceFacts={marketplaceFacts} onLinkPayment={onLinkPayment} onClose={() => setTraceRow(null)} />}
       </div>
       <footer className="flex flex-wrap justify-end gap-2 border-t p-4"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></footer>
     </div>
   </div>;
 }
 
-function LoanPaymentTrace({ loanId, row, payments, accounts, scheduleRows, marketplaceFacts, onClose }: {
-  loanId: string; row: LoanScheduleDraft; payments: Payment[]; accounts: Array<{ id: string; name: string }>;
-  scheduleRows: ScheduleRowRecord[]; marketplaceFacts: MarketplaceFact[]; onClose: () => void;
+function LoanPaymentTrace({ loanId, companyId, row, payments, companyByPayment, accounts, scheduleRows, marketplaceFacts, onLinkPayment, onClose }: {
+  loanId: string; companyId: string | null; row: LoanScheduleDraft; payments: Payment[]; companyByPayment: ReadonlyMap<string, string | null>;
+  accounts: Array<{ id: string; name: string }>; scheduleRows: ScheduleRowRecord[]; marketplaceFacts: MarketplaceFact[];
+  onLinkPayment: (loanId: string, dueDate: string, paymentId: string, confirmed: boolean) => Promise<void>; onClose: () => void;
 }) {
   const traces = paymentTracesForScheduleRow(loanId, row, payments, scheduleRows, marketplaceFacts);
   const total = row.principal + row.interest + row.penalty + row.fine;
+  const [selectedPaymentId, setSelectedPaymentId] = useState("");
+  const [query, setQuery] = useState("");
+  const [confirmedDifference, setConfirmedDifference] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState("");
+  const consumed = useMemo(() => consumedFactIds(payments), [payments]);
+  const candidates = useMemo(
+    () => loanPaymentCandidates(payments, consumed, companyByPayment, companyId, total, row.date),
+    [payments, consumed, companyByPayment, companyId, total, row.date],
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleCandidates = candidates.filter(({ payment }) => !normalizedQuery || `${payment.date} ${payment.name} ${payment.counterparty} ${Math.abs(payment.amount)}`.toLowerCase().includes(normalizedQuery)).slice(0, 100);
+  const selected = candidates.find((candidate) => candidate.payment.id === selectedPaymentId);
+  const confirmationRequired = selected ? requiresLoanAmountConfirmation(selected.payment.amount, total) : false;
+  const manualConfirmationRequired = confirmationRequired || Boolean(selected && !selected.sameCompany);
   const accountName = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? "Кошелёк не указан";
+  const link = async () => {
+    if (!selected || (manualConfirmationRequired && !confirmedDifference)) return;
+    setLinking(true);
+    setLinkError("");
+    try {
+      await onLinkPayment(loanId, row.date, selected.payment.id, confirmedDifference);
+      onClose();
+    } catch (error) {
+      setLinkError(error instanceof Error ? error.message : "Не удалось привязать платёж");
+    } finally {
+      setLinking(false);
+    }
+  };
   return <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-6">
     <button type="button" aria-label="Закрыть сведения об оплате" className="absolute inset-0 bg-slate-950/60" onClick={onClose} />
-    <section role="dialog" aria-modal="true" aria-label={`Оплата по графику ${formatDate(row.date)}`} className="relative w-full max-w-lg rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl">
+    <section role="dialog" aria-modal="true" aria-label={`Оплата по графику ${formatDate(row.date)}`} className="relative max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl">
       <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-700">Оплата по графику</p><h3 className="mt-1 text-lg font-bold text-slate-950">{formatDate(row.date)} · {formatMoney(total)}</h3><p className="mt-1 text-sm text-slate-500">Тело {formatMoney(row.principal)} · проценты {formatMoney(row.interest + row.penalty + row.fine)}</p></div><button type="button" aria-label="Закрыть" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"><X className="h-5 w-5" /></button></div>
       <div className="mt-5 space-y-3">
         {!traces.length && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Оплата ещё не привязана к факту ДДС или удержанию маркетплейса.</p>}
         {traces.map((trace, index) => trace.source === "dds" ? <article key={trace.payment.id} className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4"><p className="font-bold text-emerald-950">Оплачено через ДДС</p><dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Когда</dt><dd className="font-semibold text-slate-900">{formatDate(trace.payment.date)}</dd></div><div><dt className="text-slate-500">Сумма факта</dt><dd className="font-semibold tabular-nums text-slate-900">{formatMoney(Math.abs(trace.payment.amount))}</dd></div><div><dt className="text-slate-500">Откуда</dt><dd className="font-semibold text-slate-900">{accountName(trace.payment.accountId)}</dd></div><div><dt className="text-slate-500">Контрагент</dt><dd className="font-semibold text-slate-900">{trace.payment.counterparty || trace.payment.name}</dd></div></dl><button type="button" onClick={() => { window.location.assign(`/payments?payment=${encodeURIComponent(trace.payment.id)}`); }} className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-emerald-300 bg-white px-3 text-sm font-bold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">Открыть запись в ДДС</button></article> : trace.source === "marketplace" ? <article key={trace.marketplaceSource} className="rounded-xl border border-violet-200 bg-violet-50/60 p-4"><p className="font-bold text-violet-950">Удержано маркетплейсом WB</p>{trace.fact ? <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Когда</dt><dd className="font-semibold text-slate-900">{formatDate(trace.fact.date)}</dd></div><div><dt className="text-slate-500">Сумма удержания</dt><dd className="font-semibold tabular-nums text-slate-900">{formatMoney(trace.fact.amountRub)}</dd></div><div className="sm:col-span-2"><dt className="text-slate-500">Источник</dt><dd className="break-all font-semibold text-slate-900">{trace.marketplaceSource}</dd></div></dl> : <p className="mt-3 text-sm text-slate-600">Строка закрыта удержанием WB. Детали исходного отчёта сейчас недоступны, идентификатор: <span className="break-all font-semibold">{trace.marketplaceSource}</span>.</p>}</article> : <article key={`manual-${index}`} className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p className="font-bold">Оплата отмечена вручную</p><p className="mt-1">Дата и источник фактической оплаты не были сохранены. В ДДС соответствующая запись не привязана.</p></article>)}
+        {!traces.length && row.status === "planned" && <section className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+          <h4 className="font-bold text-violet-950">Привязать существующий платёж ДДС</h4>
+          <p className="mt-1 text-sm text-slate-600">Подходят списания из банка и операции наличными. Уже использованные платежи скрыты.</p>
+          <label className="mt-4 block text-sm font-semibold text-slate-700">Поиск платежа
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Дата, контрагент или сумма" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3" />
+          </label>
+          <label className="mt-3 block text-sm font-semibold text-slate-700">Платёж
+            <select value={selectedPaymentId} onChange={(event) => { setSelectedPaymentId(event.target.value); setConfirmedDifference(false); setLinkError(""); }} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3">
+              <option value="">Выберите платёж</option>
+              {visibleCandidates.map((candidate) => <option key={candidate.payment.id} value={candidate.payment.id}>{candidate.sameCompany ? "" : "Другая компания · "}{formatDate(candidate.payment.date)} · {formatMoney(Math.abs(candidate.payment.amount))} · {accountName(candidate.payment.accountId)} · {candidate.payment.counterparty || candidate.payment.name}</option>)}
+            </select>
+          </label>
+          {!candidates.length && <p className="mt-3 rounded-lg bg-white p-3 text-sm text-slate-600">Свободных фактических расходов в ДДС нет. Сначала внесите операцию наличными или загрузите выписку.</p>}
+          {selected && <div className="mt-3 rounded-lg bg-white p-3 text-sm text-slate-700"><p>График: <b>{formatMoney(total)}</b> · платёж: <b>{formatMoney(Math.abs(selected.payment.amount))}</b></p>{!selected.sameCompany && <p className="mt-1 font-semibold text-amber-700">Платёж относится к другой компании. Проверьте выбор.</p>}</div>}
+          {manualConfirmationRequired && <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><input type="checkbox" checked={confirmedDifference} onChange={(event) => setConfirmedDifference(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" /><span>{confirmationRequired && selected && !selected.sameCompany ? "Сумма и компания отличаются от графика." : confirmationRequired ? "Сумма отличается от графика." : "Платёж относится к другой компании."} Подтверждаю привязку выбранного платежа.</span></label>}
+          {linkError && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{linkError}</p>}
+          <button type="button" onClick={() => void link()} disabled={!selected || linking || (manualConfirmationRequired && !confirmedDifference)} className="mt-4 min-h-11 w-full rounded-lg bg-violet-600 px-4 font-bold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">{linking ? "Привязываю…" : "Привязать и отметить оплату"}</button>
+        </section>}
       </div>
     </section>
   </div>;
