@@ -743,7 +743,10 @@ function LoanPaymentTrace({ loanId, companyId, row, payments, companyByPayment, 
   const [confirmedDifference, setConfirmedDifference] = useState(false);
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState("");
-  const consumed = useMemo(() => consumedFactIds(payments), [payments]);
+  const consumed = useMemo(
+    () => consumedFactIds(payments, undefined, scheduleRows),
+    [payments, scheduleRows],
+  );
   const candidates = useMemo(
     () => loanPaymentCandidates(payments, consumed, companyByPayment, companyId, total, row.date),
     [payments, consumed, companyByPayment, companyId, total, row.date],
