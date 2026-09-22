@@ -5,7 +5,8 @@ import { rolesCan, type Permission } from "@/lib/auth/permissions";
 import { sessionRoles } from "@/lib/auth/session";
 import { auditedMutation, redactSecrets } from "@/lib/audit/log";
 import { PAYROLL_CATEGORIES } from "@/lib/finance/categories";
-import { consumedFactIds, preservedLoanMarkers } from "@/lib/finance/factLinks";
+import { preservedLoanMarkers } from "@/lib/finance/factLinks";
+import { loadConsumedFactIds } from "@/lib/finance/factLinksServer";
 import { loadFinanceStateServer, persistFinanceActionServer } from "@/lib/finance/dbServer";
 import { appendPayrollFactMarker, canAllocateFactToPayroll, payrollCategoryForEmployee } from "@/lib/payroll/model";
 import { financeReducer } from "@/lib/reducer";
@@ -376,11 +377,8 @@ async function handlePayroll(request: NextRequest) {
     ]);
     if (paymentAllocations.error || targetAllocations.error) return NextResponse.json({ error: (paymentAllocations.error ?? targetAllocations.error)!.message }, { status: 500 });
     const paymentAllocated = money((paymentAllocations.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0));
-    const linkedPayments = await loadAllSupabasePages<{ id: string; comment: string | null }>(
-      (from, to) => db.from("payments").select("id,comment").order("id").range(from, to),
-      { label: "Проверка занятых фактов ДДС" },
-    );
-    if (!canAllocateFactToPayroll(paymentId, consumedFactIds(linkedPayments), paymentAllocated)) {
+    const consumed = await loadConsumedFactIds(db);
+    if (!canAllocateFactToPayroll(paymentId, consumed, paymentAllocated)) {
       return NextResponse.json({ error: "Этот факт ДДС уже закрывает другое обязательство в календаре или кредитах" }, { status: 409 });
     }
     if (paymentAllocated + amount > paymentAmount) {

@@ -6,6 +6,7 @@ import { deriveWbPlanForMonth, selectWbPlanDocument } from "@/lib/opiu/wbPlan";
 import { getOzonPayoutMapping } from "@/lib/opiu/ozonPayoutIdentity";
 import { buildForecastPayments, forecastScopeKey, mergeForecastPublication, type ForecastPublishRow, type ForecastPublishScope } from "@/lib/opiu/calendarForecastPublish";
 import { findPlanFactMatches, withCalendarFactLink } from "@/components/calendar/calendarPlan";
+import { loadConsumedFactIds } from "@/lib/finance/factLinksServer";
 import type { Payment } from "@/lib/types";
 
 const ISO_DATE = /^20\d{2}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/;
@@ -155,6 +156,10 @@ export async function PATCH(request: Request) {
   }
   const planned = paymentFromRow(plannedRow);
   const fact = paymentFromRow(factRow);
+  const consumed = await loadConsumedFactIds(db, plannedId);
+  if (consumed.has(factId)) {
+    return NextResponse.json({ error: "Этот факт ДДС уже закрывает другое обязательство" }, { status: 409 });
+  }
   const links = new Map<string, string | null>([[planned.id, plannedRow.company_id], [fact.id, factRow.company_id]]);
   const matching = findPlanFactMatches([planned, fact], links);
   const candidate = [...matching.matched, ...matching.review]

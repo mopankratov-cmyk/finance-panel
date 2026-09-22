@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { requireApiSession } from "@/lib/auth/apiGuard";
-import { consumedFactIds } from "@/lib/finance/factLinks";
+import { loadConsumedFactIds } from "@/lib/finance/factLinksServer";
 import { buildLoanSchedule, type LoanTerms } from "@/lib/loans/scheduleModel";
 import { canCloseRowsWithFact, derivedPaymentForRow, scheduleRowFromDb, type ScheduleRowKind, type ScheduleRowRecord, type ScheduleRowStatus } from "@/lib/loans/scheduleRows";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -207,10 +207,9 @@ export async function PATCH(request: Request) {
     }
     return NextResponse.json({ ok: true, rows: [{ ...rows[0], status: "paid", paidByMarketplaceSource: source.source }] });
   }
-  const [factResult, allPayments, canonicalFactLinks] = await Promise.all([
+  const [factResult, consumed] = await Promise.all([
     client.from("payments").select("id,status,amount,import_source").eq("id", factId).maybeSingle(),
-    loadAllSupabasePages<{ id: string; comment: string | null }>((from, to) => client.from("payments").select("id,comment").not("comment", "is", null).like("comment", "%[%").order("id", { ascending: true }).range(from, to), { label: "Занятые факты", maxPages: 60 }),
-    loadAllSupabasePages<{ paid_by_payment_id: string | null }>((from, to) => client.from("loan_schedule_rows").select("paid_by_payment_id").not("paid_by_payment_id", "is", null).order("id", { ascending: true }).range(from, to), { label: "Связи графика кредита с фактами", maxPages: 60 }),
+    loadConsumedFactIds(client),
   ]);
   if (factResult.error) return NextResponse.json({ error: factResult.error.message }, { status: 500 });
   const fact = factResult.data ? {
@@ -223,7 +222,7 @@ export async function PATCH(request: Request) {
   const check = canCloseRowsWithFact(
     rows,
     fact,
-    consumedFactIds(allPayments, undefined, canonicalFactLinks.map((row) => ({ paidByPaymentId: row.paid_by_payment_id }))),
+    consumed,
     Boolean(body?.confirmed),
   );
   if (!check.ok) return NextResponse.json({ error: check.reason }, { status: 409 });
