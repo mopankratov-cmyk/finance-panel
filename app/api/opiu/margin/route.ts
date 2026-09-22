@@ -44,13 +44,18 @@ async function fetchAdSpendByNmId(
 }
 
 /**
- * Заказы/Отказы за период по nm_id — как в столбцах «Заказы»/«Отказы» гугл-
- * таблицы. Читаем wb_orders НАПРЯМУЮ (не через fetchOrders/Воронку из ОПиУ):
- * там для «Заказы» нужна ВАЛОВАЯ сумма (включая отменённые), а для «Отказы» —
- * отдельный счётчик is_cancel, а Воронка (wb_funnel_daily) отмену не хранит
- * вовсе и подменяет сырые строки синтетическими без признака отмены — метод
- * fetchOrders для этой пары чисел не подходит. articlePrefixes фильтруем по
- * supplier_article — то же поле, что и раньше в fetchOrders для суб-брендов.
+ * Заказы за период по nm_id — как в столбце «Заказы» гугл-таблицы. Читаем
+ * wb_orders НАПРЯМУЮ (не через fetchOrders/Воронку из ОПиУ): нужна ВАЛОВАЯ
+ * сумма, включая отменённые, а Воронка (wb_funnel_daily) местами подменяет
+ * сырые строки синтетическими — для точного валового счёта не подходит.
+ * articlePrefixes фильтруем по supplier_article — то же поле, что и раньше
+ * в fetchOrders для суб-брендов. Сверено построчно с таблицей (TT04101: 16
+ * шт / 5728 ₽ — совпало день в день).
+ *
+ * «Отказы» сюда НЕ входят — несмотря на название, это не wb_orders.is_cancel
+ * (проверено: не сходится с таблицей). Настоящая формула таблицы —
+ * count(bonus_type_name = "От клиента при отмене") по финотчёту, она уже
+ * есть в buildMarginByBarcode (isClientCancelRow из строк scopedRows).
  */
 async function fetchOrdersByNmId(
   cabinetId: string,
@@ -69,12 +74,11 @@ async function fetchOrdersByNmId(
     discount_percent: number | null;
     finished_price: number | null;
     price_with_disc: number | null;
-    is_cancel: boolean | null;
   }>(
     async (from, to) => {
       const result = await db
         .from("wb_orders")
-        .select("nm_id, supplier_article, total_price, discount_percent, finished_price, price_with_disc, is_cancel")
+        .select("nm_id, supplier_article, total_price, discount_percent, finished_price, price_with_disc")
         .eq("cabinet_id", cabinetId)
         .gte("date", dateFrom)
         .lte("date", `${dateTo}T23:59:59.999Z`)
@@ -92,7 +96,7 @@ async function fetchOrdersByNmId(
     if (articlePrefixes?.length && !matchesArticlePrefix(row.supplier_article, articlePrefixes)) continue;
     const nmId = Number(row.nm_id);
     if (!Number.isFinite(nmId) || nmId <= 0) continue;
-    const entry = map.get(nmId) ?? { ordersQty: 0, ordersRub: 0, cancelQty: 0 };
+    const entry = map.get(nmId) ?? { ordersQty: 0, ordersRub: 0 };
     entry.ordersQty += 1;
     entry.ordersRub += orderRub({
       totalPrice: row.total_price ?? undefined,
@@ -100,7 +104,6 @@ async function fetchOrdersByNmId(
       finishedPrice: row.finished_price ?? undefined,
       priceWithDisc: row.price_with_disc ?? undefined,
     });
-    if (row.is_cancel) entry.cancelQty += 1;
     map.set(nmId, entry);
   }
   return map;

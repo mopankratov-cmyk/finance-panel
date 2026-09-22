@@ -6,6 +6,7 @@ import {
   docType,
   expenseRub,
   forPayRub,
+  isClientCancelRow,
   num,
   penaltiesRub,
   qtyAbs,
@@ -32,7 +33,7 @@ export interface MarginRow {
   /** Заказы за период (шт/руб) — из wb_orders, на уровне nm_id (баркода в заказах нет). */
   ordersQty: number;
   ordersRub: number;
-  /** Отказы (отменённые заказы), шт — из wb_orders.is_cancel, на уровне nm_id. */
+  /** Отказы, шт — строки финотчёта с bonus_type_name «От клиента при отмене». */
   cancelQty: number;
   salesQty: number;
   returnsQty: number;
@@ -93,7 +94,6 @@ export interface MarginByBarcodeResult {
 export interface OrdersSummary {
   ordersQty: number;
   ordersRub: number;
-  cancelQty: number;
 }
 
 export function buildMarginByBarcode(
@@ -126,9 +126,11 @@ export function buildMarginByBarcode(
 
   const result: MarginRow[] = [];
   const adSpendUsedForNmId = new Set<number>();
-  // Заказы/Отказы приходят на уровне nm_id (в wb_orders нет баркода) — как и
-  // с рекламой, если у nm_id несколько баркодов, сумма приписывается только
+  // Заказы приходят на уровне nm_id (в wb_orders нет баркода) — как и с
+  // рекламой, если у nm_id несколько баркодов, сумма приписывается только
   // первой встреченной группе, иначе она задвоилась бы по числу баркодов.
+  // Отказы, в отличие от Заказов, считаются из строк финотчёта — они уже
+  // на уровне баркода, дедуп им не нужен.
   const ordersUsedForNmId = new Set<number>();
 
   for (const [key, group] of byBarcode) {
@@ -145,6 +147,7 @@ export function buildMarginByBarcode(
     let revenueAfterSpp = 0;
     let forPay = 0;
     let commission = 0;
+    let cancelQty = 0;
     let deliveryCount = 0;
     let logistics = 0;
     let penalties = 0;
@@ -176,6 +179,7 @@ export function buildMarginByBarcode(
       revenueAfterSpp += revenueRub(row);
       forPay += forPayRub(row);
       commission += commissionResidualRub(row);
+      if (isClientCancelRow(row)) cancelQty += 1;
       deliveryCount += Math.max(0, Math.round(num(row.delivery_amount)));
       logistics += expenseRub(row.delivery_rub);
       penalties += expenseRub(row.penalty);
@@ -203,7 +207,7 @@ export function buildMarginByBarcode(
       barcode,
       ordersQty,
       ordersRub: round2(orders?.ordersRub ?? 0),
-      cancelQty: orders?.cancelQty ?? 0,
+      cancelQty,
       salesQty,
       returnsQty,
       netQty,
