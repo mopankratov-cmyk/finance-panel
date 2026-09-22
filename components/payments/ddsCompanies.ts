@@ -35,6 +35,32 @@ export interface DdsCompanyScopeOptions {
   unassignedCompanyIds: string[];
 }
 
+/**
+ * Юрлица, которые можно выбрать у одной фактической операции.
+ * Техническую «не распределено» заменяет пустое значение формы, а несколько
+ * названий одного юрлица показываются одним каноническим вариантом.
+ */
+export function paymentCompanyOptions(companies: readonly DdsCompany[]): DdsCompany[] {
+  const active = companies.filter((company) => company.isActive && !isLegacySharedExpenseCompany(company.name));
+  return active.filter((company) => {
+    const aliases = active.filter((candidate) => sameCompanyAlias(company.name, candidate.name));
+    if (aliases.length < 2) return true;
+    const canonical = aliases.find((candidate) => /коровкин/i.test(candidate.name)) ?? aliases[0];
+    return company.id === canonical.id;
+  });
+}
+
+/** Компания однозначно известна, когда её название (или алиас) есть в названии счёта. */
+export function companyIdForAccountName(accountName: string, companies: readonly DdsCompany[]): string {
+  const normalizedAccount = accountName.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
+  const direct = companies.find((company) => {
+    const normalizedCompany = company.name.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
+    return normalizedCompany.length > 2 && normalizedAccount.includes(normalizedCompany);
+  });
+  if (direct) return direct.id;
+  return companies.find((company) => sameCompanyAlias(accountName, company.name))?.id ?? "";
+}
+
 /** Алиасы одного юрлица показываем одним пунктом, настоящие группы — отдельно. */
 export function companyScopeOptions(companies: readonly DdsCompany[]): DdsCompanyScopeOptions {
   const active = companies.filter((company) => company.isActive);

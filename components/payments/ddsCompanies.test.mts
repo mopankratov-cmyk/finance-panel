@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { companyGroupLabel, companyLabel, companyScopeOptions } from "./ddsCompanies.ts";
+import { companyGroupLabel, companyIdForAccountName, companyLabel, companyScopeOptions, paymentCompanyOptions } from "./ddsCompanies.ts";
 
 test("старая общая группа показывается как не распределённые по компаниям операции", () => {
   assert.equal(companyLabel("Общая группа РИО"), "Не распределено по компаниям");
@@ -50,4 +50,27 @@ test("техническая карточка общих расходов скр
 
   assert.deepEqual(options.unassignedCompanyIds, ["shared"]);
   assert.deepEqual(options.companies.map((company) => company.name), ["ООО РИО"]);
+});
+
+test("в операции не дублируются алиасы и не показывается техническая компания", () => {
+  const companies = [
+    { id: "kor", name: "ИП Коровкин", groupName: "Основная группа", isActive: true },
+    { id: "fil", name: "ИП Филиппов", groupName: "Основная группа", isActive: true },
+    { id: "shared", name: "Не распределено по компаниям", groupName: "Основная группа", isActive: true },
+    { id: "pan", name: "ИП Панкратов", groupName: "Основная группа", isActive: true },
+  ];
+
+  assert.deepEqual(paymentCompanyOptions(companies).map((company) => company.id), ["kor", "pan"]);
+});
+
+test("название наличного счёта подставляет только известную компанию", () => {
+  const companies = paymentCompanyOptions([
+    { id: "kor", name: "ИП Коровкин", groupName: "Основная группа", isActive: true },
+    { id: "fil", name: "ИП Филиппов", groupName: "Основная группа", isActive: true },
+    { id: "pan", name: "ИП Панкратов", groupName: "Основная группа", isActive: true },
+  ]);
+
+  assert.equal(companyIdForAccountName("Наличка ИП Панкратов", companies), "pan");
+  assert.equal(companyIdForAccountName("Наличка ИП Филиппов", companies), "kor");
+  assert.equal(companyIdForAccountName("Наличка", companies), "");
 });
