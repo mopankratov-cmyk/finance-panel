@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import type { Loan, Payment } from "@/lib/types";
 import type { Account } from "@/lib/types";
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
-import type { DdsCompany } from "./ddsCompanies";
+import { companyIdForAccountName, paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
 import { cashLoanScheduleOptions, closestCashLoanScheduleOption, isLoanRepaymentCategory, loanPaymentNeedsConfirmation } from "./cashLoanScheduleLink";
 
 export interface PaymentLoanLink {
@@ -50,10 +50,14 @@ export function PaymentForm({
 }: PaymentFormProps) {
   const { categoryOptions } = useDdsCategories();
   const categories = categoryOptions(payment?.category);
+  const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
+  const initialAccountId = payment?.accountId ?? accounts[0]?.id ?? "";
+  const inferredCompanyId = companyIdForAccountName(accounts.find((account) => account.id === initialAccountId)?.name ?? "", selectableCompanies);
   const [flowType, setFlowType] = useState(payment && payment.amount < 0 ? "expense" : "income");
   const [date, setDate] = useState(payment?.date ?? "");
   const [amountText, setAmountText] = useState(payment ? String(Math.abs(payment.amount)) : "0");
-  const [selectedCompanyId, setSelectedCompanyId] = useState(companyId ?? (payment ? "" : companies[0]?.id ?? ""));
+  const [selectedCompanyId, setSelectedCompanyId] = useState(companyId ?? inferredCompanyId);
+  const [selectedAccountId, setSelectedAccountId] = useState(initialAccountId);
   const [category, setCategory] = useState(payment?.category ?? categories[0]);
   const [selectedLoanId, setSelectedLoanId] = useState("");
   const [selectedScheduleKey, setSelectedScheduleKey] = useState("");
@@ -184,7 +188,7 @@ export function PaymentForm({
           className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
         >
           <option value="">Общее по группе</option>
-          {companies.filter((company) => company.isActive).map((company) => (
+          {selectableCompanies.map((company) => (
             <option key={company.id} value={company.id}>
               {company.name}
             </option>
@@ -241,7 +245,16 @@ export function PaymentForm({
         <select
           name="accountId"
           required
-          defaultValue={payment?.accountId ?? accounts[0]?.id}
+          value={selectedAccountId}
+          onChange={(event) => {
+            const accountId = event.target.value;
+            setSelectedAccountId(accountId);
+            if (!payment) {
+              const accountName = accounts.find((account) => account.id === accountId)?.name ?? "";
+              setSelectedCompanyId(companyIdForAccountName(accountName, selectableCompanies));
+              resetLoanLink();
+            }
+          }}
           className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
         >
           {accounts.map((acc) => (
