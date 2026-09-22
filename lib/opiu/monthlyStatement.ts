@@ -40,6 +40,9 @@ export interface MarketplaceMonthlyActual {
     logistics: number | null;
     storage: number | null;
     penalty: number | null;
+    /** Доступная сумма корректна, но источник за период ещё не догружен полностью. */
+    partial?: boolean;
+    partialReason?: string;
     warnings?: string[];
     error?: string;
   };
@@ -185,42 +188,48 @@ export function buildMonthlyOpiuStatement(actual: MarketplaceMonthlyActual): Mon
   const wbReady = actual.wb && !actual.wb.error;
   const ozonReady = actual.ozon && !actual.ozon.error && !actual.ozon.noCabinet;
   const wbWarnings = actual.wb?.warnings ?? [];
+  const wbSourceIncomplete = wbReady && Boolean(actual.wb?.partial);
+  const wbSourceIncompleteNote = actual.wb?.partialReason || "Финансовый отчёт WB загружен частично";
   const wbCogsIncomplete = wbReady && wbWarnings.some((warning) => /себестоимост/i.test(warning));
   const wbRatesIncomplete = wbReady && wbWarnings.some((warning) => /финотч|комисси|став/i.test(warning));
   const ozonWarning = ozonReady && (actual.ozon?.warnings?.length ?? 0) > 0;
   const unavailableWb = missing(actual.wb?.error || "Данные WB недоступны");
   const unavailableOzon = missing(actual.ozon?.error || (actual.ozon?.noCabinet ? "Кабинет Ozon не подключён" : "Данные Ozon недоступны"));
+  const wbAmount = (value: number, incomplete = false, note?: string) => {
+    const reasons = [wbSourceIncomplete ? wbSourceIncompleteNote : "", incomplete ? note ?? "Источник учтён частично" : ""].filter(Boolean);
+    return reasons.length ? partial(value, [...new Set(reasons)].join("; ")) : complete(value);
+  };
 
   const articleAmounts = new Map<string, MonthlyOpiuRow["amounts"]>();
   const marketplace = (wb: MonthlyOpiuAmount, ozon: MonthlyOpiuAmount) => directions(wb, ozon, na());
   articleAmounts.set("marketplace_sales", marketplace(
-    wbReady ? complete(actual.wb!.revenue_before_spp) : unavailableWb,
+    wbReady ? wbAmount(actual.wb!.revenue_before_spp) : unavailableWb,
     ozonReady ? (ozonWarning ? partial(actual.ozon!.revenue, "Не все кабинеты Ozon вернули данные") : complete(actual.ozon!.revenue)) : unavailableOzon,
   ));
   articleAmounts.set("cogs", marketplace(
-    wbReady ? (wbCogsIncomplete ? partial(actual.wb!.cogs, "Часть SKU WB без себестоимости") : complete(actual.wb!.cogs)) : unavailableWb,
+    wbReady ? wbAmount(actual.wb!.cogs, wbCogsIncomplete, "Часть SKU WB без себестоимости") : unavailableWb,
     ozonReady ? (ozonWarning ? partial(actual.ozon!.cogs, "Себестоимость Ozon рассчитана не по всем кабинетам") : complete(actual.ozon!.cogs)) : unavailableOzon,
   ));
   articleAmounts.set("warehouse_packaging", marketplace(
-    wbReady ? complete(actual.wb!.packaging) : unavailableWb,
+    wbReady ? wbAmount(actual.wb!.packaging) : unavailableWb,
     ozonReady ? missing("Подготовка и упаковка Ozon пока не подключены") : unavailableOzon,
   ));
   articleAmounts.set("marketplace_commission", marketplace(
-    wbReady ? (wbRatesIncomplete ? partial(actual.wb!.commission, "Комиссия WB частично оценена по доступным ставкам") : complete(actual.wb!.commission)) : unavailableWb,
+    wbReady ? wbAmount(actual.wb!.commission, wbRatesIncomplete, "Комиссия WB частично оценена по доступным ставкам") : unavailableWb,
     ozonReady ? (ozonWarning ? partial(actual.ozon!.commission, "Не все кабинеты Ozon вернули данные") : complete(actual.ozon!.commission)) : unavailableOzon,
   ));
   articleAmounts.set("marketplace_logistics", marketplace(
-    wbReady && actual.wb!.logistics != null ? complete(actual.wb!.logistics) : missing("Логистика WB пока не входит в месячный кэш"),
+    wbReady && actual.wb!.logistics != null ? wbAmount(actual.wb!.logistics) : missing("Логистика WB пока не входит в месячный кэш"),
     ozonReady ? (ozonWarning ? partial(actual.ozon!.delivery, "Не все кабинеты Ozon вернули данные") : complete(actual.ozon!.delivery)) : unavailableOzon,
   ));
   articleAmounts.set("marketplace_other", marketplace(
     wbReady
-      ? complete(actual.wb!.acquiring + actual.wb!.other + (actual.wb!.storage ?? 0) + (actual.wb!.penalty ?? 0))
+      ? wbAmount(actual.wb!.acquiring + actual.wb!.other + (actual.wb!.storage ?? 0) + (actual.wb!.penalty ?? 0))
       : unavailableWb,
     ozonReady ? partial(actual.ozon!.services, "Ozon отдаёт рекламу, хранение и услуги одной суммой") : unavailableOzon,
   ));
   articleAmounts.set("marketplace_ads", marketplace(
-    wbReady ? complete(actual.wb!.ad) : unavailableWb,
+    wbReady ? wbAmount(actual.wb!.ad) : unavailableWb,
     ozonReady ? missing("Реклама Ozon не отделена от прочих услуг") : unavailableOzon,
   ));
 

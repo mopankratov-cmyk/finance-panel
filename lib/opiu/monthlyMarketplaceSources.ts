@@ -27,6 +27,11 @@ export function wbBrandCompanyName(brand: Pick<OpiuBrand, "id" | "entity">): str
 export function aggregateWbSources(sources: readonly MonthlyMarketplaceSource[]): WbActual {
   const ready = sources.flatMap((source) => source.wb && !source.wb.error ? [source.wb] : []);
   if (!ready.length) return { revenue_before_spp: 0, revenue_after_spp: 0, commission: 0, acquiring: 0, ad: 0, other: 0, cogs: 0, packaging: 0, logistics: null, storage: null, penalty: null, error: "Нет доступных источников WB" };
+  const failed = sources.flatMap((source) => source.wb?.error ? [source.wb.error] : []);
+  const partialReasons = [
+    ...ready.flatMap((row) => row.partialReason ? [row.partialReason] : []),
+    ...failed,
+  ];
   return {
     revenue_before_spp: sum(ready, (row) => row.revenue_before_spp),
     revenue_after_spp: sum(ready, (row) => row.revenue_after_spp ?? row.revenue_before_spp),
@@ -39,6 +44,8 @@ export function aggregateWbSources(sources: readonly MonthlyMarketplaceSource[])
     logistics: sumNullable(ready, (row) => row.logistics),
     storage: sumNullable(ready, (row) => row.storage),
     penalty: sumNullable(ready, (row) => row.penalty),
+    partial: ready.some((row) => row.partial) || failed.length > 0,
+    partialReason: [...new Set(partialReasons)].join("; ") || undefined,
     warnings: ready.flatMap((row) => row.warnings ?? []),
   };
 }

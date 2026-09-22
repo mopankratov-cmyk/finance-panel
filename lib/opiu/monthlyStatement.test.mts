@@ -53,3 +53,28 @@ test("смешанные услуги Ozon остаются частичными
   assert.equal(other.amounts.ozon.known, 20);
   assert.match(other.amounts.ozon.note ?? "", /одной суммой/);
 });
+
+test("доступные суммы незавершённого отчёта WB показываются как частичные, а не пропадают", () => {
+  const statement = buildMonthlyOpiuStatement({
+    wb: {
+      ...actual.wb,
+      logistics: 80,
+      storage: 15,
+      penalty: 5,
+      partial: true,
+      partialReason: "Финансовый отчёт WB ещё загружается: показана доступная часть",
+    },
+  });
+  const sales = statement.rows.find((row) => row.id === "marketplace_sales")!;
+  const commission = statement.rows.find((row) => row.id === "marketplace_commission")!;
+  const logistics = statement.rows.find((row) => row.id === "marketplace_logistics")!;
+
+  assert.equal(sales.amounts.wb.status, "partial");
+  assert.equal(sales.amounts.wb.value, null);
+  assert.equal(sales.amounts.wb.known, 1_000);
+  assert.equal(commission.amounts.wb.status, "partial");
+  assert.equal(logistics.amounts.wb.status, "partial");
+  assert.match(sales.amounts.wb.note ?? "", /доступная часть/);
+  assert.equal(statement.revenue.status, "partial");
+  assert.equal(statement.revenue.known, 1_000);
+});
