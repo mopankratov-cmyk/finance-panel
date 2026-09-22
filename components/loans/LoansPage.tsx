@@ -28,6 +28,11 @@ type MarketplaceFact = {
   loanId: string | null; loanName: string | null; scheduleRowId: string | null; state: "recorded" | "ready" | "review" | "unassigned";
 };
 
+type PaymentTrace =
+  | { source: "dds"; payment: Payment }
+  | { source: "marketplace"; fact?: MarketplaceFact; marketplaceSource: string }
+  | { source: "manual" };
+
 async function loadMarketplaceFacts(): Promise<MarketplaceFact[]> {
   const response = await fetch("/api/finance/loans/marketplace-facts", { cache: "no-store" });
   const body = await response.json().catch(() => ({})) as { facts?: MarketplaceFact[]; error?: string };
@@ -61,6 +66,38 @@ function scheduleFromPayments(payments: Payment[], loanId: string): LoanSchedule
     grouped.set(rowId, current);
   }
   return [...grouped.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Источник оплаты хранится у строк нового графика, а у старого — в метке плана. */
+function paymentTracesForScheduleRow(
+  loanId: string,
+  schedule: LoanScheduleDraft,
+  payments: Payment[],
+  scheduleRows: ScheduleRowRecord[],
+  marketplaceFacts: MarketplaceFact[],
+): PaymentTrace[] {
+  const rows = scheduleRows.filter((item) => item.loanId === loanId && item.dueDate === schedule.date);
+  const ddsPaymentIds = new Set(rows.map((item) => item.paidByPaymentId).filter(Boolean) as string[]);
+  const marketplaceSources = new Set(rows.map((item) => item.paidByMarketplaceSource).filter(Boolean) as string[]);
+  // Старые графики ещё могут жить только в payments. Сохраняем совместимость
+  // с ними, чтобы переход на новую таблицу не прятал историю оплат.
+  if (!rows.length) {
+    const markerPart = `:schedule:${schedule.id}:`;
+    for (const planned of linkedRows(payments, loanId).filter((item) => item.comment?.includes(markerPart))) {
+      const paidBy = commentValue(planned.comment, "paid-by");
+      if (paidBy) ddsPaymentIds.add(paidBy);
+    }
+  }
+  const traces: PaymentTrace[] = [];
+  for (const paymentId of ddsPaymentIds) {
+    const payment = payments.find((item) => item.id === paymentId);
+    if (payment) traces.push({ source: "dds", payment });
+  }
+  for (const marketplaceSource of marketplaceSources) {
+    traces.push({ source: "marketplace", marketplaceSource, fact: marketplaceFacts.find((item) => item.source === marketplaceSource) });
+  }
+  if (!traces.length && schedule.status === "done") traces.push({ source: "manual" });
+  return traces;
 }
 
 function contractName(payments: Payment[], loanId: string): string {
@@ -593,6 +630,9 @@ export function LoansPage() {
         company={companies.find((item) => item.id === loanCompany(details.id))?.name ?? "Компания не назначена"}
         schedule={schedules.get(details.id) ?? []}
         payments={state.payments}
+        accounts={state.accounts}
+        scheduleRows={scheduleRows}
+        marketplaceFacts={marketplaceFacts}
         onClose={() => setDetails(null)}
         onEdit={() => { setDetails(null); setEditing(details); setModalOpen(true); }}
       />}
@@ -600,12 +640,16 @@ export function LoansPage() {
   );
 }
 
-function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { loan: Loan; company: string; schedule: LoanScheduleDraft[]; payments: Payment[]; onClose: () => void; onEdit: () => void }) {
+function LoanDetails({ loan, company, schedule, payments, accounts, scheduleRows, marketplaceFacts, onClose, onEdit }: {
+  loan: Loan; company: string; schedule: LoanScheduleDraft[]; payments: Payment[]; accounts: Array<{ id: string; name: string }>; scheduleRows: ScheduleRowRecord[]; marketplaceFacts: MarketplaceFact[];
+  onClose: () => void; onEdit: () => void;
+}) {
   const panel = useRef<HTMLDivElement>(null);
   useDialogBehavior(true, onClose, panel);
   const [documents, setDocuments] = useState<LoanDocumentInfo[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useState("");
+  const [traceRow, setTraceRow] = useState<LoanScheduleDraft | null>(null);
   const paidPrincipal = schedule.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal, 0);
   const fee = metadataNumber(payments, loan.id, "origination-fee");
   const feeMonths = metadataNumber(payments, loan.id, "fee-months", 36);
@@ -645,11 +689,31 @@ function LoanDetails({ loan, company, schedule, payments, onClose, onEdit }: { l
         <div className="scroll-x mt-5 rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th>{currency !== "RUB" && <th className="p-3 text-right">В валюте договора</th>}<th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
           const overdue = row.status === "planned" && row.date < todayISO();
           const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);
-          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-3 text-right font-bold tabular-nums">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right font-semibold tabular-nums">{formatMoney(projectedBalances.get(row.id) ?? balance)}</td></tr>;
+          return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-2 text-right"><button type="button" onClick={() => setTraceRow(row)} aria-label={`Оплата по графику ${formatDate(row.date)}: ${formatMoney(row.principal + row.interest + row.penalty + row.fine)}`} className="min-h-11 rounded-lg px-2 font-bold tabular-nums text-violet-700 underline decoration-violet-200 underline-offset-4 transition hover:bg-violet-50 hover:text-violet-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</button></td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right font-semibold tabular-nums">{formatMoney(projectedBalances.get(row.id) ?? balance)}</td></tr>;
         })}</tbody></table></div>
+        {traceRow && <LoanPaymentTrace loanId={loan.id} row={traceRow} payments={payments} accounts={accounts} scheduleRows={scheduleRows} marketplaceFacts={marketplaceFacts} onClose={() => setTraceRow(null)} />}
       </div>
       <footer className="flex flex-wrap justify-end gap-2 border-t p-4"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></footer>
     </div>
+  </div>;
+}
+
+function LoanPaymentTrace({ loanId, row, payments, accounts, scheduleRows, marketplaceFacts, onClose }: {
+  loanId: string; row: LoanScheduleDraft; payments: Payment[]; accounts: Array<{ id: string; name: string }>;
+  scheduleRows: ScheduleRowRecord[]; marketplaceFacts: MarketplaceFact[]; onClose: () => void;
+}) {
+  const traces = paymentTracesForScheduleRow(loanId, row, payments, scheduleRows, marketplaceFacts);
+  const total = row.principal + row.interest + row.penalty + row.fine;
+  const accountName = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? "Кошелёк не указан";
+  return <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-6">
+    <button type="button" aria-label="Закрыть сведения об оплате" className="absolute inset-0 bg-slate-950/60" onClick={onClose} />
+    <section role="dialog" aria-modal="true" aria-label={`Оплата по графику ${formatDate(row.date)}`} className="relative w-full max-w-lg rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl">
+      <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-violet-700">Оплата по графику</p><h3 className="mt-1 text-lg font-bold text-slate-950">{formatDate(row.date)} · {formatMoney(total)}</h3><p className="mt-1 text-sm text-slate-500">Тело {formatMoney(row.principal)} · проценты {formatMoney(row.interest + row.penalty + row.fine)}</p></div><button type="button" aria-label="Закрыть" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"><X className="h-5 w-5" /></button></div>
+      <div className="mt-5 space-y-3">
+        {!traces.length && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Оплата ещё не привязана к факту ДДС или удержанию маркетплейса.</p>}
+        {traces.map((trace, index) => trace.source === "dds" ? <article key={trace.payment.id} className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4"><p className="font-bold text-emerald-950">Оплачено через ДДС</p><dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Когда</dt><dd className="font-semibold text-slate-900">{formatDate(trace.payment.date)}</dd></div><div><dt className="text-slate-500">Сумма факта</dt><dd className="font-semibold tabular-nums text-slate-900">{formatMoney(Math.abs(trace.payment.amount))}</dd></div><div><dt className="text-slate-500">Откуда</dt><dd className="font-semibold text-slate-900">{accountName(trace.payment.accountId)}</dd></div><div><dt className="text-slate-500">Контрагент</dt><dd className="font-semibold text-slate-900">{trace.payment.counterparty || trace.payment.name}</dd></div></dl><button type="button" onClick={() => { window.location.assign(`/payments?payment=${encodeURIComponent(trace.payment.id)}`); }} className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-emerald-300 bg-white px-3 text-sm font-bold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">Открыть запись в ДДС</button></article> : trace.source === "marketplace" ? <article key={trace.marketplaceSource} className="rounded-xl border border-violet-200 bg-violet-50/60 p-4"><p className="font-bold text-violet-950">Удержано маркетплейсом WB</p>{trace.fact ? <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Когда</dt><dd className="font-semibold text-slate-900">{formatDate(trace.fact.date)}</dd></div><div><dt className="text-slate-500">Сумма удержания</dt><dd className="font-semibold tabular-nums text-slate-900">{formatMoney(trace.fact.amountRub)}</dd></div><div className="sm:col-span-2"><dt className="text-slate-500">Источник</dt><dd className="break-all font-semibold text-slate-900">{trace.marketplaceSource}</dd></div></dl> : <p className="mt-3 text-sm text-slate-600">Строка закрыта удержанием WB. Детали исходного отчёта сейчас недоступны, идентификатор: <span className="break-all font-semibold">{trace.marketplaceSource}</span>.</p>}</article> : <article key={`manual-${index}`} className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p className="font-bold">Оплата отмечена вручную</p><p className="mt-1">Дата и источник фактической оплаты не были сохранены. В ДДС соответствующая запись не привязана.</p></article>)}
+      </div>
+    </section>
   </div>;
 }
 
