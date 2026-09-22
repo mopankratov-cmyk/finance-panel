@@ -28,7 +28,7 @@ import {
 import { ddsReviewTemplateRows, ddsTemplateRows, downloadDdsCsv, downloadGroupedDdsXlsx } from "./ddsExport";
 import { syncDdsToGoogleSheets } from "./ddsGoogleSync";
 import { ddsSheetNameForCompany } from "./ddsSheetGroups";
-import { PaymentForm } from "./PaymentForm";
+import { PaymentForm, type PaymentLoanLink } from "./PaymentForm";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
 import { ExpenseCategoryManager } from "./ExpenseCategoryManager";
@@ -49,6 +49,8 @@ import { ddsEditableAccounts, isDdsActualPayment, manualDdsCashAccounts } from "
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
 import { paymentIdFromSearch, shouldOpenCompanySettings } from "./paymentDeepLink";
+import { closeLoanScheduleRows, loadLoanScheduleRows } from "@/components/loans/scheduleStore";
+import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
 const WITHOUT_CATEGORY_FILTER = "__without_category__";
 
@@ -76,6 +78,9 @@ export function PaymentsPage() {
   const [companyByPayment, setCompanyByPayment] = useState<Map<string, string | null>>(new Map());
   const [companyError, setCompanyError] = useState<string | null>(null);
   const [highlightedPaymentId, setHighlightedPaymentId] = useState<string | null>(null);
+  const [loanScheduleRows, setLoanScheduleRows] = useState<ScheduleRowRecord[]>([]);
+  const [loanScheduleLoading, setLoanScheduleLoading] = useState(false);
+  const [loanScheduleError, setLoanScheduleError] = useState("");
 
   useEffect(() => {
     if (shouldOpenCompanySettings(window.location.search)) setCompaniesOpen(true);
@@ -206,6 +211,13 @@ export function PaymentsPage() {
       return;
     }
     setEditing(null);
+    setLoanScheduleRows([]);
+    setLoanScheduleError("");
+    setLoanScheduleLoading(true);
+    void loadLoanScheduleRows()
+      .then((result) => setLoanScheduleRows(result.rows))
+      .catch((error) => setLoanScheduleError(error instanceof Error ? error.message : "Не удалось загрузить графики"))
+      .finally(() => setLoanScheduleLoading(false));
     setModalOpen(true);
   };
 
@@ -215,7 +227,7 @@ export function PaymentsPage() {
     setModalOpen(true);
   };
 
-  const handleSubmit = async (data: Omit<Payment, "id">, companyId: string) => {
+  const handleSubmit = async (data: Omit<Payment, "id">, companyId: string, loanLink?: PaymentLoanLink) => {
     const id = editing?.id ?? generateId("pay");
     const payment = {
       id,
@@ -224,6 +236,25 @@ export function PaymentsPage() {
     };
     try {
       await savePaymentWithCompany(payment, companyId);
+      if (loanLink) {
+        try {
+          if (loanLink.rowIds.length) {
+            await closeLoanScheduleRows(loanLink.rowIds, id, loanLink.confirmed);
+          } else {
+            const legacyRows = state.payments.filter((item) => loanLink.legacyPaymentIds.includes(item.id) && item.status === "planned");
+            if (legacyRows.length !== loanLink.legacyPaymentIds.length) throw new Error("Строка графика уже закрыта или не найдена");
+            await Promise.all(legacyRows.map((planned) => savePaymentWithCompany({
+              ...planned,
+              status: "cancelled",
+              comment: `${planned.comment ?? ""} [paid-by:${id}]`.trim(),
+            }, companyByPayment.get(planned.id) ?? planned.companyId ?? companyId)));
+          }
+        } catch (error) {
+          alert(`Операция наличными сохранена, но график кредита не обновлён: ${error instanceof Error ? error.message : "неизвестная ошибка"}. Её можно привязать на экране кредита.`);
+          window.location.reload();
+          return;
+        }
+      }
       setModalOpen(false);
       setEditing(null);
       window.location.reload();
@@ -551,6 +582,12 @@ export function PaymentsPage() {
           counterparties={counterparties}
           companies={companies}
           companyId={editing ? companyByPayment.get(editing.id) : null}
+          loans={state.loans}
+          payments={state.payments}
+          paymentCompanies={companyByPayment}
+          scheduleRows={loanScheduleRows}
+          scheduleLoading={loanScheduleLoading}
+          scheduleError={loanScheduleError}
           onSubmit={handleSubmit}
           onCancel={() => {
             setModalOpen(false);
