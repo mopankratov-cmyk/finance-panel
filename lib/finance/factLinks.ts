@@ -29,11 +29,19 @@ export function linkedFactIds(comment: string | null | undefined): string[] {
 export function consumedFactIds(
   payments: readonly { id: Payment["id"]; comment?: string | null }[],
   exceptPlanId?: string,
+  scheduleRows: readonly { paidByPaymentId?: string | null }[] = [],
 ): Set<string> {
   const consumed = new Set<string>();
   for (const payment of payments) {
     if (payment.id === exceptPlanId) continue;
     for (const id of linkedFactIds(payment.comment)) consumed.add(id);
+  }
+  // Для новых кредитных графиков источник правды — отдельная колонка
+  // loan_schedule_rows.paid_by_payment_id. Метка [paid-by:] остаётся только
+  // совместимостью: если её потеряли при редактировании платежа, факт всё
+  // равно нельзя повторно отдать другому обязательству.
+  for (const row of scheduleRows) {
+    if (row.paidByPaymentId) consumed.add(row.paidByPaymentId);
   }
   return consumed;
 }
