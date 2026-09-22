@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/sync/helpers";
 import { OPIU_BRANDS } from "@/lib/opiu/constants";
 import { opiuReportRefreshPeriod, syncOpiuReportPeriod } from "@/lib/opiu/reportSync";
+import { selectOpiuReportQueueCabinet, type OpiuReportQueueState } from "@/lib/opiu/reportSyncQueue";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 // Один вызов syncOpiuReportPeriod обрабатывает ограниченную порцию (см.
 // MAX_PAGES_PER_CALL/SOFT_TIME_BUDGET_MS в lib/opiu/syncReportRows.ts —
@@ -19,31 +21,61 @@ export const maxDuration = 300;
  * и прогноз — не то, что хочется дёргать вручную несколько раз подряд.
  * Прогресс по каждому кабинету сохраняется в wb_sync_state (job
  * "opiu_report") — повторные вызовы продолжают, а не начинают заново.
+ * Автоматический вызов берёт только один наиболее отстающий кабинет: один
+ * тяжёлый кабинет способен занять почти весь 300-секундный бюджет функции,
+ * а параллельный запуск всех кабинетов провоцировал сетевые обрывы WB.
  */
 export async function GET(request: NextRequest) {
   const authError = await checkCronAuth(request);
   if (authError) return authError;
 
   const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
-  const uniqueCabinetIds = [...new Set(OPIU_BRANDS.map((b) => b.cabinetId))]
-    .filter((id) => !onlyCabinet || id === onlyCabinet);
+  const uniqueCabinetIds = [...new Set(OPIU_BRANDS.map((b) => b.cabinetId))];
 
-  if (!uniqueCabinetIds.length) {
+  if (onlyCabinet && !uniqueCabinetIds.includes(onlyCabinet)) {
     return NextResponse.json({ error: "Кабинет не найден среди OPIU_BRANDS" }, { status: 400 });
   }
 
   const period = opiuReportRefreshPeriod(new Date());
-  const results = await Promise.all(uniqueCabinetIds.map(async (cabinetId) => {
-    try {
-      const result = await syncOpiuReportPeriod(period, cabinetId);
-      return { cabinetId, ...result };
-    } catch (error) {
-      return {
-        cabinetId,
-        error: error instanceof Error ? error.message : "Не удалось обновить финансовый отчёт WB",
-      };
-    }
-  }));
+  let cabinetId = onlyCabinet;
 
-  return NextResponse.json({ period, results });
+  if (!cabinetId) {
+    const db = getSupabaseAdmin();
+    if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
+    const { data, error } = await db
+      .from("wb_sync_state")
+      .select("cabinet_id,status,state,updated_at")
+      .in("cabinet_id", uniqueCabinetIds)
+      .eq("job", "opiu_report");
+    if (error) return NextResponse.json({ error: error.message }, { status: 502 });
+
+    cabinetId = selectOpiuReportQueueCabinet(
+      uniqueCabinetIds,
+      (data ?? []).map((row) => ({
+        cabinetId: String(row.cabinet_id),
+        status: String(row.status ?? "pending"),
+        updatedAt: row.updated_at ? String(row.updated_at) : null,
+        state: (row.state ?? {}) as Record<string, unknown>,
+      })) satisfies OpiuReportQueueState[],
+      period,
+    );
+  }
+
+  if (!cabinetId) return NextResponse.json({ error: "Нет кабинетов для синхронизации" }, { status: 503 });
+
+  let result: Record<string, unknown>;
+  try {
+    result = { cabinetId, ...(await syncOpiuReportPeriod(period, cabinetId)) };
+  } catch (error) {
+    result = {
+      cabinetId,
+      error: error instanceof Error ? error.message : "Не удалось обновить финансовый отчёт WB",
+    };
+  }
+
+  return NextResponse.json({
+    period,
+    results: [result],
+    deferredCabinetIds: uniqueCabinetIds.filter((id) => id !== cabinetId),
+  });
 }
