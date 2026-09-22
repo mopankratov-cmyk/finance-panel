@@ -44,6 +44,11 @@ export function chainMetadata(comment: string | undefined | null): ChainMetadata
 export function chainIdForPayment(payment: Payment) {
   return chainMetadata(payment.comment)?.id ?? payment.importSource?.match(/^bank-review:([0-9a-f-]{36})(?::|$)/i)?.[1] ?? null;
 }
+
+/** Обычный проведённый платёж из выписки не является разбивкой сам по себе. */
+export function isLegacyPaymentSplit(parts: readonly unknown[]) {
+  return parts.length > 1;
+}
 export function validateChain(d: PaymentChainDraft, accounts: Account[], companies: ChainCompany[], categories: readonly string[]) {
   const errors: string[] = [];
   const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date)) && new Date(date + "T00:00:00Z").toISOString().slice(0,10) === date;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {allocationTotal,buildChainEntries,chainRemainder,chainMetadata,encodeChainMetadata,requiresKorovkinLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
+import {allocationTotal,buildChainEntries,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,requiresKorovkinLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
 import {DDS_CATEGORIES} from "./categories.ts";
 import type {Account} from "../types.ts";
 const companies=[{id:'main',name:'ИП Митриченко',groupName:'Основная группа'},{id:'kor',name:'ИП Коровкин',groupName:'Коровкин'},{id:'fil',name:'ИП Филиппов',groupName:'Коровкин'},{id:'other',name:'ООО Другая',groupName:'Отдельная'}];
@@ -62,4 +62,9 @@ test('transfer to a card has its matching incoming entry and does not masquerade
  const rows=entries(d);assert.equal(rows.at(-1)?.role,'transfer-in');assert.equal(rows.at(-1)?.payment.amount,30000);
  assert.equal(rows.reduce((sum,e)=>sum+e.payment.amount,0),-15000);
  d.allocations[2].targetAccountId='';assert.match(validateChain(d,accounts,companies,DDS_CATEGORIES).join(' '),/кошелёк поступления/);
+});
+
+test('one bank payment is not listed as a split operation',()=>{
+ assert.equal(isLegacyPaymentSplit([{id:'whole'}]),false);
+ assert.equal(isLegacyPaymentSplit([{id:'first'},{id:'second'}]),true);
 });

@@ -5,7 +5,7 @@ import { loadDdsExpenseCategories } from "./expenseCategoriesServer";
 import { companyAliasKeys } from "./companyAliases";
 import { readCompaniesCompat } from "./companySchema";
 import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES } from "./categories";
-import { buildChainEntries, chainIdForPayment, requiresKorovkinLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
+import { buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresKorovkinLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
 import type { Account, Payment } from "@/lib/types";
 import { paymentTransferBalances } from "./paymentTransferBalance";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -110,6 +110,7 @@ export async function listPaymentChains(): Promise<PaymentChainSummary[]> {
  const legacy=await loadAllSupabasePages<Record<string,unknown>>((from,to)=>db.from('payments').select('id,date,import_source').like('import_source','bank-review:%').lt('amount',0).eq('status','done').order('id').range(from,to),{label:'Ранее разбитые суммы ДДС'});
  const groups=new Map<string,Array<Record<string,unknown>>>();
  for(const p of legacy){const id=String(p.import_source).match(/^bank-review:([0-9a-f-]{36})(?::|$)/i)?.[1];if(id&&!heads.some(h=>h.id===id)){const group=groups.get(id)??[];group.push(p);groups.set(id,group);}}
+ for(const [id,parts] of groups)if(!isLegacyPaymentSplit(parts))groups.delete(id);
  const bank=new Map<string,{amount:number;date:string;purpose:string;account_id:string|null;company_id:string|null}>();
  const ids=[...groups.keys()];
  for(let i=0;i<ids.length;i+=300){const r=await db.from('bank_review_items').select('id,amount,date,purpose,account_id,company_id').in('id',ids.slice(i,i+300));if(r.error)throw fail(r.error.message,500);for(const row of r.data??[])bank.set(row.id,row);}
