@@ -300,7 +300,7 @@ export function LoansPage() {
 
   const reconcileWithDds = useCallback(async (showResult = true) => {
     // Факт, уже закрывший план календаря или другую строку графика, второй раз не используется.
-    const consumed = consumedFactIds(state.payments);
+    const consumed = consumedFactIds(state.payments, undefined, scheduleRows);
     const actualPayments = state.payments.filter((payment) => payment.status === "done" && payment.amount < 0 && !payment.comment?.includes("[loan:") && !consumed.has(payment.id));
     const usedActual = new Set<string>();
     let matched = 0;

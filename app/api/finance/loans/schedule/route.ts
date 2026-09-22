@@ -207,9 +207,10 @@ export async function PATCH(request: Request) {
     }
     return NextResponse.json({ ok: true, rows: [{ ...rows[0], status: "paid", paidByMarketplaceSource: source.source }] });
   }
-  const [factResult, allPayments] = await Promise.all([
+  const [factResult, allPayments, canonicalFactLinks] = await Promise.all([
     client.from("payments").select("id,status,amount,import_source").eq("id", factId).maybeSingle(),
     loadAllSupabasePages<{ id: string; comment: string | null }>((from, to) => client.from("payments").select("id,comment").not("comment", "is", null).like("comment", "%[%").order("id", { ascending: true }).range(from, to), { label: "Занятые факты", maxPages: 60 }),
+    loadAllSupabasePages<{ paid_by_payment_id: string | null }>((from, to) => client.from("loan_schedule_rows").select("paid_by_payment_id").not("paid_by_payment_id", "is", null).order("id", { ascending: true }).range(from, to), { label: "Связи графика кредита с фактами", maxPages: 60 }),
   ]);
   if (factResult.error) return NextResponse.json({ error: factResult.error.message }, { status: 500 });
   const fact = factResult.data ? {
@@ -219,7 +220,12 @@ export async function PATCH(request: Request) {
     importSource: factResult.data.import_source ? String(factResult.data.import_source) : null,
   } : undefined;
   if (fact && !isDdsActualPayment(fact)) return NextResponse.json({ error: "Выбранная запись не является фактом ДДС" }, { status: 409 });
-  const check = canCloseRowsWithFact(rows, fact, consumedFactIds(allPayments), Boolean(body?.confirmed));
+  const check = canCloseRowsWithFact(
+    rows,
+    fact,
+    consumedFactIds(allPayments, undefined, canonicalFactLinks.map((row) => ({ paidByPaymentId: row.paid_by_payment_id }))),
+    Boolean(body?.confirmed),
+  );
   if (!check.ok) return NextResponse.json({ error: check.reason }, { status: 409 });
   const now = new Date().toISOString();
   const updated = await client.from("loan_schedule_rows").update({ status: "paid", paid_by_payment_id: factId, updated_at: now }).in("id", rowIds).eq("status", "planned").select("id");

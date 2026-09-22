@@ -22,6 +22,12 @@ test("занятые факты — по всем планам, кроме ис�
   assert.deepEqual([...consumedFactIds(payments, "p-1")].sort(), ["f-2", "f-3"]);
 });
 
+test("поле строки графика сохраняет занятость факта без метки в комментарии", () => {
+  const payments = [{ id: "plan-without-marker", comment: "Комментарий отредактирован" }];
+  const scheduleRows = [{ paidByPaymentId: "fact-from-column" }, { paidByPaymentId: null }];
+  assert.deepEqual([...consumedFactIds(payments, undefined, scheduleRows)], ["fact-from-column"]);
+});
+
 test("при пересборке строки графика сохраняются метки оплаты и переноса", () => {
   const comment = "[loan:1:schedule:r:principal] [currency:RUB] [paid-by:f-9] [payroll-paid:f-10] [original-due:2026-03-15] [overdue-calendar-date:2026-09-01]";
   assert.equal(preservedLoanMarkers(comment), "[paid-by:f-9] [payroll-paid:f-10] [original-due:2026-03-15] [overdue-calendar-date:2026-09-01]");
