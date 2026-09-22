@@ -49,7 +49,25 @@ test("частичный сбой второго WB-кабинета остаё�
     { id: "wb:optima-heaton", label: "WB Heaton", marketplace: "wb", companyId: "company-1", wb: { ...wb(0), error: "Оптима недоступна" } },
   ]);
   assert.equal(sources[0]?.wb?.revenue_before_spp, 100);
+  assert.equal(sources[0]?.wb?.partial, true);
+  assert.match(sources[0]?.wb?.partialReason ?? "", /Оптима недоступна/);
   assert.deepEqual(sources[0]?.wb?.warnings, ["Оптима недоступна"]);
+});
+
+test("частичная загрузка одного источника делает общий WB-факт частичным", () => {
+  const total = aggregateWbSources([
+    { id: "wb:riobox", label: "WB Riobox", marketplace: "wb", wb: wb(100) },
+    {
+      id: "wb:heaton",
+      label: "WB Heaton",
+      marketplace: "wb",
+      wb: { ...wb(50), partial: true, partialReason: "Финотчёт ещё загружается" },
+    },
+  ]);
+
+  assert.equal(total.revenue_before_spp, 150);
+  assert.equal(total.partial, true);
+  assert.match(total.partialReason ?? "", /загружается/);
 });
 
 test("Riobox принадлежит Оптиме, а не Филиппову/Коровкину", () => {

@@ -107,12 +107,25 @@ export async function GET(request: NextRequest) {
   const wbSourcesPromise = Promise.all(accessibleBrands.map(async (brand): Promise<MonthlyMarketplaceSource> => {
     const owner = ownerByBrandId.get(brand.id);
     const syncState = reportSyncByCabinet.get(brand.cabinetId);
-    if (reportSyncBlocksMonth(syncState, from, to, moscowDate())) {
-      const message = `Финансовый отчёт WB «${owner?.name ?? brand.label}» ещё загружается. Итоги появятся после завершения синхронизации.`;
-      return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb: failedWb(message) };
-    }
+    const syncIncomplete = reportSyncBlocksMonth(syncState, from, to, moscowDate());
     try {
       const wb = monthlyWbActualFromOpiu(await loadOpiuSalePeriod(from, to, [brand.id]));
+      if (syncIncomplete) {
+        const message = `Финансовый отчёт WB «${owner?.name ?? brand.label}» ещё загружается: показана доступная часть.`;
+        // Ноль строк при незавершённой первичной загрузке означает «не знаем»,
+        // а не настоящий нулевой месяц. Уже сохранённые строки показываем, но
+        // явно помечаем все зависящие от них суммы как частичные.
+        if (!wb.rowsCount) {
+          return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb: failedWb(message) };
+        }
+        const partialWb = {
+          ...wb,
+          partial: true,
+          partialReason: message,
+          warnings: [...(wb.warnings ?? []), message],
+        };
+        return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb: partialWb };
+      }
       return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Не удалось загрузить WB";
