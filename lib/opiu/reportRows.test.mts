@@ -7,7 +7,7 @@ import type { OpiuReportDateMode } from "./reportRows";
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= "test-anon-key";
 
-const [{ rowsBySaleDate }, { filterReportRowsByAllowedNmIds, reportRowForStorage }] = await Promise.all([
+const [{ isMissingDeliveryAmountColumnError, rowsBySaleDate }, { filterReportRowsByAllowedNmIds, reportRowForStorage }] = await Promise.all([
   import("./reportRows"),
   import("./syncReportRows"),
 ]);
@@ -65,6 +65,18 @@ test("report date mode is constrained to supported database columns", () => {
   assert.deepEqual(modes, { sale: "sale_dt", report: "rr_dt" });
 });
 
+test("missing delivery_amount is recognized as an optional schema lag", () => {
+  assert.equal(
+    isMissingDeliveryAmountColumnError(new Error("column wb_report_rows.delivery_amount does not exist")),
+    true,
+  );
+  assert.equal(
+    isMissingDeliveryAmountColumnError("Could not find the 'delivery_amount' column in the schema cache"),
+    true,
+  );
+  assert.equal(isMissingDeliveryAmountColumnError(new Error("statement timeout")), false);
+});
+
 test("WB finance row is mapped to exact persisted money fields", () => {
   const stored = reportRowForStorage("cabinet-uuid", {
     rrd_id: 777,
@@ -89,6 +101,7 @@ test("WB finance row is mapped to exact persisted money fields", () => {
     storage_fee: "4.40",
     acceptance: "5.50",
     acquiring_fee: "6.60",
+    delivery_amount: "12",
     bonus_type_name: "Тест",
     realizationreport_id: 999,
   } as unknown as WbReportRow);
@@ -116,6 +129,7 @@ test("WB finance row is mapped to exact persisted money fields", () => {
     storage_fee: 4.4,
     acceptance: 5.5,
     acquiring_fee: 6.6,
+    delivery_amount: 12,
     cashback_discount: null,
     bonus_type_name: "Тест",
     realizationreport_id: 999,

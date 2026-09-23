@@ -5,6 +5,7 @@ import {
 } from "@/lib/wb/reportPagination";
 import type { WbReportRow } from "@/lib/wb/types";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
+import { isMissingDeliveryAmountColumnError } from "./reportRows";
 
 const REPORT_FIELDS = [
   "rrdId",
@@ -62,6 +63,12 @@ type StoredReportRow = Record<string, unknown> & {
   rrd_id: number;
   updated_at: string;
 };
+
+function withoutDeliveryAmount(row: StoredReportRow): StoredReportRow {
+  const copy = { ...row };
+  delete copy.delivery_amount;
+  return copy;
+}
 
 function dateOnly(value: unknown): string | null {
   const date = String(value ?? "").slice(0, 10);
@@ -139,11 +146,23 @@ async function upsertPage(rows: StoredReportRow[]): Promise<void> {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase service role is not configured");
 
+  let omitDeliveryAmount = false;
   for (let start = 0; start < rows.length; start += UPSERT_CHUNK_SIZE) {
     const chunk = rows.slice(start, start + UPSERT_CHUNK_SIZE);
-    const { error } = await db
+    const writableChunk = omitDeliveryAmount
+      ? chunk.map(withoutDeliveryAmount)
+      : chunk;
+    let { error } = await db
       .from("wb_report_rows")
-      .upsert(chunk, { onConflict: "cabinet_id,rrd_id" });
+      .upsert(writableChunk, { onConflict: "cabinet_id,rrd_id" });
+    if (error && !omitDeliveryAmount && isMissingDeliveryAmountColumnError(error.message)) {
+      omitDeliveryAmount = true;
+      console.warn("[opiu] wb_report_rows.delivery_amount is missing; syncing the report without that optional metric");
+      const legacyChunk = chunk.map(withoutDeliveryAmount);
+      ({ error } = await db
+        .from("wb_report_rows")
+        .upsert(legacyChunk, { onConflict: "cabinet_id,rrd_id" }));
+    }
     if (error) {
       throw new Error(`wb_report_rows upsert failed: ${error.message}`);
     }

@@ -8,7 +8,7 @@ export type OpiuReportDateMode = "sale" | "report";
 // cashback_discount (компенсация скидки по программе лояльности) читается наравне
 // с остальными деньгами отчёта: колонка добавлена миграцией 202608200002, синк её
 // запрашивает у WB и сохраняет, metrics.ts агрегирует в loyaltyCompensation.
-const REPORT_COLUMNS = [
+const REPORT_COLUMN_NAMES = [
   "rr_dt",
   "sale_dt",
   "nm_id",
@@ -35,7 +35,30 @@ const REPORT_COLUMNS = [
   "bonus_type_name",
   "realizationreport_id",
   "rrd_id",
-].join(",");
+];
+
+const REPORT_COLUMNS = REPORT_COLUMN_NAMES.join(",");
+const REPORT_COLUMNS_WITHOUT_DELIVERY_AMOUNT = REPORT_COLUMN_NAMES
+  .filter((column) => column !== "delivery_amount")
+  .join(",");
+
+export function isMissingDeliveryAmountColumnError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /delivery_amount/i.test(message)
+    && /column|schema cache|could not find|does not exist/i.test(message);
+}
+
+async function withDeliveryAmountColumnFallback<T>(
+  load: (columns: string) => Promise<T>,
+): Promise<T> {
+  try {
+    return await load(REPORT_COLUMNS);
+  } catch (error) {
+    if (!isMissingDeliveryAmountColumnError(error)) throw error;
+    console.warn("[opiu] wb_report_rows.delivery_amount is missing; loading the report without that optional metric");
+    return load(REPORT_COLUMNS_WITHOUT_DELIVERY_AMOUNT);
+  }
+}
 
 const FORECAST_REPORT_COLUMNS = [
   "rr_dt",
@@ -99,10 +122,10 @@ export async function fetchReportRows(
     ? articlePrefixes.map((p) => `sa_name.ilike.${p.replace(/[%,]/g, "")}%`).join(",")
     : null;
 
-  return loadAllSupabasePages<WbReportRow>(async (from, to) => {
+  return withDeliveryAmountColumnFallback((columns) => loadAllSupabasePages<WbReportRow>(async (from, to) => {
     let query = client
       .from("wb_report_rows")
-      .select(REPORT_COLUMNS)
+      .select(columns)
       .eq("cabinet_id", cabinetId)
       .not(dateColumn, "is", null)
       .gte(dateColumn, dateFrom)
@@ -127,7 +150,7 @@ export async function fetchReportRows(
       label: mode === "sale"
         ? "ОПиУ: финансовый отчёт WB по дате продажи"
         : "ОПиУ: финансовый отчёт WB по дате отчёта",
-    });
+    }));
 }
 
 /**
@@ -150,10 +173,10 @@ export async function fetchLoanTransferRows(
   if (!client) throw new Error("Supabase service role is not configured");
   const dateColumn = reportDateColumn(mode);
 
-  return loadAllSupabasePages<WbReportRow>(async (from, to) => {
+  return withDeliveryAmountColumnFallback((columns) => loadAllSupabasePages<WbReportRow>(async (from, to) => {
     const result = await client
       .from("wb_report_rows")
-      .select(REPORT_COLUMNS)
+      .select(columns)
       .eq("cabinet_id", cabinetId)
       .not(dateColumn, "is", null)
       .gte(dateColumn, dateFrom)
@@ -170,7 +193,7 @@ export async function fetchLoanTransferRows(
     maxPages: 100,
     concurrency: 8,
     label: "ОПиУ: перевод на баланс заёмщика",
-  });
+  }));
 }
 
 export async function fetchForecastReportRows(
