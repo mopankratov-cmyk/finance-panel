@@ -41,3 +41,40 @@ export function operationIdentityFromReasons(reasons: unknown): string | null {
   if (!Array.isArray(reasons)) return null;
   return reasons.map(String).find((reason) => reason.startsWith(BANK_OPERATION_IDENTITY_MARKER)) ?? null;
 }
+
+export type LegacyBankOperation = {
+  id: string;
+  externalId: string;
+  date: string;
+  amount: number;
+  counterparty: string;
+  purpose: string;
+};
+
+const externalRowNumber = (value: string) => value.match(/:(\d+)$/)?.[1] ?? "";
+
+/**
+ * Finds an operation imported before account-based identities existed.
+ * The fallback is deliberately strict: date, amount and counterparty must
+ * match, while a changed purpose is accepted only for the same source row.
+ */
+export function uniqueLegacyBankOperationMatch(
+  incoming: LegacyBankOperation,
+  candidates: LegacyBankOperation[],
+): LegacyBankOperation | null {
+  const incomingCounterparty = normalize(incoming.counterparty);
+  const incomingPurpose = normalize(incoming.purpose);
+  const incomingRow = externalRowNumber(incoming.externalId);
+  if (!incomingCounterparty || !incomingPurpose) return null;
+
+  const matches = candidates.filter((candidate) => {
+    if (candidate.date !== incoming.date || Number(candidate.amount).toFixed(2) !== Number(incoming.amount).toFixed(2)) return false;
+    if (normalize(candidate.counterparty) !== incomingCounterparty) return false;
+    const candidatePurpose = normalize(candidate.purpose);
+    if (candidatePurpose === incomingPurpose) return true;
+    const candidateRow = externalRowNumber(candidate.externalId);
+    return Boolean(incomingRow && candidateRow === incomingRow && candidatePurpose
+      && (incomingPurpose.includes(candidatePurpose) || candidatePurpose.includes(incomingPurpose)));
+  });
+  return matches.length === 1 ? matches[0] : null;
+}

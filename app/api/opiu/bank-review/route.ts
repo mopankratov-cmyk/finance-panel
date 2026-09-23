@@ -11,7 +11,7 @@ import { findCertainTransferPairs } from "@/lib/opiu/bankTransferMatching";
 import { transferCategories } from "@/lib/opiu/bankTransferClassification";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { audit } from "@/lib/audit/log";
-import { bankOperationIdentity, operationIdentityFromReasons } from "@/lib/opiu/bankOperationIdentity";
+import { bankOperationIdentity, operationIdentityFromReasons, uniqueLegacyBankOperationMatch } from "@/lib/opiu/bankOperationIdentity";
 import { bankLedgerProjectionPayload } from "@/lib/finance/bankLedgerProjection";
 import type { BankStatement } from "@/lib/finance/bankStatementGrid";
 
@@ -274,8 +274,8 @@ export async function POST(request: Request) {
 
   const incomingIdentities = new Set(rows.map((row) => operationIdentityFromReasons(row.reasons)).filter((identity): identity is string => Boolean(identity)));
   const existingIdentities = new Set<string>();
+  const dates = rows.map((row) => row.date).sort();
   if (bankAccountNumber && incomingIdentities.size) {
-    const dates = rows.map((row) => row.date).sort();
     const existingRows = await loadAllSupabasePages<{ reasons: unknown }>((from, to) => db
       .from("bank_review_items")
       .select("reasons")
@@ -287,6 +287,47 @@ export async function POST(request: Request) {
     for (const existing of existingRows) {
       const identity = operationIdentityFromReasons(existing.reasons);
       if (identity) existingIdentities.add(identity);
+    }
+  }
+  if (bankAccountNumber && ownerInn && incomingIdentities.size) {
+    type LegacyRow = { id:string; external_id:string; date:string; amount:number; counterparty:string; purpose:string; company_id:string|null; account_id:string|null; counterparty_inn:string; reasons:unknown };
+    const legacyRows = await loadAllSupabasePages<LegacyRow>((from, to) => db
+      .from("bank_review_items")
+      .select("id,external_id,date,amount,counterparty,purpose,company_id,account_id,counterparty_inn,reasons")
+      .eq("bank_account_number", "")
+      .eq("owner_inn", ownerInn)
+      .gte("date", dates[0])
+      .lte("date", dates.at(-1)!)
+      .order("id")
+      .range(from, to), { label: "Проверка старых строк перекрывающейся выписки" });
+    const claimedLegacyIds = new Set<string>();
+    for (const row of rows) {
+      const identity = operationIdentityFromReasons(row.reasons);
+      if (!identity || existingIdentities.has(identity)) continue;
+      const match = uniqueLegacyBankOperationMatch({
+        id: row.id, externalId: row.external_id, date: row.date, amount: row.amount,
+        counterparty: row.counterparty, purpose: row.purpose,
+      }, legacyRows.filter((candidate) => !claimedLegacyIds.has(candidate.id)).map((candidate) => ({
+        id: candidate.id, externalId: candidate.external_id, date: candidate.date, amount: Number(candidate.amount),
+        counterparty: candidate.counterparty, purpose: candidate.purpose,
+      })));
+      if (!match) continue;
+      const legacy = legacyRows.find((candidate) => candidate.id === match.id)!;
+      const technicalReasons = row.reasons.filter((reason) => reason.startsWith("__"));
+      const humanReasons = (Array.isArray(legacy.reasons) ? legacy.reasons.map(String) : [])
+        .filter((reason) => !reason.startsWith("__") && !/^Кошелёк определён по /i.test(reason));
+      const updated = await db.from("bank_review_items").update({
+        bank_account_number: bankAccountNumber,
+        owner_inn: ownerInn,
+        company_id: row.company_id ?? legacy.company_id,
+        account_id: row.account_id ?? legacy.account_id,
+        counterparty_inn: row.counterparty_inn || legacy.counterparty_inn,
+        reasons: Array.from(new Set([...humanReasons, "Расчётный счёт подтверждён повторной выпиской", ...technicalReasons])),
+        updated_at: new Date().toISOString(),
+      }).eq("id", legacy.id);
+      if (updated.error) return jsonError(updated.error.message, 500);
+      claimedLegacyIds.add(legacy.id);
+      existingIdentities.add(identity);
     }
   }
   const seenIdentities = new Set(existingIdentities);

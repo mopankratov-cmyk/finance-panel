@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bankOperationIdentity, operationIdentityFromReasons } from "./bankOperationIdentity.ts";
+import { bankOperationIdentity, operationIdentityFromReasons, uniqueLegacyBankOperationMatch } from "./bankOperationIdentity.ts";
 
 const operation = {
   bankAccountNumber: "40702 810 0 00000000001",
@@ -49,4 +49,31 @@ test("stored identity is read from review reasons", () => {
   const identity = bankOperationIdentity(operation)!;
   assert.equal(operationIdentityFromReasons(["reason", identity]), identity);
   assert.equal(operationIdentityFromReasons(null), null);
+});
+
+const legacy = {
+  id: "legacy",
+  externalId: "old-document:20",
+  date: "2026-09-10",
+  amount: -15_000,
+  counterparty: "Панкратов Максим Олегович ИНН:280888215133",
+  purpose: "Перевод собственных средств. Без НДС.",
+};
+
+test("an overlapping statement recognizes one legacy row without an account identity", () => {
+  assert.equal(uniqueLegacyBankOperationMatch({ ...legacy, id: "incoming", externalId: "new-document:20" }, [legacy])?.id, "legacy");
+});
+
+test("the same exporter row may add a harmless purpose prefix", () => {
+  assert.equal(uniqueLegacyBankOperationMatch({
+    ...legacy,
+    id: "incoming",
+    externalId: "new-document:20",
+    purpose: "Сертификат. Перевод собственных средств. Без НДС.",
+  }, [legacy])?.id, "legacy");
+});
+
+test("legacy fallback refuses a different counterparty or an ambiguous match", () => {
+  assert.equal(uniqueLegacyBankOperationMatch({ ...legacy, counterparty: "Другой контрагент" }, [legacy]), null);
+  assert.equal(uniqueLegacyBankOperationMatch({ ...legacy, id: "incoming" }, [legacy, { ...legacy, id: "second" }]), null);
 });
