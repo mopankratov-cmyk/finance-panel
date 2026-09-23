@@ -45,8 +45,18 @@ function addDays(dateStr: string, days: number): string {
   return isoDate(d);
 }
 
+/**
+ * Номер документа (updNum) НЕ входит в ключ строки: WB сначала отдаёт
+ * операцию с updNum=-1 (документ ещё не оформлен), а через день-два — ту
+ * же операцию (тот же advertId/updTime/paymentType, та же сумма) уже с
+ * реальным номером документа. Если включить updNum в ключ, вторая
+ * досинхронизация не обновляет запись, а вставляет дубликат — сумма по
+ * "ВБ продвижение" задваивается на реальные деньги. Нашли построчной
+ * сверкой с выгрузкой "История затрат" из личного кабинета WB (диагностика
+ * в чате) — 60k+ задвоенных строк по всем кабинетам/месяцам на проде.
+ */
 function rowId(cabinetId: string, item: AdvertSpendHistoryItem): string {
-  return [cabinetId, item.advertId ?? "", item.updTime ?? "", item.paymentType ?? "", item.updNum ?? ""].join("|");
+  return [cabinetId, item.advertId ?? "", item.updTime ?? "", item.paymentType ?? ""].join("|");
 }
 
 interface CabinetResult {
