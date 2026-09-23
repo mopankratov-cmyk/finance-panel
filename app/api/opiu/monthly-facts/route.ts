@@ -144,17 +144,32 @@ export async function GET(request: NextRequest) {
         contractorAmount: num(row.contractor_amount),
         taxAmount: num(row.tax_amount),
         companyId: row.company_id ? String(row.company_id) : null,
-        lines: Array.isArray(row.allocation_lines) ? row.allocation_lines as Array<{ amount?: number; taxAmount?: number; companyId?: string | null }> : null,
+        lines: Array.isArray(row.allocation_lines) ? (row.allocation_lines as Array<Record<string, unknown>>).map((line) => ({
+          kind: line.kind === "official" || line.kind === "unofficial" || line.kind === "contractor" ? line.kind : undefined,
+          amount: num(line.amount),
+          taxAmount: num(line.taxAmount),
+          companyId: line.companyId ? String(line.companyId) : null,
+        })) : null,
       }));
       const employeeIds = [...new Set(entries.map((entry) => entry.employeeId))];
       if (employeeIds.length) {
         const employeesRaw = await loadAllSupabasePages<Record<string, unknown>>((pageFrom, pageTo) => db
           .from("payroll_employees")
-          .select("id,position")
+          .select("id,position,employment_type")
           .in("id", employeeIds)
           .order("id", { ascending: true })
           .range(pageFrom, pageTo), { label: "ОПиУ: сотрудники зарплатной ведомости", maxPages: 10 });
-        employees = employeesRaw.map((row) => ({ id: String(row.id), position: String(row.position ?? "") }));
+        employees = employeesRaw.map((row) => ({
+          id: String(row.id),
+          position: String(row.position ?? ""),
+          employmentType: row.employment_type === "official"
+            || row.employment_type === "unofficial"
+            || row.employment_type === "partial"
+            || row.employment_type === "individual_entrepreneur"
+            || row.employment_type === "self_employed"
+            ? row.employment_type
+            : undefined,
+        }));
       }
     }
     payrollFacts = aggregatePayrollMonthlyFacts({ periods, entries, employees, from, to, companyIds: requestedCompanyIds });

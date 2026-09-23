@@ -88,6 +88,61 @@ test("полный месяц ведомости даёт начисленный
   assert.equal(result.payroll_taxes.amount, 21);
 });
 
+test("август включает начисления за обе половины месяца, включая выплату 5 сентября", () => {
+  const result = aggregatePayrollMonthlyFacts({
+    from: "2026-08-01",
+    to: "2026-08-31",
+    periods: [
+      { id: "paid-2026-08-20", periodStart: "2026-08-01", periodEnd: "2026-08-15" },
+      { id: "paid-2026-09-05", periodStart: "2026-08-16", periodEnd: "2026-08-31" },
+    ],
+    employees: [{ id: "e1", position: "Финансовый директор", employmentType: "official" }],
+    entries: [
+      { periodId: "paid-2026-08-20", employeeId: "e1", officialAmount: 40_000, unofficialAmount: 0, contractorAmount: 0, taxAmount: 12_000 },
+      { periodId: "paid-2026-09-05", employeeId: "e1", officialAmount: 50_000, unofficialAmount: 0, contractorAmount: 0, taxAmount: 15_000 },
+    ],
+  });
+  assert.equal(result.admin_salary.amount, 90_000);
+  assert.equal(result.payroll_taxes.amount, 27_000);
+  assert.equal(result.admin_salary.status, "complete");
+});
+
+test("налог подрядчика входит в зарплату, а налог официальной части — в налоги на ФОТ", () => {
+  const result = aggregatePayrollMonthlyFacts({
+    from: "2026-09-01",
+    to: "2026-09-30",
+    periods: [{ id: "p1", periodStart: "2026-09-01", periodEnd: "2026-09-30" }],
+    employees: [{ id: "e1", position: "Финансовый директор", employmentType: "partial" }],
+    entries: [{
+      periodId: "p1",
+      employeeId: "e1",
+      officialAmount: 100_000,
+      unofficialAmount: 20_000,
+      contractorAmount: 50_000,
+      taxAmount: 33_000,
+      lines: [
+        { kind: "official", amount: 100_000, taxAmount: 30_000 },
+        { kind: "unofficial", amount: 20_000, taxAmount: 0 },
+        { kind: "contractor", amount: 50_000, taxAmount: 3_000 },
+      ],
+    }],
+  });
+  assert.equal(result.admin_salary.amount, 173_000);
+  assert.equal(result.payroll_taxes.amount, 30_000);
+});
+
+test("старая строка ИП без детализации включает налог в зарплатную статью", () => {
+  const result = aggregatePayrollMonthlyFacts({
+    from: "2026-09-01",
+    to: "2026-09-30",
+    periods: [{ id: "p1", periodStart: "2026-09-01", periodEnd: "2026-09-30" }],
+    employees: [{ id: "e1", position: "Менеджер WB", employmentType: "individual_entrepreneur" }],
+    entries: [{ periodId: "p1", employeeId: "e1", officialAmount: 0, unofficialAmount: 0, contractorAmount: 50_000, taxAmount: 3_000 }],
+  });
+  assert.equal(result.commercial_salary.amount, 53_000);
+  assert.equal(result.payroll_taxes.amount, 0);
+});
+
 test("неполная ведомость не выдаётся за полный месяц", () => {
   const result = aggregatePayrollMonthlyFacts({
     from: "2026-09-01",

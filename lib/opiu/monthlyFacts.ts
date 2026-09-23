@@ -32,12 +32,18 @@ export interface PayrollEntryFact {
   contractorAmount: number;
   taxAmount: number;
   companyId?: string | null;
-  lines?: Array<{ amount?: number; taxAmount?: number; companyId?: string | null }> | null;
+  lines?: Array<{
+    kind?: "official" | "unofficial" | "contractor";
+    amount?: number;
+    taxAmount?: number;
+    companyId?: string | null;
+  }> | null;
 }
 
 export interface PayrollEmployeeFact {
   id: string;
   position: string;
+  employmentType?: "official" | "unofficial" | "partial" | "individual_entrepreneur" | "self_employed";
 }
 
 const DDS_TO_OPIU: Readonly<Record<string, string>> = {
@@ -190,12 +196,37 @@ export function aggregatePayrollMonthlyFacts(input: {
       : null;
     if (companySelected && !selectedLines && (!entry.companyId || !selectedCompanyIds.has(entry.companyId))) continue;
     if (companySelected && selectedLines?.length === 0) continue;
+    // В ОПиУ подрядчик (ИП/самозанятый) стоит компании сумму выплаты вместе
+    // с компенсируемым ему налогом. У официальной части налог, наоборот,
+    // является отдельной статьёй «Налоги на ФОТ». Долг сотруднику и платежи
+    // календаря эту переклассификацию не используют: там налог по-прежнему
+    // остаётся отдельным платежом в ФНС.
     const salary = selectedLines
-      ? selectedLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0)
-      : entry.officialAmount + entry.unofficialAmount + entry.contractorAmount;
+      ? selectedLines.reduce((sum, line) => {
+        const amount = Number(line.amount) || 0;
+        const contractorTax = line.kind === "contractor" ? Number(line.taxAmount) || 0 : 0;
+        return sum + amount + contractorTax;
+      }, 0)
+      : entry.officialAmount + entry.unofficialAmount + entry.contractorAmount
+        + ((employee.employmentType === "individual_entrepreneur"
+          || employee.employmentType === "self_employed"
+          || (entry.contractorAmount > 0 && entry.officialAmount === 0 && entry.unofficialAmount === 0))
+          ? entry.taxAmount
+          : 0);
     const tax = selectedLines
-      ? selectedLines.reduce((sum, line) => sum + (Number(line.taxAmount) || 0), 0)
-      : entry.taxAmount;
+      ? selectedLines.reduce((sum, line) => {
+        // Неизвестный kind возможен только у старой/повреждённой строки.
+        // Сохраняем прежнее безопасное поведение и не теряем её налог молча.
+        if (line.kind !== "contractor" && line.kind !== "unofficial") {
+          return sum + (Number(line.taxAmount) || 0);
+        }
+        return sum;
+      }, 0)
+      : (employee.employmentType === "individual_entrepreneur"
+        || employee.employmentType === "self_employed"
+        || (entry.contractorAmount > 0 && entry.officialAmount === 0 && entry.unofficialAmount === 0))
+        ? 0
+        : entry.taxAmount;
     const category = payrollCategoryForEmployee(employee.position);
     if (category === "administrative") add(totals, "admin_salary", salary);
     if (category === "commercial") add(totals, "commercial_salary", salary);
