@@ -7,7 +7,7 @@ import type { OpiuReportDateMode } from "./reportRows";
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= "test-anon-key";
 
-const [{ isMissingDeliveryAmountColumnError, rowsBySaleDate }, { filterReportRowsByAllowedNmIds, reportRowForStorage }] = await Promise.all([
+const [{ isMissingDeliveryAmountColumnError, reportDatesInRange, rowsBySaleDate }, { filterReportRowsByAllowedNmIds, reportRowForStorage }] = await Promise.all([
   import("./reportRows"),
   import("./syncReportRows"),
 ]);
@@ -75,6 +75,16 @@ test("missing delivery_amount is recognized as an optional schema lag", () => {
     true,
   );
   assert.equal(isMissingDeliveryAmountColumnError(new Error("statement timeout")), false);
+});
+
+test("large shared-cabinet reports split a calendar range into exact days", () => {
+  assert.deepEqual(reportDatesInRange("2026-08-30", "2026-09-02"), [
+    "2026-08-30",
+    "2026-08-31",
+    "2026-09-01",
+    "2026-09-02",
+  ]);
+  assert.deepEqual(reportDatesInRange("2026-09-02", "2026-09-01"), []);
 });
 
 test("WB finance row is mapped to exact persisted money fields", () => {

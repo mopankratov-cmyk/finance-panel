@@ -61,20 +61,30 @@ export async function fetchOrders(
   brand: OpiuBrand = resolveOpiuBrand(undefined),
 ): Promise<OpiuOrder[]> {
   const client = financeDb();
+  const prefixFilter = brand.articlePrefixes?.length
+    ? brand.articlePrefixes.map((prefix) => `supplier_article.ilike.${prefix.replace(/[%,]/g, "")}%`).join(",")
+    : null;
   const rowsPromise = loadAllSupabasePages<{
       id: number; cabinet_id: string; nm_id: number; supplier_article: string | null; date: string; total_price: number | null;
       discount_percent: number | null; finished_price: number | null; price_with_disc: number | null; spp: number | null; is_cancel: boolean | null; warehouse: string | null; region: string | null;
-    }>((from, to) => client
-      .from("wb_orders")
-      .select("id, cabinet_id, nm_id, supplier_article, date, total_price, discount_percent, finished_price, price_with_disc, spp, is_cancel, warehouse, region")
-      .eq("cabinet_id", brand.cabinetId)
-      .gte("date", dateFrom)
-      .lte("date", `${dateTo}T23:59:59.999Z`)
-      .order("date", { ascending: true })
-      .order("nm_id", { ascending: true })
-      .order("cabinet_id", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, to), { maxPages: 300, label: "ОПиУ: заказы WB" });
+    }>((from, to) => {
+      let query = client
+        .from("wb_orders")
+        .select("id, cabinet_id, nm_id, supplier_article, date, total_price, discount_percent, finished_price, price_with_disc, spp, is_cancel, warehouse, region")
+        .eq("cabinet_id", brand.cabinetId)
+        .gte("date", dateFrom)
+        .lte("date", `${dateTo}T23:59:59.999Z`);
+      // Агентский кабинет содержит заказы чужих продавцов. Фильтруем бренд в
+      // Postgres до пагинации: раньше каждый из трёх брендов Оптимы повторно
+      // скачивал весь кабинет за месяц и только затем отбрасывал 90% строк.
+      if (prefixFilter) query = query.or(prefixFilter);
+      return query
+        .order("date", { ascending: true })
+        .order("nm_id", { ascending: true })
+        .order("cabinet_id", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
+    }, { maxPages: 300, label: "ОПиУ: заказы WB" });
   const funnelFacts = await loadReadyFunnelFacts(
     client,
     brand.cabinetId,

@@ -17,7 +17,10 @@ import {
 import { reportSyncBlocksMonth, type ReportSyncStateRow } from "@/lib/opiu/reportSyncReadiness";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Полный месяц по всем компаниям включает более 120 тыс. строк одного Riobox
+// плюс остальные WB/Ozon-источники. После дневной пагинации ответ стабилен,
+// но на холодном serverless-запуске может занять чуть больше 60 секунд.
+export const maxDuration = 120;
 
 const num = (value: unknown) => Number(value ?? 0) || 0;
 const r0 = (value: number) => Math.round(value);

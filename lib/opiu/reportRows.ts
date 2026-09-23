@@ -83,6 +83,7 @@ const FORECAST_REPORT_COLUMNS = [
 ].join(",");
 
 const FORECAST_ARTICLE_BATCH_SIZE = 50;
+const REPORT_DATE_CONCURRENCY = 3;
 
 function forecastArticleCandidates(articles: string[]) {
   const candidates = new Set<string>();
@@ -97,6 +98,35 @@ function forecastArticleCandidates(articles: string[]) {
 
 function reportDateColumn(mode: OpiuReportDateMode): "sale_dt" | "rr_dt" {
   return mode === "sale" ? "sale_dt" : "rr_dt";
+}
+
+export function reportDatesInRange(dateFrom: string, dateTo: string): string[] {
+  const start = new Date(`${dateFrom}T00:00:00.000Z`);
+  const end = new Date(`${dateTo}T00:00:00.000Z`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) return [];
+  const dates: string[] = [];
+  for (let current = start; current <= end; current = new Date(current.getTime() + 86_400_000)) {
+    dates.push(current.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  map: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const result = new Array<R>(values.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      result[index] = await map(values[index]!);
+    }
+  });
+  await Promise.all(workers);
+  return result;
 }
 
 /**
@@ -122,35 +152,49 @@ export async function fetchReportRows(
     ? articlePrefixes.map((p) => `sa_name.ilike.${p.replace(/[%,]/g, "")}%`).join(",")
     : null;
 
-  return withDeliveryAmountColumnFallback((columns) => loadAllSupabasePages<WbReportRow>(async (from, to) => {
-    let query = client
-      .from("wb_report_rows")
-      .select(columns)
-      .eq("cabinet_id", cabinetId)
-      .not(dateColumn, "is", null)
-      .gte(dateColumn, dateFrom)
-      .lte(dateColumn, dateTo);
-    if (prefixFilter) query = query.or(prefixFilter);
-    const result = await query
-      .order(dateColumn, { ascending: true })
-      .order("rrd_id", { ascending: true })
-      .range(from, to);
-    return {
-      data: result.data as unknown as WbReportRow[] | null,
-      error: result.error ? { message: result.error.message } : null,
-    };
-  }, {
-      maxPages: 1_000,
-      // Агентские кабинеты (Оптима) даже под фильтром по префиксу артикула
-      // отдают десятки страниц на одну неделю (38 страниц × ~780мс
-      // последовательно — почти 30с только на сам запрос, до JS-обработки).
-      // Постраничные запросы независимы (обычная OFFSET-пагинация над
-      // готовым набором строк), параллелить их безопасно.
-      concurrency: 8,
-      label: mode === "sale"
-        ? "ОПиУ: финансовый отчёт WB по дате продажи"
-        : "ОПиУ: финансовый отчёт WB по дате отчёта",
-    }));
+  const loadRows = (columns: string, exactDate?: string) =>
+    loadAllSupabasePages<WbReportRow>(async (from, to) => {
+        let query = client
+          .from("wb_report_rows")
+          .select(columns)
+          .eq("cabinet_id", cabinetId)
+          .not(dateColumn, "is", null);
+        query = exactDate
+          ? query.eq(dateColumn, exactDate)
+          : query.gte(dateColumn, dateFrom).lte(dateColumn, dateTo);
+        if (prefixFilter) query = query.or(prefixFilter);
+        const result = await query
+          .order(dateColumn, { ascending: true })
+          .order("rrd_id", { ascending: true })
+          .range(from, to);
+        return {
+          data: result.data as unknown as WbReportRow[] | null,
+          error: result.error ? { message: result.error.message } : null,
+        };
+      }, {
+        maxPages: 1_000,
+        // В дневной выборке OFFSET остаётся маленьким; страницы одного дня идут
+        // последовательно, а параллелизм задаётся между днями ниже.
+        concurrency: exactDate ? 1 : 8,
+        label: mode === "sale"
+          ? "ОПиУ: финансовый отчёт WB по дате продажи"
+          : "ОПиУ: финансовый отчёт WB по дате отчёта",
+      });
+
+  return withDeliveryAmountColumnFallback(async (columns) => {
+    if (!prefixFilter) return loadRows(columns);
+    // У агентского кабинета Оптима один бренд даёт более 100 тыс. строк за
+    // месяц. Глубокий OFFSET по всему месяцу падает по statement timeout даже
+    // при наличии trigram-индекса. Дневные диапазоны ограничивают OFFSET
+    // несколькими тысячами строк и сохраняют полный финансовый факт.
+    const dates = reportDatesInRange(dateFrom, dateTo);
+    const byDate = await mapWithConcurrency(
+      dates,
+      REPORT_DATE_CONCURRENCY,
+      (date) => loadRows(columns, date),
+    );
+    return byDate.flat();
+  });
 }
 
 /**
