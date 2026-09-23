@@ -1,6 +1,7 @@
 "use client";
 
 import { FinanceTabs } from "@/components/FinanceTabs";
+import { MonthlyOpiuDetailsPanel, type MonthlyOpiuDetailSelection } from "@/components/opiu/MonthlyOpiuDetailsPanel";
 import { ActionableError } from "@/components/ui/ActionableError";
 import { Hint } from "@/components/ui/Hint";
 import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
@@ -40,15 +41,39 @@ interface MonthlyOpiuData extends Omit<MonthlyOpiuResponse, "period"> {
 }
 
 const MONTH_CACHE_TTL_MS = 5 * 60 * 1000;
+const MONTH_SESSION_CACHE_PREFIX = "finance-panel:opiu-month:v1:";
 const monthlyOpiuMemoryCache = new Map<string, { savedAt: number; data: MonthlyOpiuData }>();
 
 function cachedMonth(month: string): MonthlyOpiuData | null {
   const cached = monthlyOpiuMemoryCache.get(month);
-  if (!cached || Date.now() - cached.savedAt > MONTH_CACHE_TTL_MS) {
+  if (cached && Date.now() - cached.savedAt <= MONTH_CACHE_TTL_MS) return cached.data;
+  if (cached) {
     monthlyOpiuMemoryCache.delete(month);
+  }
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(`${MONTH_SESSION_CACHE_PREFIX}${month}`);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as { savedAt?: number; data?: MonthlyOpiuData };
+    if (!stored.savedAt || !stored.data || Date.now() - stored.savedAt > MONTH_CACHE_TTL_MS) {
+      window.sessionStorage.removeItem(`${MONTH_SESSION_CACHE_PREFIX}${month}`);
+      return null;
+    }
+    monthlyOpiuMemoryCache.set(month, { savedAt: stored.savedAt, data: stored.data });
+    return stored.data;
+  } catch {
     return null;
   }
-  return cached.data;
+}
+
+function storeMonth(month: string, data: MonthlyOpiuData) {
+  const entry = { savedAt: Date.now(), data };
+  monthlyOpiuMemoryCache.set(month, entry);
+  try {
+    window.sessionStorage.setItem(`${MONTH_SESSION_CACHE_PREFIX}${month}`, JSON.stringify(entry));
+  } catch {
+    // Кэш ускоряет повторный вход, но не должен мешать отчёту при запрете storage.
+  }
 }
 
 function combineMonthlyData(
@@ -105,12 +130,22 @@ function hasVisibleAmount(amount: MonthlyOpiuAmount): boolean {
   return amount.value != null || (amount.status === "partial" && amount.known != null);
 }
 
-function AmountCell({ amount, row, label }: { amount: MonthlyOpiuAmount; row: MonthlyOpiuRow; label: string }) {
+function AmountCell({ amount, row, label, onOpen }: { amount: MonthlyOpiuAmount; row: MonthlyOpiuRow; label: string; onOpen: () => void }) {
   const showCalculationHint = amount.note && ["taxes", "vat", "loan_interest"].includes(row.id);
+  const visible = hasVisibleAmount(amount);
   return (
     <td data-label={label} className="whitespace-nowrap px-1.5 py-1.5 text-right tabular-nums text-slate-800">
       <span className="inline-flex items-center justify-end gap-1">
-        {visibleAmount(amount, row)}
+        {visible ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="min-h-8 rounded px-1 font-[inherit] tabular-nums underline decoration-dotted underline-offset-4 transition-colors hover:bg-emerald-50 hover:text-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            aria-label={`Расшифровать «${row.label}», ${label}: ${visibleAmount(amount, row)}`}
+          >
+            {visibleAmount(amount, row)}
+          </button>
+        ) : "—"}
         {showCalculationHint ? <Hint label={`Пояснение к сумме «${row.label}», ${label}`}>{amount.note}</Hint> : null}
       </span>
     </td>
@@ -134,6 +169,7 @@ export function MonthlyOpiuPage() {
   const [exportedUrl, setExportedUrl] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [detailSelection, setDetailSelection] = useState<MonthlyOpiuDetailSelection | null>(null);
   const loading = marketplaceLoading || factsLoading;
   const elapsed = useElapsedSeconds(loading);
 
@@ -165,7 +201,7 @@ export function MonthlyOpiuPage() {
         return;
       }
       if (next && marketplaceResult && factsResult) {
-        monthlyOpiuMemoryCache.set(month, { savedAt: Date.now(), data: next });
+        storeMonth(month, next);
       }
     };
 
@@ -299,6 +335,14 @@ export function MonthlyOpiuPage() {
     }
   };
 
+  const openDetails = (
+    row: MonthlyOpiuRow,
+    amount: MonthlyOpiuAmount,
+    direction: MonthlyOpiuDetailSelection["direction"],
+    columnLabel: string,
+    detailStatement: NonNullable<typeof statement>,
+  ) => setDetailSelection({ row, amount, direction, columnLabel, statement: detailStatement });
+
   return (
     <div className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4 lg:py-5">
       <FinanceTabs />
@@ -334,7 +378,7 @@ export function MonthlyOpiuPage() {
           </select>
         </label>
         <label className="flex min-w-44 flex-col gap-1 text-sm font-medium text-slate-500">
-          Бренд
+          Бренд WB
           <select
             value={brand}
             onChange={(event) => setBrand(event.target.value)}
@@ -360,7 +404,7 @@ export function MonthlyOpiuPage() {
 
       {brand ? (
         <div role="status" className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-          Показан бренд <b>{brand}</b>. Общие расходы не распределены по брендам и в этот срез не включены.
+          Показан бренд WB <b>{brand}</b>. Ozon не включён: источник пока не даёт разрез по брендам. Общие расходы не распределены по брендам и в этот срез не включены.
         </div>
       ) : null}
 
@@ -383,7 +427,7 @@ export function MonthlyOpiuPage() {
         />
       ))}
 
-      {!factsLoading && companiesWithTaxGaps.length > 0 ? (
+      {!brand && !factsLoading && companiesWithTaxGaps.length > 0 ? (
         <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
@@ -404,9 +448,25 @@ export function MonthlyOpiuPage() {
 
       {statement ? (
         <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Выручка</div><div className="mt-0.5 text-xl font-extrabold text-slate-900"><KpiValue amount={statement.revenue} /></div></div>
-          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">EBITDA</div><div className="mt-0.5 text-xl font-extrabold text-slate-900"><KpiValue amount={statement.ebitda} /></div></div>
-          <div className="rounded-lg border border-red-200 bg-red-50/40 px-3 py-2.5 shadow-sm"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Чистая прибыль</div><div className="mt-0.5 text-xl font-extrabold text-slate-900"><KpiValue amount={statement.netProfit} /></div></div>
+          {([
+            ["revenue_total", "Выручка", statement.revenue, "border-slate-200 bg-white"],
+            ["ebitda", "EBITDA", statement.ebitda, "border-slate-200 bg-white"],
+            ["net_profit", "Чистая прибыль", statement.netProfit, "border-red-200 bg-red-50/40"],
+          ] as const).map(([rowId, label, amount, tone]) => {
+            const row = statement.rows.find((candidate) => candidate.id === rowId);
+            return (
+              <button
+                key={rowId}
+                type="button"
+                disabled={!row || !hasVisibleAmount(amount)}
+                onClick={() => row && openDetails(row, amount, "total", "Итого", statement)}
+                className={`rounded-lg border px-3 py-2.5 text-left shadow-sm transition-colors ${tone} enabled:hover:border-emerald-300 enabled:hover:bg-emerald-50/60 enabled:focus-visible:outline-none enabled:focus-visible:ring-2 enabled:focus-visible:ring-emerald-400 disabled:cursor-default`}
+              >
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</div>
+                <div className="mt-0.5 text-xl font-extrabold text-slate-900 underline decoration-dotted underline-offset-4"><KpiValue amount={amount} /></div>
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
@@ -470,7 +530,13 @@ export function MonthlyOpiuPage() {
                       <td colSpan={Math.max(sourceColumns.length, 1)} data-label="Общие расходы" className="px-2 py-1.5 text-center tabular-nums text-slate-700">
                         <span className="inline-flex items-center justify-center gap-1.5 rounded-md bg-slate-100 px-2 py-1">
                           <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Общие расходы</span>
-                          <b>{visibleAmount(row.amounts.shared, row)}</b>
+                          <button
+                            type="button"
+                            onClick={() => openDetails(row, row.amounts.shared, "shared", "Общие расходы", statement)}
+                            className="min-h-8 rounded px-1 font-bold underline decoration-dotted underline-offset-4 hover:bg-emerald-50 hover:text-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                          >
+                            {visibleAmount(row.amounts.shared, row)}
+                          </button>
                           {row.amounts.shared.note && ["taxes", "vat", "loan_interest"].includes(row.id)
                             ? <Hint label={`Пояснение к сумме «${row.label}»`}>{row.amounts.shared.note}</Hint>
                             : null}
@@ -478,12 +544,12 @@ export function MonthlyOpiuPage() {
                       </td>
                     ) : sourceRows.length ? sourceRows.map(({ source, row: sourceRow }) => (
                       sourceRow
-                        ? <AmountCell key={source.id} amount={sourceRow.amounts[source.direction]} row={sourceRow} label={source.label} />
+                        ? <AmountCell key={source.id} amount={sourceRow.amounts[source.direction]} row={sourceRow} label={source.label} onOpen={() => openDetails(sourceRow, sourceRow.amounts[source.direction], source.direction, source.label, source.statement)} />
                         : <td key={source.id} data-label={source.label} className="px-1.5 py-1.5 text-right text-slate-400">—</td>
                     )) : (
                       <td data-label="Направления" className="px-1.5 py-1.5 text-center text-slate-400">—</td>
                     )}
-                    <AmountCell amount={total} row={row} label="Итого" />
+                    <AmountCell amount={total} row={row} label="Итого" onOpen={() => openDetails(row, total, "total", "Итого", statement)} />
                   </tr>
                 );
               })}
@@ -491,6 +557,7 @@ export function MonthlyOpiuPage() {
           </table>
         </div>
       ) : null}
+      <MonthlyOpiuDetailsPanel selection={detailSelection} month={month} companyId={companyId} onClose={() => setDetailSelection(null)} />
     </div>
   );
 }

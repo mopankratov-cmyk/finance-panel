@@ -156,9 +156,13 @@ function addAmounts(left: MonthlyOpiuAmount, right: MonthlyOpiuAmount): MonthlyO
 }
 
 function percentAmount(numerator: MonthlyOpiuAmount, revenue: MonthlyOpiuAmount): MonthlyOpiuAmount {
+  if (numerator.status === "na" || revenue.status === "na") return na();
   const known = revenue.known !== 0 ? numerator.known / revenue.known * 100 : 0;
   if (numerator.status === "complete" && revenue.status === "complete" && revenue.value) return complete((numerator.value ?? 0) / revenue.value * 100);
-  return { value: null, known, status: numerator.status === "missing" ? "missing" : "partial", note: numerator.note };
+  if (numerator.status === "missing" || revenue.status === "missing") {
+    return missing(numerator.note || revenue.note || "Нет данных для расчёта рентабельности");
+  }
+  return { value: null, known, status: "partial", note: numerator.note || revenue.note };
 }
 
 function directions(

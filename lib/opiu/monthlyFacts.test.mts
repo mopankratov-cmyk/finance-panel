@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateDdsMonthlyFacts, aggregateLoanScheduleMonthlyFacts, aggregatePayrollMonthlyFacts, loanCompanyByReceiptPayments, mergeMonthlySharedFacts } from "./monthlyFacts.ts";
+import { aggregateDdsMonthlyFacts, aggregateLoanScheduleMonthlyFacts, aggregatePayrollMonthlyFacts, loanCompanyByReceiptPayments, mergeMonthlySharedFacts, payrollMonthlyContributions } from "./monthlyFacts.ts";
 
 test("ДДС раскладывается по статьям ОПиУ и не дублирует платежи ведомости", () => {
   const result = aggregateDdsMonthlyFacts([
@@ -210,4 +210,33 @@ test("алиасы одного юрлица объединяют начисле
   });
   assert.equal(result.admin_salary.amount, 300);
   assert.equal(result.payroll_taxes.amount, 39);
+});
+
+test("расшифровка ведомости использует ту же сумму, что и агрегат ОПиУ", () => {
+  const employee = { id: "e1", position: "Финансовый директор", employmentType: "partial" as const };
+  const entry = {
+    id: "entry-1",
+    periodId: "p1",
+    employeeId: "e1",
+    officialAmount: 300,
+    unofficialAmount: 0,
+    contractorAmount: 0,
+    taxAmount: 39,
+    lines: [
+      { kind: "official" as const, amount: 100, taxAmount: 13, companyId: "company-a" },
+      { kind: "contractor" as const, amount: 200, taxAmount: 12, companyId: "company-b" },
+    ],
+  };
+  const contributions = payrollMonthlyContributions(entry, employee, ["company-b"]);
+  const aggregate = aggregatePayrollMonthlyFacts({
+    from: "2026-09-01",
+    to: "2026-09-30",
+    companyIds: ["company-b"],
+    periods: [{ id: "p1", periodStart: "2026-09-01", periodEnd: "2026-09-30" }],
+    employees: [employee],
+    entries: [entry],
+  });
+
+  assert.equal(contributions.find((item) => item.articleId === "admin_salary")?.amount, aggregate.admin_salary.amount);
+  assert.equal(contributions.find((item) => item.articleId === "payroll_taxes")?.amount, aggregate.payroll_taxes.amount);
 });
