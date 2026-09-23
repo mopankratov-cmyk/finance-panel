@@ -40,6 +40,7 @@ function paymentFromRow(row: Record<string, unknown>): Payment {
     status: String(row.status) as Payment["status"],
     counterparty: String(row.counterparty ?? ""),
     comment: row.comment == null ? undefined : String(row.comment),
+    settledByPaymentId: row.settled_by_payment_id == null ? null : String(row.settled_by_payment_id),
   };
 }
 
@@ -143,7 +144,7 @@ export async function PATCH(request: Request) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   const result = await db.from("payments")
-    .select("id,date,name,amount,category,account_id,status,counterparty,comment,company_id")
+    .select("*")
     .in("id", [plannedId, factId]);
   if (result.error) return NextResponse.json({ error: "Не удалось проверить план и факт" }, { status: 500 });
   const plannedRow = (result.data ?? []).find((row) => row.id === plannedId);
@@ -168,12 +169,24 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Платёж недостаточно похож на выбранный план" }, { status: 409 });
   }
   const linked = withCalendarFactLink(planned, factId);
-  const saved = await db.from("payments")
-    .update({ status: linked.status, comment: linked.comment ?? null })
+  let saved = await db.from("payments")
+    .update({
+      status: linked.status,
+      comment: linked.comment ?? null,
+      settled_by_payment_id: linked.settledByPaymentId,
+    })
     .eq("id", plannedId)
     .in("status", ["planned", "cancelled"])
     .select("id")
     .maybeSingle();
+  if (saved.error && (saved.error.code === "42703" || /settled_by_payment_id.*(?:does not exist|schema cache)|could not find.*settled_by_payment_id/i.test(saved.error.message))) {
+    saved = await db.from("payments")
+      .update({ status: linked.status, comment: linked.comment ?? null })
+      .eq("id", plannedId)
+      .in("status", ["planned", "cancelled"])
+      .select("id")
+      .maybeSingle();
+  }
   if (saved.error || !saved.data) return NextResponse.json({ error: "Не удалось сохранить связь плана и факта" }, { status: 409 });
   return NextResponse.json({ ok: true, payment: linked });
 }

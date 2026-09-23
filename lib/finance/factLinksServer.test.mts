@@ -6,7 +6,7 @@ import { loadConsumedFactIds } from "./factLinksServer.ts";
 function fakeDb(): SupabaseClient {
   const rows = {
     payments: [
-      { id: "calendar-plan", comment: "[calendar-fact:calendar-fact]" },
+      { id: "calendar-plan", comment: "Комментарий изменён", settled_by_payment_id: "calendar-fact" },
       { id: "payroll-plan", comment: "[payroll-paid:payroll-fact]" },
     ],
     loan_schedule_rows: [{ paid_by_payment_id: "loan-fact" }],
@@ -17,6 +17,7 @@ function fakeDb(): SupabaseClient {
         select: () => query,
         not: () => query,
         like: () => query,
+        or: () => query,
         order: () => query,
         range: async () => ({ data: rows[table], error: null }),
       };
