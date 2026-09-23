@@ -108,6 +108,7 @@ const LEGACY_FIELD_ALIASES = {
   acquiringFee: "acquiring_fee",
   cashbackDiscount: "cashback_discount",
   bonusTypeName: "bonus_type_name",
+  deliveryAmount: "delivery_amount",
 } as const;
 
 function normalizeReportRow<Row>(row: Row): Row {

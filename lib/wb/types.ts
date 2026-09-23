@@ -38,6 +38,8 @@ export interface WbReportRow {
   acquiring_fee?: number;
   /** Компенсация скидки по программе лояльности (WB отдаёт как cashbackDiscount). */
   cashback_discount?: number;
+  /** Количество доставок (WB отдаёт как deliveryAmount) — не равно quantity, см. «Доставок, шт» в гугл-таблице. */
+  delivery_amount?: number;
   [key: string]: unknown;
 }
 

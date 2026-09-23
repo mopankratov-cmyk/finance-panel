@@ -45,6 +45,7 @@ const COLUMNS: { key: keyof MarginRow; label: string; fmt: (row: MarginRow) => s
   { key: "forPay", label: "К перечислению продавцу", fmt: (r) => money(r.forPay) },
   { key: "commission", label: "Комиссия, руб", fmt: (r) => money(r.commission) },
   { key: "commissionPct", label: "Комиссия, %", fmt: (r) => pct(r.commissionPct) },
+  { key: "deliveryCount", label: "Доставок, шт", fmt: (r) => formatNumber(r.deliveryCount) },
   { key: "logistics", label: "Логистика, руб", fmt: (r) => money(r.logistics) },
   { key: "penalties", label: "Штрафы, руб", fmt: (r) => money(r.penalties) },
   { key: "additionalPayments", label: "Доплаты, руб", fmt: (r) => money(r.additionalPayments) },
@@ -192,7 +193,7 @@ export function MarginByArticlePage() {
                           ? "—"
                           : key.includes("pct")
                             ? "—"
-                            : key.includes("qty")
+                            : key.includes("qty") || key.includes("count")
                               ? formatNumber(value)
                               : money(value);
                       return (
