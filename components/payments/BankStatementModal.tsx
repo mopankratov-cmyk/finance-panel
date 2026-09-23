@@ -133,7 +133,9 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   );
   const counterparties = useMemo(() => [...new Set([...existingPayments.map(p => p.counterparty), ...(statement?.rows.map(row => row.counterparty) ?? []), ...counterpartyOverrides.values()].map(name => name.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,"ru")), [existingPayments, statement, counterpartyOverrides]);
   const unclassified = selectedRows.filter((row) => !categories.get(row.id)).length;
-  const needsNewBankAccount = Boolean(statement?.accountNumber && accountNumberKnown === false);
+  const needsAccountMapping = Boolean(statement?.accountNumber && accountNumberKnown === false);
+  const selectedBankAccount = selectedAccount?.type === "bank" ? selectedAccount : undefined;
+  const needsNewBankAccount = needsAccountMapping && !selectedBankAccount;
   const newAccountDisplayName = statement ? importedBankAccountName(newAccountName, statement.accountNumber) : "";
 
   const toggleIncluded = (id: string) => {
@@ -295,11 +297,32 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                   </select>
                 </div>
                 <div>
-                  {needsNewBankAccount ? (
+                  {needsAccountMapping ? (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-                      <label className="mb-1 block text-xs font-medium text-amber-950" htmlFor="new-bank-account-name">Новый расчётный счёт — название кошелька</label>
-                      <input id="new-bank-account-name" autoFocus value={newAccountName} onChange={(event) => setNewAccountName(event.target.value)} placeholder="Например, Озон банк ИП Панкратов" className="min-h-11 w-full rounded-lg border border-amber-300 bg-white px-3 text-slate-900" />
-                      <p className="mt-1 text-xs text-amber-900">Счёт ••••{statement.accountNumber.slice(-4)} ещё не сохранён. Будет создан банковский кошелёк{newAccountDisplayName ? <> «{newAccountDisplayName}»</> : null}.</p>
+                      <label className="mb-1 block text-xs font-medium text-amber-950" htmlFor="unmapped-bank-account">Счёт ••••{statement.accountNumber.slice(-4)} — выберите кошелёк</label>
+                      <select
+                        id="unmapped-bank-account"
+                        value={selectedBankAccount ? accountId : ""}
+                        onChange={(event) => {
+                          setAccountId(event.target.value);
+                          if (event.target.value) setNewAccountName("");
+                        }}
+                        className="min-h-11 w-full rounded-lg border border-amber-300 bg-white px-3 text-slate-900"
+                      >
+                        <option value="">Создать новый банковский кошелёк</option>
+                        {accounts.filter((account) => account.type === "bank").map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                      </select>
+                      {needsNewBankAccount && (
+                        <div className="mt-3">
+                          <label className="mb-1 block text-xs font-medium text-amber-950" htmlFor="new-bank-account-name">Название нового кошелька</label>
+                          <input id="new-bank-account-name" autoFocus value={newAccountName} onChange={(event) => setNewAccountName(event.target.value)} placeholder="Например, Озон банк ИП Панкратов" className="min-h-11 w-full rounded-lg border border-amber-300 bg-white px-3 text-slate-900" />
+                        </div>
+                      )}
+                      <p className="mt-2 text-xs leading-5 text-amber-900">
+                        {selectedBankAccount
+                          ? <>Выписка будет привязана к кошельку «{selectedBankAccount.name}». Новый кошелёк не создаётся.</>
+                          : <>Будет создан банковский кошелёк{newAccountDisplayName ? <> «{newAccountDisplayName}»</> : null}.</>}
+                      </p>
                     </div>
                   ) : (
                     <>
