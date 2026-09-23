@@ -28,6 +28,12 @@ test("поле строки графика сохраняет занятость
   assert.deepEqual([...consumedFactIds(payments, undefined, scheduleRows)], ["fact-from-column"]);
 });
 
+test("поле календарного плана сохраняет занятость факта без метки", () => {
+  const payments = [{ id: "calendar-plan", comment: "Комментарий изменён", settledByPaymentId: "calendar-fact" }];
+  assert.deepEqual([...consumedFactIds(payments)], ["calendar-fact"]);
+  assert.deepEqual([...consumedFactIds(payments, "calendar-plan")], []);
+});
+
 test("при пересборке строки графика сохраняются метки оплаты и переноса", () => {
   const comment = "[loan:1:schedule:r:principal] [currency:RUB] [paid-by:f-9] [payroll-paid:f-10] [original-due:2026-03-15] [overdue-calendar-date:2026-09-01]";
   assert.equal(preservedLoanMarkers(comment), "[paid-by:f-9] [payroll-paid:f-10] [original-due:2026-03-15] [overdue-calendar-date:2026-09-01]");

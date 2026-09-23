@@ -30,11 +30,18 @@ function purposeSimilarity(left: Payment, right: Payment) {
   return overlap / Math.max(1, Math.min(leftTokens.size, rightTokens.size));
 }
 
-const linkedFactId = (payment: Payment) => payment.comment?.match(/\[calendar-fact:([^\]]+)\]/)?.[1] ?? null;
+const linkedFactId = (payment: Payment) => payment.settledByPaymentId
+  ?? payment.comment?.match(/\[calendar-fact:([^\]]+)\]/)?.[1]
+  ?? null;
 
 export function withCalendarFactLink(payment: Payment, factId: string): Payment {
   const withoutOldLink = (payment.comment ?? "").replace(/\s*\[calendar-fact:[^\]]+\]/g, "").trim();
-  return { ...payment, status: "cancelled", comment: `${withoutOldLink}${withoutOldLink ? " " : ""}[calendar-fact:${factId}]` };
+  return {
+    ...payment,
+    status: "cancelled",
+    settledByPaymentId: factId,
+    comment: `${withoutOldLink}${withoutOldLink ? " " : ""}[calendar-fact:${factId}]`,
+  };
 }
 
 export function findPlanFactMatches(

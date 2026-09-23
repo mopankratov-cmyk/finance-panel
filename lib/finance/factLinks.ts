@@ -27,13 +27,14 @@ export function linkedFactIds(comment: string | null | undefined): string[] {
  * собственную связь учитывать не надо (он может её подтвердить заново).
  */
 export function consumedFactIds(
-  payments: readonly { id: Payment["id"]; comment?: string | null }[],
+  payments: readonly { id: Payment["id"]; comment?: string | null; settledByPaymentId?: string | null }[],
   exceptPlanId?: string,
   scheduleRows: readonly { paidByPaymentId?: string | null }[] = [],
 ): Set<string> {
   const consumed = new Set<string>();
   for (const payment of payments) {
     if (payment.id === exceptPlanId) continue;
+    if (payment.settledByPaymentId) consumed.add(payment.settledByPaymentId);
     for (const id of linkedFactIds(payment.comment)) consumed.add(id);
   }
   // Для новых кредитных графиков источник правды — отдельная колонка

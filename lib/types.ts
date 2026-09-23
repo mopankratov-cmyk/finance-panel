@@ -24,6 +24,8 @@ export interface Payment {
   accountId: string;
   companyId?: string | null;
   importSource?: string | null;
+  /** Каноническая связь календарного плана с фактом ДДС. */
+  settledByPaymentId?: string | null;
   status: PaymentStatus;
   counterparty: string;
   comment?: string;

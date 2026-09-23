@@ -27,6 +27,13 @@ test("точная сумма, компания и счет дают автом�
 test("ручное подтверждение сохраняет устойчивую связь", () => {
   const plan = withCalendarFactLink(payment("plan", "planned", 100000), "fact");
   assert.equal(plan.status, "cancelled");
+  assert.equal(plan.settledByPaymentId, "fact");
+  const result = findPlanFactMatches([plan, payment("fact", "done", 70000, "2026-08-15")]);
+  assert.equal(result.matched[0]?.source, "confirmed");
+});
+
+test("каноническая связь работает после удаления метки из комментария", () => {
+  const plan = { ...payment("plan", "cancelled", 100000), settledByPaymentId: "fact", comment: "Комментарий изменён" };
   const result = findPlanFactMatches([plan, payment("fact", "done", 70000, "2026-08-15")]);
   assert.equal(result.matched[0]?.source, "confirmed");
 });
