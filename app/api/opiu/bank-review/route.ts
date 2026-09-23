@@ -349,7 +349,18 @@ export async function POST(request: Request) {
   if (error) return jsonError(error.message, 500);
   try {
     const matchedTransfers = await matchBankReviewTransfers();
-    const explicitIds = new Set(body.suggestions.filter(s => s.categoryConfirmed).map(s => text(s.row?.id,500)));
+    // Обязательное правило уже является подтверждением статьи: пользователь
+    // видит её в форме до отправки и не должен повторно выбирать то же самое.
+    // Проверяем правило и на сервере, чтобы результат не зависел от версии
+    // открытой вкладки или локального состояния формы.
+    const explicitIds = new Set(body.suggestions
+      .filter(s => s.categoryConfirmed || (s.row && mandatoryBankCategory({
+        amount: Number(s.row.amount),
+        counterparty: s.row.counterparty,
+        counterpartyInn: s.row.counterpartyInn,
+        purpose: s.row.purpose,
+      })))
+      .map(s => text(s.row?.id,500)));
     const names = await loadAllSupabasePages<{id:string;name:string}>((from,to)=>db.from("companies").select("id,name").order("id").range(from,to),{label:"Компании выписок"});
     const dateRange = rows.map((row) => row.date).sort();
     const candidates = await loadAllSupabasePages<{id:string;document_hash:string;external_id:string;date:string;amount:number;counterparty:string;counterparty_inn:string;purpose:string;reasons:unknown;company_id:string|null;account_id:string|null;category:string|null;status:ReviewStatus;manager_answer:string|null}>((from,to)=>db.from("bank_review_items").select("id,document_hash,external_id,date,amount,counterparty,counterparty_inn,purpose,reasons,company_id,account_id,category,status,manager_answer").eq("bank_account_number",bankAccountNumber).gte("date",dateRange[0]).lte("date",dateRange.at(-1)!).order("id").range(from,to),{label:"Сохранённые строки выписки"});

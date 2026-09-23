@@ -25,7 +25,8 @@ export function mandatoryBankCategory(row: {
   if (row.amount < 0 && isEnp) return "УСН";
 
   const isBankCommission = /(?:^| )комиссия банка(?: |$)/.test(purpose)
-    || /(?:^| )банковская комиссия(?: |$)/.test(purpose);
+    || /(?:^| )банковская комиссия(?: |$)/.test(purpose)
+    || /(?:^| )комиссия за (?:исполнение платежного документа|осуществление перевода денежных средств)(?: |$)/.test(purpose);
   if (row.amount < 0 && isBankCommission) return "РКО";
 
   return null;
