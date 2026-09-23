@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { fetchReportRows } from "@/lib/opiu/reportRows";
 import { fetchProductCosts, matchesArticlePrefix } from "@/lib/opiu/loadMonth";
-import { buildMarginByBarcode } from "@/lib/opiu/marginByBarcode";
+import { buildMarginByBarcode, type OrdersSummary } from "@/lib/opiu/marginByBarcode";
+import { orderRub } from "@/lib/opiu/metrics";
 import { OPIU_BRANDS, resolveOpiuBrand } from "@/lib/opiu/constants";
 import { isValidDateParam } from "@/lib/opiu/weeks";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -41,6 +43,72 @@ async function fetchAdSpendByNmId(
   return map;
 }
 
+/**
+ * Заказы за период по nm_id — как в столбце «Заказы» гугл-таблицы. Читаем
+ * wb_orders НАПРЯМУЮ (не через fetchOrders/Воронку из ОПиУ): нужна ВАЛОВАЯ
+ * сумма, включая отменённые, а Воронка (wb_funnel_daily) местами подменяет
+ * сырые строки синтетическими — для точного валового счёта не подходит.
+ * articlePrefixes фильтруем по supplier_article — то же поле, что и раньше
+ * в fetchOrders для суб-брендов. Сверено построчно с таблицей (TT04101: 16
+ * шт / 5728 ₽ — совпало день в день).
+ *
+ * «Отказы» сюда НЕ входят — несмотря на название, это не wb_orders.is_cancel
+ * (проверено: не сходится с таблицей). Настоящая формула таблицы —
+ * count(bonus_type_name = "От клиента при отмене") по финотчёту, она уже
+ * есть в buildMarginByBarcode (isClientCancelRow из строк scopedRows).
+ */
+async function fetchOrdersByNmId(
+  cabinetId: string,
+  dateFrom: string,
+  dateTo: string,
+  articlePrefixes?: string[],
+): Promise<Map<number, OrdersSummary>> {
+  const db = getSupabaseAdmin();
+  const map = new Map<number, OrdersSummary>();
+  if (!db) return map;
+
+  const rows = await loadAllSupabasePages<{
+    nm_id: number;
+    supplier_article: string | null;
+    total_price: number | null;
+    discount_percent: number | null;
+    finished_price: number | null;
+    price_with_disc: number | null;
+  }>(
+    async (from, to) => {
+      const result = await db
+        .from("wb_orders")
+        .select("nm_id, supplier_article, total_price, discount_percent, finished_price, price_with_disc")
+        .eq("cabinet_id", cabinetId)
+        .gte("date", dateFrom)
+        .lte("date", `${dateTo}T23:59:59.999Z`)
+        .order("id", { ascending: true })
+        .range(from, to);
+      return {
+        data: result.data,
+        error: result.error ? { message: result.error.message } : null,
+      };
+    },
+    { maxPages: 300, label: "Маржа по артикулам: заказы WB" },
+  );
+
+  for (const row of rows) {
+    if (articlePrefixes?.length && !matchesArticlePrefix(row.supplier_article, articlePrefixes)) continue;
+    const nmId = Number(row.nm_id);
+    if (!Number.isFinite(nmId) || nmId <= 0) continue;
+    const entry = map.get(nmId) ?? { ordersQty: 0, ordersRub: 0 };
+    entry.ordersQty += 1;
+    entry.ordersRub += orderRub({
+      totalPrice: row.total_price ?? undefined,
+      discountPercent: row.discount_percent ?? undefined,
+      finishedPrice: row.finished_price ?? undefined,
+      priceWithDisc: row.price_with_disc ?? undefined,
+    });
+    map.set(nmId, entry);
+  }
+  return map;
+}
+
 export async function GET(request: NextRequest) {
   const dateFrom = request.nextUrl.searchParams.get("dateFrom") ?? "";
   const dateTo = request.nextUrl.searchParams.get("dateTo") ?? "";
@@ -50,17 +118,18 @@ export async function GET(request: NextRequest) {
   const brand = resolveOpiuBrand(resolveBrandId(request));
 
   try {
-    const [reportRows, costs, adSpendByNmId] = await Promise.all([
+    const [reportRows, costs, adSpendByNmId, ordersByNmId] = await Promise.all([
       fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
       fetchProductCosts(brand),
       fetchAdSpendByNmId(brand.cabinetId, dateFrom, dateTo),
+      fetchOrdersByNmId(brand.cabinetId, dateFrom, dateTo, brand.articlePrefixes),
     ]);
 
     const scopedRows = brand.articlePrefixes?.length
       ? reportRows.filter((row) => matchesArticlePrefix(row.sa_name, brand.articlePrefixes))
       : reportRows;
 
-    const { rows, unattributedRows } = buildMarginByBarcode(scopedRows, costs, adSpendByNmId);
+    const { rows, unattributedRows } = buildMarginByBarcode(scopedRows, costs, adSpendByNmId, ordersByNmId);
 
     return NextResponse.json({
       rows,

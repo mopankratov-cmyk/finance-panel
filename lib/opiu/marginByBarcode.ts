@@ -6,6 +6,7 @@ import {
   docType,
   expenseRub,
   forPayRub,
+  isClientCancelRow,
   num,
   penaltiesRub,
   qtyAbs,
@@ -29,9 +30,15 @@ export interface MarginRow {
   nmId: number;
   article: string;
   barcode: string;
+  /** Заказы за период (шт/руб) — из wb_orders, на уровне nm_id (баркода в заказах нет). */
+  ordersQty: number;
+  ordersRub: number;
+  /** Отказы, шт — строки финотчёта с bonus_type_name «От клиента при отмене». */
+  cancelQty: number;
   salesQty: number;
   returnsQty: number;
   netQty: number;
+  /** Итого продаж / Заказы, % — как в гугл-таблице (не Продажи / (Продажи + Возвраты)). */
   buyoutPct: number | null;
   salesRub: number;
   returnsRub: number;
@@ -39,6 +46,9 @@ export interface MarginRow {
   revenueAfterSpp: number;
   forPay: number;
   commission: number;
+  commissionPct: number | null;
+  /** Доставок, шт — WB-поле delivery_amount (не quantity): число физических доставок, не единиц. */
+  deliveryCount: number;
   logistics: number;
   logisticsPerUnit: number | null;
   penalties: number;
@@ -81,10 +91,16 @@ export interface MarginByBarcodeResult {
   unattributedRows: number;
 }
 
+export interface OrdersSummary {
+  ordersQty: number;
+  ordersRub: number;
+}
+
 export function buildMarginByBarcode(
   rows: WbReportRow[],
   costs: ProductCostRow[],
   adSpendByNmId: Map<number, number>,
+  ordersByNmId: Map<number, OrdersSummary> = new Map(),
   taxPct = 6,
 ): MarginByBarcodeResult {
   const lookup = buildCostLookup(costs);
@@ -110,6 +126,12 @@ export function buildMarginByBarcode(
 
   const result: MarginRow[] = [];
   const adSpendUsedForNmId = new Set<number>();
+  // Заказы приходят на уровне nm_id (в wb_orders нет баркода) — как и с
+  // рекламой, если у nm_id несколько баркодов, сумма приписывается только
+  // первой встреченной группе, иначе она задвоилась бы по числу баркодов.
+  // Отказы, в отличие от Заказов, считаются из строк финотчёта — они уже
+  // на уровне баркода, дедуп им не нужен.
+  const ordersUsedForNmId = new Set<number>();
 
   for (const [key, group] of byBarcode) {
     const first = group[0]!;
@@ -125,6 +147,8 @@ export function buildMarginByBarcode(
     let revenueAfterSpp = 0;
     let forPay = 0;
     let commission = 0;
+    let cancelQty = 0;
+    let deliveryCount = 0;
     let logistics = 0;
     let penalties = 0;
     let additionalPayments = 0;
@@ -155,6 +179,8 @@ export function buildMarginByBarcode(
       revenueAfterSpp += revenueRub(row);
       forPay += forPayRub(row);
       commission += commissionResidualRub(row);
+      if (isClientCancelRow(row)) cancelQty += 1;
+      deliveryCount += Math.max(0, Math.round(num(row.delivery_amount)));
       logistics += expenseRub(row.delivery_rub);
       penalties += expenseRub(row.penalty);
       additionalPayments += expenseRub(row.additional_payment);
@@ -171,20 +197,29 @@ export function buildMarginByBarcode(
     const adSpend = adSpendUsedForNmId.has(nmId) ? 0 : (adSpendByNmId.get(nmId) ?? 0);
     adSpendUsedForNmId.add(nmId);
 
+    const orders = ordersUsedForNmId.has(nmId) ? undefined : ordersByNmId.get(nmId);
+    ordersUsedForNmId.add(nmId);
+    const ordersQty = orders?.ordersQty ?? 0;
+
     result.push({
       nmId,
       article,
       barcode,
+      ordersQty,
+      ordersRub: round2(orders?.ordersRub ?? 0),
+      cancelQty,
       salesQty,
       returnsQty,
       netQty,
-      buyoutPct: salesQty + returnsQty > 0 ? round2((salesQty / (salesQty + returnsQty)) * 100) : null,
+      buyoutPct: ordersQty > 0 ? round2((netQty / ordersQty) * 100) : null,
       salesRub: round2(salesRub),
       returnsRub: round2(returnsRub),
       revenueWithoutSpp: round2(revenueWithoutSpp),
       revenueAfterSpp: round2(revenueAfterSpp),
       forPay: round2(forPay),
       commission: round2(commission),
+      commissionPct: revenueWithoutSpp > 0 ? round2((commission / revenueWithoutSpp) * 100) : null,
+      deliveryCount,
       logistics: round2(logistics),
       logisticsPerUnit: netQty > 0 ? round2(logistics / netQty) : null,
       penalties: round2(penalties),

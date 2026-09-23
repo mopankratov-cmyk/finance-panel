@@ -119,7 +119,7 @@ export function commissionResidualRub(row: WbReportRow): number {
   return type === "sale" ? signed : -signed;
 }
 
-function orderRub(row: OpiuOrder): number {
+export function orderRub(row: OpiuOrder): number {
   if (row.totalPriceDiscount !== undefined) {
     return Math.abs(num(row.totalPriceDiscount));
   }
@@ -324,6 +324,16 @@ function subscriptionJemRub(row: WbReportRow): number {
 
 export function transitDeliveryRub(row: WbReportRow): number {
   return bonusType(row).includes("транзит") ? expenseRub(row.deduction) : 0;
+}
+
+/**
+ * «Отказы» — строка финотчёта с bonus_type_name «От клиента при отмене».
+ * Сверено формулой из гугл-таблицы: СЧЁТЕСЛИМН(...;bonus_type_name;"От
+ * клиента при отмене") по nm_id/sale_dt — совпало день в день (TT04101: 10,
+ * TT04102: 11). Не связано с wb_orders.is_cancel — это разные вещи в WB.
+ */
+export function isClientCancelRow(row: WbReportRow): boolean {
+  return bonusType(row) === "от клиента при отмене";
 }
 
 function withdrawNowRub(row: WbReportRow): number {
