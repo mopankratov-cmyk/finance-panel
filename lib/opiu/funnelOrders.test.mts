@@ -261,6 +261,8 @@ test("loadMonth delegates readiness-gated funnel reads and keeps wb_orders cabin
   const source = await readFile(new URL("./loadMonth.ts", import.meta.url), "utf8");
 
   assert.match(source, /\.from\("wb_orders"\)[\s\S]*?\.select\([^;]*?\.eq\("cabinet_id", brand\.cabinetId\)[\s\S]*?\.gte\("date", dateFrom\)/);
+  assert.match(source, /supplier_article\.ilike/);
+  assert.match(source, /if \(prefixFilter\) query = query\.or\(prefixFilter\)/);
   assert.match(source, /loadReadyFunnelFacts\([\s\S]*?brand\.cabinetId,[\s\S]*?dateFrom,[\s\S]*?dateTo/);
   assert.match(source, /overlayFunnelOrders\(cachedOrders, funnelFacts, brand\.cabinetId\)/);
   assert.doesNotMatch(source, /fetch\(|api\.wildberries|statistics-api|allowLiveFallback:\s*true/);
