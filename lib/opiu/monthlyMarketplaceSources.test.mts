@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateOzonSources, aggregateWbSources, coalesceWbSources, wbBrandCompanyName, type MonthlyMarketplaceSource } from "./monthlyMarketplaceSources.ts";
+import { aggregateOzonSources, aggregateWbSources, coalesceWbSources, filterMonthlySources, monthlyBrandOptions, wbBrandCompanyName, type MonthlyMarketplaceSource } from "./monthlyMarketplaceSources.ts";
 
 const wb = (revenue: number) => ({
   revenue_before_spp: revenue,
@@ -76,4 +76,16 @@ test("Riobox принадлежит Оптиме, а не Филиппову/К�
   assert.equal(wbBrandCompanyName({ id: "optima-norvia", entity: "Retail Family" }), "Оптима");
   assert.equal(wbBrandCompanyName({ id: "optima-heaton", entity: "Retail Family" }), "Оптима");
   assert.equal(wbBrandCompanyName({ id: "optima-riobox", entity: "ООО РИО" }), "Оптима");
+});
+
+test("бренд-фильтр учитывает выбранную компанию и не подмешивает Ozon без бренд-разреза", () => {
+  const sources: MonthlyMarketplaceSource[] = [
+    { id: "wb:norvia:a", label: "WB Norvia · ИП А", brand: "Norvia", marketplace: "wb", companyId: "a", wb: wb(100) },
+    { id: "wb:norvia:b", label: "WB Norvia · ИП Б", brand: "Norvia", marketplace: "wb", companyId: "b", wb: wb(200) },
+    { id: "wb:heaton:a", label: "WB Heaton · ИП А", brand: "Heaton", marketplace: "wb", companyId: "a", wb: wb(300) },
+    { id: "ozon:a", label: "Ozon ИП А", marketplace: "ozon", companyId: "a", ozon: { revenue: 400, commission: 0, delivery: 0, services: 0, cogs: 0 } },
+  ];
+
+  assert.deepEqual(monthlyBrandOptions(sources, "a"), ["Heaton", "Norvia"]);
+  assert.deepEqual(filterMonthlySources(sources, { companyId: "a", brand: "Norvia" }).map((source) => source.id), ["wb:norvia:a"]);
 });

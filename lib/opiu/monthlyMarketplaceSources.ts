@@ -4,6 +4,8 @@ import type { OpiuBrand } from "./constants";
 export interface MonthlyMarketplaceSource extends MarketplaceMonthlyActual {
   id: string;
   label: string;
+  /** Бизнес-бренд источника. У Ozon разреза по брендам пока нет. */
+  brand?: string;
   marketplace: "wb" | "ozon";
   companyId?: string;
 }
@@ -72,11 +74,29 @@ export function coalesceWbSources(sources: readonly MonthlyMarketplaceSource[]):
     return {
       id: group.map((source) => source.id).join("+"),
       label: group[0]!.label,
+      brand: group[0]!.brand,
       marketplace: "wb",
       companyId: group[0]!.companyId,
       wb,
     };
   });
+}
+
+export function monthlyBrandOptions(sources: readonly MonthlyMarketplaceSource[], companyId = ""): string[] {
+  return [...new Set(sources
+    .filter((source) => !companyId || source.companyId === companyId)
+    .flatMap((source) => source.brand ? [source.brand] : []))]
+    .sort((left, right) => left.localeCompare(right, "ru"));
+}
+
+export function filterMonthlySources(
+  sources: readonly MonthlyMarketplaceSource[],
+  filters: { companyId?: string; brand?: string },
+): MonthlyMarketplaceSource[] {
+  return sources.filter((source) => (
+    (!filters.companyId || source.companyId === filters.companyId)
+    && (!filters.brand || source.brand === filters.brand)
+  ));
 }
 
 export function aggregateOzonSources(sources: readonly MonthlyMarketplaceSource[]): OzonActual {

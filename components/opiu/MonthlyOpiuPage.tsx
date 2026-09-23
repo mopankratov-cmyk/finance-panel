@@ -3,12 +3,13 @@
 import { FinanceTabs } from "@/components/FinanceTabs";
 import { ActionableError } from "@/components/ui/ActionableError";
 import { Hint } from "@/components/ui/Hint";
+import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { formatPct, formatRub } from "@/lib/analytics/format";
 import { buildMonthlyOpiuStatement, type MonthlyOpiuAmount, type MonthlyOpiuRow } from "@/lib/opiu/monthlyStatement";
 import type { OpiuCompanyOption } from "@/lib/opiu/companyScope";
 import { buildMonthlyOpiuSheetPayload, exportMonthlyOpiuToGoogleSheets } from "@/lib/opiu/monthlySheetExport";
 import type { MonthlySourceResult } from "@/lib/opiu/monthlySourceFallback";
-import { aggregateOzonSources, aggregateWbSources, type MonthlyMarketplaceSource } from "@/lib/opiu/monthlyMarketplaceSources";
+import { aggregateOzonSources, aggregateWbSources, filterMonthlySources, monthlyBrandOptions, type MonthlyMarketplaceSource } from "@/lib/opiu/monthlyMarketplaceSources";
 import { combineMonthlyCompanyFacts, monthlyTaxSettingGaps, withCalculatedMonthlyTaxes } from "@/lib/opiu/monthlyTaxFacts";
 import { AlertTriangle, Check, ExternalLink, FileSpreadsheet, LineChart, Loader2, RefreshCw, Settings } from "lucide-react";
 import Link from "next/link";
@@ -36,6 +37,39 @@ interface MonthlyOpiuData extends Omit<MonthlyOpiuResponse, "period"> {
   companies?: OpiuCompanyOption[];
   warnings?: string[];
   byCompany?: MonthlyFactsResponse["byCompany"];
+}
+
+const MONTH_CACHE_TTL_MS = 5 * 60 * 1000;
+const monthlyOpiuMemoryCache = new Map<string, { savedAt: number; data: MonthlyOpiuData }>();
+
+function cachedMonth(month: string): MonthlyOpiuData | null {
+  const cached = monthlyOpiuMemoryCache.get(month);
+  if (!cached || Date.now() - cached.savedAt > MONTH_CACHE_TTL_MS) {
+    monthlyOpiuMemoryCache.delete(month);
+    return null;
+  }
+  return cached.data;
+}
+
+function combineMonthlyData(
+  marketplace: MonthlyOpiuResponse | null,
+  facts: MonthlyFactsResponse | null,
+  fallback: MonthlyOpiuData | null,
+  extraWarnings: readonly string[] = [],
+): MonthlyOpiuData | null {
+  if (!marketplace && !facts && !fallback) return null;
+  return {
+    ...(fallback ?? {}),
+    ...(marketplace ?? {}),
+    shared: facts?.shared ?? fallback?.shared,
+    companies: facts?.companies ?? fallback?.companies,
+    byCompany: facts?.byCompany ?? fallback?.byCompany,
+    warnings: [...new Set([
+      ...(marketplace?.warnings ?? fallback?.warnings ?? []),
+      ...(facts?.warnings ?? []),
+      ...extraWarnings,
+    ])],
+  };
 }
 
 async function loadSource<T>(url: string, signal: AbortSignal): Promise<MonthlySourceResult<T>> {
@@ -67,10 +101,14 @@ function visibleAmount(amount: MonthlyOpiuAmount, row: MonthlyOpiuRow): string {
   return row.kind === "percent" ? formatPct(value) : formatRub(value);
 }
 
+function hasVisibleAmount(amount: MonthlyOpiuAmount): boolean {
+  return amount.value != null || (amount.status === "partial" && amount.known != null);
+}
+
 function AmountCell({ amount, row, label }: { amount: MonthlyOpiuAmount; row: MonthlyOpiuRow; label: string }) {
   const showCalculationHint = amount.note && ["taxes", "vat", "loan_interest"].includes(row.id);
   return (
-    <td data-label={label} className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-slate-800">
+    <td data-label={label} className="whitespace-nowrap px-1.5 py-1.5 text-right tabular-nums text-slate-800">
       <span className="inline-flex items-center justify-end gap-1">
         {visibleAmount(amount, row)}
         {showCalculationHint ? <Hint label={`Пояснение к сумме «${row.label}», ${label}`}>{amount.note}</Hint> : null}
@@ -87,44 +125,81 @@ function KpiValue({ amount, percent = false }: { amount: MonthlyOpiuAmount; perc
 export function MonthlyOpiuPage() {
   const [month, setMonth] = useState(currentMonthParam);
   const [companyId, setCompanyId] = useState("");
+  const [brand, setBrand] = useState("");
   const [data, setData] = useState<MonthlyOpiuData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(true);
+  const [factsLoading, setFactsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportedUrl, setExportedUrl] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const loading = marketplaceLoading || factsLoading;
+  const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
     const params = new URLSearchParams({ month });
-    setLoading(true);
+    const fallback = cachedMonth(month);
+    let marketplaceResult: MonthlyOpiuResponse | null = null;
+    let factsResult: MonthlyFactsResponse | null = null;
+    let marketplaceError: string | null = null;
+    let factsError: string | null = null;
+    let settled = 0;
+
+    setData(fallback);
+    setMarketplaceLoading(true);
+    setFactsLoading(true);
     setError(null);
     setExportedUrl(null);
-    Promise.all([
-      loadSource<MonthlyOpiuResponse>(`/api/opiu/mp?${params}`, controller.signal),
-      loadSource<MonthlyFactsResponse>(`/api/opiu/monthly-facts?${params}`, controller.signal),
-    ])
-      .then(([marketplaces, facts]) => {
-        if (!active) return;
-        if (!marketplaces.data && !facts.data) {
-          throw new Error([marketplaces.error, facts.error].filter(Boolean).join(". ") || "Не удалось загрузить ОПиУ");
-        }
-        setData({
-          ...(marketplaces.data ?? {}),
-          shared: facts.data?.shared,
-          companies: facts.data?.companies,
-          byCompany: facts.data?.byCompany,
-          warnings: [...new Set([...(marketplaces.data?.warnings ?? []), ...(facts.data?.warnings ?? [])])],
-        });
+
+    const publish = () => {
+      if (!active) return;
+      const warnings = [marketplaceError, factsError].filter((value): value is string => Boolean(value));
+      const next = combineMonthlyData(marketplaceResult, factsResult, fallback, warnings);
+      if (next) setData(next);
+      if (settled !== 2) return;
+      if (!marketplaceResult && !factsResult && !fallback) {
+        setError(warnings.join(". ") || "Не удалось загрузить ОПиУ");
+        return;
+      }
+      if (next && marketplaceResult && factsResult) {
+        monthlyOpiuMemoryCache.set(month, { savedAt: Date.now(), data: next });
+      }
+    };
+
+    void loadSource<MonthlyOpiuResponse>(`/api/opiu/mp?${params}`, controller.signal)
+      .then((result) => {
+        marketplaceResult = result.data;
+        marketplaceError = result.error;
+        settled += 1;
+        if (active) setMarketplaceLoading(false);
+        publish();
       })
       .catch((reason) => {
         if (!active || (reason instanceof DOMException && reason.name === "AbortError")) return;
-        setData(null);
-        setError(reason instanceof Error ? reason.message : "Не удалось загрузить ОПиУ");
+        marketplaceError = reason instanceof Error ? reason.message : "Источник маркетплейсов временно недоступен";
+        settled += 1;
+        setMarketplaceLoading(false);
+        publish();
+      });
+
+    void loadSource<MonthlyFactsResponse>(`/api/opiu/monthly-facts?${params}`, controller.signal)
+      .then((result) => {
+        factsResult = result.data;
+        factsError = result.error;
+        settled += 1;
+        if (active) setFactsLoading(false);
+        publish();
       })
-      .finally(() => { if (active) setLoading(false); });
+      .catch((reason) => {
+        if (!active || (reason instanceof DOMException && reason.name === "AbortError")) return;
+        factsError = reason instanceof Error ? reason.message : "Общие расходы временно недоступны";
+        settled += 1;
+        setFactsLoading(false);
+        publish();
+      });
     return () => {
       active = false;
       controller.abort();
@@ -133,15 +208,16 @@ export function MonthlyOpiuPage() {
 
   const selectedData = useMemo<MonthlyOpiuData | null>(() => {
     if (!data) return null;
-    const selectedSources = companyId ? (data.sources ?? []).filter((source) => source.companyId === companyId) : data.sources ?? [];
+    const selectedSources = filterMonthlySources(data.sources ?? [], { companyId, brand });
     const wbSources = selectedSources.filter((source) => source.marketplace === "wb");
     const ozonSources = selectedSources.filter((source) => source.marketplace === "ozon");
-    const wb = companyId ? (wbSources.length ? aggregateWbSources(wbSources) : undefined) : data.wb;
-    const ozon = companyId ? (ozonSources.length ? aggregateOzonSources(ozonSources) : undefined) : data.ozon;
-    let shared = companyId ? data.byCompany?.[companyId] : data.shared;
+    const wb = wbSources.length ? aggregateWbSources(wbSources) : undefined;
+    const ozon = ozonSources.length ? aggregateOzonSources(ozonSources) : undefined;
+    // Общие расходы нельзя честно приписать отдельному бренду без правила распределения.
+    let shared = brand ? undefined : companyId ? data.byCompany?.[companyId] : data.shared;
     const company = data.companies?.find((item) => item.id === companyId);
     const preliminary = buildMonthlyOpiuStatement({ wb, ozon, shared });
-    if (!companyId) {
+    if (!companyId && !brand) {
       const perCompany = (data.companies ?? []).map((item) => {
         const companySources = (data.sources ?? []).filter((source) => source.companyId === item.id);
         const companyWbSources = companySources.filter((source) => source.marketplace === "wb");
@@ -164,14 +240,14 @@ export function MonthlyOpiuPage() {
       }
       shared = combined;
     }
-    const calculatedShared = companyId ? withCalculatedMonthlyTaxes({
+    const calculatedShared = companyId && !brand ? withCalculatedMonthlyTaxes({
       company,
       marketplaceTaxBase: (wb?.revenue_after_spp ?? 0) + (ozon?.revenue ?? 0),
       ebitda: preliminary.ebitda.known,
       shared,
     }) : shared;
     return { ...data, wb, ozon, shared: calculatedShared, sources: selectedSources };
-  }, [companyId, data]);
+  }, [brand, companyId, data]);
   const statement = useMemo(() => selectedData ? buildMonthlyOpiuStatement({ wb: selectedData.wb, ozon: selectedData.ozon, shared: selectedData.shared }) : null, [selectedData]);
   const sourceColumns = useMemo(() => {
     if (!selectedData) return [];
@@ -186,7 +262,13 @@ export function MonthlyOpiuPage() {
     }));
   }, [selectedData]);
   const companies = useMemo(() => data?.companies ?? [], [data?.companies]);
+  const brandOptions = useMemo(() => monthlyBrandOptions(data?.sources ?? [], companyId), [companyId, data?.sources]);
   const selectedCompanyLabel = companies.find((company) => company.id === companyId)?.name ?? "Все компании";
+  const selectedScopeLabel = brand ? `${selectedCompanyLabel} · ${brand}` : selectedCompanyLabel;
+
+  useEffect(() => {
+    if (brand && !brandOptions.includes(brand)) setBrand("");
+  }, [brand, brandOptions]);
   const companiesWithTaxGaps = useMemo(() => {
     const relevant = companyId ? companies.filter((company) => company.id === companyId) : companies;
     return relevant
@@ -204,8 +286,8 @@ export function MonthlyOpiuPage() {
         monthKey: month,
         monthLabel: monthLabel(month),
         generatedAt: new Date().toLocaleString("ru-RU"),
-        companyKey: companyId || "all",
-        companyLabel: selectedCompanyLabel,
+        companyKey: `${companyId || "all"}:${brand || "all"}`,
+        companyLabel: selectedScopeLabel,
         columns: sourceColumns,
       });
       const result = await exportMonthlyOpiuToGoogleSheets(payload);
@@ -218,9 +300,9 @@ export function MonthlyOpiuPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8">
+    <div className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4 lg:py-5">
       <FinanceTabs />
-      <div className="mb-5 flex flex-wrap items-end gap-3">
+      <div className="mb-4 flex flex-wrap items-end gap-2.5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
           <LineChart className="h-5 w-5" />
         </div>
@@ -241,11 +323,26 @@ export function MonthlyOpiuPage() {
           Компания
           <select
             value={companyId}
-            onChange={(event) => setCompanyId(event.target.value)}
+            onChange={(event) => {
+              setCompanyId(event.target.value);
+              setBrand("");
+            }}
             className="min-h-11 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           >
             <option value="">Все компании</option>
             {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
+        </label>
+        <label className="flex min-w-44 flex-col gap-1 text-sm font-medium text-slate-500">
+          Бренд
+          <select
+            value={brand}
+            onChange={(event) => setBrand(event.target.value)}
+            disabled={brandOptions.length === 0}
+            className="min-h-11 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="">Все бренды</option>
+            {brandOptions.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>
         <button
@@ -258,6 +355,14 @@ export function MonthlyOpiuPage() {
           Google Таблица
         </button>
       </div>
+
+      {loading ? <LoadingBanner seconds={elapsed} hint={marketplaceLoading ? "продажи маркетплейсов" : "общие расходы"} /> : null}
+
+      {brand ? (
+        <div role="status" className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          Показан бренд <b>{brand}</b>. Общие расходы не распределены по брендам и в этот срез не включены.
+        </div>
+      ) : null}
 
       {exportError ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportError}</div> : null}
       {exportedUrl ? (
@@ -278,7 +383,7 @@ export function MonthlyOpiuPage() {
         />
       ))}
 
-      {!loading && companiesWithTaxGaps.length > 0 ? (
+      {!factsLoading && companiesWithTaxGaps.length > 0 ? (
         <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
@@ -297,15 +402,15 @@ export function MonthlyOpiuPage() {
         </div>
       ) : null}
 
-      {!loading && statement ? (
-        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Выручка</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.revenue} /></div></div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">EBITDA</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.ebitda} /></div></div>
-          <div className="rounded-xl border border-red-200 bg-red-50/40 p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Чистая прибыль</div><div className="mt-1 text-2xl font-extrabold text-slate-900"><KpiValue amount={statement.netProfit} /></div></div>
+      {statement ? (
+        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Выручка</div><div className="mt-0.5 text-xl font-extrabold text-slate-900"><KpiValue amount={statement.revenue} /></div></div>
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">EBITDA</div><div className="mt-0.5 text-xl font-extrabold text-slate-900"><KpiValue amount={statement.ebitda} /></div></div>
+          <div className="rounded-lg border border-red-200 bg-red-50/40 px-3 py-2.5 shadow-sm"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Чистая прибыль</div><div className="mt-0.5 text-xl font-extrabold text-slate-900"><KpiValue amount={statement.netProfit} /></div></div>
         </div>
       ) : null}
 
-      {loading ? (
+      {loading && !data ? (
         <div className="rounded-xl border border-slate-200 bg-white py-20 text-center text-slate-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
       ) : error ? (
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700">
@@ -316,20 +421,31 @@ export function MonthlyOpiuPage() {
         </div>
       ) : statement ? (
         <div className="scroll-x rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full border-collapse text-sm" style={{ minWidth: `${Math.max(820, 440 + (sourceColumns.length + 2) * 150)}px` }}>
+          <table
+            className="w-full table-fixed border-collapse text-xs"
+            style={{ minWidth: `${Math.max(620, 180 + Math.max(sourceColumns.length, 1) * 82 + 96)}px` }}
+          >
+            <colgroup>
+              <col className="w-[180px]" />
+              {sourceColumns.length
+                ? sourceColumns.map((source) => <col key={source.id} className="w-[82px]" />)
+                : <col className="w-[82px]" />}
+              <col className="w-[96px]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-slate-300 bg-[#434343] text-[#ffd966]">
-                <th className="sticky left-0 z-20 min-w-[290px] bg-[#434343] px-4 py-3 text-left font-bold">Статья</th>
-                {sourceColumns.map((source) => <th key={source.id} className="min-w-[145px] px-3 py-3 text-right">{source.label}</th>)}
-                <th className="w-[120px] px-3 py-3 text-right">Общие</th>
-                <th className="w-[145px] px-3 py-3 text-right">Итого</th>
+                <th className="sticky left-0 z-20 w-[180px] bg-[#434343] px-2.5 py-2 text-left text-xs font-bold">Статья</th>
+                {sourceColumns.length
+                  ? sourceColumns.map((source) => <th key={source.id} className="w-[82px] break-words px-1 py-2 text-right text-[10px] leading-3.5">{source.label}</th>)
+                  : <th className="w-[82px] px-1 py-2 text-center text-[10px]">Направления</th>}
+                <th className="w-[96px] px-1.5 py-2 text-right text-[11px]">Итого</th>
               </tr>
             </thead>
             <tbody>
               {statement.rows.map((row, index) => {
                 if (row.kind === "section") return (
                   <tr key={row.id} className="border-y border-amber-400 bg-amber-300 text-slate-900">
-                    <td colSpan={sourceColumns.length + 3} className="bg-amber-300 px-4 py-2 font-bold uppercase tracking-wide"><span className="sticky left-4 inline-block">{row.label}</span></td>
+                    <td colSpan={Math.max(sourceColumns.length, 1) + 2} className="bg-amber-300 px-3 py-1.5 font-bold uppercase tracking-wide"><span className="sticky left-3 inline-block">{row.label}</span></td>
                   </tr>
                 );
                 const resultRow = row.kind === "result";
@@ -337,19 +453,36 @@ export function MonthlyOpiuPage() {
                 const percentRow = row.kind === "percent";
                 const background = resultRow ? "bg-red-100" : subtotalRow ? "bg-amber-50" : index % 2 ? "bg-slate-50" : "bg-white";
                 const total = row.amounts.total;
+                const sourceRows = sourceColumns.map((source) => ({
+                  source,
+                  row: source.statement.rows.find((candidate) => candidate.id === row.id),
+                }));
+                const sharedOnly = hasVisibleAmount(row.amounts.shared) && !sourceRows.some((item) => (
+                  item.row ? hasVisibleAmount(item.row.amounts[item.source.direction]) : false
+                ));
                 return (
                   <tr key={row.id} className={`border-b border-slate-100 ${background} ${resultRow ? "font-bold" : subtotalRow ? "font-semibold" : ""}`}>
-                    <td data-cell="title" className={`sticky left-0 z-10 min-w-[290px] px-4 ${percentRow ? "py-1.5 text-xs text-slate-500" : "py-2.5"} ${background}`}>
+                    <td data-cell="title" className={`sticky left-0 z-10 w-[180px] px-2.5 ${percentRow ? "py-1 text-[11px] text-slate-500" : "py-1.5"} ${background}`}>
                       <span>{row.label}</span>
                       {row.description ? <Hint label={`Описание статьи «${row.label}»`} className="ml-1">{row.description}</Hint> : null}
                     </td>
-                    {sourceColumns.map((source) => {
-                      const sourceRow = source.statement.rows.find((candidate) => candidate.id === row.id);
-                      return sourceRow
+                    {sharedOnly ? (
+                      <td colSpan={Math.max(sourceColumns.length, 1)} data-label="Общие расходы" className="px-2 py-1.5 text-center tabular-nums text-slate-700">
+                        <span className="inline-flex items-center justify-center gap-1.5 rounded-md bg-slate-100 px-2 py-1">
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Общие расходы</span>
+                          <b>{visibleAmount(row.amounts.shared, row)}</b>
+                          {row.amounts.shared.note && ["taxes", "vat", "loan_interest"].includes(row.id)
+                            ? <Hint label={`Пояснение к сумме «${row.label}»`}>{row.amounts.shared.note}</Hint>
+                            : null}
+                        </span>
+                      </td>
+                    ) : sourceRows.length ? sourceRows.map(({ source, row: sourceRow }) => (
+                      sourceRow
                         ? <AmountCell key={source.id} amount={sourceRow.amounts[source.direction]} row={sourceRow} label={source.label} />
-                        : <td key={source.id} data-label={source.label} className="px-3 py-2.5 text-right text-slate-400">—</td>;
-                    })}
-                    <AmountCell amount={row.amounts.shared} row={row} label="Общие" />
+                        : <td key={source.id} data-label={source.label} className="px-1.5 py-1.5 text-right text-slate-400">—</td>
+                    )) : (
+                      <td data-label="Направления" className="px-1.5 py-1.5 text-center text-slate-400">—</td>
+                    )}
                     <AmountCell amount={total} row={row} label="Итого" />
                   </tr>
                 );

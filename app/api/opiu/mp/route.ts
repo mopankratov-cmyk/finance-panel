@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
         // а не настоящий нулевой месяц. Уже сохранённые строки показываем, но
         // явно помечаем все зависящие от них суммы как частичные.
         if (!wb.rowsCount) {
-          return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb: failedWb(message) };
+          return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), brand: brand.label, marketplace: "wb", companyId: owner?.id, wb: failedWb(message) };
         }
         const partialWb = {
           ...wb,
@@ -127,12 +127,12 @@ export async function GET(request: NextRequest) {
           partialReason: message,
           warnings: [...(wb.warnings ?? []), message],
         };
-        return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb: partialWb };
+        return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), brand: brand.label, marketplace: "wb", companyId: owner?.id, wb: partialWb };
       }
-      return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb };
+      return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), brand: brand.label, marketplace: "wb", companyId: owner?.id, wb };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Не удалось загрузить WB";
-      return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), marketplace: "wb", companyId: owner?.id, wb: failedWb(message) };
+      return { id: `wb:${brand.id}`, label: wbSourceLabel(brand, owner?.name, !selectedCompany), brand: brand.label, marketplace: "wb", companyId: owner?.id, wb: failedWb(message) };
     }
   }));
 

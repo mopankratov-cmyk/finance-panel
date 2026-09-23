@@ -49,5 +49,12 @@ test("переключение компании фильтрует уже заг
   assert.match(monthlyFactsRoute, /byCompany/);
   assert.match(monthlyPage, /\[month, reloadKey\]/);
   assert.doesNotMatch(monthlyPage, /\[month, companyId, reloadKey\]/);
-  assert.match(monthlyPage, /source\.companyId === companyId/);
+  assert.match(monthlyPage, /filterMonthlySources\(data\.sources \?\? \[\], \{ companyId, brand \}\)/);
+  assert.match(monthlyPage, /monthlyOpiuMemoryCache/);
+});
+
+test("месячный ОПиУ имеет бренд-фильтр и не выводит отдельную колонку общих расходов", () => {
+  assert.match(monthlyPage, /Бренд\s*<select/);
+  assert.match(monthlyPage, /Общие расходы/);
+  assert.doesNotMatch(monthlyPage, />Общие<\/th>/);
 });
