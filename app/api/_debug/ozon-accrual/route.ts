@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { checkCronAuth } from "@/lib/sync/helpers";
 
 /**
  * ВРЕМЕННЫЙ диагностический маршрут — удалить сразу после разведки.
@@ -9,13 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
  * в проекте ещё не вызывался — неизвестна ни точная форма тела запроса, ни то,
  * даёт ли ответ разбивку по категориям начисления (нужно для П&Л по Ozon).
  * Разведка нужна один раз, чтобы не проектировать таблицы и синк вслепую.
- *
- * Ключ ниже — не переменная окружения специально: локальный .env.local и
- * прод-окружение на Vercel не гарантированно совпадают по секретам, а этот
- * маршрут читается один раз с прод-URL и сразу удаляется.
  */
-const PROBE_KEY = "e156ffc7270c3c56f85c6da7d3e5e7755edf261cb21f1c72";
-
 const BASE = "https://api-seller.ozon.ru";
 
 async function call(clientId: string, apiKey: string, path: string, body: unknown) {
@@ -35,13 +30,14 @@ async function call(clientId: string, apiKey: string, path: string, body: unknow
     try { json = JSON.parse(text); } catch { json = text.slice(0, 2000); }
     return { status: res.status, json };
   } catch (e) {
-    return { status: null, error: String(e).slice(0, 300) };
+    const cause = e && typeof e === "object" && "cause" in e ? String((e as { cause?: unknown }).cause).slice(0, 200) : null;
+    return { status: null, error: String(e).slice(0, 200), cause };
   }
 }
 
 export async function GET(request: NextRequest) {
-  const key = request.nextUrl.searchParams.get("key");
-  if (key !== PROBE_KEY) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authError = await checkCronAuth(request);
+  if (authError) return authError;
 
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "No DB" }, { status: 500 });
@@ -66,5 +62,6 @@ export async function GET(request: NextRequest) {
     call(cabinet.client_id, cabinet.token, "/v1/finance/accrual/postings", { date_from: dateFrom, date_to: dateTo, limit: 5 }),
   ]);
 
+  // Только имя кабинета — ни client_id, ни Api-Key наружу не идут.
   return NextResponse.json({ cabinet: cabinet.name, types, byDay, postings });
 }
