@@ -48,10 +48,10 @@ test("новая статья доступна в опциях и относит
 test("подтверждённый расход новой статьи включается в существующую строку ОПиУ один раз", () => {
   const categories = [{ id: "c1", name: "Курсы команды", opiuArticleId: "training" }, { id: "c2", name: "Не для ОПиУ", opiuArticleId: null }];
   const shared = aggregateDdsMonthlyFacts([
-    { amount: -100, category: "Курсы команды" },
-    { amount: -20, category: "Курсы команды", comment: "[payroll:entry]" },
-    { amount: 30, category: "Курсы команды" },
-    { amount: -70, category: "Не для ОПиУ" },
+    { amount: -100, category: "Курсы команды", status: "done", importSource: "bank-review:course" },
+    { amount: -20, category: "Курсы команды", status: "done", importSource: "bank-review:payroll", comment: "[payroll:entry]" },
+    { amount: 30, category: "Курсы команды", status: "done", importSource: "bank-review:refund" },
+    { amount: -70, category: "Не для ОПиУ", status: "done", importSource: "bank-review:unmapped" },
   ], categories);
   assert.equal(shared.training.amount, 100);
   assert.equal(Object.keys(shared).length, 1);
