@@ -26,3 +26,10 @@ test("does not classify withdrawals, other taxpayers or unrelated purposes", () 
 test("does not classify incoming ENP text as a tax payment", () => {
   assert.equal(mandatoryBankCategory({ amount: 100, purpose: "ЕНП Пополнение счета" }), null);
 });
+
+test("bank commission withdrawals always use the RKO category", () => {
+  for (const purpose of ["Комиссия Банка", "КОМИССИЯ БАНКА за перевод", "Банковская комиссия без НДС"]) {
+    assert.equal(mandatoryBankCategory({ amount: -350, purpose }), "РКО");
+  }
+  assert.equal(mandatoryBankCategory({ amount: 350, purpose: "Комиссия Банка" }), null);
+});

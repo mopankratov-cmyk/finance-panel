@@ -45,6 +45,16 @@ test("известные правила сразу подставляют ста
       purpose: "ЕНП Пополнение счета",
       documentNumber: "2",
     },
+    {
+      id: "bank-commission",
+      date: "2026-09-04",
+      amount: -1_500,
+      counterparty: "Банк",
+      counterpartyInn: "",
+      counterpartyAccount: "",
+      purpose: "Комиссия Банка за расчетное обслуживание",
+      documentNumber: "3",
+    },
   ];
   const suggestions = classifyBankStatement({
     documentHash: "hash",
@@ -62,5 +72,5 @@ test("известные правила сразу подставляют ста
     warnings: [],
   }, [], [], [], []);
 
-  assert.deepEqual(suggestions.map((suggestion) => suggestion.category), ["Продажи на МП", "УСН"]);
+  assert.deepEqual(suggestions.map((suggestion) => suggestion.category), ["Продажи на МП", "УСН", "РКО"]);
 });

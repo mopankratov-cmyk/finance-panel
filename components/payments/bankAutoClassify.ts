@@ -66,7 +66,7 @@ export function categoryMatchesDirection(category: string | null, amount: number
   if (!category) return true;
   const value = normalize(category);
   if (amount < 0 && /(продажи на мп|получение кредит|поступление|вклад.*собствен)/.test(value)) return false;
-  if (amount > 0 && /(погашение|оплата|выбытие|выдача кредит|расход|налог|зарплат)/.test(value)) return false;
+  if (amount > 0 && /(погашение|оплата|выбытие|выдача кредит|расход|налог|зарплат|рко)/.test(value)) return false;
   return true;
 }
 
@@ -201,7 +201,9 @@ export function classifyBankStatement(
       categoryConfidence = 1;
       reasons.push(mandatory === "Продажи на МП"
         ? "ООО Интернет Решения: оплата товаров по договору ИР — продажи на МП"
-        : "Назначение ЕНП — налог УСН");
+        : mandatory === "УСН"
+          ? "Назначение ЕНП — налог УСН"
+          : "Назначение «Комиссия Банка» — РКО");
     } else if (row.counterpartyInn && row.counterpartyInn === statement.ownerInn) {
       category = row.amount >= 0 ? "Поступление — Перевод между счетами" : "Выбытие — Перевод между счетами";
       categoryConfidence = 0.98;
