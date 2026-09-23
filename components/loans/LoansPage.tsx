@@ -527,14 +527,14 @@ export function LoansPage() {
   return (
     <div className="space-y-5">
       <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div><h1 className="text-2xl font-bold text-slate-950">Кредиты и займы</h1><p className="mt-1 text-sm text-slate-500">Договоры, графики, остаток долга и ближайшие оплаты</p></div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => void reconcileWithDds(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"><RefreshCw className="h-4 w-4" /> Сверить с ДДС</button>
-            <button onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-4 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${marketplaceLoading ? "animate-spin" : ""}`} /> Сверить удержания WB</button>
-            <button onClick={() => downloadSimpleXlsx(rowsForExport, `Учёт_финансовой_деятельности_${today}.xlsx`, "Учёт кредитов займов от сторонн")} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> Excel</button>
-            <button onClick={() => void syncGoogle()} disabled={syncing} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Google Таблица</button>
-            <button onClick={() => { setEditing(null); setModalOpen(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> Новый договор</button>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0"><h1 className="text-2xl font-bold text-slate-950">Кредиты и займы</h1><p className="mt-1 text-sm text-slate-500">Договоры, графики, остаток долга и ближайшие оплаты</p></div>
+          <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end xl:shrink-0">
+            <button aria-label="Сверить платежи с ДДС" onClick={() => void reconcileWithDds(true)} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"><RefreshCw className="h-4 w-4" /> Сверить ДДС</button>
+            <button aria-label="Сверить удержания Wildberries" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${marketplaceLoading ? "animate-spin" : ""}`} /> Сверить WB</button>
+            <button onClick={() => downloadSimpleXlsx(rowsForExport, `Учёт_финансовой_деятельности_${today}.xlsx`, "Учёт кредитов займов от сторонн")} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> Excel</button>
+            <button onClick={() => void syncGoogle()} disabled={syncing} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Google Sheets</button>
+            <button onClick={() => { setEditing(null); setModalOpen(true); }} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> Новый договор</button>
           </div>
         </div>
         <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
