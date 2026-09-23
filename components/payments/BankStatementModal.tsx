@@ -100,7 +100,11 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       setStatement(parsed);
       setAccountNumberKnown(typeof data.accountNumberKnown === "boolean" ? data.accountNumberKnown : null);
       setNewAccountName("");
-      setConfirmedCategories(new Set());
+      setConfirmedCategories(new Set(
+        suggestions
+          .filter((suggestion) => Boolean(mandatoryBankCategory(suggestion.row)))
+          .map((suggestion) => suggestion.row.id),
+      ));
       setCounterpartyOverrides(new Map());
       setPurposeOverrides(new Map());
       setFileName(file.name);
