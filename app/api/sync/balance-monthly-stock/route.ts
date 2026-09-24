@@ -10,7 +10,7 @@ import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
-import { balanceWbProductScope, buildBalanceWbArticleIndex, type BalanceWbCatalogRow } from "@/lib/finance/balanceWbCatalog";
+import { balanceWbProductScope, buildBalanceWbCatalogIndex, type BalanceWbCatalogItem, type BalanceWbCatalogRow } from "@/lib/finance/balanceWbCatalog";
 
 export const maxDuration = 300;
 
@@ -49,22 +49,22 @@ async function loadCosts(): Promise<CostRow[]> {
   }
 }
 
-async function loadWbArticleIndex(cabinetIds: readonly string[]) {
+async function loadWbCatalogIndex(cabinetIds: readonly string[]) {
   const db = getSupabaseAdmin();
-  if (!db || cabinetIds.length === 0) return new Map<string, Map<number, string>>();
+  if (!db || cabinetIds.length === 0) return new Map<string, Map<number, BalanceWbCatalogItem>>();
   const [cards, scopedProducts] = await Promise.all([
     loadAllSupabasePages<BalanceWbCatalogRow>((from, to) => db.from("wb_cards")
-      .select("cabinet_id,nm_id,article").in("cabinet_id", cabinetIds)
+      .select("cabinet_id,nm_id,article,brand").in("cabinet_id", cabinetIds)
       .order("cabinet_id").order("nm_id").range(from, to),
     { label: "Локальный каталог WB", maxPages: 100, concurrency: 4 }),
     loadAllSupabasePages<BalanceWbCatalogRow>((from, to) => db.from("wb_cabinet_product_scope")
-      .select("cabinet_id,nm_id,article").in("cabinet_id", cabinetIds)
+      .select("cabinet_id,nm_id,article,brand").in("cabinet_id", cabinetIds)
       .order("cabinet_id").order("nm_id").range(from, to),
     { label: "Товарный контур WB", maxPages: 100, concurrency: 4 }),
   ]);
   // wb_cards — основной справочник. Scope идёт вторым как безопасный fallback;
   // индекс сохраняет первое непустое значение для одинакового cabinet/nm.
-  return buildBalanceWbArticleIndex([...cards, ...scopedProducts]);
+  return buildBalanceWbCatalogIndex([...cards, ...scopedProducts]);
 }
 
 function costsForOrganization(rows: readonly CostRow[], organizationId: string | null): MarketplaceUnitCost[] {
@@ -285,21 +285,21 @@ export async function GET(request: NextRequest) {
     }
 
     const reportingWbTargets = wbTargets.filter((target) => target.cabinetId && reportingScope.cabinetIds.has(target.cabinetId));
-    const wbArticleIndex = await loadWbArticleIndex(reportingWbTargets.flatMap((target) => target.cabinetId ? [target.cabinetId] : []));
+    const wbCatalogIndex = await loadWbCatalogIndex(reportingWbTargets.flatMap((target) => target.cabinetId ? [target.cabinetId] : []));
     for (const group of groupWbStatisticsTargets(reportingWbTargets)) {
       try {
         const remains = await fetchWarehouseRemains({ token: group[0].statsToken });
         for (const target of group) {
           const byNm = new Map<number, number>();
           const productScope = balanceWbProductScope(target.name, target.productScope);
-          for (const row of remainsToStockRows(remains.filter((item) => allowsProduct(productScope, item.nmId)))) {
+          const catalogByNm = target.cabinetId ? wbCatalogIndex.get(target.cabinetId) : null;
+          for (const row of remainsToStockRows(remains.filter((item) => allowsProduct(productScope, item.nmId, catalogByNm?.get(item.nmId)?.brand)))) {
             if (!isWbWarehouse(row.warehouse)) continue;
             const quantity = Number(row.quantity ?? 0);
             if (quantity > 0) byNm.set(row.nm_id, (byNm.get(row.nm_id) ?? 0) + quantity);
           }
           const cabinet = target.cabinetId ? metaById.get(target.cabinetId) : null;
-          const articleByNm = target.cabinetId ? wbArticleIndex.get(target.cabinetId) : null;
-          const stocks: MarketplaceStockInput[] = [...byNm].map(([nmId, quantity]) => ({ article: articleByNm?.get(nmId) ?? `WB:${nmId}`, quantity, lineKey: String(nmId), locationName: `Склад WB · ${cabinet?.name ?? target.name}` }));
+          const stocks: MarketplaceStockInput[] = [...byNm].map(([nmId, quantity]) => ({ article: catalogByNm?.get(nmId)?.article ?? `WB:${nmId}`, quantity, lineKey: String(nmId), locationName: `Склад WB · ${cabinet?.name ?? target.name}` }));
           const lines = valueMarketplaceStocks(stocks, costsForOrganization(costRows, cabinet?.organization_id ?? null));
           const summary = await saveSource({
             month: window.month, capturedAt, sourceKind: "wb", sourceLabel: `Склад WB · ${cabinet?.name ?? target.name}`,
