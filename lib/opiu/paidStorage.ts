@@ -39,6 +39,58 @@ function emptyWeekMap(weeks: MonthWeek[]): Record<string, number> {
   return Object.fromEntries(weeks.map((week) => [week.weekStart, 0]));
 }
 
+/**
+ * «Хранение» по артикулу за произвольный период — для «Маржа по
+ * артикулам» (в отличие от fetchPaidStorageByWeek, которая суммирует на
+ * весь кабинет по неделям для ОПиУ). Тот же источник (wb_paid_storage_rows,
+ * не обезличенный wb_report_rows.storage_fee) и тот же RPC-приоритет не
+ * нужен — RPC агрегирует по дням БЕЗ vendor_code, для разбивки по товару
+ * годится только сырая таблица.
+ *
+ * Ключ — vendor_code в верхнем регистре (совпадает с article/sa_name,
+ * которым buildMarginByBarcode уже матчит себестоимость — unitCost/
+ * unitPackaging в metrics.ts используют тот же приём).
+ */
+export async function fetchPaidStorageByArticle(
+  cabinetId: string,
+  dateFrom: string,
+  dateTo: string,
+  articlePrefixes?: string[],
+): Promise<Map<string, number>> {
+  const client = getSupabaseAdmin();
+  const map = new Map<string, number>();
+  if (!client) return map;
+
+  const prefixFilter = paidStoragePrefixFilter(articlePrefixes);
+  let rows: PaidStorageRow[];
+  try {
+    rows = await loadAllSupabasePages<PaidStorageRow>((from, to) => {
+      let query = client
+        .from("wb_paid_storage_rows")
+        .select("id, date, vendor_code, warehouse_price")
+        .eq("cabinet_id", cabinetId)
+        .gte("date", dateFrom)
+        .lte("date", dateTo);
+      if (prefixFilter) query = query.or(prefixFilter);
+      return query
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
+    }, { maxPages: 1_000, concurrency: 8, label: "Маржа по артикулам: Платное хранение" });
+  } catch (e) {
+    console.error("[opiu margin] paid storage read:", e instanceof Error ? e.message : e);
+    return map;
+  }
+
+  for (const row of rows) {
+    const vendorCode = String(row.vendor_code ?? "").trim().toUpperCase();
+    if (!vendorCode) continue;
+    if (!matchesVendorPrefix(row.vendor_code, articlePrefixes)) continue;
+    map.set(vendorCode, (map.get(vendorCode) ?? 0) + Number(row.warehouse_price ?? 0));
+  }
+  return map;
+}
+
 export function groupDailyStorageByWeek(
   rows: Array<{ date: string; warehouse_price: number | null }>,
   weeks: MonthWeek[],
