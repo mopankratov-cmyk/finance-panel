@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { fetchReportRows } from "@/lib/opiu/reportRows";
 import { fetchProductCosts, matchesArticlePrefix } from "@/lib/opiu/loadMonth";
 import { buildMarginByBarcode, type OrdersSummary } from "@/lib/opiu/marginByBarcode";
-import { orderRub } from "@/lib/opiu/metrics";
+import { loadReadyFunnelFacts } from "@/lib/opiu/loadFunnelOrders";
 import { OPIU_BRANDS, resolveOpiuBrand } from "@/lib/opiu/constants";
 import { isValidDateParam } from "@/lib/opiu/weeks";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -44,18 +44,57 @@ async function fetchAdSpendByNmId(
 }
 
 /**
- * Заказы за период по nm_id — как в столбце «Заказы» гугл-таблицы. Читаем
- * wb_orders НАПРЯМУЮ (не через fetchOrders/Воронку из ОПиУ): нужна ВАЛОВАЯ
- * сумма, включая отменённые, а Воронка (wb_funnel_daily) местами подменяет
- * сырые строки синтетическими — для точного валового счёта не подходит.
- * articlePrefixes фильтруем по supplier_article — то же поле, что и раньше
- * в fetchOrders для суб-брендов. Сверено построчно с таблицей (TT04101: 16
- * шт / 5728 ₽ — совпало день в день).
+ * nm_id этого суб-бренда — Воронка не хранит артикул, только nm_id, поэтому
+ * для кабинетов, разделённых по префиксу артикула (Norvia/Heaton/Riobox),
+ * whitelist считаем по сырым wb_orders (там supplier_article есть). Тот же
+ * приём, что и brandNmIdWhitelist в loadMonth.ts.
+ */
+async function fetchBrandNmIdWhitelist(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  cabinetId: string,
+  dateFrom: string,
+  dateTo: string,
+  articlePrefixes: string[],
+): Promise<Set<number>> {
+  const rows = await loadAllSupabasePages<{ nm_id: number; supplier_article: string | null }>(
+    async (from, to) => {
+      const result = await db
+        .from("wb_orders")
+        .select("nm_id, supplier_article")
+        .eq("cabinet_id", cabinetId)
+        .gte("date", dateFrom)
+        .lte("date", `${dateTo}T23:59:59.999Z`)
+        .order("id", { ascending: true })
+        .range(from, to);
+      return {
+        data: result.data,
+        error: result.error ? { message: result.error.message } : null,
+      };
+    },
+    { maxPages: 300, label: "Маржа по артикулам: nm_id суб-бренда" },
+  );
+  const whitelist = new Set<number>();
+  for (const row of rows) {
+    if (!matchesArticlePrefix(row.supplier_article, articlePrefixes)) continue;
+    const nmId = Number(row.nm_id);
+    if (Number.isFinite(nmId) && nmId > 0) whitelist.add(nmId);
+  }
+  return whitelist;
+}
+
+/**
+ * Заказы за период по nm_id — как в столбце «Заказы» гугл-таблицы (и как в
+ * официальной выгрузке WB «Аналитика → Воронка продаж»). Источник —
+ * wb_funnel_daily (уже синкается для ОПиУ), не сырые wb_orders: сырые заказы
+ * недосчитывают на ходовых SKU (сверка на TT04102: wb_orders дал 245, а
+ * Воронка/эталонная таблица/выгрузка WB — 290, ровно как в файле от 24.09).
+ * TT04101 совпадал и по wb_orders (16), поэтому расхождение раньше не
+ * бросалось в глаза — оно проявляется только на высоком объёме заказов.
  *
- * «Отказы» сюда НЕ входят — несмотря на название, это не wb_orders.is_cancel
- * (проверено: не сходится с таблицей). Настоящая формула таблицы —
- * count(bonus_type_name = "От клиента при отмене") по финотчёту, она уже
- * есть в buildMarginByBarcode (isClientCancelRow из строк scopedRows).
+ * «Отказы» сюда НЕ входят — у Воронки нет числа отмен по дням, только
+ * orders/orders_sum. Настоящая формула «Отказов» в таблице — отдельная,
+ * count(bonus_type_name = "От клиента при отмене") по финотчёту, она в
+ * buildMarginByBarcode (isClientCancelRow).
  */
 async function fetchOrdersByNmId(
   cabinetId: string,
@@ -67,44 +106,19 @@ async function fetchOrdersByNmId(
   const map = new Map<number, OrdersSummary>();
   if (!db) return map;
 
-  const rows = await loadAllSupabasePages<{
-    nm_id: number;
-    supplier_article: string | null;
-    total_price: number | null;
-    discount_percent: number | null;
-    finished_price: number | null;
-    price_with_disc: number | null;
-  }>(
-    async (from, to) => {
-      const result = await db
-        .from("wb_orders")
-        .select("nm_id, supplier_article, total_price, discount_percent, finished_price, price_with_disc")
-        .eq("cabinet_id", cabinetId)
-        .gte("date", dateFrom)
-        .lte("date", `${dateTo}T23:59:59.999Z`)
-        .order("id", { ascending: true })
-        .range(from, to);
-      return {
-        data: result.data,
-        error: result.error ? { message: result.error.message } : null,
-      };
-    },
-    { maxPages: 300, label: "Маржа по артикулам: заказы WB" },
-  );
+  const [facts, whitelist] = await Promise.all([
+    loadReadyFunnelFacts(db, cabinetId, dateFrom, dateTo),
+    articlePrefixes?.length
+      ? fetchBrandNmIdWhitelist(db, cabinetId, dateFrom, dateTo, articlePrefixes)
+      : Promise.resolve<Set<number> | null>(null),
+  ]);
 
-  for (const row of rows) {
-    if (articlePrefixes?.length && !matchesArticlePrefix(row.supplier_article, articlePrefixes)) continue;
-    const nmId = Number(row.nm_id);
-    if (!Number.isFinite(nmId) || nmId <= 0) continue;
-    const entry = map.get(nmId) ?? { ordersQty: 0, ordersRub: 0 };
-    entry.ordersQty += 1;
-    entry.ordersRub += orderRub({
-      totalPrice: row.total_price ?? undefined,
-      discountPercent: row.discount_percent ?? undefined,
-      finishedPrice: row.finished_price ?? undefined,
-      priceWithDisc: row.price_with_disc ?? undefined,
-    });
-    map.set(nmId, entry);
+  for (const fact of facts) {
+    if (whitelist && !whitelist.has(fact.nmId)) continue;
+    const entry = map.get(fact.nmId) ?? { ordersQty: 0, ordersRub: 0 };
+    entry.ordersQty += Number(fact.orders) || 0;
+    entry.ordersRub += Number(fact.ordersSum) || 0;
+    map.set(fact.nmId, entry);
   }
   return map;
 }
