@@ -3,7 +3,7 @@
 import { AlertTriangle, FileUp, Loader2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { createDdsCompany, type DdsCompany } from "./ddsCompanies";
-import { parseDdsCsv, type DdsParseResult } from "./ddsCsv";
+import type { DdsParseResult } from "./ddsCsv";
 import {
   buildImportPlan,
   commitImport,
@@ -81,9 +81,13 @@ export function ImportDdsModal({
     setReviewing(false);
     setPlan(null);
     try {
-      if (file.size > 20 * 1024 * 1024) throw new Error("CSV-файл больше 20 МБ");
-      const text = await file.text();
-      const parsed = parseDdsCsv(text);
+      if (file.size > 20 * 1024 * 1024) throw new Error("Файл ДДС больше 20 МБ");
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/finance/import", { method: "PUT", body: form });
+      const body = await response.json().catch(() => ({})) as { result?: DdsParseResult; error?: string };
+      if (!response.ok || !body.result) throw new Error(body.error || "Не удалось прочитать файл ДДС");
+      const parsed = body.result;
       setResult(parsed);
       const hasNamedCompanies = parsed.drafts.some((draft) => draft.company !== "Группа (общее)");
       setCompanyMode(hasNamedCompanies ? "from-file" : "");
@@ -191,7 +195,7 @@ export function ImportDdsModal({
     : false;
 
   return (
-    <Modal open={open} onClose={close} title="Импорт ДДС из CSV">
+    <Modal open={open} onClose={close} title="Импорт истории ДДС">
       {done ? (
         <div className="space-y-4 text-sm">
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-emerald-800">
@@ -272,10 +276,10 @@ export function ImportDdsModal({
         <div className="space-y-4 text-sm">
           <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 px-4 py-6 text-slate-500 hover:border-violet-400 hover:text-violet-600">
             <FileUp className="h-5 w-5" />
-            {fileName || "Выбрать CSV-файл ДДС"}
+            {fileName || "Выбрать файл ДДС XLSX или CSV"}
             <input
               type="file"
-              accept=".csv,text/csv"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
               className="hidden"
               disabled={parsing || importing}
               onChange={(e) => {
@@ -290,6 +294,11 @@ export function ImportDdsModal({
               <Loader2 className="h-4 w-4 animate-spin" /> Читаю файл…
             </div>
           )}
+
+          <p className="text-xs leading-5 text-slate-500">
+            Поддерживается экспорт ДДС с колонками «Дата», «Сумма», «Кошелёк», «Статья» и «Назначение платежа».
+            Назначение сохраняется полностью и используется как подсказка при сверке кредитов и займов.
+          </p>
 
           {result && summary && preview && (
             <div className="space-y-3">

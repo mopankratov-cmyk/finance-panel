@@ -40,7 +40,9 @@ export function withCalendarFactLink(payment: Payment, factId: string): Payment 
     ...payment,
     status: "cancelled",
     settledByPaymentId: factId,
-    comment: `${withoutOldLink}${withoutOldLink ? " " : ""}[calendar-fact:${factId}]`,
+    // Связь хранится в payments.settled_by_payment_id. Старые метки всё ещё
+    // читаются выше для совместимости, но новые в пользовательский текст не пишем.
+    comment: withoutOldLink || undefined,
   };
 }
 

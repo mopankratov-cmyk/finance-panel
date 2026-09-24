@@ -2,6 +2,7 @@
 
 import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Plus, RefreshCw, Save, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
+import { ImportDdsModal } from "./ImportDdsModal";
 import { PaymentChainModal, type PaymentChainSeed } from "./PaymentChainModal";
 import { TransferBalancePanel } from "./TransferBalancePanel";
 import { BankTransfersPanel } from "./BankTransfersPanel";
@@ -66,6 +67,7 @@ export function PaymentsPage() {
   const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">("overview");
   const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">(mode);
   const [bankImportOpen, setBankImportOpen] = useState(false);
+  const [historyImportOpen, setHistoryImportOpen] = useState(false);
   const [companiesOpen, setCompaniesOpen] = useState(false);
   const [syncingGoogle, setSyncingGoogle] = useState(false);
 
@@ -368,6 +370,13 @@ export function PaymentsPage() {
           </button>
           <button type="button" onClick={() => setCategoriesOpen(true)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-violet-300"><ListChecks className="h-4 w-4" />Статьи расходов</button>
           <button
+            onClick={() => setHistoryImportOpen(true)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-violet-300 px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Импорт истории ДДС
+          </button>
+          <button
             onClick={() => setBankImportOpen(true)}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"
           >
@@ -623,6 +632,14 @@ export function PaymentsPage() {
         companies={companies}
         existingPayments={paymentsWithCompany}
         onQueued={() => setMode("review")}
+      />
+      <ImportDdsModal
+        open={historyImportOpen}
+        onClose={() => setHistoryImportOpen(false)}
+        existingAccounts={state.accounts}
+        existingPayments={paymentsWithCompany}
+        companies={companies}
+        onCompanyCreated={(company) => setCompanies((current) => [...current, company])}
       />
     </div>
   );

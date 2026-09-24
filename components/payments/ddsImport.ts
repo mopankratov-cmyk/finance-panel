@@ -66,10 +66,11 @@ const exactKey = (
   category: string,
   wallet: string,
   name: string,
+  counterparty: string,
   companyId: string | null,
-) => `${date}|${amount}|${category}|${wallet}|${name}|${companyId ?? ""}`;
-const baseExactKey = (date: string, amount: number, category: string, wallet: string, name: string) =>
-  `${date}|${amount}|${category}|${wallet}|${name}`;
+) => `${date}|${amount}|${category}|${wallet}|${name}|${counterparty}|${companyId ?? ""}`;
+const baseExactKey = (date: string, amount: number, category: string, wallet: string, name: string, counterparty: string) =>
+  `${date}|${amount}|${category}|${wallet}|${name}|${counterparty}`;
 const looseKey = (date: string, amount: number, wallet: string) => `${date}|${amount}|${wallet}`;
 
 function companyIdForDraft(
@@ -116,10 +117,10 @@ export function buildImportPlan(
   const looseMatch = new Map<string, { date: string; amount: number; wallet: string; category: string; name: string }>();
   for (const p of existing.payments) {
     const wallet = accNameById.get(p.accountId) ?? "";
-    const ek = exactKey(p.date, p.amount, p.category, wallet, p.name, p.companyId ?? null);
+    const ek = exactKey(p.date, p.amount, p.category, wallet, p.name, p.counterparty, p.companyId ?? null);
     exactRemaining.set(ek, (exactRemaining.get(ek) ?? 0) + 1);
     if (!p.companyId && p.id) {
-      const bk = baseExactKey(p.date, p.amount, p.category, wallet, p.name);
+      const bk = baseExactKey(p.date, p.amount, p.category, wallet, p.name, p.counterparty);
       const ids = unassignedExact.get(bk) ?? [];
       ids.push(p.id);
       unassignedExact.set(bk, ids);
@@ -136,7 +137,7 @@ export function buildImportPlan(
 
   for (const d of result.drafts) {
     const companyId = companyIdForDraft(d, assignment);
-    const ek = exactKey(d.date, d.amount, d.category, d.wallet, d.name, companyId);
+    const ek = exactKey(d.date, d.amount, d.category, d.wallet, d.name, d.counterparty, companyId);
     const rem = exactRemaining.get(ek) ?? 0;
     if (rem > 0) {
       exactRemaining.set(ek, rem - 1); // точный дубль — пропускаем
@@ -144,7 +145,7 @@ export function buildImportPlan(
       continue;
     }
     if (companyId) {
-      const bk = baseExactKey(d.date, d.amount, d.category, d.wallet, d.name);
+      const bk = baseExactKey(d.date, d.amount, d.category, d.wallet, d.name, d.counterparty);
       const unassignedIds = unassignedExact.get(bk);
       const paymentId = unassignedIds?.shift();
       if (paymentId) {
@@ -187,7 +188,7 @@ async function fetchExisting(): Promise<ExistingData> {
   const response = await fetch("/api/finance/import", { cache: "no-store" });
   const body = await response.json().catch(() => ({})) as {
     accounts?: Array<{ id: string; name: string }>;
-    payments?: Array<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null }>;
+    payments?: Array<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null; counterparty: string | null }>;
     error?: string;
   };
   if (!response.ok) throw new Error(body.error || `Не удалось прочитать данные: ${response.status}`);
@@ -205,7 +206,7 @@ async function fetchExisting(): Promise<ExistingData> {
           accountId: p.account_id,
           date: p.date,
           status: "done",
-          counterparty: "",
+          counterparty: p.counterparty ?? "",
           companyId: p.company_id,
         }) as Payment & { companyId?: string | null },
     );
