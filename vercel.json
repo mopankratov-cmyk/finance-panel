@@ -24,6 +24,10 @@
       "schedule": "0 */4 * * *"
     },
     {
+      "path": "/api/sync/balance-monthly-stock",
+      "schedule": "1 21 28-31 * *"
+    },
+    {
       "path": "/api/sync/stocks-history-cleanup",
       "schedule": "0 3 * * *"
     },

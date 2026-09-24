@@ -754,6 +754,7 @@ export const OZON_FBS_WAREHOUSE = "Свой склад (FBS)";
  */
 export async function ozonSellerStocks(
   c: OzonCreds,
+  options: { fresh?: boolean } = {},
 ): Promise<{ ok: true; rows: OzonStockRow[] } | { ok: false; error: string }> {
   const rows: OzonStockRow[] = [];
   try {
@@ -762,7 +763,7 @@ export async function ozonSellerStocks(
       const res = await tfetch(c, `${BASE}/v4/product/info/stocks`, {
         method: "POST", headers: headers(c),
         body: JSON.stringify({ cursor, limit: 1000, filter: { visibility: "ALL" } }),
-        next: { revalidate: 1800 },
+        ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
       const json = (await res.json()) as {
@@ -798,6 +799,7 @@ export async function ozonSellerStocks(
 }
 export async function ozonStocks(
   c: OzonCreds,
+  options: { fresh?: boolean } = {},
 ): Promise<{ ok: true; rows: OzonStockRow[] } | { ok: false; error: string }> {
   const rows: OzonStockRow[] = [];
   try {
@@ -805,7 +807,7 @@ export async function ozonStocks(
       const res = await tfetch(c, `${BASE}/v2/analytics/stock_on_warehouses`, {
         method: "POST", headers: headers(c),
         body: JSON.stringify({ limit: 1000, offset: page * 1000, warehouse_type: "ALL" }),
-        next: { revalidate: 1800 },
+        ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
       const j = (await res.json()) as { result?: { rows?: { sku: number; warehouse_name: string; item_code: string; item_name: string; free_to_sell_amount: number; reserved_amount: number }[] } };
