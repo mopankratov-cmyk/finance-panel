@@ -40,6 +40,12 @@ export interface FunnelReadClient {
 
 type FunnelReadClock = () => Date;
 
+export interface ReadyFunnelFacts {
+  facts: FunnelOrderFact[];
+  /** Весь запрошенный диапазон подтверждён синком, raw wb_orders не нужен. */
+  fullyCovered: boolean;
+}
+
 /** null = "без ограничений" (позже любой конкретной даты). */
 function cutoffAtLeast(cutoff: string | null, other: string | null): boolean {
   if (cutoff === null) return true;
@@ -59,24 +65,25 @@ async function queryFunnelState(
     .maybeSingle();
 }
 
-export async function loadReadyFunnelFacts(
+export async function loadReadyFunnelFactsWithCoverage(
   client: FunnelReadClient,
   cabinetId: string,
   dateFrom: string,
   dateTo: string,
   now: Date | FunnelReadClock = () => new Date(),
-): Promise<FunnelOrderFact[]> {
+): Promise<ReadyFunnelFacts> {
+  const unavailable: ReadyFunnelFacts = { facts: [], fullyCovered: false };
   try {
     const stateResult = await queryFunnelState(client, cabinetId);
 
     const initialState = stateResult.data;
     const initialNow = typeof now === "function" ? now() : now;
-    if (stateResult.error) return [];
+    if (stateResult.error) return unavailable;
     const initialTrust = funnelTrustCutoff(initialState, cabinetId, initialNow);
-    if (!initialTrust.ready) return [];
+    if (!initialTrust.ready) return unavailable;
     // Часть диапазона на/после cutoff ещё не досинкана предыдущими проходами —
     // если весь диапазон уже упирается в неё, нет смысла даже запрашивать.
-    if (initialTrust.cutoff !== null && initialTrust.cutoff <= dateFrom) return [];
+    if (initialTrust.cutoff !== null && initialTrust.cutoff <= dateFrom) return unavailable;
 
     const rows = await loadAllSupabasePages<FunnelRow>(
       (from, to) => {
@@ -98,25 +105,38 @@ export async function loadReadyFunnelFacts(
     const finalStateResult = await queryFunnelState(client, cabinetId);
     const finalState = finalStateResult.data;
     const finalNow = typeof now === "function" ? now() : now;
-    if (finalStateResult.error) return [];
+    if (finalStateResult.error) return unavailable;
     const finalTrust = funnelTrustCutoff(finalState, cabinetId, finalNow);
-    if (!finalTrust.ready) return [];
+    if (!finalTrust.ready) return unavailable;
     // Окно доверия не должно было сжаться, пока мы читали wb_funnel_daily —
     // иначе часть уже прочитанных строк могла оказаться недосинканной.
     // (null = "без ограничений" — сравниваем через cutoffAtLeast, а не
     // напрямую, чтобы поймать и случай "было null, стало ограничено".)
     if (!cutoffAtLeast(initialTrust.cutoff, finalTrust.cutoff)) {
-      return [];
+      return unavailable;
     }
 
-    return rows.map((row) => ({
-      cabinetId: row.cabinet_id,
-      date: row.date,
-      nmId: row.nm_id,
-      orders: row.orders,
-      ordersSum: row.orders_sum,
-    }));
+    return {
+      facts: rows.map((row) => ({
+        cabinetId: row.cabinet_id,
+        date: row.date,
+        nmId: row.nm_id,
+        orders: row.orders,
+        ordersSum: row.orders_sum,
+      })),
+      fullyCovered: finalTrust.cutoff === null || finalTrust.cutoff > dateTo,
+    };
   } catch {
-    return [];
+    return unavailable;
   }
+}
+
+export async function loadReadyFunnelFacts(
+  client: FunnelReadClient,
+  cabinetId: string,
+  dateFrom: string,
+  dateTo: string,
+  now: Date | FunnelReadClock = () => new Date(),
+): Promise<FunnelOrderFact[]> {
+  return (await loadReadyFunnelFactsWithCoverage(client, cabinetId, dateFrom, dateTo, now)).facts;
 }
