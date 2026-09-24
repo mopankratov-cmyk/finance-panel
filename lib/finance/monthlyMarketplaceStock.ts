@@ -51,6 +51,20 @@ export function moscowMonthSnapshot(now: Date): { allowed: boolean; month: strin
   };
 }
 
+/** Окно дозакрытия фулфилмента: поздняя проводка сохраняет фактический
+ * occurred_at, поэтому 1–5-го числа один и тот же срез на начало месяца можно
+ * безопасно пересобирать. Пятый день фиксирует финальную версию. */
+export function fulfillmentReconciliation(now: Date): { allowed: boolean; final: boolean; month: string; cutoff: string } {
+  const snapshot = moscowMonthSnapshot(now);
+  const day = Number(snapshot.date.slice(8, 10));
+  return {
+    allowed: day >= 1 && day <= 5,
+    final: day === 5,
+    month: snapshot.month,
+    cutoff: `${snapshot.month}T00:00:00+03:00`,
+  };
+}
+
 /** Количество агрегируется по артикулу, стоимость фиксируется именно на дату снимка. */
 export function valueMarketplaceStocks(
   stocks: readonly MarketplaceStockInput[],
