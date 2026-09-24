@@ -59,7 +59,11 @@ export async function GET(request: NextRequest) {
   const [year, monthNumber] = month.split("-").map(Number);
   const from = `${month}-01`;
   const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
-  const to = `${month}-${String(lastDay).padStart(2, "0")}`;
+  const monthEnd = `${month}-${String(lastDay).padStart(2, "0")}`;
+  const requestedTo = sp.get("to") ?? "";
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(requestedTo) && requestedTo >= from && requestedTo <= monthEnd
+    ? requestedTo
+    : monthEnd;
   const requestedCompanyId = sp.get("company")?.trim() || null;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });

@@ -25,8 +25,18 @@ export interface TaxPeriodInput {
   marketplaceIncomeGross: number;
   /** Часть валовой выручки, относящаяся к периоду после даты начала НДС. */
   vatTaxableIncomeGross?: number;
+  /** Точный исходящий НДС по книге продаж; null/undefined — расчёт по единой ставке компании. */
+  outputVatConfirmed?: number | null;
   marketplaceExpensesGross: number;
   marketplaceInputVatConfirmed?: number;
+  /** Часть подтверждённого НДС, относящаяся именно к расходам, включённым в УСН. */
+  marketplaceInputVatInUsnExpenses?: number;
+  /** Взносы ИП/работников, которые заявляются для уменьшения УСН или как расход Д-Р. */
+  insuranceContributions?: number;
+  /** 100 для ИП без работников, 50 при наличии работников, 0 если уменьшение не настроено. */
+  insuranceReductionLimitPercent?: number;
+  /** Переносимый убыток прошлых лет для УСН Д-Р. */
+  priorYearLoss?: number;
   bankExpenses: readonly TaxExpenseInput[];
 }
 
@@ -37,8 +47,11 @@ export interface TaxPeriodResult {
   usnIncome: number;
   usnExpenses: number;
   usnBase: number;
+  usnBeforeReduction: number;
+  insuranceContributionsApplied: number;
   usnCalculated: number;
   minimumTaxControl: number;
+  vatCarryforward: number;
 }
 
 const money = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
@@ -101,7 +114,9 @@ export function includedVat(grossAmount: number, vatMode: CompanyVatMode | null)
 }
 
 export function calculateTaxPeriod(input: TaxPeriodInput): TaxPeriodResult {
-  const outputVat = includedVat(input.vatTaxableIncomeGross ?? input.marketplaceIncomeGross, input.vatMode);
+  const outputVat = input.outputVatConfirmed == null
+    ? includedVat(input.vatTaxableIncomeGross ?? input.marketplaceIncomeGross, input.vatMode)
+    : money(Math.max(0, input.outputVatConfirmed));
   const deductionAllowed = vatAllowsInputDeduction(input.vatMode);
   const bankConfirmedInputVat = deductionAllowed
     ? input.bankExpenses.reduce((sum, expense) => (
@@ -121,20 +136,35 @@ export function calculateTaxPeriod(input: TaxPeriodInput): TaxPeriodResult {
       : 0;
     return sum + Math.max(0, Math.abs(expense.grossAmount) - deductibleVat);
   }, 0);
-  const marketplaceVatRemoved = deductionAllowed ? Math.max(0, input.marketplaceInputVatConfirmed ?? 0) : 0;
-  const usnExpenses = money(Math.max(0, input.marketplaceExpensesGross - marketplaceVatRemoved) + includedBankExpenses);
-  const usnBase = money(Math.max(0, usnIncome - usnExpenses));
+  const marketplaceVatRemoved = deductionAllowed ? Math.max(0, input.marketplaceInputVatInUsnExpenses ?? input.marketplaceInputVatConfirmed ?? 0) : 0;
   const incomeExpenseSystem = input.taxSystem === "usn_income_expense" || input.taxSystem === "ausn_income_expense";
   const incomeSystem = input.taxSystem === "usn_income" || input.taxSystem === "ausn_income";
+  const insuranceContributions = Math.max(0, input.insuranceContributions ?? 0);
+  const usnExpenses = money(
+    Math.max(0, input.marketplaceExpensesGross - marketplaceVatRemoved)
+    + includedBankExpenses
+    + (incomeExpenseSystem ? insuranceContributions : 0),
+  );
+  const priorYearLoss = incomeExpenseSystem ? Math.max(0, input.priorYearLoss ?? 0) : 0;
+  const usnBase = money(Math.max(0, usnIncome - usnExpenses - priorYearLoss));
   const rate = Math.max(0, input.taxRate ?? 0);
-  const usnCalculated = money((incomeExpenseSystem ? usnBase : incomeSystem ? usnIncome : 0) * rate / 100);
+  const usnBeforeReduction = money((incomeExpenseSystem ? usnBase : incomeSystem ? usnIncome : 0) * rate / 100);
+  const reductionLimit = Math.min(100, Math.max(0, input.insuranceReductionLimitPercent ?? 0));
+  const insuranceContributionsApplied = incomeSystem
+    ? money(Math.min(insuranceContributions, usnBeforeReduction * reductionLimit / 100))
+    : 0;
+  const usnCalculated = money(Math.max(0, usnBeforeReduction - insuranceContributionsApplied));
+  const vatBalance = money(outputVat - confirmedInputVat);
   return {
     outputVat,
     confirmedInputVat,
-    vatPayable: money(Math.max(0, outputVat - confirmedInputVat)),
+    vatPayable: money(Math.max(0, vatBalance)),
+    vatCarryforward: money(Math.max(0, -vatBalance)),
     usnIncome,
     usnExpenses,
     usnBase,
+    usnBeforeReduction,
+    insuranceContributionsApplied,
     usnCalculated,
     minimumTaxControl: incomeExpenseSystem ? money(usnIncome * 0.01) : 0,
   };
