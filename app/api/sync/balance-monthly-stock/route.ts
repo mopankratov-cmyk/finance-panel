@@ -10,6 +10,7 @@ import { getWbSyncTargets, groupWbStatisticsTargets } from "@/lib/sync/cabinets"
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
 
 export const maxDuration = 300;
 
@@ -21,12 +22,13 @@ type FulfillmentRow = { legal_entity_id: string; warehouse_id: string; warehouse
 const sourceKey = (kind: SourceKind, id = "all") => `${kind}:${id}`;
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-async function fulfillmentFinality(closeThrough: string) {
+async function fulfillmentFinality(closeThrough: string, legalEntityIds: ReadonlySet<string>) {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
   const result = await db.from("legal_entities").select("id,name,period_closed_through").eq("is_active", true);
   if (result.error) throw new Error(result.error.message);
   const unclosed = (result.data ?? [])
+    .filter((row) => legalEntityIds.has(String(row.id)))
     .filter((row) => !row.period_closed_through || String(row.period_closed_through) < closeThrough)
     .map((row) => String(row.name));
   return { final: unclosed.length === 0, unclosed };
@@ -134,12 +136,12 @@ async function saveSource(input: {
   return summary;
 }
 
-async function fulfillmentLines(cutoff: string): Promise<ValuedMarketplaceStock[]> {
+async function fulfillmentLines(cutoff: string, legalEntityIds: ReadonlySet<string>): Promise<ValuedMarketplaceStock[]> {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
   const result = await db.rpc("balance_fulfillment_as_of", { p_cutoff: cutoff });
   if (result.error) throw new Error(result.error.message);
-  return ((result.data ?? []) as FulfillmentRow[]).map((row) => {
+  return ((result.data ?? []) as FulfillmentRow[]).filter((row) => legalEntityIds.has(String(row.legal_entity_id))).map((row) => {
     const quantity = Number(row.qty);
     const costRub = Number(row.unit_cost) > 0 ? Number(row.unit_cost) : null;
     return {
@@ -157,11 +159,11 @@ async function fulfillmentLines(cutoff: string): Promise<ValuedMarketplaceStock[
   });
 }
 
-async function supplierTransitLines(): Promise<ValuedMarketplaceStock[]> {
+async function supplierTransitLines(cabinetIds: ReadonlySet<string>): Promise<ValuedMarketplaceStock[]> {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
   const result = await db.from("supplier_shipments")
-    .select("id,status,supplier_shipment_items(nm_id,article,quantity),purchase_orders!inner(order_number,supplier,currency,exchange_rate,purchase_order_items(nm_id,article,name,unit_price))")
+    .select("id,status,supplier_shipment_items(nm_id,article,quantity),purchase_orders!inner(cabinet_id,order_number,supplier,currency,exchange_rate,purchase_order_items(nm_id,article,name,unit_price))")
     .in("status", ["shipped", "customs", "arrived"]);
   if (result.error) throw new Error(result.error.message);
   const lines: ValuedMarketplaceStock[] = [];
@@ -169,6 +171,7 @@ async function supplierTransitLines(): Promise<ValuedMarketplaceStock[]> {
     const row = raw as unknown as Record<string, unknown>;
     const orderRaw = Array.isArray(row.purchase_orders) ? row.purchase_orders[0] : row.purchase_orders;
     const order = (orderRaw ?? {}) as Record<string, unknown>;
+    if (!cabinetIds.has(String(order.cabinet_id ?? ""))) continue;
     const orderItems = (Array.isArray(order.purchase_order_items) ? order.purchase_order_items : []) as Record<string, unknown>[];
     const byNm = new Map(orderItems.map((item) => [Number(item.nm_id), item]));
     for (const itemRaw of (Array.isArray(row.supplier_shipment_items) ? row.supplier_shipment_items : []) as Record<string, unknown>[]) {
@@ -215,8 +218,12 @@ export async function GET(request: NextRequest) {
   const errors: string[] = [];
   const summaries: Awaited<ReturnType<typeof saveSource>>[] = [];
   try {
+    const reportingScope = await loadGroupReportingScope();
     if (reconcileFulfillment) {
-      const [lines, finality] = await Promise.all([fulfillmentLines(monthCutoff), fulfillmentFinality(reconciliation.closeThrough)]);
+      const [lines, finality] = await Promise.all([
+        fulfillmentLines(monthCutoff, reportingScope.legalEntityIds),
+        fulfillmentFinality(reconciliation.closeThrough, reportingScope.legalEntityIds),
+      ]);
       const summary = await saveSource({
         month: window.month,
         capturedAt,
@@ -241,8 +248,8 @@ export async function GET(request: NextRequest) {
 
     try {
       const [lines, finality] = await Promise.all([
-        fulfillmentLines(dryRun ? capturedAt : monthCutoff),
-        dryRun ? Promise.resolve({ final: false, unclosed: [] as string[] }) : fulfillmentFinality(reconciliation.closeThrough),
+        fulfillmentLines(dryRun ? capturedAt : monthCutoff, reportingScope.legalEntityIds),
+        dryRun ? Promise.resolve({ final: false, unclosed: [] as string[] }) : fulfillmentFinality(reconciliation.closeThrough, reportingScope.legalEntityIds),
       ]);
       const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: "Фулфилмент", lines, persist: !dryRun, provisional: !dryRun && !finality.final, snapshotCutoff: dryRun ? capturedAt : monthCutoff });
       summaries.push(summary);
@@ -251,7 +258,7 @@ export async function GET(request: NextRequest) {
       errors.push(`Фулфилмент: ${error instanceof Error ? error.message : String(error)}`);
     }
     try {
-      const lines = await supplierTransitLines();
+      const lines = await supplierTransitLines(reportingScope.cabinetIds);
       const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "supplier_transit", sourceLabel: "В пути от поставщика", lines, persist: !dryRun });
       summaries.push(summary);
       affected += summary.rows;
@@ -259,7 +266,8 @@ export async function GET(request: NextRequest) {
       errors.push(`В пути от поставщика: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    for (const group of groupWbStatisticsTargets(wbTargets)) {
+    const reportingWbTargets = wbTargets.filter((target) => target.cabinetId && reportingScope.cabinetIds.has(target.cabinetId));
+    for (const group of groupWbStatisticsTargets(reportingWbTargets)) {
       try {
         const [remains, cards] = await Promise.all([
           fetchWarehouseRemains({ token: group[0].statsToken }),
@@ -294,7 +302,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (ozonScope.ok) {
-      for (const cabinet of ozonScope.scope.cabinets) {
+      for (const cabinet of ozonScope.scope.cabinets.filter((item) => reportingScope.cabinetIds.has(item.id))) {
         try {
           const warehouses = await ozonStocks(cabinet.creds, { fresh: true });
           if (!warehouses.ok) throw new Error(warehouses.error);

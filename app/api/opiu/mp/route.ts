@@ -143,9 +143,9 @@ export async function GET(request: NextRequest) {
   const ozonSourcesPromise = (async (): Promise<{ sources: MonthlyMarketplaceSource[]; error: string | null }> => {
     const resolvedOzon = await getOzonCabinetScope("all");
     if (!resolvedOzon.ok) return { sources: [], error: resolvedOzon.error };
-    const cabinets = selectedCabinetIds
-      ? resolvedOzon.scope.cabinets.filter((cabinet) => selectedCabinetIds.has(cabinet.id))
-      : resolvedOzon.scope.cabinets;
+    const cabinets = resolvedOzon.scope.cabinets.filter((cabinet) => selectedCabinetIds
+      ? selectedCabinetIds.has(cabinet.id)
+      : ownerByCabinetId.has(cabinet.id));
     const results = await Promise.all(cabinets.map(async (cabinet) => {
       const owner = ownerByCabinetId.get(cabinet.id);
       const label = selectedCompany

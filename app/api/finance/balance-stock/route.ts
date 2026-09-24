@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
 
 export const dynamic = "force-dynamic";
 
@@ -18,16 +19,24 @@ export async function GET(request: NextRequest) {
   if (kindParam && !kind) return NextResponse.json({ error: "Неизвестная группа остатков" }, { status: 400 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
+  let reportingScope: Awaited<ReturnType<typeof loadGroupReportingScope>>;
+  try {
+    reportingScope = await loadGroupReportingScope();
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось определить состав группы" }, { status: 500 });
+  }
 
   if (kind) {
     const result = await db.from("balance_marketplace_stock_lines")
-      .select("source_key,line_key,source_kind,article,product_name,location_name,reference,quantity,cost_rub,packaging_rub,unit_value,total_value,captured_at")
+      .select("source_key,line_key,source_kind,cabinet_id,article,product_name,location_name,reference,quantity,cost_rub,packaging_rub,unit_value,total_value,captured_at")
       .eq("snapshot_month", month).eq("source_kind", kind).order("article");
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
     return NextResponse.json({
       month,
       kind,
-      lines: (result.data ?? []).map((row) => ({
+      lines: (result.data ?? [])
+        .filter((row) => !["wb", "ozon"].includes(kind) || reportingScope.cabinetIds.has(String(row.cabinet_id ?? "")))
+        .map((row) => ({
         id: `${row.source_key}:${row.line_key}`,
         sourceKey: String(row.source_key),
         article: String(row.article),
@@ -55,7 +64,9 @@ export async function GET(request: NextRequest) {
   }
   if (activeResult.error) return NextResponse.json({ error: activeResult.error.message }, { status: 500 });
 
-  const runs = (runsResult.data ?? []).map((row) => ({
+  const runs = (runsResult.data ?? [])
+    .filter((row) => !["wb", "ozon"].includes(String(row.source_kind)) || reportingScope.cabinetIds.has(String(row.cabinet_id ?? "")))
+    .map((row) => ({
     sourceKey: String(row.source_key),
     kind: String(row.source_kind) as SourceKind,
     label: String(row.source_label),
@@ -77,6 +88,7 @@ export async function GET(request: NextRequest) {
     ["supplier_transit:all", { kind: "supplier_transit", label: "В пути от поставщика" }],
   ]);
   for (const cabinet of activeResult.data ?? []) {
+    if (!reportingScope.cabinetIds.has(String(cabinet.id))) continue;
     const marketplace = cabinet.marketplace === "ozon" ? "ozon" : "wb";
     expected.set(`${marketplace}:${cabinet.id}`, { kind: marketplace, label: `${marketplace.toUpperCase()} · ${cabinet.name}` });
   }
