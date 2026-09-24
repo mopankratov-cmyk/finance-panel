@@ -22,9 +22,8 @@ import { connectedBalanceTotals, loanLiabilitySnapshot } from "@/lib/finance/sta
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
-type Entity = { id: string; name: string };
-type StockResponse = { data?: { totals?: { amount?: number }; computedAt?: string }; error?: string };
-type InventoryDetail = { id: string; name: string; amount: number };
+type InventoryDetail = { id: string; name: string; marketplace: "wb" | "ozon"; amount: number | null; missingCostCount: number; error: string | null };
+type InventorySnapshot = { amount: number | null; complete: boolean; details: InventoryDetail[]; computedAt: string | null; missingCabinets: string[] };
 
 const money = (value: number | null) => value === null ? "—" : formatMoney(value);
 const percent = (value: number | null) => value === null
@@ -37,29 +36,19 @@ async function responseJson<T>(response: Response): Promise<T> {
   return body;
 }
 
-async function loadInventory(): Promise<{ amount: number; details: InventoryDetail[]; computedAt: string | null }> {
-  const entityBody = await fetch("/api/warehouse/entities", { cache: "no-store" })
-    .then((response) => responseJson<{ data?: Entity[]; error?: string }>(response));
-  const entities = entityBody.data ?? [];
-  if (!entities.length) throw new Error("В панели не настроены юрлица склада");
-
-  const results = await Promise.allSettled(entities.map(async (entity) => {
-    const body = await fetch(`/api/warehouse/balances?entity=${encodeURIComponent(entity.id)}`, { cache: "no-store" })
-      .then((response) => responseJson<StockResponse>(response));
-    return {
-      id: entity.id,
-      name: entity.name,
-      amount: Number(body.data?.totals?.amount ?? 0),
-      computedAt: body.data?.computedAt ?? null,
-    };
-  }));
-  const failed = results.filter((result) => result.status === "rejected");
-  if (failed.length) throw new Error(`Не удалось прочитать складские остатки по ${failed.length} из ${entities.length} юрлиц`);
-  const loaded = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+async function loadInventory(month: string): Promise<InventorySnapshot> {
+  const body = await fetch(`/api/finance/balance-stock?month=${encodeURIComponent(month)}`, { cache: "no-store" })
+    .then((response) => responseJson<{
+      amount: number | null; complete: boolean; capturedAt: string | null;
+      runs: Array<{ sourceKey: string; marketplace: "wb" | "ozon"; cabinetName: string; value: number | null; missingCostCount: number; error: string | null }>;
+      missingCabinets: Array<{ name: string }>;
+    }>(response));
   return {
-    amount: loaded.reduce((sum, item) => sum + item.amount, 0),
-    details: loaded.map(({ id, name, amount }) => ({ id, name, amount })).sort((a, b) => b.amount - a.amount),
-    computedAt: loaded.map((item) => item.computedAt).filter(Boolean).sort().at(0) ?? null,
+    amount: body.amount,
+    complete: body.complete,
+    computedAt: body.capturedAt,
+    details: body.runs.map((run) => ({ id: run.sourceKey, name: run.cabinetName, marketplace: run.marketplace, amount: run.value, missingCostCount: run.missingCostCount, error: run.error })),
+    missingCabinets: body.missingCabinets.map((cabinet) => cabinet.name),
   };
 }
 
@@ -97,10 +86,11 @@ function StatementRow({ label, amount, detail, muted = false, href }: { label: s
 
 export function BalancePage() {
   const { state, hydrated, loadError } = useFinance();
-  const asOf = todayISO();
+  const [month, setMonth] = useState(todayISO().slice(0, 7));
+  const asOf = `${month}-01`;
   const [scheduleRows, setScheduleRows] = useState<ScheduleRowRecord[]>([]);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
-  const [inventory, setInventory] = useState<{ amount: number; details: InventoryDetail[]; computedAt: string | null } | null>(null);
+  const [inventory, setInventory] = useState<InventorySnapshot | null>(null);
   const [inventoryError, setInventoryError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -109,7 +99,7 @@ export function BalancePage() {
     const [schedules, stocks] = await Promise.allSettled([
       fetch("/api/finance/loans/schedule", { cache: "no-store" })
         .then((response) => responseJson<{ rows?: ScheduleRowRecord[]; error?: string }>(response)),
-      loadInventory(),
+      loadInventory(month),
     ]);
     if (schedules.status === "fulfilled") {
       setScheduleRows(schedules.value.rows ?? []);
@@ -123,10 +113,10 @@ export function BalancePage() {
       setInventoryError(null);
     } else {
       setInventory(null);
-      setInventoryError(stocks.reason instanceof Error ? stocks.reason.message : "Не удалось загрузить складские остатки");
+      setInventoryError(stocks.reason instanceof Error ? stocks.reason.message : "Не удалось загрузить месячный остаток маркетплейсов");
     }
     setRefreshing(false);
-  }, []);
+  }, [month]);
 
   useEffect(() => { void refreshExternal(); }, [refreshExternal]);
 
@@ -135,9 +125,13 @@ export function BalancePage() {
     .sort((a, b) => b.amount - a.amount), [asOf, state.accounts, state.payments]);
   const cash = accountDetails.reduce((sum, account) => sum + account.amount, 0);
   const loanSnapshot = useMemo(() => loanLiabilitySnapshot(state.loans, scheduleRows, asOf), [asOf, scheduleRows, state.loans]);
-  const complete = hydrated && !loadError && state.accounts.length > 0 && inventory !== null && !scheduleError;
-  const totals = complete ? connectedBalanceTotals({ cash, inventory: inventory.amount, loans: loanSnapshot.amount }) : null;
-  const sourcesReady = [hydrated && !loadError && state.accounts.length > 0, inventory !== null, !scheduleError && hydrated].filter(Boolean).length;
+  const inventoryReady = inventory?.complete === true && inventory.amount !== null;
+  const inventoryWarning = inventory && !inventory.complete
+    ? [inventory.missingCabinets.length ? `нет снимка: ${inventory.missingCabinets.join(", ")}` : null, ...inventory.details.map((item) => item.error).filter(Boolean)].filter(Boolean).join("; ") || "месячный снимок неполный"
+    : null;
+  const complete = hydrated && !loadError && state.accounts.length > 0 && inventoryReady && !scheduleError;
+  const totals = complete ? connectedBalanceTotals({ cash, inventory: inventory.amount!, loans: loanSnapshot.amount }) : null;
+  const sourcesReady = [hydrated && !loadError && state.accounts.length > 0, inventoryReady, !scheduleError && hydrated].filter(Boolean).length;
 
   return (
     <div className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
@@ -148,31 +142,32 @@ export function BalancePage() {
           <div className="flex items-center gap-2 text-sm font-medium text-violet-700"><Scale className="h-4 w-4" /> Финрезультат</div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Баланс</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Управленческий снимок на {formatDate(asOf)}. Цифры собираются из счетов ДДС, склада и кредитных графиков панели.
+            Управленческий снимок на {formatDate(asOf)}. Все статьи приводятся к состоянию на первое число месяца.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refreshExternal()}
-          disabled={refreshing}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Обновить
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input type="month" value={month} max={todayISO().slice(0, 7)} onChange={(event) => setMonth(event.target.value || todayISO().slice(0, 7))}
+            aria-label="Месяц баланса" className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm" />
+          <button type="button" onClick={() => void refreshExternal()} disabled={refreshing}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Обновить
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Подключённые активы" value={money(totals?.assets ?? null)} note="Деньги + товар на складах" tone="emerald" />
+        <Metric label="Подключённые активы" value={money(totals?.assets ?? null)} note="Деньги + товар на маркетплейсах" tone="emerald" />
         <Metric label="Обязательства" value={money(totals?.liabilities ?? null)} note="Остаток тела кредитов" tone="amber" />
         <Metric label="Расчётный капитал" value={money(totals?.calculatedEquity ?? null)} note="Активы минус обязательства" tone="violet" />
         <Metric label="Покрытие источников" value={`${sourcesReady} из 3`} note={complete ? "Все источники обновлены" : "Часть данных недоступна"} />
       </div>
 
-      {(loadError || inventoryError || scheduleError || loanSnapshot.estimatedCount > 0) ? (
+      {(loadError || inventoryError || inventoryWarning || scheduleError || loanSnapshot.estimatedCount > 0) ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><div className="space-y-1">
             {loadError ? <p>Счета ДДС: {loadError}</p> : null}
-            {inventoryError ? <p>Склад: {inventoryError}</p> : null}
+            {inventoryError ? <p>Маркетплейсы: {inventoryError}</p> : null}
+            {inventoryWarning ? <p>Маркетплейсы: {inventoryWarning}</p> : null}
             {scheduleError ? <p>Кредиты: {scheduleError}</p> : null}
             {loanSnapshot.estimatedCount > 0 ? <p>У {loanSnapshot.estimatedCount} активных кредитов нет графика: показана исходная сумма договора.</p> : null}
           </div></div>
@@ -188,8 +183,8 @@ export function BalancePage() {
           <div className="divide-y divide-slate-100">
             <StatementRow label="Денежные средства" amount={hydrated && !loadError && state.accounts.length ? cash : null} detail={`${accountDetails.length} рублёвых счетов`} href="/accounts" />
             {accountDetails.slice(0, 5).map((account) => <StatementRow key={account.id} label={`↳ ${account.name}`} amount={account.amount} muted />)}
-            <StatementRow label="Товары на складах" amount={inventory?.amount ?? null} detail={inventory?.computedAt ? `Снимок не старше ${new Date(inventory.computedAt).toLocaleString("ru-RU")}` : inventoryError ?? "Загрузка…"} href="/warehouse?tab=balances" />
-            {inventory?.details.map((entity) => <StatementRow key={entity.id} label={`↳ ${entity.name}`} amount={entity.amount} muted />)}
+            <StatementRow label="Остатки на маркетплейсах" amount={inventoryReady ? inventory.amount : null} detail={inventory?.computedAt ? `Снимок запущен ${new Date(inventory.computedAt).toLocaleString("ru-RU")} · себестоимость + упаковка` : inventoryError ?? "Ожидается снимок 1-го числа в 00:01 МСК"} />
+            {inventory?.details.map((entity) => <StatementRow key={entity.id} label={`↳ ${entity.marketplace.toUpperCase()} · ${entity.name}`} amount={entity.amount} detail={entity.missingCostCount ? `${entity.missingCostCount} SKU без себестоимости` : undefined} muted />)}
             <StatementRow label="Дебиторская задолженность" amount={null} detail="В панели пока нет реестра задолженности покупателей" muted />
             <StatementRow label="Основные средства" amount={null} detail="Источник данных ещё не подключён" muted />
           </div>
@@ -224,7 +219,7 @@ export function BalancePage() {
           <CardContent className="space-y-3">
             {[
               { icon: Wallet, label: "Счета и факты ДДС", ready: hydrated && !loadError && state.accounts.length > 0 },
-              { icon: Boxes, label: "Складские остатки по себестоимости", ready: inventory !== null },
+              { icon: Boxes, label: "Остатки МП на 1-е число: себес + упаковка", ready: inventoryReady },
               { icon: Building2, label: "Кредитные договоры и графики", ready: hydrated && !scheduleError },
             ].map(({ icon: Icon, label, ready }) => (
               <div key={label} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3">
