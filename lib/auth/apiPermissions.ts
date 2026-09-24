@@ -51,8 +51,6 @@ const RULES: readonly ApiRule[] = [
 
   // ── Синхронизации: расписание Vercel и внутренний фан-аут ──
   ["/api/sync/", { open: "cron" }],
-  // Временный диагностический роут — тот же checkCronAuth, удалить вместе с роутом.
-  ["/api/internal/ozon-accrual-probe", { open: "cron" }],
   ["/api/sync/watchdog", { open: "self-guarded" }],
   ["/api/sync/screen-latency", { open: "any-session" }],
   ["/api/sync/trigger", { permission: "mp_reports.sync" }],
