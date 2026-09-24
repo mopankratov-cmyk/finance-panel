@@ -13,11 +13,10 @@ test("месячный снимок разрешён только 1-го чис�
   assert.equal(moscowMonthSnapshot(new Date("2026-09-30T21:02:00Z")).allowed, false);
 });
 
-test("фулфилмент пересчитывается 1–5-го числа по одной границе месяца", () => {
+test("фулфилмент всегда пересчитывается по одной границе месяца до закрытия периода", () => {
   const second = fulfillmentReconciliation(new Date("2026-10-02T03:10:00Z"));
-  assert.deepEqual(second, { allowed: true, final: false, month: "2026-10-01", cutoff: "2026-10-01T00:00:00+03:00" });
-  assert.equal(fulfillmentReconciliation(new Date("2026-10-05T03:10:00Z")).final, true);
-  assert.equal(fulfillmentReconciliation(new Date("2026-10-06T03:10:00Z")).allowed, false);
+  assert.deepEqual(second, { month: "2026-10-01", cutoff: "2026-10-01T00:00:00+03:00", closeThrough: "2026-09-30" });
+  assert.equal(fulfillmentReconciliation(new Date("2026-10-29T03:10:00Z")).cutoff, second.cutoff);
 });
 
 test("остаток оценивается как количество × (себестоимость + упаковка)", () => {

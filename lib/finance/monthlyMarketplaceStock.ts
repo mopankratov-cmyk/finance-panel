@@ -51,17 +51,16 @@ export function moscowMonthSnapshot(now: Date): { allowed: boolean; month: strin
   };
 }
 
-/** Окно дозакрытия фулфилмента: поздняя проводка сохраняет фактический
- * occurred_at, поэтому 1–5-го числа один и тот же срез на начало месяца можно
- * безопасно пересобирать. Пятый день фиксирует финальную версию. */
-export function fulfillmentReconciliation(now: Date): { allowed: boolean; final: boolean; month: string; cutoff: string } {
+/** Граница дозакрытия фулфилмента. Поздняя проводка сохраняет фактический
+ * occurred_at, поэтому один и тот же срез можно безопасно пересобирать до
+ * явного закрытия складского периода. */
+export function fulfillmentReconciliation(now: Date): { month: string; cutoff: string; closeThrough: string } {
   const snapshot = moscowMonthSnapshot(now);
-  const day = Number(snapshot.date.slice(8, 10));
+  const cutoff = `${snapshot.month}T00:00:00+03:00`;
   return {
-    allowed: day >= 1 && day <= 5,
-    final: day === 5,
     month: snapshot.month,
-    cutoff: `${snapshot.month}T00:00:00+03:00`,
+    cutoff,
+    closeThrough: new Date(cutoff).toISOString().slice(0, 10),
   };
 }
 

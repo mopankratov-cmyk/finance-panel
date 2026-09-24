@@ -21,6 +21,17 @@ type FulfillmentRow = { legal_entity_id: string; warehouse_id: string; warehouse
 const sourceKey = (kind: SourceKind, id = "all") => `${kind}:${id}`;
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+async function fulfillmentFinality(closeThrough: string) {
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Supabase не настроен");
+  const result = await db.from("legal_entities").select("id,name,period_closed_through").eq("is_active", true);
+  if (result.error) throw new Error(result.error.message);
+  const unclosed = (result.data ?? [])
+    .filter((row) => !row.period_closed_through || String(row.period_closed_through) < closeThrough)
+    .map((row) => String(row.name));
+  return { final: unclosed.length === 0, unclosed };
+}
+
 async function loadCosts(): Promise<CostRow[]> {
   const db = getSupabaseAdmin();
   if (!db) return [];
@@ -196,9 +207,6 @@ export async function GET(request: NextRequest) {
   if (!dryRun && !reconcileFulfillment && !window.allowed) {
     return NextResponse.json({ ok: true, skipped: true, reason: `Снимок только 1-го числа в 00:01 МСК; сейчас ${window.date} ${window.time}` });
   }
-  if (reconcileFulfillment && !reconciliation.allowed) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "Сверка фулфилмента выполняется только 1–5-го числа месяца" });
-  }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const capturedAt = startedAt.toISOString();
@@ -208,18 +216,19 @@ export async function GET(request: NextRequest) {
   const summaries: Awaited<ReturnType<typeof saveSource>>[] = [];
   try {
     if (reconcileFulfillment) {
-      const lines = await fulfillmentLines(monthCutoff);
+      const [lines, finality] = await Promise.all([fulfillmentLines(monthCutoff), fulfillmentFinality(reconciliation.closeThrough)]);
       const summary = await saveSource({
         month: window.month,
         capturedAt,
         sourceKind: "fulfillment",
         sourceLabel: "Фулфилмент",
         lines,
-        provisional: !reconciliation.final,
+        provisional: !finality.final,
         snapshotCutoff: monthCutoff,
       });
-      await writeSyncLog("balance-fulfillment-reconcile", "ok", summary.rows, reconciliation.final ? "финальная сверка" : "предварительная сверка", startedAt);
-      return NextResponse.json({ ok: true, mode: "fulfillment-reconcile", month: window.month, capturedAt, summary });
+      const note = finality.final ? "период закрыт, финальная сверка" : `предварительно; период не закрыт: ${finality.unclosed.join(", ")}`;
+      await writeSyncLog("balance-fulfillment-reconcile", "ok", summary.rows, note, startedAt);
+      return NextResponse.json({ ok: true, mode: "fulfillment-reconcile", month: window.month, capturedAt, closeThrough: reconciliation.closeThrough, unclosedEntities: finality.unclosed, summary });
     }
     const [costRows, cabinetRows, wbTargets, ozonScope] = await Promise.all([
       loadCosts(),
@@ -231,8 +240,11 @@ export async function GET(request: NextRequest) {
     const metaById = new Map(((cabinetRows.data ?? []) as CabinetMeta[]).map((row) => [String(row.id), row]));
 
     try {
-      const lines = await fulfillmentLines(dryRun ? capturedAt : monthCutoff);
-      const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: "Фулфилмент", lines, persist: !dryRun, provisional: !dryRun, snapshotCutoff: dryRun ? capturedAt : monthCutoff });
+      const [lines, finality] = await Promise.all([
+        fulfillmentLines(dryRun ? capturedAt : monthCutoff),
+        dryRun ? Promise.resolve({ final: false, unclosed: [] as string[] }) : fulfillmentFinality(reconciliation.closeThrough),
+      ]);
+      const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: "Фулфилмент", lines, persist: !dryRun, provisional: !dryRun && !finality.final, snapshotCutoff: dryRun ? capturedAt : monthCutoff });
       summaries.push(summary);
       affected += summary.rows;
     } catch (error) {

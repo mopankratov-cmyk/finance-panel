@@ -172,7 +172,7 @@ export function BalancePage() {
   const inventoryWarning = inventory && !inventory.complete
     ? inventory.categories.flatMap((item) => item.errors).join("; ") || "месячный снимок неполный"
     : provisionalFulfillment
-      ? `Фулфилмент предварительный: поздние документы с датой до начала месяца автоматически попадут в пересчёт. Финальное закрытие — 5-го числа.${provisionalFulfillment.reconciledAt ? ` Последняя сверка: ${new Date(provisionalFulfillment.reconciledAt).toLocaleString("ru-RU")}.` : ""}`
+      ? `Фулфилмент предварительный: поздние документы с датой до начала месяца автоматически попадут в ежедневный пересчёт. Итог станет финальным после закрытия складского периода.${provisionalFulfillment.reconciledAt ? ` Последняя сверка: ${new Date(provisionalFulfillment.reconciledAt).toLocaleString("ru-RU")}.` : ""}`
       : null;
   const complete = hydrated && !loadError && state.accounts.length > 0 && inventoryReady && !scheduleError;
   const totals = complete ? connectedBalanceTotals({ cash, inventory: inventory.amount!, loans: loanSnapshot.amount }) : null;

@@ -29,7 +29,7 @@
     },
     {
       "path": "/api/sync/balance-monthly-stock?reconcile=fulfillment",
-      "schedule": "10 3 1-5 * *"
+      "schedule": "10 3 * * *"
     },
     {
       "path": "/api/sync/stocks-history-cleanup",
