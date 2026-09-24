@@ -22,6 +22,8 @@ const REPORT_COLUMN_NAMES = [
   "retail_amount",
   "ppvz_for_pay",
   "ppvz_sales_commission",
+  "ppvz_vw",
+  "ppvz_vw_nds",
   "delivery_rub",
   "rebill_logistic_cost",
   "penalty",

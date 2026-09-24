@@ -24,6 +24,9 @@ export interface WbReportRow {
   retail_price_withdisc_rub?: number;
   commission_percent?: number;
   ppvz_sales_commission?: number;
+  /** Вознаграждение WB и точный НДС с него из финансового отчёта. */
+  ppvz_vw?: number;
+  ppvz_vw_nds?: number;
   delivery_rub?: number;
   ppvz_for_pay?: number;
   supplier_oper_name?: string;
