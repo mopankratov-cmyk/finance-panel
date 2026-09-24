@@ -87,8 +87,13 @@ async function authorize() {
 
 async function companies() {
   const db = getSupabaseAdmin()!;
-  const loaded = await readCompaniesCompat((columns) => db.from("companies").select(columns).order("group_name").order("name"));
-  if (loaded.result.error) throw new Error(loaded.result.error.message);
+  const [loaded, entities, links] = await Promise.all([
+    readCompaniesCompat((columns) => db.from("companies").select(columns).order("group_name").order("name")),
+    db.from("legal_entities").select("id,name"),
+    db.from("legal_entity_cabinets").select("legal_entity_id,cabinet_id"),
+  ]);
+  const error = loaded.result.error ?? entities.error ?? links.error;
+  if (error) throw new Error(error.message);
   return buildOpiuCompanyScopes((loaded.result.data ?? []).map((raw) => {
     const row = raw as unknown as Record<string, unknown>;
     return {
@@ -105,7 +110,13 @@ async function companies() {
         taxAdditionalRate: parseCompanyTaxRate(row.tax_additional_rate) ?? null,
       } : {}),
     };
-  }));
+  }), (entities.data ?? []).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+  })), (links.data ?? []).map((row) => ({
+    legalEntityId: String(row.legal_entity_id),
+    cabinetId: String(row.cabinet_id),
+  })));
 }
 
 async function loadDetails(paymentIds: string[]): Promise<{ byId: Map<string, DetailRow>; available: boolean }> {
