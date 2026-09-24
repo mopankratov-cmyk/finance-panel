@@ -100,12 +100,26 @@ const allocationFromRow = (row: Row): PayrollPaymentAllocation => ({
 });
 
 export async function loadPayrollData(): Promise<PayrollData> {
-  const [body, privateBody] = await Promise.all([
-    fetch("/api/payroll", { cache: "no-store" }).then(json<{ employees?: Row[]; periods?: Row[]; entries?: Row[]; debts?: Row[]; allocations?: Row[]; preview?: boolean }>),
-    fetch("/api/payroll/private", { cache: "no-store" }).then(async (response) => response.status === 403
-      ? { privateRows: [] as Row[], canViewPrivate: false }
-      : { ...(await json<{ privateRows?: Row[] }>(response)), canViewPrivate: true }),
-  ]);
+  let response: Response;
+  try {
+    response = await fetch("/api/payroll", { cache: "no-store" });
+  } catch {
+    throw new Error("Не удалось связаться с сервером ведомости. Проверьте подключение и повторите загрузку.");
+  }
+  const body = await json<{ employees?: Row[]; periods?: Row[]; entries?: Row[]; debts?: Row[]; allocations?: Row[]; preview?: boolean }>(response);
+
+  // Реквизиты — дополнительные данные. Их временная недоступность не должна
+  // закрывать саму ведомость и мешать начислить выплату.
+  let privateBody: { privateRows: Row[]; canViewPrivate: boolean } = { privateRows: [], canViewPrivate: false };
+  try {
+    const privateResponse = await fetch("/api/payroll/private", { cache: "no-store" });
+    if (privateResponse.status !== 403) {
+      const privatePayload = await json<{ privateRows?: Row[] }>(privateResponse);
+      privateBody = { privateRows: privatePayload.privateRows ?? [], canViewPrivate: true };
+    }
+  } catch {
+    // Открываем ведомость без приватных реквизитов и даём пользователю продолжить работу.
+  }
   const privateByEmployee = new Map((privateBody.privateRows ?? []).map((row) => [String(row.employee_id), row]));
   return {
     employees: (body.employees ?? []).map((row) => employeeFromRow({ ...row, ...(privateByEmployee.get(String(row.id)) ?? {}) })),
