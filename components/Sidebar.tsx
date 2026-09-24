@@ -6,6 +6,7 @@ import {
   Bot,
   Building2,
   Calendar,
+  Calculator,
   Coins,
   ChevronDown,
   CreditCard,
@@ -87,6 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Финрезультат",
     items: [
       { href: "/pnl", label: "ОПиУ", icon: LineChart },
+      { href: "/pnl/taxes", label: "Налоги", icon: Calculator },
       { href: "/pnl/balance", label: "Баланс", icon: Scale },
       { href: "/opiu", label: "Финансовый отчёт WB", icon: Table2 },
       { href: "/losses", label: "Где теряем", icon: TrendingDown },
@@ -134,6 +136,7 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
     label: "Финрезультат",
     items: [
       { href: "/pnl", label: "ОПиУ", icon: LineChart },
+      { href: "/pnl/taxes", label: "Налоги", icon: Calculator },
       { href: "/pnl/balance", label: "Баланс", icon: Scale },
       { href: "/opiu", label: "Финансовый отчёт WB", icon: Table2 },
       { href: "/opiu/margin", label: "Маржа по артикулам", icon: PieChart },
