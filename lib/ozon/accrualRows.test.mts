@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { flattenOzonAccrual, OZON_ACCRUAL_NO_SKU, OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID } from "./accrualRows.ts";
+import {
+  flattenOzonAccrual,
+  mergeDuplicateAccrualRows,
+  OZON_ACCRUAL_NO_SKU,
+  OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID,
+} from "./accrualRows.ts";
 
 test("ITEM accrual (no posting) becomes one row keyed by its single fee type_id", () => {
   const raw = {
@@ -124,6 +129,53 @@ test("POSTING accrual with an actual sale produces service rows plus one synthet
     bonus: 700.74,
     commission_ratio: 'value:"0.410000"',
   });
+});
+
+test("a real delivery service sharing the synthetic SaleCommission's type_id (69) is summed, not dropped", () => {
+  // If a posting's delivery.services[] ever legitimately carries type_id 69,
+  // its row would collide with the synthetic SaleCommission row on the same
+  // (accrual_id, sku, type_id) upsert key — one would silently overwrite the
+  // other unless flattenOzonAccrual merges them itself.
+  const raw = {
+    accrual_id: 1,
+    date: "2026-08-15",
+    total_amount: { amount: "-500", currency: "RUB" },
+    unit_number: "x",
+    accrued_category: "POSTING",
+    posting: {
+      delivery_schema: "Fbo",
+      products: [{
+        sku: 42,
+        quantity: 1,
+        delivery: { services: [{ type_id: OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID, accrued: { amount: "-10" } }] },
+        commission: { sale_commission: { amount: "-490" } },
+      }],
+    },
+    item_fees: null,
+    non_item_fee: null,
+    container_fees: null,
+  };
+  const rows = flattenOzonAccrual(raw);
+  const commissionRows = rows.filter((row) => row.type_id === OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID);
+  assert.equal(commissionRows.length, 1, "duplicate (accrual_id, sku, type_id) keys must be merged into one row");
+  assert.equal(commissionRows[0].amount, -500);
+});
+
+test("mergeDuplicateAccrualRows sums amount and quantity for rows sharing (accrual_id, sku, type_id)", () => {
+  const rows = [
+    { accrual_id: 1, date: "d", unit_number: null, accrued_category: "c", currency: "RUB", sku: "1", type_id: 5, amount: 10, quantity: 1, extra: null },
+    { accrual_id: 1, date: "d", unit_number: null, accrued_category: "c", currency: "RUB", sku: "1", type_id: 5, amount: 20, quantity: 2, extra: { a: 1 } },
+    { accrual_id: 1, date: "d", unit_number: null, accrued_category: "c", currency: "RUB", sku: "2", type_id: 5, amount: 7, quantity: null, extra: null },
+  ];
+  const merged = mergeDuplicateAccrualRows(rows);
+  assert.equal(merged.length, 2);
+  const skuOne = merged.find((row) => row.sku === "1")!;
+  assert.equal(skuOne.amount, 30);
+  assert.equal(skuOne.quantity, 3);
+  assert.deepEqual(skuOne.extra, { a: 1 }, "keeps the first non-null extra rather than guessing how to merge it");
+  const skuTwo = merged.find((row) => row.sku === "2")!;
+  assert.equal(skuTwo.amount, 7);
+  assert.equal(skuTwo.quantity, null);
 });
 
 test("a row with no amount field defaults to 0 instead of throwing", () => {

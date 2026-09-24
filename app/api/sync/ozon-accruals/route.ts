@@ -4,18 +4,23 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { flattenOzonAccrual } from "@/lib/ozon/accrualRows";
 import { selectOzonAccrualQueueCabinet, type OzonAccrualQueueState } from "@/lib/ozon/accrualSyncQueue";
+import {
+  advanceAfterFailure,
+  advanceAfterSuccess,
+  initAccrualCursorState,
+  MAX_DATE_ATTEMPTS,
+  targetSyncDate,
+  type OzonAccrualCursorState,
+} from "@/lib/ozon/accrualSyncCursor";
 import { ozonAccrualByDay, ozonPostings } from "@/lib/ozon/api";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const JOB = "ozon_accrual_report";
 const BACKFILL_DAYS = 75;
+const POSTINGS_WINDOW_DAYS = 30;
 
-interface OzonAccrualSyncState extends Record<string, unknown> {
-  cursorDate?: string;
-  backfillFloor?: string;
-  backfillComplete?: boolean;
-}
+type OzonAccrualSyncState = OzonAccrualCursorState;
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -25,11 +30,28 @@ function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 86_400_000);
 }
 
+function readCursorState(stored: Partial<OzonAccrualSyncState> | undefined): OzonAccrualCursorState {
+  if (stored?.backfillFloor && stored?.pendingDate) {
+    return {
+      backfillFloor: stored.backfillFloor,
+      pendingDate: stored.pendingDate,
+      pendingAttempts: stored.pendingAttempts ?? 0,
+    };
+  }
+  return initAccrualCursorState(isoDate(daysAgo(BACKFILL_DAYS)));
+}
+
 /**
  * Одна дата на прогон, один кабинет на прогон — намеренно консервативно.
  * Ozon лимитирует по секундам (см. 429 при параллельных вызовах в разведке
  * API), и WB-аналог (opiu-report) держится того же принципа: лучше медленный
  * бэкфилл, чем оборванная на середине сеть.
+ *
+ * Курсор начислений (см. lib/ozon/accrualSyncCursor.ts) двигается на +1 день
+ * только после того, как день реально прочитан целиком: без обрезки
+ * пагинацией и без ошибок разбора строк. Отправления синкуются отдельным
+ * скользящим окном, без своего курсора — это отдельный, не постраничный по
+ * датам эндпоинт Ozon, и его сбой не должен блокировать бэкфилл начислений.
  */
 export async function GET(request: NextRequest) {
   const authError = await checkCronAuth(request);
@@ -66,39 +88,53 @@ export async function GET(request: NextRequest) {
   const creds = { clientId: String(cabinet.client_id), apiKey: String(cabinet.token) };
 
   const previous = await readWbSyncState<OzonAccrualSyncState>(db, cabinetId, JOB);
-  const backfillFloor = previous?.state.backfillFloor ?? isoDate(daysAgo(BACKFILL_DAYS));
-  const backfillComplete = previous?.state.backfillComplete ?? false;
-  const syncDate = backfillComplete
-    ? isoDate(daysAgo(1))
-    : (previous?.state.cursorDate ?? isoDate(daysAgo(1)));
+  const cursorState = readCursorState(previous?.state);
+  const yesterday = isoDate(daysAgo(1));
+  const syncDate = targetSyncDate(cursorState, yesterday);
+  const runStartedAt = new Date().toISOString();
 
   const accrualResult = await ozonAccrualByDay(creds, syncDate);
+
   if (!accrualResult.ok) {
+    if (accrualResult.rateLimited) {
+      // 429 не двигает курсор — следующий часовой тик повторит тот же день,
+      // это нормальный бэк-офф, а не сбой синка.
+      await writeWbSyncState(db, cabinetId, JOB, {
+        cursor: previous?.cursor ?? null,
+        status: "rate_limited",
+        attempts: (previous?.attempts ?? 0) + 1,
+        lastError: accrualResult.error,
+        state: cursorState,
+      });
+      return NextResponse.json({ cabinetId, date: syncDate, error: accrualResult.error }, { status: 200 });
+    }
+
+    const { state: nextState, gaveUp } = advanceAfterFailure(cursorState, syncDate);
     await writeWbSyncState(db, cabinetId, JOB, {
       cursor: previous?.cursor ?? null,
-      status: accrualResult.rateLimited ? "rate_limited" : "error",
+      status: "error",
       attempts: (previous?.attempts ?? 0) + 1,
-      lastError: accrualResult.error,
-      state: previous?.state ?? { backfillFloor, backfillComplete },
+      lastError: gaveUp
+        ? `${accrualResult.error} (сдались после ${MAX_DATE_ATTEMPTS} попыток, дата ${syncDate} пропущена)`
+        : accrualResult.error,
+      state: nextState,
     });
-    // 429 не двигает курсор — следующий часовой тик повторит тот же день, и
-    // это не сбой синка, а нормальный бэк-офф. Настоящий сбой (не 429)
-    // тоже не двигает курсор, но помечается 502, чтобы Vercel не считал
-    // прогон зелёным при неподвижных данных.
     return NextResponse.json(
-      { cabinetId, date: syncDate, error: accrualResult.error },
-      { status: accrualResult.rateLimited ? 200 : 502 },
+      { cabinetId, date: syncDate, error: accrualResult.error, gaveUpOnDate: gaveUp },
+      { status: 502 },
     );
   }
 
+  let flattenErrors = 0;
   const accrualRows = accrualResult.accruals.flatMap((raw) => {
     try {
       return flattenOzonAccrual(raw as Parameters<typeof flattenOzonAccrual>[0]).map((row) => ({
         cabinet_id: cabinetId,
         ...row,
-        updated_at: new Date().toISOString(),
+        updated_at: runStartedAt,
       }));
     } catch {
+      flattenErrors += 1;
       return [];
     }
   });
@@ -107,53 +143,117 @@ export async function GET(request: NextRequest) {
     const { error } = await db
       .from("ozon_accrual_rows")
       .upsert(accrualRows, { onConflict: "cabinet_id,accrual_id,sku,type_id" });
-    if (error) return NextResponse.json({ error: error.message }, { status: 502 });
+    if (error) {
+      await writeWbSyncState(db, cabinetId, JOB, {
+        cursor: previous?.cursor ?? null,
+        status: "error",
+        attempts: (previous?.attempts ?? 0) + 1,
+        lastError: error.message,
+        state: cursorState,
+      });
+      return NextResponse.json({ error: error.message }, { status: 502 });
+    }
   }
 
+  // Честно: день считается прочитанным целиком только без обрезки пагинацией
+  // и без ошибок разбора — иначе рано и продвигать курсор, и удалять
+  // "устаревшие" строки (мы не знаем, что реально устарело, а что просто ещё
+  // не прочли).
+  const dayFullyRead = !accrualResult.truncated && flattenErrors === 0;
+
+  if (dayFullyRead) {
+    const { error: staleError } = await db
+      .from("ozon_accrual_rows")
+      .delete()
+      .eq("cabinet_id", cabinetId)
+      .eq("date", syncDate)
+      .lt("updated_at", runStartedAt);
+    if (staleError) {
+      await writeWbSyncState(db, cabinetId, JOB, {
+        cursor: previous?.cursor ?? null,
+        status: "error",
+        attempts: (previous?.attempts ?? 0) + 1,
+        lastError: staleError.message,
+        state: cursorState,
+      });
+      return NextResponse.json({ error: staleError.message }, { status: 502 });
+    }
+  }
+
+  const postingsFrom = isoDate(daysAgo(POSTINGS_WINDOW_DAYS));
   const { postings, errors: postingErrors } = await ozonPostings(
     creds,
-    `${syncDate}T00:00:00.000Z`,
-    `${syncDate}T23:59:59.999Z`,
+    `${postingsFrom}T00:00:00.000Z`,
+    new Date().toISOString(),
   );
-  const postingRows = postings.map((posting) => ({
-    cabinet_id: cabinetId,
-    posting_number: posting.postingNumber,
-    scheme: posting.scheme,
-    order_number: posting.orderNumber,
-    status: posting.status,
-    created_at: posting.createdAt,
-    amount: posting.amount,
-    units: posting.units,
-    updated_at: new Date().toISOString(),
-  }));
+  // created_at может прийти пустой строкой (ни created_at, ни in_process_at в
+  // ответе) — колонка NOT NULL, такую строку не пишем, а считаем и сообщаем.
+  const postingRows = postings
+    .filter((posting) => posting.createdAt)
+    .map((posting) => ({
+      cabinet_id: cabinetId,
+      posting_number: posting.postingNumber,
+      scheme: posting.scheme,
+      order_number: posting.orderNumber,
+      status: posting.status,
+      created_at: posting.createdAt,
+      amount: posting.amount,
+      units: posting.units,
+      updated_at: runStartedAt,
+    }));
+  const skippedPostings = postings.length - postingRows.length;
+
   if (postingRows.length) {
     const { error } = await db
       .from("ozon_postings")
       .upsert(postingRows, { onConflict: "cabinet_id,posting_number" });
-    if (error) return NextResponse.json({ error: error.message }, { status: 502 });
+    if (error) {
+      await writeWbSyncState(db, cabinetId, JOB, {
+        cursor: previous?.cursor ?? null,
+        status: "error",
+        attempts: (previous?.attempts ?? 0) + 1,
+        lastError: error.message,
+        state: cursorState,
+      });
+      return NextResponse.json({ error: error.message }, { status: 502 });
+    }
   }
 
-  const nextCursorDate = isoDate(new Date(Date.parse(`${syncDate}T00:00:00.000Z`) - 86_400_000));
-  const nowComplete = backfillComplete || nextCursorDate < backfillFloor;
+  let gaveUpOnDate = false;
+  let nextCursorState: OzonAccrualCursorState;
+  if (dayFullyRead) {
+    nextCursorState = advanceAfterSuccess(cursorState, syncDate);
+  } else {
+    const result = advanceAfterFailure(cursorState, syncDate);
+    nextCursorState = result.state;
+    gaveUpOnDate = result.gaveUp;
+  }
+
+  const dayIssues = [
+    accrualResult.truncated ? `день ${syncDate} обрезан потолком пагинации` : null,
+    flattenErrors ? `${flattenErrors} начислений не разобрались` : null,
+    gaveUpOnDate ? `сдались после ${MAX_DATE_ATTEMPTS} попыток, дата ${syncDate} пропущена` : null,
+    postingErrors.length ? `postings: ${postingErrors.join("; ")}` : null,
+  ].filter(Boolean);
 
   await writeWbSyncState(db, cabinetId, JOB, {
     cursor: syncDate,
-    status: "ok",
+    status: dayFullyRead ? "ok" : "partial",
     attempts: 0,
-    lastError: postingErrors.length ? postingErrors.join("; ").slice(0, 500) : null,
-    state: {
-      backfillFloor,
-      backfillComplete: nowComplete,
-      cursorDate: nowComplete ? isoDate(daysAgo(1)) : nextCursorDate,
-    },
+    lastError: dayIssues.length ? dayIssues.join("; ").slice(0, 500) : null,
+    state: nextCursorState,
   });
 
   return NextResponse.json({
     cabinetId,
     date: syncDate,
     accrualRows: accrualRows.length,
+    truncated: accrualResult.truncated,
+    flattenErrors,
+    dayFullyRead,
+    gaveUpOnDate,
     postingRows: postingRows.length,
-    backfillComplete: nowComplete,
+    skippedPostings,
     postingErrors,
   });
 }

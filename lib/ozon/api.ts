@@ -1,4 +1,4 @@
-import { ozonSellerFetch } from "@/lib/ozon/sellerGate";
+import { ozonSellerFetch, OzonRateLimitError } from "@/lib/ozon/sellerGate";
 
 // Ozon Seller API. Авторизация — заголовки Client-Id + Api-Key. База api-seller.ozon.ru.
 const BASE = "https://api-seller.ozon.ru";
@@ -522,48 +522,77 @@ export async function ozonAccrualTypes(
 }
 
 export type OzonAccrualByDayResult =
-  | { ok: true; accruals: unknown[] }
+  | { ok: true; accruals: unknown[]; truncated: boolean }
   | { ok: false; error: string; rateLimited: boolean };
 
+interface OzonAccrualPage {
+  accruals: unknown[];
+  lastId?: string;
+}
+
+interface OzonAccrualPagesResult {
+  accruals: unknown[];
+  /** true — упёрлись в потолок страниц, а `last_id` ещё менялся: день неполный. */
+  truncated: boolean;
+}
+
 /**
- * Построчные начисления за один календарный день.
- *
  * Пагинация не документирована официально: ответ несёт `last_id`, и мы
  * пробуем продолжить, подставляя его в следующий запрос тем же именем поля.
- * Если Ozon имя не примет и вернёт тот же `last_id` второй раз — не зависаем
- * до потолка страниц, а останавливаемся: лучше неполный день, чем зависший
- * крон-вызов.
+ * Если Ozon его не примет и в ответ на `last_id: X` снова пришлёт `last_id: X`
+ * — это штатный сигнал конца данных, останавливаемся сразу на этом ответе, не
+ * добавляя его в результат второй раз. А вот упереться в потолок страниц,
+ * когда `last_id` всё ещё меняется — это не конец данных, а обрыв: помечаем
+ * `truncated`, чтобы вызывающий код не считал день полностью прочитанным.
+ *
+ * Чистая функция (никакого fetch внутри) — источник страниц передаётся
+ * снаружи, поэтому тестируется без сети.
  */
-export async function ozonAccrualByDay(c: OzonCreds, date: string): Promise<OzonAccrualByDayResult> {
+export async function collectOzonAccrualPages(
+  fetchPage: (lastId: string | undefined) => Promise<OzonAccrualPage>,
+  maxPages = 20,
+): Promise<OzonAccrualPagesResult> {
   const accruals: unknown[] = [];
   let lastId: string | undefined;
-  let previousLastId: string | undefined;
 
-  for (let page = 0; page < 20; page += 1) {
-    const body: Record<string, unknown> = lastId ? { date, last_id: lastId } : { date };
-    let res: Response;
-    try {
-      res = await tfetch(c, `${BASE}/v1/finance/accrual/by-day`, {
+  for (let page = 0; page < maxPages; page += 1) {
+    const requestedLastId = lastId;
+    const result = await fetchPage(requestedLastId);
+    if (requestedLastId !== undefined && result.lastId === requestedLastId) {
+      return { accruals, truncated: false };
+    }
+    accruals.push(...result.accruals);
+    if (!result.accruals.length || !result.lastId) {
+      return { accruals, truncated: false };
+    }
+    lastId = result.lastId;
+  }
+
+  return { accruals, truncated: true };
+}
+
+/** Построчные начисления за один календарный день. */
+export async function ozonAccrualByDay(c: OzonCreds, date: string): Promise<OzonAccrualByDayResult> {
+  try {
+    const { accruals, truncated } = await collectOzonAccrualPages(async (lastId) => {
+      const body: Record<string, unknown> = lastId ? { date, last_id: lastId } : { date };
+      const res = await tfetch(c, `${BASE}/v1/finance/accrual/by-day`, {
         method: "POST",
         headers: headers(c),
         body: JSON.stringify(body),
         cache: "no-store",
       });
-    } catch (error) {
-      return { ok: false, error: String(error).slice(0, 120), rateLimited: false };
+      if (!res.ok) throw new Error(`Ozon ${res.status}: ${(await res.text()).slice(0, 120)}`);
+      const json = (await res.json()) as { accruals?: unknown[]; last_id?: string };
+      return { accruals: json.accruals ?? [], lastId: json.last_id };
+    });
+    return { ok: true, accruals, truncated };
+  } catch (error) {
+    if (error instanceof OzonRateLimitError) {
+      return { ok: false, error: error.message, rateLimited: true };
     }
-    if (res.status === 429) return { ok: false, error: "rate limited", rateLimited: true };
-    if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}`, rateLimited: false };
-
-    const json = (await res.json()) as { accruals?: unknown[]; last_id?: string };
-    const batch = json.accruals ?? [];
-    accruals.push(...batch);
-    if (!batch.length || !json.last_id || json.last_id === previousLastId) break;
-    previousLastId = lastId;
-    lastId = json.last_id;
+    return { ok: false, error: String(error).slice(0, 120), rateLimited: false };
   }
-
-  return { ok: true, accruals };
 }
 
 export interface OzonPosting {

@@ -150,5 +150,32 @@ export function flattenOzonAccrual(raw: OzonRawAccrual): OzonAccrualRow[] {
     });
   }
 
-  return rows;
+  return mergeDuplicateAccrualRows(rows);
+}
+
+/**
+ * `(accrual_id, sku, type_id)` is the DB upsert key for этой таблицы — если
+ * два источника внутри одного начисления когда-нибудь дадут одинаковый ключ
+ * (например, реальная услуга delivery.services[] с type_id, совпадающим с
+ * OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID), upsert молча затрёт одну строку
+ * другой. Складываем такие строки заранее, а не полагаемся на то, что ключи
+ * никогда не столкнутся.
+ */
+export function mergeDuplicateAccrualRows(rows: OzonAccrualRow[]): OzonAccrualRow[] {
+  const byKey = new Map<string, OzonAccrualRow>();
+  for (const row of rows) {
+    const key = `${row.accrual_id}\u0000${row.sku}\u0000${row.type_id}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...row });
+      continue;
+    }
+    existing.amount += row.amount;
+    existing.quantity =
+      existing.quantity === null && row.quantity === null
+        ? null
+        : (existing.quantity ?? 0) + (row.quantity ?? 0);
+    existing.extra = existing.extra ?? row.extra;
+  }
+  return [...byKey.values()];
 }
