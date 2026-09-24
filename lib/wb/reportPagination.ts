@@ -96,6 +96,9 @@ const LEGACY_FIELD_ALIASES = {
   retailPriceWithDisc: "retail_price_withdisc_rub",
   commissionPercent: "commission_percent",
   ppvzSalesCommission: "ppvz_sales_commission",
+  vw: "ppvz_vw",
+  vwNds: "ppvz_vw_nds",
+  // Совместимость с промежуточной версией/моками интеграции.
   ppvzVw: "ppvz_vw",
   ppvzVwNds: "ppvz_vw_nds",
   deliveryService: "delivery_rub",

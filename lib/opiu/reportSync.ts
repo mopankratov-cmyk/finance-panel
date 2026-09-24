@@ -78,8 +78,9 @@ export async function syncOpiuReportPeriod(
 
 export async function syncOpiuReportMonth(
   month: string,
+  cabinetId: string = OPIU_WB_CABINET_ID,
 ): Promise<SyncReportRowsResult> {
   const period = opiuReportMonthPeriod(month);
   if (!period) throw new Error("month must be in YYYY-MM format");
-  return syncOpiuReportPeriod(period);
+  return syncOpiuReportPeriod(period, cabinetId);
 }

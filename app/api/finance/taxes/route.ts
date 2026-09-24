@@ -174,6 +174,28 @@ async function loadWbReportedInputVat(cabinetIds: string[], from: string, to: st
   return Math.round(Math.max(0, Number(result.data) || 0) * 100) / 100;
 }
 
+async function loadWbAdvertisingExpense(cabinetIds: string[], from: string, to: string): Promise<number | null> {
+  if (!cabinetIds.length) return 0;
+  const db = getSupabaseAdmin()!;
+  const result = await db.rpc("tax_wb_advert_expense", { p_cabinet_ids: cabinetIds, p_from: from, p_to: to });
+  if (result.error) {
+    if (MISSING_TABLE.has(result.error.code ?? "") || /tax_wb_advert_expense|wb_advert_spend_history.*(?:does not exist|schema cache|could not find)/i.test(result.error.message)) return null;
+    throw new Error(result.error.message);
+  }
+  return Math.round(Math.max(0, Number(result.data) || 0) * 100) / 100;
+}
+
+async function loadWbAdvertisingCoverageStart(cabinetIds: string[]): Promise<string | null> {
+  if (!cabinetIds.length) return null;
+  const db = getSupabaseAdmin()!;
+  const result = await db.rpc("tax_wb_advert_coverage_start", { p_cabinet_ids: cabinetIds });
+  if (result.error) {
+    if (MISSING_TABLE.has(result.error.code ?? "") || /tax_wb_advert_coverage_start|wb_advert_spend_history.*(?:does not exist|schema cache|could not find)/i.test(result.error.message)) return null;
+    throw new Error(result.error.message);
+  }
+  return typeof result.data === "string" ? result.data : null;
+}
+
 async function loadCompanyTaxSettings(companyId: string, from: string, to: string) {
   const db = getSupabaseAdmin()!;
   const profile = await db.from("company_tax_profiles").select("vat_effective_from").eq("company_id", companyId).maybeSingle();
@@ -224,6 +246,9 @@ export async function GET(request: NextRequest) {
         taxSettingsAvailable: true,
         vatEffectiveFrom: null,
         marketplaceVatPeriods: [],
+        wbReportedInputVat: 0,
+        wbAdvertisingExpense: 0,
+        wbAdvertisingCoverageStart: null,
         taxPaid: 0,
       });
     }
@@ -239,11 +264,13 @@ export async function GET(request: NextRequest) {
       .order("id", { ascending: true })
       .range(pageFrom, pageTo), { label: "Налоговый регистр ДДС", maxPages: 100 });
     const year = Number(from.slice(0, 4));
-    const [details, taxSettings, liveSettings, wbReportedInputVat] = await Promise.all([
+    const [details, taxSettings, liveSettings, wbReportedInputVat, wbAdvertisingExpense, wbAdvertisingCoverageStart] = await Promise.all([
       loadDetails(rows.map((row) => row.id)),
       loadCompanyTaxSettings(selected.id, from, to),
       loadLiveTaxSettings(selected.id, year, from, to),
       loadWbReportedInputVat(selected.cabinetIds, from, to),
+      loadWbAdvertisingExpense(selected.cabinetIds, from, to),
+      loadWbAdvertisingCoverageStart(selected.cabinetIds),
     ]);
     // ЕНП и обычный платёж «налог» нельзя автоматически отнести к УСН:
     // внутри ЕНС он может погашать НДС, страховые взносы и другие обязанности.
@@ -320,6 +347,8 @@ export async function GET(request: NextRequest) {
         saved: true,
       })),
       wbReportedInputVat,
+      wbAdvertisingExpense,
+      wbAdvertisingCoverageStart,
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось загрузить налоговый регистр" }, { status: 500 });
