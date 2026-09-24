@@ -231,10 +231,9 @@ export async function PATCH(request: Request) {
   if (updated.error || (updated.data ?? []).length !== rowIds.length) return NextResponse.json({ error: updated.error?.message ?? "Строка уже закрыта" }, { status: 409 });
   for (const row of rows) {
     if (!row.calendarPaymentId) continue;
-    // План в календаре отменяется с меткой [paid-by:] — так его читают календарь и сверка.
-    const planned = await client.from("payments").select("comment").eq("id", row.calendarPaymentId).maybeSingle();
-    const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by:[^\]]+\]/g, "").trim()} [paid-by:${factId}]`.trim();
-    await client.from("payments").update({ status: "cancelled", comment }).eq("id", row.calendarPaymentId);
+    // Каноническая связь уже записана в loan_schedule_rows.paid_by_payment_id.
+    // Календарный план только меняет статус; назначение платежа остаётся текстом.
+    await client.from("payments").update({ status: "cancelled" }).eq("id", row.calendarPaymentId);
   }
   return NextResponse.json({ ok: true, rows: rows.map((row) => ({ ...row, status: "paid", paidByPaymentId: factId })) });
 }

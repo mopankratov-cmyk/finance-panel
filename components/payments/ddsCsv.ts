@@ -95,10 +95,18 @@ export function parseRussianAmount(raw: string): number | null {
 
 // "01.02.2026" → "2026-02-01"
 export function parseRussianDate(raw: string): string | null {
-  const m = raw.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-  if (!m) return null;
-  const [, dd, mm, yyyy] = m;
-  return `${yyyy}-${mm}-${dd}`;
+  const clean = raw.trim();
+  const ru = clean.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (ru) return `${ru[3]}-${ru[2].padStart(2, "0")}-${ru[1].padStart(2, "0")}`;
+  const iso = clean.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  // В XLSX дата часто хранится серийным числом, а формат ячейки живёт
+  // отдельно. xlsxGrid возвращает значение, поэтому преобразуем его здесь.
+  const serial = Number(clean);
+  if (Number.isFinite(serial) && serial > 20_000 && serial < 100_000) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86_400_000).toISOString().slice(0, 10);
+  }
+  return null;
 }
 
 function findIndex(header: string[], ...names: string[]): number {
@@ -110,16 +118,14 @@ function findIndex(header: string[], ...names: string[]): number {
   return -1;
 }
 
-export function parseDdsCsv(text: string): DdsParseResult {
-  const rows = parseCsv(text);
-
-  // строка-заголовок: содержит «Дата» и «Сумма» и «Кошелек»
-  const headerIdx = rows.findIndex(
-    (r) =>
-      r.some((c) => c.trim() === "Дата") &&
-      r.some((c) => c.trim() === "Сумма") &&
-      r.some((c) => c.trim().toLowerCase().startsWith("кошел")),
-  );
+export function parseDdsRows(rows: string[][]): DdsParseResult {
+  // Выгрузки из разных систем отличаются регистром и написанием «ё».
+  const headerIdx = rows.findIndex((row) => {
+    const normalized = row.map((cell) => cell.trim().toLowerCase().replace(/ё/g, "е"));
+    return normalized.includes("дата")
+      && normalized.includes("сумма")
+      && normalized.some((cell) => cell === "кошелек" || cell === "счет" || cell === "банковский счет");
+  });
 
   const warnings: string[] = [];
   if (headerIdx === -1) {
@@ -151,10 +157,10 @@ export function parseDdsCsv(text: string): DdsParseResult {
   const col = {
     date: findIndex(header, "Дата"),
     amount: findIndex(header, "Сумма"),
-    wallet: findIndex(header, "Кошелек", "Кошелёк"),
+    wallet: findIndex(header, "Кошелек", "Кошелёк", "Счет", "Счёт", "Банковский счет", "Банковский счёт"),
     company: findIndex(header, "Направление бизнеса"),
     counterparty: findIndex(header, "Контрагент"),
-    purpose: findIndex(header, "Назначение платежа"),
+    purpose: findIndex(header, "Назначение платежа", "Назначение", "Описание платежа"),
     category: findIndex(header, "Статья"),
     activity: findIndex(header, "Вид д-ти", "Вид деятельности"),
   };
@@ -200,7 +206,13 @@ export function parseDdsCsv(text: string): DdsParseResult {
       counterparty,
       activity,
       company,
-      comment: activity ? `ДДС · ${activity}` : "ДДС",
+      // Назначение — это первичный текст факта. Оно может содержать имя
+      // заёмщика, номер договора или пояснение бухгалтера. Сохраняем его и в
+      // видимом названии, и полностью в комментарии: название ограничивается
+      // 200 символами, а сверка кредитов ищет по обоим полям.
+      comment: [activity ? `ДДС · ${activity}` : "ДДС", purpose ? `Назначение платежа: ${purpose.slice(0, 5_000)}` : ""]
+        .filter(Boolean)
+        .join(" · "),
     });
   }
 
@@ -222,6 +234,10 @@ export function parseDdsCsv(text: string): DdsParseResult {
     skipped,
     warnings,
   };
+}
+
+export function parseDdsCsv(text: string): DdsParseResult {
+  return parseDdsRows(parseCsv(text));
 }
 
 export { COMPANY_GROUP };

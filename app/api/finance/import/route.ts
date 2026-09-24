@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { audit } from "@/lib/audit/log";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { parseDdsCsv, parseDdsRows } from "@/components/payments/ddsCsv";
+import { xlsxGrid } from "@/lib/finance/xlsxGrid";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,6 +24,55 @@ type ImportPlanBody = {
 
 async function authorize() {
   return requireApiSession(["director", "fin_director", "financier"]);
+}
+
+const MAX_DDS_FILE_BYTES = 20 * 1024 * 1024;
+const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
+
+/** Серверный разбор исходного файла ДДС. PUT отделён от POST, который применяет уже проверенный план. */
+export async function PUT(request: NextRequest) {
+  const gate = await authorize();
+  if (gate) return gate;
+  try {
+    const form = await request.formData();
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return NextResponse.json({ error: "Выберите файл ДДС в формате XLSX или CSV" }, { status: 400 });
+    }
+    if (file.size > MAX_DDS_FILE_BYTES) {
+      return NextResponse.json({ error: "Файл ДДС больше 20 МБ" }, { status: 413 });
+    }
+    const lower = file.name.toLowerCase();
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const parsed = lower.endsWith(".xlsx")
+      ? (() => {
+          if (!ZIP_MAGIC.every((byte, index) => bytes[index] === byte)) {
+            throw new Error("Файл не похож на XLSX — содержимое не совпадает с расширением");
+          }
+          return parseDdsRows(xlsxGrid(bytes));
+        })()
+      : lower.endsWith(".csv")
+        ? parseDdsCsv(bytes.toString("utf8"))
+        : null;
+    if (!parsed) return NextResponse.json({ error: "Поддерживаются файлы ДДС XLSX и CSV" }, { status: 415 });
+    const fileHash = createHash("sha256").update(bytes).digest("hex");
+    const result = {
+      ...parsed,
+      drafts: parsed.drafts.map((draft, index) => ({
+        ...draft,
+        // Повтор ровно того же файла безопасен даже при двух одновременно
+        // открытых вкладках. Пересекающиеся другие файлы дополнительно
+        // проверяются по счёту, дате, сумме, назначению и контрагенту.
+        importSource: `dds-file:${fileHash}:${index + 1}`,
+      })),
+    };
+    if (!result.drafts.length) {
+      return NextResponse.json({ error: result.warnings[0] || "В файле не найдены операции ДДС", result }, { status: 422 });
+    }
+    return NextResponse.json({ result });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось прочитать файл ДДС" }, { status: 400 });
+  }
 }
 
 function validUuid(value: unknown) {
@@ -88,9 +140,9 @@ export async function GET() {
   try {
     const [accounts, payments] = await Promise.all([
       db.from("accounts").select("id,name").order("name"),
-      loadAllSupabasePages<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null }>((from, to) => db
+      loadAllSupabasePages<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null; counterparty: string | null }>((from, to) => db
         .from("payments")
-        .select("id,name,amount,category,account_id,date,company_id")
+        .select("id,name,amount,category,account_id,date,company_id,counterparty")
         .order("id", { ascending: true })
         .range(from, to), { label: "Платежи для проверки импорта" }),
     ]);

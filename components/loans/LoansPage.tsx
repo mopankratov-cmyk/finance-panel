@@ -724,15 +724,15 @@ function LoanDetails({ loan, company, companyId, schedule, payments, companyByPa
           const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);
           return <tr key={row.id} className={`border-t ${overdue ? "bg-red-50" : ""}`}><td className={`p-3 ${overdue ? "font-bold text-red-700" : ""}`}>{formatDate(row.date)}{overdue && <span className="ml-2 rounded-full bg-red-100 px-2 py-1 text-[10px]">Просрочено</span>}</td>{currency !== "RUB" && <td className="p-3 text-right font-semibold tabular-nums">{roundLoanMoney(originalTotal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}</td>}<td className="p-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.penalty)}</td><td className="p-3 text-right tabular-nums">{formatMoney(row.fine)}</td><td className="p-2 text-right"><button type="button" onClick={() => setTraceRow(row)} aria-label={`Оплата по графику ${formatDate(row.date)}: ${formatMoney(row.principal + row.interest + row.penalty + row.fine)}`} className="min-h-11 rounded-lg px-2 font-bold tabular-nums text-violet-700 underline decoration-violet-200 underline-offset-4 transition hover:bg-violet-50 hover:text-violet-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">{formatMoney(row.principal + row.interest + row.penalty + row.fine)}</button></td><td className="p-3">{row.status === "done" ? "Оплачено" : row.status === "cancelled" ? "Отменено" : overdue ? "Просрочено" : "Запланировано"}</td><td className="p-3 text-right font-semibold tabular-nums">{formatMoney(projectedBalances.get(row.id) ?? balance)}</td></tr>;
         })}</tbody></table></div>
-        {traceRow && <LoanPaymentTrace loanId={loan.id} companyId={companyId} row={traceRow} payments={payments} companyByPayment={companyByPayment} accounts={accounts} scheduleRows={scheduleRows} marketplaceFacts={marketplaceFacts} onLinkPayment={onLinkPayment} onClose={() => setTraceRow(null)} />}
+        {traceRow && <LoanPaymentTrace loanId={loan.id} creditorName={loan.creditorName} companyId={companyId} row={traceRow} payments={payments} companyByPayment={companyByPayment} accounts={accounts} scheduleRows={scheduleRows} marketplaceFacts={marketplaceFacts} onLinkPayment={onLinkPayment} onClose={() => setTraceRow(null)} />}
       </div>
       <footer className="flex flex-wrap justify-end gap-2 border-t p-4"><button onClick={onClose} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Закрыть</button><button onClick={onEdit} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 font-bold text-white"><Pencil className="h-4 w-4" />Редактировать</button></footer>
     </div>
   </div>;
 }
 
-function LoanPaymentTrace({ loanId, companyId, row, payments, companyByPayment, accounts, scheduleRows, marketplaceFacts, onLinkPayment, onClose }: {
-  loanId: string; companyId: string | null; row: LoanScheduleDraft; payments: Payment[]; companyByPayment: ReadonlyMap<string, string | null>;
+function LoanPaymentTrace({ loanId, creditorName, companyId, row, payments, companyByPayment, accounts, scheduleRows, marketplaceFacts, onLinkPayment, onClose }: {
+  loanId: string; creditorName: string; companyId: string | null; row: LoanScheduleDraft; payments: Payment[]; companyByPayment: ReadonlyMap<string, string | null>;
   accounts: Array<{ id: string; name: string }>; scheduleRows: ScheduleRowRecord[]; marketplaceFacts: MarketplaceFact[];
   onLinkPayment: (loanId: string, dueDate: string, paymentId: string, confirmed: boolean) => Promise<void>; onClose: () => void;
 }) {
@@ -748,8 +748,8 @@ function LoanPaymentTrace({ loanId, companyId, row, payments, companyByPayment, 
     [payments, scheduleRows],
   );
   const candidates = useMemo(
-    () => loanPaymentCandidates(payments, consumed, companyByPayment, companyId, total, row.date),
-    [payments, consumed, companyByPayment, companyId, total, row.date],
+    () => loanPaymentCandidates(payments, consumed, companyByPayment, companyId, total, row.date, creditorName),
+    [payments, consumed, companyByPayment, companyId, total, row.date, creditorName],
   );
   const normalizedQuery = query.trim().toLowerCase();
   const visibleCandidates = candidates.filter(({ payment }) => !normalizedQuery || `${payment.date} ${payment.name} ${payment.counterparty} ${Math.abs(payment.amount)}`.toLowerCase().includes(normalizedQuery)).slice(0, 100);

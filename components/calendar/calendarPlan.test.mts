@@ -28,6 +28,7 @@ test("ручное подтверждение сохраняет устойчи�
   const plan = withCalendarFactLink(payment("plan", "planned", 100000), "fact");
   assert.equal(plan.status, "cancelled");
   assert.equal(plan.settledByPaymentId, "fact");
+  assert.equal(plan.comment, undefined, "новая связь не кодируется в пользовательском комментарии");
   const result = findPlanFactMatches([plan, payment("fact", "done", 70000, "2026-08-15")]);
   assert.equal(result.matched[0]?.source, "confirmed");
 });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { Payment } from "../../lib/types";
-import { loanPaymentCandidates, requiresLoanAmountConfirmation } from "./manualLoanPayment";
+import { loanPaymentCandidates, loanPurposeScore, requiresLoanAmountConfirmation } from "./manualLoanPayment";
 
 const fact = (overrides: Partial<Payment> = {}): Payment => ({
   id: "cash-fact",
@@ -54,6 +54,17 @@ test("сначала предлагается та же компания, зат
 test("разница больше одного процента требует явного подтверждения", () => {
   assert.equal(requiresLoanAmountConfirmation(-10_100, 10_000), false);
   assert.equal(requiresLoanAmountConfirmation(-10_101, 10_000), true);
+});
+
+test("пояснение из назначения поднимает платёж нужного заёмщика выше одинаковой суммы", () => {
+  const rows = [
+    fact({ id: "generic", name: "Возврат займа", counterparty: "Физлицо" }),
+    fact({ id: "korovkin", name: "Возврат займа Андрею Коровкину", counterparty: "Андрей Коровкин" }),
+  ];
+  const candidates = loanPaymentCandidates(rows, new Set(), new Map(), null, 10_000, "2026-09-10", "Коровкин Андрей");
+  assert.deepEqual(candidates.map((item) => item.payment.id), ["korovkin", "generic"]);
+  assert.ok(candidates[0].purposeScore > candidates[1].purposeScore);
+  assert.ok(loanPurposeScore(rows[1], "Коровкин Андрей") > 0);
 });
 
 test("сервер принимает для закрытия графика только настоящий факт ДДС", () => {
