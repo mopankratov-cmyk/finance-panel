@@ -161,7 +161,11 @@ export function buildMarginByBarcode(
     for (const row of group) {
       const type = docType(row);
       const qty = qtyAbs(row);
-      const gross = num(row.retail_amount) || num(row.retail_price_withdisc_rub) * qty;
+      // «Продажи»/«Возвраты», руб — цена ДО СПП (retail_price_withdisc_rub),
+      // не сумма после СПП (retail_amount). Сверено с гугл-таблицей построчно
+      // (TT04101: 3 582,86 ₽ — совпало день в день); revenueAfterSpp ниже
+      // по-прежнему считает через retail_amount отдельно, это разные метрики.
+      const gross = num(row.retail_price_withdisc_rub) * qty;
       if (type === "sale") {
         salesQty += qty;
         salesRub += gross;
