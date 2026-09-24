@@ -40,6 +40,11 @@ const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
   // здесь 401-м, не дойдя до само-гарда — гейт знает только CRON_SECRET.
   // Узко: только POST приёма снимков; GET читается под сессией и сюда не попадает.
   { prefix: "/api/opiu/browser-payout-snapshots", methods: ["POST"] },
+  // Почтовый импорт проходит без пользовательской cookie, но оба роута сами
+  // проверяют отдельный DDS_EMAIL_IMPORT_SECRET. На bank-review машинному
+  // вызову разрешён только action=batch.
+  { prefix: "/api/opiu/bank-statement", methods: ["POST"] },
+  { prefix: "/api/opiu/bank-review", methods: ["POST"] },
 ];
 
 export function isPublicApi(pathname: string, method: string): boolean {
