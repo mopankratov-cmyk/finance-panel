@@ -47,6 +47,7 @@ const COLUMNS: { key: keyof MarginRow; label: string; fmt: (row: MarginRow) => s
   { key: "commissionPct", label: "Комиссия, %", fmt: (r) => pct(r.commissionPct) },
   { key: "deliveryCount", label: "Доставок, шт", fmt: (r) => formatNumber(r.deliveryCount) },
   { key: "logistics", label: "Логистика, руб", fmt: (r) => money(r.logistics) },
+  { key: "logisticsPerUnit", label: "Логистика на 1 единицу, руб", fmt: (r) => (r.logisticsPerUnit == null ? "—" : money(r.logisticsPerUnit)) },
   { key: "penalties", label: "Штрафы, руб", fmt: (r) => money(r.penalties) },
   { key: "additionalPayments", label: "Доплаты, руб", fmt: (r) => money(r.additionalPayments) },
   { key: "storage", label: "Хранение, руб", fmt: (r) => money(r.storage) },
