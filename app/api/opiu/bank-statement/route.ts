@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { PdfRecognitionError } from "@/lib/finance/bankStatementPdf";
 import { recognizeBankStatementUpload, suggestForStatement } from "@/lib/finance/bankStatementServer";
 import { isUploadObjectPath, readUpload, removeUpload } from "@/lib/finance/uploadStorage";
+import { isEmailStatementImportRequest } from "@/lib/opiu/emailStatementImportAuth";
 
 export const maxDuration = 120;
 
@@ -25,8 +26,10 @@ function startsWithBytes(bytes: Buffer, signature: number[]): boolean {
 }
 
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "fin_director", "financier"]);
-  if (gate) return gate;
+  if (!isEmailStatementImportRequest(request)) {
+    const gate = await requireApiSession(["director", "fin_director", "financier"]);
+    if (gate) return gate;
+  }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Серверная база не настроена" }, { status: 503 });
   let storagePath: string | null = null;

@@ -14,6 +14,7 @@ import { audit } from "@/lib/audit/log";
 import { bankOperationIdentity, operationIdentityFromReasons, uniqueLegacyBankOperationMatch } from "@/lib/opiu/bankOperationIdentity";
 import { bankLedgerProjectionPayload } from "@/lib/finance/bankLedgerProjection";
 import type { BankStatement } from "@/lib/finance/bankStatementGrid";
+import { isEmailStatementImportRequest } from "@/lib/opiu/emailStatementImportAuth";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
 type SuggestionInput = {
@@ -125,8 +126,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: Request) {
-  const gate = await requireApiSession(["director", "fin_director", "financier"]);
-  if (gate) return gate;
+  const emailImport = isEmailStatementImportRequest(request);
+  if (!emailImport) {
+    const gate = await requireApiSession(["director", "fin_director", "financier"]);
+    if (gate) return gate;
+  }
   const db = getSupabaseAdmin();
   if (!db) return jsonError("Серверная база не настроена", 503);
   const body = await request.json().catch(() => null) as {
@@ -156,6 +160,9 @@ export async function POST(request: Request) {
     };
   } | null;
   if (!body) return jsonError("Некорректный JSON", 400);
+  if (emailImport && body.action !== "batch") {
+    return jsonError("Почтовому импорту разрешено только добавление выписки в очередь", 403);
+  }
 
   if (body.action === "link_transfer") {
     const found = await db.from("bank_review_items").select("*").in("id",[text(body.outgoingId,100),text(body.incomingId,100)]);
