@@ -28,7 +28,7 @@ test("макет и провайдер отвечают на вопрос одн
   for (const path of ["/wb/rnp", "/wb/funnel", "/ozon/sales", "/warehouse", "/", "/login"]) {
     assert.equal(needsFinanceHydration(path), false, path);
   }
-  for (const path of ["/payments", "/calendar", "/loans", "/accounts", "/payroll", "/payments/import"]) {
+  for (const path of ["/payments", "/calendar", "/loans", "/accounts", "/payroll", "/payments/import", "/pnl/balance"]) {
     assert.equal(needsFinanceHydration(path), true, path);
   }
 });
