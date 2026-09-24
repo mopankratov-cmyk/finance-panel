@@ -22,6 +22,26 @@ test("внешний селлер без компании ОПиУ исключ�
   assert.deepEqual([...scope.cabinetIds], ["wb-own"]);
 });
 
+test("внешний селлер исключается даже при наличии активной карточки компании", () => {
+  const scope = buildGroupReportingScope(
+    [
+      { name: "ИП Панкратов", is_active: true },
+      { name: "СЛОЁНО", is_active: true },
+    ],
+    [
+      { id: "pankratov", name: "ИП Панкратов" },
+      { id: "external", name: "СЛОЁНО", note: "Внешний селлер: ведёт свой склад в панели, в отчётность группы не входит" },
+    ],
+    [
+      { legal_entity_id: "pankratov", cabinet_id: "wb-own" },
+      { legal_entity_id: "external", cabinet_id: "wb-external" },
+    ],
+  );
+
+  assert.deepEqual([...scope.legalEntityIds], ["pankratov"]);
+  assert.deepEqual([...scope.cabinetIds], ["wb-own"]);
+});
+
 test("неактивная компания не открывает кабинет в Баланс", () => {
   const scope = buildGroupReportingScope(
     [{ name: "ООО Архив", is_active: false }],

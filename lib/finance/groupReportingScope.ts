@@ -3,12 +3,18 @@ import { companyNamesMatch } from "@/lib/opiu/companyScope";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 type CompanyRow = { name: string; is_active: boolean };
-type EntityRow = { id: string; name: string };
+type EntityRow = { id: string; name: string; inn?: string | null; note?: string | null };
 type LinkRow = { legal_entity_id: string; cabinet_id: string };
 
 export interface GroupReportingScope {
   legalEntityIds: Set<string>;
   cabinetIds: Set<string>;
+}
+
+const EXTERNAL_ENTITY_NOTE = /внешн(?:ий|его)\s+селлер|в\s+отч[её]тность\s+группы\s+не\s+входит/i;
+
+export function isExternalReportingEntity(entity: EntityRow): boolean {
+  return EXTERNAL_ENTITY_NOTE.test(String(entity.note ?? ""));
 }
 
 /**
@@ -27,6 +33,7 @@ export function buildGroupReportingScope(
     .map((company) => company.name);
   const legalEntityIds = new Set(
     entities
+      .filter((entity) => !isExternalReportingEntity(entity))
       .filter((entity) => companyNames.some((companyName) => companyNamesMatch(companyName, entity.name)))
       .map((entity) => entity.id),
   );
@@ -43,7 +50,7 @@ export async function loadGroupReportingScope(): Promise<GroupReportingScope> {
   if (!db) throw new Error("Supabase не настроен");
   const [companies, entities, links] = await Promise.all([
     db.from("companies").select("name,is_active"),
-    db.from("legal_entities").select("id,name").eq("is_active", true),
+    db.from("legal_entities").select("id,name,inn,note").eq("is_active", true),
     db.from("legal_entity_cabinets").select("legal_entity_id,cabinet_id"),
   ]);
   const error = companies.error ?? entities.error ?? links.error;
