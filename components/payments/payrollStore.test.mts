@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deletePayrollEmployee } from "./payrollStore.ts";
+import { deletePayrollEmployee, loadPayrollData } from "./payrollStore.ts";
 
 test("удаление сотрудника отправляет отдельное действие с его id", async () => {
   const originalFetch = globalThis.fetch;
@@ -28,6 +28,33 @@ test("ошибка безопасного запрета удаления пок
 
   try {
     await assert.rejects(() => deletePayrollEmployee("employee-1"), /Поставьте статус «Уволен»/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("ведомость открывается, если временно недоступны приватные реквизиты", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (String(input) === "/api/payroll") return Response.json({ employees: [{ id: "employee-1", full_name: "Шук" }] });
+    throw new TypeError("Failed to fetch");
+  };
+
+  try {
+    const data = await loadPayrollData();
+    assert.equal(data.employees[0]?.fullName, "Шук");
+    assert.equal(data.canViewPrivate, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("ошибка связи с основной ведомостью объясняется пользователю", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
+
+  try {
+    await assert.rejects(() => loadPayrollData(), /Не удалось связаться с сервером ведомости/);
   } finally {
     globalThis.fetch = originalFetch;
   }

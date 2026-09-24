@@ -46,6 +46,7 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
   const [data, setData] = useState<PayrollData>(EMPTY_DATA);
   const [payDate, setPayDate] = useState(() => nextPayrollDate(today));
   const [drafts, setDrafts] = useState<Record<string, PayrollDraftEntry>>({});
+  const [skippedEmployeeIds, setSkippedEmployeeIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -77,6 +78,10 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
   }, [data.employees, data.entries, range, selectedPeriod?.id]);
 
   useEffect(() => {
+    setSkippedEmployeeIds(new Set());
+  }, [payDate]);
+
+  useEffect(() => {
     if (!range) {
       setDrafts({});
       return;
@@ -96,6 +101,14 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
   const existingEntryByEmployee = useMemo(
     () => new Map(data.entries.filter((entry) => entry.periodId === selectedPeriod?.id).map((entry) => [entry.employeeId, entry])),
     [data.entries, selectedPeriod?.id],
+  );
+  const includedEmployeesForPeriod = useMemo(
+    () => employeesForPeriod.filter((employee) => !skippedEmployeeIds.has(employee.id) || existingEntryByEmployee.has(employee.id)),
+    [employeesForPeriod, existingEntryByEmployee, skippedEmployeeIds],
+  );
+  const skippedEmployees = useMemo(
+    () => employeesForPeriod.filter((employee) => skippedEmployeeIds.has(employee.id) && !existingEntryByEmployee.has(employee.id)),
+    [employeesForPeriod, existingEntryByEmployee, skippedEmployeeIds],
   );
   const activeEmployees = useMemo(() => data.employees.filter((employee) => isEmployeeActiveOn(employee, today)), [data.employees, today]);
   const formerEmployees = useMemo(() => data.employees.filter((employee) => !isEmployeeActiveOn(employee, today)), [data.employees, today]);
@@ -131,7 +144,7 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
     }).sort((left, right) => right.date.localeCompare(left.date));
   }, [data.allocations, data.employees, payments, scheduleRows]);
 
-  const summary = useMemo(() => employeesForPeriod.reduce((result, employee) => {
+  const summary = useMemo(() => includedEmployeesForPeriod.reduce((result, employee) => {
     const draft = drafts[employee.id] ?? blankPayrollEntry(employee);
     const entry = existingEntryByEmployee.get(employee.id);
     const settlement = entry ? settlementByEntry.get(entry.id) : undefined;
@@ -140,9 +153,9 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
     result.total += payrollSalaryAmount(draft);
     result.paid += settlement?.paid ?? 0;
     return result;
-  }, { salary: 0, tax: 0, total: 0, paid: 0 }), [drafts, employeesForPeriod, existingEntryByEmployee, settlementByEntry]);
+  }, { salary: 0, tax: 0, total: 0, paid: 0 }), [drafts, includedEmployeesForPeriod, existingEntryByEmployee, settlementByEntry]);
 
-  const missingTax = employeesForPeriod.filter((employee) => {
+  const missingTax = includedEmployeesForPeriod.filter((employee) => {
     const draft = drafts[employee.id];
     return draft && draft.lines.some((line) => payrollLineTaxIsPayable(employee, line) && line.amount > 0 && payrollTaxRate(employee, line) === null && line.taxAmount === 0);
   });
@@ -165,7 +178,14 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
         setSuccess("Предпросмотр ведомости сохранён на экране. После внедрения эти же строки запишутся в календарь.");
         return;
       }
-      await savePayrollPeriod(payDate, employeesForPeriod.map((employee) => drafts[employee.id] ?? blankPayrollEntry(employee)));
+      const entriesToSave = includedEmployeesForPeriod
+        .map((employee) => drafts[employee.id] ?? blankPayrollEntry(employee))
+        .filter((entry) => entry.lines.some((line) => line.amount > 0 || line.taxAmount > 0));
+      if (entriesToSave.length === 0) {
+        setSuccess("В этой выплате нет начислений. Ведомость и платёжный календарь не изменены.");
+        return;
+      }
+      await savePayrollPeriod(payDate, entriesToSave);
       await onCalendarUpdated();
       setSuccess("Ведомость сохранена. Зарплата и налог обновлены в платёжном календаре без дублей.");
       await load();
@@ -187,7 +207,7 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
 
   return (
     <div className="space-y-5">
-      {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>}
+      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"><span>{error}</span><button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center rounded-lg border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">Повторить</button></div>}
       {success && <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" />{success}</div>}
       {data.preview && <div role="status" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900"><strong>Предварительный просмотр.</strong> Сотрудники показаны из присланного Excel. Начисления и изменения станут доступны после применения миграции базы.</div>}
 
@@ -249,9 +269,10 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
               <span>Не указан налог для выплат на расчётный счёт: {missingTax.map((employee) => employee.fullName.split(" ")[0]).join(", ")}. Укажите ставку в карточке сотрудника.</span>
             </div>
           )}
-          <PayrollLinesTable employees={employeesForPeriod} drafts={drafts} companies={companies} accounts={accounts} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} onChange={(employeeId, lines) => updateDraft(employeeId, { lines })} />
+          {skippedEmployees.length > 0 && <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"><span>Без начисления в этой выплате: {skippedEmployees.map((employee) => employee.fullName).join(", ")}</span><button type="button" onClick={() => setSkippedEmployeeIds(new Set())} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-violet-700 hover:bg-violet-100">Вернуть в ведомость</button></div>}
+          <PayrollLinesTable employees={includedEmployeesForPeriod} drafts={drafts} companies={companies} accounts={accounts} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} onChange={(employeeId, lines) => updateDraft(employeeId, { lines })} onSkipEmployee={(employeeId) => setSkippedEmployeeIds((current) => new Set(current).add(employeeId))} canSkipEmployee={(employee) => !existingEntryByEmployee.has(employee.id)} />
           <div className="mt-4 flex justify-end">
-            <button type="button" disabled={saving || !range || employeesForPeriod.length === 0} onClick={() => void savePeriod()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-5 text-sm font-bold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40">
+            <button type="button" disabled={saving || !range || includedEmployeesForPeriod.length === 0} onClick={() => void savePeriod()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-5 text-sm font-bold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{saving ? "Сохраняю…" : "Сохранить и обновить календарь"}
             </button>
           </div>
@@ -473,7 +494,7 @@ function RequisitesDirectory({ employees, canViewPrivate, onEdit }: { employees:
   return <Card><div className="border-b border-slate-100 p-5"><h2 className="text-lg font-bold text-slate-950">Реквизиты для оплаты</h2><p className="mt-1 text-sm text-slate-500">Показываем только данные, которые есть в карточке сотрудника. Нажмите на ФИО, чтобы исправить или дополнить.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[1060px] text-sm"><thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-5 py-3">Сотрудник</th><th className="px-4 py-3">Банк</th><th className="px-4 py-3">Расчётный счёт</th><th className="px-4 py-3">Карта / перевод</th><th className="px-4 py-3">Телефон</th><th className="px-4 py-3">Исходные реквизиты</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.length === 0 ? <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">Реквизиты ещё не загружены. Обновите данные из Excel во вкладке «Штат».</td></tr> : rows.map((employee) => <tr key={employee.id} className="align-top hover:bg-slate-50/70"><td className="px-5 py-3"><button type="button" onClick={() => onEdit(employee)} className="min-h-11 cursor-pointer text-left font-semibold text-slate-950 hover:text-violet-700">{employee.fullName}</button></td><td className="px-4 py-3 text-slate-700">{employee.bankName || "—"}</td><td className="max-w-[280px] whitespace-pre-line break-words px-4 py-3 text-slate-700">{employee.settlementAccountDetails || "—"}</td><td className="max-w-[280px] whitespace-pre-line break-words px-4 py-3 text-slate-700">{employee.cardTransferDetails || "—"}</td><td className="px-4 py-3 text-slate-700">{employee.phone || "—"}</td><td className="max-w-[300px] whitespace-pre-line break-words px-4 py-3 text-slate-500">{employee.paymentDetails || "—"}</td></tr>)}</tbody></table></div></Card>;
 }
 
-function PayrollLinesTable({ employees, drafts, companies, accounts, onEdit, onChange }: { employees: PayrollEmployee[]; drafts: Record<string, PayrollDraftEntry>; companies: DdsCompany[]; accounts: Account[]; onEdit: (employee: PayrollEmployee) => void; onChange: (employeeId: string, lines: PayrollAccrualLine[]) => void }) {
+function PayrollLinesTable({ employees, drafts, companies, accounts, onEdit, onChange, onSkipEmployee, canSkipEmployee }: { employees: PayrollEmployee[]; drafts: Record<string, PayrollDraftEntry>; companies: DdsCompany[]; accounts: Account[]; onEdit: (employee: PayrollEmployee) => void; onChange: (employeeId: string, lines: PayrollAccrualLine[]) => void; onSkipEmployee: (employeeId: string) => void; canSkipEmployee: (employee: PayrollEmployee) => boolean }) {
   return <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full min-w-[960px] table-fixed text-sm xl:min-w-0"><colgroup><col className="w-[22%]" /><col className="w-[19%]" /><col className="w-[19%]" /><col className="w-[13%]" /><col className="w-[13%]" /><col className="w-[14%]" /></colgroup><thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-3">Сотрудник</th><th className="px-2 py-3">Компания</th><th className="px-2 py-3">Вид начисления</th><th className="px-2 py-3">Зарплата</th><th className="px-2 py-3">Налог</th><th className="px-2 py-3">Способ оплаты</th></tr></thead><tbody className="divide-y divide-slate-100">{employees.length === 0 ? <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">На выбранный период сотрудников нет</td></tr> : employees.flatMap((employee) => {
     const lines = drafts[employee.id]?.lines ?? blankPayrollEntry(employee).lines;
     const allowedKinds: PayrollAccrualLine["kind"][] = employee.employmentType === "partial" ? ["official", "unofficial"] : employee.employmentType === "official" ? ["official"] : employee.employmentType === "unofficial" ? ["unofficial"] : ["contractor"];
@@ -493,7 +514,7 @@ function PayrollLinesTable({ employees, drafts, companies, accounts, onEdit, onC
     return lines.map((line, index) => {
       const taxPayable = payrollLineTaxIsPayable(employee, line);
       const taxRate = payrollTaxRate(employee, line);
-      return <tr key={`${employee.id}:${line.id}`} className="align-top hover:bg-slate-50/60">{index === 0 && <td rowSpan={lines.length} className="w-[260px] border-r border-slate-100 px-4 py-3"><button type="button" onClick={() => onEdit(employee)} className="min-h-11 cursor-pointer text-left font-bold text-slate-950 hover:text-violet-700"><span className="block">{employee.fullName}</span><span className="mt-0.5 block text-xs font-normal text-slate-500">{employee.position || "Без должности"}</span><span className="mt-1 inline-flex rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{EMPLOYMENT_LABELS[employee.employmentType]}</span></button><button type="button" onClick={addLine} className="mt-2 flex min-h-11 cursor-pointer items-center gap-1.5 text-xs font-bold text-violet-700 hover:text-violet-900"><Plus className="h-4 w-4" />Добавить строку</button></td>}<td className="w-[230px] px-3 py-3"><select aria-label={`Компания для ${employee.fullName}`} value={line.companyId ?? ""} onChange={(event) => patchLine(line.id, { companyId: event.target.value || null })} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"><option value="">Выберите компанию</option>{companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select>{line.amount > 0 && !line.accountId && <select aria-label={`Кошелёк для ${employee.fullName}`} value="" onChange={(event) => patchLine(line.id, { accountId: event.target.value || null })} className="mt-2 min-h-11 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs text-amber-900"><option value="">Выберите кошелёк для календаря</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>}</td><td className="w-[210px] px-3 py-3"><select aria-label={`Вид начисления для ${employee.fullName}`} value={line.kind} onChange={(event) => patchLine(line.id, { kind: event.target.value as PayrollAccrualLine["kind"] })} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3">{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "official" ? "Официальная часть" : kind === "unofficial" ? "Неофициальная часть" : "По договору ИП/СЗ"}</option>)}</select></td><td className="w-[170px] px-3 py-3"><MoneyInput label="" value={line.amount} onChange={(amount) => patchLine(line.id, { amount })} /></td><td className="w-[170px] px-3 py-3">{taxPayable ? <><MoneyInput label="" value={taxRate === null ? line.taxAmount : payrollLineTaxAmount(employee, line)} onChange={(taxAmount) => patchLine(line.id, { taxAmount })} />{taxRate !== null && <p className="mt-1 text-xs text-slate-500">Ставка {taxRate}%{employee.taxRate === null ? " по умолчанию" : ""}</p>}</> : <span className="inline-flex min-h-11 items-center text-slate-400">Не начисляется</span>}</td><td className="px-3 py-3"><div className="flex items-start gap-2"><select aria-label={`Способ оплаты для ${employee.fullName}`} value={line.paymentMethod} onChange={(event) => patchLine(line.id, { paymentMethod: event.target.value as PayrollPaymentMethod })} className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3">{Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button type="button" aria-label={`Удалить строку ${index + 1} у ${employee.fullName}`} disabled={lines.length <= minimumLines} onClick={() => onChange(employee.id, lines.filter((item) => item.id !== line.id))} className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25"><Trash2 className="h-4 w-4" /></button></div></td></tr>;
+      return <tr key={`${employee.id}:${line.id}`} className="align-top hover:bg-slate-50/60">{index === 0 && <td rowSpan={lines.length} className="w-[260px] border-r border-slate-100 px-4 py-3"><button type="button" onClick={() => onEdit(employee)} className="min-h-11 cursor-pointer text-left font-bold text-slate-950 hover:text-violet-700"><span className="block">{employee.fullName}</span><span className="mt-0.5 block text-xs font-normal text-slate-500">{employee.position || "Без должности"}</span><span className="mt-1 inline-flex rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{EMPLOYMENT_LABELS[employee.employmentType]}</span></button><button type="button" onClick={addLine} className="mt-2 flex min-h-11 cursor-pointer items-center gap-1.5 text-xs font-bold text-violet-700 hover:text-violet-900"><Plus className="h-4 w-4" />Добавить строку</button>{canSkipEmployee(employee) && <button type="button" onClick={() => onSkipEmployee(employee.id)} className="flex min-h-11 cursor-pointer items-center text-xs font-semibold text-slate-600 hover:text-slate-950">Не начислять в этот период</button>}</td>}<td className="w-[230px] px-3 py-3"><select aria-label={`Компания для ${employee.fullName}`} value={line.companyId ?? ""} onChange={(event) => patchLine(line.id, { companyId: event.target.value || null })} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"><option value="">Выберите компанию</option>{companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select>{line.amount > 0 && !line.accountId && <select aria-label={`Кошелёк для ${employee.fullName}`} value="" onChange={(event) => patchLine(line.id, { accountId: event.target.value || null })} className="mt-2 min-h-11 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs text-amber-900"><option value="">Выберите кошелёк для календаря</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select>}</td><td className="w-[210px] px-3 py-3"><select aria-label={`Вид начисления для ${employee.fullName}`} value={line.kind} onChange={(event) => patchLine(line.id, { kind: event.target.value as PayrollAccrualLine["kind"] })} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3">{allowedKinds.map((kind) => <option key={kind} value={kind}>{kind === "official" ? "Официальная часть" : kind === "unofficial" ? "Неофициальная часть" : "По договору ИП/СЗ"}</option>)}</select></td><td className="w-[170px] px-3 py-3"><MoneyInput label="" value={line.amount} onChange={(amount) => patchLine(line.id, { amount })} /></td><td className="w-[170px] px-3 py-3">{taxPayable ? <><MoneyInput label="" value={taxRate === null ? line.taxAmount : payrollLineTaxAmount(employee, line)} onChange={(taxAmount) => patchLine(line.id, { taxAmount })} />{taxRate !== null && <p className="mt-1 text-xs text-slate-500">Ставка {taxRate}%{employee.taxRate === null ? " по умолчанию" : ""}</p>}</> : <span className="inline-flex min-h-11 items-center text-slate-400">Не начисляется</span>}</td><td className="px-3 py-3"><div className="flex items-start gap-2"><select aria-label={`Способ оплаты для ${employee.fullName}`} value={line.paymentMethod} onChange={(event) => patchLine(line.id, { paymentMethod: event.target.value as PayrollPaymentMethod })} className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3">{Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button type="button" aria-label={`Удалить строку ${index + 1} у ${employee.fullName}`} disabled={lines.length <= minimumLines} onClick={() => onChange(employee.id, lines.filter((item) => item.id !== line.id))} className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25"><Trash2 className="h-4 w-4" /></button></div></td></tr>;
     });
   })}</tbody></table></div>;
 }
