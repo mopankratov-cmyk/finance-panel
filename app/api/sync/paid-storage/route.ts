@@ -278,7 +278,7 @@ async function processCabinet(
   // Крупный chunk (100КБ вместо дефолтных 20КБ) — меньше round-trip'ов к
   // Supabase на тысячах строк; сама запись, а не только скачивание, была
   // частью того, что не укладывалось в бюджет функции для больших кабинетов.
-  const upsertError = await chunkedUpsert("wb_paid_storage_rows", rows, "id", 100_000);
+  const upsertError = await chunkedUpsert("wb_paid_storage_rows", rows as unknown as Record<string, unknown>[], "id", 100_000);
   if (upsertError) {
     await writeWbSyncState(db, cabinetId, JOB, {
       cursor: state.frontier ?? null,

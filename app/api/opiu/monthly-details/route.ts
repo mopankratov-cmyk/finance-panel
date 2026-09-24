@@ -19,6 +19,7 @@ import {
 } from "@/lib/opiu/monthlyDetails";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadMonthlyDdsRows } from "@/lib/opiu/ddsFactsServer";
 
 export const dynamic = "force-dynamic";
 
@@ -173,13 +174,8 @@ export async function GET(request: NextRequest) {
       return response(articleId, "loan", items);
     }
 
-    const rows = await loadAllSupabasePages<Record<string, unknown>>((from, to) => db
-      .from("payments")
-      .select("id,date,name,counterparty,amount,category,comment,company_id,status,import_source")
-      .eq("status", "done")
-      .or("import_source.like.bank-review:%,import_source.like.dds-chain:%,import_source.like.manual-dds:%")
-      .gte("date", range.from).lte("date", range.to)
-      .order("date").order("id").range(from, to), { label: "Детализация ОПиУ: ДДС", maxPages: 100 });
+    const loadedDds = await loadMonthlyDdsRows(db, range.from, range.to, "Детализация ОПиУ: ДДС");
+    const rows = loadedDds.rows;
     const { categories } = await loadDdsExpenseCategories();
     const items = rows.flatMap<MonthlyOpiuDetailItem>((row) => {
       const fact: DdsFactRow = {
@@ -200,7 +196,11 @@ export async function GET(request: NextRequest) {
         source: "dds",
         date: fact.date,
         title: fact.counterparty || fact.name || "Платёж ДДС",
-        subtitle: [fact.category, fact.comment].filter(Boolean).join(" · "),
+        subtitle: [
+          fact.category,
+          row.opiu_allocation_id ? `Распределено в ОПиУ; платёж ${String(row.payment_date).slice(0, 10)}` : null,
+          fact.comment,
+        ].filter(Boolean).join(" · "),
         amount: Math.abs(fact.amount),
         href: `/payments?payment=${encodeURIComponent(fact.id ?? "")}`,
       }];

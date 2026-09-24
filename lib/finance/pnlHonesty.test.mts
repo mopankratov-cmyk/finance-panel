@@ -54,7 +54,7 @@ test("переключение компании фильтрует уже заг
 });
 
 test("месячный ОПиУ имеет бренд-фильтр и не выводит отдельную колонку общих расходов", () => {
-  assert.match(monthlyPage, /Бренд\s*<select/);
+  assert.match(monthlyPage, /Бренд WB\s*<select/);
   assert.match(monthlyPage, /Общие расходы/);
   assert.doesNotMatch(monthlyPage, />Общие<\/th>/);
 });

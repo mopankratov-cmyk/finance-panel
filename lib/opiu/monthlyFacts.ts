@@ -164,7 +164,7 @@ export function aggregateDdsMonthlyFacts(rows: readonly DdsFactRow[], customCate
   return Object.fromEntries([...totals].map(([id, amount]) => [id, {
     amount,
     status: "complete" as const,
-    note: "Подтверждённые платежи ДДС за выбранный месяц",
+    note: "Подтверждённые платежи ДДС с учётом распределения по месяцам ОПиУ",
   }]));
 }
 
